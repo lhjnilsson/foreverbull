@@ -1,0 +1,165 @@
+name: "on commit jobs"
+on: push
+
+jobs:
+  lint-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.out -covermode=atomic -timeout 180s
+      - name: Upload coverage to Codecov
+        run: curl -s https://codecov.io/bash > codecov.sh && bash codecov.sh
+
+  python-lint-unit-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./external/client/python
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: foreverbull
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install system dependencies (for TA-Lib(zipline))
+        run: |
+          curl -L -o ta-lib-0.4.0-src.tar.gz  http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz &&
+          tar xvfz ta-lib-0.4.0-src.tar.gz &&
+          cd ta-lib &&
+          ./configure &&
+          sudo make &&
+          sudo make install &&
+          sudo ldconfig
+      - name: Install python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade setuptools
+          python -m pip install --upgrade hatch
+      - name: Setup python environment
+        run: |
+          python -m hatch env create dev
+      - name: Lint
+        run: |
+          python -m hatch run dev:lint
+      - name: Unittest
+        run: |
+          python -m hatch run dev:test
+
+  build-docker-containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Build Example
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=example.py
+          tags: quay.io/foreverbull/client:latest
+          outputs: type=docker,dest=/tmp/client.tar
+      - name: Build Zipline
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          file: ./external/client/python/zipline.Dockerfile
+          tags: quay.io/foreverbull/zipline:latest
+          outputs: type=docker,dest=/tmp/zipline.tar
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: client
+          path: /tmp/client.tar
+          retention-days: 1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: zipline
+          path: /tmp/zipline.tar
+          retention-days: 1
+
+  go-module-tests:
+    needs: [lint-unit-tests, python-lint-unit-tests, build-docker-containers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Download client
+        uses: actions/download-artifact@v2
+        with:
+          name: client
+          path: /tmp
+      - name: Download zipline
+        uses: actions/download-artifact@v2
+        with:
+          name: zipline
+          path: /tmp
+      - name: Load client
+        run: docker load -i /tmp/client.tar
+      - name: Load zipline
+        run: docker load -i /tmp/zipline.tar
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.20.4
+
+      - name: Integration Tests
+        run: CONFIG_PATH=${PWD} go test -timeout 300s -run TestModule  ./... -p 1
+        env:
+          ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
+          ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
+          ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
+          WORKER_IMAGE: quay.io/foreverbull/client:latest
+          BACKTEST_IMAGE: quay.io/foreverbull/zipline:latest
+          HOSTNAME: host.docker.internal
+
+      - name: Sleep for 20 seconds to make all containers stop
+        run: sleep 20s
+        shell: bash
+      - name: Collect docker logs on failure
+        if: failure()
+        uses: jwalton/gh-docker-logs@v2
+        with:
+          dest: ./logs
+      - name: Tar logs
+        if: failure()
+        run: tar cvzf ./logs.tgz ./logs
+      - name: Upload logs to GitHub
+        if: failure()
+        uses: actions/upload-artifact@master
+        with:
+          name: logs.tgz
+          path: ./logs.tgz
+          retention-days: 1
