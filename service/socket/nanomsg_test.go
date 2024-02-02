@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/stretchr/testify/assert"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -42,6 +43,8 @@ func GetReplier(t *testing.T, port int, dial bool) (mangos.Socket, func()) {
 }
 
 func TestConnect(t *testing.T) {
+	// To set start and end port range
+	_ = environment.Setup()
 	t.Run("dial", func(t *testing.T) {
 		_, closePeer := GetReplier(t, 1337, false)
 		defer closePeer()

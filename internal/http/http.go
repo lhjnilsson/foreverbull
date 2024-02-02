@@ -98,7 +98,7 @@ func OrchestrationMiddleware(dependencyKey string, s stream.Stream) gin.HandlerF
 func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger) error {
 
 	server := http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", environment.GetHTTPPort()),
+		Addr:    fmt.Sprintf("0.0.0.0:%s", environment.GetHTTPPort()),
 		Handler: engine,
 	}
 

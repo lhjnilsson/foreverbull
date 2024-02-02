@@ -70,7 +70,7 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	sc.log.Debug("starting container", zap.String("image", image), zap.String("service", serviceName))
 
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
-	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%d", environment.GetHTTPPort()))
+	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
 	env = append(env, fmt.Sprintf("SERVICE_NAME=%s", serviceName))
 	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", environment.GetMinioURL()))
 	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", environment.GetMinioAccessKey()))
