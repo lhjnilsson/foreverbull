@@ -45,11 +45,11 @@ const (
 	MINIO_SECRET_KEY_DEFAULT = "minioadmin"
 
 	MARKET_DATA_PROVIDER         = "MARKET_DATA_PROVIDER"
-	MARKET_DATA_PROVIDER_DEFAULT = "alpaca"
-	ALPACA_BASE_URL              = "ALPACA_BASE_URL"
+	MARKET_DATA_PROVIDER_DEFAULT = "alpaca_markets"
+	ALPACA_BASE_URL              = "ALPACA_MARKETS_BASE_URL"
 	ALPACA_BASE_URL_DEFAULT      = "https://paper-api.alpaca.markets"
-	ALPACA_API_KEY               = "ALPACA_API_KEY"
-	ALPACA_API_SECRET            = "ALPACA_API_SECRET"
+	ALPACA_API_KEY               = "ALPACA_MARKETS_API_KEY"
+	ALPACA_API_SECRET            = "ALPACA_MARKETS_API_SECRET"
 )
 
 type envVar struct {

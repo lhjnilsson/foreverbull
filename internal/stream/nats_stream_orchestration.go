@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -103,9 +104,8 @@ func NewOrchestrationRunner(log *zap.Logger, stream *NATSStream) (*Orchestration
 }
 
 type OrchestrationRunner struct {
-	log            *zap.Logger
-	stream         *NATSStream
-	deliveryPolicy string
+	log    *zap.Logger
+	stream *NATSStream
 
 	sub *nats.Subscription
 }
@@ -190,13 +190,13 @@ func (or *OrchestrationRunner) Start() error {
 		nats.MaxDeliver(1),
 		nats.Durable("foreverbull-orchestration-event"),
 	}
-	switch or.deliveryPolicy {
+	switch environment.GetNATSDeliveryPolicy() {
 	case "all":
 		opts = append(opts, nats.DeliverAll())
 	case "last":
 		opts = append(opts, nats.DeliverLast())
 	default:
-		return fmt.Errorf("unknown delivery policy: %s", or.deliveryPolicy)
+		return fmt.Errorf("unknown delivery policy: %s", environment.GetNATSDeliveryPolicy())
 	}
 
 	or.sub, err = or.stream.jt.Subscribe("foreverbull.*.*.*.event", or.msgHandler, opts...)
