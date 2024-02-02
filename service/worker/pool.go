@@ -6,7 +6,7 @@ import (
 	"time"
 
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
@@ -22,7 +22,7 @@ type Pool interface {
 	Stop(context.Context) error
 }
 
-func NewPool(ctx context.Context, serverConfig *config.Config, instances ...*entity.Instance) (Pool, error) {
+func NewPool(ctx context.Context, instances ...*entity.Instance) (Pool, error) {
 	var workerInstances []*Instance
 	for _, instance := range instances {
 		workerInstances = append(workerInstances, &Instance{Service: instance})
@@ -32,19 +32,18 @@ func NewPool(ctx context.Context, serverConfig *config.Config, instances ...*ent
 	if err != nil {
 		return nil, err
 	}
-	return &pool{Workers: workerInstances, serverConfig: serverConfig, Socket: s, socket: socket}, nil
+	return &pool{Workers: workerInstances, Socket: s, socket: socket}, nil
 }
 
 type pool struct {
-	serverConfig *config.Config       `json:"-"`
-	Socket       *socket.Socket       `json:"socket"`
-	socket       socket.ContextSocket `json:"-"`
-	Workers      []*Instance          `json:"workers"`
+	Socket  *socket.Socket       `json:"socket"`
+	socket  socket.ContextSocket `json:"-"`
+	Workers []*Instance          `json:"workers"`
 }
 
 func (p *pool) SocketConfig() *socket.Socket {
 	cfg := p.Socket
-	cfg.Host = p.serverConfig.Hostname
+	cfg.Host = environment.GetServerAddress()
 	return cfg
 }
 

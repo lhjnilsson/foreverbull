@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 )
@@ -29,17 +30,16 @@ func NewJetstream(uri string) (nats.JetStreamContext, error) {
 type NATSStream struct {
 	module string
 
-	deliveryPolicy string
-	jt             nats.JetStreamContext
-	log            *zap.Logger
-	subs           []*nats.Subscription
+	jt   nats.JetStreamContext
+	log  *zap.Logger
+	subs []*nats.Subscription
 
 	deps *dependencyContainer
 
 	repository repository
 }
 
-func NewNATSStream(jt nats.JetStreamContext, module string, deliveryPolicy string, log *zap.Logger, dc DependencyContainer, db *pgxpool.Pool) (Stream, error) {
+func NewNATSStream(jt nats.JetStreamContext, module string, log *zap.Logger, dc DependencyContainer, db *pgxpool.Pool) (Stream, error) {
 	cfg := &nats.ConsumerConfig{
 		Name:       module,
 		Durable:    module,
@@ -54,7 +54,7 @@ func NewNATSStream(jt nats.JetStreamContext, module string, deliveryPolicy strin
 	if err != nil {
 		return nil, err
 	}
-	return &NATSStream{module: module, jt: jt, deliveryPolicy: deliveryPolicy, log: log, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
+	return &NATSStream{module: module, jt: jt, log: log, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
 }
 
 func (ns *NATSStream) CreateMessage(ctx context.Context, msg Message) (Message, error) {
@@ -130,13 +130,13 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 		nats.MaxDeliver(1),
 		nats.Durable(fmt.Sprintf("foreverbull-%s-%s-%s", ns.module, component, method)),
 	}
-	switch ns.deliveryPolicy {
+	switch environment.GetNATSDeliveryPolicy() {
 	case "all":
 		opts = append(opts, nats.DeliverAll())
 	case "last":
 		opts = append(opts, nats.DeliverLast())
 	default:
-		return fmt.Errorf("unknown delivery policy: %s", ns.deliveryPolicy)
+		return fmt.Errorf("unknown delivery policy: %s", environment.GetNATSDeliveryPolicy())
 	}
 
 	sub, err := ns.jt.Subscribe(fmt.Sprintf("foreverbull.%s.%s.%s.command", ns.module, component, method), jtCb, opts...)

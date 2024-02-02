@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -95,15 +95,15 @@ func OrchestrationMiddleware(dependencyKey string, s stream.Stream) gin.HandlerF
 	}
 }
 
-func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger, config *config.Config) error {
+func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger) error {
 
 	server := http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", config.HTTP.Port),
+		Addr:    fmt.Sprintf("0.0.0.0:%s", environment.GetHTTPPort()),
 		Handler: engine,
 	}
 
-	engine.Static("/assets/", fmt.Sprintf("%s/assets/", config.HTTP.UIStaticPath))
-	engine.StaticFile("/", fmt.Sprintf("%s/index.html", config.HTTP.UIStaticPath))
+	engine.Static("/assets/", fmt.Sprintf("%s/assets/", environment.GetUIStaticPath()))
+	engine.StaticFile("/", fmt.Sprintf("%s/index.html", environment.GetUIStaticPath()))
 	engine.Use(CorsHeaders())
 	engine.NoRoute(func(c *gin.Context) {
 		if strings.Contains(c.Request.URL.Path, "/api/") {
@@ -111,7 +111,7 @@ func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger, co
 			return
 		}
 
-		c.File(fmt.Sprintf("%s/index.html", config.HTTP.UIStaticPath))
+		c.File(fmt.Sprintf("%s/index.html", environment.GetUIStaticPath()))
 	})
 
 	lc.Append(

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/finance/entity"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
 )
@@ -21,10 +22,10 @@ type OHLCTests struct {
 func (s *OHLCTests) SetupTest() {
 	var err error
 
-	config := helper.TestingConfig(s.T(), &helper.Containers{
+	helper.SetupEnvironment(s.T(), &helper.Containers{
 		Postgres: true,
 	})
-	s.conn, err = pgxpool.New(context.Background(), config.PostgresURI)
+	s.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	s.NoError(err)
 	err = Recreate(context.Background(), s.conn)
 	s.Require().Nil(err)

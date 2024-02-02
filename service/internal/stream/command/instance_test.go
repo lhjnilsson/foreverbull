@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
@@ -36,12 +37,12 @@ func TestIC(t *testing.T) {
 }
 
 func (s *InstanceTest) SetupTest() {
-	config := helper.TestingConfig(s.T(), &helper.Containers{
+	helper.SetupEnvironment(s.T(), &helper.Containers{
 		Postgres: true,
 	})
 
 	var err error
-	s.db, err = pgxpool.New(context.Background(), config.PostgresURI)
+	s.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	s.NoError(err)
 
 	err = repository.Recreate(context.TODO(), s.db)

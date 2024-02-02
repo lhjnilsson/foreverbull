@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/container"
@@ -32,7 +31,6 @@ func UpdateServiceStatus(ctx context.Context, message stream.Message) error {
 
 func ServiceStart(ctx context.Context, message stream.Message) error {
 	db := message.MustGet(stream.DBDep).(postgres.Query)
-	config := message.MustGet(stream.ConfigDep).(*config.Config)
 	container := message.MustGet(dependency.ContainerDep).(container.Container)
 
 	command := ss.ServiceStartCommand{}
@@ -47,7 +45,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting service: %w", err)
 	}
 
-	_, err = container.Start(ctx, config, service.Name, service.Image, command.InstanceID)
+	_, err = container.Start(ctx, service.Name, service.Image, command.InstanceID)
 	if err != nil {
 		return fmt.Errorf("error starting container: %w", err)
 	}

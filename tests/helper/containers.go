@@ -43,7 +43,6 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 			t.Error("timeout waiting for condition:", ctx.Err())
 		default:
 			containers, err := cli.ContainerList(context.Background(), opts)
-			fmt.Println("Containers: ", containers)
 			if err != nil {
 				t.Error("Failed to list containers:", err)
 			}

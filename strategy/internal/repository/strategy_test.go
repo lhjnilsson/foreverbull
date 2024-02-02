@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/assert"
@@ -12,10 +13,10 @@ import (
 
 func TestStrategy(t *testing.T) {
 	var err error
-	config := helper.TestingConfig(t, &helper.Containers{
+	helper.SetupEnvironment(t, &helper.Containers{
 		Postgres: true,
 	})
-	conn, err := pgxpool.New(context.Background(), config.PostgresURI)
+	conn, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	assert.Nil(t, err)
 	defer conn.Close()
 

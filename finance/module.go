@@ -15,7 +15,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/finance/supplier"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -29,22 +28,22 @@ type FinanceAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(config *config.Config) (supplier.Marketdata, supplier.Trading, error) {
-			md, err := marketdata.NewAlpacaClient(config)
+		func() (supplier.Marketdata, supplier.Trading, error) {
+			md, err := marketdata.NewAlpacaClient()
 			if err != nil {
 				return nil, nil, err
 			}
-			t, err := trading.NewAlpacaClient(config)
+			t, err := trading.NewAlpacaClient()
 			if err != nil {
 				return nil, nil, err
 			}
 			return md, t, nil
 		},
-		func(jt nats.JetStreamContext, config *config.Config, log *zap.Logger, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
+		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingelton(stream.DBDep, conn)
 			dc.AddSingelton(dependency.MarketDataDep, md)
-			s, err := stream.NewNATSStream(jt, Stream, config.NATS_DELIVERY_POLICY, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}

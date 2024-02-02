@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest"
 	"github.com/lhjnilsson/foreverbull/finance"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/log"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
@@ -19,9 +19,9 @@ import (
 
 var CoreModules = fx.Options(
 	fx.Provide(
-		config.GetConfig,
-		func(config config.Config) (*pgxpool.Pool, error) {
-			return pgxpool.New(context.TODO(), config.PostgresURI)
+		environment.Setup(),
+		func() (*pgxpool.Pool, error) {
+			return pgxpool.New(context.TODO(), environment.GetPostgresURL())
 		},
 		storage.NewMinioStorage,
 		log.NewLogger,

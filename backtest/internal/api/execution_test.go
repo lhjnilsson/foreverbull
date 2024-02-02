@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
@@ -27,10 +28,10 @@ func (test *ExecutionTest) SetupTest() {
 	var err error
 	test.log = zaptest.NewLogger(test.T())
 
-	config := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	test.db, err = pgxpool.New(context.Background(), config.PostgresURI)
+	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
 	err = repository.Recreate(context.TODO(), test.db)

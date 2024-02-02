@@ -15,7 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/finance"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -35,7 +35,6 @@ type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
 
-	config              *config.Config
 	backtestServiceName string
 	workerServiceName   string
 	backtestName        string
@@ -54,7 +53,7 @@ func TestModuleBacktest(t *testing.T) {
 }
 
 func (test *BacktestModuleTest) SetupSuite() {
-	test.config = helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 		Minio:    true,
@@ -62,17 +61,17 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
 
-	st, err := stream.NewJetstream(test.config.NATSURI)
+	st, err := stream.NewJetstream(environment.GetNATSURL())
 	test.NoError(err)
 
-	pool, err := pgxpool.New(context.Background(), test.config.PostgresURI)
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.NoError(err)
 
 	g := h.NewEngine()
 
-	store, err := storage.NewMinioStorage(test.config.MinioURI, test.config.MinioAccessKey, test.config.MinioSecretKey)
+	store, err := storage.NewMinioStorage(environment.GetMinioURL(), environment.GetMinioAccessKey(), environment.GetMinioSecretKey())
 	test.NoError(err)
 
 	test.app = fx.New(
@@ -82,9 +81,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 			},
 			func() nats.JetStreamContext {
 				return st
-			},
-			func() *config.Config {
-				return test.config
 			},
 			func() *pgxpool.Pool {
 				return pool
@@ -194,7 +190,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 }
 
 func (test *BacktestModuleTest) TearDownSuite() {
-	helper.WaitTillContainersAreRemoved(test.T(), test.config.Docker.Network, time.Second*20)
+	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
 }
 

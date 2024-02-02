@@ -8,7 +8,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
@@ -34,7 +34,6 @@ func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
 
 func BacktestIngest(ctx context.Context, message stream.Message) error {
 	log := message.MustGet(stream.LoggerDep).(*zap.Logger)
-	config := message.MustGet(stream.ConfigDep).(*config.Config)
 	db := message.MustGet(stream.DBDep).(postgres.Query)
 
 	command := bs.BacktestIngestCommand{}
@@ -53,7 +52,7 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 		Start:    backtest.Start,
 		End:      backtest.End,
 		Symbols:  backtest.Symbols,
-		Database: config.PostgresURI,
+		Database: environment.GetPostgresURL(),
 	}
 	ingest := func(e engine.Engine) error {
 		err = e.Ingest(ctx, &ingestConfig)

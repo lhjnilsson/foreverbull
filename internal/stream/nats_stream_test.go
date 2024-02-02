@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -22,7 +23,7 @@ type NatsStreamTest struct {
 }
 
 func (suite *NatsStreamTest) SetupTest() {
-	config := helper.TestingConfig(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(suite.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
@@ -31,15 +32,15 @@ func (suite *NatsStreamTest) SetupTest() {
 
 	dc := NewDependencyContainer()
 
-	pool, err := pgxpool.New(context.Background(), config.PostgresURI)
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 
 	err = RecreateTables(context.Background(), pool)
 	suite.NoError(err)
 
-	suite.jt, err = NewJetstream(config.NATSURI)
+	suite.jt, err = NewJetstream(environment.GetNATSURL())
 	suite.NoError(err)
 
-	stream, err := NewNATSStream(suite.jt, "test", config.NATS_DELIVERY_POLICY, log, dc, pool)
+	stream, err := NewNATSStream(suite.jt, "test", log, dc, pool)
 	suite.NoError(err)
 	suite.stream = *stream.(*NATSStream)
 }

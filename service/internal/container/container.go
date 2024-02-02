@@ -14,7 +14,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"go.uber.org/zap"
 )
 
@@ -58,7 +58,7 @@ func (sc *serviceContainer) Info(ctx context.Context, containerID string) (types
 	return i, err
 }
 
-func (sc *serviceContainer) Start(ctx context.Context, config *config.Config, serviceName, image, name string) (string, error) {
+func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string) (string, error) {
 	if err := sc.hasImage(ctx, image); err != nil && err.Error() == "no such image" {
 		sc.log.Debug("pulling image", zap.String("image", image))
 		if err := sc.Pull(ctx, image); err != nil {
@@ -69,14 +69,14 @@ func (sc *serviceContainer) Start(ctx context.Context, config *config.Config, se
 	}
 	sc.log.Debug("starting container", zap.String("image", image), zap.String("service", serviceName))
 
-	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", config.Hostname)}
-	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%d", config.HTTP.Port))
+	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
+	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
 	env = append(env, fmt.Sprintf("SERVICE_NAME=%s", serviceName))
-	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", config.MinioURI))
-	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", config.MinioAccessKey))
-	env = append(env, fmt.Sprintf("STORAGE_SECRET_KEY=%s", config.MinioSecretKey))
-	env = append(env, fmt.Sprintf("DATABASE_URL=%s", config.PostgresURI))
-	env = append(env, fmt.Sprintf("LOGLEVEL=%s", config.ClientLogLevel))
+	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", environment.GetMinioURL()))
+	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", environment.GetMinioAccessKey()))
+	env = append(env, fmt.Sprintf("STORAGE_SECRET_KEY=%s", environment.GetMinioSecretKey()))
+	env = append(env, fmt.Sprintf("DATABASE_URL=%s", environment.GetPostgresURL()))
+	env = append(env, fmt.Sprintf("LOGLEVEL=%s", environment.GetLogLevel()))
 
 	conf := container.Config{Image: image, Env: env, Tty: false, Hostname: name,
 		Labels: map[string]string{"platform": "foreverbull", "type": "service", "service": serviceName}}
@@ -88,10 +88,10 @@ func (sc *serviceContainer) Start(ctx context.Context, config *config.Config, se
 		EndpointsConfig: map[string]*network.EndpointSettings{},
 	}
 	endpointSettings := &network.EndpointSettings{
-		NetworkID: config.Docker.Network,
+		NetworkID: environment.GetDockerNetworkName(),
 	}
 
-	networkConfig.EndpointsConfig[config.Docker.Network] = endpointSettings
+	networkConfig.EndpointsConfig[environment.GetDockerNetworkName()] = endpointSettings
 
 	resp, err := sc.client.ContainerCreate(ctx, &conf, &hostConf, &networkConfig, nil, name)
 	if err != nil {

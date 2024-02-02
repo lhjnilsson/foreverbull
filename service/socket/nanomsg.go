@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -35,12 +35,8 @@ type NanomsgSocket struct {
 
 func (s *NanomsgSocket) listenToFreePort() error {
 	var err error
-	config, err := config.GetConfig()
-	if err != nil {
-		return err
-	}
 
-	for i := config.ExposedPortRange.Start; i <= config.ExposedPortRange.End; i++ {
+	for i := environment.GetBacktestPortRangeStart(); i <= environment.GetBacktestPortRangeEnd(); i++ {
 		s.Port = i
 		err = s.socket.Listen(fmt.Sprintf("tcp://%v:%v", s.Host, s.Port))
 		if err == nil {

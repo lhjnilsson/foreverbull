@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
@@ -22,8 +22,7 @@ import (
 type ServiceTest struct {
 	suite.Suite
 
-	config *config.Config
-	db     *pgxpool.Pool
+	db *pgxpool.Pool
 
 	testService *entity.Service
 }
@@ -34,11 +33,11 @@ func TestServiceCommands(t *testing.T) {
 
 func (s *ServiceTest) SetupTest() {
 	var err error
-	config := helper.TestingConfig(s.T(), &helper.Containers{
+	helper.SetupEnvironment(s.T(), &helper.Containers{
 		Postgres: true,
 	})
 
-	s.db, err = pgxpool.New(context.Background(), config.PostgresURI)
+	s.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	s.NoError(err)
 
 	err = repository.Recreate(context.TODO(), s.db)
@@ -103,9 +102,8 @@ func (s *ServiceTest) TestServiceStartFail() {
 	c := new(mockContainer.Container)
 	b.On("MustGet", stream.DBDep).Return(s.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
-	b.On("MustGet", stream.ConfigDep).Return(s.config)
 
-	c.On("Start", mock.Anything, s.config, s.testService.Name, s.testService.Image, "test-instance").Return("", errors.New("fail to start"))
+	c.On("Start", mock.Anything, s.testService.Name, s.testService.Image, "test-instance").Return("", errors.New("fail to start"))
 
 	err := ServiceStart(context.Background(), b)
 	s.Error(err)
@@ -123,9 +121,8 @@ func (s *ServiceTest) TestServiceStartSuccessful() {
 	c := new(mockContainer.Container)
 	b.On("MustGet", stream.DBDep).Return(s.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
-	b.On("MustGet", stream.ConfigDep).Return(s.config)
 
-	c.On("Start", mock.Anything, s.config, s.testService.Name, s.testService.Image, "test-instance").Return("test-container-id", nil)
+	c.On("Start", mock.Anything, s.testService.Name, s.testService.Image, "test-instance").Return("test-container-id", nil)
 
 	err := ServiceStart(context.Background(), b)
 	s.NoError(err)

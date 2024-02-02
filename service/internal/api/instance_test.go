@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
@@ -35,10 +36,10 @@ func (test *InstanceTest) SetupTest() {
 	test.log = zaptest.NewLogger(test.T())
 	test.stream = new(mockStream.Stream)
 
-	config := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	test.conn, err = pgxpool.New(context.Background(), config.PostgresURI)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), test.conn)
 	test.Nil(err)

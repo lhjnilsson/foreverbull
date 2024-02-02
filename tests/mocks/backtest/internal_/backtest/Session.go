@@ -5,10 +5,7 @@ package mocks
 import (
 	context "context"
 
-	config "github.com/lhjnilsson/foreverbull/internal/config"
-
 	entity "github.com/lhjnilsson/foreverbull/backtest/entity"
-
 	mock "github.com/stretchr/testify/mock"
 
 	socket "github.com/lhjnilsson/foreverbull/service/socket"
@@ -49,13 +46,13 @@ func (_m *Session) Run(_a0 chan<- bool, _a1 <-chan bool) error {
 	return r0
 }
 
-// RunExecution provides a mock function with given fields: ctx, _a1, execution
-func (_m *Session) RunExecution(ctx context.Context, _a1 *config.Config, execution *entity.Execution) error {
-	ret := _m.Called(ctx, _a1, execution)
+// RunExecution provides a mock function with given fields: ctx, execution
+func (_m *Session) RunExecution(ctx context.Context, execution *entity.Execution) error {
+	ret := _m.Called(ctx, execution)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *config.Config, *entity.Execution) error); ok {
-		r0 = rf(ctx, _a1, execution)
+	if rf, ok := ret.Get(0).(func(context.Context, *entity.Execution) error); ok {
+		r0 = rf(ctx, execution)
 	} else {
 		r0 = ret.Error(0)
 	}

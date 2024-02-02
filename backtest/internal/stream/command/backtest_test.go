@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
@@ -26,9 +26,8 @@ import (
 type CommandBacktestTest struct {
 	suite.Suite
 
-	log    *zap.Logger
-	db     *pgxpool.Pool
-	config *config.Config
+	log *zap.Logger
+	db  *pgxpool.Pool
 }
 
 func TestCommandBacktest(t *testing.T) {
@@ -36,14 +35,14 @@ func TestCommandBacktest(t *testing.T) {
 }
 
 func (test *CommandBacktestTest) SetupTest() {
-	test.config = helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
 
 	test.log = zaptest.NewLogger(test.T())
 
 	var err error
-	test.db, err = pgxpool.New(context.Background(), test.config.PostgresURI)
+	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
 	err = repository.Recreate(context.TODO(), test.db)
@@ -117,7 +116,6 @@ func (test *CommandBacktestTest) TestBacktestIngestCommand() {
 	m := new(mockStream.Message)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", stream.LoggerDep).Return(test.log)
-	m.On("MustGet", stream.ConfigDep).Return(test.config)
 
 	engine := new(mockEngine.Engine)
 	m.On("Call", mock.Anything, dependency.GetBacktestEngineKey).Return(engine, nil)

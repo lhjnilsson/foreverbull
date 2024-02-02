@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/container"
@@ -34,12 +33,11 @@ var Module = fx.Options(
 		func(gin *gin.Engine) *ServiceAPI {
 			return &ServiceAPI{gin.Group("/service/api")}
 		},
-		func(jt nats.JetStreamContext, config *config.Config, log *zap.Logger, conn *pgxpool.Pool, container container.Container) (ServiceStream, error) {
+		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool, container container.Container) (ServiceStream, error) {
 			dc := stream.NewDependencyContainer()
-			dc.AddSingelton(stream.ConfigDep, config)
 			dc.AddSingelton(stream.DBDep, conn)
 			dc.AddSingelton(dependency.ContainerDep, container)
-			return stream.NewNATSStream(jt, Stream, config.NATS_DELIVERY_POLICY, log, dc, conn)
+			return stream.NewNATSStream(jt, Stream, log, dc, conn)
 		},
 	),
 	fx.Invoke(
@@ -68,7 +66,7 @@ var Module = fx.Options(
 			serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
 			return nil
 		},
-		func(lc fx.Lifecycle, s ServiceStream, config *config.Config, log *zap.Logger, container container.Container, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s ServiceStream, log *zap.Logger, container container.Container, conn *pgxpool.Pool) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(ctx context.Context) error {

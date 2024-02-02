@@ -8,7 +8,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	ss "github.com/lhjnilsson/foreverbull/backtest/stream"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"go.uber.org/zap"
@@ -20,7 +19,6 @@ const GetBacktestSessionKey stream.Dependency = "get_backtest_session"
 func GetBacktestSession(ctx context.Context, message stream.Message) (interface{}, error) {
 	dbConn := message.MustGet(stream.DBDep).(*pgxpool.Pool)
 	log := message.MustGet(stream.LoggerDep).(*zap.Logger)
-	config := message.MustGet(stream.ConfigDep).(*config.Config)
 
 	command := ss.SessionRunCommand{}
 	err := message.ParsePayload(&command)
@@ -86,7 +84,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 		return nil, err
 	}
 
-	s, err := backtest.NewSession(ctx, log, config, storedBacktest, storedSession, backtestInstance,
+	s, err := backtest.NewSession(ctx, log, storedBacktest, storedSession, backtestInstance,
 		&executionStorage, &periodStorage, &orderStorage, &portfolioStorage, workerInstances...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session: %w", err)
