@@ -10,7 +10,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -28,16 +27,15 @@ type BacktestAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, config *config.Config, log *zap.Logger, conn *pgxpool.Pool) (BacktestStream, error) {
+		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool) (BacktestStream, error) {
 			dc := stream.NewDependencyContainer()
-			dc.AddSingelton(stream.ConfigDep, config)
 			dc.AddSingelton(stream.DBDep, conn)
 			dc.AddSingelton(stream.LoggerDep, log)
 			httpClient := dependency.GetHTTPClient()
 			dc.AddSingelton(dependency.GetHTTPClientKey, httpClient)
 			dc.AddMethod(dependency.GetBacktestEngineKey, dependency.GetBacktestEngine)
 			dc.AddMethod(dependency.GetBacktestSessionKey, dependency.GetBacktestSession)
-			s, err := stream.NewNATSStream(jt, Stream, config.NATS_DELIVERY_POLICY, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -84,7 +82,7 @@ var Module = fx.Options(
 		func(storage storage.BlobStorage) error {
 			return storage.VerifyBuckets(context.TODO())
 		},
-		func(lc fx.Lifecycle, s BacktestStream, config *config.Config, log *zap.Logger, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s BacktestStream, log *zap.Logger, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					err := s.CommandSubscriber("backtest", "ingest", command.BacktestIngest)

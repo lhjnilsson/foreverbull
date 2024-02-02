@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/finance/internal/repository"
 	fs "github.com/lhjnilsson/foreverbull/finance/stream"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -26,8 +26,7 @@ type FinanceModuleTest struct {
 
 	app *fx.App
 
-	config *config.Config
-	pool   *pgxpool.Pool
+	pool *pgxpool.Pool
 }
 
 func TestFinanceModule(t *testing.T) {
@@ -39,14 +38,14 @@ func TestFinanceModule(t *testing.T) {
 }
 
 func (test *FinanceModuleTest) SetupTest() {
-	test.config = helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-	st, err := stream.NewJetstream(test.config.NATSURI)
+	st, err := stream.NewJetstream(environment.GetNATSURL())
 	test.NoError(err)
-	test.pool, err = pgxpool.New(context.Background(), test.config.PostgresURI)
+	test.pool, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), test.pool)
 	test.NoError(err)
@@ -58,9 +57,6 @@ func (test *FinanceModuleTest) SetupTest() {
 			},
 			func() nats.JetStreamContext {
 				return st
-			},
-			func() *config.Config {
-				return test.config
 			},
 			func() *pgxpool.Pool {
 				return test.pool
@@ -83,9 +79,9 @@ func (test *FinanceModuleTest) TearDownTest() {
 }
 
 func (test *FinanceModuleTest) TestIngestCommand() {
-	st, err := stream.NewJetstream(test.config.NATSURI)
+	st, err := stream.NewJetstream(environment.GetNATSURL())
 	test.NoError(err)
-	stream, err := stream.NewNATSStream(st, "finance_test", test.config.NATS_DELIVERY_POLICY, zaptest.NewLogger(test.T()), stream.NewDependencyContainer(), test.pool)
+	stream, err := stream.NewNATSStream(st, "finance_test", zaptest.NewLogger(test.T()), stream.NewDependencyContainer(), test.pool)
 	test.NoError(err)
 
 	command, err := fs.NewIngestCommand([]string{"AAPL", "MSFT"}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC))

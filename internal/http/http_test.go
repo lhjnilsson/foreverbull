@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
 )
@@ -21,10 +22,10 @@ type HTTPTest struct {
 }
 
 func (h *HTTPTest) SetupTest() {
-	config := helper.TestingConfig(h.T(), &helper.Containers{
+	helper.SetupEnvironment(h.T(), &helper.Containers{
 		Postgres: true,
 	})
-	pool, err := pgxpool.New(context.Background(), config.PostgresURI)
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	h.NoError(err)
 
 	h.Conn = pool

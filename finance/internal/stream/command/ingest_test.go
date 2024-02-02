@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/finance/internal/stream/dependency"
 	fs "github.com/lhjnilsson/foreverbull/finance/stream"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockSupplier "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
@@ -37,12 +38,12 @@ func TestIngestCommand(t *testing.T) {
 }
 
 func (test *IngestCommandTest) SetupTest() {
-	config := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
 
 	var err error
-	test.db, err = pgxpool.New(context.Background(), config.PostgresURI)
+	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
 	err = repository.Recreate(context.TODO(), test.db)

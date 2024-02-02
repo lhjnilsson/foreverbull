@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/api"
@@ -26,9 +25,9 @@ type StrategyAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, config *config.Config, log *zap.Logger, conn *pgxpool.Pool) (StrategyStream, error) {
+		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool) (StrategyStream, error) {
 			dc := stream.NewDependencyContainer()
-			s, err := stream.NewNATSStream(jt, Stream, config.NATSURI, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -60,7 +59,7 @@ var Module = fx.Options(
 			strategyAPI.POST("/executions", api.CreateExecution)
 			return nil
 		},
-		func(lc fx.Lifecycle, s StrategyStream, config *config.Config, log *zap.Logger, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s StrategyStream, log *zap.Logger, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					return nil

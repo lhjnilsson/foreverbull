@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	// Needed for Mangos to get needed meta- data
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -22,7 +20,6 @@ type PoolTest struct {
 	instanceSocket *mockSocket.ContextSocket
 	poolSocket     *mockSocket.ContextSocket
 	rw             *mockSocket.ReadWriter
-	config         *config.Config
 }
 
 func (s *PoolTest) SetupTest() {
@@ -39,8 +36,7 @@ func (s *PoolTest) SetupTest() {
 		socket:  s.poolSocket,
 	}
 	s.pool.Workers = append(s.pool.Workers, s.worker)
-	s.config = helper.TestingConfig(s.T(), &helper.Containers{})
-	s.pool.serverConfig = s.config
+	helper.SetupEnvironment(s.T(), &helper.Containers{})
 }
 
 func (s *PoolTest) TearDownTest() {

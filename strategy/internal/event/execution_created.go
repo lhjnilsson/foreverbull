@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
@@ -15,7 +14,6 @@ import (
 
 type ExecutionCreated struct {
 	Log    *zap.Logger
-	Config *config.Config
 	DBConn *pgxpool.Pool
 	Stream stream.Stream
 }

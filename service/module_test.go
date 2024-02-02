@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
@@ -28,8 +28,6 @@ type ServiceModuleTest struct {
 	suite.Suite
 
 	app *fx.App
-
-	config *config.Config
 }
 
 func TestModuleService(t *testing.T) {
@@ -45,14 +43,14 @@ func TestModuleService(t *testing.T) {
 }
 
 func (test *ServiceModuleTest) SetupTest() {
-	test.config = helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-	st, err := stream.NewJetstream(test.config.NATSURI)
+	st, err := stream.NewJetstream(environment.GetNATSURL())
 	test.NoError(err)
-	pool, err := pgxpool.New(context.Background(), test.config.PostgresURI)
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.NoError(err)
@@ -65,9 +63,7 @@ func (test *ServiceModuleTest) SetupTest() {
 			func() nats.JetStreamContext {
 				return st
 			},
-			func() *config.Config {
-				return test.config
-			},
+
 			func() *pgxpool.Pool {
 				return pool
 			},
@@ -85,7 +81,7 @@ func (test *ServiceModuleTest) SetupTest() {
 }
 
 func (test *ServiceModuleTest) TearDownTest() {
-	helper.WaitTillContainersAreRemoved(test.T(), test.config.Docker.Network, time.Second*20)
+	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
 }
 

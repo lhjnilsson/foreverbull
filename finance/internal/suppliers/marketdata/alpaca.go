@@ -6,7 +6,7 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 )
 
 type AlpacaClient struct {
@@ -14,15 +14,15 @@ type AlpacaClient struct {
 	mdclient *marketdata.Client
 }
 
-func NewAlpacaClient(config *config.Config) (*AlpacaClient, error) {
+func NewAlpacaClient() (*AlpacaClient, error) {
 	client := alpaca.NewClient(alpaca.ClientOpts{
-		BaseURL:   config.Provider.Alpaca.BaseURL,
-		APIKey:    config.Provider.Alpaca.APIKey,
-		APISecret: config.Provider.Alpaca.APISecret,
+		BaseURL:   environment.GetAlpacaBaseURL(),
+		APIKey:    environment.GetAlpacaAPIKey(),
+		APISecret: environment.GetAlpacaAPISecret(),
 	})
 	mdclient := marketdata.NewClient(marketdata.ClientOpts{
-		APIKey:    config.Provider.Alpaca.APIKey,
-		APISecret: config.Provider.Alpaca.APISecret,
+		APIKey:    environment.GetAlpacaAPIKey(),
+		APISecret: environment.GetAlpacaAPISecret(),
 	})
 	return &AlpacaClient{client: client, mdclient: mdclient}, nil
 }

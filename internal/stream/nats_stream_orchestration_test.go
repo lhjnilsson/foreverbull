@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -41,22 +41,22 @@ type OrchestrationTest struct {
 func (test *OrchestrationTest) SetupTest() {
 	var err error
 
-	cfg := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
 	log := zaptest.NewLogger(test.T())
-	test.conn, err = pgxpool.New(context.Background(), cfg.PostgresURI)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
 	err = RecreateTables(context.Background(), test.conn)
 	test.NoError(err)
 
-	test.jt, err = NewJetstream(cfg.NATSURI)
+	test.jt, err = NewJetstream(environment.GetNATSURL())
 	test.NoError(err)
 
 	dc := NewDependencyContainer()
-	stream, err := NewNATSStream(test.jt, "orchestration_test", cfg.NATS_DELIVERY_POLICY, log, dc, test.conn)
+	stream, err := NewNATSStream(test.jt, "orchestration_test", log, dc, test.conn)
 	test.NoError(err)
 	test.stream = *stream.(*NATSStream)
 
@@ -76,9 +76,6 @@ func (test *OrchestrationTest) SetupTest() {
 			},
 			func() *pgxpool.Pool {
 				return test.conn
-			},
-			func() *config.Config {
-				return cfg
 			},
 		),
 		OrchestrationLifecycle,

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -35,10 +36,10 @@ func (test *SessionTest) SetupTest() {
 	test.log = zaptest.NewLogger(test.T())
 	test.stream = &stream.PendingOrchestration{}
 
-	config := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	test.db, err = pgxpool.New(context.Background(), config.PostgresURI)
+	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	err = repository.Recreate(context.TODO(), test.db)
 	test.Nil(err)
 

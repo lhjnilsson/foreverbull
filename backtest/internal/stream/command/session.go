@@ -10,7 +10,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/backtest/stream"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"go.uber.org/zap"
@@ -36,7 +35,6 @@ func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
 func SessionRun(ctx context.Context, message stream.Message) error {
 	log := message.MustGet(stream.LoggerDep).(*zap.Logger)
 	db := message.MustGet(stream.DBDep).(postgres.Query)
-	config := message.MustGet(stream.ConfigDep).(*config.Config)
 
 	command := ss.SessionRunCommand{}
 	err := message.ParsePayload(&command)
@@ -106,7 +104,7 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 		} else {
 			for _, execution := range *executions {
 				log.Info("Running execution", zap.Any("execution", execution))
-				err = session.RunExecution(ctx, config, &execution)
+				err = session.RunExecution(ctx, &execution)
 				if err != nil {
 					log.Error("Error running execution", zap.Error(err))
 					return err

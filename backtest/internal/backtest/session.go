@@ -7,7 +7,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/internal/config"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
@@ -20,7 +20,7 @@ import (
 type Session interface {
 	GetSocket() *socket.Socket
 	Run(chan<- bool, <-chan bool) error
-	RunExecution(ctx context.Context, config *config.Config, execution *entity.Execution) error
+	RunExecution(ctx context.Context, execution *entity.Execution) error
 	Stop(ctx context.Context) error
 }
 
@@ -44,7 +44,7 @@ type session struct {
 	executionEntity *entity.Execution    `json:"-"`
 }
 
-func NewSession(ctx context.Context, log *zap.Logger, config *config.Config,
+func NewSession(ctx context.Context, log *zap.Logger,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
 	executions *repository.Execution, periods *repository.Period, orders *repository.Order, portfolio *repository.Portfolio,
 	workers ...*service.Instance) (Session, error) {
@@ -52,7 +52,7 @@ func NewSession(ctx context.Context, log *zap.Logger, config *config.Config,
 	if err != nil {
 		return nil, fmt.Errorf("error creating zipline engine: %w", err)
 	}
-	workerPool, err := worker.NewPool(ctx, config, workers...)
+	workerPool, err := worker.NewPool(ctx, workers...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,13 +82,13 @@ func (e *session) GetSocket() *socket.Socket {
 	return &e.Socket
 }
 
-func (e *session) RunExecution(ctx context.Context, config *config.Config, execution *entity.Execution) error {
+func (e *session) RunExecution(ctx context.Context, execution *entity.Execution) error {
 	exec := NewExecution(e.engine, e.workers)
 
 	workerCfg := worker.Configuration{
 		Execution: execution.ID,
 		Port:      e.workers.SocketConfig().Port,
-		Database:  config.PostgresURI,
+		Database:  environment.GetPostgresURL(),
 	}
 
 	tz := "UTC"
@@ -197,13 +197,7 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 				err = errors.New("failed to create execution")
 				break
 			}
-			config, err := config.GetConfig()
-			if err != nil {
-				e.log.Error("failed to get config", zap.Error(err))
-				err = errors.New("failed to get config")
-				break
-			}
-			e.executionEntity.Database = config.PostgresURI
+			e.executionEntity.Database = environment.GetPostgresURL()
 
 			e.executionEntity.Port = &e.workers.SocketConfig().Port
 

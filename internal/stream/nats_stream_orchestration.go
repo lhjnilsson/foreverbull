@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/config"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -96,11 +95,10 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestrationID stri
 	return nil
 }
 
-func NewOrchestrationRunner(log *zap.Logger, stream *NATSStream, deliveryPolicy string) (*OrchestrationRunner, error) {
+func NewOrchestrationRunner(log *zap.Logger, stream *NATSStream) (*OrchestrationRunner, error) {
 	return &OrchestrationRunner{
-		log:            log,
-		stream:         stream,
-		deliveryPolicy: deliveryPolicy,
+		log:    log,
+		stream: stream,
 	}, nil
 }
 
@@ -216,7 +214,7 @@ type OrchestrationStream NATSStream
 
 var OrchestrationLifecycle = fx.Options(
 	fx.Provide(
-		func(log *zap.Logger, config *config.Config, jt nats.JetStreamContext, db *pgxpool.Pool) (*OrchestrationRunner, error) {
+		func(log *zap.Logger, jt nats.JetStreamContext, db *pgxpool.Pool) (*OrchestrationRunner, error) {
 			cfg := nats.ConsumerConfig{
 				Name:       "orchestration-event",
 				Durable:    "orchestration-event",
@@ -227,8 +225,8 @@ var OrchestrationLifecycle = fx.Options(
 				return nil, fmt.Errorf("error adding consumer for orchestration: %w", err)
 			}
 			dc := NewDependencyContainer().(*dependencyContainer)
-			stream := &NATSStream{module: "orchestration", jt: jt, deliveryPolicy: config.NATS_DELIVERY_POLICY, log: log, repository: NewRepository(db), deps: dc}
-			return NewOrchestrationRunner(log, stream, config.NATS_DELIVERY_POLICY)
+			stream := &NATSStream{module: "orchestration", jt: jt, log: log, repository: NewRepository(db), deps: dc}
+			return NewOrchestrationRunner(log, stream)
 		},
 	),
 	fx.Invoke(

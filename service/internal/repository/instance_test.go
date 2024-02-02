@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
@@ -20,10 +21,10 @@ type InstanceTest struct {
 func (suite *InstanceTest) SetupTest() {
 	var err error
 
-	config := helper.TestingConfig(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(suite.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), config.PostgresURI)
+	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	suite.NoError(err)
 	ctx := context.Background()
 

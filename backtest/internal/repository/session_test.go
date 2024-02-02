@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
 )
@@ -23,10 +24,10 @@ type SessionTest struct {
 func (suite *SessionTest) SetupTest() {
 	var err error
 
-	config := helper.TestingConfig(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(suite.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), config.PostgresURI)
+	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	suite.NoError(err)
 
 	err = Recreate(context.Background(), suite.conn)

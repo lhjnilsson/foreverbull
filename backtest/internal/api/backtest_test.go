@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 
 	"github.com/gin-gonic/gin"
@@ -30,10 +31,10 @@ func (test *BacktestTest) SetupTest() {
 	test.log = zaptest.NewLogger(test.T())
 	test.stream = &stream.PendingOrchestration{}
 
-	config := helper.TestingConfig(test.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	pool, err := pgxpool.New(context.Background(), config.PostgresURI)
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
 	err = repository.Recreate(context.TODO(), pool)
