@@ -20,7 +20,7 @@ func TestStrategy(t *testing.T) {
 	assert.Nil(t, err)
 	defer conn.Close()
 
-	_, err = conn.Exec(context.Background(), "DROP TABLE strategy")
+	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS strategy")
 	assert.Nil(t, err)
 	_, err = conn.Exec(context.Background(), StrategyTable)
 	assert.Nil(t, err)
