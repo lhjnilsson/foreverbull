@@ -61,7 +61,7 @@ func TransactionMiddleware(dependencyKey string, sql *pgxpool.Pool) gin.HandlerF
 				if err != nil {
 					ctx.AbortWithStatusJSON(DatabaseError(err))
 				}
-				ctx.AbortWithError(http.StatusInternalServerError, fmt.Errorf("panic: %v", r))
+				ctx.AbortWithStatusJSON(http.StatusInternalServerError, fmt.Errorf("panic: %v", r))
 			}
 		}()
 

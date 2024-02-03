@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -44,7 +43,7 @@ func (sc *serviceContainer) Pull(ctx context.Context, imageID string) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(ioutil.Discard, reader)
+	_, err = io.Copy(io.Discard, reader)
 	return err
 }
 
