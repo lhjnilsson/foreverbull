@@ -166,7 +166,10 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 			return
 		}
 		defer func() {
-			or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
+			err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
+			if err != nil {
+				or.log.Error("error marking fallback as canceled", zap.Error(err))
+			}
 		}()
 	} else {
 		commands, err = or.stream.repository.GetLatestUnpublishedOrchestrationStepCommands(ctx, *msg.OrchestrationID)

@@ -122,7 +122,11 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				ns.log.Error("error marshalling message", zap.Error(err))
 				return
 			}
-			ns.jt.Publish(fmt.Sprintf("foreverbull.%s.%s.%s.event", ns.module, component, method), payload)
+			_, err = ns.jt.Publish(fmt.Sprintf("foreverbull.%s.%s.%s.event", ns.module, component, method), payload)
+			if err != nil {
+				ns.log.Error("error publishing event", zap.Error(err))
+				return
+			}
 			ns.log.Info("published event", zap.Any("module", ns.module), zap.Any("component", component), zap.Any("method", method))
 		}(m)
 	}

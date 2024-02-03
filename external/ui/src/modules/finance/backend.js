@@ -3,7 +3,7 @@ import axios from "axios";
 async function getAssets(symbols = []) {
   const response = await axios.get(
     "http://127.0.0.1:8080/finance/api/assets",
-    symbols
+    symbols,
   );
   return response.data;
 }

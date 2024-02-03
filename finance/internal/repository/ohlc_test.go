@@ -34,7 +34,8 @@ func (s *OHLCTests) SetupTest() {
 	err = assetStorage.Store(context.TODO(), &s.asset)
 	s.Require().Nil(err)
 
-	s.conn.Exec(context.TODO(), "DROP TABLE ohlc;")
+	_, err = s.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
+	s.Require().Nil(err)
 	_, err = s.conn.Exec(context.TODO(), OHLCTable)
 	s.Require().Nil(err)
 	s.ohlcStorage = &OHLC{Conn: s.conn}

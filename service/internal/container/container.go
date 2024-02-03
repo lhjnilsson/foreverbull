@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -44,7 +43,7 @@ func (sc *serviceContainer) Pull(ctx context.Context, imageID string) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(ioutil.Discard, reader)
+	_, err = io.Copy(io.Discard, reader)
 	return err
 }
 
@@ -97,7 +96,7 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	if err != nil {
 		return "", fmt.Errorf("error creating container: %v", err)
 	}
-	err = sc.client.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = sc.client.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return "", fmt.Errorf("error starting container: %v", err)
 	}
@@ -105,7 +104,7 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 }
 
 func (sc *serviceContainer) SaveImage(ctx context.Context, containerID, imageName string) error {
-	_, err := sc.client.ContainerCommit(ctx, containerID, types.ContainerCommitOptions{Reference: imageName})
+	_, err := sc.client.ContainerCommit(ctx, containerID, container.CommitOptions{Reference: imageName})
 	return err
 }
 
@@ -114,7 +113,7 @@ func (sc *serviceContainer) Stop(ctx context.Context, containerID string, remove
 		return err
 	}
 	if remove {
-		return sc.client.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{})
+		return sc.client.ContainerRemove(ctx, containerID, container.RemoveOptions{})
 	}
 	return nil
 }

@@ -57,8 +57,11 @@ func TransactionMiddleware(dependencyKey string, sql *pgxpool.Pool) gin.HandlerF
 
 		defer func() {
 			if r := recover(); r != nil {
-				tx.Rollback(ctx)
-				panic(r)
+				err = tx.Rollback(ctx)
+				if err != nil {
+					ctx.AbortWithStatusJSON(DatabaseError(err))
+				}
+				ctx.AbortWithStatusJSON(http.StatusInternalServerError, fmt.Errorf("panic: %v", r))
 			}
 		}()
 
@@ -66,7 +69,11 @@ func TransactionMiddleware(dependencyKey string, sql *pgxpool.Pool) gin.HandlerF
 		ctx.Next()
 
 		if ctx.Writer.Status() >= 400 {
-			tx.Rollback(ctx)
+			err = tx.Rollback(ctx)
+			if err != nil {
+				ctx.AbortWithStatusJSON(DatabaseError(err))
+				return
+			}
 		} else {
 			err = tx.Commit(ctx)
 			if err != nil {

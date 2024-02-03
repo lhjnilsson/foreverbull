@@ -33,6 +33,7 @@ func (suite *NatsStreamTest) SetupTest() {
 	dc := NewDependencyContainer()
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	suite.NoError(err)
 
 	err = RecreateTables(context.Background(), pool)
 	suite.NoError(err)

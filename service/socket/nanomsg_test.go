@@ -15,14 +15,14 @@ import (
 func GetRequester(t *testing.T, port int, dial bool) (mangos.Socket, func()) {
 	t.Helper()
 	sock, _ := req.NewSocket()
-	sock.SetOption(mangos.OptionRecvDeadline, time.Second)
-	sock.SetOption(mangos.OptionSendDeadline, time.Second)
+	assert.NoError(t, sock.SetOption(mangos.OptionRecvDeadline, time.Second))
+	assert.NoError(t, sock.SetOption(mangos.OptionSendDeadline, time.Second))
 
 	url := fmt.Sprintf("tcp://localhost:%d", port)
 	if dial {
-		sock.Dial(url)
+		assert.NoError(t, sock.Dial(url))
 	} else {
-		sock.Listen(url)
+		assert.NoError(t, sock.Listen(url))
 	}
 	return sock, func() { sock.Close() }
 }
@@ -30,14 +30,14 @@ func GetRequester(t *testing.T, port int, dial bool) (mangos.Socket, func()) {
 func GetReplier(t *testing.T, port int, dial bool) (mangos.Socket, func()) {
 	t.Helper()
 	sock, _ := rep.NewSocket()
-	sock.SetOption(mangos.OptionRecvDeadline, time.Second)
-	sock.SetOption(mangos.OptionSendDeadline, time.Second)
+	assert.NoError(t, sock.SetOption(mangos.OptionRecvDeadline, time.Second))
+	assert.NoError(t, sock.SetOption(mangos.OptionSendDeadline, time.Second))
 
 	url := fmt.Sprintf("tcp://localhost:%d", port)
 	if dial {
-		sock.Dial(url)
+		assert.NoError(t, sock.Dial(url))
 	} else {
-		sock.Listen(url)
+		assert.NoError(t, sock.Listen(url))
 	}
 	return sock, func() { sock.Close() }
 }
@@ -118,6 +118,7 @@ func TestRead(t *testing.T) {
 
 		socket := NanomsgSocket{SocketType: Replier, Dial: true, Port: 1337}
 		err := socket.Connect()
+		assert.NoError(t, err)
 		defer socket.Close()
 
 		ctx, err := socket.Get()

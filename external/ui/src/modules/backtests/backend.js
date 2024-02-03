@@ -8,7 +8,7 @@ async function createBacktest(
   startTime,
   endTime,
   benchmark,
-  symbols
+  symbols,
 ) {
   const response = await axios.post(
     "http://127.0.0.1:8080/backtest/api/backtests",
@@ -21,21 +21,21 @@ async function createBacktest(
       end_time: endTime,
       benchmark: benchmark,
       symbols: symbols,
-    }
+    },
   );
   return response.data;
 }
 
 async function getBacktest(name) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/backtests/" + name
+    "http://127.0.0.1:8080/backtest/api/backtests/" + name,
   );
   return response.data;
 }
 
 async function getBacktests() {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/backtests"
+    "http://127.0.0.1:8080/backtest/api/backtests",
   );
   return response.data;
 }
@@ -48,7 +48,7 @@ async function updateBacktest(
   startTime,
   endTime,
   symbols,
-  benchmark
+  benchmark,
 ) {
   const response = await axios.patch(
     "http://127.0.0.1:8080/backtest/api/backtests/" + name,
@@ -60,14 +60,14 @@ async function updateBacktest(
       end_time: endTime,
       benchmark: benchmark,
       symbols: symbols,
-    }
+    },
   );
   return response.data;
 }
 
 async function deleteBacktest(name) {
   const response = await axios.delete(
-    "http://127.0.0.1:8080/backtest/api/backtests/" + name
+    "http://127.0.0.1:8080/backtest/api/backtests/" + name,
   );
   return response.data;
 }
@@ -80,14 +80,14 @@ async function createSession(backtest, executions) {
       executions: executions,
       source: "ui",
       source_key: "ui",
-    }
+    },
   );
   return response.data;
 }
 
 async function getSession(sessionid) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/sessions/" + sessionid
+    "http://127.0.0.1:8080/backtest/api/sessions/" + sessionid,
   );
   return response.data;
 }
@@ -95,7 +95,7 @@ async function getSession(sessionid) {
 async function getSessions(backtest) {
   const response = await axios.get(
     "http://127.0.0.1:8080/backtest/api/sessions",
-    { params: { backtest: backtest } }
+    { params: { backtest: backtest } },
   );
   return response.data;
 }
@@ -103,7 +103,7 @@ async function getSessions(backtest) {
 async function getSessionExecutions(sessionid) {
   const response = await axios.get(
     "http://127.0.0.1:8080/backtest/api/executions",
-    { params: { session: sessionid } }
+    { params: { session: sessionid } },
   );
   return response.data;
 }
@@ -113,11 +113,11 @@ async function getExecutions(session) {
   if (session) {
     response = await axios.get(
       "http://127.0.0.1:8080/backtest/api/backtests/executions",
-      { params: { session: session } }
+      { params: { session: session } },
     );
   } else {
     response = await axios.get(
-      "http://127.0.0.1:8080/backtest/api/backtests/executions"
+      "http://127.0.0.1:8080/backtest/api/backtests/executions",
     );
   }
   return response.data;
@@ -125,28 +125,28 @@ async function getExecutions(session) {
 
 async function getExecution(backtest) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/executions/" + backtest
+    "http://127.0.0.1:8080/backtest/api/executions/" + backtest,
   );
   return response.data;
 }
 
 async function getOrders(backtest) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/orders"
+    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/orders",
   );
   return response.data;
 }
 
 async function getPositions(backtest) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/positions"
+    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/positions",
   );
   return response.data;
 }
 
 async function getPeriods(backtest) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/periods"
+    "http://127.0.0.1:8080/backtest/api/executions/" + backtest + "/periods",
   );
   return response.data;
 }
@@ -155,7 +155,7 @@ async function getMetrics(backtest) {
   const response = await axios.get(
     "http://127.0.0.1:8080/backtest/api/executions/" +
       backtest +
-      "/periods/metrics"
+      "/periods/metrics",
   );
   return response.data;
 }
@@ -165,7 +165,7 @@ async function getMetric(backtest, metric) {
     "http://127.0.0.1:8080/backtest/api/executions/" +
       backtest +
       "/periods/metrics/" +
-      metric
+      metric,
   );
   return response.data;
 }

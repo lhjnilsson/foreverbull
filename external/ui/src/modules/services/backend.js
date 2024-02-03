@@ -2,14 +2,14 @@ import axios from "axios";
 
 async function getServices() {
   const response = await axios.get(
-    "http://127.0.0.1:8080/service/api/services"
+    "http://127.0.0.1:8080/service/api/services",
   );
   return response.data;
 }
 
 async function getService(name) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/service/api/services/" + name
+    "http://127.0.0.1:8080/service/api/services/" + name,
   );
   return response.data;
 }
@@ -20,21 +20,21 @@ async function addService(name, image) {
     {
       name: name,
       image: image,
-    }
+    },
   );
   return response.data;
 }
 
 async function imageInfo(name) {
   const response = await axios.get(
-    "http://127.0.0.1:8080/service/api/services/" + name + "/image"
+    "http://127.0.0.1:8080/service/api/services/" + name + "/image",
   );
   return response.data;
 }
 
 async function updateImage(name) {
   const response = await axios.put(
-    "http://127.0.0.1:8080/service/api/services/" + name + "/image"
+    "http://127.0.0.1:8080/service/api/services/" + name + "/image",
   );
   return response.data;
 }
@@ -47,7 +47,7 @@ async function ingestBacktest(name, start, end, calendar, symbols, benchmark) {
     end,
     calendar,
     symbols,
-    benchmark
+    benchmark,
   );
   const response = await axios.put(
     "http://127.0.0.1:8080/service/api/services/" + name + "/backtest/ingest",
@@ -57,7 +57,7 @@ async function ingestBacktest(name, start, end, calendar, symbols, benchmark) {
       calendar: calendar,
       symbols: symbols,
       benchmark: benchmark,
-    }
+    },
   );
   return response.data;
 }
@@ -66,11 +66,14 @@ async function getInstances(serviceName, key, role) {
   var response = null;
   if (serviceName) {
     response = await axios.get(
-      "http://127.0.0.1:8080/service/api/instances?service=" + serviceName
+      "http://127.0.0.1:8080/service/api/instances?service=" + serviceName,
     );
   } else if (key && role) {
     response = await axios.get(
-      "http://127.0.0.1:8080/service/api/instances?key=" + key + "&role=" + role
+      "http://127.0.0.1:8080/service/api/instances?key=" +
+        key +
+        "&role=" +
+        role,
     );
   } else {
     return null;
