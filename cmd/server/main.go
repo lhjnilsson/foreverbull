@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"os"
+
+	"github.com/urfave/cli/v2"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest"
@@ -45,5 +48,14 @@ func app() *fx.App {
 }
 
 func main() {
-	app().Run()
+	cli := &cli.App{
+		Name: "foreverbull",
+		Action: func(c *cli.Context) error {
+			app().Run()
+			return nil
+		},
+	}
+	if err := cli.Run(os.Args); err != nil {
+		panic(err)
+	}
 }
