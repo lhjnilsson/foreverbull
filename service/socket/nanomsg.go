@@ -82,13 +82,15 @@ func (s *NanomsgSocket) Connect() error {
 	if s.SEndout == 0 {
 		s.SEndout = 10 // default to 10 seconds
 	}
-	err = s.socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
-	if err != nil {
-		return fmt.Errorf("error setting recv timeout: %v", err)
-	}
-	err = s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
-	if err != nil {
-		return fmt.Errorf("error setting send timeout: %v", err)
+	if s.SocketType != "Publisher" && s.SocketType != "Subscriber" {
+		err = s.socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
+		if err != nil {
+			return fmt.Errorf("error setting recv timeout: %v", err)
+		}
+		err = s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+		if err != nil {
+			return fmt.Errorf("error setting send timeout: %v", err)
+		}
 	}
 	if s.Dial {
 		// try to connect 20 times, with a 1/10 second delay between each
