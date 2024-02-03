@@ -49,7 +49,10 @@ algorithm_period_return INTEGER);
 
 // Ugly and silent way to add constraint. Will always fail if constraint exists
 func CreateConstraint(ctx context.Context, db *pgxpool.Pool) {
-	db.Exec(ctx, `ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(backtest, timestamp);`)
+	_, err := db.Exec(ctx, `ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(backtest, timestamp);`)
+	if err != nil {
+		fmt.Println("err creating constraint: ", err)
+	}
 }
 
 type Period struct {

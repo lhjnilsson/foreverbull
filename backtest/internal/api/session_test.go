@@ -40,6 +40,7 @@ func (test *SessionTest) SetupTest() {
 		Postgres: true,
 	})
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Nil(err)
 	err = repository.Recreate(context.TODO(), test.db)
 	test.Nil(err)
 

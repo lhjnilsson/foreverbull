@@ -23,8 +23,8 @@ func TestSubPub(t *testing.T) {
 
 	time.Sleep(time.Second) // Ugly, but we are sometimes not fast enough on connection
 
-	pub.Send([]byte("hello"))
-	pub.Send([]byte("world"))
+	assert.NoError(t, pub.Send([]byte("hello")))
+	assert.NoError(t, pub.Send([]byte("world")))
 
 	msg, err := sub.Read()
 	assert.Nil(t, err)

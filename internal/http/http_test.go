@@ -29,7 +29,8 @@ func (h *HTTPTest) SetupTest() {
 	h.NoError(err)
 
 	h.Conn = pool
-	pool.Exec(context.Background(), "DROP TABLE IF EXISTS http_test")
+	_, err = pool.Exec(context.Background(), "DROP TABLE IF EXISTS http_test")
+	h.NoError(err)
 	_, err = pool.Exec(context.Background(), table)
 	h.NoError(err)
 }

@@ -80,7 +80,7 @@ func (h *ExecutionCreated) Process(ctx context.Context, message stream.Message) 
 		h.Log.Error("Error creating request", zap.Error(err))
 		return err
 	}
-	res, err = http.DefaultClient.Do(req)
+	_, err = http.DefaultClient.Do(req)
 	if err != nil {
 		h.Log.Error("Error sending request", zap.Error(err))
 		return err

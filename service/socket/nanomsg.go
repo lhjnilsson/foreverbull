@@ -63,7 +63,10 @@ func (s *NanomsgSocket) Connect() error {
 		s.socket, err = pub.NewSocket()
 	case "Subscriber":
 		s.socket, err = sub.NewSocket()
-		s.socket.SetOption(mangos.OptionSubscribe, []byte(""))
+		if err != nil {
+			return fmt.Errorf("error creating socket: %v", err)
+		}
+		err = s.socket.SetOption(mangos.OptionSubscribe, []byte(""))
 	case "Requester":
 		s.socket, err = req.NewSocket()
 	case "Replier":
@@ -79,8 +82,14 @@ func (s *NanomsgSocket) Connect() error {
 	if s.SEndout == 0 {
 		s.SEndout = 10 // default to 10 seconds
 	}
-	s.socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
-	s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+	err = s.socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
+	if err != nil {
+		return fmt.Errorf("error setting recv timeout: %v", err)
+	}
+	err = s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+	if err != nil {
+		return fmt.Errorf("error setting send timeout: %v", err)
+	}
 	if s.Dial {
 		// try to connect 20 times, with a 1/10 second delay between each
 		for i := 0; i < 20; i++ {
@@ -116,8 +125,14 @@ func (s *NanomsgSocket) Get() (ReadWriter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening context: %v", err)
 	}
-	socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
-	socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+	err = socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
+	if err != nil {
+		return nil, fmt.Errorf("error setting recv timeout: %v", err)
+	}
+	err = socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+	if err != nil {
+		return nil, fmt.Errorf("error setting send timeout: %v", err)
+	}
 	ci := Context{ctx: socket}
 	return &ci, err
 }

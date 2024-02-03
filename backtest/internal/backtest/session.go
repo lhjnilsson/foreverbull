@@ -152,9 +152,20 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 }
 
 func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
-	defer e.workers.Stop(context.TODO())
-	defer e.engine.Stop(context.TODO())
-	defer e.socket.Close()
+	defer func() {
+		err := e.workers.Stop(context.TODO())
+		if err != nil {
+			e.log.Error("failed to stop workers", zap.Error(err))
+		}
+		err = e.engine.Stop(context.TODO())
+		if err != nil {
+			e.log.Error("failed to stop engine", zap.Error(err))
+		}
+		err = e.socket.Close()
+		if err != nil {
+			e.log.Error("failed to close socket", zap.Error(err))
+		}
+	}()
 	for {
 		socket, err := e.socket.Get()
 		if err != nil {

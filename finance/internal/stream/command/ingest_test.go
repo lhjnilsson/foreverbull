@@ -57,15 +57,15 @@ func (test *IngestCommandTest) SetupTest() {
 	test.NoError(test.assets.Store(context.Background(), &test.storedAsset))
 
 	test.storedOHLCStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
-	})
-	test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	}))
+	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
-	})
-	test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	}))
+	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
-	})
+	}))
 	test.storedOHLCEnd = time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC)
 
 	test.marketdata = new(mockSupplier.Marketdata)
