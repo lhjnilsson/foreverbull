@@ -22,7 +22,7 @@ import (
 
 func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.Duration) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := context.TODO()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -40,7 +40,7 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 		case <-ctx.Done():
 			t.Error("timeout waiting for condition:", ctx.Err())
 		default:
-			containers, err := cli.ContainerList(context.Background(), opts)
+			containers, err := cli.ContainerList(context.TODO(), opts)
 			if err != nil {
 				t.Error("Failed to list containers:", err)
 			}
@@ -59,7 +59,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 	testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
 
 	dbName := strings.ToLower(strings.Replace(t.Name(), "/", "_", -1))
-	container, err := postgres.RunContainer(context.Background(),
+	container, err := postgres.RunContainer(context.TODO(),
 		testcontainers.WithImage("postgres:alpine"),
 		postgres.WithDatabase(dbName),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {
@@ -70,7 +70,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 		}),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(5*time.Second)),
+				WithOccurrence(2).WithStartupTimeout(30*time.Second)),
 	)
 	require.NoError(t, err)
 
@@ -78,7 +78,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		if err := container.Terminate(context.TODO()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -88,7 +88,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 	t.Helper()
 
-	container, err := nats.RunContainer(context.Background(),
+	container, err := nats.RunContainer(context.TODO(),
 		testcontainers.WithImage("nats:alpine"),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {
 			settings[NetworkID] = &network.EndpointSettings{
@@ -99,11 +99,11 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 	)
 	require.NoError(t, err)
 
-	ConnectionString, err = container.ConnectionString(context.Background())
+	ConnectionString, err = container.ConnectionString(context.TODO())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		if err := container.Terminate(context.TODO()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -113,7 +113,7 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey, SecretKey string) {
 	t.Helper()
 
-	container, err := RunContainer(context.Background(),
+	container, err := RunContainer(context.TODO(),
 		testcontainers.WithImage("minio/minio:latest"),
 		WithUsername("minioadmin"),
 		WithPassword("minioadmin"),
@@ -126,11 +126,11 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 	)
 	require.NoError(t, err)
 
-	ConnectionString, err = container.ConnectionString(context.Background())
+	ConnectionString, err = container.ConnectionString(context.TODO())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		if err := container.Terminate(context.TODO()); err != nil {
 			t.Fatal(err)
 		}
 	})
