@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
@@ -47,11 +47,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 			t.Fatalf("could not listen: %v", err)
 			return nil
 		}
-		assert.NoError(t, socket.SetOption(mangos.OptionRecvDeadline, time.Second))
-		if err != nil {
-			t.Logf("could not set timeout: %v", err)
-			continue
-		}
+		require.NoError(t, socket.SetOption(mangos.OptionSendDeadline, time.Second))
 		break
 	}
 	if socket == nil {

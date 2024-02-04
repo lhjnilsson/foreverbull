@@ -19,93 +19,92 @@ type OHLCTests struct {
 	ohlcStorage *OHLC
 }
 
-func (s *OHLCTests) SetupTest() {
+func (test *OHLCTests) SetupTest() {
 	var err error
 
-	helper.SetupEnvironment(s.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	s.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	s.NoError(err)
-	err = Recreate(context.Background(), s.conn)
-	s.Require().Nil(err)
-	assetStorage := Asset{Conn: s.conn}
-	s.asset = entity.Asset{Symbol: "ABC", Name: "Comany ABC"}
-	err = assetStorage.Store(context.TODO(), &s.asset)
-	s.Require().Nil(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+	err = Recreate(context.Background(), test.conn)
+	test.Require().NoError(err)
+	assetStorage := Asset{Conn: test.conn}
+	test.asset = entity.Asset{Symbol: "ABC", Name: "Comany ABC"}
+	err = assetStorage.Store(context.TODO(), &test.asset)
+	test.Require().NoError(err)
 
-	_, err = s.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
-	s.Require().Nil(err)
-	_, err = s.conn.Exec(context.TODO(), OHLCTable)
-	s.Require().Nil(err)
-	s.ohlcStorage = &OHLC{Conn: s.conn}
-
+	_, err = test.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(context.TODO(), OHLCTable)
+	test.Require().NoError(err)
+	test.ohlcStorage = &OHLC{Conn: test.conn}
 }
 
-func (s *OHLCTests) TearDownTest() {
-	s.conn.Close()
+func (test *OHLCTests) TearDownTest() {
+	test.conn.Close()
 }
 
 func TestOHLC(t *testing.T) {
 	suite.Run(t, new(OHLCTests))
 }
 
-func (s *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
+func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
 	count := 5
 	ohlcStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i <= count; i++ {
 		ohlc := entity.OHLC{Time: ohlcTime}
-		err := s.ohlcStorage.Store(context.TODO(), s.asset.Symbol, &ohlc)
-		s.Require().Nil(err)
+		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, &ohlc)
+		test.Nil(err)
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
 		}
 	}
-	return s.asset.Symbol, ohlcStart, ohlcTime
+	return test.asset.Symbol, ohlcStart, ohlcTime
 }
 
-func (s *OHLCTests) TestStore() {
+func (test *OHLCTests) TestStore() {
 	ohlc := entity.OHLC{Time: time.Now()}
-	err := s.ohlcStorage.Store(context.TODO(), s.asset.Symbol, &ohlc)
-	s.Require().Nil(err)
+	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, &ohlc)
+	test.Nil(err)
 }
 
-func (s *OHLCTests) TestExists() {
-	symbol, start, end := s.SampleOHLC()
-	exists, err := s.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	s.Require().Nil(err)
-	s.Require().True(exists)
+func (test *OHLCTests) TestExists() {
+	symbol, start, end := test.SampleOHLC()
+	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
+	test.Nil(err)
+	test.True(exists)
 }
 
-func (s *OHLCTests) TestExistsOnlyDate() {
-	symbol, start, end := s.SampleOHLC()
+func (test *OHLCTests) TestExistsOnlyDate() {
+	symbol, start, end := test.SampleOHLC()
 	start = start.Add(time.Hour * 3)
 	end = end.Add(time.Hour * 3)
-	exists, err := s.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	s.Require().Nil(err)
-	s.Require().True(exists)
+	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
+	test.Nil(err)
+	test.True(exists)
 }
 
-func (s *OHLCTests) TestExistsNot() {
-	symbol, start, end := s.SampleOHLC()
+func (test *OHLCTests) TestExistsNot() {
+	symbol, start, end := test.SampleOHLC()
 	end = end.Add(time.Hour * 24)
-	exists, err := s.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	s.Require().Nil(err)
-	s.Require().False(exists)
+	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
+	test.Nil(err)
+	test.False(exists)
 }
 
-func (s *OHLCTests) TestMinMaxNothingStored() {
-	min, max, err := s.ohlcStorage.MinMax(context.Background())
-	s.Require().Nil(err)
-	s.Require().Nil(min)
-	s.Require().Nil(max)
+func (test *OHLCTests) TestMinMaxNothingStored() {
+	min, max, err := test.ohlcStorage.MinMax(context.Background())
+	test.Nil(err)
+	test.Nil(min)
+	test.Nil(max)
 }
 
-func (s *OHLCTests) TestMinMax() {
-	_, start, end := s.SampleOHLC()
-	min, max, err := s.ohlcStorage.MinMax(context.Background())
-	s.Require().Nil(err)
-	s.Require().Equal(start, *min)
-	s.Require().Equal(end, *max)
+func (test *OHLCTests) TestMinMax() {
+	_, start, end := test.SampleOHLC()
+	min, max, err := test.ohlcStorage.MinMax(context.Background())
+	test.Nil(err)
+	test.Equal(start, *min)
+	test.Equal(end, *max)
 }

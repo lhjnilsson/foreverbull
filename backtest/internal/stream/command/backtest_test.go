@@ -43,10 +43,10 @@ func (test *CommandBacktestTest) SetupTest() {
 
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = repository.Recreate(context.TODO(), test.db)
-	test.NoError(err)
+	test.Require().NoError(err)
 }
 
 func (test *CommandBacktestTest) SetupSubTest() {

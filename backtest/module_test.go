@@ -62,17 +62,17 @@ func (test *BacktestModuleTest) SetupSuite() {
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
 
 	st, err := stream.NewJetstream(environment.GetNATSURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	g := h.NewEngine()
 
 	store, err := storage.NewMinioStorage(environment.GetMinioURL(), environment.GetMinioAccessKey(), environment.GetMinioSecretKey())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	test.app = fx.New(
 		fx.Provide(
@@ -100,7 +100,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 		finance.Module,
 		Module,
 	)
-	test.NoError(test.app.Start(context.TODO()))
+	test.Require().NoError(test.app.Start(context.Background()))
 	createService := func(name, image string) error {
 		helper.Request(test.T(), http.MethodDelete, "/service/api/services/"+name, nil)
 		payload := `{"name":"` + name + `","image":"` + image + `"}`
@@ -149,7 +149,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 		return createService("worker", os.Getenv("WORKER_IMAGE"))
 	})
 	err = createServices.Wait()
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	test.backtestServiceName = "backtest"
 	test.workerServiceName = "worker"
@@ -184,7 +184,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 		}
 		return false, nil
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+	test.Require().NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 
 	test.backtestName = "test"
 }

@@ -17,29 +17,29 @@ type ExecutionTest struct {
 	conn *pgxpool.Pool
 }
 
-func (suite *ExecutionTest) SetupTest() {
+func (test *ExecutionTest) SetupTest() {
 	var err error
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 
 	ctx := context.Background()
-	err = Recreate(ctx, suite.conn)
-	suite.NoError(err)
+	err = Recreate(ctx, test.conn)
+	test.Require().NoError(err)
 }
 
 func TestExecution(t *testing.T) {
 	suite.Run(t, new(ExecutionTest))
 }
 
-func (suite *ExecutionTest) TestCreateExecution() {}
+func (test *ExecutionTest) TestCreateExecution() {}
 
-func (suite *ExecutionTest) TestGetByBacktestAndBacktestAtisNull() {
+func (test *ExecutionTest) TestGetByBacktestAndBacktestAtisNull() {
 	ctx := context.Background()
-	strategies := Strategy{Conn: suite.conn}
-	executions := Execution{Conn: suite.conn}
+	strategies := Strategy{Conn: test.conn}
+	executions := Execution{Conn: test.conn}
 
 	strategyName := "test"
 	backtestName := "backtest"
@@ -48,16 +48,16 @@ func (suite *ExecutionTest) TestGetByBacktestAndBacktestAtisNull() {
 		Backtest: &backtestName,
 	}
 	err := strategies.Create(ctx, &strategy)
-	suite.NoError(err)
+	test.NoError(err)
 
 	entries, err := executions.GetByBacktestAndBacktestAtisNull(ctx, *strategy.Backtest)
-	suite.NoError(err)
-	suite.Equal(0, len(*entries))
+	test.NoError(err)
+	test.Equal(0, len(*entries))
 
 	_, err = executions.Create(ctx, *strategy.Name)
-	suite.NoError(err)
+	test.NoError(err)
 
 	entries, err = executions.GetByBacktestAndBacktestAtisNull(ctx, *strategy.Backtest)
-	suite.NoError(err)
-	suite.Equal(1, len(*entries))
+	test.NoError(err)
+	test.Equal(1, len(*entries))
 }

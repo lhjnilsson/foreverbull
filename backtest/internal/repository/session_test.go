@@ -21,161 +21,161 @@ type SessionTest struct {
 	storedBacktest *entity.Backtest
 }
 
-func (suite *SessionTest) SetupTest() {
+func (test *SessionTest) SetupTest() {
 	var err error
 
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 
-	err = Recreate(context.Background(), suite.conn)
-	suite.NoError(err)
+	err = Recreate(context.Background(), test.conn)
+	test.Require().NoError(err)
 
 	ctx := context.Background()
-	b_postgres := &Backtest{Conn: suite.conn}
-	suite.storedBacktest, err = b_postgres.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
-	suite.NoError(err)
+	b_postgres := &Backtest{Conn: test.conn}
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	test.Require().NoError(err)
 }
 
-func (suite *SessionTest) TearDownTest() {
+func (test *SessionTest) TearDownTest() {
 }
 
 func TestSessions(t *testing.T) {
 	suite.Run(t, new(SessionTest))
 }
 
-func (suite *SessionTest) TestCreate() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestCreate() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 
 	manual := []bool{true, false}
 	for _, tc := range manual {
 		s, err := db.Create(ctx, "backtest", tc)
-		suite.NoError(err)
-		suite.NotNil(s.ID)
-		suite.Equal("backtest", s.Backtest)
-		suite.Equal(tc, s.Manual)
-		suite.Len(s.Statuses, 1)
-		suite.Equal(entity.SessionStatusCreated, s.Statuses[0].Status)
+		test.NoError(err)
+		test.NotNil(s.ID)
+		test.Equal("backtest", s.Backtest)
+		test.Equal(tc, s.Manual)
+		test.Len(s.Statuses, 1)
+		test.Equal(entity.SessionStatusCreated, s.Statuses[0].Status)
 	}
 }
 
-func (suite *SessionTest) TestGet() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestGet() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s.ID)
+	test.NoError(err)
+	test.NotNil(s.ID)
 
 	s2, err := db.Get(ctx, s.ID)
-	suite.NoError(err)
-	suite.Equal(s.ID, s2.ID)
-	suite.Equal(s.Backtest, s2.Backtest)
-	suite.Equal(s.Port, s2.Port)
-	suite.Equal(s.Executions, s2.Executions)
-	suite.Len(s.Statuses, 1)
-	suite.Equal(entity.SessionStatusCreated, s.Statuses[0].Status)
+	test.NoError(err)
+	test.Equal(s.ID, s2.ID)
+	test.Equal(s.Backtest, s2.Backtest)
+	test.Equal(s.Port, s2.Port)
+	test.Equal(s.Executions, s2.Executions)
+	test.Len(s.Statuses, 1)
+	test.Equal(entity.SessionStatusCreated, s.Statuses[0].Status)
 }
 
-func (suite *SessionTest) TestUpdateStatus() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestUpdateStatus() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s.ID)
+	test.NoError(err)
+	test.NotNil(s.ID)
 
 	err = db.UpdateStatus(ctx, s.ID, entity.SessionStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, s.ID, entity.SessionStatusFailed, errors.New("test"))
-	suite.NoError(err)
+	test.NoError(err)
 
 	s2, err := db.Get(ctx, s.ID)
-	suite.NoError(err)
-	suite.Equal(s.ID, s2.ID)
-	suite.Equal(entity.SessionStatusFailed, s2.Statuses[0].Status)
-	suite.NotNil(s2.Statuses[0].OccurredAt)
-	suite.Equal("test", *s2.Statuses[0].Error)
-	suite.Equal(entity.SessionStatusRunning, s2.Statuses[1].Status)
-	suite.NotNil(s2.Statuses[1].OccurredAt)
-	suite.Equal(entity.SessionStatusCreated, s2.Statuses[2].Status)
-	suite.NotNil(s2.Statuses[2].OccurredAt)
+	test.NoError(err)
+	test.Equal(s.ID, s2.ID)
+	test.Equal(entity.SessionStatusFailed, s2.Statuses[0].Status)
+	test.NotNil(s2.Statuses[0].OccurredAt)
+	test.Equal("test", *s2.Statuses[0].Error)
+	test.Equal(entity.SessionStatusRunning, s2.Statuses[1].Status)
+	test.NotNil(s2.Statuses[1].OccurredAt)
+	test.Equal(entity.SessionStatusCreated, s2.Statuses[2].Status)
+	test.NotNil(s2.Statuses[2].OccurredAt)
 }
 
-func (suite *SessionTest) TestUpdatePort() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestUpdatePort() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s.ID)
+	test.NoError(err)
+	test.NotNil(s.ID)
 
 	err = db.UpdatePort(ctx, s.ID, 1337)
-	suite.NoError(err)
+	test.NoError(err)
 
 	s2, err := db.Get(ctx, s.ID)
-	suite.NoError(err)
-	suite.Equal(s.ID, s2.ID)
-	suite.NotNil(s2.Port)
-	suite.Equal(1337, *s2.Port)
+	test.NoError(err)
+	test.Equal(s.ID, s2.ID)
+	test.NotNil(s2.Port)
+	test.Equal(1337, *s2.Port)
 }
 
-func (suite *SessionTest) TestList() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestList() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 	s1, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s1.ID)
+	test.NoError(err)
+	test.NotNil(s1.ID)
 	err = db.UpdateStatus(ctx, s1.ID, entity.SessionStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	s2, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s2.ID)
+	test.NoError(err)
+	test.NotNil(s2.ID)
 	err = db.UpdateStatus(ctx, s2.ID, entity.SessionStatusCompleted, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	sessions, err := db.List(ctx)
-	suite.NoError(err)
-	suite.Len(*sessions, 2)
-	suite.Equal(s2.ID, (*sessions)[0].ID)
-	suite.Equal(s1.ID, (*sessions)[1].ID)
+	test.NoError(err)
+	test.Len(*sessions, 2)
+	test.Equal(s2.ID, (*sessions)[0].ID)
+	test.Equal(s1.ID, (*sessions)[1].ID)
 
-	suite.Equal(entity.SessionStatusCompleted, (*sessions)[0].Statuses[0].Status)
-	suite.Equal(entity.SessionStatusCreated, (*sessions)[0].Statuses[1].Status)
+	test.Equal(entity.SessionStatusCompleted, (*sessions)[0].Statuses[0].Status)
+	test.Equal(entity.SessionStatusCreated, (*sessions)[0].Statuses[1].Status)
 }
 
-func (suite *SessionTest) TestListByBacktest() {
-	db := Session{Conn: suite.conn}
+func (test *SessionTest) TestListByBacktest() {
+	db := Session{Conn: test.conn}
 	ctx := context.Background()
 	s1, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s1.ID)
+	test.NoError(err)
+	test.NotNil(s1.ID)
 	err = db.UpdateStatus(ctx, s1.ID, entity.SessionStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	s2, err := db.Create(ctx, "backtest", false)
-	suite.NoError(err)
-	suite.NotNil(s2.ID)
+	test.NoError(err)
+	test.NotNil(s2.ID)
 	err = db.UpdateStatus(ctx, s2.ID, entity.SessionStatusCompleted, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
-	b_postgres := &Backtest{Conn: suite.conn}
-	suite.storedBacktest, err = b_postgres.Create(ctx, "backtest2", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
-	suite.NoError(err)
+	b_postgres := &Backtest{Conn: test.conn}
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	test.NoError(err)
 	s3, err := db.Create(ctx, "backtest2", false)
-	suite.NoError(err)
-	suite.NotNil(s3.ID)
+	test.NoError(err)
+	test.NotNil(s3.ID)
 	err = db.UpdateStatus(ctx, s3.ID, entity.SessionStatusCompleted, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	sessions, err := db.ListByBacktest(ctx, "backtest")
-	suite.NoError(err)
-	suite.Len(*sessions, 2)
-	suite.Equal(s2.ID, (*sessions)[0].ID)
-	suite.Equal(s1.ID, (*sessions)[1].ID)
+	test.NoError(err)
+	test.Len(*sessions, 2)
+	test.Equal(s2.ID, (*sessions)[0].ID)
+	test.Equal(s1.ID, (*sessions)[1].ID)
 
-	suite.Equal(entity.SessionStatusCompleted, (*sessions)[0].Statuses[0].Status)
-	suite.Equal(entity.SessionStatusCreated, (*sessions)[0].Statuses[1].Status)
+	test.Equal(entity.SessionStatusCompleted, (*sessions)[0].Statuses[0].Status)
+	test.Equal(entity.SessionStatusCreated, (*sessions)[0].Statuses[1].Status)
 }

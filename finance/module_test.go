@@ -44,11 +44,11 @@ func (test *FinanceModuleTest) SetupTest() {
 	})
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
 	st, err := stream.NewJetstream(environment.GetNATSURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.pool, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), test.pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 	g := h.NewEngine()
 	test.app = fx.New(
 		fx.Provide(
@@ -71,7 +71,7 @@ func (test *FinanceModuleTest) SetupTest() {
 		stream.OrchestrationLifecycle,
 		Module,
 	)
-	test.NoError(test.app.Start(context.TODO()))
+	test.Require().NoError(test.app.Start(context.TODO()))
 }
 
 func (test *FinanceModuleTest) TearDownTest() {

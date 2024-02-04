@@ -22,24 +22,24 @@ type PoolTest struct {
 	rw             *mockSocket.ReadWriter
 }
 
-func (s *PoolTest) SetupTest() {
-	s.instanceSocket = mockSocket.NewContextSocket(s.T())
-	s.poolSocket = mockSocket.NewContextSocket(s.T())
+func (test *PoolTest) SetupTest() {
+	test.instanceSocket = mockSocket.NewContextSocket(test.T())
+	test.poolSocket = mockSocket.NewContextSocket(test.T())
 
-	s.rw = mockSocket.NewReadWriter(s.T())
-	s.worker = &Instance{
-		socket: s.instanceSocket,
+	test.rw = mockSocket.NewReadWriter(test.T())
+	test.worker = &Instance{
+		socket: test.instanceSocket,
 	}
-	s.pool = &pool{
+	test.pool = &pool{
 		Workers: make([]*Instance, 0),
 		Socket:  &socket.Socket{},
-		socket:  s.poolSocket,
+		socket:  test.poolSocket,
 	}
-	s.pool.Workers = append(s.pool.Workers, s.worker)
-	helper.SetupEnvironment(s.T(), &helper.Containers{})
+	test.pool.Workers = append(test.pool.Workers, test.worker)
+	helper.SetupEnvironment(test.T(), &helper.Containers{})
 }
 
-func (s *PoolTest) TearDownTest() {
+func (test *PoolTest) TearDownTest() {
 
 }
 
@@ -47,124 +47,124 @@ func TestPool(t *testing.T) {
 	suite.Run(t, new(PoolTest))
 }
 
-func (s *PoolTest) TestConfigure() {
+func (test *PoolTest) TestConfigure() {
 	rsp := message.Response{Task: "configure"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.ConfigureExecution(context.Background(), &Configuration{})
-	s.NoError(err)
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	test.NoError(err)
 }
 
-func (s *PoolTest) TestConfigureError() {
+func (test *PoolTest) TestConfigureError() {
 	rsp := message.Response{Task: "configure", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.ConfigureExecution(context.Background(), &Configuration{})
-	s.Error(err)
-	s.EqualError(err, "error configuring worker: error configuring instance: General Error")
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	test.Error(err)
+	test.EqualError(err, "error configuring worker: error configuring instance: General Error")
 }
 
-func (s *PoolTest) TestConfigureErrorNoWorkers() {
-	s.pool.Workers = make([]*Instance, 0)
-	err := s.pool.ConfigureExecution(context.Background(), &Configuration{})
-	s.Error(err)
-	s.EqualError(err, "no workers")
+func (test *PoolTest) TestConfigureErrorNoWorkers() {
+	test.pool.Workers = make([]*Instance, 0)
+	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	test.Error(err)
+	test.EqualError(err, "no workers")
 }
 
-func (s *PoolTest) TestRun() {
+func (test *PoolTest) TestRun() {
 	rsp := message.Response{Task: "run"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.RunExecution(context.Background())
-	s.NoError(err)
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.RunExecution(context.Background())
+	test.NoError(err)
 }
 
-func (s *PoolTest) TestRunError() {
+func (test *PoolTest) TestRunError() {
 	rsp := message.Response{Task: "run", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.RunExecution(context.Background())
-	s.Error(err)
-	s.EqualError(err, "error running worker: error running instance: General Error")
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.RunExecution(context.Background())
+	test.Error(err)
+	test.EqualError(err, "error running worker: error running instance: General Error")
 }
 
 /*
-func (s *PoolTest) TestProcess() {
+func (test *PoolTest) TestProcess() {
 	rsp := message.Response{Task: "process"}
 	data, _ := rsp.Encode()
 
-	socket := mockSocket.NewContextSocket(s.T())
-	rw := mockSocket.NewReadWriter(s.T())
+	socket := mockSocket.NewContextSocket(test.T())
+	rw := mockSocket.NewReadWriter(test.T())
 
 	rw.On("Close").Return(nil)
 	socket.On("Get").Return(rw, nil)
 	rw.On("Write", mock.Anything).Return(nil)
 	rw.On("Read").Return(data, nil)
 
-	s.pool.socket = socket
+	test.pool.socket = socket
 
-	_, err := s.pool.Process(context.Background(), &message.Request{})
-	s.NoError(err)
+	_, err := test.pool.Process(context.Background(), &message.Request{})
+	test.NoError(err)
 }
 
-func (s *PoolTest) TestProcessError() {
+func (test *PoolTest) TestProcessError() {
 	rsp := message.Response{Task: "process", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	socket := mockSocket.NewContextSocket(s.T())
-	rw := mockSocket.NewReadWriter(s.T())
+	socket := mockSocket.NewContextSocket(test.T())
+	rw := mockSocket.NewReadWriter(test.T())
 
 	rw.On("Close").Return(nil)
 	socket.On("Get").Return(rw, nil)
 	rw.On("Write", mock.Anything).Return(nil)
 	rw.On("Read").Return(data, nil)
 
-	s.pool.socket = socket
-	_, err := s.pool.Process(context.Background(), &message.Request{})
-	s.Error(err)
-	s.EqualError(err, "error processing request: General Error")
+	test.pool.socket = socket
+	_, err := test.pool.Process(context.Background(), &message.Request{})
+	test.Error(err)
+	test.EqualError(err, "error processing request: General Error")
 }
 */
 
-func (s *PoolTest) TestStop() {
+func (test *PoolTest) TestStop() {
 	rsp := message.Response{Task: "stop"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.poolSocket.On("Close").Return(nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.Stop(context.Background())
-	s.NoError(err)
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.poolSocket.On("Close").Return(nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.Stop(context.Background())
+	test.NoError(err)
 }
 
-func (s *PoolTest) TestStopError() {
+func (test *PoolTest) TestStopError() {
 	rsp := message.Response{Task: "stop", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Close").Return(nil)
-	s.instanceSocket.On("Get").Return(s.rw, nil)
-	s.poolSocket.On("Close").Return(nil)
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.pool.Stop(context.Background())
-	s.Error(err)
-	s.EqualError(err, "error stopping worker: General Error")
+	test.rw.On("Close").Return(nil)
+	test.instanceSocket.On("Get").Return(test.rw, nil)
+	test.poolSocket.On("Close").Return(nil)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.pool.Stop(context.Background())
+	test.Error(err)
+	test.EqualError(err, "error stopping worker: General Error")
 }

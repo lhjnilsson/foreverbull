@@ -23,35 +23,35 @@ type ExecutionTest struct {
 	storedSession  *entity.Session
 }
 
-func (suite *ExecutionTest) SetupSuite() {
+func (test *ExecutionTest) SetupSuite() {
 }
 
-func (suite *ExecutionTest) SetupTest() {
+func (test *ExecutionTest) SetupTest() {
 	var err error
 
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 
-	err = Recreate(context.Background(), suite.conn)
-	suite.NoError(err)
+	err = Recreate(context.Background(), test.conn)
+	test.Require().NoError(err)
 
 	ctx := context.Background()
-	b_postgres := &Backtest{Conn: suite.conn}
+	b_postgres := &Backtest{Conn: test.conn}
 	_, err = b_postgres.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
-	suite.NoError(err)
-	suite.storedBacktest, err = b_postgres.Get(ctx, "backtest")
-	suite.NoError(err)
+	test.Require().NoError(err)
+	test.storedBacktest, err = b_postgres.Get(ctx, "backtest")
+	test.Require().NoError(err)
 
-	s_postgres := Session{Conn: suite.conn}
+	s_postgres := Session{Conn: test.conn}
 
-	suite.storedSession, err = s_postgres.Create(ctx, "backtest", false)
-	suite.NoError(err)
+	test.storedSession, err = s_postgres.Create(ctx, "backtest", false)
+	test.Require().NoError(err)
 }
 
-func (suite *ExecutionTest) TearDownTest() {
+func (test *ExecutionTest) TearDownTest() {
 }
 
 func TestExecutions(t *testing.T) {
@@ -70,8 +70,8 @@ func (s *ExecutionTest) TestCreate() {
 	// TODO: FIX, Github looses nanoseconds
 	// -(time.Time) 2023-10-19 19:53:22.382093481 +0000 UTC
 	// +(time.Time) 2023-10-19 19:53:22.382093 +0000 UTC
-	//suite.Equal(start, *backtest.Start)
-	//suite.Equal(end, *backtest.End)
+	//test.Equal(start, *backtest.Start)
+	//test.Equal(end, *backtest.End)
 	//s.Equal(*s.storedBacktest.Start, e.Start)
 	//s.Equal(*s.storedBacktest.End, e.End)
 	s.Equal(s.storedBacktest.Symbols, e.Symbols)

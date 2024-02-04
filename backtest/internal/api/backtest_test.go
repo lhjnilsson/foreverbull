@@ -35,10 +35,10 @@ func (test *BacktestTest) SetupTest() {
 		Postgres: true,
 	})
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = repository.Recreate(context.TODO(), pool)
-	test.Nil(err)
+	test.Require().NoError(err)
 
 	test.router = http.NewEngine()
 	test.router.Use(

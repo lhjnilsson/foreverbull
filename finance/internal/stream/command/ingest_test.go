@@ -44,26 +44,26 @@ func (test *IngestCommandTest) SetupTest() {
 
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = repository.Recreate(context.TODO(), test.db)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.assets = &repository.Asset{Conn: test.db}
 	test.ohlc = &repository.OHLC{Conn: test.db}
 	test.storedAsset = entity.Asset{
 		Symbol: "Stored123",
 		Name:   "Stored Asset",
 	}
-	test.NoError(test.assets.Store(context.Background(), &test.storedAsset))
+	test.Require().NoError(test.assets.Store(context.Background(), &test.storedAsset))
 
 	test.storedOHLCStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	test.Require().NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 	}))
-	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	test.Require().NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
 	}))
-	test.NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
+	test.Require().NoError(test.ohlc.Store(context.Background(), "Stored123", &entity.OHLC{
 		Time: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
 	}))
 	test.storedOHLCEnd = time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC)

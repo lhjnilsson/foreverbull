@@ -18,58 +18,58 @@ type ServiceTest struct {
 	conn *pgxpool.Pool
 }
 
-func (suite *ServiceTest) SetupTest() {
+func (test *ServiceTest) SetupTest() {
 	var err error
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 	ctx := context.Background()
-	err = Recreate(ctx, suite.conn)
-	suite.NoError(err)
+	err = Recreate(ctx, test.conn)
+	test.Require().NoError(err)
 }
 
-func (suite *ServiceTest) TearDownTest() {
+func (test *ServiceTest) TearDownTest() {
 }
 
 func TestServices(t *testing.T) {
 	suite.Run(t, new(ServiceTest))
 }
 
-func (suite *ServiceTest) TestCreate() {
+func (test *ServiceTest) TestCreate() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	service, err := db.Create(ctx, "service", "image")
-	suite.NoError(err)
-	suite.Equal("service", service.Name)
-	suite.Equal("image", service.Image)
-	suite.Len(service.Statuses, 1)
-	suite.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
+	test.NoError(err)
+	test.Equal("service", service.Name)
+	test.Equal("image", service.Image)
+	test.Len(service.Statuses, 1)
+	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 }
 
-func (suite *ServiceTest) TestGet() {
+func (test *ServiceTest) TestGet() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "service", "image")
-	suite.NoError(err)
+	test.NoError(err)
 
 	service, err := db.Get(ctx, "service")
-	suite.NoError(err)
-	suite.Equal("service", service.Name)
-	suite.Equal("image", service.Image)
-	suite.Len(service.Statuses, 1)
-	suite.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
+	test.NoError(err)
+	test.Equal("service", service.Name)
+	test.Equal("image", service.Image)
+	test.Len(service.Statuses, 1)
+	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 }
 
-func (suite *ServiceTest) TestUpdateServiceInfo() {
+func (test *ServiceTest) TestUpdateServiceInfo() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "service", "image")
-	suite.NoError(err)
+	test.NoError(err)
 
 	parameters := []entity.Parameter{
 		{
@@ -80,85 +80,85 @@ func (suite *ServiceTest) TestUpdateServiceInfo() {
 	}
 
 	err = db.UpdateServiceInfo(ctx, "service", "service_type", &parameters)
-	suite.NoError(err)
+	test.NoError(err)
 
 	service, err := db.Get(ctx, "service")
-	suite.NoError(err)
-	suite.Equal("service", service.Name)
-	suite.Equal("image", service.Image)
-	suite.Len(service.Statuses, 1)
-	suite.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
-	suite.Equal("service_type", *service.Type)
-	suite.Len(*service.WorkerParameters, 1)
+	test.NoError(err)
+	test.Equal("service", service.Name)
+	test.Equal("image", service.Image)
+	test.Len(service.Statuses, 1)
+	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
+	test.Equal("service_type", *service.Type)
+	test.Len(*service.WorkerParameters, 1)
 }
 
-func (suite *ServiceTest) TestUpdateStatus() {
+func (test *ServiceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "service", "image")
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "service", entity.ServiceStatusReady, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "service", entity.ServiceStatusError, errors.New("test_error"))
-	suite.NoError(err)
+	test.NoError(err)
 
 	service, err := db.Get(ctx, "service")
-	suite.NoError(err)
-	suite.Equal("service", service.Name)
-	suite.Equal("image", service.Image)
-	suite.Len(service.Statuses, 3)
-	suite.Equal(entity.ServiceStatusError, service.Statuses[0].Status)
-	suite.Equal("test_error", *service.Statuses[0].Error)
-	suite.Equal(entity.ServiceStatusReady, service.Statuses[1].Status)
-	suite.Equal(entity.ServiceStatusCreated, service.Statuses[2].Status)
+	test.NoError(err)
+	test.Equal("service", service.Name)
+	test.Equal("image", service.Image)
+	test.Len(service.Statuses, 3)
+	test.Equal(entity.ServiceStatusError, service.Statuses[0].Status)
+	test.Equal("test_error", *service.Statuses[0].Error)
+	test.Equal(entity.ServiceStatusReady, service.Statuses[1].Status)
+	test.Equal(entity.ServiceStatusCreated, service.Statuses[2].Status)
 }
 
-func (suite *ServiceTest) TestList() {
+func (test *ServiceTest) TestList() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "service1", "image")
-	suite.NoError(err)
+	test.NoError(err)
 	err = db.UpdateStatus(ctx, "service1", entity.ServiceStatusReady, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	_, err = db.Create(ctx, "service2", "image")
-	suite.NoError(err)
+	test.NoError(err)
 	err = db.UpdateStatus(ctx, "service2", entity.ServiceStatusError, errors.New("test_error"))
-	suite.NoError(err)
+	test.NoError(err)
 
 	services, err := db.List(ctx)
-	suite.NoError(err)
-	suite.Len(*services, 2)
+	test.NoError(err)
+	test.Len(*services, 2)
 
 	service2 := (*services)[0]
-	suite.Equal("service2", service2.Name)
-	suite.Equal("image", service2.Image)
-	suite.Len(service2.Statuses, 2)
-	suite.Equal(entity.ServiceStatusError, service2.Statuses[0].Status)
-	suite.Equal("test_error", *service2.Statuses[0].Error)
+	test.Equal("service2", service2.Name)
+	test.Equal("image", service2.Image)
+	test.Len(service2.Statuses, 2)
+	test.Equal(entity.ServiceStatusError, service2.Statuses[0].Status)
+	test.Equal("test_error", *service2.Statuses[0].Error)
 
 	service1 := (*services)[1]
-	suite.Equal("service1", service1.Name)
-	suite.Equal("image", service1.Image)
-	suite.Len(service1.Statuses, 2)
-	suite.Equal(entity.ServiceStatusReady, service1.Statuses[0].Status)
+	test.Equal("service1", service1.Name)
+	test.Equal("image", service1.Image)
+	test.Len(service1.Statuses, 2)
+	test.Equal(entity.ServiceStatusReady, service1.Statuses[0].Status)
 }
 
-func (suite *ServiceTest) TestDelete() {
+func (test *ServiceTest) TestDelete() {
 	ctx := context.Background()
 
-	db := &Service{Conn: suite.conn}
+	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "service", "image")
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.Delete(ctx, "service")
-	suite.NoError(err)
+	test.NoError(err)
 
 	services, err := db.List(ctx)
-	suite.Nil(err)
-	suite.Empty(*services)
+	test.Nil(err)
+	test.Empty(*services)
 }
