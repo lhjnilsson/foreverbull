@@ -18,148 +18,148 @@ type InstanceTest struct {
 	conn *pgxpool.Pool
 }
 
-func (suite *InstanceTest) SetupTest() {
+func (test *InstanceTest) SetupTest() {
 	var err error
 
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-	suite.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 	ctx := context.Background()
 
-	err = Recreate(ctx, suite.conn)
-	suite.NoError(err)
+	err = Recreate(ctx, test.conn)
+	test.Require().NoError(err)
 
-	s_repository := &Service{Conn: suite.conn}
+	s_repository := &Service{Conn: test.conn}
 	_, err = s_repository.Create(ctx, "service", "image")
-	suite.NoError(err)
+	test.Require().NoError(err)
 	err = s_repository.UpdateServiceInfo(ctx, "service", "type", nil)
-	suite.NoError(err)
+	test.Require().NoError(err)
 }
 
-func (suite *InstanceTest) TearDownTest() {
+func (test *InstanceTest) TearDownTest() {
 }
 
 func TestInstances(t *testing.T) {
 	suite.Run(t, new(InstanceTest))
 }
 
-func (suite *InstanceTest) TestCreate() {
+func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	instance, err := db.Create(ctx, "instance", "service")
-	suite.NoError(err)
-	suite.Equal("instance", instance.ID)
+	test.NoError(err)
+	test.Equal("instance", instance.ID)
 }
 
-func (suite *InstanceTest) TestGet() {
+func (test *InstanceTest) TestGet() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance", "service")
-	suite.NoError(err)
+	test.NoError(err)
 
 	instance, err := db.Get(ctx, "instance")
-	suite.NoError(err)
-	suite.Equal("instance", instance.ID)
+	test.NoError(err)
+	test.Equal("instance", instance.ID)
 }
 
-func (suite *InstanceTest) TestUpdateHostPort() {
+func (test *InstanceTest) TestUpdateHostPort() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance", "service")
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateHostPort(ctx, "instance", "host", 1234)
-	suite.NoError(err)
+	test.NoError(err)
 
 	instance, err := db.Get(ctx, "instance")
-	suite.NoError(err)
-	suite.Equal("host", *instance.Host)
-	suite.Equal(1234, *instance.Port)
+	test.NoError(err)
+	test.Equal("host", *instance.Host)
+	test.Equal(1234, *instance.Port)
 }
 
-func (suite *InstanceTest) TestUpdateStatus() {
+func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance", "service")
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusError, errors.New("test_error"))
-	suite.NoError(err)
+	test.NoError(err)
 
 	instance, err := db.Get(ctx, "instance")
-	suite.NoError(err)
-	suite.Len(instance.Statuses, 3)
-	suite.Equal(entity.InstanceStatusError, instance.Statuses[0].Status)
-	suite.Equal("test_error", *instance.Statuses[0].Error)
-	suite.Equal(entity.InstanceStatusRunning, instance.Statuses[1].Status)
-	suite.Nil(instance.Statuses[1].Error)
-	suite.Equal(entity.InstanceStatusCreated, instance.Statuses[2].Status)
-	suite.Nil(instance.Statuses[2].Error)
+	test.NoError(err)
+	test.Len(instance.Statuses, 3)
+	test.Equal(entity.InstanceStatusError, instance.Statuses[0].Status)
+	test.Equal("test_error", *instance.Statuses[0].Error)
+	test.Equal(entity.InstanceStatusRunning, instance.Statuses[1].Status)
+	test.Nil(instance.Statuses[1].Error)
+	test.Equal(entity.InstanceStatusCreated, instance.Statuses[2].Status)
+	test.Nil(instance.Statuses[2].Error)
 }
 
-func (suite *InstanceTest) TestList() {
+func (test *InstanceTest) TestList() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance1", "service")
-	suite.NoError(err)
+	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	_, err = db.Create(ctx, "instance2", "service")
-	suite.NoError(err)
+	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance2", entity.InstanceStatusError, errors.New("test_error"))
-	suite.NoError(err)
+	test.NoError(err)
 
 	instances, err := db.List(ctx)
-	suite.NoError(err)
-	suite.Len(*instances, 2)
+	test.NoError(err)
+	test.Len(*instances, 2)
 
 	instance2 := (*instances)[0]
-	suite.Equal("instance2", instance2.ID)
-	suite.Equal("service", instance2.Service)
-	suite.Len(instance2.Statuses, 2)
-	suite.Equal(entity.InstanceStatusError, instance2.Statuses[0].Status)
-	suite.Equal("test_error", *instance2.Statuses[0].Error)
+	test.Equal("instance2", instance2.ID)
+	test.Equal("service", instance2.Service)
+	test.Len(instance2.Statuses, 2)
+	test.Equal(entity.InstanceStatusError, instance2.Statuses[0].Status)
+	test.Equal("test_error", *instance2.Statuses[0].Error)
 
 	instance1 := (*instances)[1]
-	suite.Equal("instance1", instance1.ID)
-	suite.Equal("service", instance1.Service)
-	suite.Len(instance1.Statuses, 2)
-	suite.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
-	suite.Nil(instance1.Statuses[0].Error)
+	test.Equal("instance1", instance1.ID)
+	test.Equal("service", instance1.Service)
+	test.Len(instance1.Statuses, 2)
+	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
+	test.Nil(instance1.Statuses[0].Error)
 }
 
-func (suite *InstanceTest) TestListByService() {
+func (test *InstanceTest) TestListByService() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: suite.conn}
+	db := &Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance1", "service")
-	suite.NoError(err)
+	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
-	suite.NoError(err)
+	test.NoError(err)
 
 	instances, err := db.ListByService(ctx, "service")
-	suite.NoError(err)
-	suite.Len(*instances, 1)
+	test.NoError(err)
+	test.Len(*instances, 1)
 
 	instance1 := (*instances)[0]
-	suite.Equal("instance1", instance1.ID)
-	suite.Equal("service", instance1.Service)
-	suite.Len(instance1.Statuses, 2)
-	suite.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
-	suite.Nil(instance1.Statuses[0].Error)
+	test.Equal("instance1", instance1.ID)
+	test.Equal("service", instance1.Service)
+	test.Len(instance1.Statuses, 2)
+	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
+	test.Nil(instance1.Statuses[0].Error)
 
 	instances, err = db.ListByService(ctx, "service2")
-	suite.NoError(err)
-	suite.Len(*instances, 0)
+	test.NoError(err)
+	test.Len(*instances, 0)
 }

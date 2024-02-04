@@ -31,24 +31,24 @@ func TestServiceCommands(t *testing.T) {
 	suite.Run(t, new(ServiceTest))
 }
 
-func (s *ServiceTest) SetupTest() {
+func (test *ServiceTest) SetupTest() {
 	var err error
-	helper.SetupEnvironment(s.T(), &helper.Containers{
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
 
-	s.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	s.NoError(err)
+	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
 
-	err = repository.Recreate(context.TODO(), s.db)
-	s.NoError(err)
+	err = repository.Recreate(context.TODO(), test.db)
+	test.Require().NoError(err)
 
-	services := repository.Service{Conn: s.db}
-	s.testService, err = services.Create(context.TODO(), "test-service", "test-image")
-	s.NoError(err)
+	services := repository.Service{Conn: test.db}
+	test.testService, err = services.Create(context.TODO(), "test-service", "test-image")
+	test.Require().NoError(err)
 }
 
-func (s *ServiceTest) TearDownSuite() {
+func (test *ServiceTest) TearDownSuite() {
 }
 
 func (test *ServiceTest) TestUpdateServiceStatus() {
@@ -91,45 +91,45 @@ func (test *ServiceTest) TestUpdateServiceStatus() {
 	}
 }
 
-func (s *ServiceTest) TestServiceStartFail() {
+func (test *ServiceTest) TestServiceStartFail() {
 	b := new(mockStream.Message)
 	b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*ss.ServiceStartCommand)
-		command.Name = s.testService.Name
+		command.Name = test.testService.Name
 		command.InstanceID = "test-instance"
 	})
 
 	c := new(mockContainer.Container)
-	b.On("MustGet", stream.DBDep).Return(s.db)
+	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, s.testService.Name, s.testService.Image, "test-instance").Return("", errors.New("fail to start"))
+	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance").Return("", errors.New("fail to start"))
 
 	err := ServiceStart(context.Background(), b)
-	s.Error(err)
-	s.EqualError(err, "error starting container: fail to start")
+	test.Error(err)
+	test.EqualError(err, "error starting container: fail to start")
 }
 
-func (s *ServiceTest) TestServiceStartSuccessful() {
+func (test *ServiceTest) TestServiceStartSuccessful() {
 	b := new(mockStream.Message)
 	b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*ss.ServiceStartCommand)
-		command.Name = s.testService.Name
+		command.Name = test.testService.Name
 		command.InstanceID = "test-instance"
 	})
 
 	c := new(mockContainer.Container)
-	b.On("MustGet", stream.DBDep).Return(s.db)
+	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, s.testService.Name, s.testService.Image, "test-instance").Return("test-container-id", nil)
+	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance").Return("test-container-id", nil)
 
 	err := ServiceStart(context.Background(), b)
-	s.NoError(err)
+	test.NoError(err)
 
-	instances := repository.Instance{Conn: s.db}
+	instances := repository.Instance{Conn: test.db}
 	instance, err := instances.Get(context.Background(), "test-instance")
-	s.NoError(err)
-	s.Equal("test-instance", instance.ID)
-	s.Equal("test-service", instance.Service)
+	test.NoError(err)
+	test.Equal("test-instance", instance.ID)
+	test.Equal("test-service", instance.Service)
 }

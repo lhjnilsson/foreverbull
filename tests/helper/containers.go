@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/ioutils"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/nats"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -27,9 +27,7 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 	defer cancel()
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		t.Error("Failed to create docker client:", err)
-	}
+	require.NoError(t, err)
 
 	opts := container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("network", NetworkID)),
@@ -74,10 +72,10 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).WithStartupTimeout(5*time.Second)),
 	)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	ConnectionString, err = container.ConnectionString(context.TODO(), "sslmode=disable")
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		if err := container.Terminate(context.Background()); err != nil {
@@ -99,10 +97,10 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 			}
 		}),
 	)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	ConnectionString, err = container.ConnectionString(context.Background())
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		if err := container.Terminate(context.Background()); err != nil {
@@ -126,10 +124,10 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 			}
 		}),
 	)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	ConnectionString, err = container.ConnectionString(context.Background())
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		if err := container.Terminate(context.Background()); err != nil {

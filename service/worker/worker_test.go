@@ -18,103 +18,103 @@ type WorkerTest struct {
 	worker *Instance
 }
 
-func (s *WorkerTest) SetupTest() {
-	s.socket = mockSocket.NewContextSocket(s.T())
-	s.worker = &Instance{
-		socket: s.socket,
+func (test *WorkerTest) SetupTest() {
+	test.socket = mockSocket.NewContextSocket(test.T())
+	test.worker = &Instance{
+		socket: test.socket,
 	}
-	s.rw = mockSocket.NewReadWriter(s.T())
-	s.socket.On("Get").Return(s.rw, nil)
-	s.rw.On("Close").Return(nil)
+	test.rw = mockSocket.NewReadWriter(test.T())
+	test.socket.On("Get").Return(test.rw, nil)
+	test.rw.On("Close").Return(nil)
 }
 
-func (s *WorkerTest) TearDownTest() {
+func (test *WorkerTest) TearDownTest() {
 }
 
 func TestWorker(t *testing.T) {
 	suite.Run(t, new(WorkerTest))
 }
 
-func (s *WorkerTest) TestConfigureNormal() {
+func (test *WorkerTest) TestConfigureNormal() {
 	rsp := message.Response{Task: "configure"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.ConfigureExecution(context.Background(), &Configuration{})
-	s.NoError(err)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	test.NoError(err)
 }
 
-func (s *WorkerTest) TestConfigureError() {
+func (test *WorkerTest) TestConfigureError() {
 	rsp := message.Response{Task: "configure", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.ConfigureExecution(context.Background(), &Configuration{})
-	s.Error(err)
-	s.EqualError(err, "error configuring instance: General Error")
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	test.Error(err)
+	test.EqualError(err, "error configuring instance: General Error")
 }
 
-func (s *WorkerTest) TestConfigureSocketError() {
-	s.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
-	err := s.worker.ConfigureExecution(context.Background(), &Configuration{})
-	s.Error(err)
-	s.EqualError(err, "error configuring instance: Write Error")
+func (test *WorkerTest) TestConfigureSocketError() {
+	test.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
+	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	test.Error(err)
+	test.EqualError(err, "error configuring instance: Write Error")
 }
 
-func (s *WorkerTest) TestRunNormal() {
+func (test *WorkerTest) TestRunNormal() {
 	rsp := message.Response{Task: "run_backtest"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.RunExecution(context.Background())
-	s.NoError(err)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.RunExecution(context.Background())
+	test.NoError(err)
 }
 
-func (s *WorkerTest) TestRunError() {
+func (test *WorkerTest) TestRunError() {
 	rsp := message.Response{Task: "run_backtest", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.RunExecution(context.Background())
-	s.Error(err)
-	s.EqualError(err, "error running instance: General Error")
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.RunExecution(context.Background())
+	test.Error(err)
+	test.EqualError(err, "error running instance: General Error")
 }
 
-func (s *WorkerTest) TestRunSocketError() {
-	s.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
-	err := s.worker.RunExecution(context.Background())
-	s.Error(err)
-	s.EqualError(err, "error running instance: Write Error")
+func (test *WorkerTest) TestRunSocketError() {
+	test.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
+	err := test.worker.RunExecution(context.Background())
+	test.Error(err)
+	test.EqualError(err, "error running instance: Write Error")
 }
 
-func (s *WorkerTest) TestStopNormal() {
+func (test *WorkerTest) TestStopNormal() {
 	rsp := message.Response{Task: "stop"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.Stop(context.Background())
-	s.NoError(err)
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.Stop(context.Background())
+	test.NoError(err)
 }
 
-func (s *WorkerTest) TestStopError() {
+func (test *WorkerTest) TestStopError() {
 	rsp := message.Response{Task: "stop", Error: "General Error"}
 	data, _ := rsp.Encode()
 
-	s.rw.On("Write", mock.Anything).Return(nil)
-	s.rw.On("Read").Return(data, nil)
-	err := s.worker.Stop(context.Background())
-	s.Error(err)
-	s.EqualError(err, "General Error")
+	test.rw.On("Write", mock.Anything).Return(nil)
+	test.rw.On("Read").Return(data, nil)
+	err := test.worker.Stop(context.Background())
+	test.Error(err)
+	test.EqualError(err, "General Error")
 }
 
-func (s *WorkerTest) TestStopSocketError() {
-	s.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
-	err := s.worker.Stop(context.Background())
-	s.Error(err)
-	s.EqualError(err, "Write Error")
+func (test *WorkerTest) TestStopSocketError() {
+	test.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
+	err := test.worker.Stop(context.Background())
+	test.Error(err)
+	test.EqualError(err, "Write Error")
 }
