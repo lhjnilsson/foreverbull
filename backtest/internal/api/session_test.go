@@ -40,9 +40,9 @@ func (test *SessionTest) SetupTest() {
 		Postgres: true,
 	})
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.Nil(err)
+	test.Require().NoError(err)
 	err = repository.Recreate(context.TODO(), test.db)
-	test.Nil(err)
+	test.Require().NoError(err)
 
 	test.router = http.NewEngine()
 	test.router.Use(
