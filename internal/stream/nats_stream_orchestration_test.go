@@ -52,7 +52,7 @@ func (test *OrchestrationTest) SetupTest() {
 	err = RecreateTables(context.Background(), test.conn)
 	test.NoError(err)
 
-	test.jt, err = NewJetstream(environment.GetNATSURL())
+	test.jt, err = NewJetstream()
 	test.NoError(err)
 
 	dc := NewDependencyContainer()

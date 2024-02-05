@@ -59,37 +59,27 @@ func (test *BacktestModuleTest) SetupSuite() {
 		Minio:    true,
 	})
 
-	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-
-	st, err := stream.NewJetstream()
-	test.Require().NoError(err)
-
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.Require().NoError(err)
 
-	g := h.NewEngine()
-
-	store, err := storage.NewMinioStorage()
-	test.Require().NoError(err)
-
 	test.app = fx.New(
 		fx.Provide(
 			func() *zap.Logger {
-				return log
+				return zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
 			},
-			func() nats.JetStreamContext {
-				return st
+			func() (nats.JetStreamContext, error) {
+				return stream.NewJetstream()
 			},
 			func() *pgxpool.Pool {
 				return pool
 			},
 			func() *gin.Engine {
-				return g
+				return h.NewEngine()
 			},
-			func() storage.BlobStorage {
-				return store
+			func() (storage.BlobStorage, error) {
+				return storage.NewMinioStorage()
 			},
 		),
 		fx.Invoke(

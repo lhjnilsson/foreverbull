@@ -38,7 +38,7 @@ func (suite *NatsStreamTest) SetupTest() {
 	err = RecreateTables(context.Background(), pool)
 	suite.NoError(err)
 
-	suite.jt, err = NewJetstream(environment.GetNATSURL())
+	suite.jt, err = NewJetstream()
 	suite.NoError(err)
 
 	stream, err := NewNATSStream(suite.jt, "test", log, dc, pool)
