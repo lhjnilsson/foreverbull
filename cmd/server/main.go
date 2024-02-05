@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/urfave/cli/v2"
@@ -22,7 +23,6 @@ import (
 
 var CoreModules = fx.Options(
 	fx.Provide(
-		environment.Setup(),
 		func() (*pgxpool.Pool, error) {
 			return pgxpool.New(context.TODO(), environment.GetPostgresURL())
 		},
@@ -51,6 +51,9 @@ func main() {
 	cli := &cli.App{
 		Name: "foreverbull",
 		Action: func(c *cli.Context) error {
+			if err := environment.Setup(); err != nil {
+				return fmt.Errorf("failed to setup environment: %w", err)
+			}
 			app().Run()
 			return nil
 		},

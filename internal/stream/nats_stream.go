@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewJetstream(uri string) (nats.JetStreamContext, error) {
-	nc, err := nats.Connect(uri)
+func NewJetstream() (nats.JetStreamContext, error) {
+	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
 		return nil, err
 	}

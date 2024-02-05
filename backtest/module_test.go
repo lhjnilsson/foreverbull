@@ -61,7 +61,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
 
-	st, err := stream.NewJetstream(environment.GetNATSURL())
+	st, err := stream.NewJetstream()
 	test.Require().NoError(err)
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -71,7 +71,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	g := h.NewEngine()
 
-	store, err := storage.NewMinioStorage(environment.GetMinioURL(), environment.GetMinioAccessKey(), environment.GetMinioSecretKey())
+	store, err := storage.NewMinioStorage()
 	test.Require().NoError(err)
 
 	test.app = fx.New(
