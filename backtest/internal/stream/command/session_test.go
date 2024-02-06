@@ -20,15 +20,12 @@ import (
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type CommandSessionTest struct {
 	suite.Suite
 
-	log *zap.Logger
-	db  *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
 func TestCommandSession(t *testing.T) {
@@ -39,8 +36,6 @@ func (test *CommandSessionTest) SetupTest() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-
-	test.log = zaptest.NewLogger(test.T())
 
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -110,7 +105,6 @@ func (test *CommandSessionTest) TestSessionRunCommand() {
 
 	m := new(mockStream.Message)
 	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", stream.LoggerDep).Return(test.log)
 
 	session := new(mockBacktest.Session)
 	session.On("GetSocket").Return(&socket.Socket{})

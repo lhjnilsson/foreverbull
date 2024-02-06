@@ -13,8 +13,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
 	"github.com/lhjnilsson/foreverbull/service/worker"
+	"github.com/rs/zerolog/log"
 	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
 )
 
 type Session interface {
@@ -25,8 +25,6 @@ type Session interface {
 }
 
 type session struct {
-	log *zap.Logger
-
 	backtest         *entity.Backtest `json:"-"`
 	session          *entity.Session
 	backtestInstance *service.Instance     `json:"-"`
@@ -44,7 +42,7 @@ type session struct {
 	executionEntity *entity.Execution    `json:"-"`
 }
 
-func NewSession(ctx context.Context, log *zap.Logger,
+func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
 	executions *repository.Execution, periods *repository.Period, orders *repository.Order, portfolio *repository.Portfolio,
 	workers ...*service.Instance) (Session, error) {
@@ -58,7 +56,6 @@ func NewSession(ctx context.Context, log *zap.Logger,
 	}
 
 	s := session{
-		log:              log,
 		backtest:         storedBacktest,
 		session:          storedSession,
 		backtestInstance: backtestInstance,
@@ -110,7 +107,6 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 	if err != nil {
 		return fmt.Errorf("failed to update execution parameters: %w", err)
 	}
-	e.log.Info("backtestCFG", zap.Any("backtestCfg", backtestCfg))
 	err = e.executions.UpdateSimulationDetails(ctx, execution.ID, *backtestCfg.Calendar, *backtestCfg.Start, *backtestCfg.End, "FIXME", *backtestCfg.Symbols)
 	if err != nil {
 		return fmt.Errorf("failed to update execution simulation details: %w", err)
@@ -121,30 +117,27 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 	for event := range events {
 		status := <-event
 		if status.Error != nil {
-			e.log.Error("Failed to run execution", zap.Error(status.Error))
 		} else {
 			for _, order := range status.Period.NewOrders {
 				err = e.orders.Store(context.Background(), execution.ID, &order)
 				if err != nil {
-					e.log.Error("Failed to create order", zap.Error(err))
+					log.Err(err).Msg("failed to create order")
 				}
 			}
 			err = e.portfolio.Store(context.Background(), execution.ID, status.Period.Timestamp, &status.Period.Portfolio)
 			if err != nil {
-				e.log.Error("Failed to create position", zap.Error(err))
+				log.Err(err).Msg("failed to create position")
 			}
 		}
 		close(event)
 	}
 	periods, err := exec.StoreDataFrameAndGetPeriods(context.Background(), execution.ID)
 	if err != nil {
-		e.log.Error("Failed to store data frame and get periods", zap.Error(err))
 		return err
 	}
 	for _, period := range *periods {
 		err = e.periods.Store(context.Background(), execution.ID, &period)
 		if err != nil {
-			e.log.Error("Failed to store period", zap.Error(err))
 			return err
 		}
 	}
@@ -155,22 +148,21 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 	defer func() {
 		err := e.workers.Stop(context.TODO())
 		if err != nil {
-			e.log.Error("failed to stop workers", zap.Error(err))
+			log.Err(err).Msg("failed to stop workers")
 		}
 		err = e.engine.Stop(context.TODO())
 		if err != nil {
-			e.log.Error("failed to stop engine", zap.Error(err))
+			log.Err(err).Msg("failed to stop engine")
 		}
 		err = e.socket.Close()
 		if err != nil {
-			e.log.Error("failed to close socket", zap.Error(err))
+			log.Err(err).Msg("failed to close socket")
 		}
 	}()
 	for {
 		socket, err := e.socket.Get()
 		if err != nil {
-			e.log.Error("Failed to get socket", zap.Error(err))
-			return err
+			return fmt.Errorf("failed to get socket: %w", err)
 		}
 		defer socket.Close()
 		var rsp message.Response
@@ -184,27 +176,22 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 					continue
 				}
 			}
-			e.log.Error("Failed to read message", zap.Error(err))
 			return err
 		}
 		activity <- true
 		req := message.Request{}
 		if err = req.Decode(byteMsg); err != nil {
-			e.log.Error("Failed to decode message", zap.Error(err))
 			continue
 		}
 		rsp = message.Response{Task: req.Task}
-		e.log.Debug("Received request", zap.String("task", req.Task), zap.Any("data", req.Data))
 		switch req.Task {
 		case "new_execution":
 			if e.execution != nil {
-				e.log.Error("execution already exists")
 				err = errors.New("execution already exists")
 				break
 			}
 			e.executionEntity, err = e.executions.Create(context.Background(), e.session.ID, e.backtest.Calendar, e.backtest.Start, e.backtest.End, e.backtest.Symbols, e.backtest.Benchmark)
 			if err != nil {
-				e.log.Error("Failed to create execution", zap.Error(err))
 				err = errors.New("failed to create execution")
 				break
 			}
@@ -227,7 +214,6 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			}
 			err = e.execution.Configure(context.Background(), nil, &backtestCfg)
 			if err != nil {
-				e.log.Error("Failed to configure execution", zap.Error(err))
 				return err
 			}
 			go e.execution.Run(context.TODO(), e.executionEntity.ID, events)
@@ -235,18 +221,17 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 				activity <- true
 				status := <-event
 				if status.Error != nil {
-					e.log.Error("Failed to run execution", zap.Error(status.Error))
 					rsp.Error = status.Error.Error()
 				} else {
 					for _, order := range status.Period.NewOrders {
 						err = e.orders.Store(context.Background(), e.executionEntity.ID, &order)
 						if err != nil {
-							e.log.Error("Failed to create order", zap.Error(err))
+							log.Err(err).Msg("failed to create order")
 						}
 					}
 					err = e.portfolio.Store(context.Background(), e.executionEntity.ID, status.Period.Timestamp, &status.Period.Portfolio)
 					if err != nil {
-						e.log.Error("Failed to create position", zap.Error(err))
+						log.Err(err).Msg("failed to create position")
 					}
 				}
 				close(event)
@@ -254,14 +239,12 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			if rsp.Error == "" {
 				periods, err := e.execution.StoreDataFrameAndGetPeriods(context.Background(), e.executionEntity.ID)
 				if err != nil {
-					e.log.Error("Failed to store data frame and get periods", zap.Error(err))
-					return err
+					return fmt.Errorf("failed to store data frame and get periods: %w", err)
 				}
 				for _, period := range *periods {
 					err = e.periods.Store(context.Background(), e.executionEntity.ID, &period)
 					if err != nil {
-						e.log.Error("Failed to store period", zap.Error(err))
-						return err
+						return fmt.Errorf("failed to store period: %w", err)
 					}
 				}
 			}
@@ -270,16 +253,13 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 		case "stop":
 			byteMsg, err = rsp.Encode()
 			if err != nil {
-				e.log.Error("Failed to encode message", zap.Error(err))
-				return err
+				return fmt.Errorf("failed to encode message: %w", err)
 			}
 			if err = socket.Write(byteMsg); err != nil {
-				e.log.Error("Failed to write message", zap.Error(err))
-				return err
+				return fmt.Errorf("failed to write message: %w", err)
 			}
 			return nil
 		default:
-			e.log.Error("Unknown task", zap.String("task", req.Task))
 			err = errors.New("unknown task")
 		}
 		if err != nil {
@@ -287,12 +267,10 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 		}
 		byteMsg, err = rsp.Encode()
 		if err != nil {
-			e.log.Error("Failed to encode message", zap.Error(err))
-			return err
+			return fmt.Errorf("failed to encode message: %w", err)
 		}
 		if err = socket.Write(byteMsg); err != nil {
-			e.log.Error("Failed to write message", zap.Error(err))
-			return err
+			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}
 }

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -38,7 +41,7 @@ const (
 	NATS_DELIVERY_POLICY_DEFAULT = "all"
 
 	MINIO_URL                = "MINIO_URL"
-	MINIO_URL_DEFAULT        = "http://localhost:9000"
+	MINIO_URL_DEFAULT        = "localhost:9000"
 	MINIO_ACCESS_KEY         = "MINIO_ACCESS_KEY"
 	MINIO_ACCESS_KEY_DEFAULT = "minioadmin"
 	MINIO_SECRET_KEY         = "MINIO_SECRET"
@@ -89,6 +92,20 @@ func Setup() error {
 				return fmt.Errorf("failed to set default value for %s: %w", v.name, err)
 			}
 		}
+	}
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+	switch os.Getenv(LOG_LEVEL) {
+	case "debug":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warning":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case "error":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		log.Warn().Msgf("unknown log level: %s", os.Getenv(LOG_LEVEL))
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	}
 	return nil
 }

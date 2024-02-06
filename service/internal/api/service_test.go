@@ -13,7 +13,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
 
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
@@ -23,7 +22,6 @@ type ServiceTest struct {
 	suite.Suite
 
 	router    *gin.Engine
-	log       *zap.Logger
 	stream    *stream.PendingOrchestration
 	container *mockContainer.Container
 
@@ -33,7 +31,6 @@ type ServiceTest struct {
 func (test *ServiceTest) SetupTest() {
 	var err error
 
-	test.log = zap.NewNop()
 	test.stream = &stream.PendingOrchestration{}
 	test.container = new(mockContainer.Container)
 
@@ -54,14 +51,12 @@ func (test *ServiceTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(LoggingDependency, test.log)
 			ctx.Set(OrchestrationDependency, test.stream)
 			ctx.Set(ContainerDependency, test.container)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()
 			err = tx.Commit(context.Background())
 			if err != nil {
-				test.log.Error("Failed to commit transaction", zap.Error(err))
 				ctx.AbortWithStatusJSON(500, http.APIError{Message: err.Error()})
 				return
 			}

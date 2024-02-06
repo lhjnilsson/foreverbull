@@ -26,8 +26,6 @@ import (
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
 	reqSocket "go.nanomsg.org/mangos/v3/protocol/req"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -66,9 +64,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	test.app = fx.New(
 		fx.Provide(
-			func() *zap.Logger {
-				return zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-			},
 			func() (nats.JetStreamContext, error) {
 				return stream.NewJetstream()
 			},

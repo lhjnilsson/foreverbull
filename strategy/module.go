@@ -12,7 +12,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 const Stream = "strategy"
@@ -25,9 +24,9 @@ type StrategyAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool) (StrategyStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (StrategyStream, error) {
 			dc := stream.NewDependencyContainer()
-			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -41,11 +40,10 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(strategyAPI *StrategyAPI, pgxpool *pgxpool.Pool, log *zap.Logger, stream StrategyStream) error {
+		func(strategyAPI *StrategyAPI, pgxpool *pgxpool.Pool, stream StrategyStream) error {
 			strategyAPI.Use(
 				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
 				func(ctx *gin.Context) {
-					ctx.Set(api.LoggingDependency, log)
 					ctx.Next()
 				},
 			)
@@ -59,7 +57,7 @@ var Module = fx.Options(
 			strategyAPI.POST("/executions", api.CreateExecution)
 			return nil
 		},
-		func(lc fx.Lifecycle, s StrategyStream, log *zap.Logger, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s StrategyStream, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					return nil

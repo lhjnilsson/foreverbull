@@ -17,8 +17,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type FinanceModuleTest struct {
@@ -48,9 +46,6 @@ func (test *FinanceModuleTest) SetupTest() {
 	test.Require().NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			func() *zap.Logger {
-				return zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-			},
 			func() (nats.JetStreamContext, error) {
 				return stream.NewJetstream()
 			},
@@ -77,7 +72,7 @@ func (test *FinanceModuleTest) TearDownTest() {
 func (test *FinanceModuleTest) TestIngestCommand() {
 	st, err := stream.NewJetstream()
 	test.NoError(err)
-	stream, err := stream.NewNATSStream(st, "finance_test", zaptest.NewLogger(test.T()), stream.NewDependencyContainer(), test.pool)
+	stream, err := stream.NewNATSStream(st, "finance_test", stream.NewDependencyContainer(), test.pool)
 	test.NoError(err)
 
 	command, err := fs.NewIngestCommand([]string{"AAPL", "MSFT"}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC))

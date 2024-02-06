@@ -12,8 +12,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type CommandPayload struct {
@@ -45,7 +43,6 @@ func (test *OrchestrationTest) SetupTest() {
 		Postgres: true,
 		NATS:     true,
 	})
-	log := zaptest.NewLogger(test.T())
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 
@@ -56,7 +53,7 @@ func (test *OrchestrationTest) SetupTest() {
 	test.NoError(err)
 
 	dc := NewDependencyContainer()
-	stream, err := NewNATSStream(test.jt, "orchestration_test", log, dc, test.conn)
+	stream, err := NewNATSStream(test.jt, "orchestration_test", dc, test.conn)
 	test.NoError(err)
 	test.stream = *stream.(*NATSStream)
 
@@ -70,9 +67,6 @@ func (test *OrchestrationTest) SetupTest() {
 		fx.Provide(
 			func() nats.JetStreamContext {
 				return test.jt
-			},
-			func() *zap.Logger {
-				return log
 			},
 			func() *pgxpool.Pool {
 				return test.conn

@@ -3,20 +3,19 @@ package api
 import (
 	"net/http"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
-	"go.uber.org/zap"
 )
 
 func ListExecutions(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	uri := new(strategyURI)
 	err := c.BindUri(uri)
 	if err != nil {
-		log.Info("fail to bind uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -24,7 +23,7 @@ func ListExecutions(c *gin.Context) {
 	repository_e := repository.Execution{Conn: pgx_tx}
 	executions, err := repository_e.List(c, uri.Name)
 	if err != nil {
-		log.Info("fail to list executions", zap.Error(err))
+		log.Err(err).Msg("error listing executions")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
@@ -37,13 +36,10 @@ type CreateExecutionPayload struct {
 }
 
 func CreateExecution(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-	//stream := c.MustGet(internalHTTP.StreamOrchDep).(*stream.PendingOrchestration)
-
 	payload := new(CreateExecutionPayload)
 	err := c.BindJSON(payload)
 	if err != nil {
-		log.Info("fail to bind json", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding request")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -53,13 +49,12 @@ func CreateExecution(c *gin.Context) {
 
 	execution, err := repository_e.Create(c, payload.Strategy)
 	if err != nil {
-		log.Info("fail to create execution", zap.Error(err))
+		log.Err(err).Msg("error creating execution")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 	/*bytes, err := json.Marshal(execution)
 	if err != nil {
-		log.Info("fail to marshal execution", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
 		return
 	}

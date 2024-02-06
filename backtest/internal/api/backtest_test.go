@@ -15,20 +15,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type BacktestTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	log    *zap.Logger
 	stream *stream.PendingOrchestration
 }
 
 func (test *BacktestTest) SetupTest() {
-	test.log = zaptest.NewLogger(test.T())
 	test.stream = &stream.PendingOrchestration{}
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
@@ -49,7 +45,6 @@ func (test *BacktestTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(LoggingDependency, test.log)
 			ctx.Set(OrchestrationDependency, test.stream)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()

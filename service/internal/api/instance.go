@@ -8,7 +8,7 @@ import (
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog/log"
 )
 
 type instanceURI struct {
@@ -16,7 +16,6 @@ type instanceURI struct {
 }
 
 func ListInstances(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_i := repository.Instance{Conn: pgx_tx}
 
@@ -30,7 +29,7 @@ func ListInstances(c *gin.Context) {
 	}
 
 	if err != nil {
-		log.Error("Issue listing instances", zap.Error(err))
+		log.Err(err).Msg("error listing instances")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
@@ -39,11 +38,10 @@ func ListInstances(c *gin.Context) {
 }
 
 func GetInstance(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
 
 	var uri instanceURI
 	if err := c.ShouldBindUri(&uri); err != nil {
-		log.Debug("Issue binding uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
@@ -53,7 +51,7 @@ func GetInstance(c *gin.Context) {
 
 	instance, err := repository_i.Get(c, uri.InstanceID)
 	if err != nil {
-		log.Error("Issue getting instance", zap.Error(err))
+		log.Err(err).Msg("error getting instance")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
@@ -62,10 +60,9 @@ func GetInstance(c *gin.Context) {
 
 // PatchInstance
 func PatchInstance(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
 	var uri instanceURI
 	if err := c.ShouldBindUri(&uri); err != nil {
-		log.Debug("Issue binding uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
@@ -73,7 +70,7 @@ func PatchInstance(c *gin.Context) {
 	change := new(entity.Instance)
 	err := c.ShouldBindJSON(&change)
 	if err != nil && err.Error() != "EOF" {
-		log.Debug("Issue binding json", zap.Error(err), zap.Any("change", change))
+		log.Debug().Err(err).Msg("error binding request")
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
@@ -83,7 +80,7 @@ func PatchInstance(c *gin.Context) {
 
 	_, err = repository_i.Get(c, uri.InstanceID)
 	if err != nil {
-		log.Error("Issue getting instance", zap.Error(err), zap.String("id", uri.InstanceID))
+		log.Err(err).Msg("error getting instance")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
@@ -93,7 +90,7 @@ func PatchInstance(c *gin.Context) {
 	if change.Host != nil && change.Port != nil {
 		err = repository_i.UpdateHostPort(c, uri.InstanceID, *change.Host, *change.Port)
 		if err != nil {
-			log.Error("Issue updating instance on database", zap.Error(err))
+			log.Err(err).Msg("error updating instance")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -102,17 +99,17 @@ func PatchInstance(c *gin.Context) {
 		err = repository_i.UpdateStatus(c, uri.InstanceID, entity.InstanceStatusStopped, nil)
 	}
 	if err != nil {
-		log.Error("Issue updating instance on database", zap.Error(err))
+		log.Err(err).Msg("error updating instance")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 
 	instance, err = repository_i.Get(c, uri.InstanceID)
 	if err != nil {
-		log.Error("Issue getting instance", zap.Error(err))
+		log.Err(err).Msg("error getting instance")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-	log.Info("Instance updated", zap.Any("instance", instance))
+	log.Info().Str("id", uri.InstanceID).Msg("updated instance")
 	c.JSON(http.StatusOK, instance)
 }

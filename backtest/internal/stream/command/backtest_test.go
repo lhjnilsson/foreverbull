@@ -19,15 +19,12 @@ import (
 	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest/engine"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type CommandBacktestTest struct {
 	suite.Suite
 
-	log *zap.Logger
-	db  *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
 func TestCommandBacktest(t *testing.T) {
@@ -38,8 +35,6 @@ func (test *CommandBacktestTest) SetupTest() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
-
-	test.log = zaptest.NewLogger(test.T())
 
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -115,7 +110,6 @@ func (test *CommandBacktestTest) TestBacktestIngestCommand() {
 
 	m := new(mockStream.Message)
 	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", stream.LoggerDep).Return(test.log)
 
 	engine := new(mockEngine.Engine)
 	m.On("Call", mock.Anything, dependency.GetBacktestEngineKey).Return(engine, nil)

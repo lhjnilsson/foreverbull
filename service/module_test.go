@@ -20,8 +20,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type ServiceModuleTest struct {
@@ -53,9 +51,6 @@ func (test *ServiceModuleTest) SetupTest() {
 	test.NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			func() *zap.Logger {
-				return zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-			},
 			func() (nats.JetStreamContext, error) {
 				return stream.NewJetstream()
 			},

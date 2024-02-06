@@ -12,21 +12,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type ExecutionTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	log    *zap.Logger
 }
 
 func (test *ExecutionTest) SetupTest() {
 	var err error
-
-	test.log = zaptest.NewLogger(test.T())
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
@@ -45,7 +40,6 @@ func (test *ExecutionTest) SetupTest() {
 				return
 			}
 
-			ctx.Set("log", test.log)
 			ctx.Set("pgx_tx", tx)
 			ctx.Next()
 			err = tx.Commit(context.Background())

@@ -15,21 +15,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type StrategyTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	log    *zap.Logger
 }
 
 func (test *StrategyTest) SetupTest() {
 	var err error
-	test.log = zaptest.NewLogger(test.T())
-
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
@@ -47,7 +42,6 @@ func (test *StrategyTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(LoggingDependency, test.log)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()
 			err = tx.Commit(context.Background())

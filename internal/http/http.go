@@ -13,12 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 const (
-	LoggingDependency       = "logging"
 	TXDependency            = "sql_tx"
 	ConfigDependency        = "config"
 	OrchestrationDependency = "stream_orchestration"
@@ -102,7 +101,7 @@ func OrchestrationMiddleware(dependencyKey string, s stream.Stream) gin.HandlerF
 	}
 }
 
-func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger) error {
+func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine) error {
 
 	server := http.Server{
 		Addr:    fmt.Sprintf("0.0.0.0:%s", environment.GetHTTPPort()),
@@ -126,7 +125,7 @@ func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine, log *zap.Logger) er
 			OnStart: func(ctx context.Context) error {
 				go func() {
 					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						log.Error("error starting http- server", zap.Error(err))
+						log.Err(err).Msg("error starting server")
 					}
 				}()
 				return nil

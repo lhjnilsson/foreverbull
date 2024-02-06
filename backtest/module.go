@@ -15,7 +15,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 const Stream = "backtest"
@@ -27,15 +26,14 @@ type BacktestAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool) (BacktestStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (BacktestStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingelton(stream.DBDep, conn)
-			dc.AddSingelton(stream.LoggerDep, log)
 			httpClient := dependency.GetHTTPClient()
 			dc.AddSingelton(dependency.GetHTTPClientKey, httpClient)
 			dc.AddMethod(dependency.GetBacktestEngineKey, dependency.GetBacktestEngine)
 			dc.AddMethod(dependency.GetBacktestSessionKey, dependency.GetBacktestSession)
-			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -49,12 +47,11 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(backtestAPI *BacktestAPI, pgxpool *pgxpool.Pool, log *zap.Logger, stream BacktestStream, storage storage.BlobStorage) error {
+		func(backtestAPI *BacktestAPI, pgxpool *pgxpool.Pool, stream BacktestStream, storage storage.BlobStorage) error {
 			backtestAPI.Use(
 				internalHTTP.OrchestrationMiddleware(api.OrchestrationDependency, stream),
 				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
 				func(ctx *gin.Context) {
-					ctx.Set(api.LoggingDependency, log)
 					ctx.Set(api.StorageDependency, storage)
 					ctx.Next()
 				},
@@ -82,7 +79,7 @@ var Module = fx.Options(
 		func(storage storage.BlobStorage) error {
 			return storage.VerifyBuckets(context.TODO())
 		},
-		func(lc fx.Lifecycle, s BacktestStream, log *zap.Logger, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					err := s.CommandSubscriber("backtest", "ingest", command.BacktestIngest)

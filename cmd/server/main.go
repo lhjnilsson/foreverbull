@@ -12,7 +12,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/finance"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
-	"github.com/lhjnilsson/foreverbull/internal/log"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
@@ -27,7 +26,6 @@ var CoreModules = fx.Options(
 			return pgxpool.New(context.TODO(), environment.GetPostgresURL())
 		},
 		storage.NewMinioStorage,
-		log.NewLogger,
 		stream.NewJetstream,
 		http.NewEngine,
 	),

@@ -12,7 +12,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
-	"go.uber.org/zap"
 )
 
 func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
@@ -33,7 +32,6 @@ func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
 }
 
 func BacktestIngest(ctx context.Context, message stream.Message) error {
-	log := message.MustGet(stream.LoggerDep).(*zap.Logger)
 	db := message.MustGet(stream.DBDep).(postgres.Query)
 
 	command := bs.BacktestIngestCommand{}
@@ -69,13 +67,11 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 
 	engineInstance, err := message.Call(ctx, dependency.GetBacktestEngineKey)
 	if err != nil {
-		log.Error("Error getting backtest engine", zap.Error(err))
-		return err
+		return fmt.Errorf("error getting backtest engine: %w", err)
 	}
 	e := engineInstance.(engine.Engine)
 	err = ingest(e)
 	if err != nil {
-		log.Error("Error ingesting", zap.Error(err))
 		return fmt.Errorf("error ingesting: %w", err)
 	}
 	return nil
