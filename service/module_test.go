@@ -20,8 +20,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type ServiceModuleTest struct {
@@ -47,28 +45,20 @@ func (test *ServiceModuleTest) SetupTest() {
 		Postgres: true,
 		NATS:     true,
 	})
-	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-	st, err := stream.NewJetstream(environment.GetNATSURL())
-	test.NoError(err)
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.NoError(err)
-	g := h.NewEngine()
 	test.app = fx.New(
 		fx.Provide(
-			func() *zap.Logger {
-				return log
+			func() (nats.JetStreamContext, error) {
+				return stream.NewJetstream()
 			},
-			func() nats.JetStreamContext {
-				return st
-			},
-
 			func() *pgxpool.Pool {
 				return pool
 			},
 			func() *gin.Engine {
-				return g
+				return h.NewEngine()
 			},
 		),
 		fx.Invoke(

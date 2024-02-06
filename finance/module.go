@@ -16,7 +16,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/finance/supplier"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 const Stream = "finance"
@@ -39,11 +38,11 @@ var Module = fx.Options(
 			}
 			return md, t, nil
 		},
-		func(jt nats.JetStreamContext, log *zap.Logger, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingelton(stream.DBDep, conn)
 			dc.AddSingelton(dependency.MarketDataDep, md)
-			s, err := stream.NewNATSStream(jt, Stream, log, dc, conn)
+			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -57,10 +56,10 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(financeAPI *FinanceAPI, pgxpool *pgxpool.Pool, log *zap.Logger, marketdata supplier.Marketdata) error {
+		func(financeAPI *FinanceAPI, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
 			return nil
 		},
-		func(lc fx.Lifecycle, s FinanceStream, log *zap.Logger, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
+		func(lc fx.Lifecycle, s FinanceStream, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					err := s.CommandSubscriber("marketdata", "ingest", command.Ingest)

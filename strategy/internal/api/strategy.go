@@ -8,7 +8,7 @@ import (
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog/log"
 )
 
 type strategyURI struct {
@@ -16,14 +16,12 @@ type strategyURI struct {
 }
 
 func ListStrategies(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_s := repository.Strategy{Conn: pgx_tx}
 
 	strategies, err := repository_s.List(c)
 	if err != nil {
-		log.Info("fail to list strategies", zap.Error(err))
+		log.Debug().Err(err).Msg("error listing strategies")
 		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -32,12 +30,10 @@ func ListStrategies(c *gin.Context) {
 }
 
 func CreateStrategy(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	strategy := new(entity.Strategy)
 	err := c.BindJSON(strategy)
 	if err != nil {
-		log.Info("fail to bind body", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding request")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -45,22 +41,20 @@ func CreateStrategy(c *gin.Context) {
 	repository_s := repository.Strategy{Conn: pgx_tx}
 	err = repository_s.Create(c, strategy)
 	if err != nil {
-		log.Info("fail to create strategy", zap.Error(err))
+		log.Err(err).Msg("error creating strategy")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 
-	log.Debug("strategy created", zap.Any("strategy", strategy))
+	log.Info().Str("name", *strategy.Name).Msg("strategy created")
 	c.JSON(http.StatusCreated, strategy)
 }
 
 func GetStrategy(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	uri := new(strategyURI)
 	err := c.BindUri(uri)
 	if err != nil {
-		log.Info("fail to bind uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -68,7 +62,7 @@ func GetStrategy(c *gin.Context) {
 	repository_s := repository.Strategy{Conn: pgx_tx}
 	strategy, err := repository_s.Get(c, uri.Name)
 	if err != nil {
-		log.Info("fail to get strategy", zap.Error(err))
+		log.Err(err).Msg("error getting strategy")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
@@ -77,12 +71,10 @@ func GetStrategy(c *gin.Context) {
 }
 
 func PatchStrategy(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	uri := new(strategyURI)
 	err := c.BindUri(uri)
 	if err != nil {
-		log.Info("fail to bind uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -90,7 +82,7 @@ func PatchStrategy(c *gin.Context) {
 	change := new(entity.Strategy)
 	err = c.Bind(change)
 	if err != nil {
-		log.Info("fail to bind body", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding request")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -101,7 +93,7 @@ func PatchStrategy(c *gin.Context) {
 	if change.Backtest != nil {
 		err = repository_s.SetBacktest(c, uri.Name, *change.Backtest)
 		if err != nil {
-			log.Info("fail to update strategy", zap.Error(err))
+			log.Err(err).Msg("error updating strategy")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -109,7 +101,7 @@ func PatchStrategy(c *gin.Context) {
 	if change.Schedule != nil {
 		err = repository_s.SetSchedule(c, uri.Name, *change.Schedule)
 		if err != nil {
-			log.Info("fail to update strategy", zap.Error(err))
+			log.Err(err).Msg("error updating strategy")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -117,21 +109,20 @@ func PatchStrategy(c *gin.Context) {
 
 	strategy, err := repository_s.Get(c, uri.Name)
 	if err != nil {
-		log.Info("fail to get strategy", zap.Error(err))
+		log.Err(err).Msg("error getting strategy")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 
+	log.Info().Str("name", *strategy.Name).Msg("strategy updated")
 	c.JSON(http.StatusOK, strategy)
 }
 
 func DeleteStrategy(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	uri := new(strategyURI)
 	err := c.BindUri(uri)
 	if err != nil {
-		log.Info("fail to bind uri", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -139,10 +130,11 @@ func DeleteStrategy(c *gin.Context) {
 	repository_s := repository.Strategy{Conn: pgx_tx}
 	err = repository_s.Delete(c, uri.Name)
 	if err != nil {
-		log.Info("fail to delete strategy", zap.Error(err))
+		log.Err(err).Msg("error deleting strategy")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 
+	log.Info().Str("name", uri.Name).Msg("strategy deleted")
 	c.Status(http.StatusNoContent)
 }

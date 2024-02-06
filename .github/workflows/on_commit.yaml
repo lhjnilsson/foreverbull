@@ -144,6 +144,7 @@ jobs:
           WORKER_IMAGE: quay.io/foreverbull/client:latest
           BACKTEST_IMAGE: quay.io/foreverbull/zipline:latest
           HOSTNAME: host.docker.internal
+          LOG_LEVEL: info
 
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s

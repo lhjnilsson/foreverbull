@@ -26,8 +26,6 @@ import (
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
 	reqSocket "go.nanomsg.org/mangos/v3/protocol/req"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -59,37 +57,24 @@ func (test *BacktestModuleTest) SetupSuite() {
 		Minio:    true,
 	})
 
-	log := zaptest.NewLogger(test.T(), zaptest.Level(zap.DebugLevel))
-
-	st, err := stream.NewJetstream(environment.GetNATSURL())
-	test.Require().NoError(err)
-
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.Require().NoError(err)
 
-	g := h.NewEngine()
-
-	store, err := storage.NewMinioStorage(environment.GetMinioURL(), environment.GetMinioAccessKey(), environment.GetMinioSecretKey())
-	test.Require().NoError(err)
-
 	test.app = fx.New(
 		fx.Provide(
-			func() *zap.Logger {
-				return log
-			},
-			func() nats.JetStreamContext {
-				return st
+			func() (nats.JetStreamContext, error) {
+				return stream.NewJetstream()
 			},
 			func() *pgxpool.Pool {
 				return pool
 			},
 			func() *gin.Engine {
-				return g
+				return h.NewEngine()
 			},
-			func() storage.BlobStorage {
-				return store
+			func() (storage.BlobStorage, error) {
+				return storage.NewMinioStorage()
 			},
 		),
 		fx.Invoke(

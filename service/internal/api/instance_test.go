@@ -16,15 +16,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type InstanceTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	log    *zap.Logger
 	stream *mockStream.Stream
 
 	conn *pgxpool.Pool
@@ -32,8 +29,6 @@ type InstanceTest struct {
 
 func (test *InstanceTest) SetupTest() {
 	var err error
-
-	test.log = zaptest.NewLogger(test.T())
 	test.stream = new(mockStream.Stream)
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
@@ -53,7 +48,6 @@ func (test *InstanceTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(LoggingDependency, test.log)
 			ctx.Set(OrchestrationDependency, test.stream)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()

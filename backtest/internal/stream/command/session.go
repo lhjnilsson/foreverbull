@@ -12,7 +12,6 @@ import (
 	ss "github.com/lhjnilsson/foreverbull/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"go.uber.org/zap"
 )
 
 func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
@@ -33,20 +32,17 @@ func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
 }
 
 func SessionRun(ctx context.Context, message stream.Message) error {
-	log := message.MustGet(stream.LoggerDep).(*zap.Logger)
 	db := message.MustGet(stream.DBDep).(postgres.Query)
 
 	command := ss.SessionRunCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
-		log.Error("Error unmarshalling SessionRun payload", zap.Error(err))
-		return err
+		return fmt.Errorf("error unmarshalling SessionRun payload: %w", err)
 	}
 
 	sess, err := message.Call(ctx, dependency.GetBacktestSessionKey)
 	if err != nil {
-		log.Error("Error getting backtest session", zap.Error(err))
-		return err
+		return fmt.Errorf("error getting backtest session: %w", err)
 	}
 	s := sess.(backtest.Session)
 
@@ -55,27 +51,21 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 
 	storedSession, err := sessionStorage.Get(ctx, command.SessionID)
 	if err != nil {
-		log.Error("Error getting session", zap.Error(err))
-		return err
+		return fmt.Errorf("error getting session: %w", err)
 	}
 
-	log.Info("Running backtest", zap.String("session", command.SessionID))
 	executions, err := executionStorage.ListBySession(ctx, storedSession.ID)
 	if err != nil {
-		log.Error("Error listing executions", zap.Error(err))
-		return err
+		return fmt.Errorf("error listing executions: %w", err)
 	}
 
 	runSession := func(session backtest.Session, executions *[]entity.Execution) error {
-		log.Debug("Running session", zap.Any("session", storedSession), zap.Any("executions", executions))
 		if err != nil {
-			log.Error("Error ingesting session", zap.Error(err))
 			return err
 		}
 		if command.Manual {
 			err = sessionStorage.UpdatePort(ctx, storedSession.ID, s.GetSocket().Port)
 			if err != nil {
-				log.Error("Error updating socket", zap.Error(err))
 				return err
 			}
 			activity := make(chan bool)
@@ -96,17 +86,14 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 
 			err = session.Run(activity, stop)
 			if err != nil {
-				log.Error("Error running session", zap.Error(err))
 				return err
 			}
 			close(stop)
 			close(activity)
 		} else {
 			for _, execution := range *executions {
-				log.Info("Running execution", zap.Any("execution", execution))
 				err = session.RunExecution(ctx, &execution)
 				if err != nil {
-					log.Error("Error running execution", zap.Error(err))
 					return err
 				}
 			}
@@ -115,8 +102,7 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 	}
 	err = runSession(s, executions)
 	if err != nil {
-		log.Error("Error running session", zap.Error(err))
-		return err
+		return fmt.Errorf("error running session: %w", err)
 	}
 	return nil
 }

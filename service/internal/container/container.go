@@ -14,19 +14,17 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"go.uber.org/zap"
 )
 
-func New(log *zap.Logger) (def.Container, error) {
+func New() (def.Container, error) {
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("error creating docker client: %v", err)
 	}
-	return &serviceContainer{log: log, client: client}, nil
+	return &serviceContainer{client: client}, nil
 }
 
 type serviceContainer struct {
-	log    *zap.Logger
 	client *client.Client
 }
 
@@ -59,15 +57,12 @@ func (sc *serviceContainer) Info(ctx context.Context, containerID string) (types
 
 func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string) (string, error) {
 	if err := sc.hasImage(ctx, image); err != nil && err.Error() == "no such image" {
-		sc.log.Debug("pulling image", zap.String("image", image))
 		if err := sc.Pull(ctx, image); err != nil {
 			return "", fmt.Errorf("error pulling image '%s': %v", image, err)
 		}
 	} else if err != nil {
 		return "", fmt.Errorf("error inspecting image: %v", err)
 	}
-	sc.log.Debug("starting container", zap.String("image", image), zap.String("service", serviceName))
-
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
 	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
 	env = append(env, fmt.Sprintf("SERVICE_NAME=%s", serviceName))

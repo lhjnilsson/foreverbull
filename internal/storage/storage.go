@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -22,9 +23,9 @@ type Object struct {
 	LastModified time.Time `json:"last_modified"`
 }
 
-func NewMinioStorage(uri string, access_key string, secret_key string) (BlobStorage, error) {
-	client, err := minio.New(uri, &minio.Options{
-		Creds:  credentials.NewStaticV4(access_key, secret_key, ""),
+func NewMinioStorage() (BlobStorage, error) {
+	client, err := minio.New(environment.GetMinioURL(), &minio.Options{
+		Creds:  credentials.NewStaticV4(environment.GetMinioAccessKey(), environment.GetMinioSecretKey(), ""),
 		Secure: false,
 	})
 	if err != nil {

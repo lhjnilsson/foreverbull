@@ -12,7 +12,7 @@ import (
 	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog/log"
 )
 
 type sessionUri struct {
@@ -27,8 +27,6 @@ type CreateSessionPayload struct {
 }
 
 func ListSessions(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
-
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	sessions_b := repository.Session{Conn: pgx_tx}
 
@@ -36,7 +34,7 @@ func ListSessions(c *gin.Context) {
 	if q {
 		sessions, err := sessions_b.ListByBacktest(c, backtest)
 		if err != nil {
-			log.Info("fail to list sessions", zap.Error(err))
+			log.Err(err).Msg("error listing sessions")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -44,7 +42,7 @@ func ListSessions(c *gin.Context) {
 	} else {
 		sessions, err := sessions_b.List(c)
 		if err != nil {
-			log.Info("fail to list sessions", zap.Error(err))
+			log.Err(err).Msg("error listing sessions")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -53,12 +51,11 @@ func ListSessions(c *gin.Context) {
 }
 
 func CreateSession(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
 	s := c.MustGet(OrchestrationDependency).(*stream.PendingOrchestration)
 
 	body := api.CreateSessionBody{}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		log.Error("error binding request", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding request")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -77,23 +74,22 @@ func CreateSession(c *gin.Context) {
 
 	backtest, err := repository_b.Get(c, body.Backtest)
 	if err != nil {
-		log.Error("error getting backtest", zap.Error(err))
+		log.Err(err).Msg("error getting backtest")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 	if backtest.Statuses[0].Status != entity.BacktestStatusReady {
-		log.Error("backtest not ready", zap.Error(err))
+		log.Debug().Msg("backtest not ready")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "backtest not ready"})
 		return
 	}
 
 	session, err := sessions_b.Create(c, backtest.Name, body.Manual)
 	if err != nil {
-		log.Error("error creating session", zap.Error(err))
+		log.Err(err).Msg("error creating session")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-	log.Info("Session: ", zap.Any("session", session))
 	for _, e := range body.Executions {
 		var start time.Time
 		if e.Start == nil {
@@ -101,12 +97,12 @@ func CreateSession(c *gin.Context) {
 		} else {
 			start, err = api.ParseTime(*e.Start)
 			if err != nil {
-				log.Error("error parsing start time", zap.Error(err))
+				log.Debug().Err(err).Msg("error parsing start time")
 				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 				return
 			}
 			if start.Before(backtest.Start) {
-				log.Error("start time before backtest start time", zap.Error(err))
+				log.Debug().Err(err).Msg("start time before backtest start time")
 				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "start time before backtest start time"})
 				return
 			}
@@ -117,23 +113,23 @@ func CreateSession(c *gin.Context) {
 		} else {
 			end, err = api.ParseTime(*e.End)
 			if err != nil {
-				log.Error("error parsing end time", zap.Error(err))
+				log.Debug().Err(err).Msg("error parsing end time")
 				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 				return
 			}
 			if end.Before(start) {
-				log.Error("end time before start time", zap.Error(err))
+				log.Debug().Err(err).Msg("end time before start time")
 				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "end time before start time"})
 				return
 			}
 			if end.After(backtest.End) {
-				log.Error("end time after backtest end time", zap.Error(err))
+				log.Debug().Err(err).Msg("end time after backtest end time")
 				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "end time after backtest end time"})
 				return
 			}
 		}
 		if start.After(end) {
-			log.Error("start time after end time", zap.Error(err))
+			log.Debug().Err(err).Msg("start time after end time")
 			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "start time after end time"})
 			return
 		}
@@ -152,7 +148,7 @@ func CreateSession(c *gin.Context) {
 
 		_, err := executions_b.Create(c, session.ID, backtest.Calendar, start, end, symbols, benchmark)
 		if err != nil {
-			log.Error("error creating execution", zap.Error(err))
+			log.Err(err).Msg("error creating execution")
 			c.JSON(internalHTTP.DatabaseError(err))
 			return
 		}
@@ -160,20 +156,20 @@ func CreateSession(c *gin.Context) {
 
 	orchestration, err := bs.NewSessionRunOrchestration(backtest, session)
 	if err != nil {
-		log.Error("error creating orchestration", zap.Error(err))
+		log.Err(err).Msg("error creating session run orchestration")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 	s.Add(orchestration)
+	log.Info().Str("session", session.ID).Msg("created session")
 	c.JSON(http.StatusCreated, session)
 }
 
 func GetSession(c *gin.Context) {
-	log := c.MustGet(LoggingDependency).(*zap.Logger)
 
 	var uri sessionUri
 	if err := c.ShouldBindUri(&uri); err != nil {
-		log.Error("error binding request", zap.Error(err))
+		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
@@ -183,7 +179,7 @@ func GetSession(c *gin.Context) {
 
 	session, err := sessions_b.Get(c, uri.ID)
 	if err != nil {
-		log.Info("fail to get session", zap.Error(err))
+		log.Err(err).Msg("error getting session")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}

@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/nats-io/nats.go"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog/log"
 )
 
-func NewJetstream(uri string) (nats.JetStreamContext, error) {
-	nc, err := nats.Connect(uri)
+func NewJetstream() (nats.JetStreamContext, error) {
+	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,6 @@ type NATSStream struct {
 	module string
 
 	jt   nats.JetStreamContext
-	log  *zap.Logger
 	subs []*nats.Subscription
 
 	deps *dependencyContainer
@@ -39,7 +38,7 @@ type NATSStream struct {
 	repository repository
 }
 
-func NewNATSStream(jt nats.JetStreamContext, module string, log *zap.Logger, dc DependencyContainer, db *pgxpool.Pool) (Stream, error) {
+func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContainer, db *pgxpool.Pool) (Stream, error) {
 	cfg := &nats.ConsumerConfig{
 		Name:       module,
 		Durable:    module,
@@ -54,7 +53,7 @@ func NewNATSStream(jt nats.JetStreamContext, module string, log *zap.Logger, dc 
 	if err != nil {
 		return nil, err
 	}
-	return &NATSStream{module: module, jt: jt, log: log, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
+	return &NATSStream{module: module, jt: jt, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
 }
 
 func (ns *NATSStream) CreateMessage(ctx context.Context, msg Message) (Message, error) {
@@ -70,64 +69,66 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 	jtCb := func(m *nats.Msg) {
 		// For now we just ack the message
 		if err := m.Ack(); err != nil {
-
-			ns.log.Error("error acknowledging message", zap.Error(err))
+			log.Err(err).Msg("error acknowledging message")
 		}
 		go func(m *nats.Msg) {
 			defer func() {
 				if r := recover(); r != nil {
-					ns.log.Error("recovered from panic", zap.Any("error", r))
+					log.Err(fmt.Errorf("panic: %v", r)).Msg("panic in command subscriber")
 				}
 			}()
 			msg := &message{}
 			err := json.Unmarshal(m.Data, &msg)
 			if err != nil {
-				ns.log.Error("error unmarshalling message", zap.Error(err))
+				log.Err(err).Msg("error unmarshalling message")
 			}
 			ctx := context.Background()
 			msg, err = ns.repository.GetMessage(ctx, *msg.ID)
 			if err != nil {
-				ns.log.Error("error getting message", zap.Error(err))
+				log.Err(err).Msg("error getting message")
 				return
 			}
 			if msg.StatusHistory == nil || len(msg.StatusHistory) == 0 {
-				ns.log.Info("message has no status history")
+				log.Debug().Msg("message has no status history")
 				return
 			}
 			if msg.StatusHistory[0].Status != MessageStatusPublished {
-				ns.log.Info("message is not published", zap.Any("status", msg.StatusHistory[0].Status))
+				log.Debug().Msg("message has not been published")
 				return
 			}
 
+			log := log.With().Str("id", *msg.ID).Logger()
+			log.Info().Msg("received message")
+
 			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusReceived, nil)
 			if err != nil {
-				ns.log.Error("error updating message status", zap.Error(err))
+				log.Err(err).Msg("error updating message status")
+				return
 			}
 
-			ns.log.Info("received command", zap.Any("module", msg.Module), zap.Any("component", msg.Component), zap.Any("method", msg.Method))
 			msg.dependencyContainer = ns.deps
 			err = cb(ctx, msg)
 			if err != nil {
-				ns.log.Error("error executing command", zap.Any("module", msg.Module), zap.Any("component", msg.Component), zap.Any("method", msg.Method), zap.Error(err))
+				log.Err(err).Msg("error executing command")
 			} else {
-				ns.log.Info("command completed", zap.Any("module", msg.Module), zap.Any("component", msg.Component), zap.Any("method", msg.Method), zap.Any("error", err))
+				log.Info().Msg("command executed")
 			}
 			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusComplete, err)
 			if err != nil {
-				ns.log.Error("error updating message status", zap.Error(err))
+				log.Err(err).Msg("error updating message status")
 				return
 			}
 			payload, err := json.Marshal(msg)
 			if err != nil {
-				ns.log.Error("error marshalling message", zap.Error(err))
+				log.Err(err).Msg("error marshalling message")
 				return
 			}
 			_, err = ns.jt.Publish(fmt.Sprintf("foreverbull.%s.%s.%s.event", ns.module, component, method), payload)
 			if err != nil {
-				ns.log.Error("error publishing event", zap.Error(err))
+				log.Err(err).Msg("error publishing event")
 				return
 			}
-			ns.log.Info("published event", zap.Any("module", ns.module), zap.Any("component", component), zap.Any("method", method))
+			log.Info().Msg("published event")
 		}(m)
 	}
 	opts := []nats.SubOpt{
@@ -183,6 +184,5 @@ func (ns *NATSStream) Publish(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("error publishing message: %w", err)
 	}
-	ns.log.Info("published command", zap.Any("module", m.Module), zap.Any("component", m.Component), zap.Any("method", m.Method), zap.Any("orchestrationID", m.OrchestrationID), zap.Any("orchestrationStep", m.OrchestrationStep))
 	return nil
 }

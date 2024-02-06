@@ -17,8 +17,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 )
 
 type SessionTest struct {
@@ -26,14 +24,12 @@ type SessionTest struct {
 
 	db     *pgxpool.Pool
 	router *gin.Engine
-	log    *zap.Logger
 	stream *stream.PendingOrchestration
 }
 
 func (test *SessionTest) SetupTest() {
 	var err error
 
-	test.log = zaptest.NewLogger(test.T())
 	test.stream = &stream.PendingOrchestration{}
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
@@ -53,7 +49,6 @@ func (test *SessionTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(LoggingDependency, test.log)
 			ctx.Set(OrchestrationDependency, test.stream)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()

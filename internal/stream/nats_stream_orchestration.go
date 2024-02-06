@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 type PendingOrchestration struct {
@@ -96,15 +96,13 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestrationID stri
 	return nil
 }
 
-func NewOrchestrationRunner(log *zap.Logger, stream *NATSStream) (*OrchestrationRunner, error) {
+func NewOrchestrationRunner(stream *NATSStream) (*OrchestrationRunner, error) {
 	return &OrchestrationRunner{
-		log:    log,
 		stream: stream,
 	}, nil
 }
 
 type OrchestrationRunner struct {
-	log    *zap.Logger
 	stream *NATSStream
 
 	sub *nats.Subscription
@@ -114,78 +112,77 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 	msg := &message{}
 	err := json.Unmarshal(natsMsg.Data, &msg)
 	if err != nil {
-		or.log.Error("error unmarshalling message", zap.Error(err))
+		log.Err(err).Msg("error unmarshalling message")
 		return
 	}
 	ctx := context.Background()
 	msg, err = or.stream.repository.GetMessage(ctx, *msg.ID)
 	if err != nil {
-		or.log.Error("error getting message", zap.Error(err))
+		log.Err(err).Msg("error getting message")
 		return
 	}
-	or.log.Debug("got message", zap.Any("message", msg))
+	log := log.With().Str("id", *msg.ID).Logger()
+	log.Info().Msg("received message")
+
 	if msg.OrchestrationID == nil {
-		or.log.Debug("message does not belong to an orchestration", zap.Any("message", msg))
+		log.Debug().Msg("message does not have orchestration id")
 		return
 	}
 
 	complete, err := or.stream.repository.OrchestrationIsComplete(ctx, *msg.OrchestrationID)
 	if err != nil {
-		or.log.Error("error checking if orchestration is complete", zap.Error(err))
+		log.Err(err).Msg("error checking if orchestration is complete")
 		return
 	}
 	if complete {
-		or.log.Debug("orchestration is complete marking fallback as canceled", zap.Any("id", *msg.OrchestrationID))
 		err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
 		if err != nil {
-			or.log.Error("error marking fallback as canceled", zap.Error(err))
+			log.Err(err).Msg("error marking all created as canceled")
 		}
 		return
 	}
 	complete, err = or.stream.repository.OrchestrationStepIsComplete(ctx, *msg.OrchestrationID, *msg.OrchestrationStep)
 	if err != nil {
-		or.log.Error("error checking if orchestration step is complete", zap.Error(err))
+		log.Err(err).Msg("error checking if orchestration step is complete")
 		return
 	}
 	if !complete {
-		or.log.Debug("orchestration step is not complete", zap.Any("id", *msg.OrchestrationID), zap.Any("step", *msg.OrchestrationStep))
+		log.Debug().Msg("orchestration step is not complete")
 		return
 	}
 	var commands *[]message
 
 	failing, err := or.stream.repository.OrchestrationHasError(ctx, *msg.OrchestrationID)
 	if err != nil {
-		or.log.Error("error checking if orchestration has error", zap.Error(err))
+		log.Err(err).Msg("error checking if orchestration has error")
 		return
 	}
 	if failing {
-		or.log.Debug("orchestration has error", zap.Any("id", *msg.OrchestrationID))
 		commands, err = or.stream.repository.GetOrchestrationFallbackCommands(ctx, *msg.OrchestrationID)
 		if err != nil {
-			or.log.Error("error getting fallback orchestration step commands", zap.Error(err))
+			log.Err(err).Msg("error getting orchestration fallback commands")
 			return
 		}
 		defer func() {
 			err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
 			if err != nil {
-				or.log.Error("error marking fallback as canceled", zap.Error(err))
+				log.Err(err).Msg("error marking all created as canceled")
 			}
 		}()
 	} else {
 		commands, err = or.stream.repository.GetLatestUnpublishedOrchestrationStepCommands(ctx, *msg.OrchestrationID)
 		if err != nil {
-			or.log.Error("error getting latest unpublished orchestration step commands", zap.Error(err))
+			log.Err(err).Msg("error getting latest unpublished orchestration step commands")
 			return
 		}
 	}
 	for _, cmd := range *commands {
-		or.log.Debug("publishing command", zap.Any("id", *msg.OrchestrationID), zap.Any("step", *msg.OrchestrationStep), zap.Any("command", cmd))
 		err = or.stream.Publish(ctx, &cmd)
 		if err != nil {
-			or.log.Error("error publishing command", zap.Error(err))
+			log.Err(err).Msg("error publishing command")
+			return
 		}
 	}
-	or.log.Debug("completed orchestration step", zap.Any("id", *msg.OrchestrationID), zap.Any("step", *msg.OrchestrationStep))
 }
 func (or *OrchestrationRunner) Start() error {
 	var err error
@@ -217,7 +214,7 @@ type OrchestrationStream NATSStream
 
 var OrchestrationLifecycle = fx.Options(
 	fx.Provide(
-		func(log *zap.Logger, jt nats.JetStreamContext, db *pgxpool.Pool) (*OrchestrationRunner, error) {
+		func(jt nats.JetStreamContext, db *pgxpool.Pool) (*OrchestrationRunner, error) {
 			cfg := nats.ConsumerConfig{
 				Name:       "orchestration-event",
 				Durable:    "orchestration-event",
@@ -228,8 +225,8 @@ var OrchestrationLifecycle = fx.Options(
 				return nil, fmt.Errorf("error adding consumer for orchestration: %w", err)
 			}
 			dc := NewDependencyContainer().(*dependencyContainer)
-			stream := &NATSStream{module: "orchestration", jt: jt, log: log, repository: NewRepository(db), deps: dc}
-			return NewOrchestrationRunner(log, stream)
+			stream := &NATSStream{module: "orchestration", jt: jt, repository: NewRepository(db), deps: dc}
+			return NewOrchestrationRunner(stream)
 		},
 	),
 	fx.Invoke(

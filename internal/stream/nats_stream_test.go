@@ -12,7 +12,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap/zaptest"
 )
 
 type NatsStreamTest struct {
@@ -27,9 +26,6 @@ func (suite *NatsStreamTest) SetupTest() {
 		Postgres: true,
 		NATS:     true,
 	})
-
-	log := zaptest.NewLogger(suite.T())
-
 	dc := NewDependencyContainer()
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -38,10 +34,10 @@ func (suite *NatsStreamTest) SetupTest() {
 	err = RecreateTables(context.Background(), pool)
 	suite.NoError(err)
 
-	suite.jt, err = NewJetstream(environment.GetNATSURL())
+	suite.jt, err = NewJetstream()
 	suite.NoError(err)
 
-	stream, err := NewNATSStream(suite.jt, "test", log, dc, pool)
+	stream, err := NewNATSStream(suite.jt, "test", dc, pool)
 	suite.NoError(err)
 	suite.stream = *stream.(*NATSStream)
 }
