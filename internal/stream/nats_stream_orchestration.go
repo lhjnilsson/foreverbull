@@ -121,11 +121,11 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		log.Err(err).Msg("error getting message")
 		return
 	}
-	log := log.With().Str("id", *msg.ID).Logger()
-	log.Info().Msg("received message")
+	log := log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
+	log.Info().Msg("received event")
 
 	if msg.OrchestrationID == nil {
-		log.Debug().Msg("message does not have orchestration id")
+		log.Debug().Msg("event does not have orchestration id")
 		return
 	}
 

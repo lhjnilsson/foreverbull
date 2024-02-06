@@ -97,8 +97,8 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				return
 			}
 
-			log := log.With().Str("id", *msg.ID).Logger()
-			log.Info().Msg("received message")
+			log := log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
+			log.Info().Msg("received command")
 
 			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusReceived, nil)
 			if err != nil {
@@ -111,7 +111,7 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 			if err != nil {
 				log.Err(err).Msg("error executing command")
 			} else {
-				log.Info().Msg("command executed")
+				log.Info().Msg("command completed successfully")
 			}
 			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusComplete, err)
 			if err != nil {
@@ -128,7 +128,6 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				log.Err(err).Msg("error publishing event")
 				return
 			}
-			log.Info().Msg("published event")
 		}(m)
 	}
 	opts := []nats.SubOpt{
