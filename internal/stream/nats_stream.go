@@ -82,6 +82,10 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 			if err != nil {
 				log.Err(err).Msg("error unmarshalling message")
 			}
+			if msg.ID == nil {
+				log.Error().Msg("message id is nil")
+				return
+			}
 			ctx := context.Background()
 			msg, err = ns.repository.GetMessage(ctx, *msg.ID)
 			if err != nil {
@@ -97,7 +101,10 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				return
 			}
 
-			log := log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
+			log := log.With().Str("id", *msg.ID).Str("component", component).Str("method", method).Logger()
+			if msg.OrchestrationID != nil {
+				log = log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
+			}
 			log.Info().Msg("received command")
 
 			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusReceived, nil)

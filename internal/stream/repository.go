@@ -108,7 +108,7 @@ func (r *repository) CreateMessage(ctx context.Context, m *message) error {
 func (r *repository) GetMessage(ctx context.Context, id string) (*message, error) {
 	m := message{}
 	rows, err := r.db.Query(ctx,
-		`SELECT message.id, orchestration_id, orchestration_step, orchestration_is_fallback,
+		`SELECT message.id, orchestration_name, orchestration_id, orchestration_step, orchestration_is_fallback,
 		module, component, method, payload, ms.status, ms.error, ms.occurred_at
 		FROM message
 		INNER JOIN (
@@ -121,7 +121,7 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 	defer rows.Close()
 	for rows.Next() {
 		status := messageStatus{}
-		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationIsFallback,
+		err := rows.Scan(&m.ID, &m.OrchestrationName, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationIsFallback,
 			&m.Module, &m.Component, &m.Method, &m.Payload, &status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
