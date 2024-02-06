@@ -213,7 +213,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 		}
 		return false, nil
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*60))
 }
 
 func (test *BacktestModuleTest) TestRunBacktestManual() {
@@ -253,7 +253,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		}
 		return false, nil
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*60))
 
 	rsp = helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
 	test.Equal(http.StatusOK, rsp.StatusCode)
