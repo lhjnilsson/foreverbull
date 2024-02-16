@@ -22,32 +22,32 @@ type NatsStreamTest struct {
 	stream NATSStream
 }
 
-func (suite *NatsStreamTest) SetupTest() {
-	helper.SetupEnvironment(suite.T(), &helper.Containers{
+func (test *NatsStreamTest) SetupTest() {
+	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
 	dc := NewDependencyContainer()
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	suite.NoError(err)
+	test.NoError(err)
 
 	err = RecreateTables(context.Background(), pool)
-	suite.NoError(err)
+	test.NoError(err)
 
-	suite.jt, err = NewJetstream()
-	suite.NoError(err)
+	test.jt, err = NewJetstream()
+	test.NoError(err)
 
-	stream, err := NewNATSStream(suite.jt, "test", dc, pool)
-	suite.NoError(err)
-	suite.stream = *stream.(*NATSStream)
+	stream, err := NewNATSStream(test.jt, "test", dc, pool)
+	test.NoError(err)
+	test.stream = *stream.(*NATSStream)
 
-	suite.stream.CommandSubscriber("return", "nil", ReturnNil)
-	suite.stream.CommandSubscriber("return", "err", ReturnErr)
+	test.Require().NoError(test.stream.CommandSubscriber("return", "nil", ReturnNil))
+	test.Require().NoError(test.stream.CommandSubscriber("return", "err", ReturnErr))
 }
 
-func (suite *NatsStreamTest) TearDownTest() {
-	suite.stream.Unsubscribe()
+func (test *NatsStreamTest) TearDownTest() {
+	test.stream.Unsubscribe()
 }
 
 func TestNatStream(t *testing.T) {
@@ -90,8 +90,8 @@ func (test *NatsStreamTest) TestPubSub() {
 	}
 	for _, tc := range testCases {
 		test.Run(tc.name, func() {
-
-			test.stream.Publish(context.Background(), &tc.message)
+			err := test.stream.Publish(context.Background(), &tc.message)
+			test.NoError(err)
 			time.Sleep(time.Second / 2)
 
 			m, err := test.stream.repository.GetMessage(context.Background(), *tc.message.ID)

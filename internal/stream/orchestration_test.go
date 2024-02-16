@@ -103,7 +103,8 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		test.NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusComplete, nil))
 		payload, err := json.Marshal(msg1)
 		test.Require().NoError(err)
-		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		_, err = test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		test.Require().NoError(err)
 		time.Sleep(time.Second / 2) // wait for message to be processed
 
 		msg, err := repository.GetMessage(context.Background(), msg2.GetID())
@@ -113,7 +114,8 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		test.NoError(repository.UpdateMessageStatus(context.Background(), msg2.GetID(), MessageStatusComplete, nil))
 		payload, err = json.Marshal(msg2)
 		test.Require().NoError(err)
-		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		_, err = test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		test.Require().NoError(err)
 		time.Sleep(time.Second / 2) // wait for message to be processed
 
 		msg, err = repository.GetMessage(context.Background(), fallbackMsg.GetID())
@@ -138,7 +140,8 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		test.NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusError, nil))
 		payload, err := json.Marshal(msg1)
 		test.Require().NoError(err)
-		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		_, err = test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		test.Require().NoError(err)
 		time.Sleep(time.Second / 2) // wait for message to be processed
 
 		msg, err := repository.GetMessage(context.Background(), msg2.GetID())
