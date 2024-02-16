@@ -1,0 +1,152 @@
+package stream
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/nats-io/nats.go"
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/fx"
+)
+
+type OrchestrationTest struct {
+	suite.Suite
+
+	conn *pgxpool.Pool
+
+	jt     nats.JetStreamContext
+	stream NATSStream
+
+	orchestration *fx.App
+}
+
+func (test *OrchestrationTest) SetupTest() {
+	var err error
+
+	helper.SetupEnvironment(test.T(), &helper.Containers{
+		Postgres: true,
+		NATS:     true,
+	})
+	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.NoError(err)
+
+	err = RecreateTables(context.Background(), test.conn)
+	test.NoError(err)
+
+	test.jt, err = NewJetstream()
+	test.NoError(err)
+
+	test.orchestration = fx.New(
+		fx.Provide(
+			func() nats.JetStreamContext {
+				return test.jt
+			},
+			func() *pgxpool.Pool {
+				return test.conn
+			},
+		),
+		OrchestrationLifecycle,
+	)
+	err = test.orchestration.Start(context.Background())
+	test.NoError(err)
+}
+
+func (test *OrchestrationTest) TearDownTest() {
+	err := test.stream.Unsubscribe()
+	test.NoError(err)
+
+	err = test.orchestration.Stop(context.Background())
+	test.NoError(err)
+}
+
+func TestOrchestration(t *testing.T) {
+	suite.Run(t, new(OrchestrationTest))
+}
+
+func (test *OrchestrationTest) TestMessageHandler() {
+	repository := repository{db: test.conn}
+	createOrchestration := func(t *testing.T, orchestration *MessageOrchestration) {
+		t.Helper()
+		for _, step := range orchestration.Steps {
+			for _, cmd := range step.Commands {
+				msg := cmd.(*message)
+				err := repository.CreateMessage(context.Background(), msg)
+				test.Require().NoError(err)
+			}
+		}
+		for _, cmd := range orchestration.FallbackStep.Commands {
+			msg := cmd.(*message)
+			err := repository.CreateMessage(context.Background(), msg)
+			test.Require().NoError(err)
+		}
+	}
+
+	test.Run("test successful", func() {
+		orchestration := NewMessageOrchestration("test orchestration")
+		msg1, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.AddStep("first step", []Message{msg1})
+		msg2, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.AddStep("second step", []Message{msg2})
+		fallbackMsg, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.SettFallback([]Message{fallbackMsg})
+
+		createOrchestration(test.T(), orchestration)
+
+		test.NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusComplete, nil))
+		payload, err := json.Marshal(msg1)
+		test.Require().NoError(err)
+		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		time.Sleep(time.Second / 2) // wait for message to be processed
+
+		msg, err := repository.GetMessage(context.Background(), msg2.GetID())
+		test.NoError(err)
+		test.Equal(MessageStatusPublished, msg.StatusHistory[0].Status)
+
+		test.NoError(repository.UpdateMessageStatus(context.Background(), msg2.GetID(), MessageStatusComplete, nil))
+		payload, err = json.Marshal(msg2)
+		test.Require().NoError(err)
+		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		time.Sleep(time.Second / 2) // wait for message to be processed
+
+		msg, err = repository.GetMessage(context.Background(), fallbackMsg.GetID())
+		test.NoError(err)
+		test.Equal(MessageStatusCanceled, msg.StatusHistory[0].Status)
+	})
+
+	test.Run("expect fallback command", func() {
+		orchestration := NewMessageOrchestration("test orchestration")
+		msg1, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.AddStep("first step", []Message{msg1})
+		msg2, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.AddStep("second step", []Message{msg2})
+		fallbackMsg, err := NewMessage("test_module", "test_comp", "test_method", nil)
+		test.NoError(err)
+		orchestration.SettFallback([]Message{fallbackMsg})
+
+		createOrchestration(test.T(), orchestration)
+
+		test.NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusError, nil))
+		payload, err := json.Marshal(msg1)
+		test.Require().NoError(err)
+		test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
+		time.Sleep(time.Second / 2) // wait for message to be processed
+
+		msg, err := repository.GetMessage(context.Background(), msg2.GetID())
+		test.NoError(err)
+		test.Equal(MessageStatusCanceled, msg.StatusHistory[0].Status)
+
+		msg, err = repository.GetMessage(context.Background(), fallbackMsg.GetID())
+		test.NoError(err)
+		test.Equal(MessageStatusPublished, msg.StatusHistory[0].Status)
+	})
+}

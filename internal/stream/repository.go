@@ -13,6 +13,7 @@ const (
 	MessageStatusPublished MessageStatus = "PUBLISHED"
 	MessageStatusReceived  MessageStatus = "RECEIVED"
 	MessageStatusComplete  MessageStatus = "COMPLETE"
+	MessageStatusError     MessageStatus = "ERROR"
 	MessageStatusCanceled  MessageStatus = "CANCELED"
 )
 
@@ -34,7 +35,8 @@ func RecreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
 		return err
 	}
-	return nil
+	_, err := conn.Exec(ctx, table)
+	return err
 }
 
 const table = `
@@ -45,18 +47,19 @@ CREATE TABLE IF NOT EXISTS message (
 	orchestration_name text,
 	orchestration_id text,
 	orchestration_step text,
-	orchestration_is_fallback boolean,
+	orchestration_step_number integer,
+	orchestration_fallback_step boolean,
 
 	module text NOT NULL,
 	component text NOT NULL,
 	method text NOT NULL,
 	payload JSONB,
-	
+
 	status text NOT NULL DEFAULT 'CREATED',
 	error text,
-	
+
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-	
+
 CREATE TABLE IF NOT EXISTS message_status (
 	id serial PRIMARY KEY,
 	message_id text REFERENCES message(id) ON DELETE CASCADE,
@@ -97,10 +100,10 @@ func NewRepository(db *pgxpool.Pool) repository {
 
 func (r *repository) CreateMessage(ctx context.Context, m *message) error {
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO message (orchestration_name, orchestration_id, orchestration_step, 
-			orchestration_is_fallback, module, component, method, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, m.OrchestrationName,
-		m.OrchestrationID, m.OrchestrationStep, m.OrchestrationIsFallback,
+		`INSERT INTO message (orchestration_name, orchestration_id, orchestration_step, orchestration_step_number,
+			orchestration_fallback_step, module, component, method, payload)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, m.OrchestrationName,
+		m.OrchestrationID, m.OrchestrationStep, m.OrchestrationStepNumber, m.OrchestrationFallbackStep,
 		m.Module, m.Component, m.Method, m.Payload).Scan(&m.ID)
 	return err
 }
@@ -108,7 +111,7 @@ func (r *repository) CreateMessage(ctx context.Context, m *message) error {
 func (r *repository) GetMessage(ctx context.Context, id string) (*message, error) {
 	m := message{}
 	rows, err := r.db.Query(ctx,
-		`SELECT message.id, orchestration_name, orchestration_id, orchestration_step, orchestration_is_fallback,
+		`SELECT message.id, orchestration_name, orchestration_id, orchestration_step, orchestration_step_number, orchestration_fallback_step,
 		module, component, method, payload, ms.status, ms.error, ms.occurred_at
 		FROM message
 		INNER JOIN (
@@ -121,7 +124,7 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 	defer rows.Close()
 	for rows.Next() {
 		status := messageStatus{}
-		err := rows.Scan(&m.ID, &m.OrchestrationName, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationIsFallback,
+		err := rows.Scan(&m.ID, &m.OrchestrationName, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationStepNumber, &m.OrchestrationFallbackStep,
 			&m.Module, &m.Component, &m.Method, &m.Payload, &status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
@@ -150,7 +153,7 @@ func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (boo
 	var canceled int
 	var created int
 	err := r.db.QueryRow(ctx,
-		`SELECT total.num, completed.num, canceled.num, created.num 
+		`SELECT total.num, completed.num, canceled.num, created.num
 		FROM (
 			SELECT COUNT(*) as num FROM message WHERE message.orchestration_id=$1
 		) as total
@@ -177,7 +180,7 @@ func (r *repository) OrchestrationIsComplete(ctx context.Context, id string) (bo
 	var count int
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.status IN ($2, $3, $4)
-		AND message.orchestration_is_fallback=false`,
+		AND message.orchestration_fallback_step=false`,
 		id, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
 	if err != nil {
 		return false, err
@@ -185,10 +188,48 @@ func (r *repository) OrchestrationIsComplete(ctx context.Context, id string) (bo
 	return !(count > 0), nil
 }
 
+func (r *repository) GetNextOrchestrationCommands(ctx context.Context, orchestrationID string, currentStepNumber int) (*[]message, error) {
+	var stepComplete bool
+	err := r.db.QueryRow(ctx,
+		`SELECT count(*) = count(*) filter (where status IN ($1, $2)) FROM message WHERE orchestration_id=$3 AND orchestration_step_number=$4`,
+		MessageStatusComplete, MessageStatusError, orchestrationID, currentStepNumber).Scan(&stepComplete)
+	if err != nil {
+		return nil, err
+	}
+	if !stepComplete {
+		return nil, nil
+	}
+
+	rows, err := r.db.Query(ctx, `
+WITH orchestration AS (
+	SELECT id, orchestration_id, orchestration_step, orchestration_step_number, orchestration_fallback_step, status, module, component, method, payload FROM message WHERE message.orchestration_id=$1
+) SELECT id, orchestration_id, orchestration_step, orchestration_fallback_step, module, component, method, payload FROM orchestration WHERE
+CASE
+    WHEN (SELECT EXISTS(SELECT 1 FROM orchestration WHERE status = $2)) THEN
+        orchestration_fallback_step=true
+    ELSE
+        orchestration_fallback_step=false and orchestration.orchestration_step_number=$3
+END`, orchestrationID, MessageStatusError, currentStepNumber+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []message
+	for rows.Next() {
+		m := message{}
+		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationFallbackStep, &m.Module, &m.Component, &m.Method, &m.Payload)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return &msgs, nil
+}
+
 func (r *repository) OrchestrationStepIsComplete(ctx context.Context, orchestrationID, step string) (bool, error) {
 	var count int
 	err := r.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.orchestration_step=$2 
+		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.orchestration_step=$2
 		AND message.status IN ($3, $4, $5)`,
 		orchestrationID, step, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
 	if err != nil {
@@ -208,61 +249,9 @@ func (r *repository) OrchestrationHasError(ctx context.Context, id string) (bool
 	return count > 0, nil
 }
 
-func (r *repository) GetOrchestrationFallbackCommands(ctx context.Context, orchestrationID string) (*[]message, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT message.id, message.orchestration_id, message.orchestration_step, module, component, method, payload
-		FROM message
-		INNER JOIN (
-			SELECT message.orchestration_id, orchestration_step from message 
-			WHERE message.orchestration_id=$1 AND message.status=$2 AND message.orchestration_is_fallback=true
-			ORDER BY created_at ASC LIMIT 1
-		) AS ms ON message.orchestration_step=ms.orchestration_step AND message.orchestration_id=ms.orchestration_id`, orchestrationID, MessageStatusCreated)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var msgs []message
-	for rows.Next() {
-		m := message{}
-		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.Module, &m.Component, &m.Method, &m.Payload)
-		if err != nil {
-			return nil, err
-		}
-		msgs = append(msgs, m)
-	}
-	return &msgs, nil
-}
-
 func (r *repository) MarkAllCreatedAsCanceled(ctx context.Context, orchestrationID string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE message SET status=$1 WHERE message.orchestration_id=$2 AND message.status IN ($3)`,
 		MessageStatusCanceled, orchestrationID, MessageStatusCreated)
 	return err
-}
-
-func (r *repository) GetLatestUnpublishedOrchestrationStepCommands(ctx context.Context, id string) (*[]message, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT message.id, message.orchestration_id, message.orchestration_step, module, component, method, payload
-		FROM message
-		INNER JOIN (
-			SELECT message.orchestration_id, orchestration_step from message 
-			WHERE message.orchestration_id=$1 AND message.status=$2 AND message.orchestration_is_fallback=false
-			ORDER BY created_at ASC LIMIT 1
-		) AS ms ON message.orchestration_step=ms.orchestration_step AND message.orchestration_id=ms.orchestration_id`, id, MessageStatusCreated)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var msgs []message
-	for rows.Next() {
-		m := message{}
-		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.Module, &m.Component, &m.Method, &m.Payload)
-		if err != nil {
-			return nil, err
-		}
-		msgs = append(msgs, m)
-	}
-	return &msgs, nil
 }

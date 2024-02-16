@@ -10,35 +10,11 @@ import (
 )
 
 type Message interface {
+	GetID() string
 	RawPayload() []byte
 	ParsePayload(interface{}) error
 	Call(ctx context.Context, key Dependency) (interface{}, error)
 	MustGet(key Dependency) interface{}
-}
-
-type DependencyContainer interface {
-	AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error))
-	AddSingelton(key Dependency, v interface{})
-}
-
-type dependencyContainer struct {
-	methods    map[Dependency]func(context.Context, Message) (interface{}, error)
-	singeltons map[Dependency]interface{}
-}
-
-func (d *dependencyContainer) AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error)) {
-	d.methods[key] = f
-}
-
-func (d *dependencyContainer) AddSingelton(key Dependency, v interface{}) {
-	d.singeltons[key] = v
-}
-
-func NewDependencyContainer() DependencyContainer {
-	return &dependencyContainer{
-		methods:    make(map[Dependency]func(context.Context, Message) (interface{}, error)),
-		singeltons: make(map[Dependency]interface{}),
-	}
 }
 
 func NewMessage(module, component, method string, entity any) (Message, error) {
@@ -61,11 +37,12 @@ type messageStatus struct {
 }
 
 type message struct {
-	ID                      *string
-	OrchestrationName       *string
-	OrchestrationID         *string
-	OrchestrationStep       *string
-	OrchestrationIsFallback bool
+	ID                        *string
+	OrchestrationName         *string
+	OrchestrationID           *string
+	OrchestrationStep         *string
+	OrchestrationStepNumber   *int
+	OrchestrationFallbackStep *bool
 
 	Module              string
 	Component           string
@@ -74,6 +51,13 @@ type message struct {
 	Payload             []byte
 	StatusHistory       []messageStatus
 	dependencyContainer *dependencyContainer
+}
+
+func (m *message) GetID() string {
+	if m.ID == nil {
+		return ""
+	}
+	return *m.ID
 }
 
 func (m *message) RawPayload() []byte {
@@ -100,6 +84,31 @@ func (m *message) MustGet(key Dependency) interface{} {
 	return v
 }
 
+type DependencyContainer interface {
+	AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error))
+	AddSingleton(key Dependency, v interface{})
+}
+
+type dependencyContainer struct {
+	methods    map[Dependency]func(context.Context, Message) (interface{}, error)
+	singeltons map[Dependency]interface{}
+}
+
+func (d *dependencyContainer) AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error)) {
+	d.methods[key] = f
+}
+
+func (d *dependencyContainer) AddSingleton(key Dependency, v interface{}) {
+	d.singeltons[key] = v
+}
+
+func NewDependencyContainer() DependencyContainer {
+	return &dependencyContainer{
+		methods:    make(map[Dependency]func(context.Context, Message) (interface{}, error)),
+		singeltons: make(map[Dependency]interface{}),
+	}
+}
+
 func NewMessageOrchestration(name string) *MessageOrchestration {
 	return &MessageOrchestration{
 		Name:            name,
@@ -122,12 +131,15 @@ func (mo *MessageOrchestration) AddStep(name string, commands []Message) {
 		Name:              name,
 		Commands:          commands,
 	}
+	fallbackStep := false
+	stepNumber := len(mo.Steps)
 	for _, cmd := range step.Commands {
 		msg := cmd.(*message)
 		msg.OrchestrationID = &step.OrchestrationID
 		msg.OrchestrationName = &step.OrchestrationName
 		msg.OrchestrationStep = &step.OrchestrationStep
-		msg.OrchestrationIsFallback = false
+		msg.OrchestrationStepNumber = &stepNumber
+		msg.OrchestrationFallbackStep = &fallbackStep
 	}
 	mo.Steps = append(mo.Steps, step)
 }
@@ -140,12 +152,13 @@ func (mo *MessageOrchestration) SettFallback(commands []Message) {
 		Name:              "fallback",
 		Commands:          commands,
 	}
+	fallbackStep := true
 	for _, cmd := range step.Commands {
 		msg := cmd.(*message)
 		msg.OrchestrationID = &step.OrchestrationID
 		msg.OrchestrationName = &step.OrchestrationName
 		msg.OrchestrationStep = &step.OrchestrationStep
-		msg.OrchestrationIsFallback = true
+		msg.OrchestrationFallbackStep = &fallbackStep
 	}
 	mo.FallbackStep = &step
 }
