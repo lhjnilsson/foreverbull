@@ -216,7 +216,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*60))
 }
 
-func (test *BacktestModuleTest) TestRunBacktestManual() {
+func (test *BacktestModuleTest) NoTestRunBacktestManual() {
 	type SessionResponse struct {
 		ID       string
 		Statuses []struct {

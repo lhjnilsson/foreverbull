@@ -28,7 +28,7 @@ func ListServices(c *gin.Context) {
 }
 
 func CreateService(c *gin.Context) {
-	stream := c.MustGet(OrchestrationDependency).(*stream.PendingOrchestration)
+	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	s := new(api.CreateServiceRequest)
 	err := c.BindJSON(s)

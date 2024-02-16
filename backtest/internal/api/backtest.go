@@ -32,7 +32,7 @@ func ListBacktests(c *gin.Context) {
 }
 
 func CreateBacktest(c *gin.Context) {
-	stream := c.MustGet(OrchestrationDependency).(*stream.PendingOrchestration)
+	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	var body api.CreateBacktestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -95,7 +95,7 @@ func GetBacktest(c *gin.Context) {
 
 func UpdateBacktest(c *gin.Context) {
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
-	stream := c.MustGet(OrchestrationDependency).(*stream.PendingOrchestration)
+	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	var uri backtestUri
 	if err := c.ShouldBindUri(&uri); err != nil {

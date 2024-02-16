@@ -85,15 +85,11 @@ func TransactionMiddleware(dependencyKey string, sql *pgxpool.Pool) gin.HandlerF
 
 func OrchestrationMiddleware(dependencyKey string, s stream.Stream) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		pendingOrch := stream.PendingOrchestration{}
+		pendingOrch := stream.OrchestrationOutput{}
 		ctx.Set(dependencyKey, &pendingOrch)
 		ctx.Next()
 		for _, orch := range pendingOrch.Get() {
-			err := s.CreateOrchestration(ctx, orch)
-			if err != nil {
-				panic(err)
-			}
-			err = s.RunOrchestration(ctx, orch.OrchestrationID)
+			err := s.RunOrchestration(ctx, orch)
 			if err != nil {
 				panic(err)
 			}

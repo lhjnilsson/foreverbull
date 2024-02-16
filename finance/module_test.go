@@ -77,8 +77,6 @@ func (test *FinanceModuleTest) TestIngestCommand() {
 
 	command, err := fs.NewIngestCommand([]string{"AAPL", "MSFT"}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC))
 	test.NoError(err)
-	command, err = stream.CreateMessage(context.Background(), command)
-	test.NoError(err)
 	test.NoError(stream.Publish(context.Background(), command))
 
 	ohlcExists := func() (bool, error) {

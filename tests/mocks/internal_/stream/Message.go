@@ -37,6 +37,20 @@ func (_m *Message) Call(ctx context.Context, key stream.Dependency) (interface{}
 	return r0, r1
 }
 
+// GetID provides a mock function with given fields:
+func (_m *Message) GetID() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
 // MustGet provides a mock function with given fields: key
 func (_m *Message) MustGet(key stream.Dependency) interface{} {
 	ret := _m.Called(key)

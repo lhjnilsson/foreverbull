@@ -22,7 +22,7 @@ type ServiceTest struct {
 	suite.Suite
 
 	router    *gin.Engine
-	stream    *stream.PendingOrchestration
+	stream    *stream.OrchestrationOutput
 	container *mockContainer.Container
 
 	conn *pgxpool.Pool
@@ -31,7 +31,7 @@ type ServiceTest struct {
 func (test *ServiceTest) SetupTest() {
 	var err error
 
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 	test.container = new(mockContainer.Container)
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
@@ -65,7 +65,7 @@ func (test *ServiceTest) SetupTest() {
 }
 
 func (test *ServiceTest) SetupSubTest() {
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 }
 
 func TestService(t *testing.T) {

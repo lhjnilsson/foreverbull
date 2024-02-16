@@ -19,8 +19,8 @@ func (_m *DependencyContainer) AddMethod(key stream.Dependency, f func(context.C
 	_m.Called(key, f)
 }
 
-// AddSingelton provides a mock function with given fields: key, v
-func (_m *DependencyContainer) AddSingelton(key stream.Dependency, v interface{}) {
+// AddSingleton provides a mock function with given fields: key, v
+func (_m *DependencyContainer) AddSingleton(key stream.Dependency, v interface{}) {
 	_m.Called(key, v)
 }
 

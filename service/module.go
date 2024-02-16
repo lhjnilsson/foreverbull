@@ -34,8 +34,8 @@ var Module = fx.Options(
 		},
 		func(jt nats.JetStreamContext, conn *pgxpool.Pool, container container.Container) (ServiceStream, error) {
 			dc := stream.NewDependencyContainer()
-			dc.AddSingelton(stream.DBDep, conn)
-			dc.AddSingelton(dependency.ContainerDep, container)
+			dc.AddSingleton(stream.DBDep, conn)
+			dc.AddSingleton(dependency.ContainerDep, container)
 			return stream.NewNATSStream(jt, Stream, dc, conn)
 		},
 	),
