@@ -47,7 +47,7 @@ func (test *NatsStreamTest) SetupTest() {
 }
 
 func (test *NatsStreamTest) TearDownTest() {
-	test.stream.Unsubscribe()
+	test.NoError(test.stream.Unsubscribe())
 }
 
 func TestNatStream(t *testing.T) {
