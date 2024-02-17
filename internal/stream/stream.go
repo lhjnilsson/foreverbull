@@ -221,6 +221,9 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 			if msg.OrchestrationStep == nil {
 				return fmt.Errorf("orchestration step is nil")
 			}
+			if msg.OrchestrationStepNumber == nil {
+				return fmt.Errorf("orchestration step number is nil")
+			}
 			if !ok {
 				return fmt.Errorf("command is not a message")
 			}

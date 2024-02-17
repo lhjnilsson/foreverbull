@@ -107,7 +107,7 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 	if err != nil {
 		return fmt.Errorf("failed to update execution parameters: %w", err)
 	}
-	err = e.executions.UpdateSimulationDetails(ctx, execution.ID, *backtestCfg.Calendar, *backtestCfg.Start, *backtestCfg.End, "FIXME", *backtestCfg.Symbols)
+	err = e.executions.UpdateSimulationDetails(ctx, execution.ID, *backtestCfg.Calendar, *backtestCfg.Start, *backtestCfg.End, backtestCfg.Benchmark, *backtestCfg.Symbols)
 	if err != nil {
 		return fmt.Errorf("failed to update execution simulation details: %w", err)
 	}

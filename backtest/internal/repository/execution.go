@@ -99,7 +99,7 @@ func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, err
 }
 
 func (db *Execution) UpdateSimulationDetails(ctx context.Context, id string, calendar string, Start time.Time,
-	End time.Time, benchmark string, symbols []string) error {
+	End time.Time, benchmark *string, symbols []string) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE execution SET calendar=$1, start_at=$2, end_at=$3, benchmark=$4, 
 		symbols=$5 WHERE id=$6`, calendar, Start, End, benchmark, symbols, id)

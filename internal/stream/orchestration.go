@@ -80,7 +80,15 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		return
 	}
 	commands, err := or.stream.repository.GetNextOrchestrationCommands(ctx, *msg.OrchestrationID, *msg.OrchestrationStepNumber)
-	if len(*commands) > 0 && *(*commands)[0].OrchestrationFallbackStep {
+	if err != nil {
+		log.Err(err).Msg("error getting next orchestration commands")
+		return
+	}
+	if commands == nil {
+		log.Debug().Msg("no commands to run")
+		return
+	}
+	if len(*commands) > 0 && (*commands)[0].OrchestrationFallbackStep != nil && *(*commands)[0].OrchestrationFallbackStep {
 		log.Debug().Msg("orchestration is failing")
 		defer func() {
 			err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
@@ -90,6 +98,7 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		}()
 	}
 	for _, cmd := range *commands {
+		log.Info().Str("CmdID", *cmd.ID).Str("CmdComponent", cmd.Component).Str("CmdMethod", cmd.Method).Msg("publishing command")
 		err = or.stream.Publish(ctx, &cmd)
 		if err != nil {
 			log.Err(err).Msg("error publishing command")

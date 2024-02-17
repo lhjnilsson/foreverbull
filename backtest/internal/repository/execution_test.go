@@ -114,7 +114,7 @@ func (s *ExecutionTest) TestUpdateSimulationDetails() {
 	newEnd := time.Now().Round(0)
 	benchmark := "OMXS30"
 	symbols := []string{"AAPL", "MSFT", "TSLA"}
-	err = db.UpdateSimulationDetails(ctx, e.ID, calendar, newStart, newEnd, benchmark, symbols)
+	err = db.UpdateSimulationDetails(ctx, e.ID, calendar, newStart, newEnd, &benchmark, symbols)
 	s.NoError(err)
 	e, err = db.Get(ctx, e.ID)
 	s.NoError(err)

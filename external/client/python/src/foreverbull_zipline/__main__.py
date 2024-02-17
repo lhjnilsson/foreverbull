@@ -1,4 +1,5 @@
 import logging
+import os
 import signal
 import socket
 
@@ -6,6 +7,8 @@ from foreverbull import broker
 
 from .execution import Execution
 
+log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
+logging.basicConfig(level=log_level)
 log = logging.getLogger()
 
 if __name__ == "__main__":
