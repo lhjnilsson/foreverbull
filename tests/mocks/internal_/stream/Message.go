@@ -51,6 +51,34 @@ func (_m *Message) GetID() string {
 	return r0
 }
 
+// GetOrchestrationID provides a mock function with given fields:
+func (_m *Message) GetOrchestrationID() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// GetOrchestrationStep provides a mock function with given fields:
+func (_m *Message) GetOrchestrationStep() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
 // MustGet provides a mock function with given fields: key
 func (_m *Message) MustGet(key stream.Dependency) interface{} {
 	ret := _m.Called(key)

@@ -55,7 +55,7 @@ func (sc *serviceContainer) Info(ctx context.Context, containerID string) (types
 	return i, err
 }
 
-func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string) (string, error) {
+func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string, extraLabels map[string]string) (string, error) {
 	if err := sc.hasImage(ctx, image); err != nil && err.Error() == "no such image" {
 		if err := sc.Pull(ctx, image); err != nil {
 			return "", fmt.Errorf("error pulling image '%s': %v", image, err)
@@ -72,8 +72,12 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	env = append(env, fmt.Sprintf("DATABASE_URL=%s", environment.GetPostgresURL()))
 	env = append(env, fmt.Sprintf("LOGLEVEL=%s", environment.GetLogLevel()))
 
-	conf := container.Config{Image: image, Env: env, Tty: false, Hostname: name,
-		Labels: map[string]string{"platform": "foreverbull", "type": "service", "service": serviceName}}
+	labels := map[string]string{"platform": "foreverbull", "type": "service", "service": serviceName}
+	for k, v := range extraLabels {
+		labels[k] = v
+	}
+
+	conf := container.Config{Image: image, Env: env, Tty: false, Hostname: name, Labels: labels}
 	hostConf := container.HostConfig{
 		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}

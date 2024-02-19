@@ -79,6 +79,13 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		}
 		return
 	}
+
+	if msg.OrchestrationStepNumber == nil {
+		// Could be a fallback step
+		log.Debug().Msg("event does not have orchestration step number")
+		return
+	}
+
 	commands, err := or.stream.repository.GetNextOrchestrationCommands(ctx, *msg.OrchestrationID, *msg.OrchestrationStepNumber)
 	if err != nil {
 		log.Err(err).Msg("error getting next orchestration commands")

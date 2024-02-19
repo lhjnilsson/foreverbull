@@ -11,6 +11,8 @@ import (
 
 type Message interface {
 	GetID() string
+	GetOrchestrationID() string
+	GetOrchestrationStep() string
 	RawPayload() []byte
 	ParsePayload(interface{}) error
 	Call(ctx context.Context, key Dependency) (interface{}, error)
@@ -58,6 +60,20 @@ func (m *message) GetID() string {
 		return ""
 	}
 	return *m.ID
+}
+
+func (m *message) GetOrchestrationID() string {
+	if m.OrchestrationID == nil {
+		return ""
+	}
+	return *m.OrchestrationID
+}
+
+func (m *message) GetOrchestrationStep() string {
+	if m.OrchestrationStep == nil {
+		return ""
+	}
+	return *m.OrchestrationStep
 }
 
 func (m *message) RawPayload() []byte {
