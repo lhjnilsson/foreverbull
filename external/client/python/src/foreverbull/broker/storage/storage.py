@@ -17,7 +17,7 @@ class Storage:
     def from_environment(cls, env=os.environ):
         address = env.get("STORAGE_ENDPOINT", "localhost:9000")
         try:
-            requests.get(f"http://{address}")
+            requests.get(f"http://{address}", timeout=0.3)
         except requests.exceptions.ConnectionError:
             address = "minio:9000"
 
