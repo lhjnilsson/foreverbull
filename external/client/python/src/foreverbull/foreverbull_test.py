@@ -90,10 +90,12 @@ def test_foreverbull(
     server.run_execution_error = None
     session.port = socket_config.port
 
-    with Foreverbull(session, file_path=empty_algo_file) as foreverbull:
+    with (
+        Foreverbull(session, file_path=empty_algo_file) as foreverbull,
+        pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}"),
+    ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.info
         assert foreverbull.info.type == "worker"
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
-        print("OK")
