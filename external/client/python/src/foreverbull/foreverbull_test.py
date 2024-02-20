@@ -96,3 +96,4 @@ def test_foreverbull(
         assert foreverbull.info.type == "worker"
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
+        print("OK")

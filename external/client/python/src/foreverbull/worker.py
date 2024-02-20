@@ -77,9 +77,11 @@ class Worker:
 
     def configure_execution(self, execution: entity.backtest.Execution):
         self.logger.info("configuring worker")
-        self.socket = pynng.Rep0(dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{execution.port}")
+        self.socket = pynng.Rep0(
+            dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{execution.port}", block_on_dial=True
+        )
         self.socket.recv_timeout = 5000
-        self.socket.sendout = 5000
+        self.socket.send_timeout = 5000
         self._algo = self._setup_algorithm(execution.parameters or [])
         engine = get_engine(execution.database)
         with engine.connect() as connection:
@@ -91,9 +93,9 @@ class Worker:
         log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
         logging.basicConfig(level=log_level)
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)
-        responder = pynng.Respondent0(dial=self._survey_address)
-        responder.sendout = 5000
+        self.logger.setLevel(log_level)
+        responder = pynng.Respondent0(dial=self._survey_address, block_on_dial=True)
+        responder.send_timeout = 5000
         responder.recv_timeout = 300
         state = pynng.Pub0(dial=self._state_address)
         state.send(b"ready")

@@ -80,7 +80,9 @@ class ManualSession(BaseSession):
         self.logger = logging.getLogger(__name__)
 
     def configure_execution(self, execution: entity.backtest.Execution):
-        socket = pynng.Req0(dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}")
+        socket = pynng.Req0(
+            dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}", block_on_dial=True
+        )
         socket.send_timeout = 1000
         socket.recv_timeout = 1000
         socket.send(entity.service.Request(task="new_execution", data=execution).dump())
@@ -92,7 +94,9 @@ class ManualSession(BaseSession):
 
     def run_execution(self):
         super().run_execution()
-        socket = pynng.Req0(dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}")
+        socket = pynng.Req0(
+            dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}", block_on_dial=True
+        )
         socket.send(entity.service.Request(task="run_execution").dump())
         rsp = entity.service.Response.load(socket.recv())
         if rsp.error:
