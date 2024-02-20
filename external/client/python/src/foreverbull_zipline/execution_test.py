@@ -21,7 +21,7 @@ def execution_socket():
     execution = Execution()
     execution.start()
 
-    socket = pynng.Req0(dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}")
+    socket = pynng.Req0(dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True)
     socket.recv_timeout = 10000
     socket.sendout = 10000
     yield socket

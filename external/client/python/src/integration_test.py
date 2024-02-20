@@ -83,7 +83,7 @@ def skip_test_simple_execution(spawn_process, clear_zipline_data, populate_datab
     client.set_algo(algo)
     client.setup()
     client.start()
-    client_socket = Req0(dial="tcp://127.0.0.1:6565")
+    client_socket = Req0(dial="tcp://127.0.0.1:6565", block_on_dial=True)
     client_socket.sendout = 10000
     client_socket.recv_timeout = 10000
 
@@ -94,7 +94,7 @@ def skip_test_simple_execution(spawn_process, clear_zipline_data, populate_datab
 
     backtest = Execution("127.0.0.1", 5656)
     backtest.start()
-    backtest_socket = Req0(dial="tcp://127.0.0.1:5656")
+    backtest_socket = Req0(dial="tcp://127.0.0.1:5656", block_on_dial=True)
     backtest_socket.sendout = 10000
     backtest_socket.recv_timeout = 10000
     backtest_socket.send(Request(task="info").dump())
@@ -102,7 +102,9 @@ def skip_test_simple_execution(spawn_process, clear_zipline_data, populate_datab
     assert response.error is None
 
     backtest_info = response.data
-    backtest_main_socket = Req0(dial=f"tcp://{backtest_info['socket']['host']}:{backtest_info['socket']['port']}")
+    backtest_main_socket = Req0(
+        dial=f"tcp://{backtest_info['socket']['host']}:{backtest_info['socket']['port']}", block_on_dial=True
+    )
     backtest_main_socket.sendout = 10000
     backtest_main_socket.recv_timeout = 10000
 

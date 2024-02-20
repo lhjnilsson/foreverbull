@@ -97,7 +97,7 @@ class Worker:
         responder = pynng.Respondent0(dial=self._survey_address, block_on_dial=True)
         responder.send_timeout = 5000
         responder.recv_timeout = 300
-        state = pynng.Pub0(dial=self._state_address)
+        state = pynng.Pub0(dial=self._state_address, block_on_dial=True)
         state.send(b"ready")
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
