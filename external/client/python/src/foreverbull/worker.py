@@ -9,7 +9,6 @@ from typing import List
 import pynng
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
 
 from foreverbull import data, entity, import_file
 from foreverbull.data import get_engine

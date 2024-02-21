@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import yfinance
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine, engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base
 from testcontainers.postgres import PostgresContainer
 from zipline.data import bundles
 
