@@ -74,15 +74,13 @@ def manual_server():
 )
 def test_foreverbull(
     spawn_process,
-    populate_database,
-    ingest_config,
     empty_algo_file,
     execution,
     manual_server,
+    process_symbols,
     session,
     expected_session_type,
 ):
-    populate_database(ingest_config)
     server, socket_config = manual_server
     server.new_execution_data = execution
     server.new_execution_error = None
@@ -92,10 +90,12 @@ def test_foreverbull(
 
     with (
         Foreverbull(session, file_path=empty_algo_file) as foreverbull,
-        pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}"),
+        pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}") as socket,
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.info
         assert foreverbull.info.type == "worker"
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
+
+        process_symbols(socket, "exc_123")

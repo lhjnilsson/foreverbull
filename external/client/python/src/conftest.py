@@ -23,7 +23,7 @@ def spawn_process():
         set_start_method("spawn", force=True)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def execution(postgres_database):
     return entity.backtest.Execution(
         id="test",
@@ -38,7 +38,7 @@ def execution(postgres_database):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def empty_algo_file():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -56,7 +56,7 @@ def empty_algo(asset: Asset, portfolio: Portfolio):
         yield f.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def algo_with_parameters():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -74,7 +74,7 @@ def algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high
         yield f.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def ingest_config():
     return IngestConfig(
         calendar="NYSE",
@@ -131,7 +131,7 @@ class Portfolio(Base):
     value = Column("value", Float)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def database(postgres_database):
     engine = create_engine(postgres_database.get_connection_url())
     Base.metadata.drop_all(engine)
@@ -139,14 +139,14 @@ def database(postgres_database):
     yield engine
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def database_session(database):
     sm = sessionmaker(bind=database)
     with sm() as session:
         yield session
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def add_asset(database_session):
     def _add_asset(symbol, name, title, asset_type):
         database_session.execute(
@@ -158,7 +158,7 @@ def add_asset(database_session):
     return _add_asset
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def add_portfolio(database_session):
     def _add_portfolio(execution, date, cash, value) -> int:
         query = database_session.execute(
@@ -175,7 +175,7 @@ def add_portfolio(database_session):
     return _add_portfolio
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def add_position(database_session):
     def _add_position(portfolio_id, symbol, amount, cost_basis):
         database_session.execute(
@@ -190,7 +190,7 @@ def add_position(database_session):
     return _add_position
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def populate_database(database_session):
     def _populate_database(ic: IngestConfig):
         for symbol in ic.symbols:
@@ -218,7 +218,7 @@ def populate_database(database_session):
     return _populate_database
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def foreverbull_bundle(ingest_config, postgres_database, populate_database):
     populate_database(ingest_config)
     os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
