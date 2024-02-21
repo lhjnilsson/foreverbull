@@ -2,8 +2,7 @@ import re
 from datetime import datetime
 
 from pandas import DataFrame, read_sql_query
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm.session import Session
+from sqlalchemy import create_engine, engine, text
 
 from foreverbull import entity
 
@@ -28,10 +27,10 @@ def get_engine(url: str):
 
 class Asset(entity.finance.Asset):
     _as_of: datetime
-    _db: Session
+    _db: engine.Connection
 
     @classmethod
-    def read(cls, symbol: str, as_of: datetime, db: Session):
+    def read(cls, symbol: str, as_of: datetime, db: engine.Connection):
         row = db.execute(text(f"Select symbol, name, title, asset_type FROM asset WHERE symbol='{symbol}'")).fetchone()
         if row is None:
             return None
@@ -49,17 +48,17 @@ class Asset(entity.finance.Asset):
         return read_sql_query(
             f"""Select symbol, time, high, low, open, close, volume
             FROM ohlc WHERE time <= '{self._as_of}' AND symbol='{self.symbol}'""",
-            self._db.bind,
+            self._db,
         )
 
 
 class Portfolio(entity.finance.Portfolio):
     _execution: str
     _as_of: datetime
-    _db: Session
+    _db: engine.Connection
 
     @classmethod
-    def read(cls, execution: str, as_of: datetime, db: Session):
+    def read(cls, execution: str, as_of: datetime, db: engine.Connection):
         row = db.execute(
             text(
                 f"""Select id, cash, value

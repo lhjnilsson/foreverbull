@@ -8,9 +8,7 @@ from foreverbull.entity.service import Request, Response
 
 
 @pytest.fixture(scope="session")
-def process_symbols(ingest_config, populate_database, add_portfolio):
-    populate_database(ingest_config)
-
+def process_symbols(ingest_config, add_portfolio):
     def _process_symbols(server_socket, execution):
         start = ingest_config.start
         while start < ingest_config.end:

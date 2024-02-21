@@ -44,10 +44,10 @@ def test_info(execution_socket: pynng.Rep0):
 
 
 def test_ingest(
-    ingest_config: entity.backtest.IngestConfig, postgres_database, execution_socket: pynng.Rep0, populate_database
+    database,
+    execution_socket: pynng.Rep0,
+    ingest_config,
 ):
-    populate_database(ingest_config)
-    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
     execution_socket.send(Request(task="ingest", data=ingest_config).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "ingest"

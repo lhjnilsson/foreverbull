@@ -70,9 +70,9 @@ class Worker:
 
     def _process(self, request: Request):
         self.logger.debug("Processing: %s", request)
-        with self._database_session() as db_session:
-            asset = data.Asset.read(request.symbol, request.timestamp, db_session)
-            portfolio = data.Portfolio.read(request.execution, request.timestamp, db_session)
+        with self._database_engine.connect() as db:
+            asset = data.Asset.read(request.symbol, request.timestamp, db)
+            portfolio = data.Portfolio.read(request.execution, request.timestamp, db)
         return self._algo(asset=asset, portfolio=portfolio)
 
     def configure_execution(self, execution: entity.backtest.Execution):
@@ -86,7 +86,7 @@ class Worker:
         engine = get_engine(execution.database)
         with engine.connect() as connection:
             connection.execute(text("SELECT 1 from asset;"))
-        self._database_session = sessionmaker(bind=engine)
+        self._database_engine = engine
         self.logger.info("worker configured correctly")
 
     def run(self):
@@ -103,7 +103,7 @@ class Worker:
         while not self._stop_event.is_set():
             try:
                 request = entity.service.Request.load(responder.recv())
-                self.logger.info("Received request")
+                self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
                     execution = entity.backtest.Execution(**request.data)
                     self.configure_execution(execution)
@@ -112,10 +112,13 @@ class Worker:
                     responder.send(entity.service.Response(task=request.task, error=None).dump())
                     self.run_execution()
             except pynng.exceptions.Timeout:
+                self.logger.debug("Timeout in pynng while running, continuing...")
                 continue
             except Exception as e:
+                self.logger.error("Error processing request")
                 self.logger.exception(repr(e))
                 responder.send(entity.service.Response(task=request.task, error=repr(e)).dump())
+            self.logger.info(f"Request processed: {request.task}")
         responder.close()
         state.close()
 
