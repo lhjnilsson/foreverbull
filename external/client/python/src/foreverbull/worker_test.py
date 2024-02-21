@@ -1,5 +1,4 @@
 import os
-from datetime import timedelta
 from multiprocessing import Event
 
 import pynng
@@ -7,7 +6,6 @@ import pytest
 
 from foreverbull import worker
 from foreverbull.entity.backtest import Parameter
-from foreverbull.entity.finance import Order
 from foreverbull.entity.service import Request, Response
 
 
