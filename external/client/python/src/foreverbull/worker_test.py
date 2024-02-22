@@ -65,8 +65,8 @@ def setup_worker(algo_with_parameters, execution):
 def test_configure_worker_exceptions(algo_with_parameters, execution, expected_error):
     w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), algo_with_parameters)
     with (
-        pytest.raises(exceptions.ConfigurationError, match=expected_error) as e,
-        pynng.Req0(listen=f"tcp://127.0.0.1:6565") as request_socket,
+        pytest.raises(exceptions.ConfigurationError, match=expected_error),
+        pynng.Req0(listen="tcp://127.0.0.1:6565"),
     ):
         w.configure_execution(execution)
 

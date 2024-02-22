@@ -10,7 +10,7 @@ import pynng
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from foreverbull import data, entity, exceptions, import_file
+from foreverbull import entity, exceptions, import_file
 from foreverbull.data import get_engine
 
 
