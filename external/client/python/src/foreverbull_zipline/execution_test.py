@@ -1,3 +1,5 @@
+import logging
+import time
 from datetime import datetime, timezone
 
 import pynng
@@ -20,9 +22,21 @@ def execution_socket():
     execution = Execution()
     execution.start()
 
-    socket = pynng.Req0(dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True)
-    socket.recv_timeout = 10000
-    socket.sendout = 10000
+    # retry creation of socket, in case previous tests have not closed properly
+    for _ in range(10):
+        try:
+            socket = pynng.Req0(
+                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True
+            )
+            socket.recv_timeout = 10000
+            socket.sendout = 10000
+            break
+        except pynng.exceptions.ConnectionRefused:
+            logging.getLogger("execution-test").warning("Failed to connect to execution socket, retrying...")
+            time.sleep(0.1)
+    else:
+        raise Exception("Failed to connect to execution socket")
+
     yield socket
 
     execution.stop()
