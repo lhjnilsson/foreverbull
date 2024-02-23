@@ -45,25 +45,29 @@ class BaseSession:
                 if rsp.error:
                     raise worker.ConfigurationError(rsp.error)
                 responders += 1
+                self.logger.info("worker %s configured", responders)
                 if responders == len(self._workers):
                     break
             except pynng.exceptions.Timeout:
-                raise worker.ConfigurationError("Workers did not respond in time")
-        self.logger.info("workers configured")
+                raise worker.ConfigurationError("Workers did not respond in time for configuration")
+        self.logger.info("all workers configured")
 
     def run_execution(self):
-        self.logger.info("running backtest")
+        from uuid import uuid4
+
+        self.logger.info(f"running backtest, {str(uuid4().hex)}")
         self._surveyor.send(entity.service.Request(task="run_execution").dump())
         responders = 0
         while True:
             try:
                 self._surveyor.recv()
                 responders += 1
+                self.logger.info("worker %s executing", responders)
                 if responders == len(self._workers):
                     break
             except pynng.exceptions.Timeout:
-                raise Exception("Workers did not respond in time")
-        self.logger.info("backtest running")
+                raise Exception("Workers did not respond in time for execution")
+        self.logger.info("all workers executing")
 
 
 class ManualSession(BaseSession):
@@ -215,6 +219,7 @@ class Foreverbull:
         while True:
             try:
                 self._worker_states_socket.recv()
+                self.logger.info("worker %s started", responders)
                 responders += 1
                 if responders == self._executors:
                     break
