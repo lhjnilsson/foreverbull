@@ -32,6 +32,7 @@ import (
 type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
+	log *os.File
 
 	backtestServiceName string
 	workerServiceName   string
@@ -61,6 +62,17 @@ func (test *BacktestModuleTest) SetupSuite() {
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.Require().NoError(err)
+
+	/*
+			test.log, err = os.OpenFile(
+				"foreverbull.log",
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+				0664,
+			)
+
+		test.Require().NoError(err)
+		log.Logger = zerolog.New(test.log).With().Timestamp().Logger()
+	*/
 
 	test.app = fx.New(
 		fx.Provide(
@@ -177,6 +189,8 @@ func (test *BacktestModuleTest) SetupSuite() {
 func (test *BacktestModuleTest) TearDownSuite() {
 	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
+
+	//test.NoError(test.log.Close())
 }
 
 func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
