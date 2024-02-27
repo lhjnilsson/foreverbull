@@ -11,7 +11,15 @@ from foreverbull import entity
 def get_engine(url: str):
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
-    for hostname in ["localhost", "postgres"]:
+
+    try:
+        engine = create_engine(url)
+        engine.connect()
+        return engine
+    except Exception as e:
+        print(f"Could not connect to {url}: {e}")
+
+    for hostname in ["localhost", "postgres", "127.0.0.1"]:
         try:
             # if we are running inside docker network it will be postgres:5432
             database_port = re.search(r":(\d+)/", url).group(1)
