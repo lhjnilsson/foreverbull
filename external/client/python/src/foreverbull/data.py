@@ -7,22 +7,23 @@ from sqlalchemy import create_engine, engine, text
 from foreverbull import entity
 
 
+# Hacky way to get the database URL, TODO: find a better way
 def get_engine(url: str):
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
-    try:
-        engine = create_engine(url)
-        engine.connect()
-        return engine
-    except Exception:
-        # if we are running inside docker network it will be postgres:5432
-        database_port = re.search(r":(\d+)/", url).group(1)
-        url = url.replace(f":{database_port}", ":5432", 1)
-        url = url.replace("localhost", "postgres", 1)
-        url = url.replace("127.0.0.1", "postgres", 1)
-        engine = create_engine(url)
-        engine.connect()
-        return engine
+    for hostname in ["localhost", "postgres"]:
+        try:
+            # if we are running inside docker network it will be postgres:5432
+            database_port = re.search(r":(\d+)/", url).group(1)
+            url = url.replace(f":{database_port}", ":5432", 1)
+            database_host = re.search(r"@([^/]+):", url).group(1)
+            url = url.replace(f"@{database_host}:", "@localhost:", 1)
+            engine = create_engine(url)
+            engine.connect()
+            return engine
+        except Exception as e:
+            print(f"Could not connect to {hostname}: {e}")
+    raise Exception("Could not connect to database")
 
 
 class Asset(entity.finance.Asset):

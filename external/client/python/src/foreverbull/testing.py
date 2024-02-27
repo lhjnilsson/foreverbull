@@ -25,15 +25,13 @@ class TestingSession:
         self._fb = None
 
     def __call__(self, algo: callable, parameters: [] = []) -> Any:
-        print("SESSION: ", self.session)
-        self.session.socket.host = "127.0.0.1"  # TODO: fix this, manual hack since server returns 0.0.0.0
         return Foreverbull(self.session, file_path=inspect.getfile(algo))
 
 
 @pytest.fixture(scope="session")
 def foreverbull(request):
     session = broker.backtest.run(request.config.getoption("--backtest", skip=True), manual=True)
-    while session.socket is None:
+    while session.port is None:
         time.sleep(0.5)
         session = broker.backtest.get_session(session.id)
     return TestingSession(session)

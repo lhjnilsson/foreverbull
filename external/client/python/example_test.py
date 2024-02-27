@@ -1,6 +1,6 @@
-from foreverbull import entity
+from example import monkey
 
-from . import monkey
+from foreverbull import entity
 
 
 def test_positive_returns(foreverbull):
