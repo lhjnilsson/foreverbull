@@ -38,6 +38,63 @@ func TestRepository(t *testing.T) {
 	suite.Run(t, new(RepositoryTest))
 }
 
+func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
+	createMessage := func(t *testing.T) *message {
+		orchestrationName := "test_orchestration"
+		orchestrationID := "test_orchestration_id"
+		OrchestrationStep := "test_step"
+		OrchestrationStepNumber := 0
+		OrchestrationFallbackStep := false
+		msg := message{
+			OrchestrationName:         &orchestrationName,
+			OrchestrationID:           &orchestrationID,
+			OrchestrationStep:         &OrchestrationStep,
+			OrchestrationStepNumber:   &OrchestrationStepNumber,
+			OrchestrationFallbackStep: &OrchestrationFallbackStep,
+			Module:                    "test_module",
+			Component:                 "test_component",
+			Method:                    "test_method",
+			Payload:                   nil,
+		}
+		test.Require().NoError(test.repository.CreateMessage(context.TODO(), &msg))
+		test.Require().NotNil(msg.ID)
+		return &msg
+	}
+
+	type TestCase struct {
+		Status        MessageStatus
+		ExpectMessage bool
+	}
+	testCases := []TestCase{
+		{Status: MessageStatusPublished,
+			ExpectMessage: true},
+		{Status: MessageStatusCreated,
+			ExpectMessage: false},
+		{Status: MessageStatusReceived,
+			ExpectMessage: false},
+		{Status: MessageStatusComplete,
+			ExpectMessage: false},
+		{Status: MessageStatusError,
+			ExpectMessage: false},
+	}
+	for _, tc := range testCases {
+		test.Run(string(tc.Status), func() {
+			msg := createMessage(test.T())
+			test.Require().NoError(test.repository.UpdateMessageStatus(context.TODO(), *msg.ID, tc.Status, nil))
+			m, err := test.repository.UpdatePublishedAndGetMessage(context.TODO(), *msg.ID)
+			if tc.ExpectMessage {
+				test.NoError(err)
+				test.NotNil(m)
+				test.Equal(msg.ID, m.ID)
+				test.Equal(MessageStatusReceived, m.StatusHistory[0].Status)
+			} else {
+				test.Error(err)
+				test.Nil(m)
+			}
+		})
+	}
+}
+
 func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 	createBaseOrchestration := func(t *testing.T) *MessageOrchestration {
 		baseOrchestration := NewMessageOrchestration("repository_test")

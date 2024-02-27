@@ -39,6 +39,7 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 		select {
 		case <-ctx.Done():
 			t.Error("timeout waiting for condition:", ctx.Err())
+			return
 		default:
 			containers, err := cli.ContainerList(context.TODO(), opts)
 			if err != nil {

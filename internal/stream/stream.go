@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/nats-io/nats.go"
@@ -96,17 +97,13 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				return
 			}
 			ctx := context.Background()
-			msg, err = ns.repository.GetMessage(ctx, *msg.ID)
+			msg, err = ns.repository.UpdatePublishedAndGetMessage(ctx, *msg.ID)
 			if err != nil {
-				log.Err(err).Msg("error getting message")
-				return
-			}
-			if msg.StatusHistory == nil || len(msg.StatusHistory) == 0 {
-				log.Debug().Msg("message has no status history")
-				return
-			}
-			if msg.StatusHistory[0].Status != MessageStatusPublished {
-				log.Debug().Msg("message has not been published")
+				if err != pgx.ErrNoRows {
+					log.Err(err).Msg("error updating message status")
+				} else {
+					log.Debug().Msg("message not found, probably already processed")
+				}
 				return
 			}
 
@@ -115,12 +112,6 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				log = log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
 			}
 			log.Info().Msg("received command")
-
-			err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusReceived, nil)
-			if err != nil {
-				log.Err(err).Msg("error updating message status")
-				return
-			}
 
 			msg.dependencyContainer = ns.deps
 			err = cb(ctx, msg)

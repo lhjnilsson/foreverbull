@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -96,7 +95,6 @@ func (test *NatsStreamTest) TestPubSub() {
 
 			m, err := test.stream.repository.GetMessage(context.Background(), *tc.message.ID)
 			test.NoError(err)
-			fmt.Println(m.StatusHistory)
 			test.Equal(tc.expectedStatus, m.StatusHistory[0].Status)
 		})
 	}

@@ -134,6 +134,17 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 	return &m, nil
 }
 
+func (r *repository) UpdatePublishedAndGetMessage(ctx context.Context, id string) (*message, error) {
+	var messageID *string
+	err := r.db.QueryRow(ctx,
+		`UPDATE message SET status=$1 WHERE id=$2 AND status=$3
+		RETURNING id`, MessageStatusReceived, id, MessageStatusPublished).Scan(&messageID)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetMessage(ctx, *messageID)
+}
+
 func (r *repository) UpdateMessageStatus(ctx context.Context, id string, status MessageStatus, err error) error {
 	if err != nil {
 		_, err = r.db.Exec(ctx,
@@ -208,8 +219,8 @@ CASE
     WHEN (SELECT EXISTS(SELECT 1 FROM orchestration WHERE status = $2)) THEN
         orchestration_fallback_step=true
     ELSE
-        orchestration_fallback_step=false and orchestration.orchestration_step_number=$3
-END`, orchestrationID, MessageStatusError, currentStepNumber+1)
+        orchestration_fallback_step=false and orchestration.orchestration_step_number=$3 and orchestration.status=$4
+END`, orchestrationID, MessageStatusError, currentStepNumber+1, MessageStatusCreated)
 	if err != nil {
 		return nil, err
 	}
