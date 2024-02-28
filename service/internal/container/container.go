@@ -2,15 +2,16 @@ package container
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/docker/docker/api/types"
 	def "github.com/lhjnilsson/foreverbull/service/container"
+	"github.com/rs/zerolog/log"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -28,12 +29,16 @@ type serviceContainer struct {
 	client *client.Client
 }
 
-func (sc *serviceContainer) hasImage(ctx context.Context, imageID string) error {
+func (sc *serviceContainer) hasImage(ctx context.Context, imageID string) (bool, error) {
 	_, _, err := sc.client.ImageInspectWithRaw(ctx, imageID)
-	if err != nil && strings.Contains(err.Error(), "No such image: ") {
-		return errors.New("no such image")
+	if err != nil {
+		if strings.Contains(err.Error(), "No such image: ") {
+			return false, nil
+		} else {
+			return false, err
+		}
 	}
-	return err
+	return true, nil
 }
 
 func (sc *serviceContainer) Pull(ctx context.Context, imageID string) error {
@@ -56,12 +61,14 @@ func (sc *serviceContainer) Info(ctx context.Context, containerID string) (types
 }
 
 func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string, extraLabels map[string]string) (string, error) {
-	if err := sc.hasImage(ctx, image); err != nil && err.Error() == "no such image" {
+	has, err := sc.hasImage(ctx, image)
+	if err != nil {
+		return "", fmt.Errorf("error inspecting image: %v", err)
+	}
+	if !has {
 		if err := sc.Pull(ctx, image); err != nil {
 			return "", fmt.Errorf("error pulling image '%s': %v", image, err)
 		}
-	} else if err != nil {
-		return "", fmt.Errorf("error inspecting image: %v", err)
 	}
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
 	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
@@ -115,4 +122,22 @@ func (sc *serviceContainer) Stop(ctx context.Context, containerID string, remove
 		return sc.client.ContainerRemove(ctx, containerID, container.RemoveOptions{})
 	}
 	return nil
+}
+
+func (sc *serviceContainer) StopAll(ctx context.Context, remove bool) error {
+	filters := filters.NewArgs()
+	filters.Add("label", "platform=foreverbull")
+	filters.Add("label", "type=service")
+	filters.Add("network", environment.GetDockerNetworkName())
+	images, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	if err != nil {
+		return fmt.Errorf("error listing containers: %v", err)
+	}
+	for _, image := range images {
+		log.Info().Str("id", image.ID).Bool("remove", remove).Msg("stopping container")
+		if err := sc.Stop(ctx, image.ID, remove); err != nil {
+			return fmt.Errorf("error stopping container: %v", err)
+		}
+	}
+	return err
 }
