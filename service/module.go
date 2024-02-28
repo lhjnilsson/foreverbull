@@ -91,7 +91,15 @@ var Module = fx.Options(
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
-						return s.Unsubscribe()
+						err := s.Unsubscribe()
+						if err != nil {
+							return fmt.Errorf("error unsubscribing: %w", err)
+						}
+						err = container.StopAll(ctx, true)
+						if err != nil {
+							return fmt.Errorf("error stopping all containers: %w", err)
+						}
+						return nil
 					},
 				},
 			)
