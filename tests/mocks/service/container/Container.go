@@ -98,6 +98,20 @@ func (_m *Container) Stop(ctx context.Context, containerID string, remove bool) 
 	return r0
 }
 
+// StopAll provides a mock function with given fields: ctx, remove
+func (_m *Container) StopAll(ctx context.Context, remove bool) error {
+	ret := _m.Called(ctx, remove)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, bool) error); ok {
+		r0 = rf(ctx, remove)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 type mockConstructorTestingTNewContainer interface {
 	mock.TestingT
 	Cleanup(func())
