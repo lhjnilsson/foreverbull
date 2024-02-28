@@ -203,9 +203,10 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install library
+      - name: Install library and pytest
         run: |
           python -m pip install -e .
+          python -m pip install pytest
       - name: Create environment
         run: |
           foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }}
