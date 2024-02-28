@@ -21,11 +21,11 @@ type BacktestTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	stream *stream.PendingOrchestration
+	stream *stream.OrchestrationOutput
 }
 
 func (test *BacktestTest) SetupTest() {
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
@@ -58,7 +58,7 @@ func (test *BacktestTest) SetupTest() {
 }
 
 func (test *BacktestTest) SetupSubTest() {
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 }
 
 func TestBacktest(t *testing.T) {
@@ -235,7 +235,7 @@ func (test *BacktestTest) TestUpdateBacktest() {
 
 	// Recreate to make sure its created after we update
 	test.True(test.stream.Contains("ingest backtest"))
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 
 	payload = `{"name": "test_backtest", "backtest_service": "service", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"], "benchmark": "SPY"}`

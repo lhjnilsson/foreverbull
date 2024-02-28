@@ -1,7 +1,6 @@
 package marketdata
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -25,7 +24,6 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 		APIKey:    environment.GetAlpacaAPIKey(),
 		APISecret: environment.GetAlpacaAPISecret(),
 	})
-	fmt.Println("MD: ", environment.GetAlpacaAPIKey(), environment.GetAlpacaAPISecret())
 	return &AlpacaClient{client: client, mdclient: mdclient}, nil
 }
 

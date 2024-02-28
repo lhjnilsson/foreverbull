@@ -12,88 +12,25 @@ import (
 	"go.uber.org/fx"
 )
 
-type PendingOrchestration struct {
+type OrchestrationOutput struct {
 	orchestrations []*MessageOrchestration
 }
 
-func (po *PendingOrchestration) Add(orchestration *MessageOrchestration) {
+func (po *OrchestrationOutput) Add(orchestration *MessageOrchestration) {
 	po.orchestrations = append(po.orchestrations, orchestration)
 }
 
-func (po *PendingOrchestration) Get() []*MessageOrchestration {
+func (po *OrchestrationOutput) Get() []*MessageOrchestration {
 	return po.orchestrations
 }
 
-func (po *PendingOrchestration) Contains(name string) bool {
+func (po *OrchestrationOutput) Contains(name string) bool {
 	for _, orchestration := range po.orchestrations {
 		if orchestration.Name == name {
 			return true
 		}
 	}
 	return false
-}
-
-func (ns *NATSStream) CreateOrchestration(ctx context.Context, orchestration *MessageOrchestration) error {
-	for _, step := range orchestration.Steps {
-		for _, cmd := range step.Commands {
-			msg, ok := cmd.(*message)
-			if msg.OrchestrationID == nil {
-				return fmt.Errorf("orchestration id is nil")
-			}
-			if msg.OrchestrationStep == nil {
-				return fmt.Errorf("orchestration step is nil")
-			}
-
-			if !ok {
-				return fmt.Errorf("command is not a message")
-			}
-			err := ns.repository.CreateMessage(ctx, msg)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if orchestration.FallbackStep == nil {
-		return fmt.Errorf("orchestration must have fallback step")
-	}
-	for _, cmd := range orchestration.FallbackStep.Commands {
-		msg, ok := cmd.(*message)
-		if msg.OrchestrationID == nil {
-			return fmt.Errorf("orchestration id is nil")
-		}
-		if msg.OrchestrationStep == nil {
-			return fmt.Errorf("orchestration step is nil")
-		}
-		if !ok {
-			return fmt.Errorf("command is not a message")
-		}
-		err := ns.repository.CreateMessage(ctx, msg)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestrationID string) error {
-	isRunning, err := ns.repository.OrchestrationIsRunning(ctx, orchestrationID)
-	if err != nil {
-		return err
-	}
-	if isRunning {
-		return fmt.Errorf("orchestration is already running")
-	}
-	commands, err := ns.repository.GetLatestUnpublishedOrchestrationStepCommands(ctx, orchestrationID)
-	if err != nil {
-		return fmt.Errorf("error getting latest unpublished orchestration step commands: %w", err)
-	}
-	for _, cmd := range *commands {
-		err = ns.Publish(ctx, &cmd)
-		if err != nil {
-			return fmt.Errorf("error publishing command: %w", err)
-		}
-	}
-	return nil
 }
 
 func NewOrchestrationRunner(stream *NATSStream) (*OrchestrationRunner, error) {
@@ -121,13 +58,14 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		log.Err(err).Msg("error getting message")
 		return
 	}
-	log := log.With().Str("id", *msg.ID).Logger()
-	log.Info().Msg("received message")
 
 	if msg.OrchestrationID == nil {
-		log.Debug().Msg("message does not have orchestration id")
+		log.Debug().Msg("event does not have orchestration id")
 		return
 	}
+
+	log := log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
+	log.Info().Msg("received event")
 
 	complete, err := or.stream.repository.OrchestrationIsComplete(ctx, *msg.OrchestrationID)
 	if err != nil {
@@ -141,42 +79,33 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		}
 		return
 	}
-	complete, err = or.stream.repository.OrchestrationStepIsComplete(ctx, *msg.OrchestrationID, *msg.OrchestrationStep)
-	if err != nil {
-		log.Err(err).Msg("error checking if orchestration step is complete")
-		return
-	}
-	if !complete {
-		log.Debug().Msg("orchestration step is not complete")
-		return
-	}
-	var commands *[]message
 
-	failing, err := or.stream.repository.OrchestrationHasError(ctx, *msg.OrchestrationID)
-	if err != nil {
-		log.Err(err).Msg("error checking if orchestration has error")
+	if msg.OrchestrationStepNumber == nil {
+		// Could be a fallback step
+		log.Debug().Msg("event does not have orchestration step number")
 		return
 	}
-	if failing {
-		commands, err = or.stream.repository.GetOrchestrationFallbackCommands(ctx, *msg.OrchestrationID)
-		if err != nil {
-			log.Err(err).Msg("error getting orchestration fallback commands")
-			return
-		}
+
+	commands, err := or.stream.repository.GetNextOrchestrationCommands(ctx, *msg.OrchestrationID, *msg.OrchestrationStepNumber)
+	if err != nil {
+		log.Err(err).Msg("error getting next orchestration commands")
+		return
+	}
+	if commands == nil {
+		log.Debug().Msg("no commands to run")
+		return
+	}
+	if len(*commands) > 0 && (*commands)[0].OrchestrationFallbackStep != nil && *(*commands)[0].OrchestrationFallbackStep {
+		log.Debug().Msg("orchestration is failing")
 		defer func() {
 			err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
 			if err != nil {
 				log.Err(err).Msg("error marking all created as canceled")
 			}
 		}()
-	} else {
-		commands, err = or.stream.repository.GetLatestUnpublishedOrchestrationStepCommands(ctx, *msg.OrchestrationID)
-		if err != nil {
-			log.Err(err).Msg("error getting latest unpublished orchestration step commands")
-			return
-		}
 	}
 	for _, cmd := range *commands {
+		log.Info().Str("CmdID", *cmd.ID).Str("CmdComponent", cmd.Component).Str("CmdMethod", cmd.Method).Msg("publishing command")
 		err = or.stream.Publish(ctx, &cmd)
 		if err != nil {
 			log.Err(err).Msg("error publishing command")
@@ -209,8 +138,6 @@ func (or *OrchestrationRunner) Start() error {
 func (or *OrchestrationRunner) Stop() error {
 	return or.sub.Unsubscribe()
 }
-
-type OrchestrationStream NATSStream
 
 var OrchestrationLifecycle = fx.Options(
 	fx.Provide(

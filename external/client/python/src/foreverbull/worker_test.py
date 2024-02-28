@@ -1,13 +1,12 @@
 import os
-from datetime import timedelta
+import re
 from multiprocessing import Event
 
 import pynng
 import pytest
 
-from foreverbull import worker
-from foreverbull.entity.backtest import Parameter
-from foreverbull.entity.finance import Order
+from foreverbull import exceptions, worker
+from foreverbull.entity.backtest import Execution, Parameter
 from foreverbull.entity.service import Request, Response
 
 
@@ -44,26 +43,38 @@ def setup_worker(algo_with_parameters, execution):
     request_socket.close()
 
 
-@pytest.fixture()
-def process_symbols(ingest_config, populate_database, add_portfolio):
-    populate_database(ingest_config)
+@pytest.mark.parametrize(
+    "execution,expected_error",
+    [
+        (Execution(), "Unable to connect to broker: Address invalid"),
+        (Execution(port=2525), "Unable to connect to broker: Connection refused"),
+        (
+            Execution(port=6565, parameters=[Parameter(key="low", default="0", type="int", value="five")]),
+            re.escape("Unable to setup algorithm: invalid literal for int() with base 10: 'five'"),
+        ),
+        (
+            Execution(
+                port=6565,
+                parameters=[Parameter(key="low", default="0", type="int", value="5")],
+                database="postgres://127.0.0.1:8866/postgres",
+            ),
+            r"Unable to connect to database: .+",
+        ),
+    ],
+)
+def test_configure_worker_exceptions(algo_with_parameters, execution, expected_error):
+    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), algo_with_parameters)
+    with (
+        pytest.raises(exceptions.ConfigurationError, match=expected_error),
+        pynng.Req0(listen="tcp://127.0.0.1:6565"),
+    ):
+        w.configure_execution(execution)
 
-    def _process_symbols(server_socket, execution):
-        start = ingest_config.start
-        while start < ingest_config.end:
-            add_portfolio(execution, start, 100000, 0)
-            for symbol in ingest_config.symbols:
-                req = worker.Request(execution=execution, timestamp=start, symbol=symbol)
-                server_socket.send(Request(task="", data=req).dump())
-                response = Response.load(server_socket.recv())
-                assert response.task == ""
-                assert response.error is None
-                if response.data:
-                    order = Order(**response.data)
-                    assert order.symbol == symbol
-            start += timedelta(days=1)
 
-    return _process_symbols
+def test_run_worker_unable_to_connect():
+    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), "test")
+    exit_code = w.run()
+    assert exit_code == 1
 
 
 @pytest.mark.parametrize(

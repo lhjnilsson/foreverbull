@@ -40,8 +40,8 @@ var Module = fx.Options(
 		},
 		func(jt nats.JetStreamContext, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
 			dc := stream.NewDependencyContainer()
-			dc.AddSingelton(stream.DBDep, conn)
-			dc.AddSingelton(dependency.MarketDataDep, md)
+			dc.AddSingleton(stream.DBDep, conn)
+			dc.AddSingleton(dependency.MarketDataDep, md)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)

@@ -24,13 +24,13 @@ type SessionTest struct {
 
 	db     *pgxpool.Pool
 	router *gin.Engine
-	stream *stream.PendingOrchestration
+	stream *stream.OrchestrationOutput
 }
 
 func (test *SessionTest) SetupTest() {
 	var err error
 
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
@@ -62,7 +62,7 @@ func (test *SessionTest) SetupTest() {
 }
 
 func (test *SessionTest) SetupSubTest() {
-	test.stream = &stream.PendingOrchestration{}
+	test.stream = &stream.OrchestrationOutput{}
 }
 
 func TestSession(t *testing.T) {

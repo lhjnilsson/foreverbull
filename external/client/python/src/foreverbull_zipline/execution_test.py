@@ -1,4 +1,5 @@
-import os
+import logging
+import time
 from datetime import datetime, timezone
 
 import pynng
@@ -21,9 +22,21 @@ def execution_socket():
     execution = Execution()
     execution.start()
 
-    socket = pynng.Req0(dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}")
-    socket.recv_timeout = 10000
-    socket.sendout = 10000
+    # retry creation of socket, in case previous tests have not closed properly
+    for _ in range(10):
+        try:
+            socket = pynng.Req0(
+                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True
+            )
+            socket.recv_timeout = 10000
+            socket.sendout = 10000
+            break
+        except pynng.exceptions.ConnectionRefused:
+            logging.getLogger("execution-test").warning("Failed to connect to execution socket, retrying...")
+            time.sleep(0.1)
+    else:
+        raise Exception("Failed to connect to execution socket")
+
     yield socket
 
     execution.stop()
@@ -44,10 +57,10 @@ def test_info(execution_socket: pynng.Rep0):
 
 
 def test_ingest(
-    ingest_config: entity.backtest.IngestConfig, postgres_database, execution_socket: pynng.Rep0, populate_database
+    database,
+    execution_socket: pynng.Rep0,
+    ingest_config,
 ):
-    populate_database(ingest_config)
-    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
     execution_socket.send(Request(task="ingest", data=ingest_config).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "ingest"

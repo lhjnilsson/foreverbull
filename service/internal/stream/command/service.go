@@ -45,7 +45,11 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting service: %w", err)
 	}
 
-	_, err = container.Start(ctx, service.Name, service.Image, command.InstanceID)
+	extraLabels := map[string]string{
+		"orchestration_id": message.GetOrchestrationID(),
+	}
+
+	_, err = container.Start(ctx, service.Name, service.Image, command.InstanceID, extraLabels)
 	if err != nil {
 		return fmt.Errorf("error starting container: %w", err)
 	}

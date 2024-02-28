@@ -51,7 +51,7 @@ func ListSessions(c *gin.Context) {
 }
 
 func CreateSession(c *gin.Context) {
-	s := c.MustGet(OrchestrationDependency).(*stream.PendingOrchestration)
+	s := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	body := api.CreateSessionBody{}
 	if err := c.ShouldBindJSON(&body); err != nil {

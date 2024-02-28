@@ -28,43 +28,6 @@ func (_m *Stream) CommandSubscriber(component string, method string, cb func(con
 	return r0
 }
 
-// CreateMessage provides a mock function with given fields: ctx, message
-func (_m *Stream) CreateMessage(ctx context.Context, message stream.Message) (stream.Message, error) {
-	ret := _m.Called(ctx, message)
-
-	var r0 stream.Message
-	if rf, ok := ret.Get(0).(func(context.Context, stream.Message) stream.Message); ok {
-		r0 = rf(ctx, message)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(stream.Message)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, stream.Message) error); ok {
-		r1 = rf(ctx, message)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// CreateOrchestration provides a mock function with given fields: ctx, orchestration
-func (_m *Stream) CreateOrchestration(ctx context.Context, orchestration *stream.MessageOrchestration) error {
-	ret := _m.Called(ctx, orchestration)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *stream.MessageOrchestration) error); ok {
-		r0 = rf(ctx, orchestration)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // Publish provides a mock function with given fields: ctx, message
 func (_m *Stream) Publish(ctx context.Context, message stream.Message) error {
 	ret := _m.Called(ctx, message)
@@ -79,13 +42,13 @@ func (_m *Stream) Publish(ctx context.Context, message stream.Message) error {
 	return r0
 }
 
-// RunOrchestration provides a mock function with given fields: ctx, orchestrationID
-func (_m *Stream) RunOrchestration(ctx context.Context, orchestrationID string) error {
-	ret := _m.Called(ctx, orchestrationID)
+// RunOrchestration provides a mock function with given fields: ctx, orchestration
+func (_m *Stream) RunOrchestration(ctx context.Context, orchestration *stream.MessageOrchestration) error {
+	ret := _m.Called(ctx, orchestration)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, orchestrationID)
+	if rf, ok := ret.Get(0).(func(context.Context, *stream.MessageOrchestration) error); ok {
+		r0 = rf(ctx, orchestration)
 	} else {
 		r0 = ret.Error(0)
 	}

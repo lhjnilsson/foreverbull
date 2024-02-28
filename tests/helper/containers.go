@@ -39,6 +39,7 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 		select {
 		case <-ctx.Done():
 			t.Error("timeout waiting for condition:", ctx.Err())
+			return
 		default:
 			containers, err := cli.ContainerList(context.TODO(), opts)
 			if err != nil {
@@ -52,6 +53,12 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 	}
 }
 
+const (
+	PostgresImage = "postgres:alpine"
+	NatsImage     = "nats:alpine"
+	MinioImage    = "minio/minio:latest"
+)
+
 func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 	t.Helper()
 
@@ -60,7 +67,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 
 	dbName := strings.ToLower(strings.Replace(t.Name(), "/", "_", -1))
 	container, err := postgres.RunContainer(context.TODO(),
-		testcontainers.WithImage("postgres:alpine"),
+		testcontainers.WithImage(PostgresImage),
 		postgres.WithDatabase(dbName),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {
 			settings[NetworkID] = &network.EndpointSettings{
@@ -89,7 +96,7 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 	t.Helper()
 
 	container, err := nats.RunContainer(context.TODO(),
-		testcontainers.WithImage("nats:alpine"),
+		testcontainers.WithImage(NatsImage),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {
 			settings[NetworkID] = &network.EndpointSettings{
 				Aliases:   []string{"nats"},
@@ -114,7 +121,7 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 	t.Helper()
 
 	container, err := RunContainer(context.TODO(),
-		testcontainers.WithImage("minio/minio:latest"),
+		testcontainers.WithImage(MinioImage),
 		WithUsername("minioadmin"),
 		WithPassword("minioadmin"),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {

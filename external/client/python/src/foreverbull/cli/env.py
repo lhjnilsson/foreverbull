@@ -273,9 +273,9 @@ def start(api_key: API_KEY, api_secret: API_SECRET):
                         "27010/tcp": 27010,
                     },
                     environment={
-                        "DATABASE_NETLOC": "postgres",
-                        "NATS_HOST": "nats",
-                        "STORAGE_ENDPOINT": "minio:9000",
+                        "POSTGRES_URL": "postgres://foreverbull:foreverbull@postgres:5432/foreverbull",
+                        "NATS_URL": "nats://nats:4222",
+                        "MINIO_URL": "minio:9000",
                         "DOCKER_NETWORK": NETWORK_NAME,
                         "ALPACA_MARKETS_BASE_URL": "https://paper-api.alpaca.markets",
                         "ALPACA_MARKETS_API_KEY": api_key,

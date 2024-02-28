@@ -1,9 +1,14 @@
 import importlib
+import logging
+import os
 from functools import wraps
 from inspect import getabsfile, signature
 
 from foreverbull import entity
 from foreverbull.data import Asset, Portfolio
+
+log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
+logging.basicConfig(level=log_level)
 
 
 def algo(f):

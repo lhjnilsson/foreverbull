@@ -51,7 +51,6 @@ func (p *pool) ConfigureExecution(ctx context.Context, configuration *Configurat
 	if len(p.Workers) == 0 {
 		return fmt.Errorf("no workers")
 	}
-
 	g, gctx := errgroup.WithContext(ctx)
 	for _, worker := range p.Workers {
 		w := worker

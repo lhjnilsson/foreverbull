@@ -59,7 +59,7 @@ class Execution(threading.Thread):
         self._socket.close()
 
     def stop(self):
-        socket = pynng.Req0(dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}")
+        socket = pynng.Req0(dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}", block_on_dial=True)
         request = Request(task="stop")
         socket.send(request.dump())
         socket.recv()

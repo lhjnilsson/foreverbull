@@ -98,12 +98,14 @@ func (test *ServiceTest) TestServiceStartFail() {
 		command.Name = test.testService.Name
 		command.InstanceID = "test-instance"
 	})
+	b.On("GetOrchestrationID").Return("test-orchestration-id")
 
 	c := new(mockContainer.Container)
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance").Return("", errors.New("fail to start"))
+	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance",
+		map[string]string{"orchestration_id": "test-orchestration-id"}).Return("", errors.New("fail to start"))
 
 	err := ServiceStart(context.Background(), b)
 	test.Error(err)
@@ -117,12 +119,14 @@ func (test *ServiceTest) TestServiceStartSuccessful() {
 		command.Name = test.testService.Name
 		command.InstanceID = "test-instance"
 	})
+	b.On("GetOrchestrationID").Return("test-orchestration-id")
 
 	c := new(mockContainer.Container)
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance").Return("test-container-id", nil)
+	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance",
+		map[string]string{"orchestration_id": "test-orchestration-id"}).Return("test-container-id", nil)
 
 	err := ServiceStart(context.Background(), b)
 	test.NoError(err)

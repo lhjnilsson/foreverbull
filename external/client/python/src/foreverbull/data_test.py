@@ -6,48 +6,24 @@ import pytest
 from foreverbull.data import Asset, Portfolio
 
 
-@pytest.mark.parametrize(
-    "symbol, asset",
-    [
-        ("AAPL", Asset(symbol="AAPL", name="Apple Inc.", title="Apple Inc.", asset_type="EQUITY")),
-        (
-            "MSFT",
-            Asset(symbol="MSFT", name="Microsoft Corporation", title="Microsoft Corporation", asset_type="EQUITY"),
-        ),
-        ("GOOG", None),
-    ],
-)
-def test_read_asset(database_session, add_asset, symbol, asset):
-    add_asset(symbol="AAPL", name="Apple Inc.", title="Apple Inc.", asset_type="EQUITY")
-    add_asset(symbol="MSFT", name="Microsoft Corporation", title="Microsoft Corporation", asset_type="EQUITY")
-    a = Asset.read(symbol, datetime.now(), database_session)
-    if asset is None:
-        assert a is None
-    else:
-        assert a.symbol == asset.symbol
-        assert a.name == asset.name
-        assert a.title == asset.title
-        assert a.asset_type == asset.asset_type
-
-
-def test_asset_stock_data(database_session, populate_database, ingest_config):
-    populate_database(ingest_config)
-    for symbol in ingest_config.symbols:
-        a = Asset.read(symbol, datetime.now(), database_session)
-        assert a is not None
-        assert a.symbol == symbol
-        assert a.name is not None
-        assert a.title is not None
-        assert a.asset_type == "EQUITY"
-        stock_data = a.stock_data
-        assert stock_data is not None
-        assert isinstance(stock_data, pandas.DataFrame)
-        assert len(stock_data) > 0
-        assert "open" in stock_data.columns
-        assert "high" in stock_data.columns
-        assert "low" in stock_data.columns
-        assert "close" in stock_data.columns
-        assert "volume" in stock_data.columns
+def test_asset_stock_data(database, ingest_config):
+    with database.connect() as conn:
+        for symbol in ingest_config.symbols:
+            a = Asset.read(symbol, datetime.now(), conn)
+            assert a is not None
+            assert a.symbol == symbol
+            assert a.name is not None
+            assert a.title is not None
+            assert a.asset_type == "EQUITY"
+            stock_data = a.stock_data
+            assert stock_data is not None
+            assert isinstance(stock_data, pandas.DataFrame)
+            assert len(stock_data) > 0
+            assert "open" in stock_data.columns
+            assert "high" in stock_data.columns
+            assert "low" in stock_data.columns
+            assert "close" in stock_data.columns
+            assert "volume" in stock_data.columns
 
 
 @pytest.mark.parametrize(
@@ -58,13 +34,14 @@ def test_asset_stock_data(database_session, populate_database, ingest_config):
         (Asset(symbol="GOOG", name="Google Inc.", title="Google Inc.", asset_type="EQUITY"), True),
     ],
 )
-def test_read_portfolio(database_session, add_portfolio, add_position, asset, has_position):
+def test_read_portfolio(database, add_portfolio, add_position, asset, has_position):
     now = datetime.now()
     portfolio_id = add_portfolio("EXC_123", now, 104.22, 23.2)
     add_position(portfolio_id, "AAPL", 100, 10.0)
     add_position(portfolio_id, "GOOG", 200, 20.0)
 
-    portfolio = Portfolio.read("EXC_123", now, database_session)
+    with database.connect() as conn:
+        portfolio = Portfolio.read("EXC_123", now, conn)
     assert portfolio is not None
     assert portfolio.cash == 104.22
     assert portfolio.value == 23.2

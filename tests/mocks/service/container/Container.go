@@ -63,20 +63,20 @@ func (_m *Container) SaveImage(ctx context.Context, containerID string, name str
 	return r0
 }
 
-// Start provides a mock function with given fields: ctx, serviceName, image, containerID
-func (_m *Container) Start(ctx context.Context, serviceName string, image string, containerID string) (string, error) {
-	ret := _m.Called(ctx, serviceName, image, containerID)
+// Start provides a mock function with given fields: ctx, serviceName, image, containerID, extraLabels
+func (_m *Container) Start(ctx context.Context, serviceName string, image string, containerID string, extraLabels map[string]string) (string, error) {
+	ret := _m.Called(ctx, serviceName, image, containerID, extraLabels)
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) string); ok {
-		r0 = rf(ctx, serviceName, image, containerID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, map[string]string) string); ok {
+		r0 = rf(ctx, serviceName, image, containerID, extraLabels)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
-		r1 = rf(ctx, serviceName, image, containerID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, map[string]string) error); ok {
+		r1 = rf(ctx, serviceName, image, containerID, extraLabels)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -91,6 +91,20 @@ func (_m *Container) Stop(ctx context.Context, containerID string, remove bool) 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, bool) error); ok {
 		r0 = rf(ctx, containerID, remove)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// StopAll provides a mock function with given fields: ctx, remove
+func (_m *Container) StopAll(ctx context.Context, remove bool) error {
+	ret := _m.Called(ctx, remove)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, bool) error); ok {
+		r0 = rf(ctx, remove)
 	} else {
 		r0 = ret.Error(0)
 	}

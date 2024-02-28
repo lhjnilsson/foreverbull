@@ -6,8 +6,8 @@ from multiprocessing import get_start_method, set_start_method
 import pandas as pd
 import pytest
 import yfinance
-from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine, engine, text
+from sqlalchemy.orm import declarative_base
 from testcontainers.postgres import PostgresContainer
 from zipline.data import bundles
 
@@ -23,8 +23,8 @@ def spawn_process():
         set_start_method("spawn", force=True)
 
 
-@pytest.fixture
-def execution(postgres_database):
+@pytest.fixture(scope="function")
+def execution():
     return entity.backtest.Execution(
         id="test",
         calendar="NYSE",
@@ -32,13 +32,13 @@ def execution(postgres_database):
         end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
-        database=postgres_database.get_connection_url(),
+        database=os.environ.get("DATABASE_URL"),
         parameters=None,
         port=5656,
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def empty_algo_file():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -56,7 +56,7 @@ def empty_algo(asset: Asset, portfolio: Portfolio):
         yield f.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def algo_with_parameters():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -74,7 +74,7 @@ def algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high
         yield f.name
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def ingest_config():
     return IngestConfig(
         calendar="NYSE",
@@ -131,75 +131,64 @@ class Portfolio(Base):
     value = Column("value", Float)
 
 
-@pytest.fixture
-def database(postgres_database):
+@pytest.fixture(scope="session")
+def database(postgres_database, ingest_config):
     engine = create_engine(postgres_database.get_connection_url())
-    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    yield engine
+    populate_database(engine, ingest_config)
+    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
+    return engine
 
 
-@pytest.fixture
-def database_session(database):
-    sm = sessionmaker(bind=database)
-    with sm() as session:
-        yield session
-
-
-@pytest.fixture
-def add_asset(database_session):
-    def _add_asset(symbol, name, title, asset_type):
-        database_session.execute(
-            text("INSERT INTO asset (symbol, name, title, asset_type) VALUES (:symbol, :name, :title, :asset_type)"),
-            {"symbol": symbol, "name": name, "title": title, "asset_type": asset_type},
-        )
-        database_session.commit()
-
-    return _add_asset
-
-
-@pytest.fixture
-def add_portfolio(database_session):
+@pytest.fixture(scope="session")
+def add_portfolio(database: engine.Engine):
     def _add_portfolio(execution, date, cash, value) -> int:
-        query = database_session.execute(
-            text(
-                """INSERT INTO backtest_portfolio (execution, date, cash, value) 
-                VALUES (:execution, :date, :cash, :value)
-            RETURNING id"""
-            ),
-            {"execution": execution, "date": date, "cash": cash, "value": value},
-        )
-        database_session.commit()
-        return query.fetchone()[0]
+        with database.connect() as conn:
+            result = conn.execute(
+                text(
+                    """INSERT INTO backtest_portfolio (execution, date, cash, value) 
+                    VALUES (:execution, :date, :cash, :value)
+                RETURNING id"""
+                ),
+                {"execution": execution, "date": date, "cash": cash, "value": value},
+            )
+            conn.commit()
+            return result.fetchone()[0]
 
     return _add_portfolio
 
 
-@pytest.fixture
-def add_position(database_session):
+@pytest.fixture(scope="session")
+def add_position(database: engine.Engine):
     def _add_position(portfolio_id, symbol, amount, cost_basis):
-        database_session.execute(
-            text(
-                """INSERT INTO backtest_position (portfolio_id, symbol, amount, cost_basis) 
-                VALUES (:portfolio_id, :symbol, :amount, :cost_basis)"""
-            ),
-            {"portfolio_id": portfolio_id, "symbol": symbol, "amount": amount, "cost_basis": cost_basis},
-        )
-        database_session.commit()
+        with database.connect() as conn:
+            conn.execute(
+                text(
+                    """INSERT INTO backtest_position (portfolio_id, symbol, amount, cost_basis) 
+                    VALUES (:portfolio_id, :symbol, :amount, :cost_basis)"""
+                ),
+                {"portfolio_id": portfolio_id, "symbol": symbol, "amount": amount, "cost_basis": cost_basis},
+            )
+            conn.commit()
 
     return _add_position
 
 
-@pytest.fixture
-def populate_database(database_session):
-    def _populate_database(ic: IngestConfig):
+def populate_database(database: engine.Engine, ic: IngestConfig):
+    with database.connect() as conn:
         for symbol in ic.symbols:
             feed = yfinance.Ticker(symbol)
             info = feed.info
             asset = Asset(
                 symbol=info["symbol"], name=info["longName"], title=info["shortName"], asset_type=info["quoteType"]
             )
-            database_session.add(asset)
+            conn.execute(
+                text(
+                    """INSERT INTO asset (symbol, name, title, asset_type) 
+                    VALUES (:symbol, :name, :title, :asset_type)"""
+                ),
+                {"symbol": asset.symbol, "name": asset.name, "title": asset.title, "asset_type": asset.asset_type},
+            )
             data = feed.history(start=ic.start, end=ic.end + timedelta(days=1))
             for idx, row in data.iterrows():
                 time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)
@@ -212,17 +201,26 @@ def populate_database(database_session):
                     volume=row.Volume,
                     time=time,
                 )
-                database_session.add(ohlc)
-        database_session.commit()
+                conn.execute(
+                    text(
+                        """INSERT INTO ohlc (symbol, open, high, low, close, volume, time) 
+                        VALUES (:symbol, :open, :high, :low, :close, :volume, :time)"""
+                    ),
+                    {
+                        "symbol": ohlc.symbol,
+                        "open": ohlc.open,
+                        "high": ohlc.high,
+                        "low": ohlc.low,
+                        "close": ohlc.close,
+                        "volume": ohlc.volume,
+                        "time": ohlc.time,
+                    },
+                )
+        conn.commit()
 
-    return _populate_database
 
-
-@pytest.fixture()
-def foreverbull_bundle(ingest_config, postgres_database, populate_database):
-    populate_database(ingest_config)
-    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
-
+@pytest.fixture(scope="session")
+def foreverbull_bundle(ingest_config, database):
     def load_or_create(bundle_name):
         try:
             return bundles.load(bundle_name, os.environ, None)

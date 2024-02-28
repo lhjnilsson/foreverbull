@@ -28,9 +28,9 @@ var Module = fx.Options(
 	fx.Provide(
 		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (BacktestStream, error) {
 			dc := stream.NewDependencyContainer()
-			dc.AddSingelton(stream.DBDep, conn)
+			dc.AddSingleton(stream.DBDep, conn)
 			httpClient := dependency.GetHTTPClient()
-			dc.AddSingelton(dependency.GetHTTPClientKey, httpClient)
+			dc.AddSingleton(dependency.GetHTTPClientKey, httpClient)
 			dc.AddMethod(dependency.GetBacktestEngineKey, dependency.GetBacktestEngine)
 			dc.AddMethod(dependency.GetBacktestSessionKey, dependency.GetBacktestSession)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
