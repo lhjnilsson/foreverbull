@@ -29,16 +29,16 @@ func (test *NatsStreamTest) SetupTest() {
 	dc := NewDependencyContainer()
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = RecreateTables(context.Background(), pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	test.jt, err = NewJetstream()
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	stream, err := NewNATSStream(test.jt, "test", dc, pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.stream = *stream.(*NATSStream)
 
 	test.Require().NoError(test.stream.CommandSubscriber("return", "nil", ReturnNil))
