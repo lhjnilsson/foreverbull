@@ -33,13 +33,13 @@ func (test *OrchestrationTest) SetupTest() {
 		NATS:     true,
 	})
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = RecreateTables(context.Background(), test.conn)
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	test.jt, err = NewJetstream()
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	test.orchestration = fx.New(
 		fx.Provide(
@@ -53,7 +53,7 @@ func (test *OrchestrationTest) SetupTest() {
 		OrchestrationLifecycle,
 	)
 	err = test.orchestration.Start(context.Background())
-	test.NoError(err)
+	test.Require().NoError(err)
 }
 
 func (test *OrchestrationTest) TearDownTest() {
