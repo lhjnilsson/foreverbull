@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime
 
@@ -9,6 +10,8 @@ from foreverbull import entity
 
 # Hacky way to get the database URL, TODO: find a better way
 def get_engine(url: str):
+    log = logging.getLogger(__name__)
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
 
@@ -17,20 +20,19 @@ def get_engine(url: str):
         engine.connect()
         return engine
     except Exception as e:
-        print(f"Could not connect to {url}: {e}")
+        log.warning(f"Could not connect to {url}: {e}")
 
     for hostname in ["localhost", "postgres", "127.0.0.1"]:
         try:
-            # if we are running inside docker network it will be postgres:5432
             database_port = re.search(r":(\d+)/", url).group(1)
             url = url.replace(f":{database_port}", ":5432", 1)
             database_host = re.search(r"@([^/]+):", url).group(1)
-            url = url.replace(f"@{database_host}:", "@localhost:", 1)
+            url = url.replace(f"@{database_host}:", f"@{hostname}:", 1)
             engine = create_engine(url)
             engine.connect()
             return engine
         except Exception as e:
-            print(f"Could not connect to {hostname}: {e}")
+            log.warning(f"Could not connect to {url}: {e}")
     raise Exception("Could not connect to database")
 
 
