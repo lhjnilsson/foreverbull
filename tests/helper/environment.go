@@ -3,9 +3,12 @@ package helper
 import (
 	"context"
 	"os"
+	"path"
+	"runtime"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/network"
 )
 
@@ -13,6 +16,7 @@ type Containers struct {
 	Postgres bool
 	NATS     bool
 	Minio    bool
+	Loki     bool
 }
 
 func SetupEnvironment(t *testing.T, containers *Containers) {
@@ -48,6 +52,12 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 		os.Setenv(environment.MINIO_URL, uri)
 		os.Setenv(environment.MINIO_ACCESS_KEY, accessKey)
 		os.Setenv(environment.MINIO_SECRET_KEY, secretKey)
+	}
+	if containers.Loki {
+		_, filename, _, ok := runtime.Caller(0)
+		require.True(t, ok, "Fail to locate current caller folder")
+		dataPath := path.Join(path.Dir(filename), "metrics/loki")
+		LokiContainer(t, environment.GetDockerNetworkName(), dataPath)
 	}
 
 	os.Setenv(environment.SERVER_ADDRESS, "host.docker.internal")

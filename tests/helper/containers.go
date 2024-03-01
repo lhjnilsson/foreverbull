@@ -1,9 +1,11 @@
 package helper
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +14,8 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/ioutils"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/nats"
@@ -63,7 +66,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 	t.Helper()
 
 	// Disable logging, its very verbose otherwise
-	testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
+	// testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
 
 	dbName := strings.ToLower(strings.Replace(t.Name(), "/", "_", -1))
 	container, err := postgres.RunContainer(context.TODO(),
@@ -142,6 +145,70 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 		}
 	})
 	return ConnectionString, "minioadmin", "minioadmin"
+}
+
+type LoggingHook struct {
+	LokiURL string
+}
+
+func (hook *LoggingHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+	payload := map[string]interface{}{
+		"streams": []map[string]interface{}{
+			{
+				"stream": map[string]string{
+					"job": "test",
+				},
+				"values": []interface{}{
+					[]interface{}{fmt.Sprintf("%d", time.Now().UnixNano()), msg},
+				},
+			},
+		},
+	}
+	marshalled, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("Failed to marshal payload:", err)
+		return
+	}
+	resp, err := http.Post(hook.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
+	if err != nil {
+		fmt.Println("Failed to send request:", err)
+		return
+	}
+	fmt.Println("PUSHED LOGS TO LOKI: ", msg)
+	if resp.StatusCode >= 300 {
+		fmt.Println("Failed to send request:", resp)
+	}
+}
+
+func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString string) {
+	t.Helper()
+	ctx := context.TODO()
+
+	container := testcontainers.ContainerRequest{
+		Image:        "grafana/loki:latest",
+		ExposedPorts: []string{"3100/tcp"},
+		WaitingFor:   wait.ForLog("will now accept requests"),
+		HostConfigModifier: func(hostConfig *container.HostConfig) {
+			hostConfig.Binds = []string{fmt.Sprintf("%s:/loki", dataFolder)}
+		},
+		Networks: []string{NetworkID},
+	}
+
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: container,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		c.Terminate(ctx)
+	})
+	host, err := c.Host(ctx)
+	require.NoError(t, err)
+	port, err := c.MappedPort(ctx, "3100/tcp")
+	require.NoError(t, err)
+	log.Logger = log.Hook(&LoggingHook{LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())})
+
+	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
 
 // Copied from https://github.com/testcontainers/testcontainers-go/blob/main/modules/minio/minio.go
