@@ -147,37 +147,45 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 	return ConnectionString, "minioadmin", "minioadmin"
 }
 
-type LoggingHook struct {
+type LokiLogger struct {
 	LokiURL string
+	entries map[int64]string
 }
 
-func (hook *LoggingHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+func (l *LokiLogger) Write(p []byte) (n int, err error) {
+	l.entries[time.Now().UnixNano()] = string(p)
+	return len(p), nil
+}
+
+func (l *LokiLogger) Publish(testName string, failed bool) error {
+	values := make([][]string, 0)
+	for k, v := range l.entries {
+		values = append(values, []string{fmt.Sprintf("%d", k), v})
+	}
+
 	payload := map[string]interface{}{
 		"streams": []map[string]interface{}{
 			{
 				"stream": map[string]string{
-					"job": "test",
+					"job":    testName,
+					"failed": fmt.Sprintf("%t", failed),
 				},
-				"values": []interface{}{
-					[]interface{}{fmt.Sprintf("%d", time.Now().UnixNano()), msg},
-				},
+				"values": values,
 			},
 		},
 	}
 	marshalled, err := json.Marshal(payload)
 	if err != nil {
-		fmt.Println("Failed to marshal payload:", err)
-		return
+		return err
 	}
-	resp, err := http.Post(hook.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
+	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
 	if err != nil {
-		fmt.Println("Failed to send request:", err)
-		return
+		return err
 	}
-	fmt.Println("PUSHED LOGS TO LOKI: ", msg)
 	if resp.StatusCode >= 300 {
-		fmt.Println("Failed to send request:", resp)
+		return fmt.Errorf("failed to send request: %v", resp)
 	}
+	return nil
 }
 
 func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString string) {
@@ -199,14 +207,21 @@ func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString
 		Started:          true,
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		c.Terminate(ctx)
-	})
 	host, err := c.Host(ctx)
 	require.NoError(t, err)
 	port, err := c.MappedPort(ctx, "3100/tcp")
 	require.NoError(t, err)
-	log.Logger = log.Hook(&LoggingHook{LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())})
+
+	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
+	t.Cleanup(func() {
+		err = lokiLogger.Publish(t.Name(), t.Failed())
+		if err != nil {
+			fmt.Println("Failed to push to loki: ", err.Error())
+		}
+		c.Terminate(ctx)
+	})
+
+	log.Logger = zerolog.New(lokiLogger)
 
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
