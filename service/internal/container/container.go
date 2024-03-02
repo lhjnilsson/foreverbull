@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"strings"
@@ -106,6 +107,39 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	if err != nil {
 		return "", fmt.Errorf("error starting container: %v", err)
 	}
+
+	logs, err := sc.client.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
+	if err != nil {
+		return "", fmt.Errorf("error getting container logs: %v", err)
+	}
+	go func() {
+		header := make([]byte, 8)
+		for {
+			_, err := logs.Read(header)
+			if err == io.EOF {
+				logs.Close()
+				break
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("error reading container logs")
+			}
+
+			count := binary.BigEndian.Uint32(header[4:])
+			if count == 0 {
+				continue
+			}
+			message := make([]byte, count)
+			_, err = logs.Read(message)
+			if err == io.EOF {
+				logs.Close()
+				break
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("error reading container logs")
+			}
+			log.Debug().Str("container", resp.ID).Str("service", serviceName).Msg(string(message))
+		}
+	}()
 	return resp.ID[:12], nil
 }
 

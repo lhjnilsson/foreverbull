@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -148,17 +149,23 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 }
 
 type LokiLogger struct {
+	mu      sync.Mutex
 	LokiURL string
 	entries map[int64]string
 }
 
 func (l *LokiLogger) Write(p []byte) (n int, err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.entries[time.Now().UnixNano()] = string(p)
 	return len(p), nil
 }
 
-func (l *LokiLogger) Publish(testName string, failed bool) error {
+func (l *LokiLogger) Publish(t *testing.T) {
+	t.Logf("Pushing %d log entries to loki", len(l.entries))
 	values := make([][]string, 0)
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	for k, v := range l.entries {
 		values = append(values, []string{fmt.Sprintf("%d", k), v})
 	}
@@ -167,8 +174,8 @@ func (l *LokiLogger) Publish(testName string, failed bool) error {
 		"streams": []map[string]interface{}{
 			{
 				"stream": map[string]string{
-					"job":    testName,
-					"failed": fmt.Sprintf("%t", failed),
+					"test":   t.Name(),
+					"failed": fmt.Sprintf("%t", t.Failed()),
 				},
 				"values": values,
 			},
@@ -176,16 +183,19 @@ func (l *LokiLogger) Publish(testName string, failed bool) error {
 	}
 	marshalled, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		t.Fatalf("failed to marshal payload: %v", err)
+		return
 	}
 	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
 	if err != nil {
-		return err
+		t.Fatalf("failed to send request: %v", err)
+		return
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to send request: %v", resp)
+		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)
+		return
 	}
-	return nil
+	t.Logf("Pushed %d log entries to loki", len(values))
 }
 
 func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString string) {
@@ -214,10 +224,7 @@ func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString
 
 	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
 	t.Cleanup(func() {
-		err = lokiLogger.Publish(t.Name(), t.Failed())
-		if err != nil {
-			fmt.Println("Failed to push to loki: ", err.Error())
-		}
+		lokiLogger.Publish(t)
 		c.Terminate(ctx)
 	})
 
