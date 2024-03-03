@@ -27,7 +27,11 @@ func main() {
 		fmt.Println("Failed to create docker client: ", err)
 		os.Exit(1)
 	}
-	client.NetworkCreate(context.Background(), NETWORKID, types.NetworkCreate{CheckDuplicate: true})
+	_, err = client.NetworkCreate(context.Background(), NETWORKID, types.NetworkCreate{CheckDuplicate: true})
+	if err != nil {
+		fmt.Println("Failed to create network: ", err)
+		os.Exit(1)
+	}
 
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -112,10 +116,25 @@ func main() {
 	<-c
 	fmt.Println("Ctrl+C pressed, stopping containers and network...")
 
-	client.ContainerStop(context.Background(), resp.ID, container.StopOptions{})
-	client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{})
-	client.ContainerStop(context.Background(), lokiID, container.StopOptions{})
-	client.ContainerRemove(context.Background(), lokiID, container.RemoveOptions{})
-	client.NetworkRemove(context.Background(), NETWORKID)
+	err = client.ContainerStop(context.Background(), resp.ID, container.StopOptions{})
+	if err != nil {
+		fmt.Println("Failed to stop grafana container: ", err)
+	}
+	err = client.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{})
+	if err != nil {
+		fmt.Println("Failed to remove grafana container: ", err)
+	}
+	err = client.ContainerStop(context.Background(), lokiID, container.StopOptions{})
+	if err != nil {
+		fmt.Println("Failed to stop loki container: ", err)
+	}
+	err = client.ContainerRemove(context.Background(), lokiID, container.RemoveOptions{})
+	if err != nil {
+		fmt.Println("Failed to remove loki container: ", err)
+	}
+	err = client.NetworkRemove(context.Background(), NETWORKID)
+	if err != nil {
+		fmt.Println("Failed to remove network: ", err)
+	}
 	fmt.Println("Containers and network stopped. Exiting...")
 }

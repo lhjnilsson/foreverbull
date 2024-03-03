@@ -143,6 +143,7 @@ jobs:
           BACKTEST_IMAGE: quay.io/foreverbull/zipline:latest
           HOSTNAME: host.docker.internal
           LOG_LEVEL: info
+          DISABLE_LOKI_LOGGING: true
 
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s

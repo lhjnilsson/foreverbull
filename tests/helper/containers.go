@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -198,9 +200,13 @@ func (l *LokiLogger) Publish(t *testing.T) {
 	t.Logf("Pushed %d log entries to loki", len(values))
 }
 
-func LokiContainer(t *testing.T, NetworkID, dataFolder string) (ConnectionString string) {
+func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString string) {
 	t.Helper()
 	ctx := context.TODO()
+
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok, "Fail to locate current caller folder")
+	dataFolder := path.Join(path.Dir(filename), "metrics/loki")
 
 	container := testcontainers.ContainerRequest{
 		Image:        "grafana/loki:latest",
