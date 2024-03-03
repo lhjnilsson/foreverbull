@@ -1,5 +1,6 @@
-name: "release"
+name: release
 on: push
+permissions: read-all
 
 jobs:
   release_docker_python:
