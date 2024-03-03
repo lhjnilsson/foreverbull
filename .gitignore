@@ -175,3 +175,6 @@ yarn-error.log*
 
 # SQL files
 *.sql
+
+# Loki metric folder
+tests/helper/metrics/loki/*

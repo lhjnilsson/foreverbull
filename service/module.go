@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
@@ -15,6 +16,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/service/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/service/internal/stream/dependency"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 )
 
@@ -45,6 +48,10 @@ var Module = fx.Options(
 		},
 		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container) error {
 			serviceAPI.Use(
+				logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
+					return log.Logger
+				}),
+				),
 				internalHTTP.OrchestrationMiddleware(api.OrchestrationDependency, stream),
 				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
 				func(ctx *gin.Context) {

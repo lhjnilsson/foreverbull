@@ -1,10 +1,15 @@
 package helper
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
+	"net/http"
+	"path"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,7 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/ioutils"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/nats"
@@ -63,7 +68,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 	t.Helper()
 
 	// Disable logging, its very verbose otherwise
-	testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
+	// testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
 
 	dbName := strings.ToLower(strings.Replace(t.Name(), "/", "_", -1))
 	container, err := postgres.RunContainer(context.TODO(),
@@ -142,6 +147,93 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 		}
 	})
 	return ConnectionString, "minioadmin", "minioadmin"
+}
+
+type LokiLogger struct {
+	mu      sync.Mutex
+	LokiURL string
+	entries map[int64]string
+}
+
+func (l *LokiLogger) Write(p []byte) (n int, err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries[time.Now().UnixNano()] = string(p)
+	return len(p), nil
+}
+
+func (l *LokiLogger) Publish(t *testing.T) {
+	t.Log("Pushing log entries to loki...")
+	values := make([][]string, 0)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for k, v := range l.entries {
+		values = append(values, []string{fmt.Sprintf("%d", k), v})
+	}
+
+	payload := map[string]interface{}{
+		"streams": []map[string]interface{}{
+			{
+				"stream": map[string]string{
+					"test":   t.Name(),
+					"failed": fmt.Sprintf("%t", t.Failed()),
+				},
+				"values": values,
+			},
+		},
+	}
+	marshalled, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+		return
+	}
+	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
+	if err != nil {
+		t.Fatalf("failed to send request: %v", err)
+		return
+	}
+	if resp.StatusCode >= 300 {
+		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)
+		return
+	}
+	t.Logf("Pushed %d log entries to loki", len(values))
+}
+
+func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString string) {
+	t.Helper()
+	ctx := context.TODO()
+
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok, "Fail to locate current caller folder")
+	dataFolder := path.Join(path.Dir(filename), "metrics/loki")
+
+	container := testcontainers.ContainerRequest{
+		Image:        "grafana/loki:latest",
+		ExposedPorts: []string{"3100/tcp"},
+		WaitingFor:   wait.ForLog("will now accept requests"),
+		HostConfigModifier: func(hostConfig *container.HostConfig) {
+			hostConfig.Binds = []string{fmt.Sprintf("%s:/loki", dataFolder)}
+		},
+		Networks: []string{NetworkID},
+	}
+
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: container,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	host, err := c.Host(ctx)
+	require.NoError(t, err)
+	port, err := c.MappedPort(ctx, "3100/tcp")
+	require.NoError(t, err)
+
+	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
+	t.Cleanup(func() {
+		lokiLogger.Publish(t)
+		require.NoError(t, c.Terminate(ctx))
+	})
+	log.Logger = log.Logger.Output(lokiLogger)
+	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
 
 // Copied from https://github.com/testcontainers/testcontainers-go/blob/main/modules/minio/minio.go

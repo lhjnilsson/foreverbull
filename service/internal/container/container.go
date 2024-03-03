@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"strings"
@@ -106,6 +107,39 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	if err != nil {
 		return "", fmt.Errorf("error starting container: %v", err)
 	}
+
+	logs, err := sc.client.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
+	if err != nil {
+		return "", fmt.Errorf("error getting container logs: %v", err)
+	}
+	go func() {
+		header := make([]byte, 8)
+		for {
+			_, err := logs.Read(header)
+			if err == io.EOF {
+				logs.Close()
+				break
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("error reading container logs")
+			}
+
+			count := binary.BigEndian.Uint32(header[4:])
+			if count == 0 {
+				continue
+			}
+			message := make([]byte, count)
+			_, err = logs.Read(message)
+			if err == io.EOF {
+				logs.Close()
+				break
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("error reading container logs")
+			}
+			log.Debug().Str("container", resp.ID).Str("service", serviceName).Msg(string(message))
+		}
+	}()
 	return resp.ID[:12], nil
 }
 
@@ -129,15 +163,25 @@ func (sc *serviceContainer) StopAll(ctx context.Context, remove bool) error {
 	filters.Add("label", "platform=foreverbull")
 	filters.Add("label", "type=service")
 	filters.Add("network", environment.GetDockerNetworkName())
-	images, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	containers, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
 	if err != nil {
 		return fmt.Errorf("error listing containers: %v", err)
 	}
-	for _, image := range images {
-		log.Info().Str("id", image.ID).Bool("remove", remove).Msg("stopping container")
-		if err := sc.Stop(ctx, image.ID, remove); err != nil {
+	for _, c := range containers {
+		log.Info().Str("id", c.ID).Bool("remove", remove).Msg("stopping container")
+		if err := sc.Stop(ctx, c.ID, remove); err != nil {
+			if strings.Contains(err.Error(), "No such container") {
+				continue
+			}
 			return fmt.Errorf("error stopping container: %v", err)
 		}
 	}
-	return err
+	containers, err = sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	if err != nil {
+		return fmt.Errorf("error listing images: %v", err)
+	}
+	if len(containers) == 0 {
+		return nil
+	}
+	return fmt.Errorf("expected no containers, but found %d", len(containers))
 }

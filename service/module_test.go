@@ -44,6 +44,7 @@ func (test *ServiceModuleTest) SetupTest() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
+		Loki:     true,
 	})
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)

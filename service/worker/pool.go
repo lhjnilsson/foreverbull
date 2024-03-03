@@ -131,6 +131,6 @@ func (p *pool) Stop(ctx context.Context) error {
 			return nil
 		})
 	}
-
+	defer p.socket.Close()
 	return g.Wait()
 }
