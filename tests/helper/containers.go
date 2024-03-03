@@ -17,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -164,7 +163,7 @@ func (l *LokiLogger) Write(p []byte) (n int, err error) {
 }
 
 func (l *LokiLogger) Publish(t *testing.T) {
-	t.Logf("Pushing %d log entries to loki", len(l.entries))
+	t.Log("Pushing log entries to loki...")
 	values := make([][]string, 0)
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -233,9 +232,7 @@ func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString s
 		lokiLogger.Publish(t)
 		require.NoError(t, c.Terminate(ctx))
 	})
-
-	log.Logger = zerolog.New(lokiLogger)
-
+	log.Logger = log.Logger.Output(lokiLogger)
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
 

@@ -51,28 +51,18 @@ func TestModuleBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestModuleTest))
 }
 
-func (test *BacktestModuleTest) SetupSuite() {
+func (test *BacktestModuleTest) SetupTest() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 		Minio:    true,
+		Loki:     true,
 	})
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
 	test.Require().NoError(err)
-
-	/*
-			test.log, err = os.OpenFile(
-				"foreverbull.log",
-				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-				0664,
-			)
-
-		test.Require().NoError(err)
-		log.Logger = zerolog.New(test.log).With().Timestamp().Logger()
-	*/
 
 	test.app = fx.New(
 		fx.Provide(
@@ -186,11 +176,9 @@ func (test *BacktestModuleTest) SetupSuite() {
 	test.backtestName = "test"
 }
 
-func (test *BacktestModuleTest) TearDownSuite() {
+func (test *BacktestModuleTest) TearDownTest() {
 	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
-
-	//test.NoError(test.log.Close())
 }
 
 func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
@@ -230,7 +218,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 }
 
-func (test *BacktestModuleTest) NoTestRunBacktestManual() {
+func (test *BacktestModuleTest) TestRunBacktestManual() {
 	type SessionResponse struct {
 		ID       string
 		Statuses []struct {

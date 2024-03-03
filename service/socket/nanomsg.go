@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/rs/zerolog/log"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -43,6 +44,7 @@ func (s *NanomsgSocket) listenToFreePort() error {
 			return nil
 		}
 		if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
+			log.Debug().Msgf("Port %v already in use, trying next port", i)
 			continue
 		}
 		return err
@@ -114,6 +116,7 @@ func (s *NanomsgSocket) Connect() error {
 	if err != nil {
 		return fmt.Errorf("error connecting to socket: %v", err)
 	}
+	log.Debug().Msgf("Connected to %v:%v", s.Host, s.Port)
 	return nil
 }
 
@@ -140,6 +143,7 @@ func (s *NanomsgSocket) Get() (ReadWriter, error) {
 }
 
 func (s *NanomsgSocket) Close() error {
+	log.Debug().Msgf("Closing connection to %v:%v", s.Host, s.Port)
 	return s.socket.Close()
 }
 

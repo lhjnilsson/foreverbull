@@ -163,15 +163,25 @@ func (sc *serviceContainer) StopAll(ctx context.Context, remove bool) error {
 	filters.Add("label", "platform=foreverbull")
 	filters.Add("label", "type=service")
 	filters.Add("network", environment.GetDockerNetworkName())
-	images, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	containers, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
 	if err != nil {
 		return fmt.Errorf("error listing containers: %v", err)
 	}
-	for _, image := range images {
-		log.Info().Str("id", image.ID).Bool("remove", remove).Msg("stopping container")
-		if err := sc.Stop(ctx, image.ID, remove); err != nil {
+	for _, c := range containers {
+		log.Info().Str("id", c.ID).Bool("remove", remove).Msg("stopping container")
+		if err := sc.Stop(ctx, c.ID, remove); err != nil {
+			if strings.Contains(err.Error(), "No such container") {
+				continue
+			}
 			return fmt.Errorf("error stopping container: %v", err)
 		}
 	}
-	return err
+	containers, err = sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	if err != nil {
+		return fmt.Errorf("error listing images: %v", err)
+	}
+	if len(containers) == 0 {
+		return nil
+	}
+	return fmt.Errorf("expected no containers, but found %d", len(containers))
 }
