@@ -231,7 +231,7 @@ func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString s
 	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
 	t.Cleanup(func() {
 		lokiLogger.Publish(t)
-		c.Terminate(ctx)
+		require.NoError(t, c.Terminate(ctx))
 	})
 
 	log.Logger = zerolog.New(lokiLogger)
