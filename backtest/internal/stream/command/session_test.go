@@ -109,6 +109,7 @@ func (test *CommandSessionTest) TestSessionRunCommand() {
 	session := new(mockBacktest.Session)
 	session.On("GetSocket").Return(&socket.Socket{})
 	session.On("Run", mock.Anything, mock.Anything).Return(nil)
+	session.On("Stop", mock.Anything).Return(nil)
 
 	m.On("Call", mock.Anything, dependency.GetBacktestSessionKey).Return(session, nil)
 	m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
