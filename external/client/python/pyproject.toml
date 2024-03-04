@@ -1,6 +1,5 @@
 [project]
 name = "foreverbull"
-version = "0.0.0"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
 packages = [{ include = "foreverbull", from = "src" }]
@@ -20,7 +19,7 @@ dependencies = [
   "docker>=7.0.0,<8.0.0",
   "pandas-datareader@git+https://github.com/pydata/pandas-datareader.git",
 ]
-
+dynamic = ["version"]
 
 [project.scripts]
 foreverbull = "foreverbull.cli:cli"
@@ -34,6 +33,9 @@ allow-direct-references = true
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/foreverbull/__version__.py"
 
 [tool.hatch.envs.dev]
 dependencies = [
