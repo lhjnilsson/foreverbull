@@ -5,7 +5,7 @@ permissions: read-all
 jobs:
   version_tag:
     runs-on: ubuntu-latest
-    output:
+    outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v2
