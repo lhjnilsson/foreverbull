@@ -9,6 +9,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
 
+from foreverbull._version import version
+
 env = typer.Typer()
 
 std = Console()
@@ -39,7 +41,7 @@ NETWORK_NAME = "foreverbull"
 POSTGRES_IMAGE = "postgres:13.3-alpine"
 NATS_IMAGE = "nats:2.10-alpine"
 MINIO_IMAGE = "minio/minio:latest"
-FOREVERBULL_IMAGE = "lhjnilsson/foreverbull:latest"
+FOREVERBULL_IMAGE = f"lhjnilsson/foreverbull:{version}"
 
 
 @env.command()
@@ -106,10 +108,11 @@ def status():
 
 API_KEY = Annotated[str, typer.Argument(help="alpaca.markets api key")]
 API_SECRET = Annotated[str, typer.Argument(help="alpaca.markets api secret")]
+BROKER_IMAGE = Annotated[str, typer.Option(help="Docker image name of broker")]
 
 
 @env.command()
-def start(api_key: API_KEY, api_secret: API_SECRET):
+def start(api_key: API_KEY, api_secret: API_SECRET, broker_image: BROKER_IMAGE = FOREVERBULL_IMAGE):
     d = docker.from_env()
     std.print("Starting environment")
 
@@ -243,9 +246,9 @@ def start(api_key: API_KEY, api_secret: API_SECRET):
             exit(1)
 
         try:
-            d.images.get(FOREVERBULL_IMAGE)
+            d.images.get(broker_image)
         except docker.errors.ImageNotFound:
-            d.images.pull(FOREVERBULL_IMAGE)
+            d.images.pull(broker_image)
         try:
             foreverbull_container = d.containers.get("foreverbull_foreverbull")
             if foreverbull_container.status != "running":
@@ -253,7 +256,7 @@ def start(api_key: API_KEY, api_secret: API_SECRET):
         except docker.errors.NotFound:
             try:
                 d.containers.run(
-                    FOREVERBULL_IMAGE,
+                    broker_image,
                     name="foreverbull_foreverbull",
                     detach=True,
                     network=NETWORK_NAME,
