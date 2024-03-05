@@ -87,8 +87,8 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v2
         with:
-          name: dist
-          path: external/client/python/dist
+          name: python-dist
+          path: external/client/python/dist/*
           retention-days: 1
 
   create_release:
@@ -99,16 +99,22 @@ jobs:
       packages: write
       contents: write
     steps:
-      - name: Download client
+      - name: Download Python Dist
         uses: actions/download-artifact@v2
         with:
-          name: dist
+          name: python-dist
+      - name: run ls
+        run: |
+          ls -l
+      - name: unpack python dist
+        run: |
+          tar -xvf python-dist.tar.gz
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            dist/foreverbull-*.tar.gz
-            dist/foreverbull-*.whl
+            ./dist/foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
+            ./dist/foreverbull-${{needs.version_tag.outputs.version}}.tar.gz
           name: ${{needs.version_tag.outputs.version}}
           tag_name: ${{needs.version_tag.outputs.version}}
           body: |
