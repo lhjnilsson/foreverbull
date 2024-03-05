@@ -87,6 +87,28 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v2
         with:
-          name: client
+          name: dist
           path: external/client/python/dist
           retention-days: 1
+
+  create_release:
+    needs: [build_python_client, version_tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download client
+        uses: actions/download-artifact@v2
+        with:
+          name: dist
+      - name: unzip
+        run: |
+          unzip -o dist.zip -d dist
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/foreverbull-*.tar.gz
+            dist/foreverbull-*.whl
+          name: ${{needs.version_tag.outputs.version}}
+          body: |
+            Release ${{needs.version_tag.outputs.version}}
+          prerelease: true
