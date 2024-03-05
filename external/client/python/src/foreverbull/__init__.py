@@ -5,6 +5,7 @@ from functools import wraps
 from inspect import getabsfile, signature
 
 from foreverbull import entity
+from foreverbull._version import version  # noqa
 from foreverbull.data import Asset, Portfolio
 
 log_level = os.environ.get("LOGLEVEL", "WARNING").upper()

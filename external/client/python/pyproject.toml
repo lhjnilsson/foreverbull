@@ -35,7 +35,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/foreverbull/__version__.py"
+path = "src/foreverbull/_version.py"
 
 [tool.hatch.envs.dev]
 dependencies = [
