@@ -108,11 +108,11 @@ def status():
 
 API_KEY = Annotated[str, typer.Argument(help="alpaca.markets api key")]
 API_SECRET = Annotated[str, typer.Argument(help="alpaca.markets api secret")]
-BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
+BROKER_IMAGE = Annotated[str, typer.Option(help="Docker image name of broker")]
 
 
 @env.command()
-def start(api_key: API_KEY, api_secret: API_SECRET, broker_image: BROKER_IMAGE_OPT = FOREVERBULL_IMAGE):
+def start(api_key: API_KEY, api_secret: API_SECRET, broker_image: BROKER_IMAGE = FOREVERBULL_IMAGE):
     d = docker.from_env()
     std.print("Starting environment")
 

@@ -210,7 +210,7 @@ jobs:
           python -m pip install pytest
       - name: Create environment
         run: |
-          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }}
+          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilson/foreverbull:latest
       - name: Create services
         run: |
           foreverbull service create backtest quay.io/foreverbull/zipline:latest
