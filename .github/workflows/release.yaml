@@ -93,9 +93,11 @@ jobs:
 
   create_release:
     needs: [build_python_client, version_tag]
-    permissions:
-      releases: write
     runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      packages: write
+      contents: write
     steps:
       - name: Download client
         uses: actions/download-artifact@v2
