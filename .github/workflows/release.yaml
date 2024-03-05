@@ -96,7 +96,8 @@ jobs:
           retention-days: 1
 
   create_release:
-    needs: [build_python_client, version_tag]
+    needs:
+      [version_tag, build_docker_python, build_docker_go, build_python_client]
     runs-on: ubuntu-latest
     permissions:
       deployments: write
