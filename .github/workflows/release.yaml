@@ -93,6 +93,8 @@ jobs:
 
   create_release:
     needs: [build_python_client, version_tag]
+    permissions:
+      releases: write
     runs-on: ubuntu-latest
     steps:
       - name: Download client
