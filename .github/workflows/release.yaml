@@ -106,6 +106,7 @@ jobs:
             dist/foreverbull-*.tar.gz
             dist/foreverbull-*.whl
           name: ${{needs.version_tag.outputs.version}}
+          tag_name: ${{needs.version_tag.outputs.version}}
           body: |
             Release ${{needs.version_tag.outputs.version}}
           prerelease: true
