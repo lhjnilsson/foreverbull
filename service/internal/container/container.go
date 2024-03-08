@@ -7,70 +7,29 @@ import (
 	"io"
 	"strings"
 
-	"github.com/docker/docker/api/types"
 	def "github.com/lhjnilsson/foreverbull/service/container"
 	"github.com/rs/zerolog/log"
 
-	"github.com/docker/docker/api/types/container"
+	cType "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 )
 
-func New() (def.Container, error) {
+func NewContainerRegistry() (def.Container, error) {
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("error creating docker client: %v", err)
 	}
-	return &serviceContainer{client: client}, nil
+	return &container{client: client}, nil
 }
 
-type serviceContainer struct {
+type container struct {
 	client *client.Client
 }
 
-func (sc *serviceContainer) hasImage(ctx context.Context, imageID string) (bool, error) {
-	_, _, err := sc.client.ImageInspectWithRaw(ctx, imageID)
-	if err != nil {
-		if strings.Contains(err.Error(), "No such image: ") {
-			return false, nil
-		} else {
-			return false, err
-		}
-	}
-	return true, nil
-}
-
-func (sc *serviceContainer) Pull(ctx context.Context, imageID string) error {
-	reader, err := sc.client.ImagePull(ctx, imageID, types.ImagePullOptions{})
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(io.Discard, reader)
-	return err
-}
-
-type ContainerStatus struct {
-	ID  string
-	Err error
-}
-
-func (sc *serviceContainer) Info(ctx context.Context, containerID string) (types.ImageInspect, error) {
-	i, _, err := sc.client.ImageInspectWithRaw(ctx, containerID)
-	return i, err
-}
-
-func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name string, extraLabels map[string]string) (string, error) {
-	has, err := sc.hasImage(ctx, image)
-	if err != nil {
-		return "", fmt.Errorf("error inspecting image: %v", err)
-	}
-	if !has {
-		if err := sc.Pull(ctx, image); err != nil {
-			return "", fmt.Errorf("error pulling image '%s': %v", image, err)
-		}
-	}
+func (sc *container) Start(ctx context.Context, serviceName, image, name string, extraLabels map[string]string) (string, error) {
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
 	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
 	env = append(env, fmt.Sprintf("SERVICE_NAME=%s", serviceName))
@@ -85,8 +44,8 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 		labels[k] = v
 	}
 
-	conf := container.Config{Image: image, Env: env, Tty: false, Hostname: name, Labels: labels}
-	hostConf := container.HostConfig{
+	conf := cType.Config{Image: image, Env: env, Tty: false, Hostname: name, Labels: labels}
+	hostConf := cType.HostConfig{
 		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}
 
@@ -103,12 +62,12 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	if err != nil {
 		return "", fmt.Errorf("error creating container: %v", err)
 	}
-	err = sc.client.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	err = sc.client.ContainerStart(ctx, resp.ID, cType.StartOptions{})
 	if err != nil {
 		return "", fmt.Errorf("error starting container: %v", err)
 	}
 
-	logs, err := sc.client.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
+	logs, err := sc.client.ContainerLogs(ctx, resp.ID, cType.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
 	if err != nil {
 		return "", fmt.Errorf("error getting container logs: %v", err)
 	}
@@ -143,27 +102,27 @@ func (sc *serviceContainer) Start(ctx context.Context, serviceName, image, name 
 	return resp.ID[:12], nil
 }
 
-func (sc *serviceContainer) SaveImage(ctx context.Context, containerID, imageName string) error {
-	_, err := sc.client.ContainerCommit(ctx, containerID, container.CommitOptions{Reference: imageName})
+func (sc *container) SaveImage(ctx context.Context, containerID, imageName string) error {
+	_, err := sc.client.ContainerCommit(ctx, containerID, cType.CommitOptions{Reference: imageName})
 	return err
 }
 
-func (sc *serviceContainer) Stop(ctx context.Context, containerID string, remove bool) error {
-	if err := sc.client.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
+func (sc *container) Stop(ctx context.Context, containerID string, remove bool) error {
+	if err := sc.client.ContainerStop(ctx, containerID, cType.StopOptions{}); err != nil {
 		return err
 	}
 	if remove {
-		return sc.client.ContainerRemove(ctx, containerID, container.RemoveOptions{})
+		return sc.client.ContainerRemove(ctx, containerID, cType.RemoveOptions{})
 	}
 	return nil
 }
 
-func (sc *serviceContainer) StopAll(ctx context.Context, remove bool) error {
+func (sc *container) StopAll(ctx context.Context, remove bool) error {
 	filters := filters.NewArgs()
 	filters.Add("label", "platform=foreverbull")
 	filters.Add("label", "type=service")
 	filters.Add("network", environment.GetDockerNetworkName())
-	containers, err := sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	containers, err := sc.client.ContainerList(ctx, cType.ListOptions{All: true, Filters: filters})
 	if err != nil {
 		return fmt.Errorf("error listing containers: %v", err)
 	}
@@ -176,7 +135,7 @@ func (sc *serviceContainer) StopAll(ctx context.Context, remove bool) error {
 			return fmt.Errorf("error stopping container: %v", err)
 		}
 	}
-	containers, err = sc.client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters})
+	containers, err = sc.client.ContainerList(ctx, cType.ListOptions{All: true, Filters: filters})
 	if err != nil {
 		return fmt.Errorf("error listing images: %v", err)
 	}

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
+	cType "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -15,13 +15,13 @@ import (
 type ContainerTest struct {
 	suite.Suite
 
-	container serviceContainer
+	container container
 }
 
 func (test *ContainerTest) SetupTest() {
-	c, err := New()
+	c, err := NewContainerRegistry()
 	test.Require().NoError(err)
-	container, ok := c.(*serviceContainer)
+	container, ok := c.(*container)
 	test.Require().True(ok)
 	test.container = *container
 
@@ -38,36 +38,9 @@ func TestContainer(t *testing.T) {
 	suite.Run(t, new(ContainerTest))
 }
 
-func (test *ContainerTest) TestHasImage() {
-	has, err := test.container.hasImage(context.TODO(), helper.PostgresImage)
-	test.Require().NoError(err)
-	test.Require().True(has)
-}
-
-func (test *ContainerTest) TestPull() {
-	// remove python image if it exists, and pull
-	image := "docker.io/library/python:3.11-bookworm"
-
-	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	test.Require().NoError(err)
-	_, err = client.ImageRemove(context.TODO(), image, types.ImageRemoveOptions{})
-	if err != nil {
-		test.Require().Contains(err.Error(), "No such image")
-	}
-
-	err = test.container.Pull(context.TODO(), image)
-	test.Require().NoError(err)
-}
-
-func (test *ContainerTest) TestInfo() {
-	info, err := test.container.Info(context.TODO(), helper.PostgresImage)
-	test.Require().NoError(err)
-	test.Require().NotEmpty(info.ID)
-}
-
 func (test *ContainerTest) TestStartSaveStop() {
 	// These subtests are ment to be run in order
-	image := "docker.io/library/python:3.11-bookworm"
+	image := "docker.io/library/python:3.12-alpine"
 	var containerID string
 	var err error
 	newImageName := uuid.New().String()
@@ -75,7 +48,7 @@ func (test *ContainerTest) TestStartSaveStop() {
 	test.T().Cleanup(func() {
 		client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 		test.Require().NoError(err)
-		err = client.ContainerRemove(context.TODO(), containerID, container.RemoveOptions{Force: true})
+		err = client.ContainerRemove(context.TODO(), containerID, cType.RemoveOptions{Force: true})
 		if err != nil {
 			test.Contains(err.Error(), "No such container")
 		}
@@ -100,7 +73,7 @@ func (test *ContainerTest) TestStartSaveStop() {
 
 func (test *ContainerTest) TestStopAll() {
 	// Start a container
-	image := "docker.io/library/python:3.11-bookworm"
+	image := "docker.io/library/python:3.12-alpine"
 	containerID, err := test.container.Start(context.TODO(), "test", image, "test", nil)
 	test.Require().NoError(err)
 	test.Require().NotEmpty(containerID)
