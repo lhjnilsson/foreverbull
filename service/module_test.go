@@ -134,6 +134,10 @@ func (test *ServiceModuleTest) TestAPIClient() {
 		test.Error(err)
 		test.Nil(instance)
 	})
+	test.Run("TestGetImage, Not Stored", func() {
+		_, err := client.GetImage(context.Background(), "docker.io/library/python:3.12-alpine")
+		test.Error(err)
+	})
 	test.Run("TestDownloadImage", func() {
 		_, err := client.DownloadImage(context.Background(), "docker.io/library/python:3.12-alpine")
 		test.NoError(err)
