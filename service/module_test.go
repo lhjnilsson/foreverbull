@@ -10,11 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types"
+	docker "github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/service/api"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
@@ -29,14 +32,6 @@ type ServiceModuleTest struct {
 }
 
 func TestModuleService(t *testing.T) {
-	workerImage := os.Getenv("WORKER_IMAGE")
-	if workerImage == "" {
-		t.Skip("worker image not set")
-	}
-	backtestImage := os.Getenv("BACKTEST_IMAGE")
-	if backtestImage == "" {
-		t.Skip("backtest image not set")
-	}
 	suite.Run(t, new(ServiceModuleTest))
 }
 
@@ -76,7 +71,89 @@ func (test *ServiceModuleTest) TearDownTest() {
 	test.NoError(test.app.Stop(context.Background()))
 }
 
+func (test *ServiceModuleTest) TestAPIClient() {
+	var client api.Client
+	var err error
+	// Delete image in case it exists and end with remove to cleanup
+	d, err := docker.NewClientWithOpts(docker.FromEnv, docker.WithAPIVersionNegotiation())
+	test.Require().NoError(err)
+	_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+	defer func() {
+		_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+	}()
+
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+	services := repository.Service{Conn: pool}
+	instances := repository.Instance{Conn: pool}
+	testService, err := services.Create(context.Background(), "service", "docker.io/library/python:3.12-alpine")
+	test.Require().NoError(err)
+	testInstance, err := instances.Create(context.Background(), "instance_123", testService.Name)
+	test.Require().NoError(err)
+
+	test.Run("Create Client", func() {
+		client, err = api.NewClient()
+		test.NoError(err)
+	})
+	test.Run("TestListServices", func() {
+		services, err := client.ListServices(context.Background())
+		test.NoError(err)
+		test.NotNil(services)
+		test.Len(*services, 1)
+		test.Equal(testService.Name, (*services)[0].Name)
+	})
+	test.Run("TestGetService", func() {
+		service, err := client.GetService(context.Background(), testService.Name)
+		test.NoError(err)
+		test.NotNil(service)
+		test.Equal(testService.Name, service.Name)
+	})
+	test.Run("TestGetService, Not stored", func() {
+		service, err := client.GetService(context.Background(), "not_stored")
+		test.Error(err)
+		test.Nil(service)
+	})
+	test.Run("TestListInstances", func() {
+		instances, err := client.ListInstances(context.Background(), "service")
+		test.NoError(err)
+		test.NotNil(instances)
+	})
+	test.Run("TestListInstances, Not stored", func() {
+		instances, err := client.ListInstances(context.Background(), "not_stored")
+		test.NoError(err)
+		test.Empty(*instances)
+	})
+	test.Run("TestGetInstance", func() {
+		instance, err := client.GetInstance(context.Background(), testInstance.ID)
+		test.NoError(err)
+		test.NotNil(instance)
+		test.Equal(testInstance.ID, instance.ID)
+	})
+	test.Run("TestGetInstance, Not stored", func() {
+		instance, err := client.GetInstance(context.Background(), "not_stored")
+		test.Error(err)
+		test.Nil(instance)
+	})
+	test.Run("TestDownloadImage", func() {
+		_, err := client.DownloadImage(context.Background(), "docker.io/library/python:3.12-alpine")
+		test.NoError(err)
+	})
+	test.Run("TestGetImage", func() {
+		_, err := client.DownloadImage(context.Background(), "docker.io/library/python:3.12-alpine")
+		test.NoError(err)
+	})
+}
+
 func (test *ServiceModuleTest) TestCreateService() {
+	workerImage := os.Getenv("WORKER_IMAGE")
+	if workerImage == "" {
+		test.T().Skip("worker image not set")
+	}
+	backtestImage := os.Getenv("BACKTEST_IMAGE")
+	if backtestImage == "" {
+		test.T().Skip("backtest image not set")
+	}
+
 	type ServiceResponse struct {
 		Name     string
 		Type     string

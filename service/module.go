@@ -47,7 +47,7 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container) error {
+		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container, image container.Image) error {
 			serviceAPI.Use(
 				logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
 					return log.Logger
@@ -57,6 +57,7 @@ var Module = fx.Options(
 				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
 				func(ctx *gin.Context) {
 					ctx.Set(api.ContainerDependency, container)
+					ctx.Set(api.ImageDependency, image)
 					ctx.Next()
 				},
 			)
