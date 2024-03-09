@@ -31,7 +31,8 @@ type ServiceAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		containerImpl.New,
+		containerImpl.NewImageRegistry,
+		containerImpl.NewContainerRegistry,
 		func(gin *gin.Engine) *ServiceAPI {
 			return &ServiceAPI{gin.Group("/service/api")}
 		},
@@ -63,12 +64,13 @@ var Module = fx.Options(
 			serviceAPI.POST("/services", api.CreateService)
 			serviceAPI.GET("/services/:name", api.GetService)
 			serviceAPI.DELETE("/services/:name", api.DeleteService)
-			serviceAPI.GET("/services/:name/image", api.GetServiceImage)
-			//serviceAPI.POST("/services/:name/image", api.UpdateServiceImage)
 
 			serviceAPI.GET("/instances", api.ListInstances)
 			serviceAPI.GET("/instances/:instanceID", api.GetInstance)
 			serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
+
+			serviceAPI.GET("/images/*name", api.GetImage)
+			serviceAPI.POST("/images/*name", api.PullImage)
 			return nil
 		},
 		func(lc fx.Lifecycle, s ServiceStream, container container.Container, conn *pgxpool.Pool) error {

@@ -8,4 +8,7 @@ type Client interface {
 
 	ListInstances(ctx context.Context, serviceName string) (*[]InstanceResponse, error)
 	GetInstance(ctx context.Context, serviceName string, InstanceID string) (*InstanceResponse, error)
+
+	GetImage(ctx context.Context, image string) (*ImageResponse, error)
+	DownloadImage(ctx context.Context, image string) (*ImageResponse, error)
 }

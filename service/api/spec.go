@@ -17,3 +17,9 @@ type InstanceURI struct {
 }
 
 type InstanceResponse entity.Instance
+
+type ImageURI struct {
+	Name string `uri:"name" binding:"required"`
+}
+
+type ImageResponse entity.Image
