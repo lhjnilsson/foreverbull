@@ -35,7 +35,7 @@ func (test *SessionTest) SetupTest() {
 
 	ctx := context.Background()
 	b_postgres := &Backtest{Conn: test.conn}
-	test.storedBacktest, err = b_postgres.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.Require().NoError(err)
 }
 
@@ -162,7 +162,7 @@ func (test *SessionTest) TestListByBacktest() {
 	test.NoError(err)
 
 	b_postgres := &Backtest{Conn: test.conn}
-	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 	s3, err := db.Create(ctx, "backtest2", false)
 	test.NoError(err)

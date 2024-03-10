@@ -53,7 +53,7 @@ func (test *CommandSessionTest) TestUpdateSessionCommand() {
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	backtests := repository.Backtest{Conn: test.db}
-	backtest, err := backtests.Create(context.Background(), "test-backtest", "test-backtest-service", nil, time.Now(), time.Now(),
+	backtest, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
 		"test-calendar", []string{"test-symbol"}, nil)
 	test.NoError(err)
 
@@ -97,7 +97,7 @@ func (test *CommandSessionTest) TestUpdateSessionCommand() {
 func (test *CommandSessionTest) TestSessionRunCommand() {
 	backtests := repository.Backtest{Conn: test.db}
 	sessions := repository.Session{Conn: test.db}
-	_, err := backtests.Create(context.Background(), "test-backtest", "test-backtest-service", nil, time.Now(), time.Now(),
+	_, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
 		"test-calendar", []string{"test-symbol"}, nil)
 	test.NoError(err)
 	s, err := sessions.Create(context.Background(), "test-backtest", false)

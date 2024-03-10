@@ -20,9 +20,8 @@ func ParseTime(s string) (time.Time, error) {
 }
 
 type CreateBacktestBody struct {
-	Name            string  `json:"name" binding:"required,gte=3,lte=32"`
-	BacktestService string  `json:"backtest_service" binding:"required"`
-	WorkerService   *string `json:"worker_service"`
+	Name    string  `json:"name" binding:"required,gte=3,lte=32"`
+	Service *string `json:"service"`
 
 	Start     string   `json:"start" binding:"required"`
 	End       string   `json:"end" binding:"required"`

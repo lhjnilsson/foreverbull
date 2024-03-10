@@ -13,8 +13,7 @@ const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (
 name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 status text NOT NULL DEFAULT 'CREATED',
 error text,
-backtest_service text NOT NULL,
-worker_service text,
+service text,
 calendar text NOT NULL DEFAULT 'XNYS',
 start_at TIMESTAMPTZ NOT NULL,
 end_at TIMESTAMPTZ NOT NULL,
@@ -54,12 +53,12 @@ type Backtest struct {
 	Conn postgres.Query
 }
 
-func (db *Backtest) Create(ctx context.Context, name, backtest_service string, worker_service *string,
+func (db *Backtest) Create(ctx context.Context, name string, service *string,
 	start, end time.Time, calendar string, symbols []string, benchmark *string) (*entity.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, backtest_service, worker_service, start_at, end_at, calendar, symbols, benchmark) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		name, backtest_service, worker_service, start, end, calendar, symbols, benchmark)
+		`INSERT INTO backtest (name, service, start_at, end_at, calendar, symbols, benchmark) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		name, service, start, end, calendar, symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +68,7 @@ func (db *Backtest) Create(ctx context.Context, name, backtest_service string, w
 func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, error) {
 	b := entity.Backtest{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, backtest_service, worker_service,
+		`SELECT backtest.name, service,
 		calendar, start_at, end_at, benchmark, symbols,
 		(SELECT count(*) FROM session WHERE backtest=backtest.name),
 		bs.status, bs.error, bs.occurred_at
@@ -85,7 +84,7 @@ func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, err
 	for rows.Next() {
 		status := entity.BacktestStatus{}
 		err = rows.Scan(
-			&b.Name, &b.BacktestService, &b.WorkerService,
+			&b.Name, &b.Service,
 			&b.Calendar, &b.Start, &b.End, &b.Benchmark, &b.Symbols,
 			&b.Sessions,
 			&status.Status, &status.Error, &status.OccurredAt,
@@ -101,13 +100,13 @@ func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, err
 	return &b, nil
 }
 
-func (db *Backtest) Update(ctx context.Context, name, backtest_service string, worker_service *string,
+func (db *Backtest) Update(ctx context.Context, name string, service *string,
 	start, end time.Time, calendar string, symbols []string, benchmark *string) (*entity.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE backtest SET backtest_service=$2, worker_service=$3, start_at=$4, end_at=$5, 
-		calendar=$6, symbols=$7, benchmark=$8, status='UPDATED'
+		`UPDATE backtest SET service=$2, start_at=$3, end_at=$4, 
+		calendar=$5, symbols=$6, benchmark=$7, status='UPDATED'
 		WHERE name=$1`,
-		name, backtest_service, worker_service, start, end, calendar, symbols, benchmark)
+		name, service, start, end, calendar, symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +124,7 @@ func (db *Backtest) UpdateStatus(ctx context.Context, name string, status entity
 
 func (db *Backtest) List(ctx context.Context) (*[]entity.Backtest, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, backtest_service, worker_service,
+		`SELECT backtest.name, service,
 		calendar, start_at, end_at, benchmark, symbols,
 		(SELECT count(*) FROM session WHERE backtest=backtest.name),
 		bs.status, bs.error, bs.occurred_at
@@ -145,7 +144,7 @@ func (db *Backtest) List(ctx context.Context) (*[]entity.Backtest, error) {
 		status := entity.BacktestStatus{}
 		b := entity.Backtest{}
 		err = rows.Scan(
-			&b.Name, &b.BacktestService, &b.WorkerService,
+			&b.Name, &b.Service,
 			&b.Calendar, &b.Start, &b.End, &b.Benchmark, &b.Symbols,
 			&b.Sessions,
 			&status.Status, &status.Error, &status.OccurredAt,
