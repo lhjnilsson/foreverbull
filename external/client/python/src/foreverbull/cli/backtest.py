@@ -51,14 +51,12 @@ def create(
     start: Annotated[datetime, typer.Argument(help="start time of the backtest")],
     end: Annotated[datetime, typer.Argument(help="end time of the backtest")],
     symbols: Annotated[List[str], typer.Argument(help="symbol to use")],
-    backtest_service: Annotated[str, typer.Option(help="backtest service to use")],
-    worker_service: Annotated[str, typer.Option(help="worker service to use")] = None,
+    service: Annotated[str, typer.Option(help="worker service to use")] = None,
     benchmark: Annotated[str, typer.Option(help="benchmark to use")] = None,
 ):
     backtest = entity.backtest.Backtest(
         name=name,
-        backtest_service=backtest_service,
-        worker_service=worker_service,
+        service=service,
         start=start,
         end=end,
         symbols=[symbol.upper() for symbol in symbols],

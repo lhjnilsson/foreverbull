@@ -27,13 +27,15 @@ class BacktestStatus(Base):
 
 class Backtest(Base):
     name: str
-    backtest_service: str
-    worker_service: Optional[str] = None
+    service: Optional[str] = None
     calendar: str = "XNYS"
     start: datetime
     end: datetime
     benchmark: str | None = None
     symbols: List[str]
+
+    data_frequency: str = "daily"
+    capital_base: int = 100_000
 
     statuses: List[BacktestStatus] | None = None
 

@@ -15,7 +15,6 @@ def test_backtest_list():
         mock_list.return_value = [
             entity.backtest.Backtest(
                 name="test_name",
-                backtest_service="test_backtest_service",
                 start=datetime.now(),
                 end=datetime.now(),
                 symbols=["AAPL", "MSFT"],
@@ -62,7 +61,6 @@ def test_backtest_create():
     ):
         mock_create.return_value = entity.backtest.Backtest(
             name="test_name",
-            backtest_service="test_backtest_service",
             start=datetime.now(),
             end=datetime.now(),
             symbols=["AAPL", "MSFT"],
@@ -71,7 +69,6 @@ def test_backtest_create():
         mock_get.side_effect = [
             entity.backtest.Backtest(
                 name="test_name",
-                backtest_service="test_backtest_service",
                 start=datetime.now(),
                 end=datetime.now(),
                 symbols=["AAPL", "MSFT"],
@@ -79,7 +76,6 @@ def test_backtest_create():
             ),
             entity.backtest.Backtest(
                 name="test_name",
-                backtest_service="test_backtest_service",
                 start=datetime.now(),
                 end=datetime.now(),
                 symbols=["AAPL", "MSFT"],
@@ -87,16 +83,13 @@ def test_backtest_create():
             ),
             entity.backtest.Backtest(
                 name="test_name",
-                backtest_service="test_backtest_service",
                 start=datetime.now(),
                 end=datetime.now(),
                 symbols=["AAPL", "MSFT"],
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(
-            backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL", "--backtest-service", "test"]
-        )
+        result = runner.invoke(backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL"])
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -112,7 +105,6 @@ def test_backtest_create_error():
     ):
         mock_create.return_value = entity.backtest.Backtest(
             name="test_name",
-            backtest_service="test_backtest_service",
             start=datetime.now(),
             end=datetime.now(),
             symbols=["AAPL", "MSFT"],
@@ -124,7 +116,6 @@ def test_backtest_create_error():
         )
         mock_get.return_value = entity.backtest.Backtest(
             name="test_name",
-            backtest_service="test_backtest_service",
             start=datetime.now(),
             end=datetime.now(),
             symbols=["AAPL", "MSFT"],
@@ -134,9 +125,7 @@ def test_backtest_create_error():
                 )
             ],
         )
-        result = runner.invoke(
-            backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL", "--backtest-service", "test"]
-        )
+        result = runner.invoke(backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL"])
         assert result.exit_code == 1
         assert "Error while creating backtest: test error" in result.stderr
 
@@ -148,7 +137,6 @@ def test_backtest_get():
     ):
         mock_get.return_value = entity.backtest.Backtest(
             name="test_name",
-            backtest_service="test_backtest_service",
             start=datetime.now(),
             end=datetime.now(),
             symbols=["AAPL", "MSFT"],

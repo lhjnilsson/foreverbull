@@ -209,7 +209,7 @@ class Execution(threading.Thread):
                 raise ConfigError(repr(e))
 
         trading_algorithm = TradingAlgorithm(
-            namespace={"symbols": symbols, "execution": "test"},
+            namespace={"symbols": symbols},
             data_portal=data_portal,
             trading_calendar=trading_calendar,
             sim_params=sim_params,
