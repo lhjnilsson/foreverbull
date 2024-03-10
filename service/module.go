@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	apiDef "github.com/lhjnilsson/foreverbull/service/api"
 	"github.com/lhjnilsson/foreverbull/service/container"
 	"github.com/lhjnilsson/foreverbull/service/internal/api"
 	containerImpl "github.com/lhjnilsson/foreverbull/service/internal/container"
@@ -41,6 +42,9 @@ var Module = fx.Options(
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.ContainerDep, container)
 			return stream.NewNATSStream(jt, Stream, dc, conn)
+		},
+		func() (apiDef.Client, error) {
+			return apiDef.NewClient()
 		},
 	),
 	fx.Invoke(

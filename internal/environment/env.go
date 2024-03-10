@@ -65,7 +65,7 @@ type envVar struct {
 var envVars = []envVar{
 	{SERVER_ADDRESS, func() (string, error) { return SERVER_ADDRESS_DEFAULT, nil }},
 	{HTTP_PORT, func() (string, error) { return HTTP_PORT_DEFAULT, nil }},
-	{BACKTEST_ZIPLINE_SERVICE, func() (string, error) { return BACKTEST_ZIPLINE_SERVICE_DEFAULT, nil }},
+	{BACKTEST_IMAGE, func() (string, error) { return BACKTEST_IMAGE_DEFAULT, nil }},
 	{BACKTEST_PORT_RANGE_START, func() (string, error) { return BACKTEST_PORT_RANGE_START_DEFAULT, nil }},
 	{BACKTEST_PORT_RANGE_END, func() (string, error) { return BACKTEST_PORT_RANGE_END_DEFAULT, nil }},
 	{LOG_LEVEL, func() (string, error) { return LOG_LEVEL_DEFAULT, nil }},

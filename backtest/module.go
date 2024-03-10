@@ -85,15 +85,15 @@ var Module = fx.Options(
 		func(lc fx.Lifecycle, serviceAPI serviceAPI.Client) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					imageName := environment.GetBacktestImage()
-					_, err := serviceAPI.GetImage(ctx, imageName)
+					image := environment.GetBacktestImage()
+					_, err := serviceAPI.GetImage(ctx, image)
 					if err != nil {
-						log.Info().Str("image", imageName).Msg("not able to find locally, pulling backtest image")
-						_, pullErr := serviceAPI.DownloadImage(ctx, imageName)
+						log.Info().Str("image", image).Msg("not able to find locally, pulling backtest image")
+						_, pullErr := serviceAPI.DownloadImage(ctx, image)
 						if pullErr != nil {
 							return fmt.Errorf("error pulling backtest image: %w", pullErr)
 						}
-						log.Info().Str("image", imageName).Msg("backtest image pulled")
+						log.Info().Str("image", image).Msg("backtest image pulled")
 					}
 					return nil
 				},
