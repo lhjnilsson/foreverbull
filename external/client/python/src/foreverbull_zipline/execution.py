@@ -276,7 +276,6 @@ class Execution(threading.Thread):
                             Order.from_zipline(trading_algorithm.get_order(order.id)) for order in self._new_orders
                         ]
                         portfolio = entity.finance.Portfolio(
-                            execution=trading_algorithm.namespace["execution"],
                             cash=trading_algorithm.portfolio.cash,
                             value=trading_algorithm.portfolio.portfolio_value,
                             positions=[],
