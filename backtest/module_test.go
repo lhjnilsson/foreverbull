@@ -138,10 +138,9 @@ func (test *BacktestModuleTest) SetupTest() {
 	err = createServices.Wait()
 	test.Require().NoError(err)
 
-	test.backtestServiceName = "backtest"
 	test.workerServiceName = "worker"
 
-	payload := `{"name":"test","backtest_service":"` + test.backtestServiceName + `", "worker_service":"` + test.workerServiceName + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	payload := `{"name":"test","service":"` + test.workerServiceName + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
 	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
