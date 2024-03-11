@@ -40,22 +40,26 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 	}
 
 	services := repository.Service{Conn: db}
-	service, err := services.Get(ctx, command.Image)
+	_, err = services.Get(ctx, command.Image)
 	if err != nil {
-		return fmt.Errorf("error getting service: %w", err)
+		// TODO, should we create a backtest service here?
+		_, crErr := services.Create(ctx, command.Image)
+		if crErr != nil {
+			return fmt.Errorf("error creating service: %w", crErr)
+		}
 	}
 
 	extraLabels := map[string]string{
 		"orchestration_id": message.GetOrchestrationID(),
 	}
 
-	_, err = container.Start(ctx, service.Image, command.InstanceID, extraLabels)
+	_, err = container.Start(ctx, command.Image, command.InstanceID, extraLabels)
 	if err != nil {
 		return fmt.Errorf("error starting container: %w", err)
 	}
 
 	instances := repository.Instance{Conn: db}
-	_, err = instances.Create(ctx, command.InstanceID, service.Image)
+	_, err = instances.Create(ctx, command.InstanceID, command.Image)
 	if err != nil {
 		return fmt.Errorf("error creating instance: %w", err)
 	}
