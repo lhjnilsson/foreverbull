@@ -166,30 +166,26 @@ func (test *ServiceModuleTest) TestCreateService() {
 		}
 	}
 	type TestCase struct {
-		ServiceName  string
-		ServiceImage string
-		ExpectedType string
+		Image string
 	}
 	testCases := []TestCase{
 		{
-			ServiceImage: os.Getenv("BACKTEST_IMAGE"),
-			ExpectedType: "backtest",
+			Image: os.Getenv("BACKTEST_IMAGE"),
 		},
 		{
-			ServiceImage: os.Getenv("WORKER_IMAGE"),
-			ExpectedType: "worker",
+			Image: os.Getenv("WORKER_IMAGE"),
 		},
 	}
 	for _, testcase := range testCases {
-		test.Run(testcase.ServiceName, func() {
-			payload := `{"name": "` + testcase.ServiceName + `", "image": "` + testcase.ServiceImage + `"}`
+		test.Run(testcase.Image, func() {
+			payload := `{"image": "` + testcase.Image + `"}`
 			rsp := helper.Request(test.T(), http.MethodPost, "/service/api/services", payload)
 			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 				rspData, _ := io.ReadAll(rsp.Body)
 				test.Failf("Failed to create service: %s", string(rspData))
 			}
 			condition := func() (bool, error) {
-				rsp = helper.Request(test.T(), http.MethodGet, "/service/api/services/"+testcase.ServiceName, nil)
+				rsp = helper.Request(test.T(), http.MethodGet, "/service/api/services/"+testcase.Image, nil)
 				if rsp.StatusCode != http.StatusOK {
 					return false, fmt.Errorf("failed to get service: %d", rsp.StatusCode)
 				}
@@ -198,14 +194,15 @@ func (test *ServiceModuleTest) TestCreateService() {
 				if err != nil {
 					return false, fmt.Errorf("failed to decode response: %s", err.Error())
 				}
+				fmt.Println("Status: ", data)
 				if data.Statuses[0].Status != "READY" {
 					return false, nil
 				}
 				return true, nil
 			}
-			err := helper.WaitUntilCondition(test.T(), condition, time.Second*30)
+			err := helper.WaitUntilCondition(test.T(), condition, time.Second*10)
 			test.NoError(err)
-			rsp = helper.Request(test.T(), http.MethodGet, "/service/api/services/"+testcase.ServiceName, nil)
+			rsp = helper.Request(test.T(), http.MethodGet, "/service/api/services/"+testcase.Image, nil)
 			if !test.Equal(http.StatusOK, rsp.StatusCode) {
 				rspData, _ := io.ReadAll(rsp.Body)
 				test.Failf("Failed to get service: %s", string(rspData))
@@ -216,6 +213,7 @@ func (test *ServiceModuleTest) TestCreateService() {
 				test.Failf("Failed to decode response: %w", err.Error())
 				return
 			}
+			fmt.Println("DATA: ", data)
 		})
 	}
 }

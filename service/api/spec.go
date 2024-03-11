@@ -3,7 +3,7 @@ package api
 import "github.com/lhjnilsson/foreverbull/service/entity"
 
 type ServiceURI struct {
-	Name string `uri:"name" binding:"required"`
+	Image string `uri:"image" binding:"required"`
 }
 
 type CreateServiceRequest struct {

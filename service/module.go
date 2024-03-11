@@ -67,8 +67,8 @@ var Module = fx.Options(
 			)
 			serviceAPI.GET("/services", api.ListServices)
 			serviceAPI.POST("/services", api.CreateService)
-			serviceAPI.GET("/services/:name", api.GetService)
-			serviceAPI.DELETE("/services/:name", api.DeleteService)
+			serviceAPI.GET("/services/*image", api.GetService)
+			serviceAPI.DELETE("/services/*image", api.DeleteService)
 
 			serviceAPI.GET("/instances", api.ListInstances)
 			serviceAPI.GET("/instances/:instanceID", api.GetInstance)

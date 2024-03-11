@@ -65,10 +65,17 @@ func GetService(c *gin.Context) {
 		return
 	}
 
+	var image string
+	if uri.Image[0] == '/' {
+		image = uri.Image[1:]
+	} else {
+		image = uri.Image
+	}
+
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_s := repository.Service{Conn: pgx_tx}
 
-	service, err := repository_s.Get(c, uri.Name)
+	service, err := repository_s.Get(c, image)
 	if err != nil {
 		log.Err(err).Msg("error getting service")
 		c.JSON(internalHTTP.DatabaseError(err))
@@ -85,15 +92,22 @@ func DeleteService(c *gin.Context) {
 		return
 	}
 
+	var image string
+	if uri.Image[0] == '/' {
+		image = uri.Image[1:]
+	} else {
+		image = uri.Image
+	}
+
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_s := repository.Service{Conn: pgx_tx}
 
-	err := repository_s.Delete(c, uri.Name)
+	err := repository_s.Delete(c, image)
 	if err != nil {
 		log.Err(err).Msg("error deleting service")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-	log.Info().Str("service", uri.Name).Msg("deleted service")
+	log.Info().Str("service", image).Msg("deleted service")
 	c.JSON(http.StatusNoContent, nil)
 }
