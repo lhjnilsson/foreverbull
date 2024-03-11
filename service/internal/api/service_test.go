@@ -119,7 +119,7 @@ func (test *ServiceTest) TestCreateService() {
 }
 
 func (test *ServiceTest) TestGetService() {
-	test.router.GET("/services/:name", GetService)
+	test.router.GET("/services/*image", GetService)
 	req := httptest.NewRequest("GET", "/services/service123", nil)
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
@@ -138,7 +138,7 @@ func (test *ServiceTest) TestGetService() {
 func (test *ServiceTest) TestDeleteService() {
 	serviceName := AddService(test.T(), test.conn, "test_service")
 
-	test.router.DELETE("/services/:name", DeleteService)
+	test.router.DELETE("/services/*image", DeleteService)
 
 	req := httptest.NewRequest("DELETE", "/services/"+serviceName, nil)
 	w := httptest.NewRecorder()
