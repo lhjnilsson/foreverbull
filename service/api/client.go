@@ -9,9 +9,9 @@ import (
 
 type Client interface {
 	ListServices(ctx context.Context) (*[]ServiceResponse, error)
-	GetService(ctx context.Context, name string) (*ServiceResponse, error)
+	GetService(ctx context.Context, image string) (*ServiceResponse, error)
 
-	ListInstances(ctx context.Context, serviceName string) (*[]InstanceResponse, error)
+	ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error)
 	GetInstance(ctx context.Context, InstanceID string) (*InstanceResponse, error)
 
 	GetImage(ctx context.Context, image string) (*ImageResponse, error)
@@ -60,8 +60,8 @@ func (c *client) GetService(ctx context.Context, name string) (*ServiceResponse,
 	return &service, nil
 }
 
-func (c *client) ListInstances(ctx context.Context, serviceName string) (*[]InstanceResponse, error) {
-	req, err := http.Get(c.baseURL + "/instances?" + "service=" + serviceName)
+func (c *client) ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error) {
+	req, err := http.Get(c.baseURL + "/instances?" + "image=" + image)
 	if err != nil {
 		return nil, err
 	}

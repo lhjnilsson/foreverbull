@@ -14,28 +14,28 @@ def list() -> requests.Request:
 
 
 @api_call(response_model=entity.service.Service)
-def create(name: str, image: str) -> requests.Request:
+def create(image: str) -> requests.Request:
     return requests.Request(
         method="POST",
         url="/service/api/services",
-        json={"name": name, "image": image},
+        json={"image": image},
     )
 
 
 @api_call(response_model=entity.service.Service)
-def get(service: str) -> requests.Request:
+def get(image: str) -> requests.Request:
     return requests.Request(
         method="GET",
-        url=f"/service/api/services/{service}",
+        url=f"/service/api/services/{image}",
     )
 
 
 @api_call(response_model=entity.service.Instance)
-def list_instances(service: str = None) -> requests.Request:
+def list_instances(image: str = None) -> requests.Request:
     return requests.Request(
         method="GET",
         url="/service/api/instances",
-        params={"service": service},
+        params={"image": image},
     )
 
 

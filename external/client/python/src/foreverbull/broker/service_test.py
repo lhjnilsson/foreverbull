@@ -24,15 +24,13 @@ def test_service_list(return_value, expected_model):
     "argument, return_value, expected_model",
     [
         (
-            ("test_service", "test_image"),
+            "test_image",
             {
-                "id": "123",
-                "name": "test_service",
                 "image": "test_image",
                 "instances": [],
                 "statuses": [],
             },
-            Service(id="123", name="test_service", image="test_image", instances=[], statuses=[]),
+            Service(image="test_image", instances=[], statuses=[]),
         ),
     ],
 )
@@ -40,7 +38,7 @@ def test_service_create(argument, return_value, expected_model):
     with patch("requests.Session.send") as mock_send:
         mock_send.return_value.ok = True
         mock_send.return_value.json.return_value = return_value
-        assert service.create(*argument) == expected_model
+        assert service.create(argument) == expected_model
         mock_send.assert_called_once()
 
 
@@ -48,15 +46,13 @@ def test_service_create(argument, return_value, expected_model):
     "argument, return_value, expected_model",
     [
         (
-            "test_service",
+            "test_image",
             {
-                "id": "123",
-                "name": "test_service",
                 "image": "test_image",
                 "instances": [],
                 "statuses": [],
             },
-            Service(id="123", name="test_service", image="test_image", instances=[], statuses=[]),
+            Service(image="test_image", instances=[], statuses=[]),
         ),
     ],
 )
@@ -71,7 +67,7 @@ def test_service_get(argument, return_value, expected_model):
 @pytest.mark.parametrize(
     "argument, return_value, expected_model",
     [
-        ("test_service", [], []),
+        ("test_image", [], []),
     ],
 )
 def test_service_list_instances(argument, return_value, expected_model):
@@ -89,10 +85,10 @@ def test_service_list_instances(argument, return_value, expected_model):
             ("test_container", None),
             {
                 "id": "test_container",
-                "service": "test_service",
+                "image": "test_image",
                 "statuses": [],
             },
-            Instance(id="test_container", service="test_service", statuses=[]),
+            Instance(id="test_container", image="test_image", statuses=[]),
         ),
     ],
 )

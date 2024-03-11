@@ -8,8 +8,6 @@ from typing_extensions import Annotated
 
 from foreverbull import broker, entity
 
-name = Annotated[str, typer.Argument(help="service name")]
-name_option = Annotated[str, typer.Option(help="service name")]
 image = Annotated[str, typer.Argument(help="service image")]
 
 service = typer.Typer()
@@ -22,15 +20,11 @@ std_err = Console(stderr=True)
 def list():
     services = broker.service.list()
     table = Table(title="Services")
-    table.add_column("Name")
     table.add_column("Image")
-    table.add_column("Type")
     table.add_column("Status")
 
     for service in services:
         table.add_row(
-            service.name,
-            service.type,
             service.image,
             service.statuses[0].status.value if service.statuses else "Unknown",
         )
@@ -38,15 +32,15 @@ def list():
 
 
 @service.command()
-def create(name: name, image: image):
+def create(image: image):
     service: entity.service.Service | None = None
     with Progress() as progress:
         task = progress.add_task("Starting service", total=2)
-        service = broker.service.create(name, image)
+        service = broker.service.create(image)
         previous_status = service.statuses[0]
         while not progress.finished:
             time.sleep(0.5)
-            service = broker.service.get(name)
+            service = broker.service.get(image)
             status = service.statuses[0]
             if previous_status and previous_status.status != status.status:
                 match status.status:
@@ -62,33 +56,25 @@ def create(name: name, image: image):
                 previous_status = status
 
     table = Table(title="Created Service")
-    table.add_column("Name")
     table.add_column("Image")
-    table.add_column("Type")
     table.add_column("Status")
     table.add_row(
-        service.name,
         service.image,
-        service.type,
         service.statuses[0].status.value if service.statuses else "Unknown",
     )
     std.print(table)
 
 
 @service.command()
-def get(name: name):
-    service = broker.service.get(name)
-    instances = broker.service.list_instances(name)
+def get(image: image):
+    service = broker.service.get(image)
+    instances = broker.service.list_instances(image)
 
     table = Table(title="Service")
-    table.add_column("Name")
     table.add_column("Image")
-    table.add_column("Type")
     table.add_column("Status")
     table.add_row(
-        service.name,
         service.image,
-        service.type,
         service.statuses[0].status.value if service.statuses else "Unknown",
     )
     std.print(table)
