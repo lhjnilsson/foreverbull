@@ -16,6 +16,22 @@ type ContainerTest struct {
 	suite.Suite
 
 	container container
+	testImage string
+}
+
+func (test *ContainerTest) SetupSuite() {
+	images, err := NewImageRegistry()
+	test.Require().NoError(err)
+	test.testImage = "docker.io/library/python:3.11-alpine"
+	_, err = images.Pull(context.TODO(), test.testImage)
+	test.Require().NoError(err)
+}
+
+func (test *ContainerTest) TearDownSuite() {
+	images, err := NewImageRegistry()
+	test.Require().NoError(err)
+	err = images.Remove(context.TODO(), test.testImage)
+	test.Require().NoError(err)
 }
 
 func (test *ContainerTest) SetupTest() {
@@ -40,7 +56,6 @@ func TestContainer(t *testing.T) {
 
 func (test *ContainerTest) TestStartSaveStop() {
 	// These subtests are ment to be run in order
-	image := "docker.io/library/python:3.12-alpine"
 	var containerID string
 	var err error
 	newImageName := uuid.New().String()
@@ -57,7 +72,7 @@ func (test *ContainerTest) TestStartSaveStop() {
 	})
 
 	test.Run("Start", func() {
-		containerID, err = test.container.Start(context.TODO(), "test", image, "test", nil)
+		containerID, err = test.container.Start(context.TODO(), test.testImage, "test", nil)
 		test.Require().NoError(err)
 		test.Require().NotEmpty(containerID)
 	})
@@ -73,8 +88,7 @@ func (test *ContainerTest) TestStartSaveStop() {
 
 func (test *ContainerTest) TestStopAll() {
 	// Start a container
-	image := "docker.io/library/python:3.12-alpine"
-	containerID, err := test.container.Start(context.TODO(), "test", image, "test", nil)
+	containerID, err := test.container.Start(context.TODO(), test.testImage, "test", nil)
 	test.Require().NoError(err)
 	test.Require().NotEmpty(containerID)
 

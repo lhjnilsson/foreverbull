@@ -22,7 +22,7 @@ func UpdateServiceStatus(ctx context.Context, message stream.Message) error {
 	}
 
 	services := repository.Service{Conn: db}
-	err = services.UpdateStatus(ctx, command.Name, command.Status, command.Error)
+	err = services.UpdateStatus(ctx, command.Image, command.Status, command.Error)
 	if err != nil {
 		return fmt.Errorf("error updating service status: %w", err)
 	}
@@ -40,7 +40,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 	}
 
 	services := repository.Service{Conn: db}
-	service, err := services.Get(ctx, command.Name)
+	service, err := services.Get(ctx, command.Image)
 	if err != nil {
 		return fmt.Errorf("error getting service: %w", err)
 	}
@@ -49,13 +49,13 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		"orchestration_id": message.GetOrchestrationID(),
 	}
 
-	_, err = container.Start(ctx, service.Name, service.Image, command.InstanceID, extraLabels)
+	_, err = container.Start(ctx, service.Image, command.InstanceID, extraLabels)
 	if err != nil {
 		return fmt.Errorf("error starting container: %w", err)
 	}
 
 	instances := repository.Instance{Conn: db}
-	_, err = instances.Create(ctx, command.InstanceID, service.Name)
+	_, err = instances.Create(ctx, command.InstanceID, service.Image)
 	if err != nil {
 		return fmt.Errorf("error creating instance: %w", err)
 	}

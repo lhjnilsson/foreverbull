@@ -7,7 +7,6 @@ type ServiceURI struct {
 }
 
 type CreateServiceRequest struct {
-	Name  string `json:"name" binding:"required,gte=3,lte=32"`
 	Image string `json:"image" binding:"required,gte=3,lte=64"`
 }
 

@@ -86,9 +86,9 @@ func (test *ServiceModuleTest) TestAPIClient() {
 	test.Require().NoError(err)
 	services := repository.Service{Conn: pool}
 	instances := repository.Instance{Conn: pool}
-	testService, err := services.Create(context.Background(), "service", "docker.io/library/python:3.12-alpine")
+	testService, err := services.Create(context.Background(), "docker.io/library/python:3.12-alpine")
 	test.Require().NoError(err)
-	testInstance, err := instances.Create(context.Background(), "instance_123", testService.Name)
+	testInstance, err := instances.Create(context.Background(), "instance_123", testService.Image)
 	test.Require().NoError(err)
 
 	test.Run("Create Client", func() {
@@ -100,13 +100,13 @@ func (test *ServiceModuleTest) TestAPIClient() {
 		test.NoError(err)
 		test.NotNil(services)
 		test.Len(*services, 1)
-		test.Equal(testService.Name, (*services)[0].Name)
+		test.Equal(testService.Image, (*services)[0].Image)
 	})
 	test.Run("TestGetService", func() {
-		service, err := client.GetService(context.Background(), testService.Name)
+		service, err := client.GetService(context.Background(), testService.Image)
 		test.NoError(err)
 		test.NotNil(service)
-		test.Equal(testService.Name, service.Name)
+		test.Equal(testService.Image, service.Image)
 	})
 	test.Run("TestGetService, Not stored", func() {
 		service, err := client.GetService(context.Background(), "not_stored")
@@ -172,12 +172,10 @@ func (test *ServiceModuleTest) TestCreateService() {
 	}
 	testCases := []TestCase{
 		{
-			ServiceName:  "backtest",
 			ServiceImage: os.Getenv("BACKTEST_IMAGE"),
 			ExpectedType: "backtest",
 		},
 		{
-			ServiceName:  "worker",
 			ServiceImage: os.Getenv("WORKER_IMAGE"),
 			ExpectedType: "worker",
 		},
@@ -218,8 +216,6 @@ func (test *ServiceModuleTest) TestCreateService() {
 				test.Failf("Failed to decode response: %w", err.Error())
 				return
 			}
-			test.Equal(testcase.ServiceName, data.Name)
-			test.Equal(testcase.ExpectedType, data.Type)
 		})
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -37,7 +36,7 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	err = services.UpdateServiceInfo(ctx, i.Service, *info.Type, info.WorkerParameters)
+	err = services.UpdateParameters(ctx, i.Image, info.Parameters)
 	if err != nil {
 		return fmt.Errorf("error updating service info: %w", err)
 	}
@@ -73,14 +72,9 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 					time.Sleep(time.Second / 5)
 					continue
 				}
-				info, err := i.GetInfo()
+				_, err = i.GetInfo()
 				if err != nil {
 					return fmt.Errorf("error reading instance info: %w", err)
-				}
-				if i.ServiceType != nil {
-					if strings.Compare(*i.ServiceType, *info.Type) != 0 {
-						return fmt.Errorf("service type mismatch: %s != %s", *i.ServiceType, *info.Type)
-					}
 				}
 				return nil
 			}

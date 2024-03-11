@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -232,7 +233,7 @@ func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString s
 		lokiLogger.Publish(t)
 		require.NoError(t, c.Terminate(ctx))
 	})
-	log.Logger = log.Logger.Output(lokiLogger)
+	log.Logger = zerolog.New(zerolog.MultiLevelWriter(zerolog.NewConsoleWriter(), lokiLogger))
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
 

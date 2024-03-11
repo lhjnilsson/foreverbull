@@ -41,9 +41,8 @@ func (test *ServiceTest) TestCreate() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	service, err := db.Create(ctx, "service", "image")
+	service, err := db.Create(ctx, "image")
 	test.NoError(err)
-	test.Equal("service", service.Name)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
@@ -53,12 +52,11 @@ func (test *ServiceTest) TestGet() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "service", "image")
+	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	service, err := db.Get(ctx, "service")
+	service, err := db.Get(ctx, "image")
 	test.NoError(err)
-	test.Equal("service", service.Name)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
@@ -68,7 +66,7 @@ func (test *ServiceTest) TestUpdateServiceInfo() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "service", "image")
+	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
 	parameters := []entity.Parameter{
@@ -79,35 +77,32 @@ func (test *ServiceTest) TestUpdateServiceInfo() {
 		},
 	}
 
-	err = db.UpdateServiceInfo(ctx, "service", "service_type", &parameters)
+	err = db.UpdateParameters(ctx, "image", &parameters)
 	test.NoError(err)
 
-	service, err := db.Get(ctx, "service")
+	service, err := db.Get(ctx, "image")
 	test.NoError(err)
-	test.Equal("service", service.Name)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
-	test.Equal("service_type", *service.Type)
-	test.Len(*service.WorkerParameters, 1)
+	test.Len(*service.Parameters, 1)
 }
 
 func (test *ServiceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "service", "image")
+	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "service", entity.ServiceStatusReady, nil)
+	err = db.UpdateStatus(ctx, "image", entity.ServiceStatusReady, nil)
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "service", entity.ServiceStatusError, errors.New("test_error"))
+	err = db.UpdateStatus(ctx, "image", entity.ServiceStatusError, errors.New("test_error"))
 	test.NoError(err)
 
-	service, err := db.Get(ctx, "service")
+	service, err := db.Get(ctx, "image")
 	test.NoError(err)
-	test.Equal("service", service.Name)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 3)
 	test.Equal(entity.ServiceStatusError, service.Statuses[0].Status)
@@ -120,14 +115,14 @@ func (test *ServiceTest) TestList() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "service1", "image")
+	_, err := db.Create(ctx, "image1")
 	test.NoError(err)
-	err = db.UpdateStatus(ctx, "service1", entity.ServiceStatusReady, nil)
+	err = db.UpdateStatus(ctx, "image1", entity.ServiceStatusReady, nil)
 	test.NoError(err)
 
-	_, err = db.Create(ctx, "service2", "image")
+	_, err = db.Create(ctx, "image2")
 	test.NoError(err)
-	err = db.UpdateStatus(ctx, "service2", entity.ServiceStatusError, errors.New("test_error"))
+	err = db.UpdateStatus(ctx, "image2", entity.ServiceStatusError, errors.New("test_error"))
 	test.NoError(err)
 
 	services, err := db.List(ctx)
@@ -135,15 +130,13 @@ func (test *ServiceTest) TestList() {
 	test.Len(*services, 2)
 
 	service2 := (*services)[0]
-	test.Equal("service2", service2.Name)
-	test.Equal("image", service2.Image)
+	test.Equal("image2", service2.Image)
 	test.Len(service2.Statuses, 2)
 	test.Equal(entity.ServiceStatusError, service2.Statuses[0].Status)
 	test.Equal("test_error", *service2.Statuses[0].Error)
 
 	service1 := (*services)[1]
-	test.Equal("service1", service1.Name)
-	test.Equal("image", service1.Image)
+	test.Equal("image1", service1.Image)
 	test.Len(service1.Statuses, 2)
 	test.Equal(entity.ServiceStatusReady, service1.Statuses[0].Status)
 }
@@ -152,10 +145,10 @@ func (test *ServiceTest) TestDelete() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "service", "image")
+	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	err = db.Delete(ctx, "service")
+	err = db.Delete(ctx, "image")
 	test.NoError(err)
 
 	services, err := db.List(ctx)

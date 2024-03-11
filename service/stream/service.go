@@ -7,19 +7,19 @@ import (
 )
 
 type UpdateServiceStatusCommand struct {
-	Name   string                   `json:"name"`
+	Image  string                   `json:"image"`
 	Status entity.ServiceStatusType `json:"status"`
 	Error  error                    `json:"error"`
 }
 
 type ServiceStartCommand struct {
-	Name       string `json:"name"`
+	Image      string `json:"image"`
 	InstanceID string `json:"instance_id"`
 }
 
-func NewUpdateServiceStatusCommand(name string, status entity.ServiceStatusType, err error) (stream.Message, error) {
+func NewUpdateServiceStatusCommand(image string, status entity.ServiceStatusType, err error) (stream.Message, error) {
 	entity := &UpdateServiceStatusCommand{
-		Name:   name,
+		Image:  image,
 		Status: status,
 		Error:  err,
 	}
@@ -30,23 +30,23 @@ func NewInstanceID() string {
 	return uuid.New().String()
 }
 
-func NewServiceStartCommand(serviceName, instanceID string) (stream.Message, error) {
+func NewServiceStartCommand(image, instanceID string) (stream.Message, error) {
 	entity := &ServiceStartCommand{
-		Name:       serviceName,
+		Image:      image,
 		InstanceID: instanceID,
 	}
 	return stream.NewMessage("service", "service", "start", entity)
 }
 
-func NewServiceInterviewOrchestration(serviceName string) (*stream.MessageOrchestration, error) {
+func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestration, error) {
 	orchestration := stream.NewMessageOrchestration("service interview")
 
 	instanceID := NewInstanceID()
-	msg, err := NewServiceStartCommand(serviceName, instanceID)
+	msg, err := NewServiceStartCommand(image, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	msg2, err := NewUpdateServiceStatusCommand(serviceName, entity.ServiceStatusInterview, nil)
+	msg2, err := NewUpdateServiceStatusCommand(image, entity.ServiceStatusInterview, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func NewServiceInterviewOrchestration(serviceName string) (*stream.MessageOrches
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateServiceStatusCommand(serviceName, entity.ServiceStatusReady, nil)
+	msg2, err = NewUpdateServiceStatusCommand(image, entity.ServiceStatusReady, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func NewServiceInterviewOrchestration(serviceName string) (*stream.MessageOrches
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateServiceStatusCommand(serviceName, entity.ServiceStatusError, nil)
+	msg2, err = NewUpdateServiceStatusCommand(image, entity.ServiceStatusError, nil)
 	if err != nil {
 		return nil, err
 	}

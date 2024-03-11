@@ -22,8 +22,8 @@ func ListInstances(c *gin.Context) {
 	var instances *[]entity.Instance
 	var err error
 
-	if c.Request.URL.Query().Has("service") {
-		instances, err = repository_i.ListByService(c, c.Request.URL.Query().Get("service"))
+	if c.Request.URL.Query().Has("image") {
+		instances, err = repository_i.ListByImage(c, c.Request.URL.Query().Get("image"))
 	} else {
 		instances, err = repository_i.List(c)
 	}

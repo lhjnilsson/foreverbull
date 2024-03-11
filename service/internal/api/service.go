@@ -39,21 +39,21 @@ func CreateService(c *gin.Context) {
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_s := repository.Service{Conn: pgx_tx}
 
-	service, err := repository_s.Create(c, s.Name, s.Image)
+	service, err := repository_s.Create(c, s.Image)
 	if err != nil {
 		log.Err(err).Msg("error creating service")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
 
-	interviewOrchestration, err := st.NewServiceInterviewOrchestration(s.Name)
+	interviewOrchestration, err := st.NewServiceInterviewOrchestration(s.Image)
 	if err != nil {
 		log.Err(err).Msg("error creating service interview orchestration")
 		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
 	stream.Add(interviewOrchestration)
-	log.Info().Str("service", s.Name).Msg("service created")
+	log.Info().Str("image", s.Image).Msg("service created")
 	c.JSON(http.StatusCreated, service)
 }
 

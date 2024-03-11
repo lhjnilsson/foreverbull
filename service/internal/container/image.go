@@ -56,3 +56,11 @@ func (si *image) Pull(ctx context.Context, name string) (*entity.Image, error) {
 	}
 	return si.Info(ctx, name)
 }
+
+func (si *image) Remove(ctx context.Context, name string) error {
+	_, err := si.client.ImageRemove(ctx, name, types.ImageRemoveOptions{})
+	if err != nil {
+		return fmt.Errorf("error removing image: %v", err)
+	}
+	return nil
+}

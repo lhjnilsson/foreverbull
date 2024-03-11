@@ -29,17 +29,16 @@ type container struct {
 	client *client.Client
 }
 
-func (sc *container) Start(ctx context.Context, serviceName, image, name string, extraLabels map[string]string) (string, error) {
+func (sc *container) Start(ctx context.Context, image, name string, extraLabels map[string]string) (string, error) {
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
 	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
-	env = append(env, fmt.Sprintf("SERVICE_NAME=%s", serviceName))
 	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", environment.GetMinioURL()))
 	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", environment.GetMinioAccessKey()))
 	env = append(env, fmt.Sprintf("STORAGE_SECRET_KEY=%s", environment.GetMinioSecretKey()))
 	env = append(env, fmt.Sprintf("DATABASE_URL=%s", environment.GetPostgresURL()))
 	env = append(env, fmt.Sprintf("LOGLEVEL=%s", environment.GetLogLevel()))
 
-	labels := map[string]string{"platform": "foreverbull", "type": "service", "service": serviceName}
+	labels := map[string]string{"platform": "foreverbull", "type": "service"}
 	for k, v := range extraLabels {
 		labels[k] = v
 	}
@@ -96,7 +95,7 @@ func (sc *container) Start(ctx context.Context, serviceName, image, name string,
 			if err != nil {
 				log.Error().Err(err).Msg("error reading container logs")
 			}
-			log.Debug().Str("container", resp.ID).Str("service", serviceName).Msg(string(message))
+			log.Debug().Str("container", resp.ID).Str("image", image).Msg(string(message))
 		}
 	}()
 	return resp.ID[:12], nil
