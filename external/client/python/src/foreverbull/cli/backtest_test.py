@@ -89,7 +89,9 @@ def test_backtest_create():
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL"])
+        result = runner.invoke(
+            backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -125,7 +127,9 @@ def test_backtest_create_error():
                 )
             ],
         )
-        result = runner.invoke(backtest, ["create", "test_name", "2021-01-01", "2021-01-02", "AAPL"])
+        result = runner.invoke(
+            backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
+        )
         assert result.exit_code == 1
         assert "Error while creating backtest: test error" in result.stderr
 

@@ -48,18 +48,18 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Argument(help="start time of the backtest")],
-    end: Annotated[datetime, typer.Argument(help="end time of the backtest")],
-    symbols: Annotated[List[str], typer.Argument(help="symbol to use")],
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
     service: Annotated[str, typer.Option(help="worker service to use")] = None,
-    benchmark: Annotated[str, typer.Option(help="benchmark to use")] = None,
+    benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] = None,
 ):
     backtest = entity.backtest.Backtest(
         name=name,
         service=service,
         start=start,
         end=end,
-        symbols=[symbol.upper() for symbol in symbols],
+        symbols=[symbol.strip().upper() for symbol in symbols.split(",")],
         benchmark=benchmark,
     )
     with Progress() as progress:
