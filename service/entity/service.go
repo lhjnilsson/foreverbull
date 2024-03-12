@@ -21,10 +21,8 @@ type Parameter struct {
 }
 
 type Service struct {
-	Name             string       `json:"name" binding:"required"`
-	Type             *string      `json:"type"`
-	Image            string       `json:"image" binding:"required"`
-	WorkerParameters *[]Parameter `json:"parameters" mapstructure:"parameters"`
+	Image      string       `json:"image" binding:"required"`
+	Parameters *[]Parameter `json:"parameters" mapstructure:"parameters"`
 
 	Statuses []ServiceStatus `json:"statuses"`
 }

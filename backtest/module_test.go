@@ -26,7 +26,6 @@ import (
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
 	reqSocket "go.nanomsg.org/mangos/v3/protocol/req"
 	"go.uber.org/fx"
-	"golang.org/x/sync/errgroup"
 )
 
 type BacktestModuleTest struct {
@@ -34,9 +33,7 @@ type BacktestModuleTest struct {
 	app *fx.App
 	log *os.File
 
-	backtestServiceName string
-	workerServiceName   string
-	backtestName        string
+	backtestName string
 }
 
 func TestModuleBacktest(t *testing.T) {
@@ -88,60 +85,7 @@ func (test *BacktestModuleTest) SetupTest() {
 		Module,
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
-	createService := func(name, image string) error {
-		helper.Request(test.T(), http.MethodDelete, "/service/api/services/"+name, nil)
-		payload := `{"name":"` + name + `","image":"` + image + `"}`
-		rsp := helper.Request(test.T(), http.MethodPost, "/service/api/services", payload)
-		if !test.Equal(http.StatusCreated, rsp.StatusCode) {
-			rspData, _ := io.ReadAll(rsp.Body)
-			return fmt.Errorf("failed to create service: %d %s", rsp.StatusCode, string(rspData))
-		}
-		condition := func() (bool, error) {
-			type ServiceResponse struct {
-				Name     string
-				Type     string
-				Statuses []struct {
-					Status string
-				}
-			}
-
-			rsp = helper.Request(test.T(), http.MethodGet, "/service/api/services/"+name, nil)
-			if rsp.StatusCode != http.StatusOK {
-				return false, fmt.Errorf("failed to get service: %d", rsp.StatusCode)
-			}
-			data := &ServiceResponse{}
-			err := json.NewDecoder(rsp.Body).Decode(data)
-			if err != nil {
-				return false, fmt.Errorf("failed to decode response: %s", err.Error())
-			}
-			if data.Statuses[0].Status == "ERROR" {
-				return false, fmt.Errorf("service failed")
-			}
-
-			if data.Statuses[0].Status != "READY" {
-				return false, nil
-			}
-			return true, nil
-		}
-		return helper.WaitUntilCondition(test.T(), condition, time.Second*30)
-	}
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
-	defer cancel()
-	createServices, _ := errgroup.WithContext(ctx)
-	createServices.Go(func() error {
-		return createService("backtest", os.Getenv("BACKTEST_IMAGE"))
-	})
-	createServices.Go(func() error {
-		return createService("worker", os.Getenv("WORKER_IMAGE"))
-	})
-	err = createServices.Wait()
-	test.Require().NoError(err)
-
-	test.backtestServiceName = "backtest"
-	test.workerServiceName = "worker"
-
-	payload := `{"name":"test","backtest_service":"` + test.backtestServiceName + `", "worker_service":"` + test.workerServiceName + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	payload := `{"name":"test","service":"` + os.Getenv("WORKER_IMAGE") + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
 	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)

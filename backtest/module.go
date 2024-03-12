@@ -10,10 +10,13 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 )
 
@@ -78,6 +81,27 @@ var Module = fx.Options(
 		},
 		func(storage storage.BlobStorage) error {
 			return storage.VerifyBuckets(context.TODO())
+		},
+		func(lc fx.Lifecycle, serviceAPI serviceAPI.Client) error {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					image := environment.GetBacktestImage()
+					_, err := serviceAPI.GetImage(ctx, image)
+					if err != nil {
+						log.Info().Str("image", image).Msg("not able to find locally, pulling backtest image")
+						_, pullErr := serviceAPI.DownloadImage(ctx, image)
+						if pullErr != nil {
+							return fmt.Errorf("error pulling backtest image: %w", pullErr)
+						}
+						log.Info().Str("image", image).Msg("backtest image pulled")
+					}
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					return nil
+				},
+			})
+			return nil
 		},
 		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{

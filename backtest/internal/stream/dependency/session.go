@@ -8,6 +8,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	ss "github.com/lhjnilsson/foreverbull/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"golang.org/x/sync/errgroup"
@@ -50,10 +51,10 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 	var workerInstances []*service.Instance
 	for instance := range instances {
 		i := instance
-		switch *i.ServiceType {
-		case "backtest":
+		switch i.Image {
+		case environment.GetBacktestImage():
 			backtestInstance = &i
-		case "worker":
+		default:
 			workerInstances = append(workerInstances, &i)
 		}
 	}

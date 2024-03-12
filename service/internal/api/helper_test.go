@@ -10,18 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func AddService(t *testing.T, conn *pgxpool.Pool, name string) string {
+func AddService(t *testing.T, conn *pgxpool.Pool, image string) string {
 	repository := repository.Service{Conn: conn}
-	service, err := repository.Create(context.Background(), name, "test_image")
+	service, err := repository.Create(context.Background(), image)
 	assert.Nil(t, err)
-	err = repository.UpdateServiceInfo(context.Background(), name, "test_type", nil)
-	assert.Nil(t, err)
-	return service.Name
+	return service.Image
 }
 
-func AddInstance(t *testing.T, conn *pgxpool.Pool, service string) string {
+func AddInstance(t *testing.T, conn *pgxpool.Pool, image string) string {
 	repository := repository.Instance{Conn: conn}
-	instance, err := repository.Create(context.Background(), uuid.New().String(), service)
+	instance, err := repository.Create(context.Background(), uuid.New().String(), image)
 	assert.Nil(t, err)
 	return instance.ID
 }

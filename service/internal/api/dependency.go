@@ -5,4 +5,5 @@ const (
 	ConfigDependency        = "config"
 	OrchestrationDependency = "stream_orchestration"
 	ContainerDependency     = "container"
+	ImageDependency         = "image"
 )

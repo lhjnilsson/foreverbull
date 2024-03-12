@@ -40,7 +40,7 @@ func (test *ExecutionTest) SetupTest() {
 
 	ctx := context.Background()
 	b_postgres := &Backtest{Conn: test.conn}
-	_, err = b_postgres.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err = b_postgres.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.Require().NoError(err)
 	test.storedBacktest, err = b_postgres.Get(ctx, "backtest")
 	test.Require().NoError(err)

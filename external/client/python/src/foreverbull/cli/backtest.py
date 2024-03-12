@@ -2,7 +2,6 @@ import signal
 import socket
 import time
 from datetime import datetime
-from typing import List
 
 import typer
 from rich.console import Console
@@ -48,20 +47,18 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Argument(help="start time of the backtest")],
-    end: Annotated[datetime, typer.Argument(help="end time of the backtest")],
-    symbols: Annotated[List[str], typer.Argument(help="symbol to use")],
-    backtest_service: Annotated[str, typer.Option(help="backtest service to use")],
-    worker_service: Annotated[str, typer.Option(help="worker service to use")] = None,
-    benchmark: Annotated[str, typer.Option(help="benchmark to use")] = None,
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    service: Annotated[str, typer.Option(help="worker service to use")] = None,
+    benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] = None,
 ):
     backtest = entity.backtest.Backtest(
         name=name,
-        backtest_service=backtest_service,
-        worker_service=worker_service,
+        service=service,
         start=start,
         end=end,
-        symbols=[symbol.upper() for symbol in symbols],
+        symbols=[symbol.strip().upper() for symbol in symbols.split(",")],
         benchmark=benchmark,
     )
     with Progress() as progress:

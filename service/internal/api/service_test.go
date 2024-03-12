@@ -93,28 +93,13 @@ func (test *ServiceTest) TestCreateService() {
 	}
 	testCases := []TestCase{
 		{
-			name:         "missing name",
-			payload:      `{"image": "image"}`,
-			expectedCode: 400,
-		},
-		{
-			name:         "name too short",
-			payload:      `{"name": "s", "image": "image"}`,
-			expectedCode: 400,
-		},
-		{
 			name:         "missing image",
-			payload:      `{"name": "service"}`,
-			expectedCode: 400,
-		},
-		{
-			name:         "image too short",
-			payload:      `{"name": "service", "image": "i"}`,
+			payload:      `{}`,
 			expectedCode: 400,
 		},
 		{
 			name:         "valid",
-			payload:      `{"name": "service", "image": "image"}`,
+			payload:      `{"image": "image"}`,
 			expectedCode: 201,
 		},
 	}
@@ -134,7 +119,7 @@ func (test *ServiceTest) TestCreateService() {
 }
 
 func (test *ServiceTest) TestGetService() {
-	test.router.GET("/services/:name", GetService)
+	test.router.GET("/services/*image", GetService)
 	req := httptest.NewRequest("GET", "/services/service123", nil)
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
@@ -153,7 +138,7 @@ func (test *ServiceTest) TestGetService() {
 func (test *ServiceTest) TestDeleteService() {
 	serviceName := AddService(test.T(), test.conn, "test_service")
 
-	test.router.DELETE("/services/:name", DeleteService)
+	test.router.DELETE("/services/*image", DeleteService)
 
 	req := httptest.NewRequest("DELETE", "/services/"+serviceName, nil)
 	w := httptest.NewRecorder()

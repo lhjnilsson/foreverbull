@@ -56,7 +56,7 @@ func CreateBacktest(c *gin.Context) {
 
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_b := repository.Backtest{Conn: pgx_tx}
-	backtest, err := repository_b.Create(c, body.Name, body.BacktestService, body.WorkerService,
+	backtest, err := repository_b.Create(c, body.Name, body.Service,
 		start, end, body.Calendar, body.Symbols, body.Benchmark)
 	if err != nil {
 		log.Err(err).Msg("error creating backtest")
@@ -125,7 +125,7 @@ func UpdateBacktest(c *gin.Context) {
 
 	repository_b := repository.Backtest{Conn: pgx_tx}
 
-	backtest, err := repository_b.Update(c, uri.Name, body.BacktestService, body.WorkerService,
+	backtest, err := repository_b.Update(c, uri.Name, body.Service,
 		start, end, body.Calendar, body.Symbols, body.Benchmark)
 	if err != nil {
 		log.Err(err).Msg("error updating backtest")

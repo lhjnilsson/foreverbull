@@ -19,7 +19,7 @@ func AddBacktest(t *testing.T, conn *pgxpool.Pool, name string) *entity.Backtest
 	require.NoError(t, err)
 
 	worker := "worker_service"
-	backtest, err := repository_b.Create(context.Background(), name, "backtest_service", &worker, start, end, "XNYS", []string{"AAPL"}, nil)
+	backtest, err := repository_b.Create(context.Background(), name, &worker, start, end, "XNYS", []string{"AAPL"}, nil)
 	require.NoError(t, err)
 	err = repository_b.UpdateStatus(context.Background(), name, entity.BacktestStatusReady, nil)
 	require.NoError(t, err)

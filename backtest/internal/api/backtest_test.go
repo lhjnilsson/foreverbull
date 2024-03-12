@@ -87,38 +87,32 @@ func (test *BacktestTest) TestCreateBacktest() {
 	testCases := []TestCase{
 		{
 			name: "no name",
-			payload: `{"backtest_service": "service", "calendar": "XNYS",
-			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
-			expectedCode: 400,
-		},
-		{
-			name: "no backtest_service",
-			payload: `{"name": "no backtest_service", "calendar": "XNYS",
+			payload: `{"calendar": "XNYS",
 			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
 			expectedCode: 400,
 		},
 		{
 			name: "no worker_service",
-			payload: `{"name": "no worker_service", "backtest_service": "service", "calendar": "XNYS",
+			payload: `{"name": "no worker_service", "calendar": "XNYS",
 			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
 			expectedCode: 201,
 		},
 		{
 			name: "no calendar",
-			payload: `{"name": "no calendar", "backtest_service": "service", "worker_service": "service",
+			payload: `{"name": "no calendar", "service": "worker",
 			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
 			expectedCode: 400,
 		},
 		{
 			name: "no benchmark",
-			payload: `{"name": "no benchmark", "backtest_service": "service", "worker_service": "service", 
+			payload: `{"name": "no benchmark", "service": "worker", 
 			"calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", 
 			"symbols": ["AAPL"]}`,
 			expectedCode: 201,
 		},
 		{
 			name: "no symbols",
-			payload: `{"name": "no symbols", "backtest_service": "service", "worker_service": "service",
+			payload: `{"name": "no symbols", "service": "worker",
 			"symbols": [], "calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z"}`,
 			expectedCode: 400,
 		},
@@ -182,7 +176,7 @@ func (test *BacktestTest) TestCreateBacktestTimeFormats() {
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func() {
-			payload := `{"name": "` + testCase.name + `", "backtest_service": "service", "calendar": "XNYS", 
+			payload := `{"name": "` + testCase.name + `", "calendar": "XNYS", 
 			"start": "` + testCase.Start + `", "end": "` + testCase.End + `", "symbols": ["AAPL"]}`
 			req := httptest.NewRequest("POST", "/backtests", strings.NewReader(payload))
 			w := httptest.NewRecorder()
@@ -207,7 +201,7 @@ func (test *BacktestTest) TestGetBacktest() {
 
 	test.Equal(404, w.Code)
 
-	payload := `{"name": "test_backtest", "backtest_service": "service", "calendar": "XNYS", 
+	payload := `{"name": "test_backtest", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`
 	req = httptest.NewRequest("POST", "/backtests", strings.NewReader(payload))
 	w = httptest.NewRecorder()
@@ -226,7 +220,7 @@ func (test *BacktestTest) TestUpdateBacktest() {
 	test.router.POST("/backtests", CreateBacktest)
 	test.router.PUT("/backtests/:name", UpdateBacktest)
 
-	payload := `{"name": "test_backtest", "backtest_service": "service", "calendar": "XNYS", 
+	payload := `{"name": "test_backtest", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"], "benchmark": "SPY"}`
 	req := httptest.NewRequest("POST", "/backtests", strings.NewReader(payload))
 	w := httptest.NewRecorder()
@@ -237,7 +231,7 @@ func (test *BacktestTest) TestUpdateBacktest() {
 	test.True(test.stream.Contains("ingest backtest"))
 	test.stream = &stream.OrchestrationOutput{}
 
-	payload = `{"name": "test_backtest", "backtest_service": "service", "calendar": "XNYS", 
+	payload = `{"name": "test_backtest", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"], "benchmark": "SPY"}`
 	req = httptest.NewRequest("PUT", "/backtests/test_backtest", strings.NewReader(payload))
 	w = httptest.NewRecorder()
@@ -250,7 +244,7 @@ func (test *BacktestTest) TestDeleteBacktest() {
 	test.router.POST("/backtests", CreateBacktest)
 	test.router.DELETE("/backtests/:name", DeleteBacktest)
 
-	payload := `{"name": "test_backtest", "backtest_service": "service", "calendar": "XNYS", 
+	payload := `{"name": "test_backtest", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`
 	req := httptest.NewRequest("POST", "/backtests", strings.NewReader(payload))
 	w := httptest.NewRecorder()

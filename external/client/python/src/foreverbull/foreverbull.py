@@ -188,7 +188,7 @@ class Foreverbull:
         if self._file_path is None:
             raise Exception("No algo file provided")
         algo = import_file(self._file_path)
-        info = entity.service.Info(type="worker", version="0.0.1", parameters=algo["parameters"])
+        info = entity.service.Info(version="0.0.1", parameters=algo["parameters"])
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
         self._worker_surveyor_socket.sendout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000

@@ -46,10 +46,9 @@ func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	backtest, err := db.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	backtest, err := db.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 	test.Equal("backtest", backtest.Name)
-	test.Equal("backtest_service", backtest.BacktestService)
 	test.Len(backtest.Statuses, 1)
 	test.Equal(entity.BacktestStatusCreated, backtest.Statuses[0].Status)
 }
@@ -58,13 +57,12 @@ func (test *BacktestTest) TestGet() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err := db.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 
 	backtest, err := db.Get(ctx, "backtest")
 	test.NoError(err)
 	test.Equal("backtest", backtest.Name)
-	test.Equal("backtest_service", backtest.BacktestService)
 	test.Len(backtest.Statuses, 1)
 	test.Equal(entity.BacktestStatusCreated, backtest.Statuses[0].Status)
 }
@@ -73,16 +71,15 @@ func (test *BacktestTest) TestUpdate() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err := db.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 
-	_, err = db.Update(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{"AAPL"}, nil)
+	_, err = db.Update(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{"AAPL"}, nil)
 	test.NoError(err)
 
 	backtest, err := db.Get(ctx, "backtest")
 	test.NoError(err)
 	test.Equal("backtest", backtest.Name)
-	test.Equal("backtest_service", backtest.BacktestService)
 	// TODO: FIX, Github looses nanoseconds
 	// -(time.Time) 2023-10-19 19:53:22.382093481 +0000 UTC
 	// +(time.Time) 2023-10-19 19:53:22.382093 +0000 UTC
@@ -98,7 +95,7 @@ func (test *BacktestTest) TestUpdateStatus() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err := db.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "backtest", entity.BacktestStatusIngesting, nil)
@@ -110,7 +107,6 @@ func (test *BacktestTest) TestUpdateStatus() {
 	backtest, err := db.Get(ctx, "backtest")
 	test.NoError(err)
 	test.Equal("backtest", backtest.Name)
-	test.Equal("backtest_service", backtest.BacktestService)
 	test.Len(backtest.Statuses, 3)
 	test.Equal(entity.BacktestStatusError, backtest.Statuses[0].Status)
 	test.NotNil(backtest.Statuses[0].OccurredAt)
@@ -125,12 +121,12 @@ func (test *BacktestTest) TestList() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest1", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err := db.Create(ctx, "backtest1", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 	err = db.UpdateStatus(ctx, "backtest1", entity.BacktestStatusIngesting, nil)
 	test.NoError(err)
 
-	_, err = db.Create(ctx, "backtest2", "backtest_service_2", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err = db.Create(ctx, "backtest2", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 	err = db.UpdateStatus(ctx, "backtest2", entity.BacktestStatusReady, nil)
 	test.NoError(err)
@@ -139,11 +135,9 @@ func (test *BacktestTest) TestList() {
 	test.NoError(err)
 	test.Len(*backtests, 2)
 	test.Equal("backtest2", (*backtests)[0].Name)
-	test.Equal("backtest_service_2", (*backtests)[0].BacktestService)
 	test.Equal(entity.BacktestStatusReady, (*backtests)[0].Statuses[0].Status)
 
 	test.Equal("backtest1", (*backtests)[1].Name)
-	test.Equal("backtest_service", (*backtests)[1].BacktestService)
 	test.Equal(entity.BacktestStatusIngesting, (*backtests)[1].Statuses[0].Status)
 }
 
@@ -151,7 +145,7 @@ func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", "backtest_service", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
+	_, err := db.Create(ctx, "backtest", nil, time.Now(), time.Now(), "XNYS", []string{}, nil)
 	test.NoError(err)
 
 	err = db.Delete(ctx, "backtest")

@@ -27,21 +27,18 @@ def test_backtest_list(return_value, expected_model):
         (
             Backtest(
                 name="test_service",
-                backtest_service="test_service",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],
             ),
             {
                 "name": "test_service",
-                "backtest_service": "test_service",
                 "start": "2021-01-01T00:00:00",
                 "end": "2021-01-01T00:00:00",
                 "symbols": ["AAPL", "MSFT"],
             },
             Backtest(
                 name="test_service",
-                backtest_service="test_service",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],
@@ -64,14 +61,12 @@ def test_backtest_create(argument, return_value, expected_model):
             "test_service",
             {
                 "name": "test_service",
-                "backtest_service": "test_service",
                 "start": "2021-01-01T00:00:00",
                 "end": "2021-01-01T00:00:00",
                 "symbols": ["AAPL", "MSFT"],
             },
             Backtest(
                 name="test_service",
-                backtest_service="test_service",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],
@@ -173,7 +168,6 @@ def test_backtest_list_executions(argument, return_value, expected_model):
             {
                 "id": "test_service",
                 "name": "test_service",
-                "backtest_service": "test_service",
                 "start": "2021-01-01T00:00:00",
                 "end": "2021-01-01T00:00:00",
                 "symbols": ["AAPL", "MSFT"],
@@ -181,7 +175,6 @@ def test_backtest_list_executions(argument, return_value, expected_model):
             Execution(
                 id="test_service",
                 name="test_service",
-                backtest_service="test_service",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],

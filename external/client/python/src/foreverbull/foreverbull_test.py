@@ -94,7 +94,6 @@ def test_foreverbull(
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.info
-        assert foreverbull.info.type == "worker"
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
 

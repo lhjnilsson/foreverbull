@@ -15,13 +15,59 @@ type Client struct {
 	mock.Mock
 }
 
-// GetInstance provides a mock function with given fields: ctx, serviceName, InstanceID
-func (_m *Client) GetInstance(ctx context.Context, serviceName string, InstanceID string) (*api.InstanceResponse, error) {
-	ret := _m.Called(ctx, serviceName, InstanceID)
+// DownloadImage provides a mock function with given fields: ctx, image
+func (_m *Client) DownloadImage(ctx context.Context, image string) (*api.ImageResponse, error) {
+	ret := _m.Called(ctx, image)
+
+	var r0 *api.ImageResponse
+	if rf, ok := ret.Get(0).(func(context.Context, string) *api.ImageResponse); ok {
+		r0 = rf(ctx, image)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*api.ImageResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, image)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetImage provides a mock function with given fields: ctx, image
+func (_m *Client) GetImage(ctx context.Context, image string) (*api.ImageResponse, error) {
+	ret := _m.Called(ctx, image)
+
+	var r0 *api.ImageResponse
+	if rf, ok := ret.Get(0).(func(context.Context, string) *api.ImageResponse); ok {
+		r0 = rf(ctx, image)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*api.ImageResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, image)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetInstance provides a mock function with given fields: ctx, InstanceID
+func (_m *Client) GetInstance(ctx context.Context, InstanceID string) (*api.InstanceResponse, error) {
+	ret := _m.Called(ctx, InstanceID)
 
 	var r0 *api.InstanceResponse
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *api.InstanceResponse); ok {
-		r0 = rf(ctx, serviceName, InstanceID)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *api.InstanceResponse); ok {
+		r0 = rf(ctx, InstanceID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*api.InstanceResponse)
@@ -29,8 +75,8 @@ func (_m *Client) GetInstance(ctx context.Context, serviceName string, InstanceI
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, serviceName, InstanceID)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, InstanceID)
 	} else {
 		r1 = ret.Error(1)
 	}

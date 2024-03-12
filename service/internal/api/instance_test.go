@@ -68,35 +68,35 @@ func (test *InstanceTest) TestListInstances() {
 	test.router.GET("/instances", ListInstances)
 
 	type TestCase struct {
-		Service           string
+		Image             string
 		ExpectedInstances int
 	}
 
 	testCases := []TestCase{
 		{
-			Service:           "service1",
+			Image:             "image1",
 			ExpectedInstances: 2,
 		},
 		{
-			Service:           "service2",
+			Image:             "image2",
 			ExpectedInstances: 1,
 		},
 		{
-			Service:           "service3",
+			Image:             "image3",
 			ExpectedInstances: 0,
 		},
 	}
 
 	for _, testCase := range testCases {
-		serviceName := AddService(test.T(), test.conn, testCase.Service)
+		image := AddService(test.T(), test.conn, testCase.Image)
 		for i := 0; i < testCase.ExpectedInstances; i++ {
-			AddInstance(test.T(), test.conn, serviceName)
+			AddInstance(test.T(), test.conn, image)
 		}
 	}
 
 	for _, testCase := range testCases {
-		test.Run(testCase.Service, func() {
-			req := httptest.NewRequest("GET", "/instances?service="+testCase.Service, nil)
+		test.Run(testCase.Image, func() {
+			req := httptest.NewRequest("GET", "/instances?image="+testCase.Image, nil)
 			w := httptest.NewRecorder()
 			test.router.ServeHTTP(w, req)
 
@@ -120,7 +120,7 @@ func (test *InstanceTest) TestListInstances() {
 	})
 
 	test.Run("not_stored", func() {
-		req := httptest.NewRequest("GET", "/instances?service=not_stored", nil)
+		req := httptest.NewRequest("GET", "/instances?image=not_stored", nil)
 		w := httptest.NewRecorder()
 		test.router.ServeHTTP(w, req)
 		test.Equal(200, w.Code)

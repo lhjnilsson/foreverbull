@@ -16,7 +16,6 @@ class Parameter(Base):
 
 
 class Info(Base):
-    type: str
     version: str
     parameters: List[Parameter]
 
@@ -51,9 +50,8 @@ class ServiceStatus(Base):
 
 
 class Service(Base):
-    name: str
-    type: str | None = None
     image: str
+    type: str | None = None
     Parameters: List[Parameter] = []
 
     statuses: List[ServiceStatus]
@@ -74,8 +72,7 @@ class InstanceStatus(Base):
 
 class Instance(Base):
     id: str
-    service: str
-    service_type: str | None = None
+    image: str
     host: str | None = None
     port: int | None = None
 

@@ -15,6 +15,8 @@ jobs:
         run: go build -v ./...
       - name: Test
         run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.out -covermode=atomic -timeout 180s
+        env:
+          DISABLE_LOKI_LOGGING: true
       - name: Upload coverage to Codecov
         run: curl -s https://codecov.io/bash > codecov.sh && bash codecov.sh
 
@@ -78,14 +80,14 @@ jobs:
           context: external/client/python
           file: ./external/client/python/Dockerfile
           build-args: ALGO_FILE=example.py
-          tags: quay.io/foreverbull/client:latest
+          tags: lhjnilsson/client:latest
           outputs: type=docker,dest=/tmp/client.tar
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
           context: external/client/python
           file: ./external/client/python/zipline.Dockerfile
-          tags: quay.io/foreverbull/zipline:latest
+          tags: lhjnilsson/zipline:latest
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload foreverbull
         uses: actions/upload-artifact@v2
@@ -139,8 +141,8 @@ jobs:
           ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
           ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
           ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          WORKER_IMAGE: quay.io/foreverbull/client:latest
-          BACKTEST_IMAGE: quay.io/foreverbull/zipline:latest
+          WORKER_IMAGE: lhjnilsson/client:latest
+          BACKTEST_IMAGE: lhjnilsson/zipline:latest
           HOSTNAME: host.docker.internal
           LOG_LEVEL: info
           DISABLE_LOKI_LOGGING: true
@@ -210,13 +212,9 @@ jobs:
           python -m pip install pytest
       - name: Create environment
         run: |
-          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:latest
-      - name: Create services
-        run: |
-          foreverbull service create backtest quay.io/foreverbull/zipline:latest
-          foreverbull service create worker quay.io/foreverbull/client:latest
+          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:latest --backtest-image lhjnilsson/zipline:latest
       - name: create backtest
-        run: foreverbull backtest create github_action_test 2020-01-01 2020-06-01 aapl tsla msft --backtest-service backtest --worker-service worker
+        run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
         run: |
           python -m pytest example_test.py --backtest=github_action_test

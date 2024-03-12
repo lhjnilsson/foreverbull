@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceStream "github.com/lhjnilsson/foreverbull/service/stream"
 )
@@ -54,7 +55,7 @@ func NewSessionRunOrchestration(backtest *entity.Backtest, session *entity.Sessi
 		return nil, err
 	}
 	if session.Manual {
-		msg1, err := serviceStream.NewServiceStartCommand(backtest.BacktestService, backtestInstanceID)
+		msg1, err := serviceStream.NewServiceStartCommand(environment.GetBacktestImage(), backtestInstanceID)
 		if err != nil {
 			return nil, err
 		}
@@ -66,14 +67,14 @@ func NewSessionRunOrchestration(backtest *entity.Backtest, session *entity.Sessi
 		}
 		orchestration.AddStep("sanity check", []stream.Message{msg})
 	} else {
-		msg1, err := serviceStream.NewServiceStartCommand(backtest.BacktestService, backtestInstanceID)
+		msg1, err := serviceStream.NewServiceStartCommand(environment.GetBacktestImage(), backtestInstanceID)
 		if err != nil {
 			return nil, err
 		}
-		if backtest.WorkerService == nil {
+		if backtest.Service == nil {
 			return nil, fmt.Errorf("worker service is required but not provided")
 		}
-		msg2, err := serviceStream.NewServiceStartCommand(*backtest.WorkerService, workerInstanceID)
+		msg2, err := serviceStream.NewServiceStartCommand(*backtest.Service, workerInstanceID)
 		if err != nil {
 			return nil, err
 		}

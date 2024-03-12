@@ -20,11 +20,10 @@ const (
 )
 
 type Instance struct {
-	ID          string  `json:"id"`
-	Service     string  `json:"service"`
-	ServiceType *string `json:"service_type"`
-	Host        *string `json:"host"`
-	Port        *int    `json:"port"`
+	ID    string  `json:"id"`
+	Image string  `json:"image"`
+	Host  *string `json:"host"`
+	Port  *int    `json:"port"`
 
 	Statuses []InstanceStatus `json:"statuses"`
 }

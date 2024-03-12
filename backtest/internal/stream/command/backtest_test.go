@@ -55,7 +55,7 @@ func (test *CommandBacktestTest) TestBacktestUpdateStatusCommand() {
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.Background(), "test-backtest", "test-backtest-service", nil, time.Now(), time.Now(),
+	_, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
 		"test-calendar", []string{"test-symbol"}, nil)
 	test.NoError(err)
 
@@ -104,7 +104,7 @@ func (test *CommandBacktestTest) TestBacktestUpdateStatusCommand() {
 
 func (test *CommandBacktestTest) TestBacktestIngestCommand() {
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.Background(), "test-backtest", "test-backtest-service", nil, time.Now(), time.Now(),
+	_, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
 		"test-calendar", []string{"test-symbol"}, nil)
 	test.NoError(err)
 

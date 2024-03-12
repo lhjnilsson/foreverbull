@@ -3,6 +3,7 @@ package event
 import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	financeStream "github.com/lhjnilsson/foreverbull/finance/stream"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceStream "github.com/lhjnilsson/foreverbull/service/stream"
 )
@@ -39,7 +40,7 @@ func NewBacktestIngestOrchestration(backtest *entity.Backtest) (*stream.MessageO
 	orchestration := stream.NewMessageOrchestration("ingest backtest")
 
 	backtestInstanceID := serviceStream.NewInstanceID()
-	msg, err := serviceStream.NewServiceStartCommand(backtest.BacktestService, backtestInstanceID)
+	msg, err := serviceStream.NewServiceStartCommand(environment.GetBacktestImage(), backtestInstanceID)
 	if err != nil {
 		return nil, err
 	}

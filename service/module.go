@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	apiDef "github.com/lhjnilsson/foreverbull/service/api"
 	"github.com/lhjnilsson/foreverbull/service/container"
 	"github.com/lhjnilsson/foreverbull/service/internal/api"
 	containerImpl "github.com/lhjnilsson/foreverbull/service/internal/container"
@@ -31,7 +32,8 @@ type ServiceAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		containerImpl.New,
+		containerImpl.NewImageRegistry,
+		containerImpl.NewContainerRegistry,
 		func(gin *gin.Engine) *ServiceAPI {
 			return &ServiceAPI{gin.Group("/service/api")}
 		},
@@ -41,12 +43,15 @@ var Module = fx.Options(
 			dc.AddSingleton(dependency.ContainerDep, container)
 			return stream.NewNATSStream(jt, Stream, dc, conn)
 		},
+		func() (apiDef.Client, error) {
+			return apiDef.NewClient()
+		},
 	),
 	fx.Invoke(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container) error {
+		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container, image container.Image) error {
 			serviceAPI.Use(
 				logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
 					return log.Logger
@@ -56,19 +61,21 @@ var Module = fx.Options(
 				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
 				func(ctx *gin.Context) {
 					ctx.Set(api.ContainerDependency, container)
+					ctx.Set(api.ImageDependency, image)
 					ctx.Next()
 				},
 			)
 			serviceAPI.GET("/services", api.ListServices)
 			serviceAPI.POST("/services", api.CreateService)
-			serviceAPI.GET("/services/:name", api.GetService)
-			serviceAPI.DELETE("/services/:name", api.DeleteService)
-			serviceAPI.GET("/services/:name/image", api.GetServiceImage)
-			//serviceAPI.POST("/services/:name/image", api.UpdateServiceImage)
+			serviceAPI.GET("/services/*image", api.GetService)
+			serviceAPI.DELETE("/services/*image", api.DeleteService)
 
 			serviceAPI.GET("/instances", api.ListInstances)
 			serviceAPI.GET("/instances/:instanceID", api.GetInstance)
 			serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
+
+			serviceAPI.GET("/images/*name", api.GetImage)
+			serviceAPI.POST("/images/*name", api.PullImage)
 			return nil
 		},
 		func(lc fx.Lifecycle, s ServiceStream, container container.Container, conn *pgxpool.Pool) error {

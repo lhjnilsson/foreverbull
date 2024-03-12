@@ -44,7 +44,7 @@ func (test *ServiceTest) SetupTest() {
 	test.Require().NoError(err)
 
 	services := repository.Service{Conn: test.db}
-	test.testService, err = services.Create(context.TODO(), "test-service", "test-image")
+	test.testService, err = services.Create(context.TODO(), "test-image")
 	test.Require().NoError(err)
 }
 
@@ -70,7 +70,7 @@ func (test *ServiceTest) TestUpdateServiceStatus() {
 		test.Run(string(tc.Status), func() {
 			m.On("ParsePayload", &ss.UpdateServiceStatusCommand{}).Return(nil).Run(func(args mock.Arguments) {
 				command := args.Get(0).(*ss.UpdateServiceStatusCommand)
-				command.Name = test.testService.Name
+				command.Image = test.testService.Image
 				command.Status = tc.Status
 				command.Error = tc.Error
 			})
@@ -79,7 +79,7 @@ func (test *ServiceTest) TestUpdateServiceStatus() {
 			err := UpdateServiceStatus(ctx, m)
 			test.NoError(err)
 
-			service, err := services.Get(ctx, test.testService.Name)
+			service, err := services.Get(ctx, test.testService.Image)
 			test.NoError(err)
 			test.Equal(tc.Status, service.Statuses[0].Status)
 			if tc.Error != nil {
@@ -95,7 +95,7 @@ func (test *ServiceTest) TestServiceStartFail() {
 	b := new(mockStream.Message)
 	b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*ss.ServiceStartCommand)
-		command.Name = test.testService.Name
+		command.Image = test.testService.Image
 		command.InstanceID = "test-instance"
 	})
 	b.On("GetOrchestrationID").Return("test-orchestration-id")
@@ -104,7 +104,7 @@ func (test *ServiceTest) TestServiceStartFail() {
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance",
+	c.On("Start", mock.Anything, test.testService.Image, "test-instance",
 		map[string]string{"orchestration_id": "test-orchestration-id"}).Return("", errors.New("fail to start"))
 
 	err := ServiceStart(context.Background(), b)
@@ -116,7 +116,7 @@ func (test *ServiceTest) TestServiceStartSuccessful() {
 	b := new(mockStream.Message)
 	b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*ss.ServiceStartCommand)
-		command.Name = test.testService.Name
+		command.Image = test.testService.Image
 		command.InstanceID = "test-instance"
 	})
 	b.On("GetOrchestrationID").Return("test-orchestration-id")
@@ -125,7 +125,7 @@ func (test *ServiceTest) TestServiceStartSuccessful() {
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-	c.On("Start", mock.Anything, test.testService.Name, test.testService.Image, "test-instance",
+	c.On("Start", mock.Anything, test.testService.Image, "test-instance",
 		map[string]string{"orchestration_id": "test-orchestration-id"}).Return("test-container-id", nil)
 
 	err := ServiceStart(context.Background(), b)
@@ -135,5 +135,5 @@ func (test *ServiceTest) TestServiceStartSuccessful() {
 	instance, err := instances.Get(context.Background(), "test-instance")
 	test.NoError(err)
 	test.Equal("test-instance", instance.ID)
-	test.Equal("test-service", instance.Service)
+	test.Equal("test-image", instance.Image)
 }

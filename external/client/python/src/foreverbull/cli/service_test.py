@@ -14,7 +14,6 @@ def test_service_list():
     with patch("foreverbull.broker.service.list") as mock_list:
         mock_list.return_value = [
             entity.service.Service(
-                name="test",
                 image="test",
                 statuses=[
                     entity.service.ServiceStatus(
@@ -55,33 +54,27 @@ def test_service_create():
 
     with patch("foreverbull.broker.service.create") as mock_create, patch("foreverbull.broker.service.get") as mock_get:
         mock_create.return_value = entity.service.Service(
-            name="test",
             image="test",
             statuses=get_statuses[2:],
         )
         mock_get.side_effect = [
             entity.service.Service(
-                name="test",
                 image="test",
                 statuses=get_statuses[1:],
             ),
             entity.service.Service(
-                name="test",
                 image="test",
                 statuses=get_statuses[1:],
             ),
             entity.service.Service(
-                name="test",
                 image="test",
-                type="backtest_type",
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(service, ["create", "test", "test"])
+        result = runner.invoke(service, ["create", "test"])
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert "Service ready" in result.stdout
-        assert "backtest_type" in result.stdout
 
 
 def test_service_create_error():
@@ -105,29 +98,24 @@ def test_service_create_error():
 
     with patch("foreverbull.broker.service.create") as mock_create, patch("foreverbull.broker.service.get") as mock_get:
         mock_create.return_value = entity.service.Service(
-            name="test",
             image="test",
             statuses=get_statuses[2:],
         )
         mock_get.side_effect = [
             entity.service.Service(
-                name="test",
                 image="test",
                 statuses=get_statuses[1:],
             ),
             entity.service.Service(
-                name="test",
                 image="test",
                 statuses=get_statuses[1:],
             ),
             entity.service.Service(
-                name="test",
                 image="test",
-                type="backtest_type",
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(service, ["create", "test", "test"])
+        result = runner.invoke(service, ["create", "test"])
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert "Error while creating service: error" in result.stderr
@@ -139,9 +127,7 @@ def test_service_get():
         patch("foreverbull.broker.service.list_instances") as mock_list_instances,
     ):
         mock_get.return_value = entity.service.Service(
-            name="test_name",
             image="test_image",
-            type="backtest_type",
             statuses=[
                 entity.service.ServiceStatus(
                     status=entity.service.ServiceStatusType.READY,
@@ -153,7 +139,7 @@ def test_service_get():
         mock_list_instances.return_value = [
             entity.service.Instance(
                 id="id123",
-                service="test_name",
+                image="test_image",
                 host="hostname",
                 port=1234,
                 statuses=[
@@ -165,15 +151,13 @@ def test_service_get():
                 ],
             )
         ]
-        result = runner.invoke(service, ["get", "test"])
+        result = runner.invoke(service, ["get", "test_image"])
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert mock_get.called
         assert mock_list_instances.called
-        assert "test_name" in result.stdout
         assert "test_image" in result.stdout
-        assert "backtest_type" in result.stdout
         assert "id123" in result.stdout
         assert "hostname" in result.stdout
         assert "1234" in result.stdout

@@ -209,7 +209,7 @@ class Execution(threading.Thread):
                 raise ConfigError(repr(e))
 
         trading_algorithm = TradingAlgorithm(
-            namespace={"symbols": symbols, "execution": "test"},
+            namespace={"symbols": symbols},
             data_portal=data_portal,
             trading_calendar=trading_calendar,
             sim_params=sim_params,
@@ -276,7 +276,6 @@ class Execution(threading.Thread):
                             Order.from_zipline(trading_algorithm.get_order(order.id)) for order in self._new_orders
                         ]
                         portfolio = entity.finance.Portfolio(
-                            execution=trading_algorithm.namespace["execution"],
                             cash=trading_algorithm.portfolio.cash,
                             value=trading_algorithm.portfolio.portfolio_value,
                             positions=[],

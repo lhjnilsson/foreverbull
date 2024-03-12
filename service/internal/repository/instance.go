@@ -11,7 +11,7 @@ import (
 
 const InstanceTable = `CREATE TABLE IF NOT EXISTS service_instance (
 id text PRIMARY KEY,
-service text references service(name) ON DELETE CASCADE,
+image text references service(image) ON DELETE CASCADE,
 status text NOT NULL DEFAULT 'CREATED',
 error TEXT,
 host text,
@@ -50,10 +50,10 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, id string, service string) (*entity.Instance, error) {
+func (db *Instance) Create(ctx context.Context, id string, image string) (*entity.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO service_instance (id, service) VALUES ($1, $2)`,
-		id, service,
+		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
+		id, image,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating instance: %w", err)
@@ -64,10 +64,8 @@ func (db *Instance) Create(ctx context.Context, id string, service string) (*ent
 func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error) {
 	i := entity.Instance{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, service.name, service.service_type, host, port,
-		sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
-		INNER JOIN service ON service_instance.service=service.name
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
@@ -79,7 +77,7 @@ func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error
 
 	for rows.Next() {
 		status := entity.InstanceStatus{}
-		err = rows.Scan(&i.ID, &i.Service, &i.ServiceType, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
@@ -120,10 +118,8 @@ func (db *Instance) UpdateStatus(ctx context.Context, id string, status entity.I
 
 func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, service, service.service_type, host, port,
-		sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
-		INNER JOIN service ON service_instance.service=service.name
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
@@ -138,7 +134,7 @@ func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 	for rows.Next() {
 		status := entity.InstanceStatus{}
 		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Service, &i.ServiceType, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
@@ -158,17 +154,16 @@ func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 	return &instances, nil
 }
 
-func (db *Instance) ListByService(ctx context.Context, service string) (*[]entity.Instance, error) {
+func (db *Instance) ListByImage(ctx context.Context, image string) (*[]entity.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, service, service.service_type, host, port,
+		`SELECT service_instance.id, image, host, port,
 		sis.status, sis.error, sis.occurred_at
 		FROM service_instance
-		INNER JOIN service ON service_instance.service=service.name
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
-		WHERE service=$1
-		ORDER BY sis.occurred_at DESC`, service)
+		WHERE image=$1
+		ORDER BY sis.occurred_at DESC`, image)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +174,7 @@ func (db *Instance) ListByService(ctx context.Context, service string) (*[]entit
 	for rows.Next() {
 		status := entity.InstanceStatus{}
 		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Service, &i.ServiceType, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err

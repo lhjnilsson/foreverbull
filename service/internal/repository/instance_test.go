@@ -32,9 +32,8 @@ func (test *InstanceTest) SetupTest() {
 	test.Require().NoError(err)
 
 	s_repository := &Service{Conn: test.conn}
-	_, err = s_repository.Create(ctx, "service", "image")
+	_, err = s_repository.Create(ctx, "image")
 	test.Require().NoError(err)
-	err = s_repository.UpdateServiceInfo(ctx, "service", "type", nil)
 	test.Require().NoError(err)
 }
 
@@ -49,7 +48,7 @@ func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	instance, err := db.Create(ctx, "instance", "service")
+	instance, err := db.Create(ctx, "instance", "image")
 	test.NoError(err)
 	test.Equal("instance", instance.ID)
 }
@@ -58,7 +57,7 @@ func (test *InstanceTest) TestGet() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "service")
+	_, err := db.Create(ctx, "instance", "image")
 	test.NoError(err)
 
 	instance, err := db.Get(ctx, "instance")
@@ -70,7 +69,7 @@ func (test *InstanceTest) TestUpdateHostPort() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "service")
+	_, err := db.Create(ctx, "instance", "image")
 	test.NoError(err)
 
 	err = db.UpdateHostPort(ctx, "instance", "host", 1234)
@@ -86,7 +85,7 @@ func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "service")
+	_, err := db.Create(ctx, "instance", "image")
 	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusRunning, nil)
@@ -110,12 +109,12 @@ func (test *InstanceTest) TestList() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", "service")
+	_, err := db.Create(ctx, "instance1", "image")
 	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
 	test.NoError(err)
 
-	_, err = db.Create(ctx, "instance2", "service")
+	_, err = db.Create(ctx, "instance2", "image")
 	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance2", entity.InstanceStatusError, errors.New("test_error"))
 	test.NoError(err)
@@ -126,40 +125,40 @@ func (test *InstanceTest) TestList() {
 
 	instance2 := (*instances)[0]
 	test.Equal("instance2", instance2.ID)
-	test.Equal("service", instance2.Service)
+	test.Equal("image", instance2.Image)
 	test.Len(instance2.Statuses, 2)
 	test.Equal(entity.InstanceStatusError, instance2.Statuses[0].Status)
 	test.Equal("test_error", *instance2.Statuses[0].Error)
 
 	instance1 := (*instances)[1]
 	test.Equal("instance1", instance1.ID)
-	test.Equal("service", instance1.Service)
+	test.Equal("image", instance1.Image)
 	test.Len(instance1.Statuses, 2)
 	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
 	test.Nil(instance1.Statuses[0].Error)
 }
 
-func (test *InstanceTest) TestListByService() {
+func (test *InstanceTest) TestListByImage() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", "service")
+	_, err := db.Create(ctx, "instance1", "image")
 	test.NoError(err)
 	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
 	test.NoError(err)
 
-	instances, err := db.ListByService(ctx, "service")
+	instances, err := db.ListByImage(ctx, "image")
 	test.NoError(err)
-	test.Len(*instances, 1)
+	test.Require().Len(*instances, 1)
 
 	instance1 := (*instances)[0]
 	test.Equal("instance1", instance1.ID)
-	test.Equal("service", instance1.Service)
+	test.Equal("image", instance1.Image)
 	test.Len(instance1.Statuses, 2)
 	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
 	test.Nil(instance1.Statuses[0].Error)
 
-	instances, err = db.ListByService(ctx, "service2")
+	instances, err = db.ListByImage(ctx, "image2")
 	test.NoError(err)
 	test.Len(*instances, 0)
 }

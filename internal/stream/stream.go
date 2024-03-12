@@ -33,17 +33,20 @@ type Stream interface {
 func NewJetstream() (nats.JetStreamContext, error) {
 	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error connecting to nats: %w", err)
 	}
 	jt, err := nc.JetStream()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error connecting to jetstream: %w", err)
 	}
 	_, err = jt.AddStream(&nats.StreamConfig{
 		Name:     "foreverbull",
 		Subjects: []string{"foreverbull.>"},
 	})
-	return jt, err
+	if err != nil {
+		return nil, fmt.Errorf("error creating stream: %w", err)
+	}
+	return jt, nil
 }
 
 type NATSStream struct {

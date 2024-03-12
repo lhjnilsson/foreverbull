@@ -50,14 +50,14 @@ func (test *InstanceTest) SetupTest() {
 
 	services := repository.Service{Conn: test.db}
 	instances := repository.Instance{Conn: test.db}
-	test.testService, err = services.Create(context.TODO(), "test-service", "test-image")
+	test.testService, err = services.Create(context.TODO(), "test-image")
 	test.Require().NoError(err)
 
-	err = services.UpdateServiceInfo(context.Background(), test.testService.Name, "test-service-type", nil)
+	err = services.UpdateParameters(context.Background(), test.testService.Image, nil)
 	test.Require().NoError(err)
 
 	instanceID := uuid.New().String()
-	test.testInstance, err = instances.Create(context.TODO(), instanceID, test.testService.Name)
+	test.testInstance, err = instances.Create(context.TODO(), instanceID, test.testService.Image)
 	test.Require().NoError(err)
 
 	test.serviceInstance = helper.NewServiceInstance(test.T())
@@ -128,13 +128,11 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 
 	testCases := []TestCase{
 		{
-			Payload:      `{"type":"backtest","parameters":[]}`,
-			ExpectedType: "backtest",
-			Parameters:   []entity.Parameter{},
+			Payload:    `{"type":"backtest","parameters":[]}`,
+			Parameters: []entity.Parameter{},
 		},
 		{
-			Payload:      `{"type":"worker","parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
-			ExpectedType: "worker",
+			Payload: `{"type":"worker","parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
 			Parameters: []entity.Parameter{
 				{
 					Key:     "param1",
@@ -158,33 +156,10 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 			err := InstanceInterview(commandCtx, b)
 			test.NoError(err)
 
-			service, err := services.Get(context.Background(), test.testService.Name)
+			_, err = services.Get(context.Background(), test.testService.Image)
 			test.NoError(err)
-			test.Equal(testCase.ExpectedType, *service.Type)
-			test.Equal(testCase.Parameters, *service.WorkerParameters)
 		})
 	}
-}
-
-func (test *InstanceTest) TestInstanceSanityCheckMissmatchServiceTypel() {
-	b := new(mockStream.Message)
-	b.On("MustGet", stream.DBDep).Return(test.db)
-	b.On("ParsePayload", &st.InstanceSanityCheckCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		payload := args.Get(0).(*st.InstanceSanityCheckCommand)
-		payload.IDs = []string{test.testInstance.ID}
-	})
-	ctx := context.Background()
-	commandCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	responses := map[string][]byte{
-		"info": []byte(`{"task": "info", "data": {"type": "bad-type", "parameters": []}}`),
-	}
-	go test.serviceInstance.Process(commandCtx, responses)
-
-	err := InstanceSanityCheck(commandCtx, b)
-	test.Error(err)
-	test.ErrorContains(err, "test-service-type != bad-type")
 }
 
 func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
