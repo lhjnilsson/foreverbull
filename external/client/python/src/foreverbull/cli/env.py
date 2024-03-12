@@ -41,7 +41,8 @@ NETWORK_NAME = "foreverbull"
 POSTGRES_IMAGE = "postgres:13.3-alpine"
 NATS_IMAGE = "nats:2.10-alpine"
 MINIO_IMAGE = "minio/minio:latest"
-FOREVERBULL_IMAGE = f"lhjnilsson/foreverbull:{version}"
+BROKER_IMAGE = f"lhjnilsson/foreverbull:{version}"
+BACKTEST_IMAGE = f"lhjnilsson/zipline:{version}"
 
 
 @env.command()
@@ -108,11 +109,17 @@ def status():
 
 API_KEY = Annotated[str, typer.Argument(help="alpaca.markets api key")]
 API_SECRET = Annotated[str, typer.Argument(help="alpaca.markets api secret")]
-BROKER_IMAGE = Annotated[str, typer.Option(help="Docker image name of broker")]
+BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
+BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
 
 
 @env.command()
-def start(api_key: API_KEY, api_secret: API_SECRET, broker_image: BROKER_IMAGE = FOREVERBULL_IMAGE):
+def start(
+    api_key: API_KEY,
+    api_secret: API_SECRET,
+    broker_image: BROKER_IMAGE_OPT = BROKER_IMAGE,
+    backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
+):
     d = docker.from_env()
     std.print("Starting environment")
 
@@ -283,6 +290,7 @@ def start(api_key: API_KEY, api_secret: API_SECRET, broker_image: BROKER_IMAGE =
                         "ALPACA_MARKETS_BASE_URL": "https://paper-api.alpaca.markets",
                         "ALPACA_MARKETS_API_KEY": api_key,
                         "ALPACA_MARKETS_API_SECRET": api_secret,
+                        "BACKTEST_IMAGE": backtest_image,
                     },
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
                 )
