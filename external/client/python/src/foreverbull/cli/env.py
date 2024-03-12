@@ -79,7 +79,7 @@ def status():
     except docker.errors.ImageNotFound:
         minio_image = None
     try:
-        foreverbull_image = d.images.get(FOREVERBULL_IMAGE)
+        foreverbull_image = d.images.get(BROKER_IMAGE)
     except docker.errors.ImageNotFound:
         foreverbull_image = None
 
