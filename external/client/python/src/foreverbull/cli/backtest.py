@@ -2,7 +2,6 @@ import signal
 import socket
 import time
 from datetime import datetime
-from typing import List
 
 import typer
 from rich.console import Console
