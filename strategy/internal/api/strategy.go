@@ -25,7 +25,6 @@ func ListStrategies(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, strategies)
 }
 

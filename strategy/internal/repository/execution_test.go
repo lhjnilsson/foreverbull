@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -15,18 +17,26 @@ type ExecutionTest struct {
 	suite.Suite
 
 	conn *pgxpool.Pool
+
+	strategy *entity.Strategy
 }
 
-func (test *ExecutionTest) SetupTest() {
+func (test *ExecutionTest) SetupSuite() {
 	var err error
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
+}
 
+func (test *ExecutionTest) SetupTest() {
 	ctx := context.Background()
-	err = Recreate(ctx, test.conn)
+	err := Recreate(ctx, test.conn)
+	test.Require().NoError(err)
+
+	strategies := &Strategy{Conn: test.conn}
+	test.strategy, err = strategies.Create(ctx, "test", []string{"AAPL"}, 10, nil)
 	test.Require().NoError(err)
 }
 
@@ -34,30 +44,53 @@ func TestExecution(t *testing.T) {
 	suite.Run(t, new(ExecutionTest))
 }
 
-func (test *ExecutionTest) TestCreateExecution() {}
-
-func (test *ExecutionTest) TestGetByBacktestAndBacktestAtisNull() {
+func (test *ExecutionTest) TestCreate() {
 	ctx := context.Background()
-	strategies := Strategy{Conn: test.conn}
-	executions := Execution{Conn: test.conn}
 
-	strategyName := "test"
-	backtestName := "backtest"
-	strategy := entity.Strategy{
-		Name:     &strategyName,
-		Backtest: &backtestName,
-	}
-	err := strategies.Create(ctx, &strategy)
+	db := &Execution{Conn: test.conn}
+
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
+	test.NoError(err)
+	test.NotNil(execution)
+	test.Len(execution.Statuses, 1)
+}
+
+func (test *ExecutionTest) TestUpdateStatus() {
+	ctx := context.Background()
+
+	db := &Execution{Conn: test.conn}
+
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
 	test.NoError(err)
 
-	entries, err := executions.GetByBacktestAndBacktestAtisNull(ctx, *strategy.Backtest)
-	test.NoError(err)
-	test.Equal(0, len(*entries))
-
-	_, err = executions.Create(ctx, *strategy.Name)
+	err = db.UpdateStatus(ctx, execution.ID, entity.ExecutionStatusStarted, nil)
 	test.NoError(err)
 
-	entries, err = executions.GetByBacktestAndBacktestAtisNull(ctx, *strategy.Backtest)
+	execution, err = db.Get(ctx, execution.ID)
 	test.NoError(err)
-	test.Equal(1, len(*entries))
+	test.Len(execution.Statuses, 2)
+	test.Equal(entity.ExecutionStatusStarted, execution.Statuses[0].Status)
+
+	err = db.UpdateStatus(ctx, execution.ID, entity.ExecutionStatusFailed, errors.New("test"))
+	test.NoError(err)
+
+	execution, err = db.Get(ctx, execution.ID)
+	test.NoError(err)
+	test.Len(execution.Statuses, 3)
+	test.Equal(entity.ExecutionStatusFailed, execution.Statuses[0].Status)
+	test.Equal("test", *execution.Statuses[0].Error)
+}
+
+func (test *ExecutionTest) TestList() {
+	ctx := context.Background()
+
+	db := &Execution{Conn: test.conn}
+
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
+	test.NoError(err)
+
+	executions, err := db.List(ctx, test.strategy.Name)
+	test.NoError(err)
+	test.Len(*executions, 1)
+	test.Equal(*execution, (*executions)[0])
 }

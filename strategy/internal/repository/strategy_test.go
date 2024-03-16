@@ -8,78 +8,85 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type StrategyTestSuite struct {
+type StrategyTest struct {
 	suite.Suite
-	store *Strategy
-	conn  *pgxpool.Pool
+	conn *pgxpool.Pool
 }
 
-func (test *StrategyTestSuite) SetupTest() {
+func (test *StrategyTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
 	conn, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	assert.Nil(test.T(), err)
+	test.Require().NoError(err)
 	test.conn = conn
-
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS strategy")
-	assert.Nil(test.T(), err)
-	_, err = conn.Exec(context.Background(), StrategyTable)
-	assert.Nil(test.T(), err)
-
-	test.store = &Strategy{Conn: conn}
 }
 
-func (test *StrategyTestSuite) TearDownTest() {
-	test.conn.Close()
+func (test *StrategyTest) SetupTest() {
+	test.Require().NoError(Recreate(context.Background(), test.conn))
 }
 
-func TestStrategySuite(t *testing.T) {
-	suite.Run(t, new(StrategyTestSuite))
+func TestStrategy(t *testing.T) {
+	suite.Run(t, new(StrategyTest))
 }
 
-func (test *StrategyTestSuite) TestList() {
-	entries, err := test.store.List(context.Background())
-	assert.Nil(test.T(), err)
-	assert.Empty(test.T(), entries)
+func (test *StrategyTest) TestCreate() {
+	ctx := context.Background()
+
+	db := &Strategy{Conn: test.conn}
+
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	test.Require().NoError(err)
+	test.Equal(&entity.Strategy{
+		Name:      "test",
+		Symbols:   []string{"AAPL"},
+		MinDays:   10,
+		Service:   nil,
+		CreatedAt: strategy.CreatedAt,
+	}, strategy)
 }
 
-func (test *StrategyTestSuite) TestCreateAndGet() {
-	name := "TEST_STRATEGY"
-	strategy := entity.Strategy{Name: &name}
-	err := test.store.Create(context.Background(), &strategy)
-	assert.Nil(test.T(), err)
-	assert.NotEmpty(test.T(), strategy.CreatedAt)
+func (test *StrategyTest) TestList() {
+	ctx := context.Background()
 
-	entries, err := test.store.List(context.Background())
-	assert.Nil(test.T(), err)
-	assert.NotEmpty(test.T(), entries)
+	db := &Strategy{Conn: test.conn}
 
-	read, err := test.store.Get(context.Background(), "TEST_STRATEGY")
-	assert.Nil(test.T(), err)
-	assert.Equal(test.T(), "TEST_STRATEGY", *read.Name)
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	test.Require().NoError(err)
+
+	strategies, err := db.List(ctx)
+	test.Require().NoError(err)
+	test.Equal([]entity.Strategy{*strategy}, *strategies)
 }
 
-func (test *StrategyTestSuite) TestSetBacktest() {
-	name := "TEST_STRATEGY"
-	strategy := entity.Strategy{Name: &name}
-	err := test.store.Create(context.Background(), &strategy)
-	assert.Nil(test.T(), err)
+func (test *StrategyTest) TestGet() {
+	ctx := context.Background()
 
-	err = test.store.SetBacktest(context.Background(), *strategy.Name, "backtest")
-	assert.Nil(test.T(), err)
+	db := &Strategy{Conn: test.conn}
+
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	test.Require().NoError(err)
+
+	s, err := db.Get(ctx, "test")
+	test.Require().NoError(err)
+	test.Equal(strategy, s)
 }
 
-func (test *StrategyTestSuite) TestDelete() {
-	name := "TEST_STRATEGY"
-	strategy := entity.Strategy{Name: &name}
-	err := test.store.Create(context.Background(), &strategy)
-	assert.Nil(test.T(), err)
+func (test *StrategyTest) TestDelete() {
+	ctx := context.Background()
 
-	err = test.store.Delete(context.Background(), "TEST_STRATEGY")
-	assert.Nil(test.T(), err)
+	db := &Strategy{Conn: test.conn}
+
+	_, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	test.Require().NoError(err)
+
+	err = db.Delete(ctx, "test")
+	test.Require().NoError(err)
+
+	s, err := db.Get(ctx, "test")
+	test.Require().Error(err)
+	test.Nil(s)
 }
