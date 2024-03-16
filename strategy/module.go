@@ -50,7 +50,6 @@ var Module = fx.Options(
 			strategyAPI.GET("/strategies", api.ListStrategies)
 			strategyAPI.POST("/strategies", api.CreateStrategy)
 			strategyAPI.GET("/strategies/:name", api.GetStrategy)
-			strategyAPI.PATCH("/strategies/:name", api.PatchStrategy)
 			strategyAPI.DELETE("/strategies/:name", api.DeleteStrategy)
 
 			strategyAPI.GET("/executions", api.ListExecutions)

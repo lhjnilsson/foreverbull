@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"net/http/httptest"
-	"strings"
+	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,12 +20,13 @@ type ExecutionTest struct {
 	router *gin.Engine
 }
 
-func (test *ExecutionTest) SetupTest() {
-	var err error
-
+func (test *ExecutionTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
+}
+
+func (test *ExecutionTest) SetupTest() {
 	conn, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), conn)
@@ -40,7 +41,7 @@ func (test *ExecutionTest) SetupTest() {
 				return
 			}
 
-			ctx.Set("pgx_tx", tx)
+			ctx.Set(TXDependency, tx)
 			ctx.Next()
 			err = tx.Commit(context.Background())
 			if err != nil {
@@ -51,38 +52,27 @@ func (test *ExecutionTest) SetupTest() {
 	)
 }
 
-func (test *ExecutionTest) addStrategy() {
-	test.T().Helper()
-
-	test.router.POST("/strategies", CreateStrategy)
-
-	payload := `{"name": "test_strategy"}`
-	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(payload))
-	w := httptest.NewRecorder()
-	test.router.ServeHTTP(w, req)
-
-	test.Equal(201, w.Code)
+func TestExecution(t *testing.T) {
+	suite.Run(t, new(ExecutionTest))
 }
 
 func (test *ExecutionTest) TestListExecutions() {
 	test.router.GET("/executions", ListExecutions)
 
-	req := httptest.NewRequest("GET", "/executions", nil)
+	req := httptest.NewRequest("GET", "/executions?strategy=demo", nil)
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(200, w.Code)
+	test.Require().Equal(200, w.Code)
 	test.Equal("[]", w.Body.String())
 }
 
-func (test *ExecutionTest) TestCreateExecution() {
-	test.addStrategy()
+func (test *ExecutionTest) TestGetExecutionNotFound() {
+	test.router.GET("/executions/:id", GetExecution)
 
-	test.router.POST("/executions", CreateExecution)
-
-	req := httptest.NewRequest("POST", "/executions", nil)
+	req := httptest.NewRequest("GET", "/executions/1", nil)
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(201, w.Code)
+	test.Require().Equal(404, w.Code)
 }
