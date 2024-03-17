@@ -31,7 +31,8 @@ func (e *execution) Run(ctx context.Context, executionID string) error {
 }
 
 func GetExecution(ctx context.Context, message stream.Message) (interface{}, error) {
-	return message.MustGet(ExecutionRunner).(Execution), nil
+	pool := message.MustGet(WorkerPool).(worker.Pool)
+	return &execution{worker: pool}, nil
 }
 
 const WorkerPool stream.Dependency = "get_worker_pool"
