@@ -13,11 +13,11 @@ const ExecutionTable = `
 CREATE TABLE IF NOT EXISTS strategy_execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 strategy text REFERENCES strategy(name) ON DELETE CASCADE,
+service text NOT NULL,
 status text NOT NULL DEFAULT 'CREATED',
 error TEXT,
 start_at TIMESTAMPTZ NOT NULL,
-end_at TIMESTAMPTZ NOT NULL,
-service text
+end_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS strategy_execution_status (
@@ -53,7 +53,7 @@ type Execution struct {
 	Conn postgres.Query
 }
 
-func (db *Execution) Create(ctx context.Context, strategy string, start, end time.Time, service *string) (*entity.Execution, error) {
+func (db *Execution) Create(ctx context.Context, strategy string, start, end time.Time, service string) (*entity.Execution, error) {
 	var id string
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO strategy_execution (strategy, start_at, end_at, service) VALUES ($1, $2, $3, $4) RETURNING id`,

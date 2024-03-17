@@ -17,8 +17,7 @@ type Execution struct {
 	Strategy string    `json:"strategy" mapstructure:"strategy"`
 	Start    time.Time `json:"start" mapstructure:"start"`
 	End      time.Time `json:"end" mapstructure:"end"`
-
-	Service *string `json:"service" mapstructure:"service"`
+	Service  string    `json:"service" mapstructure:"service"`
 
 	Statuses []ExecutionStatus `json:"statuses"`
 }

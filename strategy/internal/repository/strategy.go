@@ -12,14 +12,14 @@ const StrategyTable = `CREATE TABLE IF NOT EXISTS strategy (
 name text PRIMARY KEY,
 symbols text[] NOT NULL,
 min_days int NOT NULL,
-service text,
+service text NOT NULL,
 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`
 
 type Strategy struct {
 	Conn postgres.Query
 }
 
-func (db *Strategy) Create(ctx context.Context, name string, symbols []string, min_days int, service *string) (*entity.Strategy, error) {
+func (db *Strategy) Create(ctx context.Context, name string, symbols []string, min_days int, service string) (*entity.Strategy, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO strategy (name, symbols, min_days, service) VALUES ($1, $2, $3, $4)`,
 		name, symbols, min_days, service)

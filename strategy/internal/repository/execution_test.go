@@ -36,7 +36,7 @@ func (test *ExecutionTest) SetupTest() {
 	test.Require().NoError(err)
 
 	strategies := &Strategy{Conn: test.conn}
-	test.strategy, err = strategies.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	test.strategy, err = strategies.Create(ctx, "test", []string{"AAPL"}, 10, "worker")
 	test.Require().NoError(err)
 }
 
@@ -49,7 +49,7 @@ func (test *ExecutionTest) TestCreate() {
 
 	db := &Execution{Conn: test.conn}
 
-	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), "worker")
 	test.NoError(err)
 	test.NotNil(execution)
 	test.Len(execution.Statuses, 1)
@@ -60,7 +60,7 @@ func (test *ExecutionTest) TestUpdateStatus() {
 
 	db := &Execution{Conn: test.conn}
 
-	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), "worker")
 	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, execution.ID, entity.ExecutionStatusStarted, nil)
@@ -86,7 +86,7 @@ func (test *ExecutionTest) TestList() {
 
 	db := &Execution{Conn: test.conn}
 
-	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), nil)
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), "worker")
 	test.NoError(err)
 
 	executions, err := db.List(ctx, test.strategy.Name)

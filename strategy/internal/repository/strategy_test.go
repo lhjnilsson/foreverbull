@@ -38,13 +38,13 @@ func (test *StrategyTest) TestCreate() {
 
 	db := &Strategy{Conn: test.conn}
 
-	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, "worker")
 	test.Require().NoError(err)
 	test.Equal(&entity.Strategy{
 		Name:      "test",
 		Symbols:   []string{"AAPL"},
 		MinDays:   10,
-		Service:   nil,
+		Service:   "worker",
 		CreatedAt: strategy.CreatedAt,
 	}, strategy)
 }
@@ -54,7 +54,7 @@ func (test *StrategyTest) TestList() {
 
 	db := &Strategy{Conn: test.conn}
 
-	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, "worker")
 	test.Require().NoError(err)
 
 	strategies, err := db.List(ctx)
@@ -67,7 +67,7 @@ func (test *StrategyTest) TestGet() {
 
 	db := &Strategy{Conn: test.conn}
 
-	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	strategy, err := db.Create(ctx, "test", []string{"AAPL"}, 10, "worker")
 	test.Require().NoError(err)
 
 	s, err := db.Get(ctx, "test")
@@ -80,7 +80,7 @@ func (test *StrategyTest) TestDelete() {
 
 	db := &Strategy{Conn: test.conn}
 
-	_, err := db.Create(ctx, "test", []string{"AAPL"}, 10, nil)
+	_, err := db.Create(ctx, "test", []string{"AAPL"}, 10, "worker")
 	test.Require().NoError(err)
 
 	err = db.Delete(ctx, "test")
