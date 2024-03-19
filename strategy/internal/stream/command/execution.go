@@ -21,19 +21,37 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 	}
 
 	executions := repository.Execution{Conn: db}
-	execution, err := executions.Get(ctx, command.ExecutionID)
+	_, err = executions.Get(ctx, command.ExecutionID)
 	if err != nil {
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
 	executionRunner := message.MustGet(dependency.ExecutionRunner).(dependency.Execution)
-	err = executionRunner.Configure(ctx, nil)
+	err = executionRunner.Configure(ctx)
 	if err != nil {
 		return fmt.Errorf("error configuring execution runner: %w", err)
 	}
-	err = executionRunner.Run(ctx, execution.ID)
+	err = executionRunner.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("error running execution: %w", err)
+	}
+
+	return nil
+}
+
+func UpdateExecutionStatus(ctx context.Context, message stream.Message) error {
+	db := message.MustGet(stream.DBDep).(postgres.Query)
+
+	command := ss.UpdateExecutionStatusCommand{}
+	err := message.ParsePayload(&command)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling UpdateExecutionStatus payload: %w", err)
+	}
+
+	executions := repository.Execution{Conn: db}
+	err = executions.UpdateStatus(ctx, command.ExecutionID, command.Status, command.Error)
+	if err != nil {
+		return fmt.Errorf("error updating execution status: %w", err)
 	}
 
 	return nil
