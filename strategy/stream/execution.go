@@ -9,6 +9,21 @@ import (
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 )
 
+type UpdateExecutionStatusCommand struct {
+	ExecutionID string                     `json:"execution_id"`
+	Status      entity.ExecutionStatusType `json:"status"`
+	Error       error                      `json:"error"`
+}
+
+func NewUpdateExecutionStatusCommand(executionID string, status entity.ExecutionStatusType, err error) (stream.Message, error) {
+	entity := &UpdateExecutionStatusCommand{
+		ExecutionID: executionID,
+		Status:      status,
+		Error:       err,
+	}
+	return stream.NewMessage("strategy", "execution", "status", entity)
+}
+
 type ExecutionRunCommand struct {
 	Strategy          string   `json:"strategy"`
 	ExecutionID       string   `json:"execution_id"`
@@ -41,7 +56,11 @@ func RunStrategyExecutionOrchestration(strategy *entity.Strategy, execution *ent
 	if err != nil {
 		return nil, err
 	}
-	orchestration.AddStep("setup", []stream.Message{startServiceMsg, ingestMsg})
+	startedMsg, err := NewUpdateExecutionStatusCommand(execution.ID, entity.ExecutionStatusStarted, nil)
+	if err != nil {
+		return nil, err
+	}
+	orchestration.AddStep("setup", []stream.Message{startServiceMsg, ingestMsg, startedMsg})
 
 	msg, err := serviceStream.NewInstanceSanityCheckCommand([]string{serviceInstanceID})
 	if err != nil {
@@ -53,14 +72,26 @@ func RunStrategyExecutionOrchestration(strategy *entity.Strategy, execution *ent
 	if err != nil {
 		return nil, err
 	}
-	orchestration.AddStep("run", []stream.Message{runMsg})
+	runningMsg, err := NewUpdateExecutionStatusCommand(execution.ID, entity.ExecutionStatusRunning, nil)
+	if err != nil {
+		return nil, err
+	}
+	orchestration.AddStep("run", []stream.Message{runMsg, runningMsg})
 
 	stopMsg, err := serviceStream.NewInstanceStopCommand(serviceInstanceID)
 	if err != nil {
 		return nil, err
 	}
-	orchestration.AddStep("teardown", []stream.Message{stopMsg})
-	orchestration.SettFallback([]stream.Message{stopMsg})
+	completedMsg, err := NewUpdateExecutionStatusCommand(execution.ID, entity.ExecutionStatusCompleted, nil)
+	if err != nil {
+		return nil, err
+	}
 
+	orchestration.AddStep("teardown", []stream.Message{stopMsg, completedMsg})
+	errMsg, err := NewUpdateExecutionStatusCommand(execution.ID, entity.ExecutionStatusFailed, nil)
+	if err != nil {
+		return nil, err
+	}
+	orchestration.SettFallback([]stream.Message{stopMsg, errMsg})
 	return orchestration, nil
 }

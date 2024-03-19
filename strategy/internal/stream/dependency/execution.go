@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
@@ -14,25 +15,38 @@ import (
 const ExecutionRunner stream.Dependency = "get_execution_runner"
 
 type Execution interface {
-	Configure(ctx context.Context, cfg *worker.Configuration) error
-	Run(ctx context.Context, executionID string) error
+	Configure(ctx context.Context) error
+	Run(ctx context.Context) error
 }
 
 type execution struct {
-	worker worker.Pool
+	worker  worker.Pool
+	command ss.ExecutionRunCommand
 }
 
-func (e *execution) Configure(ctx context.Context, cfg *worker.Configuration) error {
-	return e.worker.ConfigureExecution(ctx, cfg)
+func (e *execution) Configure(ctx context.Context) error {
+	cfg := worker.Configuration{
+		Execution:  e.command.ExecutionID,
+		Port:       e.worker.SocketConfig().Port,
+		Parameters: make([]service.Parameter, 0),
+		Database:   environment.GetPostgresURL(),
+	}
+	return e.worker.ConfigureExecution(ctx, &cfg)
 }
 
-func (e *execution) Run(ctx context.Context, executionID string) error {
+func (e *execution) Run(ctx context.Context) error {
 	return nil
 }
 
 func GetExecution(ctx context.Context, message stream.Message) (interface{}, error) {
+	command := ss.ExecutionRunCommand{}
+	err := message.ParsePayload(&command)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling ExecutionRun payload: %w", err)
+	}
 	pool := message.MustGet(WorkerPool).(worker.Pool)
-	return &execution{worker: pool}, nil
+
+	return &execution{worker: pool, command: command}, nil
 }
 
 const WorkerPool stream.Dependency = "get_worker_pool"
