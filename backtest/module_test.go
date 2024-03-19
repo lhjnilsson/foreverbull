@@ -31,7 +31,6 @@ import (
 type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
-	log *os.File
 
 	backtestName string
 }
