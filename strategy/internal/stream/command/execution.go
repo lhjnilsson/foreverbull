@@ -26,12 +26,16 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	executionRunner := message.MustGet(dependency.ExecutionRunner).(dependency.Execution)
-	err = executionRunner.Configure(ctx)
+	executionRunner, err := message.Call(ctx, dependency.ExecutionRunner)
+	if err != nil {
+		return fmt.Errorf("error getting execution runner: %w", err)
+	}
+	ex := executionRunner.(dependency.Execution)
+	err = ex.Configure(ctx)
 	if err != nil {
 		return fmt.Errorf("error configuring execution runner: %w", err)
 	}
-	err = executionRunner.Run(ctx)
+	err = ex.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("error running execution: %w", err)
 	}

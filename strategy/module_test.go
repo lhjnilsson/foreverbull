@@ -2,8 +2,11 @@ package strategy
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,6 +15,7 @@ import (
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
+	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
@@ -76,4 +80,37 @@ func (test *ModuleTests) TearDownTest() {
 }
 
 func (test *ModuleTests) TestRunStrategyExecution() {
+	payload := fmt.Sprintf(`{"name": "test-strategy", "min_days": 30, "symbols": ["AAPL", "MSFT", "GOOG"], "service": "%s"}`, os.Getenv("WORKER_IMAGE"))
+	rsp := helper.Request(test.T(), "POST", "/strategy/api/strategies", payload)
+	test.Equal(201, rsp.StatusCode)
+
+	type ExecutionResponse struct {
+		ID       string
+		Statuses []struct {
+			Status entity.ExecutionStatusType
+		}
+	}
+	rsp = helper.Request(test.T(), "POST", "/strategy/api/executions", fmt.Sprintf(`{"strategy": "%s"}`, "test-strategy"))
+	test.Equal(201, rsp.StatusCode)
+	response := &ExecutionResponse{}
+	err := json.NewDecoder(rsp.Body).Decode(response)
+	test.NoError(err)
+	fmt.Println("rsp.Body: ", response)
+	condition := func() (bool, error) {
+		rsp := helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
+		if rsp.StatusCode != 200 {
+			return false, nil
+		}
+		response := &ExecutionResponse{}
+		err := json.NewDecoder(rsp.Body).Decode(response)
+		if err != nil {
+			return false, fmt.Errorf("failed to decode response: %s", err.Error())
+		}
+		if len(response.Statuses) == 0 {
+			return false, nil
+		}
+		fmt.Println("RESP: ", response.Statuses[0].Status)
+		return response.Statuses[0].Status == entity.ExecutionStatusCompleted, nil
+	}
+	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*20))
 }

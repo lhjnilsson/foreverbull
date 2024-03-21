@@ -44,12 +44,16 @@ func GetExecution(ctx context.Context, message stream.Message) (interface{}, err
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling ExecutionRun payload: %w", err)
 	}
-	pool := message.MustGet(WorkerPool).(worker.Pool)
-
-	return &execution{worker: pool, command: command}, nil
+	pool, err := message.Call(ctx, WorkerPool)
+	if err != nil {
+		return nil, fmt.Errorf("error getting worker pool: %w", err)
+	}
+	p := pool.(worker.Pool)
+	return &execution{worker: p, command: command}, nil
 }
 
 const WorkerPool stream.Dependency = "get_worker_pool"
+const ServiceAPI stream.Dependency = "get_service_api"
 
 func GetWorkerPool(ctx context.Context, message stream.Message) (interface{}, error) {
 	command := ss.ExecutionRunCommand{}
@@ -58,8 +62,8 @@ func GetWorkerPool(ctx context.Context, message stream.Message) (interface{}, er
 		return nil, fmt.Errorf("error unmarshalling ExecutionRun payload: %w", err)
 	}
 
-	instances := make([]*service.Instance, len(command.WorkerInstanceIDs))
-	http := message.MustGet("").(serviceAPI.Client)
+	instances := make([]*service.Instance, 0)
+	http := message.MustGet(ServiceAPI).(serviceAPI.Client)
 	for _, workerInstanceID := range command.WorkerInstanceIDs {
 		i, err := http.GetInstance(ctx, workerInstanceID)
 		if err != nil {
@@ -73,7 +77,6 @@ func GetWorkerPool(ctx context.Context, message stream.Message) (interface{}, er
 		}
 		instances = append(instances, &instance)
 	}
-
 	pool, err := worker.NewPool(ctx, instances...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating worker pool: %w", err)
