@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/hashicorp/go-retryablehttp"
+	"github.com/rs/zerolog/log"
 )
 
 type Client interface {
@@ -19,17 +22,22 @@ type Client interface {
 }
 
 func NewClient() (Client, error) {
+	cl := retryablehttp.NewClient()
+	cl.Logger = log.Logger
 	return &client{
+		client:  cl,
 		baseURL: "http://localhost:8080/service/api",
 	}, nil
 }
 
 type client struct {
+	client *retryablehttp.Client
+
 	baseURL string
 }
 
 func (c *client) ListServices(ctx context.Context) (*[]ServiceResponse, error) {
-	req, err := http.Get(c.baseURL + "/services")
+	req, err := c.client.Get(c.baseURL + "/services")
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +53,7 @@ func (c *client) ListServices(ctx context.Context) (*[]ServiceResponse, error) {
 }
 
 func (c *client) GetService(ctx context.Context, name string) (*ServiceResponse, error) {
-	req, err := http.Get(c.baseURL + "/services/" + name)
+	req, err := c.client.Get(c.baseURL + "/services/" + name)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +69,7 @@ func (c *client) GetService(ctx context.Context, name string) (*ServiceResponse,
 }
 
 func (c *client) ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error) {
-	req, err := http.Get(c.baseURL + "/instances?" + "image=" + image)
+	req, err := c.client.Get(c.baseURL + "/instances?" + "image=" + image)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +85,7 @@ func (c *client) ListInstances(ctx context.Context, image string) (*[]InstanceRe
 }
 
 func (c *client) GetInstance(ctx context.Context, InstanceID string) (*InstanceResponse, error) {
-	req, err := http.Get(c.baseURL + "/instances/" + InstanceID)
+	req, err := c.client.Get(c.baseURL + "/instances/" + InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +101,7 @@ func (c *client) GetInstance(ctx context.Context, InstanceID string) (*InstanceR
 }
 
 func (c *client) GetImage(ctx context.Context, image string) (*ImageResponse, error) {
-	req, err := http.Get(c.baseURL + "/images/" + image)
+	req, err := c.client.Get(c.baseURL + "/images/" + image)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +117,7 @@ func (c *client) GetImage(ctx context.Context, image string) (*ImageResponse, er
 }
 
 func (c *client) DownloadImage(ctx context.Context, image string) (*ImageResponse, error) {
-	req, err := http.Post(c.baseURL+"/images/"+image, "application/json", nil)
+	req, err := c.client.Post(c.baseURL+"/images/"+image, "application/json", nil)
 	if err != nil {
 		return nil, err
 	}
