@@ -17,7 +17,7 @@ type Pool interface {
 	SocketConfig() *socket.Socket
 	ConfigureExecution(context.Context, *Configuration) error
 	RunExecution(context.Context) error
-	Process(context.Context, string, time.Time, string) (*finance.Order, error)
+	Process(ctx context.Context, execution string, timestamp time.Time, symbol string) (*finance.Order, error)
 	StopExecution(context.Context) error
 	Stop(context.Context) error
 }

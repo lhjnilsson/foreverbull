@@ -28,13 +28,18 @@ type ExecutionRunCommand struct {
 	Strategy          string   `json:"strategy"`
 	ExecutionID       string   `json:"execution_id"`
 	WorkerInstanceIDs []string `json:"worker_instance_ids"`
+
+	Timestamp time.Time `json:"timestamp"`
+	Symbols   []string  `json:"symbols"`
 }
 
-func NewExecutionRunCommand(strategy, executionID string, workerInstanceIDs []string) (stream.Message, error) {
+func NewExecutionRunCommand(strategy, executionID string, workerInstanceIDs []string, timestamp time.Time, symbols []string) (stream.Message, error) {
 	entity := &ExecutionRunCommand{
 		Strategy:          strategy,
 		ExecutionID:       executionID,
 		WorkerInstanceIDs: workerInstanceIDs,
+		Timestamp:         timestamp,
+		Symbols:           symbols,
 	}
 	return stream.NewMessage("strategy", "execution", "run", entity)
 }
@@ -68,7 +73,7 @@ func RunStrategyExecutionOrchestration(strategy *entity.Strategy, execution *ent
 	}
 	orchestration.AddStep("sanity check", []stream.Message{msg})
 
-	runMsg, err := NewExecutionRunCommand(strategy.Name, execution.ID, []string{serviceInstanceID})
+	runMsg, err := NewExecutionRunCommand(strategy.Name, execution.ID, []string{serviceInstanceID}, end, strategy.Symbols)
 	if err != nil {
 		return nil, err
 	}

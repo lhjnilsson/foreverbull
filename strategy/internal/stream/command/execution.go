@@ -39,7 +39,10 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error running execution: %w", err)
 	}
-
+	err = ex.Stop(ctx)
+	if err != nil {
+		return fmt.Errorf("error stopping execution: %w", err)
+	}
 	return nil
 }
 

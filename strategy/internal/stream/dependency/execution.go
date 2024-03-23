@@ -3,6 +3,7 @@ package dependency
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -10,6 +11,8 @@ import (
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	ss "github.com/lhjnilsson/foreverbull/strategy/stream"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 const ExecutionRunner stream.Dependency = "get_execution_runner"
@@ -17,11 +20,14 @@ const ExecutionRunner stream.Dependency = "get_execution_runner"
 type Execution interface {
 	Configure(ctx context.Context) error
 	Run(ctx context.Context) error
+	Stop(ctx context.Context) error
 }
 
 type execution struct {
-	worker  worker.Pool
-	command ss.ExecutionRunCommand
+	worker    worker.Pool
+	command   ss.ExecutionRunCommand
+	timestamp time.Time
+	symbols   []string
 }
 
 func (e *execution) Configure(ctx context.Context) error {
@@ -35,7 +41,23 @@ func (e *execution) Configure(ctx context.Context) error {
 }
 
 func (e *execution) Run(ctx context.Context) error {
-	return nil
+	g, gctx := errgroup.WithContext(ctx)
+	for _, symbol := range e.symbols {
+		symbol := symbol
+		g.Go(func() error {
+			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.timestamp, symbol)
+			if err != nil {
+				return fmt.Errorf("error processing symbol: %w", err)
+			}
+			log.Info().Str("symbol", symbol).Any("order", order).Msg("order processed")
+			return nil
+		})
+	}
+	return g.Wait()
+}
+
+func (e *execution) Stop(ctx context.Context) error {
+	return e.worker.Stop(ctx)
 }
 
 func GetExecution(ctx context.Context, message stream.Message) (interface{}, error) {
