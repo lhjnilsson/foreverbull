@@ -34,13 +34,13 @@ func (_m *Pool) ConfigureExecution(_a0 context.Context, _a1 *worker.Configuratio
 	return r0
 }
 
-// Process provides a mock function with given fields: _a0, _a1, _a2, _a3
-func (_m *Pool) Process(_a0 context.Context, _a1 string, _a2 time.Time, _a3 string) (*entity.Order, error) {
-	ret := _m.Called(_a0, _a1, _a2, _a3)
+// Process provides a mock function with given fields: ctx, execution, timestamp, symbol
+func (_m *Pool) Process(ctx context.Context, execution string, timestamp time.Time, symbol string) (*entity.Order, error) {
+	ret := _m.Called(ctx, execution, timestamp, symbol)
 
 	var r0 *entity.Order
 	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time, string) *entity.Order); ok {
-		r0 = rf(_a0, _a1, _a2, _a3)
+		r0 = rf(ctx, execution, timestamp, symbol)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*entity.Order)
@@ -49,7 +49,7 @@ func (_m *Pool) Process(_a0 context.Context, _a1 string, _a2 time.Time, _a3 stri
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, string, time.Time, string) error); ok {
-		r1 = rf(_a0, _a1, _a2, _a3)
+		r1 = rf(ctx, execution, timestamp, symbol)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -41,6 +41,20 @@ func (_m *Execution) Run(ctx context.Context) error {
 	return r0
 }
 
+// Stop provides a mock function with given fields: ctx
+func (_m *Execution) Stop(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 type mockConstructorTestingTNewExecution interface {
 	mock.TestingT
 	Cleanup(func())

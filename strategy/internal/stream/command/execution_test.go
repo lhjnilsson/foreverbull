@@ -65,6 +65,7 @@ func (test *ExecutionCommandTest) TestRunExecution() {
 	executionRunner := new(mockDependency.Execution)
 	executionRunner.On("Configure", mock.Anything).Return(nil)
 	executionRunner.On("Run", mock.Anything).Return(nil)
+	executionRunner.On("Stop", mock.Anything).Return(nil)
 	m.On("Call", mock.Anything, dependency.ExecutionRunner).Return(executionRunner, nil)
 
 	err = RunExecution(context.Background(), m)
