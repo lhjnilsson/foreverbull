@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/rs/zerolog/log"
 )
 
 type Client interface {
@@ -23,7 +22,6 @@ type Client interface {
 
 func NewClient() (Client, error) {
 	cl := retryablehttp.NewClient()
-	cl.Logger = log.Logger
 	return &client{
 		client:  cl,
 		baseURL: "http://localhost:8080/service/api",

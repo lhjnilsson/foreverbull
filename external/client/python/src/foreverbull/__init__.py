@@ -6,7 +6,8 @@ from inspect import getabsfile, signature
 
 from foreverbull import entity
 from foreverbull._version import version  # noqa
-from foreverbull.data import Asset, Portfolio
+from foreverbull.data import Asset
+from foreverbull.entity.finance import Portfolio
 
 log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
 logging.basicConfig(level=log_level)

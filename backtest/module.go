@@ -72,7 +72,6 @@ var Module = fx.Options(
 			backtestAPI.GET("/executions", api.ListExecutions)
 			backtestAPI.GET("/executions/:id", api.GetExecution)
 			backtestAPI.GET("/executions/:id/orders", api.GetExecutionOrders)
-			backtestAPI.GET("/executions/:id/portfolio", api.GetExecutionPortfolio)
 			backtestAPI.GET("/executions/:id/periods", api.GetExecutionPeriods)
 			backtestAPI.GET("/executions/:id/periods/metrics", api.GetExecutionPeriodMetrics)
 			backtestAPI.GET("/executions/:id/periods/metrics/:metric", api.GetExecutionPeriodMetric)

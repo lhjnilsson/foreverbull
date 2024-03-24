@@ -3,7 +3,6 @@ package dependency
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -24,10 +23,8 @@ type Execution interface {
 }
 
 type execution struct {
-	worker    worker.Pool
-	command   ss.ExecutionRunCommand
-	timestamp time.Time
-	symbols   []string
+	worker  worker.Pool
+	command ss.ExecutionRunCommand
 }
 
 func (e *execution) Configure(ctx context.Context) error {
@@ -41,11 +38,17 @@ func (e *execution) Configure(ctx context.Context) error {
 }
 
 func (e *execution) Run(ctx context.Context) error {
+	fmt.Println("Timestamp: ", e.command.Timestamp, "symbols: ", e.command.Symbols)
+	fmt.Println("------PORT: ", e.worker.SocketConfig().Port)
+	if err := e.worker.RunExecution(ctx); err != nil {
+		return fmt.Errorf("error running worker execution: %w", err)
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
-	for _, symbol := range e.symbols {
+	for _, symbol := range e.command.Symbols {
 		symbol := symbol
 		g.Go(func() error {
-			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.timestamp, symbol)
+			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.command.Timestamp, symbol)
 			if err != nil {
 				return fmt.Errorf("error processing symbol: %w", err)
 			}

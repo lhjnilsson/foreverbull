@@ -2,8 +2,8 @@ import logging
 from random import choice
 
 import foreverbull
-from foreverbull.data import Asset, Portfolio
-from foreverbull.entity.finance import Order
+from foreverbull.data import Asset
+from foreverbull.entity.finance import Order, Portfolio
 
 logger = logging.getLogger(__name__)
 

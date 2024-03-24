@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from foreverbull import entity, exceptions, import_file
-from foreverbull.data import Asset, Portfolio, get_engine
+from foreverbull.data import Asset, get_engine
 
 
 class Request(BaseModel):
@@ -134,8 +134,7 @@ class Worker:
                 self.logger.debug(f"processing request: {data}")
                 with self._database_engine.connect() as db:
                     asset = Asset.read(data.symbol, data.timestamp, db)
-                    portfolio = Portfolio.read(data.execution, data.timestamp, db)
-                    order = self._algo(asset=asset, portfolio=portfolio)
+                    order = self._algo(asset=asset, portfolio=None)
                 self.logger.debug(f"Sending response {order}")
                 context_socket.send(entity.service.Response(task=request.task, data=order).dump())
                 context_socket.close()

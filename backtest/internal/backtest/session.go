@@ -31,7 +31,6 @@ type session struct {
 	executions       *repository.Execution `json:"-"`
 	periods          *repository.Period    `json:"-"`
 	orders           *repository.Order     `json:"-"`
-	portfolio        *repository.Portfolio `json:"-"`
 
 	engine  engine.Engine `json:"-"`
 	workers worker.Pool   `json:"-"`
@@ -44,7 +43,7 @@ type session struct {
 
 func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
-	executions *repository.Execution, periods *repository.Period, orders *repository.Order, portfolio *repository.Portfolio,
+	executions *repository.Execution, periods *repository.Period, orders *repository.Order,
 	workers ...*service.Instance) (Session, error) {
 	engine, err := engine.NewZiplineEngine(ctx, backtestInstance)
 	if err != nil {
@@ -62,7 +61,6 @@ func NewSession(ctx context.Context,
 		executions:       executions,
 		periods:          periods,
 		orders:           orders,
-		portfolio:        portfolio,
 
 		engine:  engine,
 		workers: workerPool,
@@ -123,10 +121,6 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 				if err != nil {
 					log.Err(err).Msg("failed to create order")
 				}
-			}
-			err = e.portfolio.Store(context.Background(), execution.ID, status.Period.Timestamp, &status.Period.Portfolio)
-			if err != nil {
-				log.Err(err).Msg("failed to create position")
 			}
 		}
 		close(event)
@@ -228,10 +222,6 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 						if err != nil {
 							log.Err(err).Msg("failed to create order")
 						}
-					}
-					err = e.portfolio.Store(context.Background(), e.executionEntity.ID, status.Period.Timestamp, &status.Period.Portfolio)
-					if err != nil {
-						log.Err(err).Msg("failed to create position")
 					}
 				}
 				close(event)

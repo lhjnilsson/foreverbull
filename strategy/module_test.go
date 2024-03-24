@@ -95,7 +95,6 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 	response := &ExecutionResponse{}
 	err := json.NewDecoder(rsp.Body).Decode(response)
 	test.NoError(err)
-	fmt.Println("rsp.Body: ", response)
 	condition := func() (bool, error) {
 		rsp := helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
 		if rsp.StatusCode != 200 {
@@ -109,7 +108,6 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 		if len(response.Statuses) == 0 {
 			return false, nil
 		}
-		fmt.Println("RESP: ", response.Statuses[0].Status)
 		return response.Statuses[0].Status == entity.ExecutionStatusCompleted, nil
 	}
 	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*20))

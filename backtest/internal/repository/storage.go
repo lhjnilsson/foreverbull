@@ -56,12 +56,6 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, OrderTable); err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, PortfolioTable); err != nil {
-		return err
-	}
-	if _, err := conn.Exec(ctx, PositionTable); err != nil {
-		return err
-	}
 	CreateConstraint(ctx, conn)
 	return nil
 }
@@ -83,12 +77,6 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return err
 	}
 	if _, err := conn.Exec(ctx, OrderTable); err != nil {
-		return err
-	}
-	if _, err := conn.Exec(ctx, PortfolioTable); err != nil {
-		return err
-	}
-	if _, err := conn.Exec(ctx, PositionTable); err != nil {
 		return err
 	}
 	CreateConstraint(ctx, conn)

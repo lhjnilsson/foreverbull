@@ -44,8 +44,9 @@ def empty_algo_file():
         f.write(
             b"""
 import foreverbull
-from foreverbull.data import Asset, Portfolio
-                
+from foreverbull.data import Asset
+from foreverbull.entity.finance import Portfolio
+
 @foreverbull.algo
 def empty_algo(asset: Asset, portfolio: Portfolio):
     pass
@@ -62,7 +63,8 @@ def algo_with_parameters():
         f.write(
             b"""
 import foreverbull
-from foreverbull.data import Asset, Portfolio
+from foreverbull.data import Asset
+from foreverbull.entity.finance import Portfolio
                 
 @foreverbull.algo
 def algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high: int = 25):
