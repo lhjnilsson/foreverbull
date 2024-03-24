@@ -6,7 +6,7 @@ from multiprocessing import get_start_method, set_start_method
 import pandas as pd
 import pytest
 import yfinance
-from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine, engine, text
+from sqlalchemy import Column, DateTime, Integer, String, create_engine, engine, text
 from sqlalchemy.orm import declarative_base
 from testcontainers.postgres import PostgresContainer
 from zipline.data import bundles
@@ -115,24 +115,6 @@ class OHLC(Base):
     time = Column(DateTime())
 
 
-class Position(Base):
-    __tablename__ = "backtest_position"
-    id = Column("id", Integer, primary_key=True)
-    portfolio_id = Column("portfolio_id", Integer)
-    symbol = Column("symbol", String)
-    amount = Column("amount", Integer)
-    cost_basis = Column("cost_basis", Float)
-
-
-class Portfolio(Base):
-    __tablename__ = "backtest_portfolio"
-    id = Column("id", Integer, primary_key=True)
-    execution = Column("execution", String)
-    date = Column("date", DateTime)
-    cash = Column("cash", Float)
-    value = Column("value", Float)
-
-
 @pytest.fixture(scope="session")
 def database(postgres_database, ingest_config):
     engine = create_engine(postgres_database.get_connection_url())
@@ -140,40 +122,6 @@ def database(postgres_database, ingest_config):
     populate_database(engine, ingest_config)
     os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
     return engine
-
-
-@pytest.fixture(scope="session")
-def add_portfolio(database: engine.Engine):
-    def _add_portfolio(execution, date, cash, value) -> int:
-        with database.connect() as conn:
-            result = conn.execute(
-                text(
-                    """INSERT INTO backtest_portfolio (execution, date, cash, value) 
-                    VALUES (:execution, :date, :cash, :value)
-                RETURNING id"""
-                ),
-                {"execution": execution, "date": date, "cash": cash, "value": value},
-            )
-            conn.commit()
-            return result.fetchone()[0]
-
-    return _add_portfolio
-
-
-@pytest.fixture(scope="session")
-def add_position(database: engine.Engine):
-    def _add_position(portfolio_id, symbol, amount, cost_basis):
-        with database.connect() as conn:
-            conn.execute(
-                text(
-                    """INSERT INTO backtest_position (portfolio_id, symbol, amount, cost_basis) 
-                    VALUES (:portfolio_id, :symbol, :amount, :cost_basis)"""
-                ),
-                {"portfolio_id": portfolio_id, "symbol": symbol, "amount": amount, "cost_basis": cost_basis},
-            )
-            conn.commit()
-
-    return _add_position
 
 
 def populate_database(database: engine.Engine, ic: IngestConfig):
