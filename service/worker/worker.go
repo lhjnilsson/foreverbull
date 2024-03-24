@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
@@ -17,9 +18,10 @@ type Instance struct {
 }
 
 type Request struct {
-	Execution string    `json:"execution"`
-	Timestamp time.Time `json:"timestamp"`
-	Symbol    string    `json:"symbol"`
+	Execution string             `json:"execution"`
+	Timestamp time.Time          `json:"timestamp"`
+	Symbol    string             `json:"symbol"`
+	Portfolio *finance.Portfolio `json:"portfolio"`
 }
 
 type Configuration struct {

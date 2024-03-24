@@ -17,7 +17,7 @@ type Pool interface {
 	SocketConfig() *socket.Socket
 	ConfigureExecution(context.Context, *Configuration) error
 	RunExecution(context.Context) error
-	Process(ctx context.Context, execution string, timestamp time.Time, symbol string) (*finance.Order, error)
+	Process(ctx context.Context, execution string, timestamp time.Time, symbol string, portfolio *finance.Portfolio) (*finance.Order, error)
 	StopExecution(context.Context) error
 	Stop(context.Context) error
 }
@@ -82,13 +82,13 @@ func (p *pool) RunExecution(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (p *pool) Process(ctx context.Context, execution string, timestamp time.Time, symbol string) (*finance.Order, error) {
+func (p *pool) Process(ctx context.Context, execution string, timestamp time.Time, symbol string, portfolio *finance.Portfolio) (*finance.Order, error) {
 	context, err := p.socket.Get()
 	if err != nil {
 		return nil, err
 	}
 	defer context.Close()
-	request := &message.Request{Task: "period", Data: Request{Execution: execution, Timestamp: timestamp, Symbol: symbol}}
+	request := &message.Request{Task: "period", Data: Request{Execution: execution, Timestamp: timestamp, Symbol: symbol, Portfolio: portfolio}}
 	rsp, err := request.Process(context)
 	if err != nil {
 		return nil, fmt.Errorf("error processing request: %w", err)

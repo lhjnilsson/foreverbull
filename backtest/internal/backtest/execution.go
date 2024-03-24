@@ -100,7 +100,7 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 		for _, symbol := range period.Symbols {
 			s := symbol
 			g.Go(func() error {
-				order, err := b.workers.Process(gctx, excID, period.Timestamp, s)
+				order, err := b.workers.Process(gctx, excID, period.Timestamp, s, &es.Period.Portfolio)
 				if err != nil {
 					return fmt.Errorf("error processing ohlc: %w", err)
 				}
