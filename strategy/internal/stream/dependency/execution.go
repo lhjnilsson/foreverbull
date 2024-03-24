@@ -39,8 +39,6 @@ func (e *execution) Configure(ctx context.Context) error {
 }
 
 func (e *execution) Run(ctx context.Context) error {
-	fmt.Println("Timestamp: ", e.command.Timestamp, "symbols: ", e.command.Symbols)
-	fmt.Println("------PORT: ", e.worker.SocketConfig().Port)
 	if err := e.worker.RunExecution(ctx); err != nil {
 		return fmt.Errorf("error running worker execution: %w", err)
 	}
