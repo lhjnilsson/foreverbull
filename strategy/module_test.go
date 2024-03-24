@@ -26,8 +26,6 @@ import (
 type ModuleTests struct {
 	suite.Suite
 	app *fx.App
-
-	strategyName string
 }
 
 func TestStrategyModule(t *testing.T) {

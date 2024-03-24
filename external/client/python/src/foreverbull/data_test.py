@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pandas
-import pytest
 
 from foreverbull.data import Asset
 
