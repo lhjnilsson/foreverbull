@@ -49,7 +49,7 @@ func (e *execution) Run(ctx context.Context) error {
 	for _, symbol := range e.command.Symbols {
 		symbol := symbol
 		g.Go(func() error {
-			portfolio := finance.Portfolio{}
+			portfolio := finance.Portfolio{Positions: make([]finance.Position, 0)}
 			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.command.Timestamp, symbol, &portfolio)
 			if err != nil {
 				return fmt.Errorf("error processing symbol: %w", err)
