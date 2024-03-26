@@ -13,7 +13,7 @@ from zipline.data import bundles
 
 import foreverbull_zipline
 from foreverbull import entity
-from foreverbull.entity.backtest import IngestConfig
+from foreverbull_zipline.entity import IngestConfig
 
 
 @pytest.fixture(scope="session")
