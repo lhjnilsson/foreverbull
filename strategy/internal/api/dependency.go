@@ -1,6 +1,6 @@
 package api
 
 const (
-	TXDependency     = "sql_tx"
-	ConfigDependency = "config"
+	TXDependency            = "sql_tx"
+	OrchestrationDependency = "stream_orchestration"
 )

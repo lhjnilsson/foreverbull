@@ -71,7 +71,6 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 	executionStorage := repository.Execution{Conn: dbConn}
 	periodStorage := repository.Period{Conn: dbConn}
 	orderStorage := repository.Order{Conn: dbConn}
-	portfolioStorage := repository.Portfolio{Conn: dbConn}
 
 	storedSession, err := sessionStorage.Get(ctx, command.SessionID)
 	if err != nil {
@@ -83,7 +82,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 	}
 
 	s, err := backtest.NewSession(ctx, storedBacktest, storedSession, backtestInstance,
-		&executionStorage, &periodStorage, &orderStorage, &portfolioStorage, workerInstances...)
+		&executionStorage, &periodStorage, &orderStorage, workerInstances...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session: %w", err)
 	}

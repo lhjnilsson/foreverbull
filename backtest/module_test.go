@@ -21,6 +21,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
@@ -31,7 +32,6 @@ import (
 type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
-	log *os.File
 
 	backtestName string
 }
@@ -220,9 +220,25 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	test.NoError(err)
 	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *execution.Port))
 	test.NoError(err)
+
+	type WorkerRequest struct {
+		Execution string
+		Timestamp time.Time
+		Symbol    string
+		Portfolio struct {
+			Cash      float64
+			Value     float64
+			Positions []struct {
+				Symbol string
+			}
+		}
+	}
 	go helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (interface{}, error) {
+		wr := WorkerRequest{}
+		err = mapstructure.Decode(data, &wr)
 		return nil, nil
 	})
+
 	test.NoError(helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)

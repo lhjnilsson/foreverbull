@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -23,11 +21,13 @@ type StrategyTest struct {
 	router *gin.Engine
 }
 
-func (test *StrategyTest) SetupTest() {
-	var err error
+func (test *StrategyTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
+}
+
+func (test *StrategyTest) SetupTest() {
 	conn, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), conn)
@@ -64,81 +64,79 @@ func (test *StrategyTest) TestListStrategies() {
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(200, w.Code)
+	test.Require().Equal(200, w.Code)
 	test.Equal("[]", w.Body.String())
 }
 
 func (test *StrategyTest) TestCreateStrategy() {
 	test.router.POST("/strategies", CreateStrategy)
 
-	payload := `{"name": "test_strategy"}`
-	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(payload))
+	type TestCase struct {
+		name         string
+		payload      string
+		expectedCode int
+	}
+	testCases := []TestCase{
+		{
+			name:         "valid",
+			payload:      `{"name":"test","symbols":["AAPL"],"min_days":1,"service":"test"}`,
+			expectedCode: 201,
+		},
+		{
+			name:         "no name",
+			payload:      `{"symbols":["AAPL"],"min_days":1,"service":"test"}`,
+			expectedCode: 400,
+		},
+	}
+	for _, tc := range testCases {
+		req := httptest.NewRequest("POST", "/strategies", strings.NewReader(tc.payload))
+		w := httptest.NewRecorder()
+		test.router.ServeHTTP(w, req)
+
+		test.Equal(tc.expectedCode, w.Code)
+	}
+}
+
+func (test *StrategyTest) TestGetStrategyNotFound() {
+	test.router.GET("/strategies/:name", GetStrategy)
+
+	req := httptest.NewRequest("GET", "/strategies/abc123", nil)
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(201, w.Code)
+	test.Require().Equal(404, w.Code)
 }
 
 func (test *StrategyTest) TestGetStrategy() {
 	test.router.POST("/strategies", CreateStrategy)
 	test.router.GET("/strategies/:name", GetStrategy)
 
-	payload := `{"name": "test_strategy"}`
-	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(payload))
+	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(`{"name":"test","symbols":["AAPL"],"min_days":1,"service":"test"}`))
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(201, w.Code)
-	strategy := map[string]interface{}{}
-	err := json.Unmarshal(w.Body.Bytes(), &strategy)
-	test.Nil(err)
+	test.Require().Equal(201, w.Code)
 
-	req = httptest.NewRequest("GET", fmt.Sprintf("/strategies/%s", strategy["name"]), nil)
-	w = httptest.NewRecorder()
-	test.router.ServeHTTP(w, req)
+	req2 := httptest.NewRequest("GET", "/strategies/test", nil)
+	w2 := httptest.NewRecorder()
+	test.router.ServeHTTP(w2, req2)
 
-	test.Equal(200, w.Code)
-}
-
-func (test *StrategyTest) TestPatchStrategy() {
-	test.router.POST("/strategies", CreateStrategy)
-	test.router.PATCH("/strategies/:name", PatchStrategy)
-
-	payload := `{"name": "test_strategy"}`
-	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(payload))
-	w := httptest.NewRecorder()
-	test.router.ServeHTTP(w, req)
-
-	test.Equal(201, w.Code)
-	strategy := map[string]interface{}{}
-	err := json.Unmarshal(w.Body.Bytes(), &strategy)
-	test.Nil(err)
-
-	payload = `{"backtest": "test_backtest"}`
-	req = httptest.NewRequest("PATCH", fmt.Sprintf("/strategies/%s", strategy["name"]), strings.NewReader(payload))
-	w = httptest.NewRecorder()
-	test.router.ServeHTTP(w, req)
-
-	test.Equal(200, w.Code)
+	test.Require().Equal(200, w2.Code)
 }
 
 func (test *StrategyTest) TestDeleteStrategy() {
 	test.router.POST("/strategies", CreateStrategy)
 	test.router.DELETE("/strategies/:name", DeleteStrategy)
 
-	payload := `{"name": "test_strategy"}`
-	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(payload))
+	req := httptest.NewRequest("POST", "/strategies", strings.NewReader(`{"name":"test","symbols":["AAPL"],"min_days":1,"service":"test"}`))
 	w := httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 
-	test.Equal(201, w.Code)
-	strategy := map[string]interface{}{}
-	err := json.Unmarshal(w.Body.Bytes(), &strategy)
-	test.Nil(err)
+	test.Require().Equal(201, w.Code)
 
-	req = httptest.NewRequest("DELETE", fmt.Sprintf("/strategies/%s", strategy["name"]), nil)
-	w = httptest.NewRecorder()
-	test.router.ServeHTTP(w, req)
+	req2 := httptest.NewRequest("DELETE", "/strategies/test", nil)
+	w2 := httptest.NewRecorder()
+	test.router.ServeHTTP(w2, req2)
 
-	test.Equal(204, w.Code)
+	test.Require().Equal(204, w2.Code)
 }

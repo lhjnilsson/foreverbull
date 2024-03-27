@@ -82,7 +82,6 @@ func (test *CommandSessionTest) TestUpdateSessionCommand() {
 		err := UpdateSessionStatus(context.Background(), m)
 		test.NoError(err)
 
-		sessions := repository.Session{Conn: test.db}
 		session, err := sessions.Get(context.Background(), session.ID)
 		test.NoError(err)
 		test.Equal(tc.Status, session.Statuses[0].Status)

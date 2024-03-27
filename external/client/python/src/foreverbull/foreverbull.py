@@ -168,6 +168,7 @@ class Session(threading.Thread, BaseSession):
 class Foreverbull:
     def __init__(self, session: entity.backtest.Session, file_path: str = None, executors=2):
         self._session = session
+        self._threaded_session = None
         self._file_path = file_path
         if self._file_path:
             try:
@@ -245,6 +246,7 @@ class Foreverbull:
                 self._stop_event,
             )
             s.start()
+            self._threaded_session = s
             return s
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -255,3 +257,6 @@ class Foreverbull:
         self._worker_surveyor_socket.close()
         self._worker_states_socket.close()
         self._stop_event = None
+        if self._threaded_session:
+            self._threaded_session.join()
+            self._threaded_session = None

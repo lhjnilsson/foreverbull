@@ -150,6 +150,7 @@ func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
 			if executions[i].ID == e.ID {
 				executions[i].Statuses = append(executions[i].Statuses, status)
 				inReturnSlice = true
+				break
 			}
 		}
 		if !inReturnSlice {

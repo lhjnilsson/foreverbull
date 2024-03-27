@@ -12,7 +12,6 @@ import (
 	ss "github.com/lhjnilsson/foreverbull/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/rs/zerolog/log"
 )
 
 func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
@@ -46,13 +45,6 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting backtest session: %w", err)
 	}
 	s := sess.(backtest.Session)
-	defer func() {
-		err = s.Stop(context.TODO())
-		if err != nil {
-			log.Err(err).Msg("error stopping session")
-		}
-	}()
-
 	sessionStorage := repository.Session{Conn: db}
 	executionStorage := repository.Execution{Conn: db}
 

@@ -19,13 +19,6 @@ type sessionUri struct {
 	ID string `uri:"id" binding:"required"`
 }
 
-type CreateSessionPayload struct {
-	Backtest   string             `json:"backtest" binding:"required"`
-	Source     string             `json:"source" binding:"required"`
-	SourceKey  string             `json:"source_key" binding:"required"`
-	Executions []entity.Execution `json:"executions"`
-}
-
 func ListSessions(c *gin.Context) {
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	sessions_b := repository.Session{Conn: pgx_tx}
