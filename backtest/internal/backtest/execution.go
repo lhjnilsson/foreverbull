@@ -6,39 +6,39 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	"golang.org/x/sync/errgroup"
 )
 
 type Execution interface {
-	Configure(context.Context, *worker.Configuration, *engine.BacktestConfig) error
+	Configure(context.Context, *worker.Configuration, *backtest.BacktestConfig) error
 	Run(context.Context, string, chan<- chan entity.ExecutionPeriod)
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
 
-func NewExecution(engine engine.Engine, workers worker.Pool) Execution {
+func NewExecution(b backtest.Backtest, w worker.Pool) Execution {
 	return &execution{
-		engine:  engine,
-		workers: workers,
+		backtest: b,
+		workers:  w,
 	}
 }
 
 type execution struct {
-	engine  engine.Engine `json:"-"`
-	workers worker.Pool   `json:"-"`
+	backtest backtest.Backtest `json:"-"`
+	workers  worker.Pool       `json:"-"`
 }
 
 /*
 Configure
 */
-func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configuration, backtestCfg *engine.BacktestConfig) error {
+func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configuration, backtestCfg *backtest.BacktestConfig) error {
 	g, gctx := errgroup.WithContext(ctx)
 	if workerCfg != nil {
 		g.Go(func() error { return b.workers.ConfigureExecution(gctx, workerCfg) })
 	}
-	g.Go(func() error { return b.engine.ConfigureExecution(gctx, backtestCfg) })
+	g.Go(func() error { return b.backtest.ConfigureExecution(gctx, backtestCfg) })
 	return g.Wait()
 }
 
@@ -50,7 +50,7 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 	defer close(events)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		err := b.engine.RunExecution(gctx)
+		err := b.backtest.RunExecution(gctx)
 		if err != nil {
 			return fmt.Errorf("error running Execution engine: %w", err)
 		}
@@ -72,7 +72,7 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 	}
 	g, gctx = errgroup.WithContext(ctx)
 	for {
-		req, err := b.engine.GetMessage()
+		req, err := b.backtest.GetMessage()
 		if err != nil {
 			ch := make(chan entity.ExecutionPeriod)
 			events <- ch
@@ -105,7 +105,7 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 					return fmt.Errorf("error processing ohlc: %w", err)
 				}
 				if order != nil {
-					_, err = b.engine.GetBroker().Order(order)
+					_, err = b.backtest.Order(&backtest.Order{Symbol: *order.Symbol, Amount: *order.Amount})
 					if err != nil {
 						return fmt.Errorf("error placing order: %w", err)
 					}
@@ -121,7 +121,7 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 			ch <- es
 			return
 		}
-		if err := b.engine.Continue(); err != nil {
+		if err := b.backtest.Continue(); err != nil {
 			ch := make(chan entity.ExecutionPeriod)
 			events <- ch
 			es := entity.ExecutionPeriod{Error: fmt.Errorf("error continuing execution: %w", err)}
@@ -137,7 +137,7 @@ type Result struct {
 
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {
 	result := Result{}
-	req, err := b.engine.GetExecutionResult(&engine.Execution{Execution: excID})
+	req, err := b.backtest.GetExecutionResult(&backtest.Execution{Execution: excID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting data for result: %v", err)
 	}
@@ -155,7 +155,7 @@ Halts all workers and backtest
 func (b *execution) Stop(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		if err := b.engine.Stop(gctx); err != nil {
+		if err := b.backtest.Stop(gctx); err != nil {
 			return fmt.Errorf("error stopping Execution engine: %w", err)
 		}
 		return nil

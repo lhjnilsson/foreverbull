@@ -5,8 +5,9 @@ package mocks
 import (
 	context "context"
 
+	backtest "github.com/lhjnilsson/foreverbull/service/backtest"
+
 	entity "github.com/lhjnilsson/foreverbull/backtest/entity"
-	engine "github.com/lhjnilsson/foreverbull/service/backtest/engine"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -19,11 +20,11 @@ type Execution struct {
 }
 
 // Configure provides a mock function with given fields: _a0, _a1, _a2
-func (_m *Execution) Configure(_a0 context.Context, _a1 *worker.Configuration, _a2 *engine.BacktestConfig) error {
+func (_m *Execution) Configure(_a0 context.Context, _a1 *worker.Configuration, _a2 *backtest.BacktestConfig) error {
 	ret := _m.Called(_a0, _a1, _a2)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *worker.Configuration, *engine.BacktestConfig) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *worker.Configuration, *backtest.BacktestConfig) error); ok {
 		r0 = rf(_a0, _a1, _a2)
 	} else {
 		r0 = ret.Error(0)

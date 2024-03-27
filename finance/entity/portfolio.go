@@ -1,14 +1,22 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 type Portfolio struct {
-	Cash      float64    `json:"cash"`
-	Value     float64    `json:"value"`
+	BuyingPower decimal.Decimal `json:"buying_power"`
+	Cash        decimal.Decimal `json:"cash"`
+	Value       decimal.Decimal `json:"value"`
+
 	Positions []Position `json:"positions"`
 }
 
 /*
+Alpaca Struct
+
 type Account struct {
 	ID                    string          `json:"id"`
 	AccountNumber         string          `json:"account_number"`
@@ -43,11 +51,23 @@ type Account struct {
 	SMA                   decimal.Decimal `json:"sma"`
 	DaytradeCount         int64           `json:"daytrade_count"`
 	CryptoTier            int             `json:"crypto_tier"`
+
+	ALGO:  ['__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__',
+	'__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__',
+	'__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__',
+	'capital_used', 'cash', 'cash_flow', 'current_portfolio_weights', 'pnl', 'portfolio_value',
+	'positions', 'positions_exposure', 'positions_value', 'returns', 'start_date', 'starting_cash']
+
+	ALGO:  Portfolio({'cash_flow': -1240.6299999999999, 'starting_cash': 100000, 'portfolio_value': 100049.37000000001,
+	'pnl': 49.370000000009895, 'returns': 0.0004937000000000413, 'cash': 98759.37000000001,
+	'positions': {Equity(0 [AAPL]): Position({'asset': Equity(0 [AAPL]), 'amount': 10, 'cost_basis': 124.06299999999999, 'last_sale_price': 129.0, 'last_sale_date': Timestamp('2023-01-06 21:00:00+0000', tz='UTC')})},
+	'start_date': Timestamp('2023-01-03 00:00:00'), 'positions_value': 1290.0, 'positions_exposure': 1290.0})
 }
 */
 
 type Position struct {
-	Symbol    *string    `json:"symbol" mapstructure:"symbol"`
+	Symbol string
+
 	Amount    *int       `json:"amount" mapstructure:"amount"`
 	CostBasis *float64   `json:"cost_basis" mapstructure:"cost_basis"`
 	Period    *time.Time `json:"period" mapstructure:"period"`

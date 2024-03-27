@@ -34,7 +34,7 @@ var Module = fx.Options(
 			dc.AddSingleton(stream.DBDep, conn)
 			httpClient := dependency.GetHTTPClient()
 			dc.AddSingleton(dependency.GetHTTPClientKey, httpClient)
-			dc.AddMethod(dependency.GetBacktestEngineKey, dependency.GetBacktestEngine)
+			dc.AddMethod(dependency.GetBacktestKey, dependency.GetBacktest)
 			dc.AddMethod(dependency.GetBacktestSessionKey, dependency.GetBacktestSession)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
