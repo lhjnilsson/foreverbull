@@ -1,15 +1,13 @@
 package entity
 
 import (
-	"time"
-
 	"github.com/shopspring/decimal"
 )
 
 type Portfolio struct {
-	BuyingPower decimal.Decimal `json:"buying_power"`
 	Cash        decimal.Decimal `json:"cash"`
-	Value       decimal.Decimal `json:"value"`
+	Equity      decimal.Decimal `json:"equity"`
+	BuyingPower decimal.Decimal `json:"buying_power"`
 
 	Positions []Position `json:"positions"`
 }
@@ -62,37 +60,5 @@ type Account struct {
 	'pnl': 49.370000000009895, 'returns': 0.0004937000000000413, 'cash': 98759.37000000001,
 	'positions': {Equity(0 [AAPL]): Position({'asset': Equity(0 [AAPL]), 'amount': 10, 'cost_basis': 124.06299999999999, 'last_sale_price': 129.0, 'last_sale_date': Timestamp('2023-01-06 21:00:00+0000', tz='UTC')})},
 	'start_date': Timestamp('2023-01-03 00:00:00'), 'positions_value': 1290.0, 'positions_exposure': 1290.0})
-}
-*/
-
-type Position struct {
-	Symbol string
-
-	Amount    *int       `json:"amount" mapstructure:"amount"`
-	CostBasis *float64   `json:"cost_basis" mapstructure:"cost_basis"`
-	Period    *time.Time `json:"period" mapstructure:"period"`
-	Side      *string    `json:"side" mapstructure:"side"`
-}
-
-/*
-type Position struct {
-	AssetID                string           `json:"asset_id"`
-	Symbol                 string           `json:"symbol"`
-	Exchange               string           `json:"exchange"`
-	AssetClass             AssetClass       `json:"asset_class"`
-	AssetMarginable        bool             `json:"asset_marginable"`
-	Qty                    decimal.Decimal  `json:"qty"`
-	QtyAvailable           decimal.Decimal  `json:"qty_available"`
-	AvgEntryPrice          decimal.Decimal  `json:"avg_entry_price"`
-	Side                   string           `json:"side"`
-	MarketValue            *decimal.Decimal `json:"market_value"`
-	CostBasis              decimal.Decimal  `json:"cost_basis"`
-	UnrealizedPL           *decimal.Decimal `json:"unrealized_pl"`
-	UnrealizedPLPC         *decimal.Decimal `json:"unrealized_plpc"`
-	UnrealizedIntradayPL   *decimal.Decimal `json:"unrealized_intraday_pl"`
-	UnrealizedIntradayPLPC *decimal.Decimal `json:"unrealized_intraday_plpc"`
-	CurrentPrice           *decimal.Decimal `json:"current_price"`
-	LastdayPrice           *decimal.Decimal `json:"lastday_price"`
-	ChangeToday            *decimal.Decimal `json:"change_today"`
 }
 */

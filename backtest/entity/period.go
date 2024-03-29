@@ -10,8 +10,6 @@ type Period struct {
 	ID                     int               `json:"-"`
 	Timestamp              time.Time         `json:"timestamp" mapstructure:"timestamp"`
 	Portfolio              finance.Portfolio `json:"portfolio" mapstructure:"portfolio"`
-	NewOrders              []finance.Order   `json:"new_orders" mapstructure:"new_orders"`
-	Symbols                []string          `json:"symbols" mapstructure:"symbols"`
 	ShortsCount            int               `json:"shorts_count" mapstructure:"shorts_count"`
 	PNL                    int               `json:"pnl" mapstructure:"pnl"`
 	LongValue              int               `json:"long_value" mapstructure:"long_value"`

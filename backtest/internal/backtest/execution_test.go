@@ -49,7 +49,7 @@ func (test *ExecutionTest) TestRun() {
 	test.backtest.On("GetMessage").Return(&message.Response{Task: "period", Data: nil}, nil)
 
 	events := make(chan chan entity.ExecutionPeriod)
-	test.execution.Run(context.Background(), "test", events)
+	test.execution.Run(context.Background(), &entity.Execution{}, events)
 	test.Nil(<-events)
 }
 

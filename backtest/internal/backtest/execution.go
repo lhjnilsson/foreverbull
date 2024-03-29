@@ -13,7 +13,7 @@ import (
 
 type Execution interface {
 	Configure(context.Context, *worker.Configuration, *backtest.BacktestConfig) error
-	Run(context.Context, string, chan<- chan entity.ExecutionPeriod)
+	Run(context.Context, *entity.Execution, chan<- chan entity.ExecutionPeriod)
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
@@ -46,7 +46,7 @@ func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configurati
 Run
 Runs configured workers and backtest until completed
 */
-func (b *execution) Run(ctx context.Context, excID string, events chan<- chan entity.ExecutionPeriod) {
+func (b *execution) Run(ctx context.Context, execution *entity.Execution, events chan<- chan entity.ExecutionPeriod) {
 	defer close(events)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -97,15 +97,15 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 		es := entity.ExecutionPeriod{Period: period}
 		ch <- es
 		<-ch // Wait for close, meaning all data is stored to database
-		for _, symbol := range period.Symbols {
+		for _, symbol := range execution.Symbols {
 			s := symbol
 			g.Go(func() error {
-				order, err := b.workers.Process(gctx, excID, period.Timestamp, s, &es.Period.Portfolio)
+				order, err := b.workers.Process(gctx, execution.ID, period.Timestamp, s, &es.Period.Portfolio)
 				if err != nil {
 					return fmt.Errorf("error processing ohlc: %w", err)
 				}
 				if order != nil {
-					_, err = b.backtest.Order(&backtest.Order{Symbol: *order.Symbol, Amount: *order.Amount})
+					_, err = b.backtest.Order(&backtest.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
 					if err != nil {
 						return fmt.Errorf("error placing order: %w", err)
 					}

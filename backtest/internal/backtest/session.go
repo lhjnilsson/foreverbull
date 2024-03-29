@@ -30,7 +30,6 @@ type session struct {
 	backtestInstance *service.Instance     `json:"-"`
 	executions       *repository.Execution `json:"-"`
 	periods          *repository.Period    `json:"-"`
-	orders           *repository.Order     `json:"-"`
 
 	b       backtest.Backtest `json:"-"`
 	workers worker.Pool       `json:"-"`
@@ -43,8 +42,7 @@ type session struct {
 
 func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
-	executions *repository.Execution, periods *repository.Period, orders *repository.Order,
-	workers ...*service.Instance) (Session, error) {
+	executions *repository.Execution, periods *repository.Period, workers ...*service.Instance) (Session, error) {
 	b, err := backtest.NewZiplineEngine(ctx, backtestInstance)
 	if err != nil {
 		return nil, fmt.Errorf("error creating zipline engine: %w", err)
@@ -60,7 +58,6 @@ func NewSession(ctx context.Context,
 		backtestInstance: backtestInstance,
 		executions:       executions,
 		periods:          periods,
-		orders:           orders,
 
 		b:       b,
 		workers: workerPool,
@@ -111,17 +108,11 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 	}
 
 	events := make(chan chan entity.ExecutionPeriod)
-	go exec.Run(context.TODO(), execution.ID, events)
+	go exec.Run(context.TODO(), execution, events)
 	for event := range events {
 		status := <-event
 		if status.Error != nil {
-		} else {
-			for _, order := range status.Period.NewOrders {
-				err = e.orders.Store(context.Background(), execution.ID, &order)
-				if err != nil {
-					log.Err(err).Msg("failed to create order")
-				}
-			}
+			log.Err(status.Error).Msg("error running execution")
 		}
 		close(event)
 	}
@@ -210,19 +201,12 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			if err != nil {
 				return err
 			}
-			go e.execution.Run(context.TODO(), e.executionEntity.ID, events)
+			go e.execution.Run(context.TODO(), e.executionEntity, events)
 			for event := range events {
 				activity <- true
 				status := <-event
 				if status.Error != nil {
 					rsp.Error = status.Error.Error()
-				} else {
-					for _, order := range status.Period.NewOrders {
-						err = e.orders.Store(context.Background(), e.executionEntity.ID, &order)
-						if err != nil {
-							log.Err(err).Msg("failed to create order")
-						}
-					}
 				}
 				close(event)
 			}
