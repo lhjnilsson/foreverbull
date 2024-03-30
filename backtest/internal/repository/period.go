@@ -132,7 +132,7 @@ Create
 Adds a new entry to the result of a backtest
 */
 func (db *Period) Store(ctx context.Context, backtest string, period *entity.Period) error {
-	err := db.Conn.QueryRow(ctx,
+	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO backtest_period(
 		backtest,timestamp,shorts_count,pnl,long_value,short_value,
 		long_exposure,starting_exposure,short_exposure,capital_used,
@@ -148,7 +148,7 @@ func (db *Period) Store(ctx context.Context, backtest string, period *entity.Per
 		starting_value=$14,ending_value=$15,starting_cash=$16,ending_cash=$17,returns=$18,portfolio_value=$19,longs_count=$20,
 		algo_volatility=$21,sharpe=$22,alpha=$23,beta=$24,sortino=$25,max_drawdown=$26,max_leverage=$27,excess_returns=$28,
 		treasury_period_return=$29,trading_days=$30,benchmark_period_returns=$31,benchmark_volatility=$32,
-		algorithm_period_return=$33  RETURNING id`,
+		algorithm_period_return=$33`,
 		backtest,
 		period.Timestamp,
 		period.ShortsCount,
@@ -182,7 +182,7 @@ func (db *Period) Store(ctx context.Context, backtest string, period *entity.Per
 		period.BenchmarkPeriodReturns,
 		period.BenchmarkVolatility,
 		period.AlgorithmPeriodReturns,
-	).Scan(&period.ID)
+	)
 	if err != nil {
 		return fmt.Errorf("error creating period result: %w", err)
 	}

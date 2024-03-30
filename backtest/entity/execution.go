@@ -57,13 +57,3 @@ func (config *Execution) ValidateConfig() error {
 
 	return nil
 }
-
-/*
-	Used in backtest- internal
-
-TODO: maybe find better place
-*/
-type ExecutionPeriod struct {
-	Period *Period `json:"period"`
-	Error  error   `json:"error"`
-}

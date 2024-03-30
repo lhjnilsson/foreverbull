@@ -36,21 +36,13 @@ func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
-	return &entity.Portfolio{
-		Cash:        acc.Cash,
-		Equity:      acc.Equity,
-		BuyingPower: acc.BuyingPower,
-	}, nil
-}
-
-func (c *AlpacaClient) GetPositions() (*[]entity.Position, error) {
-	positions, err := c.client.GetPositions()
+	pos, err := c.client.GetPositions()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get positions: %w", err)
 	}
-	var entityPositions []entity.Position
-	for _, position := range positions {
-		entityPositions = append(entityPositions, entity.Position{
+	var positions []entity.Position
+	for _, position := range pos {
+		positions = append(positions, entity.Position{
 			Symbol:    position.Symbol,
 			Exchange:  position.Exchange,
 			Amount:    position.Qty,
@@ -58,7 +50,11 @@ func (c *AlpacaClient) GetPositions() (*[]entity.Position, error) {
 			Side:      position.Side,
 		})
 	}
-	return &entityPositions, nil
+	return &entity.Portfolio{
+		Cash:           acc.Cash,
+		PortfolioValue: acc.PortfolioValue,
+		Positions:      positions,
+	}, nil
 }
 
 func (c *AlpacaClient) GetOrders() ([]*entity.Order, error) {

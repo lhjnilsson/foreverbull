@@ -107,14 +107,9 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 		return fmt.Errorf("failed to update execution simulation details: %w", err)
 	}
 
-	events := make(chan chan entity.ExecutionPeriod)
-	go exec.Run(context.TODO(), execution, events)
-	for event := range events {
-		status := <-event
-		if status.Error != nil {
-			log.Err(status.Error).Msg("error running execution")
-		}
-		close(event)
+	err = exec.Run(context.TODO(), execution)
+	if err != nil {
+		return fmt.Errorf("failed to run execution: %w", err)
 	}
 	periods, err := exec.StoreDataFrameAndGetPeriods(context.Background(), execution.ID)
 	if err != nil {
@@ -187,7 +182,6 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			e.execution = NewExecution(e.b, e.workers)
 			rsp = message.Response{Task: req.Task, Data: e.executionEntity}
 		case "run_execution":
-			events := make(chan chan entity.ExecutionPeriod)
 			tz := "UTC"
 			backtestCfg := backtest.BacktestConfig{
 				Calendar:  &e.executionEntity.Calendar,
@@ -199,16 +193,11 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			}
 			err = e.execution.Configure(context.Background(), nil, &backtestCfg)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to configure execution: %w", err)
 			}
-			go e.execution.Run(context.TODO(), e.executionEntity, events)
-			for event := range events {
-				activity <- true
-				status := <-event
-				if status.Error != nil {
-					rsp.Error = status.Error.Error()
-				}
-				close(event)
+			err = e.execution.Run(context.TODO(), e.executionEntity)
+			if err != nil {
+				return fmt.Errorf("failed to run execution: %w", err)
 			}
 			if rsp.Error == "" {
 				periods, err := e.execution.StoreDataFrameAndGetPeriods(context.Background(), e.executionEntity.ID)

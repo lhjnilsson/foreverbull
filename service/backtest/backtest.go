@@ -23,6 +23,14 @@ type Order struct {
 	Status OrderStatus `json:"status" mapstructure:"status"`
 }
 
+type Position struct {
+	Symbol        string    `json:"symbol" mapstructure:"symbol"`
+	Amount        int       `json:"amount" mapstructure:"amount"`
+	CostBasis     float64   `json:"cost_basis" mapstructure:"cost_basis"`
+	LastSalePrice float64   `json:"last_price" mapstructure:"last_sale_price"`
+	LastSaleDate  time.Time `json:"last_sale_date" mapstructure:"last_sale_date"`
+}
+
 type IngestConfig struct {
 	Calendar string    `json:"calendar" mapstructure:"calendar"`
 	Start    time.Time `json:"start" mapstructure:"start"`

@@ -5,15 +5,16 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
+	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
 
 type Execution interface {
 	Configure(context.Context, *worker.Configuration, *backtest.BacktestConfig) error
-	Run(context.Context, *entity.Execution, chan<- chan entity.ExecutionPeriod)
+	Run(context.Context, *entity.Execution) error
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
@@ -46,8 +47,7 @@ func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configurati
 Run
 Runs configured workers and backtest until completed
 */
-func (b *execution) Run(ctx context.Context, execution *entity.Execution, events chan<- chan entity.ExecutionPeriod) {
-	defer close(events)
+func (b *execution) Run(ctx context.Context, execution *entity.Execution) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		err := b.backtest.RunExecution(gctx)
@@ -64,43 +64,31 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution, events
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		ch := make(chan entity.ExecutionPeriod)
-		events <- ch
-		es := entity.ExecutionPeriod{Error: err}
-		ch <- es
-		return
+		return fmt.Errorf("error running Execution: %w", err)
 	}
 	g, gctx = errgroup.WithContext(ctx)
 	for {
 		req, err := b.backtest.GetMessage()
 		if err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error throughout day: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error getting message: %w", err)
 		}
 		if req.Data == nil {
-			return // End of backtest
+			return nil
 		}
-		period := &entity.Period{}
+		period := &entity.RunningPeriod{}
 		err = req.DecodeData(period)
 		if err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error decoding period: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error decoding data: %w", err)
 		}
-		ch := make(chan entity.ExecutionPeriod)
-		events <- ch
-		es := entity.ExecutionPeriod{Period: period}
-		ch <- es
-		<-ch // Wait for close, meaning all data is stored to database
+		portfolio := finance.Portfolio{
+			Cash:           decimal.NewFromFloat(period.Cash),
+			PortfolioValue: decimal.NewFromFloat(period.PortfolioValue),
+		}
+
 		for _, symbol := range execution.Symbols {
 			s := symbol
 			g.Go(func() error {
-				order, err := b.workers.Process(gctx, execution.ID, period.Timestamp, s, &es.Period.Portfolio)
+				order, err := b.workers.Process(gctx, execution.ID, period.Timestamp, s, &portfolio)
 				if err != nil {
 					return fmt.Errorf("error processing ohlc: %w", err)
 				}
@@ -115,20 +103,13 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution, events
 			})
 		}
 		if err := g.Wait(); err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error processing throughout day: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error processing ohlc: %w", err)
 		}
 		if err := b.backtest.Continue(); err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error continuing execution: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
+	return nil
 }
 
 type Result struct {
