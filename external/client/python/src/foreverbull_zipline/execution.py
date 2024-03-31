@@ -229,10 +229,7 @@ class Execution(threading.Thread):
         self.result = result
 
     def _result(self):
-        result = entity.Result(periods=[])
-        for row in self.result.index:
-            result.periods.append(entity.ResultPeriod.from_zipline(self.result.loc[row]))
-        return result
+        return entity.Result.from_zipline(self.result)
 
     def _upload_result(self, execution: str):
         storage = Storage.from_environment()

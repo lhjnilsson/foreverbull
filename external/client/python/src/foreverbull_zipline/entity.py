@@ -111,82 +111,88 @@ class RunningPeriod(BasePeriod):
         )
 
 
-class ResultPeriod(BasePeriod):
-    shorts_count: int
-    pnl: int
-    long_value: int
-    short_value: int
-    long_exposure: int
-    starting_exposure: int
-    short_exposure: int
-    capital_used: int
-    gross_leverage: int
-    net_leverage: int
-    ending_exposure: int
-    starting_value: int
-    ending_value: int
-    starting_cash: int
-    ending_cash: int
-    returns: int
-    portfolio_value: int
-    longs_count: int
-    algo_volatility: Optional[int]
-    sharpe: Optional[int]
-    alpha: Optional[int]
-    beta: Optional[int]
-    sortino: Optional[int]
-    max_drawdown: Optional[int]
-    max_leverage: Optional[int]
-    excess_return: Optional[int]
-    treasury_period_return: Optional[int]
-    benchmark_period_return: Optional[int]
-    benchmark_volatility: Optional[int]
-    algorithm_period_return: Optional[int]
+class Result(Base):
+    class Period(BasePeriod):
+        shorts_count: int
+        pnl: float
+        long_value: float
+        short_value: float
+        long_exposure: float
+        starting_exposure: float
+        short_exposure: float
+        capital_used: float
+        gross_leverage: float
+        net_leverage: float
+        ending_exposure: float
+        starting_value: float
+        ending_value: float
+        starting_cash: float
+        ending_cash: float
+        returns: float
+        portfolio_value: float
+        longs_count: float
+        algo_volatility: Optional[float]
+        sharpe: Optional[float]
+        alpha: Optional[float]
+        beta: Optional[float]
+        sortino: Optional[float]
+        max_drawdown: Optional[float]
+        max_leverage: Optional[float]
+        excess_return: Optional[float]
+        treasury_period_return: Optional[float]
+        benchmark_period_return: Optional[float]
+        benchmark_volatility: Optional[float]
+        algorithm_period_return: Optional[float]
+
+        @classmethod
+        def from_zipline(cls, period):
+            return cls(
+                timestamp=period["period_open"].to_pydatetime().replace(tzinfo=timezone.utc),
+                shorts_count=period["shorts_count"],
+                pnl=period["pnl"],
+                long_value=period["long_value"],
+                short_value=period["short_value"],
+                long_exposure=period["long_exposure"],
+                starting_exposure=period["starting_exposure"],
+                short_exposure=period["short_exposure"],
+                capital_used=period["capital_used"],
+                gross_leverage=period["gross_leverage"],
+                net_leverage=period["net_leverage"],
+                ending_exposure=period["ending_exposure"],
+                starting_value=period["starting_value"],
+                ending_value=period["ending_value"],
+                starting_cash=period["starting_cash"],
+                ending_cash=period["ending_cash"],
+                returns=period["returns"],
+                portfolio_value=period["portfolio_value"],
+                longs_count=period["longs_count"],
+                algo_volatility=None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"],
+                sharpe=None if pd.isnull(period["sharpe"]) else period["sharpe"],
+                alpha=None if period["alpha"] is None or pd.isnull(period["alpha"]) else period["alpha"],
+                beta=None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"],
+                sortino=None if pd.isnull(period["sortino"]) else period["sortino"],
+                max_drawdown=None if pd.isnull(period["max_drawdown"]) else period["max_drawdown"],
+                max_leverage=None if pd.isnull(period["max_leverage"]) else period["max_leverage"],
+                excess_return=None if pd.isnull(period["excess_return"]) else period["excess_return"],
+                treasury_period_return=(
+                    None if pd.isnull(period["treasury_period_return"]) else period["treasury_period_return"]
+                ),
+                benchmark_period_return=(
+                    None if pd.isnull(period["benchmark_period_return"]) else period["benchmark_period_return"]
+                ),
+                benchmark_volatility=(
+                    None if pd.isnull(period["benchmark_volatility"]) else period["benchmark_volatility"]
+                ),
+                algorithm_period_return=(
+                    None if pd.isnull(period["algorithm_period_return"]) else period["algorithm_period_return"]
+                ),
+            )
+
+    periods: List[Period]
 
     @classmethod
-    def from_zipline(cls, period):
-        return ResultPeriod(
-            timestamp=period["period_open"].to_pydatetime().replace(tzinfo=timezone.utc),
-            shorts_count=int(period["shorts_count"] * 100),
-            pnl=int(period["pnl"] * 100),
-            long_value=int(period["long_value"] * 100),
-            short_value=int(period["short_value"] * 100),
-            long_exposure=int(period["long_exposure"] * 100),
-            starting_exposure=int(period["starting_exposure"] * 100),
-            short_exposure=int(period["short_exposure"] * 100),
-            capital_used=int(period["capital_used"] * 100),
-            gross_leverage=int(period["gross_leverage"] * 100),
-            net_leverage=int(period["net_leverage"] * 100),
-            ending_exposure=int(period["ending_exposure"] * 100),
-            starting_value=int(period["starting_value"] * 100),
-            ending_value=int(period["ending_value"] * 100),
-            starting_cash=int(period["starting_cash"] * 100),
-            ending_cash=int(period["ending_cash"] * 100),
-            returns=int(period["returns"] * 100),
-            portfolio_value=int(period["portfolio_value"] * 100),
-            longs_count=int(period["longs_count"] * 100),
-            algo_volatility=None if pd.isnull(period["algo_volatility"]) else int(period["algo_volatility"] * 100),
-            sharpe=None if pd.isnull(period["sharpe"]) else int(period["sharpe"] * 100),
-            alpha=None if period["alpha"] is None or pd.isnull(period["alpha"]) else int(period["alpha"] * 100),
-            beta=None if period["beta"] is None or pd.isnull(period["beta"]) else int(period["beta"] * 100),
-            sortino=None if pd.isnull(period["sortino"]) else int(period["sortino"] * 100),
-            max_drawdown=None if pd.isnull(period["max_drawdown"]) else int(period["max_drawdown"] * 100),
-            max_leverage=None if pd.isnull(period["max_leverage"]) else int(period["max_leverage"] * 100),
-            excess_return=None if pd.isnull(period["excess_return"]) else int(period["excess_return"] * 100),
-            treasury_period_return=(
-                None if pd.isnull(period["treasury_period_return"]) else int(period["treasury_period_return"] * 100)
-            ),
-            benchmark_period_return=(
-                None if pd.isnull(period["benchmark_period_return"]) else int(period["benchmark_period_return"] * 100)
-            ),
-            benchmark_volatility=(
-                None if pd.isnull(period["benchmark_volatility"]) else int(period["benchmark_volatility"] * 100)
-            ),
-            algorithm_period_return=(
-                None if pd.isnull(period["algorithm_period_return"]) else int(period["algorithm_period_return"] * 100)
-            ),
-        )
-
-
-class Result(Base):
-    periods: List[ResultPeriod]
+    def from_zipline(cls, result: pd.DataFrame):
+        periods = []
+        for row in result.index:
+            periods.append(cls.Period.from_zipline(result.loc[row]))
+        return cls(periods=periods)

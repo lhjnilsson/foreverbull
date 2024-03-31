@@ -242,7 +242,10 @@ def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
     assert len(response.data["periods"])
 
 
-def test_broker(execution: Execution, execution_socket: pynng.Rep0):
+@pytest.mark.parametrize("benchmark", ["AAPL", None])
+def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+    execution.benchmark = benchmark
+
     execution_socket.send(Request(task="configure_execution", data=execution).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
@@ -347,3 +350,5 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     assert response.error is None
     assert "periods" in response.data
     assert len(response.data["periods"])
+
+    print(response.data["periods"][-1]["benchmark_period_return"])
