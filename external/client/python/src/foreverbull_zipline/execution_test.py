@@ -14,6 +14,7 @@ from foreverbull_zipline.execution import Execution
 def test_start_stop():
     execution = Execution()
     execution.start()
+    time.sleep(0.5)  # Make sure it has time to start
     execution.stop()
 
 

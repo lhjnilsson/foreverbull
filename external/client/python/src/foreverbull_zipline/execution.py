@@ -3,6 +3,7 @@ import os
 import socket
 import tarfile
 import threading
+import time
 
 import pandas as pd
 import pynng
@@ -51,7 +52,14 @@ class Execution(threading.Thread):
         super(Execution, self).__init__()
 
     def run(self):
-        self._socket = pynng.Rep0(listen=f"tcp://{self.socket_config.host}:{self.socket_config.port}")
+        for _ in range(10):
+            try:
+                self._socket = pynng.Rep0(listen=f"tcp://{self.socket_config.host}:{self.socket_config.port}")
+                break
+            except pynng.exceptions.AddressInUse:
+                time.sleep(0.1)
+        else:
+            raise RuntimeError("Could not bind to socket")
         self._socket.recv_timeout = 500
         self._broker = Broker()
         self._process_request()
