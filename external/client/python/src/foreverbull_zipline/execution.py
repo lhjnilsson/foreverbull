@@ -274,7 +274,7 @@ class Execution(threading.Thread):
                         except StopExcecution:
                             pass
                     elif active_execution and message.task == "get_period":
-                        period = entity.RunningPeriod.from_zipline(
+                        period = entity.Period.from_zipline(
                             trading_algorithm, [trading_algorithm.get_order(order.id) for order in self._new_orders]
                         )
                         context_socket.send(Request(task=message.task, data=period).dump())

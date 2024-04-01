@@ -284,7 +284,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     response = Response.load(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
-    period = entity.RunningPeriod(**response.data)
+    period = entity.Period(**response.data)
     assert len(period.new_orders) == 1
     assert period.new_orders[0].symbol == order.symbol
 
@@ -303,7 +303,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     response = Response.load(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
-    period = entity.RunningPeriod(**response.data)
+    period = entity.Period(**response.data)
     assert len(period.new_orders) == 0
 
     order = entity.Order(symbol=execution.symbols[0], amount=15)
