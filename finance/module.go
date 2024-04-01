@@ -4,17 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/nats-io/nats.go"
-
+	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	apiDef "github.com/lhjnilsson/foreverbull/finance/api"
+	"github.com/lhjnilsson/foreverbull/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/finance/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/finance/supplier"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 )
 
@@ -38,6 +42,9 @@ var Module = fx.Options(
 			}
 			return md, t, nil
 		},
+		func() (apiDef.Client, error) {
+			return apiDef.NewClient()
+		},
 		func(jt nats.JetStreamContext, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
@@ -56,7 +63,18 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(financeAPI *FinanceAPI, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
+		func(financeAPI *FinanceAPI, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata, trading supplier.Trading) error {
+			financeAPI.Use(
+				logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
+					return log.Logger
+				}),
+				),
+				func(ctx *gin.Context) {
+					ctx.Set(api.TradingDependency, trading)
+					ctx.Next()
+				},
+			)
+			financeAPI.GET("/portfolio", api.GetPortfolio)
 			return nil
 		},
 		func(lc fx.Lifecycle, s FinanceStream, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
