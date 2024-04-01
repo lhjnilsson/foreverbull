@@ -137,7 +137,7 @@ func (z *Zipline) RunExecution(ctx context.Context) error {
 GetMessage
 Returns feed message from a running execution
 */
-func (z *Zipline) GetMessage() (*message.Response, error) {
+func (z *Zipline) GetMessage() (*Period, error) {
 	if !z.Running {
 		return nil, errors.New("backtest engine is not running")
 	}
@@ -152,7 +152,11 @@ func (z *Zipline) GetMessage() (*message.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error getting period: %w", err)
 	}
-	return rsp, nil
+	period := Period{}
+	if err = rsp.DecodeData(&period); err != nil {
+		return nil, fmt.Errorf("error decoding period- data: %w", err)
+	}
+	return &period, nil
 }
 
 /*
@@ -179,7 +183,7 @@ Gets the result of the execution
 
 TODO: How to use bigger buffer in req.Process fashion? or how to send result in batches
 */
-func (z *Zipline) GetExecutionResult(execution *Execution) (*message.Response, error) {
+func (z *Zipline) GetExecutionResult(execution *Execution) (*Result, error) {
 	var err error
 	var data []byte
 	var rspData []byte
@@ -234,7 +238,11 @@ func (z *Zipline) GetExecutionResult(execution *Execution) (*message.Response, e
 	if rsp.HasError() {
 		return nil, fmt.Errorf("GetResult from zipline backtest: %v", rsp.Error)
 	}
-	return &rsp, nil
+	var result Result
+	if err = rsp.DecodeData(&result); err != nil {
+		return nil, fmt.Errorf("GetResult decoding data: %v", err)
+	}
+	return &result, nil
 }
 
 /*

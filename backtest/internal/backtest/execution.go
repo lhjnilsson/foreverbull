@@ -68,17 +68,9 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 	}
 	g, gctx = errgroup.WithContext(ctx)
 	for {
-		req, err := b.backtest.GetMessage()
+		period, err := b.backtest.GetMessage()
 		if err != nil {
 			return fmt.Errorf("error getting message: %w", err)
-		}
-		if req.Data == nil {
-			return nil
-		}
-		period := &entity.RunningPeriod{}
-		err = req.DecodeData(period)
-		if err != nil {
-			return fmt.Errorf("error decoding data: %w", err)
 		}
 		portfolio := finance.Portfolio{
 			Cash:           decimal.NewFromFloat(period.Cash),
@@ -109,7 +101,6 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
-	return nil
 }
 
 type Result struct {
@@ -117,16 +108,47 @@ type Result struct {
 }
 
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {
-	result := Result{}
-	req, err := b.backtest.GetExecutionResult(&backtest.Execution{Execution: excID})
+	result, err := b.backtest.GetExecutionResult(&backtest.Execution{Execution: excID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting data for result: %v", err)
 	}
-	err = req.DecodeData(&result)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding data from result: %v", err)
+	var periods []entity.Period
+	for _, p := range result.Periods {
+		periods = append(periods, entity.Period{
+			Timestamp:              p.Timestamp,
+			PNL:                    p.PNL,
+			Returns:                p.Returns,
+			PortfolioValue:         p.PortfolioValue,
+			LongsCount:             p.LongsCount,
+			ShortsCount:            p.ShortsCount,
+			LongValue:              p.LongValue,
+			ShortValue:             p.ShortValue,
+			StartingExposure:       p.StartingExposure,
+			EndingExposure:         p.EndingExposure,
+			LongExposure:           p.LongExposure,
+			ShortExposure:          p.ShortExposure,
+			CapitalUsed:            p.CapitalUsed,
+			GrossLeverage:          p.GrossLeverage,
+			NetLeverage:            p.NetLeverage,
+			StartingValue:          p.StartingValue,
+			EndingValue:            p.EndingValue,
+			StartingCash:           p.StartingCash,
+			EndingCash:             p.EndingCash,
+			MaxDrawdown:            p.MaxDrawdown,
+			MaxLeverage:            p.MaxLeverage,
+			ExcessReturns:          p.ExcessReturns,
+			TreasuryPeriodReturn:   p.TreasuryPeriodReturn,
+			AlgorithmPeriodReturns: p.AlgorithmPeriodReturns,
+			AlgoVolatility:         p.AlgoVolatility,
+			Sharpe:                 p.Sharpe,
+			Sortino:                p.Sortino,
+			BenchmarkPeriodReturns: p.BenchmarkPeriodReturns,
+			BenchmarkVolatility:    p.BenchmarkVolatility,
+			Alpha:                  p.Alpha,
+			Beta:                   p.Beta,
+		})
 	}
-	return &result.Periods, nil
+	return &periods, nil
 }
 
 /*
