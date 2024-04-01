@@ -7,8 +7,6 @@ import (
 
 	backtest "github.com/lhjnilsson/foreverbull/service/backtest"
 
-	message "github.com/lhjnilsson/foreverbull/service/message"
-
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -74,19 +72,19 @@ func (_m *Backtest) DownloadIngestion(_a0 context.Context, _a1 string) error {
 }
 
 // GetExecutionResult provides a mock function with given fields: execution
-func (_m *Backtest) GetExecutionResult(execution *backtest.Execution) (*message.Response, error) {
+func (_m *Backtest) GetExecutionResult(execution *backtest.Execution) (*backtest.Result, error) {
 	ret := _m.Called(execution)
 
-	var r0 *message.Response
+	var r0 *backtest.Result
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*backtest.Execution) (*message.Response, error)); ok {
+	if rf, ok := ret.Get(0).(func(*backtest.Execution) (*backtest.Result, error)); ok {
 		return rf(execution)
 	}
-	if rf, ok := ret.Get(0).(func(*backtest.Execution) *message.Response); ok {
+	if rf, ok := ret.Get(0).(func(*backtest.Execution) *backtest.Result); ok {
 		r0 = rf(execution)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*message.Response)
+			r0 = ret.Get(0).(*backtest.Result)
 		}
 	}
 
@@ -100,19 +98,19 @@ func (_m *Backtest) GetExecutionResult(execution *backtest.Execution) (*message.
 }
 
 // GetMessage provides a mock function with given fields:
-func (_m *Backtest) GetMessage() (*message.Response, error) {
+func (_m *Backtest) GetMessage() (*backtest.Period, error) {
 	ret := _m.Called()
 
-	var r0 *message.Response
+	var r0 *backtest.Period
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*message.Response, error)); ok {
+	if rf, ok := ret.Get(0).(func() (*backtest.Period, error)); ok {
 		return rf()
 	}
-	if rf, ok := ret.Get(0).(func() *message.Response); ok {
+	if rf, ok := ret.Get(0).(func() *backtest.Period); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*message.Response)
+			r0 = ret.Get(0).(*backtest.Period)
 		}
 	}
 
