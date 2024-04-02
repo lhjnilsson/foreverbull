@@ -1,6 +1,10 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
+)
 
 type ExecutionStatusType string
 
@@ -18,6 +22,9 @@ type Execution struct {
 	Start    time.Time `json:"start" mapstructure:"start"`
 	End      time.Time `json:"end" mapstructure:"end"`
 	Service  string    `json:"service" mapstructure:"service"`
+
+	StartPortfolio finance.Portfolio `json:"start_portfolio" mapstructure:"start_portfolio"`
+	PlacedOrders   []finance.Order   `json:"placed_orders" mapstructure:"placed_orders"`
 
 	Statuses []ExecutionStatus `json:"statuses"`
 }

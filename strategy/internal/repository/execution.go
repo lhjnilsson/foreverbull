@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 )
@@ -17,7 +18,9 @@ service text NOT NULL,
 status text NOT NULL DEFAULT 'CREATED',
 error TEXT,
 start_at TIMESTAMPTZ NOT NULL,
-end_at TIMESTAMPTZ NOT NULL
+end_at TIMESTAMPTZ NOT NULL,
+portfolio JSONB NOT NULL DEFAULT '{}',
+orders JSONB NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS strategy_execution_status (
@@ -114,7 +117,7 @@ func (db *Execution) List(ctx context.Context, strategy string) (*[]entity.Execu
 func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, error) {
 	e := entity.Execution{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, strategy, start_at, end_at, service, es.status, es.error, es.occurred_at
+		`SELECT execution.id, strategy, start_at, end_at, service, portfolio, orders,  es.status, es.error, es.occurred_at
 	FROM strategy_execution AS execution
 	INNER JOIN (
 		SELECT id, status, error, occurred_at FROM strategy_execution_status ORDER BY occurred_at DESC
@@ -126,7 +129,9 @@ func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, err
 	defer rows.Close()
 	for rows.Next() {
 		status := entity.ExecutionStatus{}
-		err = rows.Scan(&e.ID, &e.Strategy, &e.Start, &e.End, &e.Service, &status.Status, &status.Error, &status.OccurredAt)
+		err = rows.Scan(&e.ID, &e.Strategy, &e.Start, &e.End, &e.Service,
+			&e.StartPortfolio, &e.PlacedOrders,
+			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
 		}
@@ -136,4 +141,14 @@ func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, err
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
 	return &e, nil
+}
+
+func (db *Execution) SetStartPortfolio(ctx context.Context, id string, portfolio *finance.Portfolio) error {
+	_, err := db.Conn.Exec(ctx, `UPDATE strategy_execution SET portfolio=$1 WHERE id=$2`, portfolio, id)
+	return err
+}
+
+func (db *Execution) SetPlacedOrders(ctx context.Context, id string, orders *[]finance.Order) error {
+	_, err := db.Conn.Exec(ctx, `UPDATE strategy_execution SET orders=$1 WHERE id=$2`, orders, id)
+	return err
 }

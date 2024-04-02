@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/strategy/internal/repository"
@@ -26,6 +27,15 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
+	trading := message.MustGet(dependency.Trading).(supplier.Trading)
+	portfolio, err := trading.GetPortfolio()
+	if err != nil {
+		return fmt.Errorf("error getting portfolio: %w", err)
+	}
+	err = executions.SetStartPortfolio(ctx, command.ExecutionID, portfolio)
+	if err != nil {
+		return fmt.Errorf("error setting start portfolio: %w", err)
+	}
 	executionRunner, err := message.Call(ctx, dependency.ExecutionRunner)
 	if err != nil {
 		return fmt.Errorf("error getting execution runner: %w", err)
@@ -35,7 +45,7 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error configuring execution runner: %w", err)
 	}
-	err = ex.Run(ctx)
+	orders, err := ex.Run(ctx, portfolio)
 	if err != nil {
 		return fmt.Errorf("error running execution: %w", err)
 	}
@@ -43,6 +53,11 @@ func RunExecution(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error stopping execution: %w", err)
 	}
+	err = executions.SetPlacedOrders(ctx, command.ExecutionID, orders)
+	if err != nil {
+		return fmt.Errorf("error setting placed orders: %w", err)
+	}
+
 	return nil
 }
 

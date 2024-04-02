@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -93,4 +95,59 @@ func (test *ExecutionTest) TestList() {
 	test.NoError(err)
 	test.Len(*executions, 1)
 	test.Equal(*execution, (*executions)[0])
+}
+
+func (test *ExecutionTest) TestSetStartPortfolio() {
+	ctx := context.Background()
+
+	db := &Execution{Conn: test.conn}
+
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), "worker")
+	test.NoError(err)
+
+	portfolio := finance.Portfolio{
+		Cash:           decimal.NewFromFloat(100.3),
+		PortfolioValue: decimal.NewFromFloat(55.45),
+		Positions: []finance.Position{
+			{
+				Symbol:    "AAPL",
+				Amount:    decimal.NewFromFloat(10.4),
+				CostBasis: decimal.NewFromFloat(10.45),
+			},
+		},
+	}
+
+	err = db.SetStartPortfolio(ctx, execution.ID, &portfolio)
+	test.NoError(err)
+
+	execution, err = db.Get(ctx, execution.ID)
+	test.NoError(err)
+	test.NotNil(execution.StartPortfolio)
+	test.Equal(portfolio, execution.StartPortfolio)
+}
+
+func (test *ExecutionTest) TestSetPlacedOrders() {
+	ctx := context.Background()
+
+	db := &Execution{Conn: test.conn}
+
+	execution, err := db.Create(ctx, test.strategy.Name, time.Now(), time.Now(), "worker")
+	test.NoError(err)
+
+	orders := []finance.Order{
+		{
+			Symbol:         "AAPL",
+			Side:           "BUY",
+			Filled:         decimal.NewFromFloat(10.4),
+			FilledAvgPrice: decimal.NewFromFloat(10.45),
+		},
+	}
+
+	err = db.SetPlacedOrders(ctx, execution.ID, &orders)
+	test.NoError(err)
+
+	execution, err = db.Get(ctx, execution.ID)
+	test.NoError(err)
+	test.Len(execution.PlacedOrders, 1)
+	test.Equal(orders, execution.PlacedOrders)
 }

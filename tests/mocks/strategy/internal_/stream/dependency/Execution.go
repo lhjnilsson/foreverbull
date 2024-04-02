@@ -5,6 +5,8 @@ package mocks
 import (
 	context "context"
 
+	entity "github.com/lhjnilsson/foreverbull/finance/entity"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -27,18 +29,30 @@ func (_m *Execution) Configure(ctx context.Context) error {
 	return r0
 }
 
-// Run provides a mock function with given fields: ctx
-func (_m *Execution) Run(ctx context.Context) error {
-	ret := _m.Called(ctx)
+// Run provides a mock function with given fields: ctx, p
+func (_m *Execution) Run(ctx context.Context, p *entity.Portfolio) (*[]entity.Order, error) {
+	ret := _m.Called(ctx, p)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(ctx)
+	var r0 *[]entity.Order
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *entity.Portfolio) (*[]entity.Order, error)); ok {
+		return rf(ctx, p)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *entity.Portfolio) *[]entity.Order); ok {
+		r0 = rf(ctx, p)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*[]entity.Order)
+		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, *entity.Portfolio) error); ok {
+		r1 = rf(ctx, p)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // Stop provides a mock function with given fields: ctx

@@ -3,6 +3,7 @@ package dependency
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -15,11 +16,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const Trading stream.Dependency = "get_trading"
+
 const ExecutionRunner stream.Dependency = "get_execution_runner"
 
 type Execution interface {
 	Configure(ctx context.Context) error
-	Run(ctx context.Context) error
+	Run(ctx context.Context, p *finance.Portfolio) (*[]finance.Order, error)
 	Stop(ctx context.Context) error
 }
 
@@ -38,25 +41,34 @@ func (e *execution) Configure(ctx context.Context) error {
 	return e.worker.ConfigureExecution(ctx, &cfg)
 }
 
-func (e *execution) Run(ctx context.Context) error {
+func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]finance.Order, error) {
 	if err := e.worker.RunExecution(ctx); err != nil {
-		return fmt.Errorf("error running worker execution: %w", err)
+		return nil, fmt.Errorf("error running worker execution: %w", err)
 	}
+
+	var orders []finance.Order
+	var orderLock *sync.Mutex
 
 	g, gctx := errgroup.WithContext(ctx)
 	for _, symbol := range e.command.Symbols {
 		symbol := symbol
 		g.Go(func() error {
-			portfolio := finance.Portfolio{Positions: make([]finance.Position, 0)}
-			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.command.Timestamp, symbol, &portfolio)
+			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.command.Timestamp, symbol, portfolio)
 			if err != nil {
 				return fmt.Errorf("error processing symbol: %w", err)
 			}
+			orderLock.Lock()
+			orders = append(orders, *order)
+			orderLock.Unlock()
 			log.Info().Str("symbol", symbol).Any("order", order).Msg("order processed")
 			return nil
 		})
 	}
-	return g.Wait()
+	err := g.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("error processing symbols: %w", err)
+	}
+	return &orders, nil
 }
 
 func (e *execution) Stop(ctx context.Context) error {
