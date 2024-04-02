@@ -72,6 +72,9 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 		if err != nil {
 			return fmt.Errorf("error getting message: %w", err)
 		}
+		if period == nil {
+			return nil
+		}
 		portfolio := finance.Portfolio{
 			Cash:           decimal.NewFromFloat(period.Cash),
 			PortfolioValue: decimal.NewFromFloat(period.PortfolioValue),

@@ -78,7 +78,7 @@ func (db *Execution) UpdateStatus(ctx context.Context, id string, status entity.
 
 func (db *Execution) List(ctx context.Context, strategy string) (*[]entity.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, strategy, start_at, end_at, service, es.status, es.error, es.occurred_at
+		`SELECT execution.id, strategy, start_at, end_at, service, portfolio, orders, es.status, es.error, es.occurred_at
 	FROM strategy_execution AS execution
 	INNER JOIN (
 		SELECT id, status, error, occurred_at FROM strategy_execution_status ORDER BY occurred_at DESC
@@ -94,7 +94,7 @@ func (db *Execution) List(ctx context.Context, strategy string) (*[]entity.Execu
 	for rows.Next() {
 		e := entity.Execution{}
 		status := entity.ExecutionStatus{}
-		err = rows.Scan(&e.ID, &e.Strategy, &e.Start, &e.End, &e.Service, &status.Status, &status.Error, &status.OccurredAt)
+		err = rows.Scan(&e.ID, &e.Strategy, &e.Start, &e.End, &e.Service, &e.StartPortfolio, &e.PlacedOrders, &status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
 		}

@@ -152,6 +152,9 @@ func (z *Zipline) GetMessage() (*Period, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error getting period: %w", err)
 	}
+	if rsp.Data == nil {
+		return nil, nil
+	}
 	period := Period{}
 	if err = rsp.DecodeData(&period); err != nil {
 		return nil, fmt.Errorf("error decoding period- data: %w", err)

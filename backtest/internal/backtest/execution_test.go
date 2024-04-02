@@ -6,7 +6,6 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
-	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest"
 	mockWorker "github.com/lhjnilsson/foreverbull/tests/mocks/service/worker"
@@ -46,7 +45,7 @@ func (test *ExecutionTest) TestRun() {
 	test.backtest.On("RunExecution", mock.Anything).Return(nil)
 	test.workers.On("RunExecution", mock.Anything).Return(nil)
 
-	test.backtest.On("GetMessage").Return(&message.Response{Task: "period", Data: nil}, nil)
+	test.backtest.On("GetMessage").Return(nil, nil)
 
 	test.NoError(test.execution.Run(context.Background(), &entity.Execution{}))
 }
