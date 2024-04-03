@@ -70,7 +70,7 @@ List
 Returns all results from a backtest
 */
 func (db *Period) List(ctx context.Context, backtestID string) (*[]time.Time, error) {
-	rows, err := db.Conn.Query(ctx, `select timestamp from backtest_period where backtest=$1 order by timestamp desc`, backtestID)
+	rows, err := db.Conn.Query(ctx, `select timestamp from backtest_period where backtest_execution=$1 order by timestamp desc`, backtestID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (db *Period) List(ctx context.Context, backtestID string) (*[]time.Time, er
 
 func (db *Period) Metrics(ctx context.Context, execution string) (*[]string, error) {
 	rows, err := db.Conn.Query(ctx, `select column_name from information_schema.columns where table_name='backtest_period'
-	and column_name not in ('id','execution','timestamp')`)
+	and column_name not in ('id','backtest_execution','timestamp')`)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (db *Period) Metrics(ctx context.Context, execution string) (*[]string, err
 }
 
 func (db *Period) Metric(ctx context.Context, execution string, metric string) (*[]int, error) {
-	rows, err := db.Conn.Query(ctx, fmt.Sprintf(`select %s from backtest_period where backtest=$1 order by timestamp desc`, metric), execution)
+	rows, err := db.Conn.Query(ctx, fmt.Sprintf(`select %s from backtest_period where backtest_execution=$1 order by timestamp desc`, metric), execution)
 	if err != nil {
 		return nil, err
 	}
