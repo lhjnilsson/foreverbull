@@ -92,7 +92,7 @@ func (db *Period) List(ctx context.Context, backtestID string) (*[]time.Time, er
 
 func (db *Period) Metrics(ctx context.Context, execution string) (*[]string, error) {
 	rows, err := db.Conn.Query(ctx, `select column_name from information_schema.columns where table_name='backtest_period'
-	and column_name not in ('id','backtest','timestamp')`)
+	and column_name not in ('id','execution','timestamp')`)
 	if err != nil {
 		return nil, err
 	}
