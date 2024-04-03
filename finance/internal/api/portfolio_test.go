@@ -52,7 +52,7 @@ func (test *PortfolioTest) TestGetPortfolio() {
 	test.Equal(200, w.Code)
 	test.JSONEq(`{
 		"cash": "1000.45",
-		"portfolio_value": "0",
+		"value": "0",
 		"positions": []
 	}`, w.Body.String())
 }
