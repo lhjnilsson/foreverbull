@@ -82,8 +82,6 @@ func ToDecimalHookFunc() mapstructure.DecodeHookFunc {
 		if t != reflect.TypeOf(decimal.Decimal{}) {
 			return data, nil
 		}
-		fmt.Println("f.Kind()", f.Kind())
-
 		switch f.Kind() {
 		case reflect.String:
 			return decimal.NewFromString(data.(string))

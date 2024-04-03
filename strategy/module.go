@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/finance/supplier"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
@@ -27,10 +28,11 @@ type StrategyAPI struct {
 
 var Module = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, serviceAPI serviceAPI.Client) (StrategyStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, serviceAPI serviceAPI.Client, trading supplier.Trading) (StrategyStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.ServiceAPI, serviceAPI)
+			dc.AddSingleton(dependency.Trading, trading)
 			dc.AddMethod(dependency.ExecutionRunner, dependency.GetExecution)
 			dc.AddMethod(dependency.WorkerPool, dependency.GetWorkerPool)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)

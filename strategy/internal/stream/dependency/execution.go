@@ -46,8 +46,8 @@ func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]f
 		return nil, fmt.Errorf("error running worker execution: %w", err)
 	}
 
-	var orders []finance.Order
-	var orderLock *sync.Mutex
+	orders := make([]finance.Order, 0)
+	orderLock := new(sync.Mutex)
 
 	g, gctx := errgroup.WithContext(ctx)
 	for _, symbol := range e.command.Symbols {
@@ -57,10 +57,13 @@ func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]f
 			if err != nil {
 				return fmt.Errorf("error processing symbol: %w", err)
 			}
+			if order == nil {
+				return nil
+			}
 			orderLock.Lock()
 			orders = append(orders, *order)
 			orderLock.Unlock()
-			log.Info().Str("symbol", symbol).Any("order", order).Msg("order processed")
+			log.Info().Str("symbol", symbol).Any("order", order).Msg("order received")
 			return nil
 		})
 	}

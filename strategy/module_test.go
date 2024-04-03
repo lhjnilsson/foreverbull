@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/finance"
+	financeEntity "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -37,14 +38,16 @@ func TestStrategyModule(t *testing.T) {
 }
 
 func (test *ModuleTests) SetupSuite() {
+
+}
+
+func (test *ModuleTests) SetupTest() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
 		Loki:     true,
 	})
-}
 
-func (test *ModuleTests) SetupTest() {
 	pool, err := pgxpool.New(context.TODO(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
@@ -74,6 +77,7 @@ func (test *ModuleTests) SetupTest() {
 }
 
 func (test *ModuleTests) TearDownTest() {
+	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.Require().NoError(test.app.Stop(context.Background()))
 }
 
@@ -87,6 +91,8 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 		Statuses []struct {
 			Status entity.ExecutionStatusType
 		}
+		StartPortfolio financeEntity.Portfolio `json:"start_portfolio"`
+		PlacedOrders   []financeEntity.Order   `json:"placed_orders"`
 	}
 	rsp = helper.Request(test.T(), "POST", "/strategy/api/executions", fmt.Sprintf(`{"strategy": "%s"}`, "test-strategy"))
 	test.Equal(201, rsp.StatusCode)
@@ -109,4 +115,13 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 		return response.Statuses[0].Status == entity.ExecutionStatusCompleted, nil
 	}
 	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*20))
+
+	rsp = helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
+	test.Equal(200, rsp.StatusCode)
+	response = &ExecutionResponse{}
+	err = json.NewDecoder(rsp.Body).Decode(response)
+	test.NoError(err)
+	test.Equal(entity.ExecutionStatusCompleted, response.Statuses[0].Status)
+	test.NotEmpty(response.StartPortfolio)
+	test.NotEmpty(response.PlacedOrders)
 }
