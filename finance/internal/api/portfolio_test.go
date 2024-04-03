@@ -38,9 +38,9 @@ func TestPortfolio(t *testing.T) {
 
 func (test *PortfolioTest) TestGetPortfolio() {
 	portfolio := entity.Portfolio{
-		Cash:           decimal.NewFromFloat(1000.45),
-		PortfolioValue: decimal.NewFromFloat(0.0),
-		Positions:      make([]entity.Position, 0),
+		Cash:      decimal.NewFromFloat(1000.45),
+		Value:     decimal.NewFromFloat(0.0),
+		Positions: make([]entity.Position, 0),
 	}
 
 	test.trading.On("GetPortfolio").Return(&portfolio, nil)

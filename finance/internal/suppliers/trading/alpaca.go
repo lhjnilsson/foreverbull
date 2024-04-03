@@ -51,9 +51,9 @@ func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
 		})
 	}
 	return &entity.Portfolio{
-		Cash:           acc.Cash,
-		PortfolioValue: acc.PortfolioValue,
-		Positions:      positions,
+		Cash:      acc.Cash,
+		Value:     acc.PortfolioValue,
+		Positions: positions,
 	}, nil
 }
 

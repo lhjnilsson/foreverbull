@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/shopspring/decimal"
 )
 
 /*
@@ -41,7 +42,9 @@ func decodeData(input interface{}, result interface{}) error {
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		Metadata: nil,
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			ToTimeHookFunc()),
+			ToTimeHookFunc(),
+			ToDecimalHookFunc(),
+		),
 		Result: result,
 	})
 	if err != nil {
@@ -65,6 +68,29 @@ func ToTimeHookFunc() mapstructure.DecodeHookFunc {
 			return time.Parse(time.RFC3339, data.(string))
 		case reflect.Int64:
 			return time.Unix(0, data.(int64)*int64(time.Millisecond)), nil
+		default:
+			return data, nil
+		}
+	}
+}
+
+func ToDecimalHookFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(decimal.Decimal{}) {
+			return data, nil
+		}
+		fmt.Println("f.Kind()", f.Kind())
+
+		switch f.Kind() {
+		case reflect.String:
+			return decimal.NewFromString(data.(string))
+		case reflect.Float64:
+			return decimal.NewFromFloat(data.(float64)), nil
+		case reflect.Int:
+			return decimal.NewFromInt(int64(data.(int))), nil
 		default:
 			return data, nil
 		}

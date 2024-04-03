@@ -58,7 +58,7 @@ class Order(Base):
 
 class Position(Base):
     symbol: str
-    amount: int
+    amount: float
     cost_basis: float
 
 

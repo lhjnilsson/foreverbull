@@ -5,8 +5,8 @@ import (
 )
 
 type Portfolio struct {
-	Cash           decimal.Decimal `json:"cash"`
-	PortfolioValue decimal.Decimal `json:"portfolio_value"`
+	Cash  decimal.Decimal `json:"cash"`
+	Value decimal.Decimal `json:"value"`
 
 	Positions []Position `json:"positions"`
 }

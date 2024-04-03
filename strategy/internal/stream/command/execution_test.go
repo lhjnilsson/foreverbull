@@ -54,8 +54,8 @@ func (test *ExecutionCommandTest) TestRunExecution() {
 
 	trading := new(mockSupplier.Trading)
 	portfolio := finance.Portfolio{
-		Cash:           decimal.NewFromFloat(245.5),
-		PortfolioValue: decimal.NewFromFloat(123.23),
+		Cash:  decimal.NewFromFloat(245.5),
+		Value: decimal.NewFromFloat(123.23),
 		Positions: []finance.Position{
 			{
 				Symbol:    "AAPL",

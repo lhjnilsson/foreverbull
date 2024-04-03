@@ -5,8 +5,8 @@ import (
 )
 
 type Position struct {
-	Symbol   string
-	Exchange string
+	Symbol   string `json:"symbol" mapstructure:"symbol"`
+	Exchange string `json:"exchange" mapstructure:"exchange"`
 
 	Amount    decimal.Decimal `json:"amount" mapstructure:"amount"`
 	CostBasis decimal.Decimal `json:"cost_basis" mapstructure:"cost_basis"`

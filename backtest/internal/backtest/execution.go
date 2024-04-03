@@ -75,9 +75,19 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 		if period == nil {
 			return nil
 		}
+		positions := make([]finance.Position, 0)
+		for _, p := range period.Positions {
+			positions = append(positions, finance.Position{
+				Symbol:    p.Symbol,
+				Amount:    decimal.NewFromInt(p.Amount),
+				CostBasis: decimal.NewFromFloat(p.CostBasis),
+			})
+		}
+
 		portfolio := finance.Portfolio{
-			Cash:           decimal.NewFromFloat(period.Cash),
-			PortfolioValue: decimal.NewFromFloat(period.PortfolioValue),
+			Cash:      decimal.NewFromFloat(period.Cash),
+			Value:     decimal.NewFromFloat(period.PortfolioValue),
+			Positions: positions,
 		}
 
 		for _, symbol := range execution.Symbols {

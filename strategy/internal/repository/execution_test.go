@@ -106,8 +106,8 @@ func (test *ExecutionTest) TestSetStartPortfolio() {
 	test.NoError(err)
 
 	portfolio := finance.Portfolio{
-		Cash:           decimal.NewFromFloat(100.3),
-		PortfolioValue: decimal.NewFromFloat(55.45),
+		Cash:  decimal.NewFromFloat(100.3),
+		Value: decimal.NewFromFloat(55.45),
 		Positions: []finance.Position{
 			{
 				Symbol:    "AAPL",
