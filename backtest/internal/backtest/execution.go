@@ -5,40 +5,41 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
+	finance "github.com/lhjnilsson/foreverbull/finance/entity"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
+	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
 
 type Execution interface {
-	Configure(context.Context, *worker.Configuration, *engine.BacktestConfig) error
-	Run(context.Context, string, chan<- chan entity.ExecutionPeriod)
+	Configure(context.Context, *worker.Configuration, *backtest.BacktestConfig) error
+	Run(context.Context, *entity.Execution) error
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
 
-func NewExecution(engine engine.Engine, workers worker.Pool) Execution {
+func NewExecution(b backtest.Backtest, w worker.Pool) Execution {
 	return &execution{
-		engine:  engine,
-		workers: workers,
+		backtest: b,
+		workers:  w,
 	}
 }
 
 type execution struct {
-	engine  engine.Engine `json:"-"`
-	workers worker.Pool   `json:"-"`
+	backtest backtest.Backtest `json:"-"`
+	workers  worker.Pool       `json:"-"`
 }
 
 /*
 Configure
 */
-func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configuration, backtestCfg *engine.BacktestConfig) error {
+func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configuration, backtestCfg *backtest.BacktestConfig) error {
 	g, gctx := errgroup.WithContext(ctx)
 	if workerCfg != nil {
 		g.Go(func() error { return b.workers.ConfigureExecution(gctx, workerCfg) })
 	}
-	g.Go(func() error { return b.engine.ConfigureExecution(gctx, backtestCfg) })
+	g.Go(func() error { return b.backtest.ConfigureExecution(gctx, backtestCfg) })
 	return g.Wait()
 }
 
@@ -46,11 +47,10 @@ func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configurati
 Run
 Runs configured workers and backtest until completed
 */
-func (b *execution) Run(ctx context.Context, excID string, events chan<- chan entity.ExecutionPeriod) {
-	defer close(events)
+func (b *execution) Run(ctx context.Context, execution *entity.Execution) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		err := b.engine.RunExecution(gctx)
+		err := b.backtest.RunExecution(gctx)
 		if err != nil {
 			return fmt.Errorf("error running Execution engine: %w", err)
 		}
@@ -64,48 +64,41 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		ch := make(chan entity.ExecutionPeriod)
-		events <- ch
-		es := entity.ExecutionPeriod{Error: err}
-		ch <- es
-		return
+		return fmt.Errorf("error running Execution: %w", err)
 	}
 	g, gctx = errgroup.WithContext(ctx)
 	for {
-		req, err := b.engine.GetMessage()
+		period, err := b.backtest.GetMessage()
 		if err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error throughout day: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error getting message: %w", err)
 		}
-		if req.Data == nil {
-			return // End of backtest
+		if period == nil {
+			return nil
 		}
-		period := &entity.Period{}
-		err = req.DecodeData(period)
-		if err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error decoding period: %w", err)}
-			ch <- es
-			return
+		positions := make([]finance.Position, 0)
+		for _, p := range period.Positions {
+			positions = append(positions, finance.Position{
+				Symbol:    p.Symbol,
+				Amount:    decimal.NewFromInt(p.Amount),
+				CostBasis: decimal.NewFromFloat(p.CostBasis),
+			})
 		}
-		ch := make(chan entity.ExecutionPeriod)
-		events <- ch
-		es := entity.ExecutionPeriod{Period: period}
-		ch <- es
-		<-ch // Wait for close, meaning all data is stored to database
-		for _, symbol := range period.Symbols {
+
+		portfolio := finance.Portfolio{
+			Cash:      decimal.NewFromFloat(period.Cash),
+			Value:     decimal.NewFromFloat(period.PortfolioValue),
+			Positions: positions,
+		}
+
+		for _, symbol := range execution.Symbols {
 			s := symbol
 			g.Go(func() error {
-				order, err := b.workers.Process(gctx, excID, period.Timestamp, s)
+				order, err := b.workers.Process(gctx, execution.ID, period.Timestamp, s, &portfolio)
 				if err != nil {
 					return fmt.Errorf("error processing ohlc: %w", err)
 				}
 				if order != nil {
-					_, err = b.engine.GetBroker().Order(order)
+					_, err = b.backtest.Order(&backtest.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
 					if err != nil {
 						return fmt.Errorf("error placing order: %w", err)
 					}
@@ -115,18 +108,10 @@ func (b *execution) Run(ctx context.Context, excID string, events chan<- chan en
 			})
 		}
 		if err := g.Wait(); err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error processing throughout day: %w", err)}
-			ch <- es
-			return
+			return fmt.Errorf("error processing ohlc: %w", err)
 		}
-		if err := b.engine.Continue(); err != nil {
-			ch := make(chan entity.ExecutionPeriod)
-			events <- ch
-			es := entity.ExecutionPeriod{Error: fmt.Errorf("error continuing execution: %w", err)}
-			ch <- es
-			return
+		if err := b.backtest.Continue(); err != nil {
+			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
 }
@@ -136,16 +121,47 @@ type Result struct {
 }
 
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {
-	result := Result{}
-	req, err := b.engine.GetExecutionResult(&engine.Execution{Execution: excID})
+	result, err := b.backtest.GetExecutionResult(&backtest.Execution{Execution: excID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting data for result: %v", err)
 	}
-	err = req.DecodeData(&result)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding data from result: %v", err)
+	var periods []entity.Period
+	for _, p := range result.Periods {
+		periods = append(periods, entity.Period{
+			Timestamp:              p.Timestamp,
+			PNL:                    p.PNL,
+			Returns:                p.Returns,
+			PortfolioValue:         p.PortfolioValue,
+			LongsCount:             p.LongsCount,
+			ShortsCount:            p.ShortsCount,
+			LongValue:              p.LongValue,
+			ShortValue:             p.ShortValue,
+			StartingExposure:       p.StartingExposure,
+			EndingExposure:         p.EndingExposure,
+			LongExposure:           p.LongExposure,
+			ShortExposure:          p.ShortExposure,
+			CapitalUsed:            p.CapitalUsed,
+			GrossLeverage:          p.GrossLeverage,
+			NetLeverage:            p.NetLeverage,
+			StartingValue:          p.StartingValue,
+			EndingValue:            p.EndingValue,
+			StartingCash:           p.StartingCash,
+			EndingCash:             p.EndingCash,
+			MaxDrawdown:            p.MaxDrawdown,
+			MaxLeverage:            p.MaxLeverage,
+			ExcessReturns:          p.ExcessReturns,
+			TreasuryPeriodReturn:   p.TreasuryPeriodReturn,
+			AlgorithmPeriodReturns: p.AlgorithmPeriodReturns,
+			AlgoVolatility:         p.AlgoVolatility,
+			Sharpe:                 p.Sharpe,
+			Sortino:                p.Sortino,
+			BenchmarkPeriodReturns: p.BenchmarkPeriodReturns,
+			BenchmarkVolatility:    p.BenchmarkVolatility,
+			Alpha:                  p.Alpha,
+			Beta:                   p.Beta,
+		})
 	}
-	return &result.Periods, nil
+	return &periods, nil
 }
 
 /*
@@ -155,7 +171,7 @@ Halts all workers and backtest
 func (b *execution) Stop(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		if err := b.engine.Stop(gctx); err != nil {
+		if err := b.backtest.Stop(gctx); err != nil {
 			return fmt.Errorf("error stopping Execution engine: %w", err)
 		}
 		return nil

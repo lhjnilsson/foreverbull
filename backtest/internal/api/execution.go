@@ -126,47 +126,6 @@ func GetExecutionPeriodMetric(c *gin.Context) {
 	c.JSON(http.StatusOK, periodMetrics)
 }
 
-func GetExecutionOrders(c *gin.Context) {
-	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
-
-	var uri executionUri
-	if err := c.ShouldBindUri(&uri); err != nil {
-		log.Debug().Err(err).Msg("error binding uri")
-		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-
-	repository_o := repository.Order{Conn: pgx_tx}
-
-	orders, err := repository_o.List(c, uri.ID)
-	if err != nil {
-		log.Err(err).Msg("error getting orders")
-		c.JSON(internalHTTP.DatabaseError(err))
-		return
-	}
-	c.JSON(http.StatusOK, orders)
-}
-
-func GetExecutionPortfolio(c *gin.Context) {
-	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
-
-	var uri executionUri
-	if err := c.ShouldBindUri(&uri); err != nil {
-		log.Debug().Err(err).Msg("error binding uri")
-		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-
-	repository_p := repository.Portfolio{Conn: pgx_tx}
-	positions, err := repository_p.GetLatest(c, uri.ID)
-	if err != nil {
-		log.Err(err).Msg("error getting portfolio")
-		c.JSON(internalHTTP.DatabaseError(err))
-		return
-	}
-	c.JSON(http.StatusOK, positions)
-}
-
 func GetExecutionDataframe(c *gin.Context) {
 	storage := c.MustGet(StorageDependency).(storage.BlobStorage)
 

@@ -61,35 +61,3 @@ class Asset(entity.finance.Asset):
             FROM ohlc WHERE time <= '{self._as_of}' AND symbol='{self.symbol}'""",
             self._db,
         )
-
-
-class Portfolio(entity.finance.Portfolio):
-    _execution: str
-    _as_of: datetime
-    _db: engine.Connection
-
-    @classmethod
-    def read(cls, execution: str, as_of: datetime, db: engine.Connection):
-        row = db.execute(
-            text(
-                f"""Select id, cash, value
-            FROM backtest_portfolio WHERE execution='{execution}' AND date='{as_of}'"""
-            )
-        ).fetchone()
-        if row is None:
-            return None
-        portfolio = cls.model_construct()
-        portfolio_id = row[0]
-        portfolio.cash = row[1]
-        portfolio.value = row[2]
-        portfolio._execution = execution
-        portfolio._as_of = as_of
-        portfolio._db = db
-        rows = db.execute(
-            text(
-                f"""Select symbol, amount, cost_basis
-            FROM backtest_position WHERE portfolio_id='{portfolio_id}'"""
-            )
-        ).fetchall()
-        portfolio.positions = [entity.finance.Position(symbol=row[0], amount=row[1], cost_basis=row[2]) for row in rows]
-        return portfolio

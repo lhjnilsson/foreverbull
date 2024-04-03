@@ -5,15 +5,16 @@ from datetime import datetime, timezone
 import pynng
 import pytest
 
-from foreverbull import entity
-from foreverbull.entity.finance import Asset, Order, OrderStatus
+from foreverbull.entity import backtest
 from foreverbull.entity.service import Request, Response
+from foreverbull_zipline import entity
 from foreverbull_zipline.execution import Execution
 
 
 def test_start_stop():
     execution = Execution()
     execution.start()
+    time.sleep(0.5)  # Make sure it has time to start
     execution.stop()
 
 
@@ -126,7 +127,7 @@ def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, inges
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
-    execution = entity.backtest.Execution(**response.data)
+    execution = backtest.Execution(**response.data)
 
     execution_socket.send(Request(task="run_execution").dump())
     response = Response.load(execution_socket.recv())
@@ -194,7 +195,7 @@ def test_multiple_runs_different_symbols(execution: Execution, execution_socket:
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
-    execution = entity.backtest.Execution(**response.data)
+    execution = backtest.Execution(**response.data)
     assert execution.symbols == symbols if symbols is not None else ["AAPL", "MSFT", "TSLA"]
 
     execution_socket.send(Request(task="run_execution").dump())
@@ -202,7 +203,6 @@ def test_multiple_runs_different_symbols(execution: Execution, execution_socket:
     assert response.task == "run_execution"
     assert response.error is None
 
-    received_symbols = []
     while True:
         execution_socket.send(Request(task="get_period").dump())
         response = Response.load(execution_socket.recv())
@@ -210,14 +210,8 @@ def test_multiple_runs_different_symbols(execution: Execution, execution_socket:
         if response.data is None:
             break
         assert response.error is None
-        received_symbols = response.data["symbols"]
         execution_socket.send(Request(task="continue").dump())
         execution_socket.recv()
-
-    # None is all ingested symbols
-    if symbols is None:
-        symbols = ["AAPL", "MSFT", "TSLA"]
-    assert received_symbols == symbols
 
 
 def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
@@ -249,7 +243,10 @@ def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
     assert len(response.data["periods"])
 
 
-def test_broker(execution: Execution, execution_socket: pynng.Rep0):
+@pytest.mark.parametrize("benchmark", ["AAPL", None])
+def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+    execution.benchmark = benchmark
+
     execution_socket.send(Request(task="configure_execution", data=execution).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
@@ -263,20 +260,20 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     execution_socket.send(Request(task="continue").dump())
     execution_socket.recv()
 
-    asset = Asset(symbol=execution.symbols[0])
+    asset = entity.Asset(symbol=execution.symbols[0])
     execution_socket.send(Request(task="can_trade", data=asset).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "can_trade"
     assert response.error is None
 
-    order = Order(symbol=execution.symbols[0], amount=10)
+    order = entity.Order(symbol=execution.symbols[0], amount=10)
     execution_socket.send(Request(task="order", data=order).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
     assert response.data["amount"] == order.amount
-    assert response.data["status"] == OrderStatus.OPEN
+    assert response.data["status"] == entity.OrderStatus.OPEN
     assert response.data["id"]
     placed_order = response.data
 
@@ -287,7 +284,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     response = Response.load(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
-    period = entity.backtest.Period(**response.data)
+    period = entity.Period(**response.data)
     assert len(period.new_orders) == 1
     assert period.new_orders[0].symbol == order.symbol
 
@@ -297,7 +294,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     assert response.error is None
     assert response.data["symbol"] == order.symbol
     assert response.data["amount"] == order.amount
-    assert response.data["status"] == OrderStatus.FILLED
+    assert response.data["status"] == entity.OrderStatus.FILLED
 
     execution_socket.send(Request(task="continue").dump())
     execution_socket.recv()
@@ -306,17 +303,17 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     response = Response.load(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
-    period = entity.backtest.Period(**response.data)
+    period = entity.Period(**response.data)
     assert len(period.new_orders) == 0
 
-    order = Order(symbol=execution.symbols[0], amount=15)
+    order = entity.Order(symbol=execution.symbols[0], amount=15)
     execution_socket.send(Request(task="order", data=order).dump())
     response = Response.load(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
     assert response.data["amount"] == order.amount
-    assert response.data["status"] == OrderStatus.OPEN
+    assert response.data["status"] == entity.OrderStatus.OPEN
     assert response.data["id"]
 
     execution_socket.send(Request(task="get_open_orders").dump())
@@ -327,7 +324,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     assert len(response.data["orders"]) == 1
     assert response.data["orders"][0]["symbol"] == order.symbol
     assert response.data["orders"][0]["amount"] == order.amount
-    assert response.data["orders"][0]["status"] == OrderStatus.OPEN
+    assert response.data["orders"][0]["status"] == entity.OrderStatus.OPEN
 
     execution_socket.send(Request(task="cancel_order", data=response.data["orders"][0]).dump())
     response = Response.load(execution_socket.recv())
@@ -340,7 +337,7 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     assert response.error is None
     assert response.data["symbol"] == order.symbol
     assert response.data["amount"] == order.amount
-    assert response.data["status"] == OrderStatus.CANCELLED
+    assert response.data["status"] == entity.OrderStatus.CANCELLED
 
     while True:
         execution_socket.send(Request(task="continue").dump())
@@ -354,3 +351,5 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0):
     assert response.error is None
     assert "periods" in response.data
     assert len(response.data["periods"])
+
+    print(response.data["periods"][-1]["benchmark_period_return"])

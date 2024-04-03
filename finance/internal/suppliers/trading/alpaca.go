@@ -1,7 +1,10 @@
 package trading
 
 import (
+	"fmt"
+
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
+	"github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 )
 
@@ -15,64 +18,65 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 		APIKey:    environment.GetAlpacaAPIKey(),
 		APISecret: environment.GetAlpacaAPISecret(),
 	})
-
+	acc, err := client.GetAccount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account: %w", err)
+	}
+	if acc.AccountBlocked {
+		return nil, fmt.Errorf("account is blocked")
+	}
+	if acc.TradingBlocked {
+		return nil, fmt.Errorf("trading is blocked")
+	}
 	return &AlpacaClient{client: client}, nil
 }
 
-/*
-func (a *AlpacaClient) PlaceOrder(order *storage.Order) error {
-	var qty decimal.Decimal
-	var side alpaca.Side
-	if order.Amount > 0 {
-		qty = decimal.NewFromInt(int64(order.Amount))
-		side = alpaca.Side("buy")
-	} else {
-		qty = decimal.NewFromInt(int64(-order.Amount))
-		side = alpaca.Side("sell")
+func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
+	acc, err := c.client.GetAccount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
-	_, err := a.client.PlaceOrder(alpaca.PlaceOrderRequest{
-		Symbol:      order.Symbol,
-		Qty:         &qty,
-		Side:        side,
-		Type:        alpaca.Market,
-		TimeInForce: alpaca.Day,
-	})
-	return err
+	pos, err := c.client.GetPositions()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get positions: %w", err)
+	}
+	var positions []entity.Position
+	for _, position := range pos {
+		positions = append(positions, entity.Position{
+			Symbol:    position.Symbol,
+			Exchange:  position.Exchange,
+			Amount:    position.Qty,
+			CostBasis: position.CostBasis,
+			Side:      position.Side,
+		})
+	}
+	return &entity.Portfolio{
+		Cash:      acc.Cash,
+		Value:     acc.PortfolioValue,
+		Positions: positions,
+	}, nil
 }
 
-func (a *AlpacaClient) GetOrders() ([]*storage.Order, error) {
-	orders, err := a.client.GetOrders(alpaca.GetOrdersRequest{})
+func (c *AlpacaClient) GetOrders() ([]*entity.Order, error) {
+	orders, err := c.client.GetOrders(alpaca.GetOrdersRequest{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
-	var result []*storage.Order
+	var entityOrders []*entity.Order
 	for _, order := range orders {
-		var amount int
-		if order.Side == "buy" {
-			amount = int(order.Qty.IntPart())
-		} else {
-			amount = int(-order.Qty.IntPart())
-		}
-		result = append(result, &storage.Order{
-			Symbol: order.Symbol,
-			Amount: amount,
+		entityOrders = append(entityOrders, &entity.Order{
+			ID:          order.ID,
+			CreatedAt:   order.CreatedAt,
+			UpdatedAt:   order.UpdatedAt,
+			SubmittedAt: order.SubmittedAt,
+			FilledAt:    order.FilledAt,
+			ExpiredAt:   order.ExpiredAt,
+			CanceledAt:  order.CanceledAt,
+			FailedAt:    order.FailedAt,
+			ReplacedAt:  order.ReplacedAt,
+			Symbol:      order.Symbol,
+			Side:        string(order.Side),
 		})
 	}
-	return result, nil
+	return entityOrders, nil
 }
-
-func (a *AlpacaClient) GetPositions() ([]*storage.Position, error) {
-	positions, err := a.client.GetPositions()
-	if err != nil {
-		return nil, err
-	}
-	var result []*storage.Position
-	for _, position := range positions {
-		result = append(result, &storage.Position{
-			Symbol: position.Symbol,
-			Amount: int(position.Qty.IntPart()),
-		})
-	}
-	return result, nil
-}
-*/

@@ -11,7 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 )
 
 func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
@@ -41,35 +41,35 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 	}
 
 	backtests := repository.Backtest{Conn: db}
-	backtest, err := backtests.Get(ctx, command.BacktestName)
+	b, err := backtests.Get(ctx, command.BacktestName)
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
-	ingestConfig := engine.IngestConfig{
-		Calendar: backtest.Calendar,
-		Start:    backtest.Start,
-		End:      backtest.End,
-		Symbols:  backtest.Symbols,
+	ingestConfig := backtest.IngestConfig{
+		Calendar: b.Calendar,
+		Start:    b.Start,
+		End:      b.End,
+		Symbols:  b.Symbols,
 		Database: environment.GetPostgresURL(),
 	}
-	ingest := func(e engine.Engine) error {
+	ingest := func(e backtest.Backtest) error {
 		err = e.Ingest(ctx, &ingestConfig)
 		if err != nil {
 			return fmt.Errorf("error ingesting: %w", err)
 		}
 
-		err = e.UploadIngestion(ctx, backtest.Name)
+		err = e.UploadIngestion(ctx, b.Name)
 		if err != nil {
 			return fmt.Errorf("error uploading ingestion: %w", err)
 		}
 		return nil
 	}
 
-	engineInstance, err := message.Call(ctx, dependency.GetBacktestEngineKey)
+	engineInstance, err := message.Call(ctx, dependency.GetBacktestKey)
 	if err != nil {
 		return fmt.Errorf("error getting backtest engine: %w", err)
 	}
-	e := engineInstance.(engine.Engine)
+	e := engineInstance.(backtest.Backtest)
 	err = ingest(e)
 	if err != nil {
 		return fmt.Errorf("error ingesting: %w", err)

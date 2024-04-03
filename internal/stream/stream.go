@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -87,7 +88,8 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 		go func(m *nats.Msg) {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Err(fmt.Errorf("panic: %v", r)).Msg("panic in command subscriber")
+					log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
+					fmt.Println("stacktrace from panic: \n" + string(debug.Stack()))
 				}
 			}()
 			msg := &message{}

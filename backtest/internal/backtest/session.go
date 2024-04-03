@@ -8,7 +8,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
@@ -30,11 +30,9 @@ type session struct {
 	backtestInstance *service.Instance     `json:"-"`
 	executions       *repository.Execution `json:"-"`
 	periods          *repository.Period    `json:"-"`
-	orders           *repository.Order     `json:"-"`
-	portfolio        *repository.Portfolio `json:"-"`
 
-	engine  engine.Engine `json:"-"`
-	workers worker.Pool   `json:"-"`
+	b       backtest.Backtest `json:"-"`
+	workers worker.Pool       `json:"-"`
 
 	Socket          socket.Socket        `json:"-"`
 	socket          socket.ContextSocket `json:"-"`
@@ -44,9 +42,8 @@ type session struct {
 
 func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
-	executions *repository.Execution, periods *repository.Period, orders *repository.Order, portfolio *repository.Portfolio,
-	workers ...*service.Instance) (Session, error) {
-	engine, err := engine.NewZiplineEngine(ctx, backtestInstance)
+	executions *repository.Execution, periods *repository.Period, workers ...*service.Instance) (Session, error) {
+	b, err := backtest.NewZiplineEngine(ctx, backtestInstance)
 	if err != nil {
 		return nil, fmt.Errorf("error creating zipline engine: %w", err)
 	}
@@ -61,10 +58,8 @@ func NewSession(ctx context.Context,
 		backtestInstance: backtestInstance,
 		executions:       executions,
 		periods:          periods,
-		orders:           orders,
-		portfolio:        portfolio,
 
-		engine:  engine,
+		b:       b,
 		workers: workerPool,
 	}
 	s.Socket = socket.Socket{Type: socket.Replier, Host: "0.0.0.0", Port: 0, Listen: true, Dial: false}
@@ -72,7 +67,7 @@ func NewSession(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	return &s, engine.DownloadIngestion(ctx, storedBacktest.Name)
+	return &s, b.DownloadIngestion(ctx, storedBacktest.Name)
 }
 
 func (e *session) GetSocket() *socket.Socket {
@@ -80,7 +75,7 @@ func (e *session) GetSocket() *socket.Socket {
 }
 
 func (e *session) RunExecution(ctx context.Context, execution *entity.Execution) error {
-	exec := NewExecution(e.engine, e.workers)
+	exec := NewExecution(e.b, e.workers)
 
 	workerCfg := worker.Configuration{
 		Execution: execution.ID,
@@ -89,7 +84,7 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 	}
 
 	tz := "UTC"
-	backtestCfg := engine.BacktestConfig{
+	backtestCfg := backtest.BacktestConfig{
 		Calendar:  &execution.Calendar,
 		Start:     &execution.Start,
 		End:       &execution.End,
@@ -112,24 +107,9 @@ func (e *session) RunExecution(ctx context.Context, execution *entity.Execution)
 		return fmt.Errorf("failed to update execution simulation details: %w", err)
 	}
 
-	events := make(chan chan entity.ExecutionPeriod)
-	go exec.Run(context.TODO(), execution.ID, events)
-	for event := range events {
-		status := <-event
-		if status.Error != nil {
-		} else {
-			for _, order := range status.Period.NewOrders {
-				err = e.orders.Store(context.Background(), execution.ID, &order)
-				if err != nil {
-					log.Err(err).Msg("failed to create order")
-				}
-			}
-			err = e.portfolio.Store(context.Background(), execution.ID, status.Period.Timestamp, &status.Period.Portfolio)
-			if err != nil {
-				log.Err(err).Msg("failed to create position")
-			}
-		}
-		close(event)
+	err = exec.Run(context.TODO(), execution)
+	if err != nil {
+		return fmt.Errorf("failed to run execution: %w", err)
 	}
 	periods, err := exec.StoreDataFrameAndGetPeriods(context.Background(), execution.ID)
 	if err != nil {
@@ -150,7 +130,7 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 		if err != nil {
 			log.Err(err).Msg("failed to stop workers")
 		}
-		err = e.engine.Stop(context.TODO())
+		err = e.b.Stop(context.TODO())
 		if err != nil {
 			log.Err(err).Msg("failed to stop engine")
 		}
@@ -199,12 +179,11 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 
 			e.executionEntity.Port = &e.workers.SocketConfig().Port
 
-			e.execution = NewExecution(e.engine, e.workers)
+			e.execution = NewExecution(e.b, e.workers)
 			rsp = message.Response{Task: req.Task, Data: e.executionEntity}
 		case "run_execution":
-			events := make(chan chan entity.ExecutionPeriod)
 			tz := "UTC"
-			backtestCfg := engine.BacktestConfig{
+			backtestCfg := backtest.BacktestConfig{
 				Calendar:  &e.executionEntity.Calendar,
 				Start:     &e.executionEntity.Start,
 				End:       &e.executionEntity.End,
@@ -214,27 +193,11 @@ func (e *session) Run(activity chan<- bool, stop <-chan bool) error {
 			}
 			err = e.execution.Configure(context.Background(), nil, &backtestCfg)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to configure execution: %w", err)
 			}
-			go e.execution.Run(context.TODO(), e.executionEntity.ID, events)
-			for event := range events {
-				activity <- true
-				status := <-event
-				if status.Error != nil {
-					rsp.Error = status.Error.Error()
-				} else {
-					for _, order := range status.Period.NewOrders {
-						err = e.orders.Store(context.Background(), e.executionEntity.ID, &order)
-						if err != nil {
-							log.Err(err).Msg("failed to create order")
-						}
-					}
-					err = e.portfolio.Store(context.Background(), e.executionEntity.ID, status.Period.Timestamp, &status.Period.Portfolio)
-					if err != nil {
-						log.Err(err).Msg("failed to create position")
-					}
-				}
-				close(event)
+			err = e.execution.Run(context.TODO(), e.executionEntity)
+			if err != nil {
+				return fmt.Errorf("failed to run execution: %w", err)
 			}
 			if rsp.Error == "" {
 				periods, err := e.execution.StoreDataFrameAndGetPeriods(context.Background(), e.executionEntity.ID)

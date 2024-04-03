@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/service/message"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
-	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest/engine"
+	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest"
 	mockWorker "github.com/lhjnilsson/foreverbull/tests/mocks/service/worker"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -16,15 +15,15 @@ import (
 
 type ExecutionTest struct {
 	suite.Suite
-	engine    *mockEngine.Engine
+	backtest  *mockBacktest.Backtest
 	workers   *mockWorker.Pool
 	execution *execution
 }
 
 func (test *ExecutionTest) SetupTest() {
-	test.engine = new(mockEngine.Engine)
+	test.backtest = new(mockBacktest.Backtest)
 	test.workers = new(mockWorker.Pool)
-	test.execution = NewExecution(test.engine, test.workers).(*execution)
+	test.execution = NewExecution(test.backtest, test.workers).(*execution)
 }
 
 func TestExecution(t *testing.T) {
@@ -33,9 +32,9 @@ func TestExecution(t *testing.T) {
 
 func (test *ExecutionTest) TestConfigure() {
 	workercfg := &worker.Configuration{}
-	backtestcfg := &engine.BacktestConfig{}
+	backtestcfg := &backtest.BacktestConfig{}
 
-	test.engine.On("ConfigureExecution", mock.Anything, backtestcfg).Return(nil)
+	test.backtest.On("ConfigureExecution", mock.Anything, backtestcfg).Return(nil)
 	test.workers.On("ConfigureExecution", mock.Anything, workercfg).Return(nil)
 
 	err := test.execution.Configure(context.TODO(), workercfg, backtestcfg)
@@ -43,18 +42,16 @@ func (test *ExecutionTest) TestConfigure() {
 }
 
 func (test *ExecutionTest) TestRun() {
-	test.engine.On("RunExecution", mock.Anything).Return(nil)
+	test.backtest.On("RunExecution", mock.Anything).Return(nil)
 	test.workers.On("RunExecution", mock.Anything).Return(nil)
 
-	test.engine.On("GetMessage").Return(&message.Response{Task: "period", Data: nil}, nil)
+	test.backtest.On("GetMessage").Return(nil, nil)
 
-	events := make(chan chan entity.ExecutionPeriod)
-	test.execution.Run(context.Background(), "test", events)
-	test.Nil(<-events)
+	test.NoError(test.execution.Run(context.Background(), &entity.Execution{}))
 }
 
 func (test *ExecutionTest) TestStop() {
-	test.engine.On("Stop", mock.Anything).Return(nil)
+	test.backtest.On("Stop", mock.Anything).Return(nil)
 	test.workers.On("Stop", mock.Anything).Return(nil)
 
 	err := test.execution.Stop(context.Background())

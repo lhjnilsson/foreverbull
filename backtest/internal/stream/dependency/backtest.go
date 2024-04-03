@@ -8,7 +8,7 @@ import (
 
 	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/service/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/service/backtest"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 )
 
@@ -48,9 +48,9 @@ func GetHTTPClient() *HTTPClient {
 	}
 }
 
-const GetBacktestEngineKey stream.Dependency = "get_backtest_engine"
+const GetBacktestKey stream.Dependency = "get_backtest"
 
-func GetBacktestEngine(ctx context.Context, message stream.Message) (interface{}, error) {
+func GetBacktest(ctx context.Context, message stream.Message) (interface{}, error) {
 	command := bs.BacktestIngestCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
@@ -63,5 +63,5 @@ func GetBacktestEngine(ctx context.Context, message stream.Message) (interface{}
 	if err != nil {
 		return nil, fmt.Errorf("error getting instances: %w", err)
 	}
-	return engine.NewZiplineEngine(ctx, &instance)
+	return backtest.NewZiplineEngine(ctx, &instance)
 }
