@@ -55,7 +55,7 @@ beta numeric);
 
 // Ugly and silent way to add constraint. Will always fail if constraint exists
 func CreateConstraint(ctx context.Context, db *pgxpool.Pool) {
-	_, err := db.Exec(ctx, `ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(backtest, timestamp);`)
+	_, err := db.Exec(ctx, `ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(execution, timestamp);`)
 	if err != nil {
 		fmt.Println("err creating constraint: ", err)
 	}
