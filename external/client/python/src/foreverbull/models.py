@@ -1,14 +1,11 @@
-import enum
 import importlib
 import types
 import typing
+from functools import partial
 from inspect import _empty, getabsfile, signature
 
-from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler, TypeAdapter
-from pydantic_core import CoreSchema, core_schema
-
+from foreverbull import entity
 from foreverbull.data import Asset
-from foreverbull.entity.finance import Order, Portfolio
 
 
 def type_to_str(type: any) -> str:
@@ -70,83 +67,71 @@ class Function:
         self.input_key = input_key
 
 
-class Entity(BaseModel):
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-    )
-
-    class FunctionParameter(BaseModel):
-        key: str
-        default: str | None
-        type: str
-
-    class Style(enum.StrEnum):
-        SEQUENTIAL = "SEQUENTIAL"
-        PARALLEL = "PARALLEL"
-
-    class ReturnType(enum.StrEnum):
-        ORDER = "ORDER"
-        LIST_OF_ORDERS = "LIST_OF_ORDERS"
-        NAMESPACE_VALUE = "NAMESPACE_VALUE"
-
-    class Function(BaseModel):
-        name: str
-        parameters: list["Entity.FunctionParameter"]
-        style: "Entity.Style"
-        return_type: "Entity.ReturnType"
-        namespace_return_key: str | None = None
-
-    file_path: str
-    functions: list["Entity.Function"]
-    namespace: Namespace
-
-
 class Algorithm:
     _algo = None
+    _file_path: str | None = None
+    _functions: dict | None = None
+    _namespace: Namespace | None = None
 
     def __init__(self, functions: list[Function], namespace: Namespace = Namespace()):
-        self._functions = functions
-        self.namespace = namespace
-        self.file_path = getabsfile(functions[0].callable)
-        self.functions = []
+        Algorithm._file_path = getabsfile(functions[0].callable)
+        Algorithm._functions = {}
+        Algorithm._namespace = namespace
+
         for f in functions:
             parameters = []
-            style = None
+            asset_key = None
+            portfolio_key = None
+
             for key, value in signature(f.callable).parameters.items():
-                if value.annotation == Portfolio:
+                if value.annotation == entity.finance.Portfolio:
+                    portfolio_key = key
                     continue
                 if value.annotation == typing.List[Asset] or value.annotation == list[Asset]:
-                    style = Entity.Style.SEQUENTIAL
+                    parallel_execution = False
+                    asset_key = key
                 elif value.annotation == Asset:
-                    style = Entity.Style.PARALLEL
+                    parallel_execution = True
+                    asset_key = key
                 else:
                     default = None if value.default == value.empty else str(value.default)
-                    parameter = Entity.FunctionParameter(key=key, default=default, type=type_to_str(value.annotation))
+                    parameter = entity.service.Algorithm.FunctionParameter(
+                        key=key, default=default, type=type_to_str(value.annotation)
+                    )
                     parameters.append(parameter)
-            if style is None:
-                raise Exception("No process style found for function {}".format(f.__name__))
             annotation = signature(f.callable).return_annotation
             if annotation == _empty:
                 raise Exception("No return type found for function {}".format(f.__name__))
-            if annotation == Order:
-                return_type = Entity.ReturnType.ORDER
-            elif annotation == typing.List[Order] or annotation == list[Order]:
-                return_type = Entity.ReturnType.LIST_OF_ORDERS
+            if annotation == entity.finance.Order:
+                return_type = entity.service.Algorithm.ReturnType.ORDER
+            elif annotation == typing.List[entity.finance.Order] or annotation == list[entity.finance.Order]:
+                return_type = entity.service.Algorithm.ReturnType.LIST_OF_ORDERS
             else:
-                return_type = Entity.ReturnType.NAMESPACE_VALUE
+                return_type = entity.service.Algorithm.ReturnType.NAMESPACE_VALUE
                 if f.namespace_return_key is None:
                     raise Exception("No namespace return key found for function {}".format(f.__name__))
 
-            self.functions.append(
-                Entity.Function(
+            function = {
+                "callable": f.callable,
+                "asset_key": asset_key,
+                "portfolio_key": portfolio_key,
+                "entity": entity.service.Algorithm.Function(
                     name=f.callable.__name__,
                     parameters=parameters,
-                    style=style,
+                    parallel_execution=parallel_execution,
                     return_type=return_type,
-                )
-            )
-        self._entity = Entity(file_path=self.file_path, functions=self.functions, namespace=self.namespace)
+                ),
+            }
+
+            Algorithm._functions[f.callable.__name__] = function
         Algorithm._algo = self
+
+    def get_entity(self):
+        return entity.service.Algorithm(
+            file_path=Algorithm._file_path,
+            functions=[function["entity"] for function in Algorithm._functions.values()],
+            namespace=Algorithm._namespace,
+        )
 
     @classmethod
     def from_file_path(cls, file_path: str) -> "Algorithm":
@@ -157,6 +142,36 @@ class Algorithm:
             raise Exception("No algo found in {}".format(file_path))
         return Algorithm._algo
 
-    @property
-    def entity(self):
-        return self._entity
+    def configure(self, execution: entity.service.Execution) -> None:
+        def _eval_param(type: str, val):
+            if type == "int":
+                return int(val)
+            elif type == "float":
+                return float(val)
+            elif type == "bool":
+                return bool(val)
+            elif type == "str":
+                return str(val)
+            else:
+                raise TypeError("Unknown parameter type")
+
+        for function_name, function in Algorithm._functions.items():
+            configuration = execution.configuration.get(function_name)
+
+            for parameter in function["entity"].parameters:
+                value = _eval_param("int", configuration.parameters.get(parameter.key))
+                Algorithm._functions[function_name]["callable"] = partial(
+                    function["callable"], **{parameter.key: value}
+                )
+
+    def process(
+        self, function_name: str, a: list[Asset] | Asset, portfolio: entity.finance.Portfolio
+    ) -> entity.finance.Order | list[entity.finance.Order] | dict:
+        if Algorithm._functions[function_name]["portfolio_key"] is not None:
+            return Algorithm._functions[function_name]["callable"](
+                **{
+                    Algorithm._functions[function_name]["portfolio_key"]: portfolio,
+                    Algorithm._functions[function_name]["asset_key"]: a,
+                }
+            )
+        return Algorithm._functions[function_name]["callable"](**{Algorithm._functions[function_name]["asset_key"]: a})

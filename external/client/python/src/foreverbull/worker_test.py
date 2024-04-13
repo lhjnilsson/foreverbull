@@ -11,7 +11,7 @@ from foreverbull.entity.service import Request, Response
 
 
 @pytest.fixture(scope="function")
-def setup_worker(algo_with_parameters, execution):
+def setup_worker(sample_algo_file, execution):
     survey_address = "ipc:///tmp/worker_pool.ipc"
     survey_socket = pynng.Surveyor0(listen=survey_address)
     survey_socket.recv_timeout = 5000
@@ -29,7 +29,7 @@ def setup_worker(algo_with_parameters, execution):
     request_socket.send_timeout = 5000
 
     def setup(worker: worker.Worker):
-        w = worker(survey_address, state_address, stop_event, algo_with_parameters)
+        w = worker(survey_address, state_address, stop_event, sample_algo_file)
         w.start()
         msg = state_socket.recv()
         assert msg == b"ready"
@@ -62,8 +62,8 @@ def setup_worker(algo_with_parameters, execution):
         ),
     ],
 )
-def test_configure_worker_exceptions(algo_with_parameters, execution, expected_error):
-    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), algo_with_parameters)
+def test_configure_worker_exceptions(sample_algo_file, execution, expected_error):
+    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), sample_algo_file)
     with (
         pytest.raises(exceptions.ConfigurationError, match=expected_error),
         pynng.Req0(listen="tcp://127.0.0.1:6565"),

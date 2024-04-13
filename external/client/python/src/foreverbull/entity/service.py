@@ -4,8 +4,18 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import pydantic
+from pydantic import BaseModel, ConfigDict
 
 from .base import Base
+
+
+class Execution(Base):
+    class Function(BaseModel):
+        parameters: dict[str, str] | None = None
+
+    id: str
+    database_url: str
+    configuration: dict[str, "Execution.Function"]
 
 
 class Parameter(Base):
@@ -13,11 +23,6 @@ class Parameter(Base):
     default: Optional[str] = None
     value: Optional[str] = None
     type: str
-
-
-class Info(Base):
-    version: str
-    parameters: List[Parameter]
 
 
 class SocketType(str, enum.Enum):
@@ -49,12 +54,38 @@ class ServiceStatus(Base):
     occurred_at: datetime
 
 
+class Algorithm(Base):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+    )
+
+    class FunctionParameter(BaseModel):
+        key: str
+        default: str | None
+        type: str
+
+    class ReturnType(enum.StrEnum):
+        ORDER = "ORDER"
+        LIST_OF_ORDERS = "LIST_OF_ORDERS"
+        NAMESPACE_VALUE = "NAMESPACE_VALUE"
+
+    class Function(BaseModel):
+        name: str
+        parameters: list["Algorithm.FunctionParameter"]
+        parallel_execution: bool = False
+        return_type: "Algorithm.ReturnType"
+        namespace_return_key: str | None = None
+
+    file_path: str
+    functions: list["Algorithm.Function"]
+    namespace: dict
+
+
 class Service(Base):
     image: str
-    type: str | None = None
-    Parameters: List[Parameter] = []
+    algorithm: Algorithm | None = None
 
-    statuses: List[ServiceStatus]
+    statuses: List[ServiceStatus] = []
 
 
 class InstanceStatusType(str, enum.Enum):

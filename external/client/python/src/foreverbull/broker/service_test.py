@@ -30,7 +30,7 @@ def test_service_list(return_value, expected_model):
                 "instances": [],
                 "statuses": [],
             },
-            Service(image="test_image", instances=[], statuses=[]),
+            Service(image="test_image", statuses=[]),
         ),
     ],
 )

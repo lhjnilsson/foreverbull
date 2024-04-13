@@ -2,6 +2,7 @@ import tempfile
 
 import pytest
 
+from foreverbull import entity
 from foreverbull.models import Algorithm, Namespace
 
 
@@ -13,28 +14,9 @@ def test_namespace():
         n.contains("key3", dict[str, int])
 
 
-"""
-namespace = {
-    "qualified_symbols": {
-        "type": "array",
-        "items": {
-            "type": "string"
-        }
-    },
-    "rsi": {
-        "type": "object",
-        "items": {
-            "type": "number"
-        }
-    }
-}
-
-"""
-
-SequentialAlgo = b"""
-from foreverbull import Algorithm, Function
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio, Order
+class TestNonParallel:
+    example = b"""
+from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(low: int, high: int, assets: list[Asset], portfolio: Portfolio) -> list[Order]:
     pass
@@ -45,10 +27,40 @@ Algorithm(
     ]
 )
 """
-ParallelAlgo = b"""
-from foreverbull import Algorithm, Function
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio, Order
+
+    @pytest.fixture
+    def algo(self):
+        with tempfile.NamedTemporaryFile(suffix=".py") as f:
+            f.write(self.example)
+            f.flush()
+            self.algo = Algorithm.from_file_path(f.name)
+
+    def test_entity(self, algo):
+        entity = self.algo.get_entity()
+        assert entity.functions is not None
+        assert len(entity.functions) == 1
+        assert entity.functions[0].name == "handle_data"
+        assert len(entity.functions[0].parameters) == 2
+        assert entity.functions[0].parallel_execution is False
+
+    def test_configure_and_process(self, algo):
+        execution = entity.service.Execution(
+            id="123",
+            database_url="not_used",
+            configuration={
+                "handle_data": entity.service.Execution.Function(
+                    parameters={"low": "5", "high": "10"},
+                )
+            },
+        )
+        self.algo.configure(execution)
+
+        self.algo.process("handle_data", [], None)
+
+
+class TestParallel:
+    example = b"""
+from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
@@ -60,10 +72,39 @@ Algorithm(
 )
 """
 
-AlgoWithNamespace = b"""
-from foreverbull import Algorithm, Function, Namespace
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio, Order
+    @pytest.fixture
+    def algo(self):
+        with tempfile.NamedTemporaryFile(suffix=".py") as f:
+            f.write(self.example)
+            f.flush()
+            self.algo = Algorithm.from_file_path(f.name)
+
+    def test_entity(self, algo):
+        entity = self.algo.get_entity()
+        assert entity.functions is not None
+        assert len(entity.functions) == 1
+        assert entity.functions[0].name == "handle_data"
+        assert len(entity.functions[0].parameters) == 2
+        assert entity.functions[0].parallel_execution is True
+
+    def test_configure_and_process(self, algo):
+        execution = entity.service.Execution(
+            id="123",
+            database_url="not_used",
+            configuration={
+                "handle_data": entity.service.Execution.Function(
+                    parameters={"low": "5", "high": "10"},
+                )
+            },
+        )
+        self.algo.configure(execution)
+
+        self.algo.process("handle_data", [], None)
+
+
+class TestWithNamespace:
+    example = b"""
+from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
@@ -76,10 +117,44 @@ Algorithm(
 )
 """
 
-MultiStepAlgoWithNamespace = b"""
-from foreverbull import Algorithm, Function, Namespace
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio, Order
+    @pytest.fixture
+    def algo(self):
+        with tempfile.NamedTemporaryFile(suffix=".py") as f:
+            f.write(self.example)
+            f.flush()
+            self.algo = Algorithm.from_file_path(f.name)
+
+    def test_entity(self, algo):
+        entity = self.algo.get_entity()
+        assert entity.functions is not None
+        assert len(entity.functions) == 1
+        assert entity.functions[0].name == "handle_data"
+        assert len(entity.functions[0].parameters) == 2
+        assert entity.functions[0].parallel_execution is True
+        assert entity.namespace is not None
+        assert "qualified_symbols" in entity.namespace
+        assert entity.namespace["qualified_symbols"] == {"type": "array", "items": {"type": "str"}}
+        assert "rsi" in entity.namespace
+        assert entity.namespace["rsi"] == {"type": "object", "items": {"type": "float"}}
+
+    def test_configure_and_process(self, algo):
+        execution = entity.service.Execution(
+            id="123",
+            database_url="not_used",
+            configuration={
+                "handle_data": entity.service.Execution.Function(
+                    parameters={"low": "5", "high": "10"},
+                )
+            },
+        )
+        self.algo.configure(execution)
+
+        self.algo.process("handle_data", [], None)
+
+
+class TestMultiStepWithNamespace:
+    example = b"""
+from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
 
 def filter_assets(assets: list[Asset]) -> list[str]:
     pass
@@ -103,79 +178,50 @@ Algorithm(
 )
 """
 
+    @pytest.fixture
+    def algo(self):
+        with tempfile.NamedTemporaryFile(suffix=".py") as f:
+            f.write(self.example)
+            f.flush()
+            self.algo = Algorithm.from_file_path(f.name)
 
-def test_sequential_algo():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(SequentialAlgo)
-        f.flush()
-        algo = Algorithm.from_file_path(f.name)
-        assert algo.functions is not None
-        assert len(algo.functions) == 1
-        assert algo.functions[0].name == "handle_data"
-        assert len(algo.functions[0].parameters) == 2
-        assert algo.functions[0].style == "SEQUENTIAL"
-        assert algo.namespace == {}
+    def test_entity(self, algo):
+        entity = self.algo.get_entity()
+        assert entity.functions is not None
+        assert len(entity.functions) == 3
 
+        assert entity.functions[0].name == "filter_assets"
+        assert len(entity.functions[0].parameters) == 0
+        assert entity.functions[0].parallel_execution is False
 
-def test_parallel_algo():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(ParallelAlgo)
-        f.flush()
-        algo = Algorithm.from_file_path(f.name)
-        assert algo.functions is not None
-        assert len(algo.functions) == 1
-        assert algo.functions[0].name == "handle_data"
-        assert len(algo.functions[0].parameters) == 2
-        assert algo.functions[0].style == "PARALLEL"
-        assert algo.namespace == {}
+        assert entity.functions[1].name == "measure_assets"
+        assert len(entity.functions[1].parameters) == 2
+        assert entity.functions[1].parallel_execution is True
 
+        assert entity.functions[2].name == "create_orders"
+        assert len(entity.functions[2].parameters) == 0
+        assert entity.functions[2].parallel_execution is False
 
-def test_algo_with_namespace():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(AlgoWithNamespace)
-        f.flush()
-        algo = Algorithm.from_file_path(f.name)
-        assert algo.functions is not None
-        assert len(algo.functions) == 1
-        assert algo.functions[0].name == "handle_data"
-        assert len(algo.functions[0].parameters) == 2
-        assert algo.functions[0].style == "PARALLEL"
-        assert algo.namespace is not None
-        assert algo.namespace.contains("qualified_symbols", list[str])
-        assert algo.namespace.contains("rsi", dict[str, float])
-        assert algo.entity is not None
-        assert algo.entity.namespace == {
-            "qualified_symbols": {"items": {"type": "str"}, "type": "array"},
-            "rsi": {"items": {"type": "float"}, "type": "object"},
-        }
+        assert entity.namespace is not None
+        assert "qualified_symbols" in entity.namespace
+        assert entity.namespace["qualified_symbols"] == {"type": "array", "items": {"type": "str"}}
+        assert "asset_metrics" in entity.namespace
+        assert entity.namespace["asset_metrics"] == {"type": "object", "items": {"type": "float"}}
 
+    def test_configure_and_process(self, algo):
+        execution = entity.service.Execution(
+            id="123",
+            database_url="not_used",
+            configuration={
+                "filter_assets": entity.service.Execution.Function(),
+                "measure_assets": entity.service.Execution.Function(
+                    parameters={"low": "5", "high": "10"},
+                ),
+                "create_orders": entity.service.Execution.Function(),
+            },
+        )
+        self.algo.configure(execution)
 
-def test_multi_step_algo_with_namespace():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(MultiStepAlgoWithNamespace)
-        f.flush()
-        algo = Algorithm.from_file_path(f.name)
-        assert algo.functions is not None
-        assert len(algo.functions) == 3
-
-        assert algo.functions[0].name == "filter_assets"
-        assert len(algo.functions[0].parameters) == 0
-        assert algo.functions[0].style == "SEQUENTIAL"
-
-        assert algo.functions[1].name == "measure_assets"
-        assert len(algo.functions[1].parameters) == 2
-        assert algo.functions[1].style == "PARALLEL"
-
-        assert algo.functions[2].name == "create_orders"
-        assert len(algo.functions[2].parameters) == 0
-        assert algo.functions[2].style == "SEQUENTIAL"
-
-        assert algo.namespace is not None
-        assert algo.namespace.contains("qualified_symbols", list[str])
-        assert algo.namespace.contains("asset_metrics", dict[str, float])
-        assert algo.entity is not None
-        assert algo.entity.namespace is not None
-        assert algo.entity.namespace == {
-            "qualified_symbols": {"items": {"type": "str"}, "type": "array"},
-            "asset_metrics": {"items": {"type": "float"}, "type": "object"},
-        }
+        self.algo.process("filter_assets", [], None)
+        self.algo.process("measure_assets", [], None)
+        self.algo.process("create_orders", [], None)

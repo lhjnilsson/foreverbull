@@ -6,21 +6,21 @@ from multiprocessing import Event
 
 import pynng
 
-from foreverbull import entity, import_file, worker
+from foreverbull import Algorithm, entity, worker
 
 
 class BaseSession:
     def __init__(
         self,
         session: entity.backtest.Session,
-        info: entity.service.Info,
+        service: entity.service.Service,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
         self._session = session
-        self._info = info
+        self._service = service
         self._surveyor = surveyor
         self._states = states
         self._workers = workers
@@ -32,8 +32,8 @@ class BaseSession:
         return self._session
 
     @property
-    def info(self):
-        return self._info
+    def service(self):
+        return self._service
 
     def configure_execution(self, execution: entity.backtest.Execution):
         self.logger.info("configuring workers")
@@ -74,13 +74,13 @@ class ManualSession(BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        info: entity.service.Info,
+        service: entity.service.Service,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
-        BaseSession.__init__(self, session, info, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
 
     def configure_execution(self, execution: entity.backtest.Execution):
@@ -111,14 +111,14 @@ class Session(threading.Thread, BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        info: entity.service.Info,
+        service: entity.service.Service,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
         threading.Thread.__init__(self)
-        BaseSession.__init__(self, session, info, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
         self.socket_config = entity.service.SocketConfig(
             hostname=socket.gethostbyname(socket.gethostname()),
@@ -146,7 +146,7 @@ class Session(threading.Thread, BaseSession):
                 self.logger.info("received request: %s", req)
                 match req.task:
                     case "info":
-                        ctx.send(entity.service.Response(task="info", data=self.info).dump())
+                        ctx.send(entity.service.Response(task="info", data=self.service).dump())
                     case "configure_execution":
                         data = self.configure_execution(entity.backtest.Execution(**req.data))
                         ctx.send(entity.service.Response(task="configure_execution", data=data).dump())
@@ -172,7 +172,7 @@ class Foreverbull:
         self._file_path = file_path
         if self._file_path:
             try:
-                import_file(self._file_path)
+                Algorithm.from_file_path(self._file_path)
             except Exception as e:
                 raise ImportError(f"Could not import file {file_path}: {repr(e)}")
         self._executors = executors
@@ -188,8 +188,8 @@ class Foreverbull:
     def __enter__(self) -> Session:
         if self._file_path is None:
             raise Exception("No algo file provided")
-        algo = import_file(self._file_path)
-        info = entity.service.Info(version="0.0.1", parameters=algo["parameters"])
+        algo = Algorithm.from_file_path(self._file_path)
+        service = entity.service.Service(image="", algorithm=algo.entity)
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
         self._worker_surveyor_socket.sendout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000
@@ -205,14 +205,14 @@ class Foreverbull:
                     self._worker_surveyor_address,
                     self._worker_states_address,
                     self._stop_event,
-                    algo["file_path"],
+                    algo.entity.file_path,
                 )
             else:
                 w = worker.WorkerProcess(
                     self._worker_surveyor_address,
                     self._worker_states_address,
                     self._stop_event,
-                    algo["file_path"],
+                    algo.entity.file_path,
                 )
             w.start()
             self._workers.append(w)
@@ -230,7 +230,7 @@ class Foreverbull:
         if self._session.manual:
             return ManualSession(
                 self._session,
-                info,
+                service,
                 self._worker_surveyor_socket,
                 self._worker_states_socket,
                 self._workers,
@@ -239,7 +239,7 @@ class Foreverbull:
         else:
             s = Session(
                 self._session,
-                info,
+                service,
                 self._worker_surveyor_socket,
                 self._worker_states_socket,
                 self._workers,

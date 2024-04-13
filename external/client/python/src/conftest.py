@@ -39,37 +39,22 @@ def execution():
 
 
 @pytest.fixture(scope="session")
-def empty_algo_file():
+def sample_algo_file():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-import foreverbull
+from foreverbull import Algorithm, Function
 from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio
+from foreverbull.entity.finance import Portfolio, Order
 
-@foreverbull.algo
-def empty_algo(asset: Asset, portfolio: Portfolio):
+def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
-
-"""
-        )
-        f.flush()
-        yield f.name
-
-
-@pytest.fixture(scope="session")
-def algo_with_parameters():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(
-            b"""
-import foreverbull
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio
-                
-@foreverbull.algo
-def algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high: int = 25):
-    pass
-
+    
+Algorithm(
+    functions=[
+        Function(callable=handle_data)
+    ]
+)
 """
         )
         f.flush()

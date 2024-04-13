@@ -10,7 +10,7 @@ import pynng
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from foreverbull import entity, exceptions, import_file
+from foreverbull import Algorithm, entity, exceptions
 from foreverbull.data import Asset, get_engine
 from foreverbull.entity.finance import Portfolio
 
@@ -48,7 +48,7 @@ class Worker:
     def _setup_algorithm(self, parameters: List[entity.service.Parameter]):
         if not os.path.exists(self._file_path):
             raise FileNotFoundError(f"File {self._file_path} does not exist")
-        algo = import_file(self._file_path)
+        algo = Algorithm.from_file_path(self._file_path)
         func = partial(algo["func"])
         default_parameters = {param.key: param for param in algo["parameters"]}
         configured_parameters = {param.key: param for param in parameters}
@@ -64,7 +64,7 @@ class Worker:
             func = partial(func, **{parameter: value})
         return func
 
-    def configure_execution(self, execution: entity.backtest.Execution):
+    def configure_execution(self, execution: entity.service.Execution):
         self.logger.info("configuring worker")
         try:
             self.socket = pynng.Rep0(
@@ -107,7 +107,7 @@ class Worker:
                 request = entity.service.Request.load(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
-                    execution = entity.backtest.Execution(**request.data)
+                    execution = entity.service.Execution(**request.data)
                     self.configure_execution(execution)
                     responder.send(entity.service.Response(task=request.task, error=None).dump())
                 elif request.task == "run_execution":
