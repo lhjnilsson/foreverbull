@@ -8,6 +8,8 @@ import pynng
 
 from foreverbull import Algorithm, entity, worker
 
+from .exceptions import ConfigurationError
+
 
 class BaseSession:
     def __init__(
@@ -43,13 +45,13 @@ class BaseSession:
             try:
                 rsp = entity.service.Response.load(self._surveyor.recv())
                 if rsp.error:
-                    raise worker.ConfigurationError(rsp.error)
+                    raise ConfigurationError(rsp.error)
                 responders += 1
                 self.logger.info("worker %s configured", responders)
                 if responders == len(self._workers):
                     break
             except pynng.exceptions.Timeout:
-                raise worker.ConfigurationError("Workers did not respond in time for configuration")
+                raise ConfigurationError("Workers did not respond in time for configuration")
         self.logger.info("all workers configured")
 
     def run_execution(self):
@@ -189,7 +191,7 @@ class Foreverbull:
         if self._file_path is None:
             raise Exception("No algo file provided")
         algo = Algorithm.from_file_path(self._file_path)
-        service = entity.service.Service(image="", algorithm=algo.entity)
+        service = entity.service.Service(image="", algorithm=algo.get_entity())
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
         self._worker_surveyor_socket.sendout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000
@@ -205,14 +207,14 @@ class Foreverbull:
                     self._worker_surveyor_address,
                     self._worker_states_address,
                     self._stop_event,
-                    algo.entity.file_path,
+                    algo.get_entity().file_path,
                 )
             else:
                 w = worker.WorkerProcess(
                     self._worker_surveyor_address,
                     self._worker_states_address,
                     self._stop_event,
-                    algo.entity.file_path,
+                    algo.get_entity().file_path,
                 )
             w.start()
             self._workers.append(w)

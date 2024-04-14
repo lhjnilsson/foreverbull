@@ -5,7 +5,6 @@ from typing import List, Optional
 from pydantic import field_serializer
 
 from .base import Base
-from .service import Parameter
 
 
 class BacktestStatusType(str, enum.Enum):
@@ -97,7 +96,6 @@ class Execution(Base):
     symbols: Optional[List[str]] = None
     capital_base: int = 100000
     database: Optional[str] = None
-    parameters: Optional[List[Parameter]] = []
 
     statuses: List[ExecutionStatus] = []
 

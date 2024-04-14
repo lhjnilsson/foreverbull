@@ -15,14 +15,8 @@ class Execution(Base):
 
     id: str
     database_url: str
+    port: int
     configuration: dict[str, "Execution.Function"]
-
-
-class Parameter(Base):
-    key: str
-    default: Optional[str] = None
-    value: Optional[str] = None
-    type: str
 
 
 class SocketType(str, enum.Enum):
@@ -38,7 +32,7 @@ class SocketConfig(Base):
     port: int = 0
     listen: bool = True
     recv_timeout: int = 20000
-    sendout: int = 20000
+    send_timeout: int = 20000
 
 
 class ServiceStatusType(str, enum.Enum):

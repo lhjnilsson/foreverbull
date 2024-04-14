@@ -18,7 +18,8 @@ from foreverbull.entity.finance import Portfolio
 class Request(BaseModel):
     execution: str
     timestamp: datetime
-    symbol: str
+    symbol: str | None = None
+    symbols: List[str] | None = None
     portfolio: Portfolio
 
 
@@ -29,6 +30,7 @@ class Worker:
         self._stop_event = stop_event
         self._database = None
         self._file_path = file_path
+        self._algo = None
         self.logger = logging.getLogger(__name__)
         super(Worker, self).__init__()
 
@@ -45,26 +47,8 @@ class Worker:
         else:
             raise TypeError("Unknown parameter type")
 
-    def _setup_algorithm(self, parameters: List[entity.service.Parameter]):
-        if not os.path.exists(self._file_path):
-            raise FileNotFoundError(f"File {self._file_path} does not exist")
-        algo = Algorithm.from_file_path(self._file_path)
-        func = partial(algo["func"])
-        default_parameters = {param.key: param for param in algo["parameters"]}
-        configured_parameters = {param.key: param for param in parameters}
-
-        for parameter in default_parameters:
-            value = None
-            if default_parameters[parameter].default:
-                value = self._eval_param(default_parameters[parameter].type, default_parameters[parameter].default)
-            if parameter in configured_parameters:
-                value = self._eval_param(configured_parameters[parameter].type, configured_parameters[parameter].value)
-            if value is None:
-                raise ValueError(f"Parameter {parameter} has no default value and is not configured")
-            func = partial(func, **{parameter: value})
-        return func
-
     def configure_execution(self, execution: entity.service.Execution):
+        self._algo = Algorithm.from_file_path(self._file_path)
         self.logger.info("configuring worker")
         try:
             self.socket = pynng.Rep0(
@@ -76,12 +60,12 @@ class Worker:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
 
         try:
-            self._algo = self._setup_algorithm(execution.parameters or [])
+            self._algo.configure(execution)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to setup algorithm: {e}")
 
         try:
-            engine = get_engine(execution.database)
+            engine = get_engine(execution.database_url)
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1 from asset;"))
             self._database_engine = engine
@@ -135,10 +119,15 @@ class Worker:
                 data = Request(**request.data)
                 self.logger.debug(f"processing request: {data}")
                 with self._database_engine.connect() as db:
-                    asset = Asset.read(data.symbol, data.timestamp, db)
-                    order = self._algo(asset=asset, portfolio=data.portfolio)
-                self.logger.debug(f"Sending response {order}")
-                context_socket.send(entity.service.Response(task=request.task, data=order).dump())
+                    if data.symbol:
+                        ret = self._algo.process(
+                            request.task, a=Asset(data.symbol, data.timestamp, db), portfolio=data.portfolio
+                        )
+                    elif data.symbols:
+                        assets = [Asset(symbol, data.timestamp, db) for symbol in data.symbols]
+                        ret = self._algo.process(request.task, assets=assets, portfolio=data.portfolio)
+                self.logger.debug(f"Sending response {ret}")
+                context_socket.send(entity.service.Response(task=request.task, data=ret).dump())
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()

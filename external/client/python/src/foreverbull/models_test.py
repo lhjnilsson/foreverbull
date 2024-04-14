@@ -46,6 +46,7 @@ Algorithm(
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
             id="123",
+            port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
@@ -90,6 +91,7 @@ Algorithm(
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
             id="123",
+            port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
@@ -140,6 +142,7 @@ Algorithm(
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
             id="123",
+            port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
@@ -211,6 +214,7 @@ Algorithm(
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
             id="123",
+            port=5656,
             database_url="not_used",
             configuration={
                 "filter_assets": entity.service.Execution.Function(),

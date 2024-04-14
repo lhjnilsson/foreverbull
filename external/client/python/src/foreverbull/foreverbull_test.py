@@ -94,6 +94,7 @@ def test_foreverbull(
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.service
+
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
 

@@ -32,7 +32,7 @@ def execution():
         end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
-        database=os.environ.get("DATABASE_URL"),
+        database=os.environ.get("DATABASE_URL", ""),
         parameters=None,
         port=5656,
     )
@@ -43,9 +43,7 @@ def sample_algo_file():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from foreverbull import Algorithm, Function
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio, Order
+from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass

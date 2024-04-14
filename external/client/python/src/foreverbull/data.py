@@ -36,23 +36,11 @@ def get_engine(url: str):
     raise Exception("Could not connect to database")
 
 
-class Asset(entity.finance.Asset):
-    _as_of: datetime
-    _db: engine.Connection
-
-    @classmethod
-    def read(cls, symbol: str, as_of: datetime, db: engine.Connection):
-        row = db.execute(text(f"Select symbol, name, title, asset_type FROM asset WHERE symbol='{symbol}'")).fetchone()
-        if row is None:
-            return None
-        asset = cls.model_construct()
-        asset.symbol = row[0]
-        asset.name = row[1]
-        asset.title = row[2]
-        asset.asset_type = row[3]
-        asset._db = db
-        asset._as_of = as_of
-        return asset
+class Asset:
+    def __init__(self, symbol: str, as_of: datetime, db: engine.Connection):
+        self.symbol = symbol
+        self._as_of = as_of
+        self._db = db
 
     @property
     def stock_data(self) -> DataFrame:
