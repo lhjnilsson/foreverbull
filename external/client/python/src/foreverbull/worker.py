@@ -10,9 +10,9 @@ import pynng
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from foreverbull import Algorithm, entity, exceptions
-from foreverbull.data import Asset, get_engine
-from foreverbull.entity.finance import Portfolio
+from . import entity, exceptions
+from .data import Asset, get_engine
+from .models import Algorithm
 
 
 class Request(BaseModel):
@@ -20,7 +20,7 @@ class Request(BaseModel):
     timestamp: datetime
     symbol: str | None = None
     symbols: List[str] | None = None
-    portfolio: Portfolio
+    portfolio: entity.finance.Portfolio
 
 
 class Worker:

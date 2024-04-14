@@ -6,9 +6,9 @@ from multiprocessing import Event
 
 import pynng
 
-from foreverbull import Algorithm, entity, worker
-
+from . import entity, worker
 from .exceptions import ConfigurationError
+from .models import Algorithm
 
 
 class BaseSession:
@@ -37,7 +37,7 @@ class BaseSession:
     def service(self):
         return self._service
 
-    def configure_execution(self, execution: entity.backtest.Execution):
+    def configure_execution(self, execution: entity.service.Execution):
         self.logger.info("configuring workers")
         self._surveyor.send(entity.service.Request(task="configure_execution", data=execution.model_dump()).dump())
         responders = 0
@@ -85,7 +85,7 @@ class ManualSession(BaseSession):
         BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
 
-    def configure_execution(self, execution: entity.backtest.Execution):
+    def configure_execution(self, execution: entity.service.Execution):
         socket = pynng.Req0(
             dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}", block_on_dial=True
         )
@@ -95,7 +95,7 @@ class ManualSession(BaseSession):
         rsp = entity.service.Response.load(socket.recv())
         if rsp.error:
             raise Exception(rsp.error)
-        execution = entity.backtest.Execution(**rsp.data)
+        execution = entity.service.Execution(**rsp.data)
         return super().configure_execution(execution)
 
     def run_execution(self):
@@ -150,7 +150,7 @@ class Session(threading.Thread, BaseSession):
                     case "info":
                         ctx.send(entity.service.Response(task="info", data=self.service).dump())
                     case "configure_execution":
-                        data = self.configure_execution(entity.backtest.Execution(**req.data))
+                        data = self.configure_execution(entity.service.Execution(**req.data))
                         ctx.send(entity.service.Response(task="configure_execution", data=data).dump())
                     case "run_execution":
                         data = self.run_execution()

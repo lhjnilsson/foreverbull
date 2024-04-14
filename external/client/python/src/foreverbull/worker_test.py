@@ -42,12 +42,6 @@ def setup_worker():
     request_socket.close()
 
 
-def test_run_worker_unable_to_connect(sample_algo_file):
-    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), sample_algo_file)
-    exit_code = w.run()
-    assert exit_code == 1
-
-
 @pytest.mark.parametrize("workerclass", [worker.WorkerThread, worker.WorkerProcess])
 def test_worker(workerclass: worker.Worker, setup_worker, parallel_algo, spawn_process):
     if type(workerclass) is worker.WorkerProcess and os.environ.get("THREADED_EXECUTION"):

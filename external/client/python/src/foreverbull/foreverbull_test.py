@@ -74,28 +74,29 @@ def manual_server():
 )
 def test_foreverbull(
     spawn_process,
-    sample_algo_file,
     execution,
+    parallel_algo,
     manual_server,
-    process_symbols,
     session,
     expected_session_type,
 ):
+
+    file_name, exc, process_symbols = parallel_algo
     server, socket_config = manual_server
-    server.new_execution_data = execution
+    server.new_execution_data = exc
     server.new_execution_error = None
-    server.run_execution_data = execution
+    server.run_execution_data = exc
     server.run_execution_error = None
     session.port = socket_config.port
 
     with (
-        Foreverbull(session, file_path=sample_algo_file) as foreverbull,
+        Foreverbull(session, file_path=file_name) as foreverbull,
         pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}") as socket,
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.service
 
-        foreverbull.configure_execution(execution)
+        foreverbull.configure_execution(exc)
         foreverbull.run_execution()
 
         process_symbols(socket, "exc_123")
