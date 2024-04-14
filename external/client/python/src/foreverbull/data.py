@@ -3,9 +3,7 @@ import re
 from datetime import datetime
 
 from pandas import DataFrame, read_sql_query
-from sqlalchemy import create_engine, engine, text
-
-from foreverbull import entity
+from sqlalchemy import create_engine, engine
 
 
 # Hacky way to get the database URL, TODO: find a better way

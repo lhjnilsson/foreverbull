@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime
-from functools import partial
 from multiprocessing import Event, Process
 from threading import Thread
 from typing import List

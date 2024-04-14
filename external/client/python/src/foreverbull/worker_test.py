@@ -1,11 +1,10 @@
 import os
-import re
 from multiprocessing import Event
 
 import pynng
 import pytest
 
-from foreverbull import exceptions, worker
+from foreverbull import worker
 from foreverbull.entity.service import Request, Response
 
 
@@ -23,7 +22,7 @@ def setup_worker():
 
     stop_event = Event()
 
-    request_socket = pynng.Req0(listen=f"tcp://127.0.0.1:5656")
+    request_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
     request_socket.recv_timeout = 5000
     request_socket.send_timeout = 5000
 

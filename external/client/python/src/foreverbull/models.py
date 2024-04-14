@@ -26,7 +26,7 @@ class Namespace(typing.Dict):
     def __init__(self, **kwargs):
         super().__init__()
         for key, value in kwargs.items():
-            if type(value) != types.GenericAlias:
+            if not isinstance(value, types.GenericAlias):
                 raise TypeError("Namespace values must be type annotations")
             if value.__origin__ == dict:
                 self[key] = {"type": "object"}
