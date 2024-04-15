@@ -39,27 +39,6 @@ def execution():
 
 
 @pytest.fixture(scope="session")
-def sample_algo_file():
-    with tempfile.NamedTemporaryFile(suffix=".py") as f:
-        f.write(
-            b"""
-from foreverbull import Algorithm, Function, Portfolio, Order, Asset
-
-def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
-    pass
-    
-Algorithm(
-    functions=[
-        Function(callable=handle_data)
-    ]
-)
-"""
-        )
-        f.flush()
-        yield f.name
-
-
-@pytest.fixture(scope="session")
 def ingest_config():
     return IngestConfig(
         calendar="NYSE",
@@ -67,12 +46,6 @@ def ingest_config():
         end=datetime(2023, 3, 31, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
     )
-
-
-@pytest.fixture(scope="session")
-def postgres_database():
-    with PostgresContainer("postgres:alpine") as postgres:
-        yield postgres
 
 
 Base = declarative_base()
@@ -99,12 +72,13 @@ class OHLC(Base):
 
 
 @pytest.fixture(scope="session")
-def database(postgres_database, ingest_config):
-    engine = create_engine(postgres_database.get_connection_url())
-    Base.metadata.create_all(engine)
-    populate_database(engine, ingest_config)
-    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
-    return engine
+def database(ingest_config):
+    with PostgresContainer("postgres:alpine") as postgres:
+        engine = create_engine(postgres.get_connection_url())
+        Base.metadata.create_all(engine)
+        populate_database(engine, ingest_config)
+        os.environ["DATABASE_URL"] = postgres.get_connection_url()
+        yield engine
 
 
 def populate_database(database: engine.Engine, ic: IngestConfig):
@@ -162,7 +136,6 @@ def foreverbull_bundle(ingest_config, database):
             execution._ingest(ingest_config)
             return bundles.load(bundle_name, os.environ, None)
 
-    # sanity check
     def sanity_check(bundle):
         bundle = load_or_create("foreverbull")
         for symbol in ingest_config.symbols:

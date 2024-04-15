@@ -15,7 +15,6 @@ from .models import Algorithm
 
 
 class Request(BaseModel):
-    execution: str
     timestamp: datetime
     symbol: str | None = None
     symbols: List[str] | None = None
