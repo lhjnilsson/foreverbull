@@ -123,7 +123,7 @@ class Worker:
                         )
                     elif data.symbols:
                         assets = [Asset(symbol, data.timestamp, db) for symbol in data.symbols]
-                        ret = self._algo.process(request.task, assets=assets, portfolio=data.portfolio)
+                        ret = self._algo.process(request.task, a=assets, portfolio=data.portfolio)
                 self.logger.debug(f"Sending response {ret}")
                 context_socket.send(entity.service.Response(task=request.task, data=ret).dump())
                 context_socket.close()

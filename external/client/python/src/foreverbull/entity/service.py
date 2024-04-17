@@ -115,6 +115,8 @@ class Request(Base):
             return v
         if isinstance(v, dict):
             return v
+        if isinstance(v, list):
+            return v
         return v.model_dump()
 
 
@@ -128,5 +130,7 @@ class Response(Base):
         if v is None:
             return v
         if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
             return v
         return v.model_dump()
