@@ -181,11 +181,6 @@ def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
         execution_socket.send(Request(task="continue").dump())
         execution_socket.recv()
 
-    execution_socket.send(Request(task="stop").dump())
-    response = Response.load(execution_socket.recv())
-    assert response.task == "stop"
-    assert response.error is None
-
 
 # None should be all ingested symbols
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"], None])

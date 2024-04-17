@@ -322,6 +322,7 @@ class Execution(threading.Thread):
                     ## Raise to force Zipline TradingAlgorithm to stop, not good way to do this
                     context_socket.send(Response(task=message.task).dump())
                     context_socket.close()
+                    self._socket.close()
                     raise StopExcecution()
                 elif message.task == "stop":
                     context_socket.send(Response(task=message.task).dump())
@@ -330,3 +331,5 @@ class Execution(threading.Thread):
             except pynng.Timeout:
                 self.logger.debug("timeout")
                 context_socket.close()
+            except pynng.Closed:
+                return
