@@ -1,11 +1,9 @@
 import os
 import time
-from datetime import datetime, timezone
 
 import pynng
 import pytest
 
-import foreverbull
 from foreverbull import Foreverbull, entity, worker
 from foreverbull_zipline.entity import Period
 from foreverbull_zipline.execution import Execution
@@ -70,7 +68,7 @@ def test_integration(zipline_socket, execution, database, ingest_config, file_pa
         configuration=configuration,
     )
 
-    with Foreverbull(session, file_path) as fb:
+    with Foreverbull(session, file_path):
         backtest = zipline_socket(execution)
         service_socket = pynng.Req0(dial="tcp://127.0.0.1:5555")
         service_socket.recv_timeout = 10000
