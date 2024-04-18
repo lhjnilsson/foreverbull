@@ -62,22 +62,15 @@ func (test *ServiceTest) TestGet() {
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 }
 
-func (test *ServiceTest) TestUpdateServiceInfo() {
+func (test *ServiceTest) TestUpdateServiceAlgorithm() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	parameters := []entity.Parameter{
-		{
-			Key:   "key1",
-			Type:  "int",
-			Value: "22",
-		},
-	}
-
-	err = db.UpdateParameters(ctx, "image", &parameters)
+	algorithm := entity.ServiceAlgorithm{}
+	err = db.UpdateAlgorithm(ctx, "image", &algorithm)
 	test.NoError(err)
 
 	service, err := db.Get(ctx, "image")
@@ -85,7 +78,7 @@ func (test *ServiceTest) TestUpdateServiceInfo() {
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
-	test.Len(*service.Parameters, 1)
+	test.Equal(algorithm, *service.Algorithm)
 }
 
 func (test *ServiceTest) TestUpdateStatus() {
