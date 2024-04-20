@@ -7,17 +7,31 @@ from foreverbull import broker
 
 from .execution import Execution
 
-log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
+log_level = os.environ.get(
+    "LOGLEVEL",
+    "WARNING",
+).upper()
 logging.basicConfig(level=log_level)
 log = logging.getLogger()
 
 if __name__ == "__main__":
     execution = Execution()
     execution.start()
-    broker.service.update_instance(socket.gethostname(), execution.socket_config)
+    broker.service.update_instance(
+        socket.gethostname(),
+        execution.socket_config,
+    )
     log.info("starting application")
-    signal.sigwait([signal.SIGTERM, signal.SIGINT])
+    signal.sigwait(
+        [
+            signal.SIGTERM,
+            signal.SIGINT,
+        ]
+    )
     log.info("stopping application")
     execution.stop()
-    broker.service.update_instance(socket.gethostname(), None)
+    broker.service.update_instance(
+        socket.gethostname(),
+        None,
+    )
     log.info("Exiting successfully")

@@ -27,7 +27,8 @@ def execution_socket():
     for _ in range(10):
         try:
             socket = pynng.Req0(
-                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True
+                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}",
+                block_on_dial=True,
             )
             socket.recv_timeout = 10000
             socket.sendout = 10000
@@ -44,7 +45,9 @@ def execution_socket():
     socket.close()
 
 
-def test_info(execution_socket: pynng.Rep0):
+def test_info(
+    execution_socket: pynng.Rep0,
+):
     req = Request(task="info")
     execution_socket.send(req.dump())
     rsp_data = execution_socket.recv()
@@ -62,20 +65,40 @@ def test_ingest(
     execution_socket: pynng.Rep0,
     ingest_config,
 ):
-    execution_socket.send(Request(task="ingest", data=ingest_config).dump())
+    execution_socket.send(
+        Request(
+            task="ingest",
+            data=ingest_config,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "ingest"
     assert response.error is None
 
 
-@pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+@pytest.mark.parametrize(
+    "benchmark",
+    [
+        "AAPL",
+        None,
+    ],
+)
+def test_run_benchmark(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+    benchmark,
+):
     execution_socket.send(Request(task="info").dump())
     Response.load(execution_socket.recv())
 
     execution.benchmark = benchmark
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
@@ -103,27 +126,68 @@ def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, bench
     "start",
     [
         None,
-        datetime(2023, 1, 3, tzinfo=timezone.utc),
-        datetime(2023, 2, 1, tzinfo=timezone.utc),
-        datetime(2022, 12, 1, tzinfo=timezone.utc),
+        datetime(
+            2023,
+            1,
+            3,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2023,
+            2,
+            1,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2022,
+            12,
+            1,
+            tzinfo=timezone.utc,
+        ),
     ],
 )
 @pytest.mark.parametrize(
     "end",
     [
         None,
-        datetime(2023, 3, 30, tzinfo=timezone.utc),
-        datetime(2023, 2, 1, tzinfo=timezone.utc),
-        datetime(2023, 4, 30, tzinfo=timezone.utc),
+        datetime(
+            2023,
+            3,
+            30,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2023,
+            2,
+            1,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2023,
+            4,
+            30,
+            tzinfo=timezone.utc,
+        ),
     ],
 )
-def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, ingest_config, start, end):
+def test_run_with_time(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+    ingest_config,
+    start,
+    end,
+):
     execution_socket.send(Request(task="info").dump())
     Response.load(execution_socket.recv())
 
     execution.start = start
     execution.end = end
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
@@ -159,11 +223,19 @@ def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, inges
         execution_socket.recv()
 
 
-def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
+def test_premature_stop(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+):
     execution_socket.send(Request(task="info").dump())
     Response.load(execution_socket.recv())
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
@@ -183,15 +255,43 @@ def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
 
 
 # None should be all ingested symbols
-@pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"], None])
-def test_multiple_runs_different_symbols(execution: Execution, execution_socket: pynng.Rep0, symbols):
+@pytest.mark.parametrize(
+    "symbols",
+    [
+        ["AAPL"],
+        [
+            "AAPL",
+            "MSFT",
+        ],
+        ["TSLA"],
+        None,
+    ],
+)
+def test_multiple_runs_different_symbols(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+    symbols,
+):
     execution.symbols = symbols
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
     execution = backtest.Execution(**response.data)
-    assert execution.symbols == symbols if symbols is not None else ["AAPL", "MSFT", "TSLA"]
+    assert (
+        execution.symbols == symbols
+        if symbols is not None
+        else [
+            "AAPL",
+            "MSFT",
+            "TSLA",
+        ]
+    )
 
     execution_socket.send(Request(task="run_execution").dump())
     response = Response.load(execution_socket.recv())
@@ -209,8 +309,16 @@ def test_multiple_runs_different_symbols(execution: Execution, execution_socket:
         execution_socket.recv()
 
 
-def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+def test_get_result(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+):
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
@@ -238,11 +346,26 @@ def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
     assert len(response.data["periods"])
 
 
-@pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+@pytest.mark.parametrize(
+    "benchmark",
+    [
+        "AAPL",
+        None,
+    ],
+)
+def test_broker(
+    execution: Execution,
+    execution_socket: pynng.Rep0,
+    benchmark,
+):
     execution.benchmark = benchmark
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
+    execution_socket.send(
+        Request(
+            task="configure_execution",
+            data=execution,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
@@ -256,13 +379,26 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     execution_socket.recv()
 
     asset = entity.Asset(symbol=execution.symbols[0])
-    execution_socket.send(Request(task="can_trade", data=asset).dump())
+    execution_socket.send(
+        Request(
+            task="can_trade",
+            data=asset,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "can_trade"
     assert response.error is None
 
-    order = entity.Order(symbol=execution.symbols[0], amount=10)
-    execution_socket.send(Request(task="order", data=order).dump())
+    order = entity.Order(
+        symbol=execution.symbols[0],
+        amount=10,
+    )
+    execution_socket.send(
+        Request(
+            task="order",
+            data=order,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
@@ -283,7 +419,12 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert len(period.new_orders) == 1
     assert period.new_orders[0].symbol == order.symbol
 
-    execution_socket.send(Request(task="get_order", data=placed_order).dump())
+    execution_socket.send(
+        Request(
+            task="get_order",
+            data=placed_order,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "get_order"
     assert response.error is None
@@ -301,8 +442,16 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     period = entity.Period(**response.data)
     assert len(period.new_orders) == 0
 
-    order = entity.Order(symbol=execution.symbols[0], amount=15)
-    execution_socket.send(Request(task="order", data=order).dump())
+    order = entity.Order(
+        symbol=execution.symbols[0],
+        amount=15,
+    )
+    execution_socket.send(
+        Request(
+            task="order",
+            data=order,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
@@ -321,12 +470,22 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert response.data["orders"][0]["amount"] == order.amount
     assert response.data["orders"][0]["status"] == entity.OrderStatus.OPEN
 
-    execution_socket.send(Request(task="cancel_order", data=response.data["orders"][0]).dump())
+    execution_socket.send(
+        Request(
+            task="cancel_order",
+            data=response.data["orders"][0],
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "cancel_order"
     assert response.error is None
 
-    execution_socket.send(Request(task="get_order", data=response.data).dump())
+    execution_socket.send(
+        Request(
+            task="get_order",
+            data=response.data,
+        ).dump()
+    )
     response = Response.load(execution_socket.recv())
     assert response.task == "get_order"
     assert response.error is None

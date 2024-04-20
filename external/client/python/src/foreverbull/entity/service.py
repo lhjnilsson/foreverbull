@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict
 from .base import Base
 
 
-def type_to_str(type: any) -> str:
+def type_to_str(
+    type: any,
+) -> str:
     match type():
         case int():
             return "int"
@@ -26,15 +28,27 @@ def type_to_str(type: any) -> str:
 
 class Execution(Base):
     class Function(BaseModel):
-        parameters: dict[str, str] | None = None
+        parameters: (
+            dict[
+                str,
+                str,
+            ]
+            | None
+        ) = None
 
     id: str
     database_url: str
     port: int
-    configuration: dict[str, "Execution.Function"]
+    configuration: dict[
+        str,
+        "Execution.Function",
+    ]
 
 
-class SocketType(str, enum.Enum):
+class SocketType(
+    str,
+    enum.Enum,
+):
     REQUESTER = "REQUESTER"
     REPLIER = "REPLIER"
     PUBLISHER = "PUBLISHER"
@@ -50,7 +64,10 @@ class SocketConfig(Base):
     send_timeout: int = 20000
 
 
-class ServiceStatusType(str, enum.Enum):
+class ServiceStatusType(
+    str,
+    enum.Enum,
+):
     CREATED = "CREATED"
     INTERVIEW = "INTERVIEW"
     READY = "READY"
@@ -92,30 +109,63 @@ class Algorithm(Base):
 
     file_path: str
     functions: list["Algorithm.Function"]
-    namespace: dict[str, Namespace] = {}
+    namespace: dict[
+        str,
+        Namespace,
+    ] = {}
 
-    @pydantic.field_validator("namespace", mode="before")
+    @pydantic.field_validator(
+        "namespace",
+        mode="before",
+    )
     @classmethod
-    def validate_namespace(cls, v):
-        if not isinstance(v, dict):
+    def validate_namespace(
+        cls,
+        v,
+    ):
+        if not isinstance(
+            v,
+            dict,
+        ):
             raise ValueError("Namespace must be a dictionary")
         namespace = {}
-        for key, value in v.items():
-            if isinstance(value, Algorithm.Namespace):
+        for (
+            key,
+            value,
+        ) in v.items():
+            if isinstance(
+                value,
+                Algorithm.Namespace,
+            ):
                 namespace[key] = value
                 continue
-            if not isinstance(value, types.GenericAlias):
+            if not isinstance(
+                value,
+                types.GenericAlias,
+            ):
                 raise ValueError("Namespace value must be a GenericAlias")
 
             if value.__origin__ == dict:
                 if len(value.__args__) != 2:
-                    raise ValueError("Expected typed dict with 2 arguments, has: ", len(value.__args__))
+                    raise ValueError(
+                        "Expected typed dict with 2 arguments, has: ",
+                        len(value.__args__),
+                    )
                 if value.__args__[0] != str:
-                    raise ValueError("Expected typed dict with string keys, has: ", value.__args__[0])
+                    raise ValueError(
+                        "Expected typed dict with string keys, has: ",
+                        value.__args__[0],
+                    )
 
-                namespace[key] = Algorithm.Namespace(type="object", value_type=type_to_str(value.__args__[1]))
+                namespace[key] = Algorithm.Namespace(
+                    type="object",
+                    value_type=type_to_str(value.__args__[1]),
+                )
             elif value.__origin__ == list:
-                namespace[key] = Algorithm.Namespace(type="array", value_type=type_to_str(value.__args__[0]))
+                namespace[key] = Algorithm.Namespace(
+                    type="array",
+                    value_type=type_to_str(value.__args__[0]),
+                )
             else:
                 raise ValueError("Unsupported namespace type")
         return namespace
@@ -128,7 +178,10 @@ class Service(Base):
     statuses: List[ServiceStatus] = []
 
 
-class InstanceStatusType(str, enum.Enum):
+class InstanceStatusType(
+    str,
+    enum.Enum,
+):
     CREATED = "CREATED"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -157,12 +210,21 @@ class Request(Base):
 
     @pydantic.field_validator("data")
     @classmethod
-    def validate_data(cls, v):
+    def validate_data(
+        cls,
+        v,
+    ):
         if v is None:
             return v
-        if isinstance(v, dict):
+        if isinstance(
+            v,
+            dict,
+        ):
             return v
-        if isinstance(v, list):
+        if isinstance(
+            v,
+            list,
+        ):
             return v
         return v.model_dump()
 
@@ -174,11 +236,20 @@ class Response(Base):
 
     @pydantic.field_validator("data")
     @classmethod
-    def validate_data(cls, v):
+    def validate_data(
+        cls,
+        v,
+    ):
         if v is None:
             return v
-        if isinstance(v, dict):
+        if isinstance(
+            v,
+            dict,
+        ):
             return v
-        if isinstance(v, list):
+        if isinstance(
+            v,
+            list,
+        ):
             return v
         return v.model_dump()

@@ -14,7 +14,9 @@ def list() -> requests.Request:
 
 
 @api_call(response_model=entity.service.Service)
-def create(image: str) -> requests.Request:
+def create(
+    image: str,
+) -> requests.Request:
     return requests.Request(
         method="POST",
         url="/service/api/services",
@@ -23,7 +25,9 @@ def create(image: str) -> requests.Request:
 
 
 @api_call(response_model=entity.service.Service)
-def get(image: str) -> requests.Request:
+def get(
+    image: str,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url=f"/service/api/services/{image}",
@@ -31,7 +35,9 @@ def get(image: str) -> requests.Request:
 
 
 @api_call(response_model=entity.service.Instance)
-def list_instances(image: str = None) -> requests.Request:
+def list_instances(
+    image: str = None,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url="/service/api/instances",
@@ -40,9 +46,12 @@ def list_instances(image: str = None) -> requests.Request:
 
 
 @api_call(response_model=entity.service.Instance)
-def update_instance(container_id: str, socket: entity.service.SocketConfig = None) -> requests.Request:
+def update_instance(
+    container_id: str,
+    socket: entity.service.SocketConfig = None,
+) -> requests.Request:
     return requests.Request(
         method="PATCH",
         url=f"/service/api/instances/{container_id}",
-        json={**socket.model_dump()} if socket else {},
+        json=({**socket.model_dump()} if socket else {}),
     )

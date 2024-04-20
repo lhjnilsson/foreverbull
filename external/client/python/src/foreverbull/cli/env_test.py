@@ -11,28 +11,63 @@ from foreverbull.cli.env import env
 
 runner = CliRunner(mix_stderr=False)
 
-container = namedtuple("container", ["id", "name", "image", "status", "health"])
-image = namedtuple("image", ["id", "short_id", "tags", "created"])
+container = namedtuple(
+    "container",
+    [
+        "id",
+        "name",
+        "image",
+        "status",
+        "health",
+    ],
+)
+image = namedtuple(
+    "image",
+    [
+        "id",
+        "short_id",
+        "tags",
+        "created",
+    ],
+)
 
 
 class MockedDockerProperty:
-    def __init__(self, resources: dict, on_not_found: Exception = docker.errors.NotFound("")):
+    def __init__(
+        self,
+        resources: dict,
+        on_not_found: Exception = docker.errors.NotFound(""),
+    ):
         self.resources = resources
         self.on_not_found = on_not_found
 
-    def get(self, key):
+    def get(
+        self,
+        key,
+    ):
         if key in self.resources:
             return self.resources[key]
         else:
             raise self.on_not_found
 
-    def create(self, *args, **kwargs):
+    def create(
+        self,
+        *args,
+        **kwargs,
+    ):
         pass
 
-    def pull(self, image: str):
+    def pull(
+        self,
+        image: str,
+    ):
         pass
 
-    def run(self, image: str, **kwargs):
+    def run(
+        self,
+        image: str,
+        **kwargs,
+    ):
         self.resources[kwargs["name"]] = container(
             id=kwargs["name"],
             name=kwargs["name"],
@@ -45,7 +80,10 @@ class MockedDockerProperty:
 @pytest.mark.parametrize(
     "containers, images",
     [
-        ({}, {}),
+        (
+            {},
+            {},
+        ),
         (
             {
                 "foreverbull_postgres": container(
@@ -82,38 +120,81 @@ class MockedDockerProperty:
                     id="image1",
                     short_id="image1",
                     tags=["image1"],
-                    created=datetime(2021, 1, 1, 0, 0, 0),
+                    created=datetime(
+                        2021,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                    ),
                 ),
                 "nats:2.10-alpine": image(
                     id="image2",
                     short_id="image2",
                     tags=["image2"],
-                    created=datetime(2021, 1, 1, 0, 0, 0),
+                    created=datetime(
+                        2021,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                    ),
                 ),
                 "minio/minio:latest": image(
                     id="image3",
                     short_id="image3",
                     tags=["image3"],
-                    created=datetime(2021, 1, 1, 0, 0, 0),
+                    created=datetime(
+                        2021,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                    ),
                 ),
                 "lhjnilsson/foreverbull:latest": image(
                     id="image4",
                     short_id="image4",
                     tags=["image4"],
-                    created=datetime(2021, 1, 1, 0, 0, 0),
+                    created=datetime(
+                        2021,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                    ),
                 ),
             },
         ),
     ],
 )
-def test_env_status(containers, images):
+def test_env_status(
+    containers,
+    images,
+):
     with (
-        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
-        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
+        patch(
+            "docker.client.DockerClient.containers",
+            new_callable=PropertyMock,
+        ) as mock_containers,
+        patch(
+            "docker.client.DockerClient.images",
+            new_callable=PropertyMock,
+        ) as mock_images,
     ):
         mock_containers.return_value = MockedDockerProperty(containers)
-        mock_images.return_value = MockedDockerProperty(images, on_not_found=docker.errors.ImageNotFound(""))
-        result = runner.invoke(env, ["status"])
+        mock_images.return_value = MockedDockerProperty(
+            images,
+            on_not_found=docker.errors.ImageNotFound(""),
+        )
+        result = runner.invoke(
+            env,
+            ["status"],
+        )
 
         if result.exception:
             traceback.print_exception(*result.exc_info)
@@ -122,14 +203,33 @@ def test_env_status(containers, images):
 
 def test_env_start():
     with (
-        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
-        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
-        patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
+        patch(
+            "docker.client.DockerClient.containers",
+            new_callable=PropertyMock,
+        ) as mock_containers,
+        patch(
+            "docker.client.DockerClient.images",
+            new_callable=PropertyMock,
+        ) as mock_images,
+        patch(
+            "docker.client.DockerClient.networks",
+            new_callable=PropertyMock,
+        ) as mock_network,
     ):
         mock_containers.return_value = MockedDockerProperty({})
-        mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
+        mock_images.return_value = MockedDockerProperty(
+            {},
+            on_not_found=docker.errors.ImageNotFound(""),
+        )
         mock_network.return_value = MockedDockerProperty({})
-        result = runner.invoke(env, ["start", "api_key", "api_secret"])
+        result = runner.invoke(
+            env,
+            [
+                "start",
+                "api_key",
+                "api_secret",
+            ],
+        )
 
         if result.exception:
             traceback.print_exception(*result.exc_info)
@@ -138,14 +238,29 @@ def test_env_start():
 
 def test_env_stop():
     with (
-        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
-        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
-        patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
+        patch(
+            "docker.client.DockerClient.containers",
+            new_callable=PropertyMock,
+        ) as mock_containers,
+        patch(
+            "docker.client.DockerClient.images",
+            new_callable=PropertyMock,
+        ) as mock_images,
+        patch(
+            "docker.client.DockerClient.networks",
+            new_callable=PropertyMock,
+        ) as mock_network,
     ):
         mock_containers.return_value = MockedDockerProperty({})
-        mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
+        mock_images.return_value = MockedDockerProperty(
+            {},
+            on_not_found=docker.errors.ImageNotFound(""),
+        )
         mock_network.return_value = MockedDockerProperty({})
-        result = runner.invoke(env, ["stop"])
+        result = runner.invoke(
+            env,
+            ["stop"],
+        )
 
         if result.exception:
             traceback.print_exception(*result.exc_info)

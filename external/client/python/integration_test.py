@@ -16,7 +16,8 @@ def zipline_socket():
     for _ in range(10):
         try:
             socket = pynng.Req0(
-                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True
+                dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}",
+                block_on_dial=True,
             )
             socket.recv_timeout = 10000
             socket.sendout = 10000
@@ -26,8 +27,15 @@ def zipline_socket():
     else:
         raise Exception("Failed to connect to execution socket")
 
-    def run(execution: entity.backtest.Execution):
-        socket.send(entity.service.Request(task="configure_execution", data=execution).dump())
+    def run(
+        execution: entity.backtest.Execution,
+    ):
+        socket.send(
+            entity.service.Request(
+                task="configure_execution",
+                data=execution,
+            ).dump()
+        )
         response = entity.service.Response.load(socket.recv())
         if response.error:
             raise Exception(response.error)
@@ -46,11 +54,24 @@ def zipline_socket():
 @pytest.mark.parametrize(
     "file_path,configuration",
     [
-        ("example_parallel.py", {"handle_data": entity.service.Execution.Function(parameters={})}),
-        ("example_sequential.py", {"handle_data": entity.service.Execution.Function(parameters={})}),
+        (
+            "example_parallel.py",
+            {"handle_data": entity.service.Execution.Function(parameters={})},
+        ),
+        (
+            "example_sequential.py",
+            {"handle_data": entity.service.Execution.Function(parameters={})},
+        ),
     ],
 )
-def test_integration(zipline_socket, execution, database, ingest_config, file_path, configuration):
+def test_integration(
+    zipline_socket,
+    execution,
+    database,
+    ingest_config,
+    file_path,
+    configuration,
+):
     execution_socket = pynng.Req0(listen="tcp://0.0.0.0:8888")
     execution_socket.recv_timeout = 10000
     execution_socket.sendout = 10000
@@ -64,11 +85,17 @@ def test_integration(zipline_socket, execution, database, ingest_config, file_pa
     service_execution = entity.service.Execution(
         id="test",
         port=8888,
-        database_url=os.environ.get("DATABASE_URL", ""),
+        database_url=os.environ.get(
+            "DATABASE_URL",
+            "",
+        ),
         configuration=configuration,
     )
 
-    with Foreverbull(session, file_path):
+    with Foreverbull(
+        session,
+        file_path,
+    ):
         backtest = zipline_socket(execution)
         service_socket = pynng.Req0(dial="tcp://127.0.0.1:5555")
         service_socket.recv_timeout = 10000
@@ -81,7 +108,12 @@ def test_integration(zipline_socket, execution, database, ingest_config, file_pa
 
         is_parallel = service.algorithm.functions[0].parallel_execution
 
-        service_socket.send(entity.service.Request(task="configure_execution", data=service_execution).dump())
+        service_socket.send(
+            entity.service.Request(
+                task="configure_execution",
+                data=service_execution,
+            ).dump()
+        )
         response = entity.service.Response.load(service_socket.recv())
         assert response.error is None
 
@@ -110,14 +142,27 @@ def test_integration(zipline_socket, execution, database, ingest_config, file_pa
             if is_parallel:
                 for symbol in ingest_config.symbols:
                     req = worker.Request(
-                        execution=service_execution, timestamp=period.timestamp, symbol=symbol, portfolio=portfolio
+                        execution=service_execution,
+                        timestamp=period.timestamp,
+                        symbol=symbol,
+                        portfolio=portfolio,
                     )
-                    execution_socket.send(entity.service.Request(task="handle_data", data=req).dump())
+                    execution_socket.send(
+                        entity.service.Request(
+                            task="handle_data",
+                            data=req,
+                        ).dump()
+                    )
                     response = entity.service.Response.load(execution_socket.recv())
                     assert response.error is None
                     if response.data:
                         order = entity.finance.Order(**response.data)
-                        backtest.send(entity.service.Request(task="order", data=order).dump())
+                        backtest.send(
+                            entity.service.Request(
+                                task="order",
+                                data=order,
+                            ).dump()
+                        )
                         response = entity.service.Response.load(backtest.recv())
                         assert response.error is None
             else:
@@ -127,13 +172,23 @@ def test_integration(zipline_socket, execution, database, ingest_config, file_pa
                     symbols=ingest_config.symbols,
                     portfolio=portfolio,
                 )
-                execution_socket.send(entity.service.Request(task="handle_data", data=req).dump())
+                execution_socket.send(
+                    entity.service.Request(
+                        task="handle_data",
+                        data=req,
+                    ).dump()
+                )
                 response = entity.service.Response.load(execution_socket.recv())
                 assert response.error is None
                 if response.data:
                     for order in response.data:
                         o = entity.finance.Order(**order)
-                        backtest.send(entity.service.Request(task="order", data=o).dump())
+                        backtest.send(
+                            entity.service.Request(
+                                task="order",
+                                data=o,
+                            ).dump()
+                        )
                         response = entity.service.Response.load(backtest.recv())
                         assert response.error is None
 

@@ -3,14 +3,24 @@ import os
 import requests
 from pydantic import BaseModel
 
-host = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
-port = os.getenv("BROKER_HTTP_PORT", "8080")
+host = os.getenv(
+    "BROKER_HOSTNAME",
+    "127.0.0.1",
+)
+port = os.getenv(
+    "BROKER_HTTP_PORT",
+    "8080",
+)
 
 
 class RequestError(Exception):
     """Container of Exceptions from HTTP Client"""
 
-    def __init__(self, request: requests.Request, response: requests.Response):
+    def __init__(
+        self,
+        request: requests.Request,
+        response: requests.Response,
+    ):
         self.request = request
         self.response = response
         method = request.method
@@ -20,18 +30,34 @@ class RequestError(Exception):
         super().__init__(f"{method} call {url} gave bad return code: {code}. Text: {text}")
 
 
-def api_call(response_model: BaseModel = None):
+def api_call(
+    response_model: BaseModel = None,
+):
     s = requests.Session()
 
-    def wrapper(func):
-        def make_request(*args, **kwargs):
-            req: requests.Request = func(*args, **kwargs)
+    def wrapper(
+        func,
+    ):
+        def make_request(
+            *args,
+            **kwargs,
+        ):
+            req: requests.Request = func(
+                *args,
+                **kwargs,
+            )
             req.url = f"http://{host}:{port}{req.url}"
             rsp = s.send(req.prepare())
             if not rsp.ok:
-                raise RequestError(req, rsp)
+                raise RequestError(
+                    req,
+                    rsp,
+                )
             if response_model:
-                if isinstance(rsp.json(), list):
+                if isinstance(
+                    rsp.json(),
+                    list,
+                ):
                     return [response_model(**x) for x in rsp.json()]
                 return response_model.model_validate(rsp.json())
             return rsp.json()

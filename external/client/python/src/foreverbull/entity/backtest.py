@@ -7,7 +7,10 @@ from pydantic import field_serializer
 from .base import Base
 
 
-class BacktestStatusType(str, enum.Enum):
+class BacktestStatusType(
+    str,
+    enum.Enum,
+):
     CREATED = "CREATED"
     UPDATED = "UPDATED"
     INGESTING = "INGESTING"
@@ -38,19 +41,30 @@ class Backtest(Base):
     sessions: int | None = None
 
     @field_serializer("start")
-    def start_iso(self, start: datetime, _info):
+    def start_iso(
+        self,
+        start: datetime,
+        _info,
+    ):
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         return start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @field_serializer("end")
-    def end_iso(self, end: datetime, _info):
+    def end_iso(
+        self,
+        end: datetime,
+        _info,
+    ):
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         return end.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-class SessionStatusType(str, enum.Enum):
+class SessionStatusType(
+    str,
+    enum.Enum,
+):
     CREATED = "CREATED"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -74,7 +88,10 @@ class Session(Base):
     port: int | None = None
 
 
-class ExecutionStatusType(str, enum.Enum):
+class ExecutionStatusType(
+    str,
+    enum.Enum,
+):
     CREATED = "CREATED"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -102,7 +119,11 @@ class Execution(Base):
     port: int | None = None
 
     @field_serializer("start")
-    def start_iso(self, start: datetime, _info):
+    def start_iso(
+        self,
+        start: datetime,
+        _info,
+    ):
         if start is None:
             return None
 
@@ -111,7 +132,11 @@ class Execution(Base):
         return start.isoformat()
 
     @field_serializer("end")
-    def end_iso(self, end: datetime, _info):
+    def end_iso(
+        self,
+        end: datetime,
+        _info,
+    ):
         if end is None:
             return None
 

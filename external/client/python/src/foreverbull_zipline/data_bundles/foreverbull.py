@@ -13,18 +13,28 @@ warnings.filterwarnings("ignore")
 
 
 class DatabaseEngine:
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         database_uri = os.environ.get("DATABASE_URL")
         if database_uri is None:
             raise KeyError("DATABASE_URI environment variable not set")
 
         self._engine = get_engine(database_uri)
 
-    def get_data(self, symbol, from_date, to_date):
+    def get_data(
+        self,
+        symbol,
+        from_date,
+        to_date,
+    ):
         query = f"""SELECT open, high, low, close, volume, time FROM ohlc
         WHERE symbol='{symbol}' AND time BETWEEN '{from_date}' AND '{to_date}'
         ORDER BY time asc"""
-        return read_sql_query(query, self._engine)
+        return read_sql_query(
+            query,
+            self._engine,
+        )
 
 
 class SQLIngester:
@@ -33,33 +43,79 @@ class SQLIngester:
     from_date = None
     to_date = None
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         pass
 
-    def create_metadata(self) -> pd.DataFrame:
+    def create_metadata(
+        self,
+    ) -> pd.DataFrame:
         return pd.DataFrame(
             np.empty(
                 len(self.symbols),
                 dtype=[
-                    ("start_date", "datetime64[ns]"),
-                    ("end_date", "datetime64[ns]"),
-                    ("auto_close_date", "datetime64[ns]"),
-                    ("symbol", "object"),
-                    ("exchange", "object"),
+                    (
+                        "start_date",
+                        "datetime64[ns]",
+                    ),
+                    (
+                        "end_date",
+                        "datetime64[ns]",
+                    ),
+                    (
+                        "auto_close_date",
+                        "datetime64[ns]",
+                    ),
+                    (
+                        "symbol",
+                        "object",
+                    ),
+                    (
+                        "exchange",
+                        "object",
+                    ),
                 ],
             )
         )
 
-    def get_stock_data(self, symbols: str) -> pd.DataFrame:
-        data = self.engine.get_data(symbols, self.from_date, self.to_date)
+    def get_stock_data(
+        self,
+        symbols: str,
+    ) -> pd.DataFrame:
+        data = self.engine.get_data(
+            symbols,
+            self.from_date,
+            self.to_date,
+        )
         data["time"] = pd.to_datetime(data["time"])
-        data.rename(columns={"time": "Date"}, inplace=True, copy=False)
-        data.set_index("Date", inplace=True)
+        data.rename(
+            columns={"time": "Date"},
+            inplace=True,
+            copy=False,
+        )
+        data.set_index(
+            "Date",
+            inplace=True,
+        )
         return data
 
-    def writer(self, show_progress: bool) -> iter(int, pd.DataFrame):
-        with maybe_show_progress(self.symbols, show_progress, label="Ingesting from SQL") as it:
-            for index, symbol in enumerate(it):
+    def writer(
+        self,
+        show_progress: bool,
+    ) -> iter(
+        int,
+        pd.DataFrame,
+    ):
+        with maybe_show_progress(
+            self.symbols,
+            show_progress,
+            label="Ingesting from SQL",
+        ) as it:
+            for (
+                index,
+                symbol,
+            ) in enumerate(it):
                 data = self.get_stock_data(symbol)
                 data.dropna(
                     inplace=True
@@ -67,7 +123,13 @@ class SQLIngester:
                 start_date = data.index[0]
                 end_date = data.index[-1]
                 autoclose_date = end_date + pd.Timedelta(days=1)
-                self._df_metadata.iloc[index] = start_date, end_date, autoclose_date, symbol, "NASDAQ"
+                self._df_metadata.iloc[index] = (
+                    start_date,
+                    end_date,
+                    autoclose_date,
+                    symbol,
+                    "NASDAQ",
+                )
                 yield index, data
 
     def __call__(
@@ -85,9 +147,15 @@ class SQLIngester:
         output_dir,
     ):
         self._df_metadata = self.create_metadata()
-        daily_bar_writer.write(self.writer(show_progress), show_progress=show_progress)
+        daily_bar_writer.write(
+            self.writer(show_progress),
+            show_progress=show_progress,
+        )
         asset_db_writer.write(equities=self._df_metadata)
         adjustment_writer.write()
 
 
-register("foreverbull", SQLIngester())
+register(
+    "foreverbull",
+    SQLIngester(),
+)

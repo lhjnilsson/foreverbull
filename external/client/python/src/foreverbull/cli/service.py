@@ -8,7 +8,10 @@ from typing_extensions import Annotated
 
 from foreverbull import broker, entity
 
-image = Annotated[str, typer.Argument(help="service image")]
+image = Annotated[
+    str,
+    typer.Argument(help="service image"),
+]
 
 service = typer.Typer()
 
@@ -26,16 +29,21 @@ def list():
     for service in services:
         table.add_row(
             service.image,
-            service.statuses[0].status.value if service.statuses else "Unknown",
+            (service.statuses[0].status.value if service.statuses else "Unknown"),
         )
     std.print(table)
 
 
 @service.command()
-def create(image: image):
+def create(
+    image: image,
+):
     service: entity.service.Service | None = None
     with Progress() as progress:
-        task = progress.add_task("Starting service", total=2)
+        task = progress.add_task(
+            "Starting service",
+            total=2,
+        )
         service = broker.service.create(image)
         previous_status = service.statuses[0]
         while not progress.finished:
@@ -46,10 +54,16 @@ def create(image: image):
                 match status.status:
                     case entity.service.ServiceStatusType.INTERVIEW:
                         progress.advance(task)
-                        progress.update(task, description="Interviewing service")
+                        progress.update(
+                            task,
+                            description="Interviewing service",
+                        )
                     case entity.service.ServiceStatusType.READY:
                         progress.advance(task)
-                        progress.update(task, description="Service ready")
+                        progress.update(
+                            task,
+                            description="Service ready",
+                        )
                     case entity.service.ServiceStatusType.ERROR:
                         std_err.log(f"[red]Error while creating service: {status.error}")
                         exit(1)
@@ -60,13 +74,15 @@ def create(image: image):
     table.add_column("Status")
     table.add_row(
         service.image,
-        service.statuses[0].status.value if service.statuses else "Unknown",
+        (service.statuses[0].status.value if service.statuses else "Unknown"),
     )
     std.print(table)
 
 
 @service.command()
-def get(image: image):
+def get(
+    image: image,
+):
     service = broker.service.get(image)
     instances = broker.service.list_instances(image)
 
@@ -75,7 +91,7 @@ def get(image: image):
     table.add_column("Status")
     table.add_row(
         service.image,
-        service.statuses[0].status.value if service.statuses else "Unknown",
+        (service.statuses[0].status.value if service.statuses else "Unknown"),
     )
     std.print(table)
 
@@ -90,7 +106,7 @@ def get(image: image):
             instance.id,
             instance.host,
             str(instance.port),
-            instance.statuses[0].status.value if instance.statuses else "Unknown",
-            instance.statuses[0].occurred_at.isoformat() if instance.statuses else "Unknown",
+            (instance.statuses[0].status.value if instance.statuses else "Unknown"),
+            (instance.statuses[0].occurred_at.isoformat() if instance.statuses else "Unknown"),
         )
     std.print(table)

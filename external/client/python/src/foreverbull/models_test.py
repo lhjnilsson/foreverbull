@@ -7,11 +7,32 @@ from foreverbull.models import Algorithm, Namespace
 
 
 def test_namespace():
-    n = Namespace(key1=dict[str, int], key2=list[float])
-    assert n.contains("key1", dict[str, int])
-    assert n.contains("key2", list[float])
+    n = Namespace(
+        key1=dict[
+            str,
+            int,
+        ],
+        key2=list[float],
+    )
+    assert n.contains(
+        "key1",
+        dict[
+            str,
+            int,
+        ],
+    )
+    assert n.contains(
+        "key2",
+        list[float],
+    )
     with pytest.raises(KeyError):
-        n.contains("key3", dict[str, int])
+        n.contains(
+            "key3",
+            dict[
+                str,
+                int,
+            ],
+        )
 
 
 class TestNonParallel:
@@ -29,7 +50,9 @@ Algorithm(
 """
 
     @pytest.fixture
-    def algo(self):
+    def algo(
+        self,
+    ):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
@@ -37,15 +60,24 @@ Algorithm(
             self.file_path = f.name
             yield
 
-    def test_entity(self, algo):
+    def test_entity(
+        self,
+        algo,
+    ):
         assert self.algo.get_entity() == entity.service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Algorithm.Function(
                     name="handle_data",
                     parameters=[
-                        entity.service.Algorithm.FunctionParameter(key="low", type="int"),
-                        entity.service.Algorithm.FunctionParameter(key="high", type="int"),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="low",
+                            type="int",
+                        ),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="high",
+                            type="int",
+                        ),
                     ],
                     parallel_execution=False,
                     return_type=entity.service.Algorithm.ReturnType.LIST_OF_ORDERS,
@@ -55,20 +87,30 @@ Algorithm(
             ],
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure_and_process(
+        self,
+        algo,
+    ):
         execution = entity.service.Execution(
             id="123",
             port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
-                    parameters={"low": "5", "high": "10"},
+                    parameters={
+                        "low": "5",
+                        "high": "10",
+                    },
                 )
             },
         )
         self.algo.configure(execution)
 
-        self.algo.process("handle_data", [], None)
+        self.algo.process(
+            "handle_data",
+            [],
+            None,
+        )
 
 
 class TestParallel:
@@ -86,7 +128,9 @@ Algorithm(
 """
 
     @pytest.fixture
-    def algo(self):
+    def algo(
+        self,
+    ):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
@@ -94,15 +138,26 @@ Algorithm(
             self.file_path = f.name
             yield
 
-    def test_entity(self, algo):
+    def test_entity(
+        self,
+        algo,
+    ):
         assert self.algo.get_entity() == entity.service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Algorithm.Function(
                     name="handle_data",
                     parameters=[
-                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
-                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="low",
+                            default="5",
+                            type="int",
+                        ),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="high",
+                            default="10",
+                            type="int",
+                        ),
                     ],
                     parallel_execution=True,
                     return_type=entity.service.Algorithm.ReturnType.ORDER,
@@ -112,20 +167,30 @@ Algorithm(
             ],
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure_and_process(
+        self,
+        algo,
+    ):
         execution = entity.service.Execution(
             id="123",
             port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
-                    parameters={"low": "5", "high": "10"},
+                    parameters={
+                        "low": "5",
+                        "high": "10",
+                    },
                 )
             },
         )
         self.algo.configure(execution)
 
-        self.algo.process("handle_data", [], None)
+        self.algo.process(
+            "handle_data",
+            [],
+            None,
+        )
 
 
 class TestWithNamespace:
@@ -144,7 +209,9 @@ Algorithm(
 """
 
     @pytest.fixture
-    def algo(self):
+    def algo(
+        self,
+    ):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
@@ -152,15 +219,26 @@ Algorithm(
             self.file_path = f.name
             yield
 
-    def test_entity(self, algo):
+    def test_entity(
+        self,
+        algo,
+    ):
         assert self.algo.get_entity() == entity.service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Algorithm.Function(
                     name="handle_data",
                     parameters=[
-                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
-                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="low",
+                            default="5",
+                            type="int",
+                        ),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="high",
+                            default="10",
+                            type="int",
+                        ),
                     ],
                     parallel_execution=True,
                     return_type=entity.service.Algorithm.ReturnType.ORDER,
@@ -180,20 +258,30 @@ Algorithm(
             },
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure_and_process(
+        self,
+        algo,
+    ):
         execution = entity.service.Execution(
             id="123",
             port=5656,
             database_url="not_used",
             configuration={
                 "handle_data": entity.service.Execution.Function(
-                    parameters={"low": "5", "high": "10"},
+                    parameters={
+                        "low": "5",
+                        "high": "10",
+                    },
                 )
             },
         )
         self.algo.configure(execution)
 
-        self.algo.process("handle_data", [], None)
+        self.algo.process(
+            "handle_data",
+            [],
+            None,
+        )
 
 
 class TestMultiStepWithNamespace:
@@ -220,7 +308,9 @@ Algorithm(
 """
 
     @pytest.fixture
-    def algo(self):
+    def algo(
+        self,
+    ):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
@@ -228,7 +318,10 @@ Algorithm(
             self.file_path = f.name
             yield
 
-    def test_entity(self, algo):
+    def test_entity(
+        self,
+        algo,
+    ):
         assert self.algo.get_entity() == entity.service.Algorithm(
             file_path=self.file_path,
             functions=[
@@ -243,8 +336,16 @@ Algorithm(
                 entity.service.Algorithm.Function(
                     name="measure_assets",
                     parameters=[
-                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
-                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="low",
+                            default="5",
+                            type="int",
+                        ),
+                        entity.service.Algorithm.FunctionParameter(
+                            key="high",
+                            default="10",
+                            type="int",
+                        ),
                     ],
                     parallel_execution=True,
                     return_type=entity.service.Algorithm.ReturnType.NAMESPACE_VALUE,
@@ -272,7 +373,10 @@ Algorithm(
             },
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure_and_process(
+        self,
+        algo,
+    ):
         execution = entity.service.Execution(
             id="123",
             port=5656,
@@ -280,13 +384,28 @@ Algorithm(
             configuration={
                 "filter_assets": entity.service.Execution.Function(),
                 "measure_assets": entity.service.Execution.Function(
-                    parameters={"low": "5", "high": "10"},
+                    parameters={
+                        "low": "5",
+                        "high": "10",
+                    },
                 ),
                 "create_orders": entity.service.Execution.Function(),
             },
         )
         self.algo.configure(execution)
 
-        self.algo.process("filter_assets", [], None)
-        self.algo.process("measure_assets", [], None)
-        self.algo.process("create_orders", [], None)
+        self.algo.process(
+            "filter_assets",
+            [],
+            None,
+        )
+        self.algo.process(
+            "measure_assets",
+            [],
+            None,
+        )
+        self.algo.process(
+            "create_orders",
+            [],
+            None,
+        )

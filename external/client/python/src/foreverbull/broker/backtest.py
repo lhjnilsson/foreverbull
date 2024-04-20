@@ -14,7 +14,9 @@ def list() -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Backtest)
-def create(backtest: entity.backtest.Backtest) -> requests.Request:
+def create(
+    backtest: entity.backtest.Backtest,
+) -> requests.Request:
     return requests.Request(
         method="POST",
         url="/backtest/api/backtests",
@@ -23,7 +25,9 @@ def create(backtest: entity.backtest.Backtest) -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Backtest)
-def get(name: str) -> requests.Request:
+def get(
+    name: str,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url=f"/backtest/api/backtests/{name}",
@@ -31,7 +35,9 @@ def get(name: str) -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Session)
-def list_sessions(backtest: str = None) -> requests.Request:
+def list_sessions(
+    backtest: str = None,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url="/backtest/api/sessions",
@@ -40,16 +46,25 @@ def list_sessions(backtest: str = None) -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Session)
-def run(backtest: str, manual: bool = False) -> requests.Request:
+def run(
+    backtest: str,
+    manual: bool = False,
+) -> requests.Request:
     return requests.Request(
         method="POST",
         url="/backtest/api/sessions",
-        json={"backtest": backtest, "manual": manual, "executions": [{}] if not manual else None},
+        json={
+            "backtest": backtest,
+            "manual": manual,
+            "executions": [{}] if not manual else None,
+        },
     )
 
 
 @api_call(response_model=entity.backtest.Session)
-def get_session(session_id: str) -> requests.Request:
+def get_session(
+    session_id: str,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url=f"/backtest/api/sessions/{session_id}",
@@ -57,7 +72,9 @@ def get_session(session_id: str) -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Execution)
-def list_executions(session: str = None) -> requests.Request:
+def list_executions(
+    session: str = None,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url="/backtest/api/executions",
@@ -66,7 +83,9 @@ def list_executions(session: str = None) -> requests.Request:
 
 
 @api_call(response_model=entity.backtest.Execution)
-def get_execution(execution_id: str) -> requests.Request:
+def get_execution(
+    execution_id: str,
+) -> requests.Request:
     return requests.Request(
         method="GET",
         url=f"/backtest/api/executions/{execution_id}",

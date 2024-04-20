@@ -24,7 +24,10 @@ def test_service_list():
                 ],
             )
         ]
-        result = runner.invoke(service, ["list"])
+        result = runner.invoke(
+            service,
+            ["list"],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -52,7 +55,10 @@ def test_service_create():
         ),
     ]
 
-    with patch("foreverbull.broker.service.create") as mock_create, patch("foreverbull.broker.service.get") as mock_get:
+    with (
+        patch("foreverbull.broker.service.create") as mock_create,
+        patch("foreverbull.broker.service.get") as mock_get,
+    ):
         mock_create.return_value = entity.service.Service(
             image="test",
             statuses=get_statuses[2:],
@@ -71,7 +77,13 @@ def test_service_create():
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(service, ["create", "test"])
+        result = runner.invoke(
+            service,
+            [
+                "create",
+                "test",
+            ],
+        )
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert "Service ready" in result.stdout
@@ -96,7 +108,10 @@ def test_service_create_error():
         ),
     ]
 
-    with patch("foreverbull.broker.service.create") as mock_create, patch("foreverbull.broker.service.get") as mock_get:
+    with (
+        patch("foreverbull.broker.service.create") as mock_create,
+        patch("foreverbull.broker.service.get") as mock_get,
+    ):
         mock_create.return_value = entity.service.Service(
             image="test",
             statuses=get_statuses[2:],
@@ -115,7 +130,13 @@ def test_service_create_error():
                 statuses=get_statuses,
             ),
         ]
-        result = runner.invoke(service, ["create", "test"])
+        result = runner.invoke(
+            service,
+            [
+                "create",
+                "test",
+            ],
+        )
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert "Error while creating service: error" in result.stderr
@@ -151,7 +172,13 @@ def test_service_get():
                 ],
             )
         ]
-        result = runner.invoke(service, ["get", "test_image"])
+        result = runner.invoke(
+            service,
+            [
+                "get",
+                "test_image",
+            ],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)

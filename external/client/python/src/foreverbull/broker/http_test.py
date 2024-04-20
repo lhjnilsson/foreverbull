@@ -13,7 +13,10 @@ def test_api_call_with_response_model():
 
     @api_call(ResponseModel)
     def test_func():
-        return requests.Request("GET", "/test")
+        return requests.Request(
+            "GET",
+            "/test",
+        )
 
     with patch("requests.Session.send") as mock_send:
         mock_send.return_value.ok = True
@@ -25,7 +28,10 @@ def test_api_call_with_response_model():
 def test_api_call_without_response_model():
     @api_call()
     def test_func():
-        return requests.Request("GET", "/test")
+        return requests.Request(
+            "GET",
+            "/test",
+        )
 
     with patch("requests.Session.send") as mock_send:
         mock_send.return_value.ok = True
@@ -37,7 +43,10 @@ def test_api_call_without_response_model():
 def test_api_call_error():
     @api_call()
     def test_func():
-        return requests.Request("GET", "/test")
+        return requests.Request(
+            "GET",
+            "/test",
+        )
 
     with patch("requests.Session.send") as mock_send:
         mock_send.return_value.ok = False

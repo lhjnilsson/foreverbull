@@ -22,7 +22,13 @@ class Request(BaseModel):
 
 
 class Worker:
-    def __init__(self, survey_address: str, state_address: str, stop_event: Event, file_path: str):
+    def __init__(
+        self,
+        survey_address: str,
+        state_address: str,
+        stop_event: Event,
+        file_path: str,
+    ):
         self._survey_address = survey_address
         self._state_address = state_address
         self._stop_event = stop_event
@@ -30,10 +36,16 @@ class Worker:
         self._file_path = file_path
         self._algo = None
         self.logger = logging.getLogger(__name__)
-        super(Worker, self).__init__()
+        super(
+            Worker,
+            self,
+        ).__init__()
 
     @staticmethod
-    def _eval_param(type: str, val):
+    def _eval_param(
+        type: str,
+        val,
+    ):
         if type == "int":
             return int(val)
         elif type == "float":
@@ -45,12 +57,16 @@ class Worker:
         else:
             raise TypeError("Unknown parameter type")
 
-    def configure_execution(self, execution: entity.service.Execution):
+    def configure_execution(
+        self,
+        execution: entity.service.Execution,
+    ):
         self._algo = Algorithm.from_file_path(self._file_path)
         self.logger.info("configuring worker")
         try:
             self.socket = pynng.Rep0(
-                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{execution.port}", block_on_dial=True
+                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{execution.port}",
+                block_on_dial=True,
             )
             self.socket.recv_timeout = 5000
             self.socket.send_timeout = 5000
@@ -71,12 +87,20 @@ class Worker:
             raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
         self.logger.info("worker configured correctly")
 
-    def run(self):
+    def run(
+        self,
+    ):
         try:
-            responder = pynng.Respondent0(dial=self._survey_address, block_on_dial=True)
+            responder = pynng.Respondent0(
+                dial=self._survey_address,
+                block_on_dial=True,
+            )
             responder.send_timeout = 5000
             responder.recv_timeout = 300
-            state = pynng.Pub0(dial=self._state_address, block_on_dial=True)
+            state = pynng.Pub0(
+                dial=self._state_address,
+                block_on_dial=True,
+            )
             state.send(b"ready")
         except Exception as e:
             self.logger.error("Unable to connect to surveyor or state sockets")
@@ -91,9 +115,19 @@ class Worker:
                 if request.task == "configure_execution":
                     execution = entity.service.Execution(**request.data)
                     self.configure_execution(execution)
-                    responder.send(entity.service.Response(task=request.task, error=None).dump())
+                    responder.send(
+                        entity.service.Response(
+                            task=request.task,
+                            error=None,
+                        ).dump()
+                    )
                 elif request.task == "run_execution":
-                    responder.send(entity.service.Response(task=request.task, error=None).dump())
+                    responder.send(
+                        entity.service.Response(
+                            task=request.task,
+                            error=None,
+                        ).dump()
+                    )
                     self.run_execution()
             except pynng.exceptions.Timeout:
                 self.logger.debug("Timeout in pynng while running, continuing...")
@@ -101,12 +135,19 @@ class Worker:
             except Exception as e:
                 self.logger.error("Error processing request")
                 self.logger.exception(repr(e))
-                responder.send(entity.service.Response(task=request.task, error=repr(e)).dump())
+                responder.send(
+                    entity.service.Response(
+                        task=request.task,
+                        error=repr(e),
+                    ).dump()
+                )
             self.logger.info(f"Request processed: {request.task}")
         responder.close()
         state.close()
 
-    def run_execution(self):
+    def run_execution(
+        self,
+    ):
         while True:
             request = None
             context_socket = None
@@ -119,20 +160,47 @@ class Worker:
                 with self._database_engine.connect() as db:
                     if data.symbol:
                         ret = self._algo.process(
-                            request.task, a=Asset(data.symbol, data.timestamp, db), portfolio=data.portfolio
+                            request.task,
+                            a=Asset(
+                                data.symbol,
+                                data.timestamp,
+                                db,
+                            ),
+                            portfolio=data.portfolio,
                         )
                     elif data.symbols:
-                        assets = [Asset(symbol, data.timestamp, db) for symbol in data.symbols]
-                        ret = self._algo.process(request.task, a=assets, portfolio=data.portfolio)
+                        assets = [
+                            Asset(
+                                symbol,
+                                data.timestamp,
+                                db,
+                            )
+                            for symbol in data.symbols
+                        ]
+                        ret = self._algo.process(
+                            request.task,
+                            a=assets,
+                            portfolio=data.portfolio,
+                        )
                 self.logger.debug(f"Sending response {ret}")
-                context_socket.send(entity.service.Response(task=request.task, data=ret).dump())
+                context_socket.send(
+                    entity.service.Response(
+                        task=request.task,
+                        data=ret,
+                    ).dump()
+                )
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    context_socket.send(entity.service.Response(task=request.task, error=repr(e)).dump())
+                    context_socket.send(
+                        entity.service.Response(
+                            task=request.task,
+                            error=repr(e),
+                        ).dump()
+                    )
                 if context_socket:
                     context_socket.close()
             if self._stop_event.is_set():
@@ -140,9 +208,15 @@ class Worker:
         self.socket.close()
 
 
-class WorkerThread(Worker, Thread):
+class WorkerThread(
+    Worker,
+    Thread,
+):
     pass
 
 
-class WorkerProcess(Worker, Process):
+class WorkerProcess(
+    Worker,
+    Process,
+):
     pass

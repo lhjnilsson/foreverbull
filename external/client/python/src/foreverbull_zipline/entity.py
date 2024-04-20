@@ -51,7 +51,10 @@ class Order(Base):
     status: Optional[OrderStatus] = None
 
     @classmethod
-    def from_zipline(cls, order):
+    def from_zipline(
+        cls,
+        order,
+    ):
         return cls(
             id=order.id,
             symbol=order.sid.symbol,
@@ -83,7 +86,11 @@ class Period(Base):
     new_orders: List[Order]
 
     @classmethod
-    def from_zipline(cls, trading_algorithm, new_orders):
+    def from_zipline(
+        cls,
+        trading_algorithm,
+        new_orders,
+    ):
         return cls(
             timestamp=trading_algorithm.datetime,
             cash_flow=trading_algorithm.portfolio.cash_flow,
@@ -150,7 +157,10 @@ class Result(Base):
         beta: Optional[float]
 
         @classmethod
-        def from_zipline(cls, period):
+        def from_zipline(
+            cls,
+            period,
+        ):
             return cls(
                 timestamp=period["period_open"].to_pydatetime().replace(tzinfo=timezone.utc),
                 pnl=period["pnl"],
@@ -176,23 +186,26 @@ class Result(Base):
                 excess_return=period["excess_return"],
                 treasury_period_return=period["treasury_period_return"],
                 algorithm_period_return=period["algorithm_period_return"],
-                algo_volatility=None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"],
-                sharpe=None if pd.isnull(period["sharpe"]) else period["sharpe"],
-                sortino=None if pd.isnull(period["sortino"]) else period["sortino"],
+                algo_volatility=(None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"]),
+                sharpe=(None if pd.isnull(period["sharpe"]) else period["sharpe"]),
+                sortino=(None if pd.isnull(period["sortino"]) else period["sortino"]),
                 benchmark_period_return=(
                     None if pd.isnull(period["benchmark_period_return"]) else period["benchmark_period_return"]
                 ),
                 benchmark_volatility=(
                     None if pd.isnull(period["benchmark_volatility"]) else period["benchmark_volatility"]
                 ),
-                alpha=None if period["alpha"] is None or pd.isnull(period["alpha"]) else period["alpha"],
-                beta=None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"],
+                alpha=(None if period["alpha"] is None or pd.isnull(period["alpha"]) else period["alpha"]),
+                beta=(None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]),
             )
 
     periods: List[Period]
 
     @classmethod
-    def from_zipline(cls, result: pd.DataFrame):
+    def from_zipline(
+        cls,
+        result: pd.DataFrame,
+    ):
         periods = []
         for row in result.index:
             periods.append(cls.Period.from_zipline(result.loc[row]))

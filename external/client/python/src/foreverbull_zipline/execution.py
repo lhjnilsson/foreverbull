@@ -39,7 +39,14 @@ class StopExcecution(Exception):
 
 
 class Execution(threading.Thread):
-    def __init__(self, host=os.getenv("LOCAL_HOST", socket.gethostbyname(socket.gethostname())), port=5555):
+    def __init__(
+        self,
+        host=os.getenv(
+            "LOCAL_HOST",
+            socket.gethostbyname(socket.gethostname()),
+        ),
+        port=5555,
+    ):
         self._socket = None
         self.socket_config = SocketConfig(
             host=host,
@@ -49,9 +56,14 @@ class Execution(threading.Thread):
         self._trading_algorithm: TradingAlgorithm = None
         self._new_orders = []
         self.logger = logging.getLogger(__name__)
-        super(Execution, self).__init__()
+        super(
+            Execution,
+            self,
+        ).__init__()
 
-    def run(self):
+    def run(
+        self,
+    ):
         for _ in range(10):
             try:
                 self._socket = pynng.Rep0(listen=f"tcp://{self.socket_config.host}:{self.socket_config.port}")
@@ -65,8 +77,13 @@ class Execution(threading.Thread):
         self._process_request()
         self._socket.close()
 
-    def stop(self):
-        socket = pynng.Req0(dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}", block_on_dial=True)
+    def stop(
+        self,
+    ):
+        socket = pynng.Req0(
+            dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}",
+            block_on_dial=True,
+        )
         request = Request(task="stop")
         socket.send(request.dump())
         socket.recv()
@@ -74,7 +91,9 @@ class Execution(threading.Thread):
         socket.close()
         return
 
-    def info(self):
+    def info(
+        self,
+    ):
         return {
             "type": "backtest",
             "version": "0.0.0",
@@ -82,66 +101,144 @@ class Execution(threading.Thread):
         }
 
     @property
-    def ingestion(self) -> entity.IngestConfig:
+    def ingestion(
+        self,
+    ) -> entity.IngestConfig:
         if self.bundle is None:
-            return entity.IngestConfig(calendar=None, start=None, end=None, symbols=[])
+            return entity.IngestConfig(
+                calendar=None,
+                start=None,
+                end=None,
+                symbols=[],
+            )
         assets = self.bundle.asset_finder.retrieve_all(self.bundle.asset_finder.sids)
         start = assets[0].start_date.tz_localize("UTC")
         end = assets[0].end_date.tz_localize("UTC")
         calendar = self.bundle.equity_daily_bar_reader.trading_calendar.name
-        return entity.IngestConfig(calendar=calendar, start=start, end=end, symbols=[asset.symbol for asset in assets])
+        return entity.IngestConfig(
+            calendar=calendar,
+            start=start,
+            end=end,
+            symbols=[asset.symbol for asset in assets],
+        )
 
-    def _ingest(self, config: entity.IngestConfig) -> entity.IngestConfig:
+    def _ingest(
+        self,
+        config: entity.IngestConfig,
+    ) -> entity.IngestConfig:
         self.logger.debug("ingestion started")
-        bundles.register("foreverbull", SQLIngester(), calendar_name=config.calendar)
+        bundles.register(
+            "foreverbull",
+            SQLIngester(),
+            calendar_name=config.calendar,
+        )
         SQLIngester.engine = DatabaseEngine()
         SQLIngester.from_date = config.start
         SQLIngester.to_date = config.end
         SQLIngester.symbols = config.symbols
-        bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
-        self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
+        bundles.ingest(
+            "foreverbull",
+            os.environ,
+            pd.Timestamp.utcnow(),
+            [],
+            True,
+        )
+        self.bundle: BundleData = bundles.load(
+            "foreverbull",
+            os.environ,
+            None,
+        )
         self.logger.debug("ingestion completed")
         return self.ingestion
 
-    def _download_ingestion(self, name: str):
+    def _download_ingestion(
+        self,
+        name: str,
+    ):
         storage = Storage.from_environment()
-        storage.backtest.download_backtest_ingestion(name, "/tmp/ingestion.tar.gz")
-        with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
+        storage.backtest.download_backtest_ingestion(
+            name,
+            "/tmp/ingestion.tar.gz",
+        )
+        with tarfile.open(
+            "/tmp/ingestion.tar.gz",
+            "r:gz",
+        ) as tar:
             tar.extractall(data_root())
-        bundles.register("foreverbull", SQLIngester())
+        bundles.register(
+            "foreverbull",
+            SQLIngester(),
+        )
 
-    def _upload_ingestion(self, name: str):
-        with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
-            tar.add(data_path(["foreverbull"]), arcname="foreverbull")
+    def _upload_ingestion(
+        self,
+        name: str,
+    ):
+        with tarfile.open(
+            "/tmp/ingestion.tar.gz",
+            "w:gz",
+        ) as tar:
+            tar.add(
+                data_path(["foreverbull"]),
+                arcname="foreverbull",
+            )
         storage = Storage.from_environment()
-        storage.backtest.upload_backtest_ingestion("/tmp/ingestion.tar.gz", name)
+        storage.backtest.upload_backtest_ingestion(
+            "/tmp/ingestion.tar.gz",
+            name,
+        )
 
-    def _get_algorithm(self, config: backtest.Execution):
+    def _get_algorithm(
+        self,
+        config: backtest.Execution,
+    ):
         # reload, we are in other process
-        bundle = bundles.load("foreverbull", os.environ, None)
+        bundle = bundles.load(
+            "foreverbull",
+            os.environ,
+            None,
+        )
 
-        def find_last_traded_dt(bundle: BundleData, *symbols):
+        def find_last_traded_dt(
+            bundle: BundleData,
+            *symbols,
+        ):
             last_traded = None
             for symbol in symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
+                asset = bundle.asset_finder.lookup_symbol(
+                    symbol,
+                    as_of_date=None,
+                )
                 if asset is None:
                     continue
                 if last_traded is None:
                     last_traded = asset.end_date
                 else:
-                    last_traded = max(last_traded, asset.end_date)
+                    last_traded = max(
+                        last_traded,
+                        asset.end_date,
+                    )
             return last_traded
 
-        def find_first_traded_dt(bundle: BundleData, *symbols):
+        def find_first_traded_dt(
+            bundle: BundleData,
+            *symbols,
+        ):
             first_traded = None
             for symbol in symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
+                asset = bundle.asset_finder.lookup_symbol(
+                    symbol,
+                    as_of_date=None,
+                )
                 if asset is None:
                     continue
                 if first_traded is None:
                     first_traded = asset.start_date
                 else:
-                    first_traded = min(first_traded, asset.start_date)
+                    first_traded = min(
+                        first_traded,
+                        asset.start_date,
+                    )
             return first_traded
 
         if config.symbols is None:
@@ -149,7 +246,10 @@ class Execution(threading.Thread):
         else:
             symbols = []
             for symbol in config.symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
+                asset = bundle.asset_finder.lookup_symbol(
+                    symbol,
+                    as_of_date=None,
+                )
                 if asset is None:
                     raise ConfigError(f"Unknown symbol: {symbol}")
                 symbols.append(asset.symbol)
@@ -157,28 +257,53 @@ class Execution(threading.Thread):
         try:
             if config.start:
                 start_date = pd.Timestamp(config.start).normalize().tz_localize(None)
-                first_traded_date = find_first_traded_dt(bundle, *symbols)
+                first_traded_date = find_first_traded_dt(
+                    bundle,
+                    *symbols,
+                )
                 if start_date < first_traded_date:
                     start_date = first_traded_date
             else:
-                start_date = find_first_traded_dt(bundle, *symbols)
+                start_date = find_first_traded_dt(
+                    bundle,
+                    *symbols,
+                )
 
             if config.end:
                 end_date = pd.Timestamp(config.end).normalize().tz_localize(None)
-                last_traded_date = find_last_traded_dt(bundle, *symbols)
+                last_traded_date = find_last_traded_dt(
+                    bundle,
+                    *symbols,
+                )
                 if end_date > last_traded_date:
                     end_date = last_traded_date
             else:
-                end_date = find_last_traded_dt(bundle, *symbols)
+                end_date = find_last_traded_dt(
+                    bundle,
+                    *symbols,
+                )
         except pytz.exceptions.UnknownTimeZoneError as e:
-            self.logger.error("Unknown time zone: %s", repr(e))
+            self.logger.error(
+                "Unknown time zone: %s",
+                repr(e),
+            )
             raise ConfigError(repr(e))
 
         if config.benchmark:
             benchmark_returns = None
-            benchmark_sid = bundle.asset_finder.lookup_symbol(config.benchmark, as_of_date=None)
+            benchmark_sid = bundle.asset_finder.lookup_symbol(
+                config.benchmark,
+                as_of_date=None,
+            )
         else:
-            benchmark_returns = pd.Series(index=pd.date_range(start_date, end_date, tz="utc"), data=0.0)
+            benchmark_returns = pd.Series(
+                index=pd.date_range(
+                    start_date,
+                    end_date,
+                    tz="utc",
+                ),
+                data=0.0,
+            )
             benchmark_sid = None
 
         trading_calendar = get_calendar(config.calendar)
@@ -199,18 +324,33 @@ class Execution(threading.Thread):
         )
         metrics_set = "default"
         blotter = "default"
-        if isinstance(metrics_set, six.string_types):
+        if isinstance(
+            metrics_set,
+            six.string_types,
+        ):
             try:
                 metrics_set = metrics.load(metrics_set)
             except ValueError as e:
-                self.logger.error("Error configuring metrics: %s", repr(e))
+                self.logger.error(
+                    "Error configuring metrics: %s",
+                    repr(e),
+                )
                 raise ConfigError(repr(e))
 
-        if isinstance(blotter, six.string_types):
+        if isinstance(
+            blotter,
+            six.string_types,
+        ):
             try:
-                blotter = load(Blotter, blotter)
+                blotter = load(
+                    Blotter,
+                    blotter,
+                )
             except ValueError as e:
-                self.logger.error("Error configuring blotter: %s", repr(e))
+                self.logger.error(
+                    "Error configuring blotter: %s",
+                    repr(e),
+                )
                 raise ConfigError(repr(e))
 
         trading_algorithm = TradingAlgorithm(
@@ -231,19 +371,38 @@ class Execution(threading.Thread):
         config.end = end_date.to_pydatetime()
         config.benchmark = benchmark_sid.symbol if benchmark_sid else None
         config.symbols = symbols
-        return trading_algorithm, config
+        return (
+            trading_algorithm,
+            config,
+        )
 
-    def analyze(self, _, result):
+    def analyze(
+        self,
+        _,
+        result,
+    ):
         self.result = result
 
-    def _result(self):
+    def _result(
+        self,
+    ):
         return entity.Result.from_zipline(self.result)
 
-    def _upload_result(self, execution: str):
+    def _upload_result(
+        self,
+        execution: str,
+    ):
         storage = Storage.from_environment()
-        storage.backtest.upload_backtest_result(execution, self.result)
+        storage.backtest.upload_backtest_result(
+            execution,
+            self.result,
+        )
 
-    def _process_request(self, trading_algorithm: TradingAlgorithm = None, data: BarData = None):
+    def _process_request(
+        self,
+        trading_algorithm: TradingAlgorithm = None,
+        data: BarData = None,
+    ):
         while True:
             try:
                 context_socket = self._socket.new_context()
@@ -252,11 +411,21 @@ class Execution(threading.Thread):
                 active_execution = trading_algorithm and data
                 try:
                     if message.task == "info":
-                        context_socket.send(Response(task=message.task, data=self.info()).dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=self.info(),
+                            ).dump()
+                        )
                     elif message.task == "ingest":
                         ingest_config = entity.IngestConfig(**message.data)
                         ingest_config = self._ingest(ingest_config)
-                        context_socket.send(Response(task=message.task, data=ingest_config).dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=ingest_config,
+                            ).dump()
+                        )
                     elif message.task == "download_ingestion":
                         self._download_ingestion(**message.data)
                         context_socket.send(Response(task=message.task).dump())
@@ -265,8 +434,16 @@ class Execution(threading.Thread):
                         context_socket.send(Response(task=message.task).dump())
                     elif message.task == "configure_execution":
                         config = backtest.Execution(**message.data)
-                        self._trading_algorithm, config = self._get_algorithm(config)
-                        context_socket.send(Response(task=message.task, data=config).dump())
+                        (
+                            self._trading_algorithm,
+                            config,
+                        ) = self._get_algorithm(config)
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=config,
+                            ).dump()
+                        )
                     elif message.task == "run_execution" and not active_execution:
                         context_socket.send(Response(task=message.task).dump())
                         try:
@@ -275,11 +452,22 @@ class Execution(threading.Thread):
                             pass
                     elif active_execution and message.task == "get_period":
                         period = entity.Period.from_zipline(
-                            trading_algorithm, [trading_algorithm.get_order(order.id) for order in self._new_orders]
+                            trading_algorithm,
+                            [trading_algorithm.get_order(order.id) for order in self._new_orders],
                         )
-                        context_socket.send(Request(task=message.task, data=period).dump())
+                        context_socket.send(
+                            Request(
+                                task=message.task,
+                                data=period,
+                            ).dump()
+                        )
                     elif not active_execution and message.task == "get_period":
-                        context_socket.send(Response(task=message.task, data=None).dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=None,
+                            ).dump()
+                        )
                     elif active_execution and message.task == "continue":
                         self._new_orders = []
                         context_socket.send(Response(task=message.task).dump())
@@ -287,36 +475,89 @@ class Execution(threading.Thread):
                             self._new_orders = trading_algorithm.blotter.new_orders
                         return
                     elif not active_execution and message.task == "continue":
-                        context_socket.send(Response(task=message.task, error="no active execution").dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                error="no active execution",
+                            ).dump()
+                        )
                     elif active_execution and message.task == "can_trade":
                         asset = entity.Asset(**message.data)
-                        can_trade = self._broker.can_trade(asset, trading_algorithm, data)
-                        context_socket.send(Response(task=message.task, data=can_trade).dump())
+                        can_trade = self._broker.can_trade(
+                            asset,
+                            trading_algorithm,
+                            data,
+                        )
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=can_trade,
+                            ).dump()
+                        )
                     elif active_execution and message.task == "order":
                         order = entity.Order(**message.data)
-                        order = self._broker.order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        order = self._broker.order(
+                            order,
+                            trading_algorithm,
+                        )
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=order,
+                            ).dump()
+                        )
                     elif active_execution and message.task == "get_order":
                         order = entity.Order(**message.data)
-                        order = self._broker.get_order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        order = self._broker.get_order(
+                            order,
+                            trading_algorithm,
+                        )
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=order,
+                            ).dump()
+                        )
                     elif active_execution and message.task == "get_open_orders":
                         orders = self._broker.get_open_orders(trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=orders).dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=orders,
+                            ).dump()
+                        )
                     elif active_execution and message.task == "cancel_order":
                         order = entity.Order(**message.data)
-                        order = self._broker.cancel_order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        order = self._broker.cancel_order(
+                            order,
+                            trading_algorithm,
+                        )
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=order,
+                            ).dump()
+                        )
                     elif message.task == "get_execution_result":
                         result = self._result()
-                        context_socket.send(Response(task=message.task, data=result.model_dump()).dump())
+                        context_socket.send(
+                            Response(
+                                task=message.task,
+                                data=result.model_dump(),
+                            ).dump()
+                        )
                     elif message.task == "upload_result":
                         self._upload_result(**message.data)
                         context_socket.send(Response(task=message.task).dump())
                 except Exception as e:
                     self.logger.exception(e)
                     self.logger.error(f"error processing request: {e}")
-                    context_socket.send(Response(task=message.task, error=str(e)).dump())
+                    context_socket.send(
+                        Response(
+                            task=message.task,
+                            error=str(e),
+                        ).dump()
+                    )
                     context_socket.close()
                 if message.task == "stop" and active_execution:
                     ## Raise to force Zipline TradingAlgorithm to stop, not good way to do this

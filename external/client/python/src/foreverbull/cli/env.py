@@ -89,28 +89,44 @@ def status():
     table.add_column("Local image ID")
 
     table.add_row(
-        "Running" if postgres_container else "Stopped",
+        ("Running" if postgres_container else "Stopped"),
         "Postgres",
-        postgres_image.short_id if postgres_image else "Not found",
+        (postgres_image.short_id if postgres_image else "Not found"),
     )
     table.add_row(
-        "Running" if nats_container else "Stopped", "NATS", nats_image.short_id if nats_image else "Not found"
+        ("Running" if nats_container else "Stopped"),
+        "NATS",
+        (nats_image.short_id if nats_image else "Not found"),
     )
     table.add_row(
-        "Running" if minio_container else "Stopped", "Minio", minio_image.short_id if minio_image else "Not found"
+        ("Running" if minio_container else "Stopped"),
+        "Minio",
+        (minio_image.short_id if minio_image else "Not found"),
     )
     table.add_row(
-        "Running" if foreverbull_container else "Stopped",
+        ("Running" if foreverbull_container else "Stopped"),
         "Foreverbull",
-        foreverbull_image.short_id if foreverbull_image else "Not found",
+        (foreverbull_image.short_id if foreverbull_image else "Not found"),
     )
     std.print(table)
 
 
-API_KEY = Annotated[str, typer.Argument(help="alpaca.markets api key")]
-API_SECRET = Annotated[str, typer.Argument(help="alpaca.markets api secret")]
-BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
-BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
+API_KEY = Annotated[
+    str,
+    typer.Argument(help="alpaca.markets api key"),
+]
+API_SECRET = Annotated[
+    str,
+    typer.Argument(help="alpaca.markets api secret"),
+]
+BROKER_IMAGE_OPT = Annotated[
+    str,
+    typer.Option(help="Docker image name of broker"),
+]
+BACKTEST_IMAGE_OPT = Annotated[
+    str,
+    typer.Option(help="Docker image name of backtest service"),
+]
 
 
 @env.command()
@@ -138,8 +154,15 @@ def start(
         try:
             d.networks.get(NETWORK_NAME)
         except docker.errors.NotFound:
-            d.networks.create(NETWORK_NAME, driver="bridge")
-        progress.update(net_task_id, description="[blue]Network created", completed=True)
+            d.networks.create(
+                NETWORK_NAME,
+                driver="bridge",
+            )
+        progress.update(
+            net_task_id,
+            description="[blue]Network created",
+            completed=True,
+        )
 
         try:
             d.images.get(POSTGRES_IMAGE)
@@ -156,7 +179,10 @@ def start(
                 init_db_file = tempfile.NamedTemporaryFile(delete=False)
                 init_db_file.write(INIT_DB_SCIPT.encode())
                 init_db_file.close()
-                os.chmod(init_db_file.name, 0o777)
+                os.chmod(
+                    init_db_file.name,
+                    0o777,
+                )
 
                 postgres_container = d.containers.run(
                     POSTGRES_IMAGE,
@@ -169,18 +195,39 @@ def start(
                         "POSTGRES_PASSWORD": "foreverbull",
                     },
                     healthcheck={
-                        "test": ["CMD", "pg_isready", "-U", "foreverbull"],
+                        "test": [
+                            "CMD",
+                            "pg_isready",
+                            "-U",
+                            "foreverbull",
+                        ],
                         "interval": 10000000000,
                         "timeout": 5000000000,
                         "retries": 5,
                     },
-                    volumes={init_db_file.name: {"bind": "/docker-entrypoint-initdb.d/init.sh", "mode": "ro"}},
+                    volumes={
+                        init_db_file.name: {
+                            "bind": "/docker-entrypoint-initdb.d/init.sh",
+                            "mode": "ro",
+                        }
+                    },
                 )
             except Exception as e:
-                progress.update(postgres_task_id, description="[red]Failed to start postgres", completed=True)
-                std_err.log("Failed to start postgres: ", e)
+                progress.update(
+                    postgres_task_id,
+                    description="[red]Failed to start postgres",
+                    completed=True,
+                )
+                std_err.log(
+                    "Failed to start postgres: ",
+                    e,
+                )
                 exit(1)
-        progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
+        progress.update(
+            postgres_task_id,
+            description="[blue]Postgres started",
+            completed=True,
+        )
 
         try:
             d.images.get(NATS_IMAGE)
@@ -202,7 +249,11 @@ def start(
                     hostname="nats",
                     ports={"4222/tcp": 4222},
                     healthcheck={
-                        "test": ["CMD", "nats-server", "-sl"],
+                        "test": [
+                            "CMD",
+                            "nats-server",
+                            "-sl",
+                        ],
                         "interval": 10000000000,
                         "timeout": 5000000000,
                         "retries": 5,
@@ -210,10 +261,21 @@ def start(
                     command="-js -sd /var/lib/nats/data",
                 )
             except Exception as e:
-                progress.update(nats_task_id, description="[red]Failed to start nats", completed=True)
-                std_err.log("Failed to start nats: ", e)
+                progress.update(
+                    nats_task_id,
+                    description="[red]Failed to start nats",
+                    completed=True,
+                )
+                std_err.log(
+                    "Failed to start nats: ",
+                    e,
+                )
                 exit(1)
-        progress.update(nats_task_id, description="[blue]NATS started", completed=True)
+        progress.update(
+            nats_task_id,
+            description="[blue]NATS started",
+            completed=True,
+        )
 
         try:
             d.images.get(MINIO_IMAGE)
@@ -233,10 +295,21 @@ def start(
                     command='server --console-address ":9001" /data',
                 )
             except Exception as e:
-                progress.update(minio_task_id, description="[red]Failed to start minio", completed=True)
-                std_err.log("Failed to start minio: ", e)
+                progress.update(
+                    minio_task_id,
+                    description="[red]Failed to start minio",
+                    completed=True,
+                )
+                std_err.log(
+                    "Failed to start minio: ",
+                    e,
+                )
                 exit(1)
-        progress.update(minio_task_id, description="[blue]Minio started", completed=True)
+        progress.update(
+            minio_task_id,
+            description="[blue]Minio started",
+            completed=True,
+        )
 
         for _ in range(100):
             time.sleep(0.2)
@@ -246,10 +319,18 @@ def start(
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.health != "healthy":
                 continue
-            progress.update(health_task_id, description="[blue]All services healthy", completed=True)
+            progress.update(
+                health_task_id,
+                description="[blue]All services healthy",
+                completed=True,
+            )
             break
         else:
-            progress.update(health_task_id, description="[red]Failed to start services, timeout", completed=True)
+            progress.update(
+                health_task_id,
+                description="[red]Failed to start services, timeout",
+                completed=True,
+            )
             exit(1)
 
         try:
@@ -292,13 +373,29 @@ def start(
                         "ALPACA_MARKETS_API_SECRET": api_secret,
                         "BACKTEST_IMAGE": backtest_image,
                     },
-                    volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
+                    volumes={
+                        "/var/run/docker.sock": {
+                            "bind": "/var/run/docker.sock",
+                            "mode": "rw",
+                        }
+                    },
                 )
             except Exception as e:
-                progress.update(foreverbull_task_id, description="[red]Failed to start foreverbull", completed=True)
-                std_err.log("Failed to start foreverbull: ", e)
+                progress.update(
+                    foreverbull_task_id,
+                    description="[red]Failed to start foreverbull",
+                    completed=True,
+                )
+                std_err.log(
+                    "Failed to start foreverbull: ",
+                    e,
+                )
                 exit(1)
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
+        progress.update(
+            foreverbull_task_id,
+            description="[blue]Foreverbull started",
+            completed=True,
+        )
     std.print("Environment started")
 
 
@@ -321,32 +418,52 @@ def stop():
             d.containers.get("foreverbull_foreverbull").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull removed", completed=True)
+        progress.update(
+            foreverbull_task_id,
+            description="[blue]Foreverbull removed",
+            completed=True,
+        )
 
         try:
             d.containers.get("foreverbull_minio").stop()
             d.containers.get("foreverbull_minio").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(minio_task_id, description="[blue]Minio removed", completed=True)
+        progress.update(
+            minio_task_id,
+            description="[blue]Minio removed",
+            completed=True,
+        )
 
         try:
             d.containers.get("foreverbull_nats").stop()
             d.containers.get("foreverbull_nats").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(nats_task_id, description="[blue]NATS removed", completed=True)
+        progress.update(
+            nats_task_id,
+            description="[blue]NATS removed",
+            completed=True,
+        )
 
         try:
             d.containers.get("foreverbull_postgres").stop()
             d.containers.get("foreverbull_postgres").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(postgres_task_id, description="[blue]Postgres removed", completed=True)
+        progress.update(
+            postgres_task_id,
+            description="[blue]Postgres removed",
+            completed=True,
+        )
 
         try:
             d.networks.get(NETWORK_NAME).remove()
         except docker.errors.NotFound:
             pass
-        progress.update(net_task_id, description="[blue]Network removed", completed=True)
+        progress.update(
+            net_task_id,
+            description="[blue]Network removed",
+            completed=True,
+        )
     std.print("Environment stopped")

@@ -17,7 +17,10 @@ def test_backtest_list():
                 name="test_name",
                 start=datetime.now(),
                 end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
+                symbols=[
+                    "AAPL",
+                    "MSFT",
+                ],
                 statuses=[
                     entity.backtest.BacktestStatus(
                         status=entity.backtest.BacktestStatusType.READY,
@@ -27,7 +30,10 @@ def test_backtest_list():
                 ],
             )
         ]
-        result = runner.invoke(backtest, ["list"])
+        result = runner.invoke(
+            backtest,
+            ["list"],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -63,7 +69,10 @@ def test_backtest_create():
             name="test_name",
             start=datetime.now(),
             end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
+            symbols=[
+                "AAPL",
+                "MSFT",
+            ],
             statuses=get_statuses[2:],
         )
         mock_get.side_effect = [
@@ -71,26 +80,45 @@ def test_backtest_create():
                 name="test_name",
                 start=datetime.now(),
                 end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
+                symbols=[
+                    "AAPL",
+                    "MSFT",
+                ],
                 statuses=get_statuses[1:],
             ),
             entity.backtest.Backtest(
                 name="test_name",
                 start=datetime.now(),
                 end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
+                symbols=[
+                    "AAPL",
+                    "MSFT",
+                ],
                 statuses=get_statuses[1:],
             ),
             entity.backtest.Backtest(
                 name="test_name",
                 start=datetime.now(),
                 end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
+                symbols=[
+                    "AAPL",
+                    "MSFT",
+                ],
                 statuses=get_statuses,
             ),
         ]
         result = runner.invoke(
-            backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
+            backtest,
+            [
+                "create",
+                "test_name",
+                "--start",
+                "2021-01-01",
+                "--end",
+                "2021-01-02",
+                "--symbols",
+                "AAPL",
+            ],
         )
 
         if not result.exit_code == 0:
@@ -109,10 +137,15 @@ def test_backtest_create_error():
             name="test_name",
             start=datetime.now(),
             end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
+            symbols=[
+                "AAPL",
+                "MSFT",
+            ],
             statuses=[
                 entity.backtest.BacktestStatus(
-                    status=entity.backtest.BacktestStatusType.CREATED, error=None, occurred_at=datetime.now()
+                    status=entity.backtest.BacktestStatusType.CREATED,
+                    error=None,
+                    occurred_at=datetime.now(),
                 )
             ],
         )
@@ -120,15 +153,30 @@ def test_backtest_create_error():
             name="test_name",
             start=datetime.now(),
             end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
+            symbols=[
+                "AAPL",
+                "MSFT",
+            ],
             statuses=[
                 entity.backtest.BacktestStatus(
-                    status=entity.backtest.BacktestStatusType.ERROR, error="test error", occurred_at=datetime.now()
+                    status=entity.backtest.BacktestStatusType.ERROR,
+                    error="test error",
+                    occurred_at=datetime.now(),
                 )
             ],
         )
         result = runner.invoke(
-            backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
+            backtest,
+            [
+                "create",
+                "test_name",
+                "--start",
+                "2021-01-01",
+                "--end",
+                "2021-01-02",
+                "--symbols",
+                "AAPL",
+            ],
         )
         assert result.exit_code == 1
         assert "Error while creating backtest: test error" in result.stderr
@@ -143,7 +191,10 @@ def test_backtest_get():
             name="test_name",
             start=datetime.now(),
             end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
+            symbols=[
+                "AAPL",
+                "MSFT",
+            ],
             statuses=[
                 entity.backtest.BacktestStatus(
                     status=entity.backtest.BacktestStatusType.READY,
@@ -178,7 +229,13 @@ def test_backtest_get():
                 ],
             ),
         ]
-        result = runner.invoke(backtest, ["get", "test"])
+        result = runner.invoke(
+            backtest,
+            [
+                "get",
+                "test",
+            ],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -187,8 +244,15 @@ def test_backtest_get():
         assert "AAPL,MSFT" in result.stdout
 
 
-def test_backtest_run(spawn_process, parallel_algo):
-    file_name, _, _ = parallel_algo
+def test_backtest_run(
+    spawn_process,
+    parallel_algo,
+):
+    (
+        file_name,
+        _,
+        _,
+    ) = parallel_algo
 
     statuses = [
         entity.backtest.SessionStatus(
@@ -237,7 +301,15 @@ def test_backtest_run(spawn_process, parallel_algo):
                 statuses=statuses,
             ),
         ]
-        result = runner.invoke(backtest, ["run", file_name, "--backtest-name", "test"])
+        result = runner.invoke(
+            backtest,
+            [
+                "run",
+                file_name,
+                "--backtest-name",
+                "test",
+            ],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -246,8 +318,15 @@ def test_backtest_run(spawn_process, parallel_algo):
         assert "1" in result.stdout
 
 
-def test_backtest_run_failed(spawn_process, parallel_algo):
-    file_name, _, _ = parallel_algo
+def test_backtest_run_failed(
+    spawn_process,
+    parallel_algo,
+):
+    (
+        file_name,
+        _,
+        _,
+    ) = parallel_algo
 
     statuses = [
         entity.backtest.SessionStatus(
@@ -296,7 +375,15 @@ def test_backtest_run_failed(spawn_process, parallel_algo):
                 statuses=statuses,
             ),
         ]
-        result = runner.invoke(backtest, ["run", file_name, "--backtest-name", "test"])
+        result = runner.invoke(
+            backtest,
+            [
+                "run",
+                file_name,
+                "--backtest-name",
+                "test",
+            ],
+        )
 
         if not result.exit_code == 1:
             traceback.print_exception(*result.exc_info)
@@ -320,7 +407,13 @@ def test_backtest_executions():
     ]
     with patch("foreverbull.broker.backtest.list_executions") as mock_list_executions:
         mock_list_executions.return_value = executions
-        result = runner.invoke(backtest, ["executions", "1"])
+        result = runner.invoke(
+            backtest,
+            [
+                "executions",
+                "1",
+            ],
+        )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)

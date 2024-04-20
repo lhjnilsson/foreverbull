@@ -42,7 +42,10 @@ class Order(Base):
     status: Optional[OrderStatus] = None
 
     @classmethod
-    def from_zipline(cls, order):
+    def from_zipline(
+        cls,
+        order,
+    ):
         return cls(
             id=order.id,
             symbol=order.sid.symbol,
@@ -67,11 +70,17 @@ class Portfolio(Base):
     value: float
     positions: list[Position]
 
-    def __contains__(self, asset: Asset) -> bool:
+    def __contains__(
+        self,
+        asset: Asset,
+    ) -> bool:
         symbols = [position.symbol for position in self.positions]
         return asset.symbol in symbols
 
-    def __getitem__(self, asset: Asset) -> Position:
+    def __getitem__(
+        self,
+        asset: Asset,
+    ) -> Position:
         return next(
             (position for position in self.positions if position.symbol == asset.symbol),
             None,
