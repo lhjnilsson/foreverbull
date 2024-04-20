@@ -170,11 +170,13 @@ class Algorithm:
     def get_entity(
         self,
     ):
-        return entity.service.Algorithm(
+        e = entity.service.Algorithm(
             file_path=Algorithm._file_path,
             functions=[function["entity"] for function in Algorithm._functions.values()],
             namespace=Algorithm._namespace,
         )
+        print("entity: ", e.model_dump_json())
+        return e
 
     @classmethod
     def from_file_path(
