@@ -17,7 +17,7 @@ def type_to_str(type: any) -> str:
         case bool():
             return "bool"
         case str():
-            return "str"
+            return "string"
         case _:
             raise Exception("Unknown parameter type: {}".format(type))
 
@@ -73,7 +73,7 @@ class Algorithm:
     _functions: dict | None = None
     _namespace: Namespace | None = None
 
-    def __init__(self, functions: list[Function], namespace: Namespace = Namespace()):
+    def __init__(self, functions: list[Function], namespace: Namespace = dict()):
         Algorithm._file_path = getabsfile(functions[0].callable)
         Algorithm._functions = {}
         Algorithm._namespace = namespace
@@ -120,6 +120,8 @@ class Algorithm:
                     parameters=parameters,
                     parallel_execution=parallel_execution,
                     return_type=return_type,
+                    input_key=f.input_key,
+                    namespace_return_key=f.namespace_return_key,
                 ),
             }
 

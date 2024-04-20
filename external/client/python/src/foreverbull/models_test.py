@@ -34,14 +34,26 @@ Algorithm(
             f.write(self.example)
             f.flush()
             self.algo = Algorithm.from_file_path(f.name)
+            self.file_path = f.name
+            yield
 
     def test_entity(self, algo):
-        entity = self.algo.get_entity()
-        assert entity.functions is not None
-        assert len(entity.functions) == 1
-        assert entity.functions[0].name == "handle_data"
-        assert len(entity.functions[0].parameters) == 2
-        assert entity.functions[0].parallel_execution is False
+        assert self.algo.get_entity() == entity.service.Algorithm(
+            file_path=self.file_path,
+            functions=[
+                entity.service.Algorithm.Function(
+                    name="handle_data",
+                    parameters=[
+                        entity.service.Algorithm.FunctionParameter(key="low", type="int"),
+                        entity.service.Algorithm.FunctionParameter(key="high", type="int"),
+                    ],
+                    parallel_execution=False,
+                    return_type=entity.service.Algorithm.ReturnType.LIST_OF_ORDERS,
+                    input_key="symbols",
+                    namespace_return_key=None,
+                ),
+            ],
+        )
 
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
@@ -79,14 +91,26 @@ Algorithm(
             f.write(self.example)
             f.flush()
             self.algo = Algorithm.from_file_path(f.name)
+            self.file_path = f.name
+            yield
 
     def test_entity(self, algo):
-        entity = self.algo.get_entity()
-        assert entity.functions is not None
-        assert len(entity.functions) == 1
-        assert entity.functions[0].name == "handle_data"
-        assert len(entity.functions[0].parameters) == 2
-        assert entity.functions[0].parallel_execution is True
+        assert self.algo.get_entity() == entity.service.Algorithm(
+            file_path=self.file_path,
+            functions=[
+                entity.service.Algorithm.Function(
+                    name="handle_data",
+                    parameters=[
+                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
+                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                    ],
+                    parallel_execution=True,
+                    return_type=entity.service.Algorithm.ReturnType.ORDER,
+                    input_key="symbols",
+                    namespace_return_key=None,
+                ),
+            ],
+        )
 
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
@@ -115,7 +139,7 @@ Algorithm(
     functions=[
         Function(callable=handle_data)
     ],
-    namespace=Namespace(qualified_symbols=list[str], rsi=dict[str, float])
+    namespace={"qualified_symbols": list[str], "rsi": dict[str, float]}
 )
 """
 
@@ -125,19 +149,36 @@ Algorithm(
             f.write(self.example)
             f.flush()
             self.algo = Algorithm.from_file_path(f.name)
+            self.file_path = f.name
+            yield
 
     def test_entity(self, algo):
-        entity = self.algo.get_entity()
-        assert entity.functions is not None
-        assert len(entity.functions) == 1
-        assert entity.functions[0].name == "handle_data"
-        assert len(entity.functions[0].parameters) == 2
-        assert entity.functions[0].parallel_execution is True
-        assert entity.namespace is not None
-        assert "qualified_symbols" in entity.namespace
-        assert entity.namespace["qualified_symbols"] == {"type": "array", "items": {"type": "str"}}
-        assert "rsi" in entity.namespace
-        assert entity.namespace["rsi"] == {"type": "object", "items": {"type": "float"}}
+        assert self.algo.get_entity() == entity.service.Algorithm(
+            file_path=self.file_path,
+            functions=[
+                entity.service.Algorithm.Function(
+                    name="handle_data",
+                    parameters=[
+                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
+                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                    ],
+                    parallel_execution=True,
+                    return_type=entity.service.Algorithm.ReturnType.ORDER,
+                    input_key="symbols",
+                    namespace_return_key=None,
+                ),
+            ],
+            namespace={
+                "qualified_symbols": entity.service.Algorithm.Namespace(
+                    type="array",
+                    value_type="string",
+                ),
+                "rsi": entity.service.Algorithm.Namespace(
+                    type="object",
+                    value_type="float",
+                ),
+            },
+        )
 
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(
@@ -172,12 +213,9 @@ Algorithm(
     functions=[
         Function(callable=filter_assets, namespace_return_key="qualified_symbols"),
         Function(callable=measure_assets, namespace_return_key="asset_metrics", input_key="qualified_symbols"),
-        Function(callable=create_orders, input_key="qualified_symbols")
+        Function(callable=create_orders, input_key="asset_metrics")
     ],
-    namespace=Namespace(
-        qualified_symbols=list[str],
-        asset_metrics=dict[str, float]
-    )
+    namespace={"qualified_symbols": list[str], "asset_metrics": dict[str, float]}
 )
 """
 
@@ -187,29 +225,52 @@ Algorithm(
             f.write(self.example)
             f.flush()
             self.algo = Algorithm.from_file_path(f.name)
+            self.file_path = f.name
+            yield
 
     def test_entity(self, algo):
-        entity = self.algo.get_entity()
-        assert entity.functions is not None
-        assert len(entity.functions) == 3
-
-        assert entity.functions[0].name == "filter_assets"
-        assert len(entity.functions[0].parameters) == 0
-        assert entity.functions[0].parallel_execution is False
-
-        assert entity.functions[1].name == "measure_assets"
-        assert len(entity.functions[1].parameters) == 2
-        assert entity.functions[1].parallel_execution is True
-
-        assert entity.functions[2].name == "create_orders"
-        assert len(entity.functions[2].parameters) == 0
-        assert entity.functions[2].parallel_execution is False
-
-        assert entity.namespace is not None
-        assert "qualified_symbols" in entity.namespace
-        assert entity.namespace["qualified_symbols"] == {"type": "array", "items": {"type": "str"}}
-        assert "asset_metrics" in entity.namespace
-        assert entity.namespace["asset_metrics"] == {"type": "object", "items": {"type": "float"}}
+        assert self.algo.get_entity() == entity.service.Algorithm(
+            file_path=self.file_path,
+            functions=[
+                entity.service.Algorithm.Function(
+                    name="filter_assets",
+                    parameters=[],
+                    parallel_execution=False,
+                    return_type=entity.service.Algorithm.ReturnType.NAMESPACE_VALUE,
+                    input_key="symbols",
+                    namespace_return_key="qualified_symbols",
+                ),
+                entity.service.Algorithm.Function(
+                    name="measure_assets",
+                    parameters=[
+                        entity.service.Algorithm.FunctionParameter(key="low", default="5", type="int"),
+                        entity.service.Algorithm.FunctionParameter(key="high", default="10", type="int"),
+                    ],
+                    parallel_execution=True,
+                    return_type=entity.service.Algorithm.ReturnType.NAMESPACE_VALUE,
+                    input_key="qualified_symbols",
+                    namespace_return_key="asset_metrics",
+                ),
+                entity.service.Algorithm.Function(
+                    name="create_orders",
+                    parameters=[],
+                    parallel_execution=False,
+                    return_type=entity.service.Algorithm.ReturnType.LIST_OF_ORDERS,
+                    input_key="asset_metrics",
+                    namespace_return_key=None,
+                ),
+            ],
+            namespace={
+                "qualified_symbols": entity.service.Algorithm.Namespace(
+                    type="array",
+                    value_type="string",
+                ),
+                "asset_metrics": entity.service.Algorithm.Namespace(
+                    type="object",
+                    value_type="float",
+                ),
+            },
+        )
 
     def test_configure_and_process(self, algo):
         execution = entity.service.Execution(

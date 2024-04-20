@@ -15,14 +15,14 @@ class BaseSession:
     def __init__(
         self,
         session: entity.backtest.Session,
-        service: entity.service.Service,
+        algorithm: Algorithm,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
         self._session = session
-        self._service = service
+        self._algorithm = algorithm
         self._surveyor = surveyor
         self._states = states
         self._workers = workers
@@ -34,8 +34,8 @@ class BaseSession:
         return self._session
 
     @property
-    def service(self):
-        return self._service
+    def algorithm(self):
+        return self._algorithm
 
     def configure_execution(self, execution: entity.service.Execution):
         self.logger.info("configuring workers")
@@ -76,7 +76,7 @@ class ManualSession(BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        service: entity.service.Service,
+        algorithm: Algorithm,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
@@ -113,14 +113,14 @@ class Session(threading.Thread, BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        service: entity.service.Service,
+        algorithm: Algorithm,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
         threading.Thread.__init__(self)
-        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, algorithm, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
         self.socket_config = entity.service.SocketConfig(
             hostname=socket.gethostbyname(socket.gethostname()),
@@ -148,7 +148,7 @@ class Session(threading.Thread, BaseSession):
                 self.logger.info("received request: %s", req)
                 match req.task:
                     case "info":
-                        ctx.send(entity.service.Response(task="info", data=self.service).dump())
+                        ctx.send(entity.service.Response(task="info", data=self.algorithm).dump())
                     case "configure_execution":
                         data = self.configure_execution(entity.service.Execution(**req.data))
                         ctx.send(entity.service.Response(task="configure_execution", data=data).dump())

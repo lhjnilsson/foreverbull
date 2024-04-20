@@ -1,5 +1,6 @@
 import enum
 import socket
+import types
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -7,6 +8,20 @@ import pydantic
 from pydantic import BaseModel, ConfigDict
 
 from .base import Base
+
+
+def type_to_str(type: any) -> str:
+    match type():
+        case int():
+            return "int"
+        case float():
+            return "float"
+        case bool():
+            return "bool"
+        case str():
+            return "string"
+        case _:
+            raise Exception("Unknown parameter type: {}".format(type))
 
 
 class Execution(Base):
@@ -55,7 +70,7 @@ class Algorithm(Base):
 
     class FunctionParameter(BaseModel):
         key: str
-        default: str | None
+        default: str | None = None
         type: str
 
     class ReturnType(enum.StrEnum):
@@ -68,11 +83,42 @@ class Algorithm(Base):
         parameters: list["Algorithm.FunctionParameter"]
         parallel_execution: bool = False
         return_type: "Algorithm.ReturnType"
+        input_key: str = "symbols"
         namespace_return_key: str | None = None
+
+    class Namespace(BaseModel):
+        type: str
+        value_type: str
 
     file_path: str
     functions: list["Algorithm.Function"]
-    namespace: dict
+    namespace: dict[str, Namespace] = {}
+
+    @pydantic.field_validator("namespace", mode="before")
+    @classmethod
+    def validate_namespace(cls, v):
+        if not isinstance(v, dict):
+            raise ValueError("Namespace must be a dictionary")
+        namespace = {}
+        for key, value in v.items():
+            if isinstance(value, Algorithm.Namespace):
+                namespace[key] = value
+                continue
+            if not isinstance(value, types.GenericAlias):
+                raise ValueError("Namespace value must be a GenericAlias")
+
+            if value.__origin__ == dict:
+                if len(value.__args__) != 2:
+                    raise ValueError("Expected typed dict with 2 arguments, has: ", len(value.__args__))
+                if value.__args__[0] != str:
+                    raise ValueError("Expected typed dict with string keys, has: ", value.__args__[0])
+
+                namespace[key] = Algorithm.Namespace(type="object", value_type=type_to_str(value.__args__[1]))
+            elif value.__origin__ == list:
+                namespace[key] = Algorithm.Namespace(type="array", value_type=type_to_str(value.__args__[0]))
+            else:
+                raise ValueError("Unsupported namespace type")
+        return namespace
 
 
 class Service(Base):
@@ -110,6 +156,7 @@ class Request(Base):
     error: Optional[str] = None
 
     @pydantic.field_validator("data")
+    @classmethod
     def validate_data(cls, v):
         if v is None:
             return v
@@ -126,6 +173,7 @@ class Response(Base):
     data: Optional[Any] = None
 
     @pydantic.field_validator("data")
+    @classmethod
     def validate_data(cls, v):
         if v is None:
             return v
