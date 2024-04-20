@@ -82,7 +82,7 @@ class ManualSession(BaseSession):
         workers: list[worker.Worker],
         stop_event: Event,
     ):
-        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, algorithm, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
 
     def configure_execution(self, execution: entity.service.Execution):
