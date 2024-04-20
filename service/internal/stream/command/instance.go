@@ -32,11 +32,11 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting instance: %w", err)
 	}
-	info, err := i.GetInfo()
+	algorithm, err := i.GetInfo()
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	err = services.UpdateParameters(ctx, i.Image, info.Parameters)
+	err = services.UpdateAlgorithm(ctx, i.Image, algorithm)
 	if err != nil {
 		return fmt.Errorf("error updating service info: %w", err)
 	}

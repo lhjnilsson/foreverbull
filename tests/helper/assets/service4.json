@@ -1,0 +1,50 @@
+{
+  "file_path": "algo4.py",
+  "functions": [
+    {
+      "name": "filter_assets",
+      "parameters": [],
+      "parallel_execution": false,
+      "return_type": "NAMESPACE_VALUE",
+      "input_key": "symbols",
+      "namespace_return_key": "qualified_symbols"
+    },
+    {
+      "name": "measure_assets",
+      "parameters": [
+        {
+          "key": "low",
+          "default": "5",
+          "type": "int"
+        },
+        {
+          "key": "high",
+          "default": "10",
+          "type": "int"
+        }
+      ],
+      "parallel_execution": true,
+      "return_type": "NAMESPACE_VALUE",
+      "input_key": "qualified_symbols",
+      "namespace_return_key": "asset_metrics"
+    },
+    {
+      "name": "create_orders",
+      "parameters": [],
+      "parallel_execution": false,
+      "return_type": "LIST_OF_ORDERS",
+      "input_key": "asset_metrics",
+      "namespace_return_key": null
+    }
+  ],
+  "namespace": {
+    "qualified_symbols": {
+      "type": "array",
+      "value_type": "string"
+    },
+    "asset_metrics": {
+      "type": "object",
+      "value_type": "float"
+    }
+  }
+}

@@ -24,11 +24,16 @@ type Request struct {
 	Portfolio *finance.Portfolio `json:"portfolio"`
 }
 
+type Parameter struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type Configuration struct {
-	Execution  string             `json:"execution"`
-	Port       int                `json:"port"`
-	Parameters []entity.Parameter `json:"parameters"`
-	Database   string             `json:"database"`
+	Execution  string      `json:"execution"`
+	Port       int         `json:"port"`
+	Parameters []Parameter `json:"parameters"`
+	Database   string      `json:"database"`
 }
 
 func (i *Instance) ConfigureExecution(ctx context.Context, configuration *Configuration) error {

@@ -33,10 +33,9 @@ type execution struct {
 
 func (e *execution) Configure(ctx context.Context) error {
 	cfg := worker.Configuration{
-		Execution:  e.command.ExecutionID,
-		Port:       e.worker.SocketConfig().Port,
-		Parameters: make([]service.Parameter, 0),
-		Database:   environment.GetPostgresURL(),
+		Execution: e.command.ExecutionID,
+		Port:      e.worker.SocketConfig().Port,
+		Database:  environment.GetPostgresURL(),
 	}
 	return e.worker.ConfigureExecution(ctx, &cfg)
 }

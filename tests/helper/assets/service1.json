@@ -1,0 +1,25 @@
+{
+  "file_path": "algo1.py",
+  "functions": [
+    {
+      "name": "handle_data",
+      "parameters": [
+        {
+          "key": "low",
+          "default": null,
+          "type": "int"
+        },
+        {
+          "key": "high",
+          "default": null,
+          "type": "int"
+        }
+      ],
+      "parallel_execution": false,
+      "return_type": "LIST_OF_ORDERS",
+      "input_key": "symbols",
+      "namespace_return_key": null
+    }
+  ],
+  "namespace": {}
+}

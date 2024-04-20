@@ -1,0 +1,25 @@
+{
+  "file_path": "algo2.py",
+  "functions": [
+    {
+      "name": "handle_data",
+      "parameters": [
+        {
+          "key": "low",
+          "default": "5",
+          "type": "int"
+        },
+        {
+          "key": "high",
+          "default": "10",
+          "type": "int"
+        }
+      ],
+      "parallel_execution": true,
+      "return_type": "ORDER",
+      "input_key": "symbols",
+      "namespace_return_key": null
+    }
+  ],
+  "namespace": {}
+}

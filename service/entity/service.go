@@ -21,7 +21,25 @@ const (
 	NamespaceValueReturnType FunctionReturnType = "NAMESPACE_VALUE"
 )
 
-type Namespace struct{}
+type Namespace struct {
+	Type      string `json:"type" mapstructure:"type"`
+	ValueType string `json:"value_type" mapstructure:"value_type"`
+}
+
+type ServiceFunctionParameter struct {
+	Key     string  `json:"key"`
+	Default *string `json:"default"`
+	Type    string  `json:"type"`
+}
+
+type ServiceFunction struct {
+	Name               string                     `json:"name"`
+	Parameters         []ServiceFunctionParameter `json:"parameters"`
+	ParallelExecution  bool                       `json:"parallel_execution" mapstructure:"parallel_execution"`
+	ReturnType         FunctionReturnType         `json:"return_type" mapstructure:"return_type"`
+	InputKey           string                     `json:"input_key" mapstructure:"input_key"`
+	NamespaceReturnKey *string                    `json:"namespace_return_key" mapstructure:"namespace_return_key"`
+}
 
 type Service struct {
 	Image     string `json:"image" binding:"required"`
@@ -30,18 +48,9 @@ type Service struct {
 }
 
 type ServiceAlgorithm struct {
-	FilePath  string `json:"file_path"`
-	Functions []struct {
-		Name       string `json:"name"`
-		Parameters []struct {
-			Key     string `json:"key"`
-			Default string `json:"default"`
-			Type    string `json:"type"`
-		} `json:"parameters"`
-		ParallelExecution bool               `json:"parallel_execution"`
-		ReturnType        FunctionReturnType `json:"return_type"`
-	} `json:"functions"`
-	Namespace Namespace `json:"namespace"`
+	FilePath  string               `json:"file_path" mapstructure:"file_path"`
+	Functions []ServiceFunction    `json:"functions"`
+	Namespace map[string]Namespace `json:"namespace" mapstructure:"namespace"`
 }
 
 type ServiceStatus struct {

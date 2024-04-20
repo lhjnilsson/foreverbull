@@ -41,7 +41,7 @@ func (i *Instance) GetSocket() (*socket.Socket, error) {
 	return &socket.Socket{Type: socket.Requester, Host: *i.Host, Port: *i.Port, Listen: false, Dial: true}, nil
 }
 
-func (i *Instance) GetInfo() (*Service, error) {
+func (i *Instance) GetInfo() (*ServiceAlgorithm, error) {
 	iSocket, err := i.GetSocket()
 	if err != nil {
 		return nil, err
@@ -66,9 +66,9 @@ func (i *Instance) GetInfo() (*Service, error) {
 		return nil, errors.New(rsp.Error)
 	}
 
-	service := Service{}
-	if err := rsp.DecodeData(&service); err != nil {
+	algorithm := ServiceAlgorithm{}
+	if err := rsp.DecodeData(&algorithm); err != nil {
 		return nil, err
 	}
-	return &service, nil
+	return &algorithm, nil
 }

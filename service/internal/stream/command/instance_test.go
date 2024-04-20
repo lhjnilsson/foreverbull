@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -51,9 +52,6 @@ func (test *InstanceTest) SetupTest() {
 	services := repository.Service{Conn: test.db}
 	instances := repository.Instance{Conn: test.db}
 	test.testService, err = services.Create(context.TODO(), "test-image")
-	test.Require().NoError(err)
-
-	err = services.UpdateParameters(context.Background(), test.testService.Image, nil)
 	test.Require().NoError(err)
 
 	instanceID := uuid.New().String()
@@ -121,43 +119,198 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 	})
 
 	type TestCase struct {
-		Payload      string
-		ExpectedType string
-		Parameters   []entity.Parameter
+		assetFileName     string
+		expectedAlgorithm entity.ServiceAlgorithm
 	}
 
 	testCases := []TestCase{
 		{
-			Payload:    `{"type":"backtest","parameters":[]}`,
-			Parameters: []entity.Parameter{},
+			assetFileName: "service1.json",
+			expectedAlgorithm: entity.ServiceAlgorithm{
+				FilePath: "algo1.py",
+				Functions: []entity.ServiceFunction{
+					{
+						Name: "handle_data",
+						Parameters: []entity.ServiceFunctionParameter{
+							{
+								Key:  "low",
+								Type: "int",
+							},
+							{
+								Key:  "high",
+								Type: "int",
+							},
+						},
+						ParallelExecution: false,
+						ReturnType:        entity.ListOfOrdersReturnType,
+						InputKey:          "symbols",
+					},
+				},
+				Namespace: map[string]entity.Namespace{},
+			},
 		},
 		{
-			Payload: `{"type":"worker","parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
-			Parameters: []entity.Parameter{
-				{
-					Key:     "param1",
-					Type:    "int",
-					Value:   "",
-					Default: "3",
+			assetFileName: "service2.json",
+			expectedAlgorithm: entity.ServiceAlgorithm{
+				FilePath: "algo2.py",
+				Functions: []entity.ServiceFunction{
+					{
+						Name: "handle_data",
+						Parameters: []entity.ServiceFunctionParameter{
+							{
+								Key: "low",
+								Default: func() *string {
+									v := "5"
+									return &v
+								}(),
+								Type: "int",
+							},
+							{
+								Key: "high",
+								Default: func() *string {
+									v := "10"
+									return &v
+								}(),
+								Type: "int",
+							},
+						},
+						ParallelExecution: true,
+						ReturnType:        entity.OrderReturnType,
+						InputKey:          "symbols",
+					},
+				},
+				Namespace: map[string]entity.Namespace{},
+			},
+		},
+		{
+			assetFileName: "service3.json",
+			expectedAlgorithm: entity.ServiceAlgorithm{
+				FilePath: "algo3.py",
+				Functions: []entity.ServiceFunction{
+					{
+						Name: "handle_data",
+						Parameters: []entity.ServiceFunctionParameter{
+							{
+								Key: "low",
+								Default: func() *string {
+									v := "5"
+									return &v
+								}(),
+								Type: "int",
+							},
+							{
+								Key: "high",
+								Default: func() *string {
+									v := "10"
+									return &v
+								}(),
+								Type: "int",
+							},
+						},
+						ParallelExecution: true,
+						ReturnType:        entity.OrderReturnType,
+						InputKey:          "symbols",
+					},
+				},
+				Namespace: map[string]entity.Namespace{
+					"qualified_symbols": {
+						Type:      "array",
+						ValueType: "string",
+					},
+					"rsi": {
+						Type:      "object",
+						ValueType: "float",
+					},
+				},
+			},
+		},
+		{
+			assetFileName: "service4.json",
+			expectedAlgorithm: entity.ServiceAlgorithm{
+				FilePath: "algo4.py",
+				Functions: []entity.ServiceFunction{
+					{
+						Name:              "filter_assets",
+						Parameters:        []entity.ServiceFunctionParameter{},
+						ParallelExecution: false,
+						ReturnType:        entity.NamespaceValueReturnType,
+						InputKey:          "symbols",
+						NamespaceReturnKey: func() *string {
+							v := "qualified_symbols"
+							return &v
+						}(),
+					},
+					{
+						Name: "measure_assets",
+						Parameters: []entity.ServiceFunctionParameter{
+							{
+								Key: "low",
+								Default: func() *string {
+									v := "5"
+									return &v
+								}(),
+								Type: "int",
+							},
+							{
+								Key: "high",
+								Default: func() *string {
+									v := "10"
+									return &v
+								}(),
+								Type: "int",
+							},
+						},
+						ParallelExecution: true,
+						ReturnType:        entity.NamespaceValueReturnType,
+						InputKey:          "qualified_symbols",
+						NamespaceReturnKey: func() *string {
+							v := "asset_metrics"
+							return &v
+						}(),
+					},
+					{
+						Name:               "create_orders",
+						Parameters:         []entity.ServiceFunctionParameter{},
+						ParallelExecution:  false,
+						ReturnType:         entity.ListOfOrdersReturnType,
+						InputKey:           "asset_metrics",
+						NamespaceReturnKey: nil,
+					},
+				},
+				Namespace: map[string]entity.Namespace{
+					"qualified_symbols": {
+						Type:      "array",
+						ValueType: "string",
+					},
+					"asset_metrics": {
+						Type:      "object",
+						ValueType: "float",
+					},
 				},
 			},
 		},
 	}
 	for _, testCase := range testCases {
-		test.Run(testCase.ExpectedType, func() {
+		test.Run(testCase.assetFileName, func() {
+			payload, err := helper.GetAsset(test.T(), testCase.assetFileName)
+			test.Require().NoError(err)
+
 			ctx := context.Background()
 			commandCtx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 			responses := map[string][]byte{
-				"info": []byte(`{"task": "info", "data":` + testCase.Payload + `}`),
+				"info": []byte(`{"task": "info", "data":` + string(payload) + `}`),
 			}
 			go test.serviceInstance.Process(commandCtx, responses)
 
-			err := InstanceInterview(commandCtx, b)
+			err = InstanceInterview(commandCtx, b)
 			test.NoError(err)
 
-			_, err = services.Get(context.Background(), test.testService.Image)
+			service, err := services.Get(context.Background(), test.testService.Image)
 			test.NoError(err)
+			fmt.Println("SERVICE: ", service.Algorithm)
+			test.Require().NotNil(service.Algorithm)
+			test.Equal(testCase.expectedAlgorithm, *service.Algorithm)
 		})
 	}
 }
