@@ -114,6 +114,7 @@ func (w *WorkerPool) Process(ctx context.Context, timestamp time.Time, portfolio
 	namespaces["symbols"] = &NamespaceArray[string]{data: symbols}
 	namespaces["orders"] = &NamespaceArray[finance.Order]{data: make([]finance.Order, 0)}
 
+	// Set up user configured namespaces
 	for k, v := range w.algorithm.Namespace {
 		switch v.Type {
 		case "array":
@@ -133,6 +134,7 @@ func (w *WorkerPool) Process(ctx context.Context, timestamp time.Time, portfolio
 		}
 	}
 
+	// Loop over possible algorithm functions
 	ch := a.GetFunctionChannel()
 	for f := range ch {
 		namespace, found := namespaces[f.InputKey]

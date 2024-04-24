@@ -61,9 +61,12 @@ def manual_server():
         6969,
     )
     server.start()
-    yield server, entity.service.SocketConfig(
-        host="127.0.0.1",
-        port=6969,
+    yield (
+        server,
+        entity.service.SocketConfig(
+            host="127.0.0.1",
+            port=6969,
+        ),
     )
     server.stop()
     server.join()
@@ -98,7 +101,6 @@ def test_foreverbull(
     session,
     expected_session_type,
 ):
-
     (
         file_name,
         exc,

@@ -30,6 +30,7 @@ type ServiceFunctionParameter struct {
 	Key     string  `json:"key"`
 	Default *string `json:"default"`
 	Type    string  `json:"type"`
+	Value   *string `json:"value"`
 }
 
 type ServiceFunction struct {
