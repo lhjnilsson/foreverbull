@@ -18,6 +18,7 @@ class Parameter(Base):
 class Info(Base):
     version: str
     parameters: List[Parameter]
+    parallel: bool
 
 
 class SocketType(str, enum.Enum):
@@ -51,8 +52,8 @@ class ServiceStatus(Base):
 
 class Service(Base):
     image: str
-    type: str | None = None
     Parameters: List[Parameter] = []
+    parallel: bool = False
 
     statuses: List[ServiceStatus]
 
@@ -90,6 +91,8 @@ class Request(Base):
             return v
         if isinstance(v, dict):
             return v
+        if isinstance(v, list):
+            return v
         return v.model_dump()
 
 
@@ -103,5 +106,7 @@ class Response(Base):
         if v is None:
             return v
         if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
             return v
         return v.model_dump()

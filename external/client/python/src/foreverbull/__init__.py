@@ -6,7 +6,7 @@ from inspect import getabsfile, signature
 
 from foreverbull import entity
 from foreverbull._version import version  # noqa
-from foreverbull.data import Asset
+from foreverbull.data import Asset, Assets
 from foreverbull.entity.finance import Portfolio
 
 log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
@@ -30,13 +30,20 @@ def algo(f):
 
         parameters = []
         file_path = getabsfile(f)
+        parallel = False
         for key, value in signature(f).parameters.items():
-            if value.annotation == Asset or value.annotation == Portfolio:
+            if value.annotation == Assets:
+                parallel = False
+                continue
+            elif value.annotation == Asset:
+                parallel = True
+                continue
+            elif value.annotation == Portfolio:
                 continue
             default = None if value.default == value.empty else str(value.default)
             parameter = entity.service.Parameter(key=key, default=default, type=eval_param(value.annotation))
             parameters.append(parameter)
-        f._algo = {"parameters": parameters, "file_path": file_path, "func": f}
+        f._algo = {"parameters": parameters, "file_path": file_path, "parallel": parallel, "func": f}
         return f
 
     return wrapper(f)
@@ -55,10 +62,5 @@ def import_file(file_path: str) -> dict:
 
 
 from foreverbull.foreverbull import Foreverbull  # noqa: E402
-
-
-def test():
-    pass
-
 
 __all__ = [Foreverbull, Asset, Portfolio, algo]

@@ -36,7 +36,8 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	err = services.UpdateParameters(ctx, i.Image, info.Parameters)
+	fmt.Println("INFO ", info.Parallel)
+	err = services.Update(ctx, i.Image, info.Parameters, *info.Parallel)
 	if err != nil {
 		return fmt.Errorf("error updating service info: %w", err)
 	}

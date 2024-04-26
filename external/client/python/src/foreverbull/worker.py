@@ -11,14 +11,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from foreverbull import entity, exceptions, import_file
-from foreverbull.data import Asset, get_engine
+from foreverbull.data import Asset, Assets, get_engine
 from foreverbull.entity.finance import Portfolio
 
 
 class Request(BaseModel):
-    execution: str
     timestamp: datetime
-    symbol: str
+    symbols: list[str]
     portfolio: Portfolio
 
 
@@ -29,6 +28,7 @@ class Worker:
         self._stop_event = stop_event
         self._database = None
         self._file_path = file_path
+        self._parallel = False
         self.logger = logging.getLogger(__name__)
         super(Worker, self).__init__()
 
@@ -50,6 +50,7 @@ class Worker:
             raise FileNotFoundError(f"File {self._file_path} does not exist")
         algo = import_file(self._file_path)
         func = partial(algo["func"])
+        self._parallel = algo["parallel"]
         default_parameters = {param.key: param for param in algo["parameters"]}
         configured_parameters = {param.key: param for param in parameters}
 
@@ -135,10 +136,15 @@ class Worker:
                 data = Request(**request.data)
                 self.logger.debug(f"processing request: {data}")
                 with self._database_engine.connect() as db:
-                    asset = Asset.read(data.symbol, data.timestamp, db)
-                    order = self._algo(asset=asset, portfolio=data.portfolio)
-                self.logger.debug(f"Sending response {order}")
-                context_socket.send(entity.service.Response(task=request.task, data=order).dump())
+                    if self._parallel:
+                        orders = []
+                        order = self._algo(asset=Asset(data.timestamp, db, data.symbols[0]), portfolio=data.portfolio)
+                        if order:
+                            order = [order]
+                    else:
+                        orders = self._algo(assets=Assets(data.timestamp, db, data.symbols), portfolio=data.portfolio)
+                self.logger.debug(f"Sending response {orders}")
+                context_socket.send(entity.service.Response(task=request.task, data=orders).dump())
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()

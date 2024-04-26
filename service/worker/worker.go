@@ -20,7 +20,7 @@ type Instance struct {
 type Request struct {
 	Execution string             `json:"execution"`
 	Timestamp time.Time          `json:"timestamp"`
-	Symbol    string             `json:"symbol"`
+	Symbols   []string           `json:"symbols"`
 	Portfolio *finance.Portfolio `json:"portfolio"`
 }
 

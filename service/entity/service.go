@@ -22,6 +22,7 @@ type Parameter struct {
 
 type Service struct {
 	Image      string       `json:"image" binding:"required"`
+	Parallel   *bool        `json:"parallel" mapstructure:"parallel" binding:"required"`
 	Parameters *[]Parameter `json:"parameters" mapstructure:"parameters"`
 
 	Statuses []ServiceStatus `json:"statuses"`

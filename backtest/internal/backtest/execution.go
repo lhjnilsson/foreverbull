@@ -66,7 +66,6 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("error running Execution: %w", err)
 	}
-	g, gctx = errgroup.WithContext(ctx)
 	for {
 		period, err := b.backtest.GetMessage()
 		if err != nil {
@@ -90,25 +89,15 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 			Positions: positions,
 		}
 
-		for _, symbol := range execution.Symbols {
-			s := symbol
-			g.Go(func() error {
-				order, err := b.workers.Process(gctx, execution.ID, period.Timestamp, s, &portfolio)
-				if err != nil {
-					return fmt.Errorf("error processing ohlc: %w", err)
-				}
-				if order != nil {
-					_, err = b.backtest.Order(&backtest.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
-					if err != nil {
-						return fmt.Errorf("error placing order: %w", err)
-					}
-					return nil
-				}
-				return err
-			})
-		}
-		if err := g.Wait(); err != nil {
+		orders, err := b.workers.Process(gctx, period.Timestamp, execution.Symbols, &portfolio)
+		if err != nil {
 			return fmt.Errorf("error processing ohlc: %w", err)
+		}
+		for _, order := range *orders {
+			_, err = b.backtest.Order(&backtest.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
+			if err != nil {
+				return fmt.Errorf("error placing order: %w", err)
+			}
 		}
 		if err := b.backtest.Continue(); err != nil {
 			return fmt.Errorf("error continuing backtest: %w", err)

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,18 +150,14 @@ func (test *ServiceModuleTest) TestAPIClient() {
 }
 
 func (test *ServiceModuleTest) TestCreateService() {
-	workerImage := os.Getenv("WORKER_IMAGE")
-	if workerImage == "" {
-		test.T().Skip("worker image not set")
-	}
-	backtestImage := os.Getenv("BACKTEST_IMAGE")
-	if backtestImage == "" {
-		test.T().Skip("backtest image not set")
+	images := os.Getenv("IMAGES")
+	if images == "" {
+		test.T().Skip("images not set")
 	}
 
 	type ServiceResponse struct {
-		Name     string
-		Type     string
+		Image    string
+		Parallel bool
 		Statuses []struct {
 			Status string
 		}
@@ -168,13 +165,10 @@ func (test *ServiceModuleTest) TestCreateService() {
 	type TestCase struct {
 		Image string
 	}
-	testCases := []TestCase{
-		{
-			Image: os.Getenv("BACKTEST_IMAGE"),
-		},
-		{
-			Image: os.Getenv("WORKER_IMAGE"),
-		},
+
+	testCases := []TestCase{}
+	for _, image := range strings.Split(images, ",") {
+		testCases = append(testCases, TestCase{Image: image})
 	}
 	for _, testcase := range testCases {
 		test.Run(testcase.Image, func() {
@@ -194,7 +188,6 @@ func (test *ServiceModuleTest) TestCreateService() {
 				if err != nil {
 					return false, fmt.Errorf("failed to decode response: %s", err.Error())
 				}
-				fmt.Println("Status: ", data)
 				if data.Statuses[0].Status != "READY" {
 					return false, nil
 				}
@@ -213,7 +206,6 @@ func (test *ServiceModuleTest) TestCreateService() {
 				test.Failf("Failed to decode response: %w", err.Error())
 				return
 			}
-			fmt.Println("DATA: ", data)
 		})
 	}
 }

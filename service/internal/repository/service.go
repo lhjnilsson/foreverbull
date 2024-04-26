@@ -13,6 +13,7 @@ const ServiceTable = `CREATE TABLE IF NOT EXISTS service (
 image text PRIMARY KEY,
 status TEXT NOT NULL DEFAULT 'CREATED',
 error TEXT,
+parallel BOOLEAN,
 parameters JSONB);
 
 CREATE TABLE IF NOT EXISTS service_status (
@@ -62,7 +63,7 @@ func (db *Service) Create(ctx context.Context, image string) (*entity.Service, e
 func (db *Service) Get(ctx context.Context, image string) (*entity.Service, error) {
 	s := entity.Service{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service.image, parameters, 
+		`SELECT service.image, parameters, parallel,
 		ss.status, ss.error, ss.occurred_at
 		FROM service
 		INNER JOIN (
@@ -77,7 +78,7 @@ func (db *Service) Get(ctx context.Context, image string) (*entity.Service, erro
 	for rows.Next() {
 		status := entity.ServiceStatus{}
 		err = rows.Scan(
-			&s.Image, &s.Parameters,
+			&s.Image, &s.Parameters, &s.Parallel,
 			&status.Status, &status.Error, &status.OccurredAt,
 		)
 		if err != nil {
@@ -91,10 +92,10 @@ func (db *Service) Get(ctx context.Context, image string) (*entity.Service, erro
 	return &s, nil
 }
 
-func (db *Service) UpdateParameters(ctx context.Context, image string, parameters *[]entity.Parameter) error {
+func (db *Service) Update(ctx context.Context, image string, parameters *[]entity.Parameter, parallel bool) error {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE service SET parameters=$2 WHERE image=$1`,
-		image, parameters,
+		`UPDATE service SET parameters=$2, parallel=$3 WHERE image=$1`,
+		image, parameters, parallel,
 	)
 	return err
 }
@@ -116,7 +117,7 @@ func (db *Service) UpdateStatus(ctx context.Context, image string, status entity
 
 func (db *Service) List(ctx context.Context) (*[]entity.Service, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service.image, parameters, ss.status, ss.error, ss.occurred_at
+		`SELECT service.image, parameters, parallel, ss.status, ss.error, ss.occurred_at
 		FROM service
 		INNER JOIN (
 			SELECT image, status, error, occurred_at FROM service_status ORDER BY occurred_at DESC
@@ -133,7 +134,7 @@ func (db *Service) List(ctx context.Context) (*[]entity.Service, error) {
 		status := entity.ServiceStatus{}
 		s := entity.Service{}
 		err = rows.Scan(
-			&s.Image, &s.Parameters,
+			&s.Image, &s.Parameters, &s.Parallel,
 			&status.Status, &status.Error, &status.OccurredAt,
 		)
 		if err != nil {

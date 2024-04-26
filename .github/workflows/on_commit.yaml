@@ -79,7 +79,7 @@ jobs:
         with:
           context: external/client/python
           file: ./external/client/python/Dockerfile
-          build-args: ALGO_FILE=example.py
+          build-args: ALGO_FILE=parallel_example.py
           tags: lhjnilsson/client:latest
           outputs: type=docker,dest=/tmp/client.tar
       - name: Build Zipline

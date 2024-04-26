@@ -72,14 +72,59 @@ def manual_server():
         ),
     ],
 )
+@pytest.mark.parametrize(
+    "algo,expected_info",
+    [
+        (
+            "parallel_algo_file",
+            entity.service.Info(
+                version="0.0.1",
+                parameters=[],
+                parallel=True,
+            ),
+        ),
+        (
+            "non_parallel_algo_file",
+            entity.service.Info(
+                version="0.0.1",
+                parameters=[],
+                parallel=False,
+            ),
+        ),
+        (
+            "parallel_algo_file_with_parameters",
+            entity.service.Info(
+                version="0.0.1",
+                parameters=[
+                    entity.service.Parameter(key="low", default="15", type="int", value=None),
+                    entity.service.Parameter(key="high", default="25", type="int", value=None),
+                ],
+                parallel=True,
+            ),
+        ),
+        (
+            "non_parallel_algo_file_with_parameters",
+            entity.service.Info(
+                version="0.0.1",
+                parameters=[
+                    entity.service.Parameter(key="low", default="15", type="int", value=None),
+                    entity.service.Parameter(key="high", default="25", type="int", value=None),
+                ],
+                parallel=False,
+            ),
+        ),
+    ],
+)
 def test_foreverbull(
     spawn_process,
-    empty_algo_file,
     execution,
     manual_server,
     process_symbols,
     session,
     expected_session_type,
+    algo,
+    expected_info,
+    request,
 ):
     server, socket_config = manual_server
     server.new_execution_data = execution
@@ -88,13 +133,16 @@ def test_foreverbull(
     server.run_execution_error = None
     session.port = socket_config.port
 
+    algo_file = request.getfixturevalue(algo)
+
     with (
-        Foreverbull(session, file_path=empty_algo_file) as foreverbull,
+        Foreverbull(session, file_path=algo_file) as foreverbull,
         pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}") as socket,
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.info
+        assert foreverbull.info == expected_info
         foreverbull.configure_execution(execution)
         foreverbull.run_execution()
 
-        process_symbols(socket, "exc_123")
+        process_symbols(socket, foreverbull.info.parallel)

@@ -24,7 +24,7 @@ def spawn_process():
 
 
 @pytest.fixture(scope="function")
-def execution():
+def execution(database):
     return entity.backtest.Execution(
         id="test",
         calendar="NYSE",
@@ -39,7 +39,7 @@ def execution():
 
 
 @pytest.fixture(scope="session")
-def empty_algo_file():
+def parallel_algo_file():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
@@ -58,7 +58,26 @@ def empty_algo(asset: Asset, portfolio: Portfolio):
 
 
 @pytest.fixture(scope="session")
-def algo_with_parameters():
+def non_parallel_algo_file():
+    with tempfile.NamedTemporaryFile(suffix=".py") as f:
+        f.write(
+            b"""
+import foreverbull
+from foreverbull.data import Assets
+from foreverbull.entity.finance import Portfolio
+
+@foreverbull.algo
+def empty_algo(assets: Assets, portfolio: Portfolio):
+    pass
+
+"""
+        )
+        f.flush()
+        yield f.name
+
+
+@pytest.fixture(scope="session")
+def parallel_algo_file_with_parameters():
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
@@ -67,7 +86,26 @@ from foreverbull.data import Asset
 from foreverbull.entity.finance import Portfolio
                 
 @foreverbull.algo
-def algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high: int = 25):
+def parallel_algo_file_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high: int = 25):
+    pass
+
+"""
+        )
+        f.flush()
+        yield f.name
+
+
+@pytest.fixture(scope="session")
+def non_parallel_algo_file_with_parameters():
+    with tempfile.NamedTemporaryFile(suffix=".py") as f:
+        f.write(
+            b"""
+import foreverbull
+from foreverbull.data import Assets
+from foreverbull.entity.finance import Portfolio
+
+@foreverbull.algo
+def parallel_algo_file_with_parameters(assets: Assets, portfolio: Portfolio, low: int = 15, high: int = 25):
     pass
 
 """

@@ -53,7 +53,7 @@ func (test *InstanceTest) SetupTest() {
 	test.testService, err = services.Create(context.TODO(), "test-image")
 	test.Require().NoError(err)
 
-	err = services.UpdateParameters(context.Background(), test.testService.Image, nil)
+	err = services.Update(context.Background(), test.testService.Image, nil, false)
 	test.Require().NoError(err)
 
 	instanceID := uuid.New().String()
@@ -124,15 +124,17 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 		Payload      string
 		ExpectedType string
 		Parameters   []entity.Parameter
+		Parallel     bool
 	}
 
 	testCases := []TestCase{
 		{
-			Payload:    `{"type":"backtest","parameters":[]}`,
+			Payload:    `{"type":"backtest", "parallel": false, "parameters":[]}`,
 			Parameters: []entity.Parameter{},
+			Parallel:   false,
 		},
 		{
-			Payload: `{"type":"worker","parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
+			Payload: `{"type":"worker", "parallel": true, "parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
 			Parameters: []entity.Parameter{
 				{
 					Key:     "param1",
@@ -141,6 +143,7 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 					Default: "3",
 				},
 			},
+			Parallel: true,
 		},
 	}
 	for _, testCase := range testCases {
@@ -156,8 +159,9 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 			err := InstanceInterview(commandCtx, b)
 			test.NoError(err)
 
-			_, err = services.Get(context.Background(), test.testService.Image)
+			service, err := services.Get(context.Background(), test.testService.Image)
 			test.NoError(err)
+			test.Equal(testCase.Parallel, *service.Parallel)
 		})
 	}
 }

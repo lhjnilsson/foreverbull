@@ -1,8 +1,8 @@
 from multiprocessing import set_start_method
 
-from example import monkey
-
 from foreverbull import entity
+
+from .parallel_example import monkey
 
 set_start_method("spawn")
 

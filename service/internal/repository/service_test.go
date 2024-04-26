@@ -62,7 +62,7 @@ func (test *ServiceTest) TestGet() {
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 }
 
-func (test *ServiceTest) TestUpdateServiceInfo() {
+func (test *ServiceTest) TestUpdate() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
@@ -77,7 +77,7 @@ func (test *ServiceTest) TestUpdateServiceInfo() {
 		},
 	}
 
-	err = db.UpdateParameters(ctx, "image", &parameters)
+	err = db.Update(ctx, "image", &parameters, true)
 	test.NoError(err)
 
 	service, err := db.Get(ctx, "image")
@@ -86,6 +86,7 @@ func (test *ServiceTest) TestUpdateServiceInfo() {
 	test.Len(service.Statuses, 1)
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 	test.Len(*service.Parameters, 1)
+	test.True(*service.Parallel)
 }
 
 func (test *ServiceTest) TestUpdateStatus() {

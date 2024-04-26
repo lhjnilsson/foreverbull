@@ -3,9 +3,7 @@ import re
 from datetime import datetime
 
 from pandas import DataFrame, read_sql_query
-from sqlalchemy import create_engine, engine, text
-
-from foreverbull import entity
+from sqlalchemy import create_engine, engine
 
 
 # Hacky way to get the database URL, TODO: find a better way
@@ -36,23 +34,15 @@ def get_engine(url: str):
     raise Exception("Could not connect to database")
 
 
-class Asset(entity.finance.Asset):
-    _as_of: datetime
-    _db: engine.Connection
+class Asset:
+    def __init__(self, as_of: datetime, db: engine.Connection, symbol: str):
+        self._as_of = as_of
+        self._db = db
+        self._symbol = symbol
 
-    @classmethod
-    def read(cls, symbol: str, as_of: datetime, db: engine.Connection):
-        row = db.execute(text(f"Select symbol, name, title, asset_type FROM asset WHERE symbol='{symbol}'")).fetchone()
-        if row is None:
-            return None
-        asset = cls.model_construct()
-        asset.symbol = row[0]
-        asset.name = row[1]
-        asset.title = row[2]
-        asset.asset_type = row[3]
-        asset._db = db
-        asset._as_of = as_of
-        return asset
+    @property
+    def symbol(self):
+        return self._symbol
 
     @property
     def stock_data(self) -> DataFrame:
@@ -61,3 +51,18 @@ class Asset(entity.finance.Asset):
             FROM ohlc WHERE time <= '{self._as_of}' AND symbol='{self.symbol}'""",
             self._db,
         )
+
+
+class Assets:
+    def __init__(self, as_of: datetime, db: engine.Connection, symbols: list[str]):
+        self._as_of = as_of
+        self._db = db
+        self._symbols = symbols
+
+    @property
+    def symbols(self):
+        return self._symbols
+
+    def __iter__(self):
+        for symbol in self.symbols:
+            yield Asset(self._as_of, self._db, symbol)
