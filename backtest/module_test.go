@@ -20,6 +20,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
+	serviceEntity "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
@@ -214,7 +215,16 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	test.NoError(err)
 
 	execution := new(entity.Execution)
-	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", nil, execution))
+	test.NoError(helper.SocketRequest(test.T(), socket, "get_backtest", nil, execution))
+	type NewExecution struct {
+		Execution *entity.Execution      `json:"execution" mapstructure:"execution"`
+		Service   *serviceEntity.Service `json:"service" mapstructure:"service"`
+	}
+	ne := NewExecution{
+		Execution: execution,
+		Service:   &serviceEntity.Service{Parallel: func() *bool { b := true; return &b }()},
+	}
+	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", &ne, execution))
 
 	workerSocket, err := repSocket.NewSocket()
 	test.NoError(err)

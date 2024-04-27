@@ -15,12 +15,6 @@ class Parameter(Base):
     type: str
 
 
-class Info(Base):
-    version: str
-    parameters: List[Parameter]
-    parallel: bool
-
-
 class SocketType(str, enum.Enum):
     REQUESTER = "REQUESTER"
     REPLIER = "REPLIER"
@@ -34,7 +28,7 @@ class SocketConfig(Base):
     port: int = 0
     listen: bool = True
     recv_timeout: int = 20000
-    sendout: int = 20000
+    send_timeout: int = 20000
 
 
 class ServiceStatusType(str, enum.Enum):
@@ -51,9 +45,9 @@ class ServiceStatus(Base):
 
 
 class Service(Base):
-    image: str
+    image: str | None = None
     Parameters: List[Parameter] = []
-    parallel: bool = False
+    parallel: bool | None = None
 
     statuses: List[ServiceStatus]
 

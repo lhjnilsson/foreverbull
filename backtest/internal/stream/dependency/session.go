@@ -80,10 +80,16 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 		return nil, err
 	}
 
-	s, err := backtest.NewSession(ctx, storedBacktest, storedSession, backtestInstance,
+	s, socket, err := backtest.NewSession(ctx, storedBacktest, storedSession, backtestInstance,
 		&executionStorage, &periodStorage, workerInstances...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating session: %w", err)
+	}
+	if socket != nil {
+		err = sessionStorage.UpdatePort(ctx, storedSession.ID, socket.Port)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }

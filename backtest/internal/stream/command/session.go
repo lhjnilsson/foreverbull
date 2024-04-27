@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
@@ -32,8 +31,6 @@ func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
 }
 
 func SessionRun(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-
 	command := ss.SessionRunCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
@@ -45,61 +42,33 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error getting backtest session: %w", err)
 	}
 	s := sess.(backtest.Session)
-	sessionStorage := repository.Session{Conn: db}
-	executionStorage := repository.Execution{Conn: db}
 
-	storedSession, err := sessionStorage.Get(ctx, command.SessionID)
-	if err != nil {
-		return fmt.Errorf("error getting session: %w", err)
-	}
+	runSession := func(session backtest.Session) error {
+		activity := make(chan bool)
+		stop := make(chan bool)
+		// If there is no activity in the session for X seconds, we tell it to stop
+		go func() {
+			for {
+				select {
+				case <-activity:
+				case <-time.After(time.Second * 30):
+					stop <- true
+					return
+				case <-stop: // stop is closed, exit
+					return
+				}
+			}
+		}()
 
-	executions, err := executionStorage.ListBySession(ctx, storedSession.ID)
-	if err != nil {
-		return fmt.Errorf("error listing executions: %w", err)
-	}
-
-	runSession := func(session backtest.Session, executions *[]entity.Execution) error {
+		err = session.Run(activity, stop)
 		if err != nil {
 			return err
 		}
-		if command.Manual {
-			err = sessionStorage.UpdatePort(ctx, storedSession.ID, s.GetSocket().Port)
-			if err != nil {
-				return err
-			}
-			activity := make(chan bool)
-			stop := make(chan bool)
-			// If there is no activity in the session for X seconds, we tell it to stop
-			go func() {
-				for {
-					select {
-					case <-activity:
-					case <-time.After(time.Second * 30):
-						stop <- true
-						return
-					case <-stop: // stop is closed, exit
-						return
-					}
-				}
-			}()
-
-			err = session.Run(activity, stop)
-			if err != nil {
-				return err
-			}
-			close(stop)
-			close(activity)
-		} else {
-			for _, execution := range *executions {
-				err = session.RunExecution(ctx, &execution)
-				if err != nil {
-					return err
-				}
-			}
-		}
+		close(stop)
+		close(activity)
 		return nil
 	}
-	err = runSession(s, executions)
+	err = runSession(s)
 	if err != nil {
 		return fmt.Errorf("error running session: %w", err)
 	}

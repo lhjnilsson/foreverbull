@@ -76,13 +76,13 @@ class ManualSession(BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        info: entity.service.Info,
+        service: entity.service.Service,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
-        BaseSession.__init__(self, session, info, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
 
     def configure_execution(self, execution: entity.backtest.Execution):
@@ -91,7 +91,8 @@ class ManualSession(BaseSession):
         )
         socket.send_timeout = 1000
         socket.recv_timeout = 1000
-        socket.send(entity.service.Request(task="new_execution", data=execution).dump())
+        data = {"execution": execution.model_dump_json(), "service": self.service.model_dump_json()}
+        socket.send(entity.service.Request(task="new_execution", data=data).dump())
         rsp = entity.service.Response.load(socket.recv())
         if rsp.error:
             raise Exception(rsp.error)
@@ -113,14 +114,14 @@ class Session(threading.Thread, BaseSession):
     def __init__(
         self,
         session: entity.backtest.Session,
-        info: entity.service.Info,
+        service: entity.service.Service,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
         threading.Thread.__init__(self)
-        BaseSession.__init__(self, session, info, surveyor, states, workers, stop_event)
+        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
         self.logger = logging.getLogger(__name__)
         self.socket_config = entity.service.SocketConfig(
             hostname=socket.gethostbyname(socket.gethostname()),
@@ -191,7 +192,7 @@ class Foreverbull:
         if self._file_path is None:
             raise Exception("No algo file provided")
         algo = import_file(self._file_path)
-        info = entity.service.Info(version="0.0.1", parameters=algo["parameters"], parallel=algo["parallel"])
+        service = entity.service.Service(parameters=algo["parameters"], parallel=algo["parallel"])
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
         self._worker_surveyor_socket.sendout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000
@@ -232,7 +233,7 @@ class Foreverbull:
         if self._session.manual:
             return ManualSession(
                 self._session,
-                info,
+                service,
                 self._worker_surveyor_socket,
                 self._worker_states_socket,
                 self._workers,
@@ -241,7 +242,7 @@ class Foreverbull:
         else:
             s = Session(
                 self._session,
-                info,
+                service,
                 self._worker_surveyor_socket,
                 self._worker_states_socket,
                 self._workers,

@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/service/message"
@@ -12,6 +13,7 @@ func SocketRequest(t *testing.T, socket mangos.Socket, task string, data interfa
 	t.Helper()
 	req := message.Request{Task: task, Data: data}
 	msg, err := req.Encode()
+	fmt.Println("SENDING", string(msg))
 	assert.Nil(t, err)
 	err = socket.Send(msg)
 	assert.Nil(t, err)
@@ -20,6 +22,9 @@ func SocketRequest(t *testing.T, socket mangos.Socket, task string, data interfa
 	rsp := message.Response{}
 	err = rsp.Decode(msg)
 	assert.Nil(t, err)
+	if rsp.Error != "" {
+		return fmt.Errorf("error: %s", rsp.Error)
+	}
 	if response != nil {
 		err = rsp.DecodeData(response)
 		assert.Nil(t, err)

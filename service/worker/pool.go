@@ -83,6 +83,10 @@ type pool struct {
 	parallel bool `json:"-"`
 }
 
+func (p *pool) SetParallelization(parallel bool) {
+	p.parallel = parallel
+}
+
 func (p *pool) SocketConfig() *socket.Socket {
 	cfg := p.Socket
 	cfg.Host = environment.GetServerAddress()
