@@ -13,7 +13,6 @@ func SocketRequest(t *testing.T, socket mangos.Socket, task string, data interfa
 	t.Helper()
 	req := message.Request{Task: task, Data: data}
 	msg, err := req.Encode()
-	fmt.Println("SENDING", string(msg))
 	assert.Nil(t, err)
 	err = socket.Send(msg)
 	assert.Nil(t, err)

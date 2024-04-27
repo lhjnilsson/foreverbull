@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestModuleBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestModuleTest))
 }
 
-func (test *BacktestModuleTest) SetupTest() {
+func (test *BacktestModuleTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
@@ -86,7 +87,7 @@ func (test *BacktestModuleTest) SetupTest() {
 		Module,
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
-	payload := `{"name":"test","service":"` + os.Getenv("WORKER_IMAGE") + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	payload := `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
 	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
@@ -121,46 +122,61 @@ func (test *BacktestModuleTest) SetupTest() {
 	test.backtestName = "test"
 }
 
-func (test *BacktestModuleTest) TearDownTest() {
+func (test *BacktestModuleTest) TearDownSuite() {
 	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
 }
 
 func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
-	type SessionResponse struct {
-		ID       string
-		Statuses []struct {
-			Status string
-		}
+	images, exists := os.LookupEnv("IMAGES")
+	if !exists {
+		test.T().Skip("IMAGES not set")
 	}
 
-	payload := `{"backtest": "test", "executions": [{}]}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
-	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
-		rspData, _ := io.ReadAll(rsp.Body)
-		test.Failf("Failed to create session: %s", string(rspData))
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+
+	for _, image := range strings.Split(images, ",") {
+		test.Run(image, func() {
+			_, err = pool.Exec(context.Background(), "UPDATE backtest SET service=$1 WHERE name=$2", image, test.backtestName)
+			test.Require().NoError(err)
+
+			type SessionResponse struct {
+				ID       string
+				Statuses []struct {
+					Status string
+				}
+			}
+
+			payload := `{"backtest": "test", "executions": [{}]}`
+			rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
+			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
+				rspData, _ := io.ReadAll(rsp.Body)
+				test.Failf("Failed to create session: %s", string(rspData))
+			}
+			data := &SessionResponse{}
+			err := json.NewDecoder(rsp.Body).Decode(data)
+			if err != nil {
+				test.Failf("Failed to decode response: %s", err.Error())
+			}
+			condition := func() (bool, error) {
+				rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
+				if rsp.StatusCode != http.StatusOK {
+					return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
+				}
+				data := &SessionResponse{}
+				err := json.NewDecoder(rsp.Body).Decode(data)
+				if err != nil {
+					return false, fmt.Errorf("failed to decode response: %s", err.Error())
+				}
+				if data.Statuses[0].Status == "COMPLETED" {
+					return true, nil
+				}
+				return false, nil
+			}
+			test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+		})
 	}
-	data := &SessionResponse{}
-	err := json.NewDecoder(rsp.Body).Decode(data)
-	if err != nil {
-		test.Failf("Failed to decode response: %s", err.Error())
-	}
-	condition := func() (bool, error) {
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
-		if rsp.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
-		}
-		data := &SessionResponse{}
-		err := json.NewDecoder(rsp.Body).Decode(data)
-		if err != nil {
-			return false, fmt.Errorf("failed to decode response: %s", err.Error())
-		}
-		if data.Statuses[0].Status == "COMPLETED" {
-			return true, nil
-		}
-		return false, nil
-	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 }
 
 func (test *BacktestModuleTest) TestRunBacktestManual() {
