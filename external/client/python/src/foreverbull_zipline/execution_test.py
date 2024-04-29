@@ -6,7 +6,7 @@ import pynng
 import pytest
 
 from foreverbull.entity import backtest
-from foreverbull.entity.service import Request, Response
+from foreverbull.socket import Request, Response
 from foreverbull_zipline import entity
 from foreverbull_zipline.execution import Execution
 
@@ -46,9 +46,9 @@ def execution_socket():
 
 def test_info(execution_socket: pynng.Rep0):
     req = Request(task="info")
-    execution_socket.send(req.dump())
+    execution_socket.send(req.serialize())
     rsp_data = execution_socket.recv()
-    rsp = Response.load(rsp_data)
+    rsp = Response.deserialize(rsp_data)
     assert rsp.task == "info"
     assert rsp.error is None
     assert rsp.data["type"] == "backtest"
@@ -62,37 +62,37 @@ def test_ingest(
     execution_socket: pynng.Rep0,
     ingest_config,
 ):
-    execution_socket.send(Request(task="ingest", data=ingest_config).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="ingest", data=ingest_config).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "ingest"
     assert response.error is None
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, benchmark):
-    execution_socket.send(Request(task="info").dump())
-    Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="info").serialize())
+    Response.deserialize(execution_socket.recv())
 
     execution.benchmark = benchmark
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
     while True:
-        execution_socket.send(Request(task="get_period").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="get_period").serialize())
+        response = Response.deserialize(execution_socket.recv())
         assert response.task == "get_period"
         if response.data is None:
             break
         assert response.error is None
-        execution_socket.send(Request(task="continue").dump())
+        execution_socket.send(Request(task="continue").serialize())
         execution_socket.recv()
 
 
@@ -118,19 +118,19 @@ def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, bench
     ],
 )
 def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, ingest_config, start, end):
-    execution_socket.send(Request(task="info").dump())
-    Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="info").serialize())
+    Response.deserialize(execution_socket.recv())
 
     execution.start = start
     execution.end = end
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
     execution = backtest.Execution(**response.data)
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
@@ -149,40 +149,40 @@ def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, inges
         assert execution.end == end
 
     while True:
-        execution_socket.send(Request(task="get_period").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="get_period").serialize())
+        response = Response.deserialize(execution_socket.recv())
         assert response.task == "get_period"
         if response.data is None:
             break
         assert response.error is None
-        execution_socket.send(Request(task="continue").dump())
+        execution_socket.send(Request(task="continue").serialize())
         execution_socket.recv()
 
 
 def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
-    execution_socket.send(Request(task="info").dump())
-    Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="info").serialize())
+    Response.deserialize(execution_socket.recv())
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
     for _ in range(10):
-        execution_socket.send(Request(task="get_period").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="get_period").serialize())
+        response = Response.deserialize(execution_socket.recv())
         assert response.task == "get_period"
         assert response.error is None
-        execution_socket.send(Request(task="continue").dump())
+        execution_socket.send(Request(task="continue").serialize())
         execution_socket.recv()
 
-    execution_socket.send(Request(task="stop").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="stop").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "stop"
     assert response.error is None
 
@@ -191,52 +191,52 @@ def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"], None])
 def test_multiple_runs_different_symbols(execution: Execution, execution_socket: pynng.Rep0, symbols):
     execution.symbols = symbols
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
     execution = backtest.Execution(**response.data)
     assert execution.symbols == symbols if symbols is not None else ["AAPL", "MSFT", "TSLA"]
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
     while True:
-        execution_socket.send(Request(task="get_period").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="get_period").serialize())
+        response = Response.deserialize(execution_socket.recv())
         assert response.task == "get_period"
         if response.data is None:
             break
         assert response.error is None
-        execution_socket.send(Request(task="continue").dump())
+        execution_socket.send(Request(task="continue").serialize())
         execution_socket.recv()
 
 
 def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
     while True:
-        execution_socket.send(Request(task="get_period").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="get_period").serialize())
+        response = Response.deserialize(execution_socket.recv())
         assert response.task == "get_period"
         if response.data is None:
             break
         assert response.error is None
-        execution_socket.send(Request(task="continue").dump())
+        execution_socket.send(Request(task="continue").serialize())
         execution_socket.recv()
 
-    execution_socket.send(Request(task="get_execution_result").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_execution_result").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_execution_result"
     assert response.error is None
     assert "periods" in response.data
@@ -247,28 +247,28 @@ def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
 def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     execution.benchmark = benchmark
 
-    execution_socket.send(Request(task="configure_execution", data=execution).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.error is None
 
-    execution_socket.send(Request(task="run_execution").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="run_execution").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "run_execution"
     assert response.error is None
 
-    execution_socket.send(Request(task="continue").dump())
+    execution_socket.send(Request(task="continue").serialize())
     execution_socket.recv()
 
     asset = entity.Asset(symbol=execution.symbols[0])
-    execution_socket.send(Request(task="can_trade", data=asset).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="can_trade", data=asset).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "can_trade"
     assert response.error is None
 
     order = entity.Order(symbol=execution.symbols[0], amount=10)
-    execution_socket.send(Request(task="order", data=order).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="order", data=order).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
@@ -277,38 +277,38 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert response.data["id"]
     placed_order = response.data
 
-    execution_socket.send(Request(task="continue").dump())
+    execution_socket.send(Request(task="continue").serialize())
     execution_socket.recv()
 
-    execution_socket.send(Request(task="get_period").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_period").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
     period = entity.Period(**response.data)
     assert len(period.new_orders) == 1
     assert period.new_orders[0].symbol == order.symbol
 
-    execution_socket.send(Request(task="get_order", data=placed_order).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_order", data=placed_order).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
     assert response.data["amount"] == order.amount
     assert response.data["status"] == entity.OrderStatus.FILLED
 
-    execution_socket.send(Request(task="continue").dump())
+    execution_socket.send(Request(task="continue").serialize())
     execution_socket.recv()
 
-    execution_socket.send(Request(task="get_period").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_period").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_period"
     assert response.error is None
     period = entity.Period(**response.data)
     assert len(period.new_orders) == 0
 
     order = entity.Order(symbol=execution.symbols[0], amount=15)
-    execution_socket.send(Request(task="order", data=order).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="order", data=order).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
@@ -316,8 +316,8 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert response.data["status"] == entity.OrderStatus.OPEN
     assert response.data["id"]
 
-    execution_socket.send(Request(task="get_open_orders").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_open_orders").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_open_orders"
     assert response.error is None
     assert "orders" in response.data
@@ -326,13 +326,13 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert response.data["orders"][0]["amount"] == order.amount
     assert response.data["orders"][0]["status"] == entity.OrderStatus.OPEN
 
-    execution_socket.send(Request(task="cancel_order", data=response.data["orders"][0]).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="cancel_order", data=response.data["orders"][0]).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "cancel_order"
     assert response.error is None
 
-    execution_socket.send(Request(task="get_order", data=response.data).dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_order", data=response.data).serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_order"
     assert response.error is None
     assert response.data["symbol"] == order.symbol
@@ -340,13 +340,13 @@ def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
     assert response.data["status"] == entity.OrderStatus.CANCELLED
 
     while True:
-        execution_socket.send(Request(task="continue").dump())
-        response = Response.load(execution_socket.recv())
+        execution_socket.send(Request(task="continue").serialize())
+        response = Response.deserialize(execution_socket.recv())
         if response.error and response.error == "no active execution":
             break
 
-    execution_socket.send(Request(task="get_execution_result").dump())
-    response = Response.load(execution_socket.recv())
+    execution_socket.send(Request(task="get_execution_result").serialize())
+    response = Response.deserialize(execution_socket.recv())
     assert response.task == "get_execution_result"
     assert response.error is None
     assert "periods" in response.data

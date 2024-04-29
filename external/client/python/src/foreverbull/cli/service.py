@@ -44,13 +44,13 @@ def create(image: image):
             status = service.statuses[0]
             if previous_status and previous_status.status != status.status:
                 match status.status:
-                    case entity.service.ServiceStatusType.INTERVIEW:
+                    case entity.service.Service.Status.Type.INTERVIEW:
                         progress.advance(task)
                         progress.update(task, description="Interviewing service")
-                    case entity.service.ServiceStatusType.READY:
+                    case entity.service.Service.Status.Type.READY:
                         progress.advance(task)
                         progress.update(task, description="Service ready")
-                    case entity.service.ServiceStatusType.ERROR:
+                    case entity.service.Service.Status.Type.ERROR:
                         std_err.log(f"[red]Error while creating service: {status.error}")
                         exit(1)
                 previous_status = status

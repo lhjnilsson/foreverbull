@@ -1,9 +1,10 @@
+import os
 from threading import Event, Thread
 
 import pynng
 import pytest
 
-from foreverbull import Foreverbull, entity
+from foreverbull import Foreverbull, entity, socket
 from foreverbull.foreverbull import ManualSession, Session
 
 
@@ -24,18 +25,18 @@ def manual_server():
             self.socket.recv_timeout = 100
             while not self.stop_event.is_set():
                 try:
-                    req = entity.service.Request.load(self.socket.recv())
+                    req = socket.Request.deserialize(self.socket.recv())
                     if req.task == "new_execution":
                         self.socket.send(
-                            entity.service.Response(
+                            socket.Response(
                                 task="", data=self.run_execution_data, error=self.run_execution_error
-                            ).dump()
+                            ).serialize()
                         )
                     elif req.task == "run_execution":
                         self.socket.send(
-                            entity.service.Response(
+                            socket.Response(
                                 task="", data=self.run_execution_data, error=self.run_execution_error
-                            ).dump()
+                            ).serialize()
                         )
                 except pynng.exceptions.Timeout:
                     pass
@@ -73,57 +74,19 @@ def manual_server():
     ],
 )
 @pytest.mark.parametrize(
-    "algo,expected_info",
+    "algo,expected_service",
     [
-        (
-            "parallel_algo_file",
-            entity.service.Info(
-                version="0.0.1",
-                parameters=[],
-                parallel=True,
-            ),
-        ),
-        (
-            "non_parallel_algo_file",
-            entity.service.Info(
-                version="0.0.1",
-                parameters=[],
-                parallel=False,
-            ),
-        ),
-        (
-            "parallel_algo_file_with_parameters",
-            entity.service.Info(
-                version="0.0.1",
-                parameters=[
-                    entity.service.Parameter(key="low", default="15", type="int", value=None),
-                    entity.service.Parameter(key="high", default="25", type="int", value=None),
-                ],
-                parallel=True,
-            ),
-        ),
-        (
-            "non_parallel_algo_file_with_parameters",
-            entity.service.Info(
-                version="0.0.1",
-                parameters=[
-                    entity.service.Parameter(key="low", default="15", type="int", value=None),
-                    entity.service.Parameter(key="high", default="25", type="int", value=None),
-                ],
-                parallel=False,
-            ),
-        ),
+        ("parallel_algo_file", None),
     ],
 )
 def test_foreverbull(
     spawn_process,
     execution,
     manual_server,
-    process_symbols,
     session,
     expected_session_type,
     algo,
-    expected_info,
+    expected_service,
     request,
 ):
     server, socket_config = manual_server
@@ -133,16 +96,16 @@ def test_foreverbull(
     server.run_execution_error = None
     session.port = socket_config.port
 
-    algo_file = request.getfixturevalue(algo)
+    algo_file, configuration, process_symbols = request.getfixturevalue(algo)
 
     with (
         Foreverbull(session, file_path=algo_file) as foreverbull,
         pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}") as socket,
     ):
         assert isinstance(foreverbull, expected_session_type)
-        assert foreverbull.info
-        assert foreverbull.info == expected_info
-        foreverbull.configure_execution(execution)
+        assert foreverbull.service
+        print("CONFIGURE WITH: ", configuration)
+        foreverbull.configure_execution(configuration)
         foreverbull.run_execution()
 
-        process_symbols(socket, foreverbull.info.parallel)
+        process_symbols(socket, "exc_123")

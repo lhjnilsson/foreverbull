@@ -2,10 +2,12 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Optional
 
+import pydantic
+
 from .base import Base
 
 
-class OHLC(Base):
+class OHLC(pydantic.BaseModel):
     symbol: str
     open: float
     high: float
@@ -15,7 +17,7 @@ class OHLC(Base):
     time: datetime
 
 
-class Asset(Base):
+class Asset(pydantic.BaseModel):
     symbol: str
     name: Optional[str] = None
     title: Optional[str] = None
@@ -30,7 +32,7 @@ class OrderStatus(IntEnum):
     HELD = 4
 
 
-class Order(Base):
+class Order(pydantic.BaseModel):
     id: Optional[str] = None
     symbol: Optional[str] = None
     amount: Optional[int] = None
@@ -56,13 +58,13 @@ class Order(Base):
         )
 
 
-class Position(Base):
+class Position(pydantic.BaseModel):
     symbol: str
     amount: float
     cost_basis: float
 
 
-class Portfolio(Base):
+class Portfolio(pydantic.BaseModel):
     cash: float
     value: float
     positions: list[Position]

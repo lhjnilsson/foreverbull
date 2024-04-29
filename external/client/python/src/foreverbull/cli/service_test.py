@@ -16,8 +16,8 @@ def test_service_list():
             entity.service.Service(
                 image="test",
                 statuses=[
-                    entity.service.ServiceStatus(
-                        status=entity.service.ServiceStatusType.READY,
+                    entity.service.Service.Status(
+                        status=entity.service.Service.Status.Type.READY,
                         error=None,
                         occurred_at=datetime.now(),
                     )
@@ -35,18 +35,18 @@ def test_service_list():
 
 def test_service_create():
     get_statuses = [
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.READY,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.READY,
             error=None,
             occurred_at=datetime.now(),
         ),
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.INTERVIEW,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.INTERVIEW,
             error=None,
             occurred_at=datetime.now(),
         ),
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.CREATED,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.CREATED,
             error=None,
             occurred_at=datetime.now(),
         ),
@@ -79,18 +79,18 @@ def test_service_create():
 
 def test_service_create_error():
     get_statuses = [
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.ERROR,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.ERROR,
             error="error",
             occurred_at=datetime.now(),
         ),
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.INTERVIEW,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.INTERVIEW,
             error=None,
             occurred_at=datetime.now(),
         ),
-        entity.service.ServiceStatus(
-            status=entity.service.ServiceStatusType.CREATED,
+        entity.service.Service.Status(
+            status=entity.service.Service.Status.Type.CREATED,
             error=None,
             occurred_at=datetime.now(),
         ),
@@ -129,8 +129,8 @@ def test_service_get():
         mock_get.return_value = entity.service.Service(
             image="test_image",
             statuses=[
-                entity.service.ServiceStatus(
-                    status=entity.service.ServiceStatusType.READY,
+                entity.service.Service.Status(
+                    status=entity.service.Service.Status.Type.READY,
                     error=None,
                     occurred_at=datetime.now(),
                 )
@@ -143,8 +143,8 @@ def test_service_get():
                 host="hostname",
                 port=1234,
                 statuses=[
-                    entity.service.InstanceStatus(
-                        status=entity.service.InstanceStatusType.RUNNING,
+                    entity.service.Instance.Status(
+                        status=entity.service.Instance.Status.Type.RUNNING,
                         error=None,
                         occurred_at=datetime.now(),
                     )

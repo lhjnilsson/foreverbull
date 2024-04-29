@@ -4,21 +4,12 @@ from datetime import datetime
 from functools import partial
 from multiprocessing import Event, Process
 from threading import Thread
-from typing import List
 
 import pynng
-from pydantic import BaseModel
 from sqlalchemy import text
 
-from foreverbull import entity, exceptions, import_file
+from foreverbull import Algorithm, entity, exceptions, socket
 from foreverbull.data import Asset, Assets, get_engine
-from foreverbull.entity.finance import Portfolio
-
-
-class Request(BaseModel):
-    timestamp: datetime
-    symbols: list[str]
-    portfolio: Portfolio
 
 
 class Worker:
@@ -45,31 +36,13 @@ class Worker:
         else:
             raise TypeError("Unknown parameter type")
 
-    def _setup_algorithm(self, parameters: List[entity.service.Parameter]):
-        if not os.path.exists(self._file_path):
-            raise FileNotFoundError(f"File {self._file_path} does not exist")
-        algo = import_file(self._file_path)
-        func = partial(algo["func"])
-        self._parallel = algo["parallel"]
-        default_parameters = {param.key: param for param in algo["parameters"]}
-        configured_parameters = {param.key: param for param in parameters}
-
-        for parameter in default_parameters:
-            value = None
-            if default_parameters[parameter].default:
-                value = self._eval_param(default_parameters[parameter].type, default_parameters[parameter].default)
-            if parameter in configured_parameters:
-                value = self._eval_param(configured_parameters[parameter].type, configured_parameters[parameter].value)
-            if value is None:
-                raise ValueError(f"Parameter {parameter} has no default value and is not configured")
-            func = partial(func, **{parameter: value})
-        return func
-
-    def configure_execution(self, execution: entity.backtest.Execution):
+    def configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring worker")
+        self._algo = Algorithm.from_file_path(self._file_path)
+        print("INSTANCE", instance)
         try:
             self.socket = pynng.Rep0(
-                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{execution.port}", block_on_dial=True
+                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{instance.broker_port}", block_on_dial=True
             )
             self.socket.recv_timeout = 5000
             self.socket.send_timeout = 5000
@@ -77,12 +50,12 @@ class Worker:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
 
         try:
-            self._algo = self._setup_algorithm(execution.parameters or [])
+            self._algo.configure(instance.functions)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to setup algorithm: {e}")
 
         try:
-            engine = get_engine(execution.database)
+            engine = get_engine(instance.database_url)
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1 from asset;"))
             self._database_engine = engine
@@ -105,14 +78,14 @@ class Worker:
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
             try:
-                request = entity.service.Request.load(responder.recv())
+                request = socket.Request.deserialize(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
-                    execution = entity.backtest.Execution(**request.data)
-                    self.configure_execution(execution)
-                    responder.send(entity.service.Response(task=request.task, error=None).dump())
+                    instance = entity.service.Instance(**request.data)
+                    self.configure_execution(instance)
+                    responder.send(socket.Response(task=request.task, error=None).serialize())
                 elif request.task == "run_execution":
-                    responder.send(entity.service.Response(task=request.task, error=None).dump())
+                    responder.send(socket.Response(task=request.task, error=None).serialize())
                     self.run_execution()
             except pynng.exceptions.Timeout:
                 self.logger.debug("Timeout in pynng while running, continuing...")
@@ -120,7 +93,7 @@ class Worker:
             except Exception as e:
                 self.logger.error("Error processing request")
                 self.logger.exception(repr(e))
-                responder.send(entity.service.Response(task=request.task, error=repr(e)).dump())
+                responder.send(socket.Response(task=request.task, error=repr(e)).serialize())
             self.logger.info(f"Request processed: {request.task}")
         responder.close()
         state.close()
@@ -132,26 +105,20 @@ class Worker:
             try:
                 self.logger.debug("Getting context socket")
                 context_socket = self.socket.new_context()
-                request = entity.service.Request.load(context_socket.recv())
-                data = Request(**request.data)
+                request = socket.Request.deserialize(context_socket.recv())
+                data = entity.service.Request(**request.data)
                 self.logger.debug(f"processing request: {data}")
                 with self._database_engine.connect() as db:
-                    if self._parallel:
-                        orders = []
-                        order = self._algo(asset=Asset(data.timestamp, db, data.symbols[0]), portfolio=data.portfolio)
-                        if order:
-                            order = [order]
-                    else:
-                        orders = self._algo(assets=Assets(data.timestamp, db, data.symbols), portfolio=data.portfolio)
+                    orders = self._algo.process(request.task, db, data)
                 self.logger.debug(f"Sending response {orders}")
-                context_socket.send(entity.service.Response(task=request.task, data=orders).dump())
+                context_socket.send(socket.Response(task=request.task, data=orders).serialize())
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    context_socket.send(entity.service.Response(task=request.task, error=repr(e)).dump())
+                    context_socket.send(socket.Response(task=request.task, error=repr(e)).serialize())
                 if context_socket:
                     context_socket.close()
             if self._stop_event.is_set():

@@ -188,6 +188,7 @@ def test_backtest_get():
 
 
 def test_backtest_run(spawn_process, parallel_algo_file):
+    algofile, _, _ = parallel_algo_file
     statuses = [
         entity.backtest.SessionStatus(
             status=entity.backtest.SessionStatusType.COMPLETED,
@@ -235,7 +236,7 @@ def test_backtest_run(spawn_process, parallel_algo_file):
                 statuses=statuses,
             ),
         ]
-        result = runner.invoke(backtest, ["run", parallel_algo_file, "--backtest-name", "test"])
+        result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
@@ -245,6 +246,8 @@ def test_backtest_run(spawn_process, parallel_algo_file):
 
 
 def test_backtest_run_failed(spawn_process, parallel_algo_file):
+    algofile, _, _ = parallel_algo_file
+
     statuses = [
         entity.backtest.SessionStatus(
             status=entity.backtest.SessionStatusType.FAILED,
@@ -292,7 +295,7 @@ def test_backtest_run_failed(spawn_process, parallel_algo_file):
                 statuses=statuses,
             ),
         ]
-        result = runner.invoke(backtest, ["run", parallel_algo_file, "--backtest-name", "test"])
+        result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
         if not result.exit_code == 1:
             traceback.print_exception(*result.exc_info)

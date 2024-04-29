@@ -4,7 +4,7 @@ import pytest
 
 from foreverbull import worker
 from foreverbull.entity.finance import Portfolio
-from foreverbull.entity.service import Request, Response
+from foreverbull.socket import Request, Response
 
 
 @pytest.fixture(scope="session")
@@ -16,14 +16,14 @@ def process_symbols(ingest_config):
             if parallel:
                 for symbol in ingest_config.symbols:
                     req = worker.Request(timestamp=start, symbols=[symbol], portfolio=portfolio)
-                    server_socket.send(Request(task="", data=req).dump())
-                    response = Response.load(server_socket.recv())
+                    server_socket.send(Request(task="", data=req).serialize())
+                    response = Response.deserialize(server_socket.recv())
                     assert response.task == ""
                     assert response.error is None
             else:
                 req = worker.Request(timestamp=start, symbols=ingest_config.symbols, portfolio=portfolio)
-                server_socket.send(Request(task="", data=req).dump())
-                response = Response.load(server_socket.recv())
+                server_socket.send(Request(task="", data=req).serialize())
+                response = Response.deserialize(server_socket.recv())
                 assert response.task == ""
                 assert response.error is None
             start += timedelta(days=1)

@@ -3,16 +3,13 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from multiprocessing import get_start_method, set_start_method
 
-import pandas as pd
 import pytest
 import yfinance
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, engine, text
 from sqlalchemy.orm import declarative_base
 from testcontainers.postgres import PostgresContainer
-from zipline.data import bundles
 
-import foreverbull_zipline
-from foreverbull import entity
+from foreverbull import Order, entity, socket
 from foreverbull_zipline.entity import IngestConfig
 
 
@@ -39,79 +36,217 @@ def execution(database):
 
 
 @pytest.fixture(scope="session")
-def parallel_algo_file():
+def parallel_algo_file(ingest_config, database):
+    def _process_symbols(server_socket, execution):
+        start = ingest_config.start
+        portfolio = entity.finance.Portfolio(
+            cash=0,
+            value=0,
+            positions=[],
+        )
+        while start < ingest_config.end:
+            for symbol in ingest_config.symbols:
+                req = entity.service.Request(
+                    timestamp=start,
+                    symbols=[symbol],
+                    portfolio=portfolio,
+                )
+                server_socket.send(socket.Request(task="handle_data", data=req).serialize())
+                response = socket.Response.deserialize(server_socket.recv())
+                assert response.task == "handle_data"
+                assert response.error is None
+                if response.data:
+                    order = Order(**response.data)
+                    assert order.symbol == symbol
+            start += timedelta(days=1)
+
+    instance = entity.service.Instance(
+        id="test",
+        broker_port=5656,
+        database_url=os.environ["DATABASE_URL"],
+        functions={"handle_data": entity.service.Instance.Parameter(parameters={})},
+    )
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-import foreverbull
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio
+from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
-@foreverbull.algo
-def empty_algo(asset: Asset, portfolio: Portfolio):
+def handle_data(asset: Asset, portfolio: Portfolio) -> Order:
     pass
-
+    
+Algorithm(
+    functions=[
+        Function(callable=handle_data)
+    ]
+)
 """
         )
         f.flush()
-        yield f.name
+        yield f.name, instance, _process_symbols
 
 
 @pytest.fixture(scope="session")
-def non_parallel_algo_file():
+def non_parallel_algo_file(ingest_config, database):
+    def _process_symbols(server_socket, execution):
+        start = ingest_config.start
+        portfolio = entity.finance.Portfolio(
+            cash=0,
+            value=0,
+            positions=[],
+        )
+        while start < ingest_config.end:
+            req = entity.service.Request(
+                timestamp=start,
+                symbols=ingest_config.symbols,
+                portfolio=portfolio,
+            )
+            server_socket.send(socket.Request(task="handle_data", data=req).serialize())
+            response = socket.Response.deserialize(server_socket.recv())
+            assert response.task == "handle_data"
+            assert response.error is None
+            start += timedelta(days=1)
+
+    instance = entity.service.Instance(
+        id="test",
+        broker_port=5656,
+        database_url=os.environ["DATABASE_URL"],
+        functions={
+            "handle_data": entity.service.Instance.Parameter(
+                parameters={},
+            )
+        },
+    )
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-import foreverbull
-from foreverbull.data import Assets
-from foreverbull.entity.finance import Portfolio
+from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
-@foreverbull.algo
-def empty_algo(assets: Assets, portfolio: Portfolio):
+def handle_data(assets: Assets, portfolio: Portfolio) -> Order:
     pass
-
+    
+Algorithm(
+    functions=[
+        Function(callable=handle_data)
+    ]
+)
 """
         )
         f.flush()
-        yield f.name
+        yield f.name, instance, _process_symbols
 
 
 @pytest.fixture(scope="session")
-def parallel_algo_file_with_parameters():
+def parallel_algo_file_with_parameters(ingest_config, database):
+    def _process_symbols(server_socket, execution):
+        start = ingest_config.start
+        portfolio = entity.finance.Portfolio(
+            cash=0,
+            value=0,
+            positions=[],
+        )
+        while start < ingest_config.end:
+            for symbol in ingest_config.symbols:
+                req = entity.service.Request(
+                    timestamp=start,
+                    symbols=[symbol],
+                    portfolio=portfolio,
+                )
+                server_socket.send(socket.Request(task="handle_data", data=req).serialize())
+                response = socket.Response.deserialize(server_socket.recv())
+                assert response.task == "handle_data"
+                assert response.error is None
+                if response.data:
+                    order = Order(**response.data)
+                    assert order.symbol == symbol
+            start += timedelta(days=1)
+
+    instance = entity.service.Instance(
+        id="test",
+        broker_port=5656,
+        database_url=os.environ["DATABASE_URL"],
+        functions={
+            "handle_data": entity.service.Instance.Parameter(
+                parameters={
+                    "low": "15",
+                    "high": "25",
+                }
+            )
+        },
+    )
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-import foreverbull
-from foreverbull.data import Asset
-from foreverbull.entity.finance import Portfolio
-                
-@foreverbull.algo
-def parallel_algo_file_with_parameters(asset: Asset, portfolio: Portfolio, low: int = 15, high: int = 25):
-    pass
+from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
+def handle_data(asset: Asset, portfolio: Portfolio, low: int, high: int) -> Order:
+    pass
+    
+Algorithm(
+    functions=[
+        Function(callable=handle_data)
+    ]
+)
 """
         )
         f.flush()
-        yield f.name
+        yield f.name, instance, _process_symbols
 
 
 @pytest.fixture(scope="session")
-def non_parallel_algo_file_with_parameters():
+def non_parallel_algo_file_with_parameters(ingest_config, database):
+    def _process_symbols(server_socket, execution):
+        start = ingest_config.start
+        portfolio = entity.finance.Portfolio(
+            cash=0,
+            value=0,
+            positions=[],
+        )
+        while start < ingest_config.end:
+            req = entity.service.Request(
+                timestamp=start,
+                symbols=ingest_config.symbols,
+                portfolio=portfolio,
+            )
+            server_socket.send(socket.Request(task="handle_data", data=req).serialize())
+            response = socket.Response.deserialize(server_socket.recv())
+            assert response.task == "handle_data"
+            assert response.error is None
+            start += timedelta(days=1)
+
+    instance = entity.service.Instance(
+        id="test",
+        broker_port=5656,
+        database_url=os.environ["DATABASE_URL"],
+        functions={
+            "handle_data": entity.service.Instance.Parameter(
+                parameters={
+                    "low": "15",
+                    "high": "25",
+                },
+            )
+        },
+    )
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-import foreverbull
-from foreverbull.data import Assets
-from foreverbull.entity.finance import Portfolio
+from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
-@foreverbull.algo
-def parallel_algo_file_with_parameters(assets: Assets, portfolio: Portfolio, low: int = 15, high: int = 25):
+def handle_data(assets: Assets, portfolio: Portfolio, low: int, high: int) -> Order:
     pass
-
+    
+Algorithm(
+    functions=[
+        Function(callable=handle_data)
+    ]
+)
 """
         )
         f.flush()
-        yield f.name
+        yield f.name, instance, _process_symbols
 
 
 @pytest.fixture(scope="session")
@@ -122,12 +257,6 @@ def ingest_config():
         end=datetime(2023, 3, 31, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
     )
-
-
-@pytest.fixture(scope="session")
-def postgres_database():
-    with PostgresContainer("postgres:alpine") as postgres:
-        yield postgres
 
 
 Base = declarative_base()
@@ -154,12 +283,13 @@ class OHLC(Base):
 
 
 @pytest.fixture(scope="session")
-def database(postgres_database, ingest_config):
-    engine = create_engine(postgres_database.get_connection_url())
-    Base.metadata.create_all(engine)
-    populate_database(engine, ingest_config)
-    os.environ["DATABASE_URL"] = postgres_database.get_connection_url()
-    return engine
+def database(ingest_config):
+    with PostgresContainer("postgres:alpine") as postgres:
+        engine = create_engine(postgres.get_connection_url())
+        Base.metadata.create_all(engine)
+        populate_database(engine, ingest_config)
+        os.environ["DATABASE_URL"] = postgres.get_connection_url()
+        yield engine
 
 
 def populate_database(database: engine.Engine, ic: IngestConfig):
@@ -205,29 +335,3 @@ def populate_database(database: engine.Engine, ic: IngestConfig):
                     },
                 )
         conn.commit()
-
-
-@pytest.fixture(scope="session")
-def foreverbull_bundle(ingest_config, database):
-    def load_or_create(bundle_name):
-        try:
-            return bundles.load(bundle_name, os.environ, None)
-        except ValueError:
-            execution = foreverbull_zipline.Execution()
-            execution._ingest(ingest_config)
-            return bundles.load(bundle_name, os.environ, None)
-
-    # sanity check
-    def sanity_check(bundle):
-        bundle = load_or_create("foreverbull")
-        for symbol in ingest_config.symbols:
-            asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
-            assert asset is not None
-            start_date = pd.Timestamp(ingest_config.start).normalize().tz_localize(None)
-            asset.start_date <= start_date
-
-            end_date = pd.Timestamp(ingest_config.end).normalize().tz_localize(None)
-            asset.end_date >= end_date
-
-    bundle = load_or_create("foreverbull")
-    sanity_check(bundle)
