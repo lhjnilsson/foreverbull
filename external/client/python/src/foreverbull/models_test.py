@@ -3,7 +3,7 @@ import tempfile
 import pytest
 
 from foreverbull import entity
-from foreverbull.models import Algorithm, Namespace
+from foreverbull.models import Algorithm
 
 """
 def test_namespace():

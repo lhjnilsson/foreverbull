@@ -1,4 +1,3 @@
-import os
 from threading import Event, Thread
 
 import pynng

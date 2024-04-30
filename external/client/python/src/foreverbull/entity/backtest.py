@@ -4,8 +4,6 @@ from typing import List, Optional
 
 import pydantic
 
-from .base import Base
-
 
 class BacktestStatusType(str, enum.Enum):
     CREATED = "CREATED"

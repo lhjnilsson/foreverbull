@@ -4,8 +4,6 @@ from typing import Optional
 
 import pydantic
 
-from .base import Base
-
 
 class OHLC(pydantic.BaseModel):
     symbol: str
