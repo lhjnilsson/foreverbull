@@ -39,7 +39,6 @@ class Worker:
     def configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring worker")
         self._algo = Algorithm.from_file_path(self._file_path)
-        print("INSTANCE", instance)
         try:
             self.socket = pynng.Rep0(
                 dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{instance.broker_port}", block_on_dial=True

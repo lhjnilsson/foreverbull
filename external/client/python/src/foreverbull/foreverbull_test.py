@@ -104,7 +104,6 @@ def test_foreverbull(
     ):
         assert isinstance(foreverbull, expected_session_type)
         assert foreverbull.service
-        print("CONFIGURE WITH: ", configuration)
         foreverbull.configure_execution(configuration)
         foreverbull.run_execution()
 

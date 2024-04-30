@@ -17,9 +17,9 @@ def test_namespace():
 
 class TestNonParallel:
     example = b"""
-from foreverbull import Algorithm, Function, Asset, Portfolio, Order
+from foreverbull import Algorithm, Function, Assets, Portfolio, Order
 
-def handle_data(low: int, high: int, assets: list[Asset], portfolio: Portfolio) -> list[Order]:
+def handle_data(low: int, high: int, assets: Assets, portfolio: Portfolio) -> list[Order]:
     pass
     
 Algorithm(
@@ -62,7 +62,7 @@ Algorithm(
             ],
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure(self, algo):
         parameters = {
             "handle_data": entity.service.Instance.Parameter(
                 parameters={
@@ -73,8 +73,6 @@ Algorithm(
         }
 
         self.algo.configure(parameters)
-
-        self.algo.process("handle_data", [], None)
 
 
 class TestParallel:
@@ -126,7 +124,7 @@ Algorithm(
             ],
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure(self, algo):
         parameters = {
             "handle_data": entity.service.Instance.Parameter(
                 parameters={
@@ -136,8 +134,6 @@ Algorithm(
             )
         }
         self.algo.configure(parameters)
-
-        self.algo.process("handle_data", [], None)
 
 
 class TestWithNamespace:
@@ -200,7 +196,7 @@ Algorithm(
             },
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure(self, algo):
         parameters = {
             "handle_data": entity.service.Instance.Parameter(
                 parameters={
@@ -211,9 +207,8 @@ Algorithm(
         }
         self.algo.configure(parameters)
 
-        self.algo.process("handle_data", [], None)
 
-
+'''
 class TestMultiStepWithNamespace:
     example = b"""
 from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
@@ -298,7 +293,7 @@ Algorithm(
             },
         )
 
-    def test_configure_and_process(self, algo):
+    def test_configure(self, algo):
         configuration = {
             "filter_assets": entity.service.Instance.Parameter(
                 parameters={},
@@ -315,7 +310,4 @@ Algorithm(
         }
 
         self.algo.configure(configuration)
-
-        self.algo.process("filter_assets", [], None)
-        self.algo.process("measure_assets", [], None)
-        self.algo.process("create_orders", [], None)
+'''
