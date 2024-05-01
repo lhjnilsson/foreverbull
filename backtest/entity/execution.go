@@ -3,8 +3,6 @@ package entity
 import (
 	"errors"
 	"time"
-
-	service "github.com/lhjnilsson/foreverbull/service/entity"
 )
 
 type ExecutionStatusType string
@@ -17,14 +15,13 @@ const (
 )
 
 type Execution struct {
-	ID         string              `json:"id" mapstructure:"id"`
-	Session    string              `json:"session" mapstructure:"session"`
-	Calendar   string              `json:"calendar" mapstructure:"calendar"`
-	Start      time.Time           `json:"start" mapstructure:"start"`
-	End        time.Time           `json:"end" mapstructure:"end"`
-	Benchmark  *string             `json:"benchmark" mapstructure:"benchmark"`
-	Symbols    []string            `json:"symbols" mapstructure:"symbols"`
-	Parameters []service.Parameter `json:"parameters" mapstructure:"parameters"`
+	ID        string    `json:"id" mapstructure:"id"`
+	Session   string    `json:"session" mapstructure:"session"`
+	Calendar  string    `json:"calendar" mapstructure:"calendar"`
+	Start     time.Time `json:"start" mapstructure:"start"`
+	End       time.Time `json:"end" mapstructure:"end"`
+	Benchmark *string   `json:"benchmark" mapstructure:"benchmark"`
+	Symbols   []string  `json:"symbols" mapstructure:"symbols"`
 
 	Statuses []ExecutionStatus `json:"statuses"`
 

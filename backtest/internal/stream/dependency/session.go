@@ -51,7 +51,11 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 	var workerInstances []*service.Instance
 	for instance := range instances {
 		i := instance
-		switch i.Image {
+		if i.Image == nil {
+			continue
+		}
+
+		switch *i.Image {
 		case environment.GetBacktestImage():
 			backtestInstance = &i
 		default:

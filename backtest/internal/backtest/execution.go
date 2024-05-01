@@ -7,13 +7,14 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
+	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
 
 type Execution interface {
-	Configure(context.Context, *worker.Configuration, *backtest.BacktestConfig) error
+	Configure(context.Context, *service.Instance, *backtest.BacktestConfig) error
 	Run(context.Context, *entity.Execution) error
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
@@ -34,10 +35,10 @@ type execution struct {
 /*
 Configure
 */
-func (b *execution) Configure(ctx context.Context, workerCfg *worker.Configuration, backtestCfg *backtest.BacktestConfig) error {
+func (b *execution) Configure(ctx context.Context, instance *service.Instance, backtestCfg *backtest.BacktestConfig) error {
 	g, gctx := errgroup.WithContext(ctx)
-	if workerCfg != nil {
-		g.Go(func() error { return b.workers.ConfigureExecution(gctx, workerCfg) })
+	if instance != nil {
+		g.Go(func() error { return b.workers.ConfigureExecution(gctx, instance) })
 	}
 	g.Go(func() error { return b.backtest.ConfigureExecution(gctx, backtestCfg) })
 	return g.Wait()

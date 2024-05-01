@@ -7,6 +7,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
+	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 )
 
@@ -23,10 +24,10 @@ func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 	for _, execution := range *as.executions {
 		exec := NewExecution(as.backtest, as.workers)
 
-		workerCfg := &worker.Configuration{
-			Execution: execution.ID,
-			Port:      as.workers.SocketConfig().Port,
-			Database:  environment.GetPostgresURL(),
+		databaseURL := environment.GetPostgresURL()
+		workerCfg := &service.Instance{
+			BrokerPort:  &as.workers.SocketConfig().Port,
+			DatabaseURL: &databaseURL,
 		}
 		backtestCfg := &backtest.BacktestConfig{
 			Calendar: &execution.Calendar,
@@ -43,11 +44,6 @@ func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 		err := exec.Configure(context.Background(), workerCfg, backtestCfg)
 		if err != nil {
 			return fmt.Errorf("failed to configure execution: %w", err)
-		}
-
-		err = as.session.executions.UpdateParameters(context.Background(), execution.ID, &execution.Parameters)
-		if err != nil {
-			return fmt.Errorf("failed to update execution parameters: %w", err)
 		}
 
 		err = as.session.executions.UpdateSimulationDetails(context.Background(), execution.ID, *backtestCfg.Calendar, *backtestCfg.Start, *backtestCfg.End, backtestCfg.Benchmark, *backtestCfg.Symbols)

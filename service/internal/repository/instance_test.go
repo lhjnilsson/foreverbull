@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,12 +18,14 @@ type InstanceTest struct {
 	conn *pgxpool.Pool
 }
 
-func (test *InstanceTest) SetupTest() {
-	var err error
-
+func (test *InstanceTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
+}
+
+func (test *InstanceTest) SetupTest() {
+	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	ctx := context.Background()
@@ -47,29 +49,37 @@ func TestInstances(t *testing.T) {
 func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
-	instance, err := db.Create(ctx, "instance", "image")
-	test.NoError(err)
-	test.Equal("instance", instance.ID)
+	image := "test_image"
+	for id, image := range []*string{nil, &image} {
+		db := &Instance{Conn: test.conn}
+		instance, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
+		test.NoError(err)
+		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+		test.Equal(image, instance.Image)
+	}
 }
 
 func (test *InstanceTest) TestGet() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "image")
-	test.NoError(err)
+	image := "test_image"
+	for id, image := range []*string{nil, &image} {
+		db := &Instance{Conn: test.conn}
+		_, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
+		test.NoError(err)
 
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
-	test.Equal("instance", instance.ID)
+		instance, err := db.Get(ctx, fmt.Sprintf("instance_%d", id))
+		test.NoError(err)
+		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+		test.Equal(image, instance.Image)
+	}
 }
 
 func (test *InstanceTest) TestUpdateHostPort() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "image")
+	_, err := db.Create(ctx, "instance", nil)
 	test.NoError(err)
 
 	err = db.UpdateHostPort(ctx, "instance", "host", 1234)
@@ -77,88 +87,108 @@ func (test *InstanceTest) TestUpdateHostPort() {
 
 	instance, err := db.Get(ctx, "instance")
 	test.NoError(err)
+	test.Require().NotNil(instance.Host)
 	test.Equal("host", *instance.Host)
+	test.Require().NotNil(instance.Port)
 	test.Equal(1234, *instance.Port)
+}
+
+func (test *InstanceTest) TestUpdateBrokerPort() {
+	ctx := context.Background()
+
+	db := &Instance{Conn: test.conn}
+	_, err := db.Create(ctx, "instance", nil)
+	test.NoError(err)
+
+	err = db.UpdateBrokerPort(ctx, "instance", 1234)
+	test.NoError(err)
+
+	instance, err := db.Get(ctx, "instance")
+	test.NoError(err)
+	test.Require().NotNil(instance.BrokerPort)
+	test.Equal(1234, *instance.BrokerPort)
+}
+
+func (test *InstanceTest) TestUpdateDatabaseURL() {
+	ctx := context.Background()
+
+	db := &Instance{Conn: test.conn}
+	_, err := db.Create(ctx, "instance", nil)
+	test.NoError(err)
+
+	err = db.UpdateDatabaseURL(ctx, "instance", "database_url")
+	test.NoError(err)
+
+	instance, err := db.Get(ctx, "instance")
+	test.NoError(err)
+	test.Require().NotNil(instance.DatabaseURL)
+	test.Equal("database_url", *instance.DatabaseURL)
+}
+
+func (test *InstanceTest) TestUpdateFunctions() {
+	ctx := context.Background()
+
+	db := &Instance{Conn: test.conn}
+	_, err := db.Create(ctx, "instance", nil)
+	test.NoError(err)
+
+	functions := map[string]entity.InstanceFunction{
+		"function": {
+			Parameters: map[string]string{
+				"param": "value",
+			},
+		},
+	}
+	err = db.UpdateFunctions(ctx, "instance", &functions)
+	test.NoError(err)
+
+	instance, err := db.Get(ctx, "instance")
+	test.NoError(err)
+	test.Require().NotNil(instance.Functions)
+	test.Equal(functions, *instance.Functions)
 }
 
 func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", "image")
+	_, err := db.Create(ctx, "instance", nil)
 	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusRunning, nil)
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusError, errors.New("test_error"))
-	test.NoError(err)
-
 	instance, err := db.Get(ctx, "instance")
 	test.NoError(err)
-	test.Len(instance.Statuses, 3)
-	test.Equal(entity.InstanceStatusError, instance.Statuses[0].Status)
-	test.Equal("test_error", *instance.Statuses[0].Error)
-	test.Equal(entity.InstanceStatusRunning, instance.Statuses[1].Status)
-	test.Nil(instance.Statuses[1].Error)
-	test.Equal(entity.InstanceStatusCreated, instance.Statuses[2].Status)
-	test.Nil(instance.Statuses[2].Error)
+	test.Equal(entity.InstanceStatusRunning, instance.Statuses[0].Status)
 }
 
 func (test *InstanceTest) TestList() {
 	ctx := context.Background()
 
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", "image")
+	_, err := db.Create(ctx, "instance1", nil)
 	test.NoError(err)
-	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
-	test.NoError(err)
-
-	_, err = db.Create(ctx, "instance2", "image")
-	test.NoError(err)
-	err = db.UpdateStatus(ctx, "instance2", entity.InstanceStatusError, errors.New("test_error"))
+	_, err = db.Create(ctx, "instance2", nil)
 	test.NoError(err)
 
 	instances, err := db.List(ctx)
 	test.NoError(err)
 	test.Len(*instances, 2)
-
-	instance2 := (*instances)[0]
-	test.Equal("instance2", instance2.ID)
-	test.Equal("image", instance2.Image)
-	test.Len(instance2.Statuses, 2)
-	test.Equal(entity.InstanceStatusError, instance2.Statuses[0].Status)
-	test.Equal("test_error", *instance2.Statuses[0].Error)
-
-	instance1 := (*instances)[1]
-	test.Equal("instance1", instance1.ID)
-	test.Equal("image", instance1.Image)
-	test.Len(instance1.Statuses, 2)
-	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
-	test.Nil(instance1.Statuses[0].Error)
 }
 
 func (test *InstanceTest) TestListByImage() {
 	ctx := context.Background()
 
+	image := "test_image"
+
 	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", "image")
+	_, err := db.Create(ctx, "instance1", &image)
 	test.NoError(err)
-	err = db.UpdateStatus(ctx, "instance1", entity.InstanceStatusRunning, nil)
+	_, err = db.Create(ctx, "instance2", nil)
 	test.NoError(err)
 
-	instances, err := db.ListByImage(ctx, "image")
+	instances, err := db.ListByImage(ctx, image)
 	test.NoError(err)
-	test.Require().Len(*instances, 1)
-
-	instance1 := (*instances)[0]
-	test.Equal("instance1", instance1.ID)
-	test.Equal("image", instance1.Image)
-	test.Len(instance1.Statuses, 2)
-	test.Equal(entity.InstanceStatusRunning, instance1.Statuses[0].Status)
-	test.Nil(instance1.Statuses[0].Error)
-
-	instances, err = db.ListByImage(ctx, "image2")
-	test.NoError(err)
-	test.Len(*instances, 0)
+	test.Len(*instances, 1)
 }

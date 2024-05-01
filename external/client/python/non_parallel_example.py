@@ -1,18 +1,15 @@
-import logging
 from random import choice
 
-import foreverbull
-from foreverbull.data import Assets
-from foreverbull.entity.finance import Order, Portfolio
-
-logger = logging.getLogger(__name__)
+from foreverbull import Algorithm, Assets, Function, Order, Portfolio
 
 
-@foreverbull.algo
-def monkey(assets: Assets, portfolio: Portfolio):
+def handle_data(assets: Assets, portfolio: Portfolio) -> Order:
     orders = []
     for asset in assets:
         order = choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10), None])
         if order:
             orders.append(order)
     return orders
+
+
+Algorithm(functions=[Function(callable=handle_data)])

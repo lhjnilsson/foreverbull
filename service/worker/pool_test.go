@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -55,7 +56,7 @@ func (test *PoolTest) TestConfigure() {
 	test.instanceSocket.On("Get").Return(test.rw, nil)
 	test.rw.On("Write", mock.Anything).Return(nil)
 	test.rw.On("Read").Return(data, nil)
-	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.pool.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.NoError(err)
 }
 
@@ -67,14 +68,14 @@ func (test *PoolTest) TestConfigureError() {
 	test.instanceSocket.On("Get").Return(test.rw, nil)
 	test.rw.On("Write", mock.Anything).Return(nil)
 	test.rw.On("Read").Return(data, nil)
-	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.pool.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.Error(err)
 	test.EqualError(err, "error configuring worker: error configuring instance: General Error")
 }
 
 func (test *PoolTest) TestConfigureErrorNoWorkers() {
 	test.pool.Workers = make([]*Instance, 0)
-	err := test.pool.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.pool.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.Error(err)
 	test.EqualError(err, "no workers")
 }

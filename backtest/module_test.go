@@ -238,7 +238,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	}
 	ne := NewExecution{
 		Execution: execution,
-		Service:   &serviceEntity.Service{Parallel: func() *bool { b := true; return &b }()},
+		Service:   &serviceEntity.Service{},
 	}
 	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", &ne, execution))
 

@@ -7,7 +7,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	service "github.com/lhjnilsson/foreverbull/service/entity"
 )
 
 const ExecutionTable = `CREATE TABLE IF NOT EXISTS execution (
@@ -19,8 +18,7 @@ calendar text,
 start_at TIMESTAMPTZ,
 end_at TIMESTAMPTZ,
 benchmark text,
-symbols text[],
-parameters JSONB);
+symbols text[]);
 
 CREATE TABLE IF NOT EXISTS execution_status (
 	id text REFERENCES execution(id) ON DELETE CASCADE,
@@ -72,7 +70,7 @@ func (db *Execution) Create(ctx context.Context, session, calendar string, start
 func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, error) {
 	e := entity.Execution{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols, parameters,
+		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
 		FROM execution 
 		INNER JOIN (
@@ -86,7 +84,7 @@ func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, err
 	for rows.Next() {
 		status := entity.ExecutionStatus{}
 		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&e.Parameters, &status.Status, &status.Error, &status.OccurredAt)
+			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
 		}
@@ -106,12 +104,6 @@ func (db *Execution) UpdateSimulationDetails(ctx context.Context, id string, cal
 	return err
 }
 
-func (db *Execution) UpdateParameters(ctx context.Context, id string, parameters *[]service.Parameter) error {
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE execution SET parameters=$1 WHERE id=$2`, parameters, id)
-	return err
-}
-
 func (db *Execution) UpdateStatus(ctx context.Context, id string, status entity.ExecutionStatusType, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", id, status, err.Error())
@@ -123,7 +115,7 @@ func (db *Execution) UpdateStatus(ctx context.Context, id string, status entity.
 
 func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols, parameters,
+		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
 		FROM execution
 		INNER JOIN (
@@ -141,7 +133,7 @@ func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
 		status := entity.ExecutionStatus{}
 		e := entity.Execution{}
 		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&e.Parameters, &status.Status, &status.Error, &status.OccurredAt)
+			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +155,7 @@ func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
 
 func (db *Execution) ListBySession(ctx context.Context, session string) (*[]entity.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols, parameters,
+		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
 		FROM execution
 		INNER JOIN (
@@ -182,7 +174,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) (*[]enti
 		status := entity.ExecutionStatus{}
 		e := entity.Execution{}
 		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&e.Parameters, &status.Status, &status.Error, &status.OccurredAt)
+			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
 		}

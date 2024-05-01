@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
@@ -29,12 +28,7 @@ type execution struct {
 }
 
 func (e *execution) Configure(ctx context.Context) error {
-	cfg := worker.Configuration{
-		Execution:  e.command.ExecutionID,
-		Port:       e.worker.SocketConfig().Port,
-		Parameters: make([]service.Parameter, 0),
-		Database:   environment.GetPostgresURL(),
-	}
+	cfg := service.Instance{}
 	return e.worker.ConfigureExecution(ctx, &cfg)
 }
 

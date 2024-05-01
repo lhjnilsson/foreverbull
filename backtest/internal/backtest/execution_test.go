@@ -6,7 +6,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
-	"github.com/lhjnilsson/foreverbull/service/worker"
+	service "github.com/lhjnilsson/foreverbull/service/entity"
 	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest"
 	mockWorker "github.com/lhjnilsson/foreverbull/tests/mocks/service/worker"
 	"github.com/stretchr/testify/mock"
@@ -31,7 +31,7 @@ func TestExecution(t *testing.T) {
 }
 
 func (test *ExecutionTest) TestConfigure() {
-	workercfg := &worker.Configuration{}
+	workercfg := &service.Instance{}
 	backtestcfg := &backtest.BacktestConfig{}
 
 	test.backtest.On("ConfigureExecution", mock.Anything, backtestcfg).Return(nil)

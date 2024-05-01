@@ -18,20 +18,12 @@ type Instance struct {
 }
 
 type Request struct {
-	Execution string             `json:"execution"`
 	Timestamp time.Time          `json:"timestamp"`
 	Symbols   []string           `json:"symbols"`
 	Portfolio *finance.Portfolio `json:"portfolio"`
 }
 
-type Configuration struct {
-	Execution  string             `json:"execution"`
-	Port       int                `json:"port"`
-	Parameters []entity.Parameter `json:"parameters"`
-	Database   string             `json:"database"`
-}
-
-func (i *Instance) ConfigureExecution(ctx context.Context, configuration *Configuration) error {
+func (i *Instance) ConfigureExecution(ctx context.Context, instance *entity.Instance) error {
 	var err error
 	if i.socket == nil {
 		s, err := i.Service.GetSocket()
@@ -48,7 +40,7 @@ func (i *Instance) ConfigureExecution(ctx context.Context, configuration *Config
 		return fmt.Errorf("error opening context: %w", err)
 	}
 	defer socket.Close()
-	req := message.Request{Task: "configure_execution", Data: configuration}
+	req := message.Request{Task: "configure_execution", Data: instance}
 	rsp, err := req.Process(socket)
 	if err != nil {
 		return fmt.Errorf("error configuring instance: %w", err)

@@ -16,7 +16,7 @@ import (
 
 type Pool interface {
 	SocketConfig() *socket.Socket
-	ConfigureExecution(context.Context, *Configuration) error
+	ConfigureExecution(context.Context, *entity.Instance) error
 	RunExecution(context.Context) error
 	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error)
 	StopExecution(context.Context) error
@@ -29,16 +29,16 @@ func NewPool(ctx context.Context, instances ...*entity.Instance) (Pool, error) {
 		workerInstances = append(workerInstances, &Instance{Service: instance})
 	}
 
-	infoCh := make(chan *entity.Service, len(instances))
+	algoCh := make(chan *entity.Algorithm, len(instances))
 	g, _ := errgroup.WithContext(ctx)
 	for _, instance := range instances {
 		i := instance
 		g.Go(func() error {
-			i, err := i.GetInfo()
+			a, err := i.GetAlgorithm()
 			if err != nil {
 				return err
 			}
-			infoCh <- i
+			algoCh <- a
 			return nil
 		})
 	}
@@ -46,25 +46,17 @@ func NewPool(ctx context.Context, instances ...*entity.Instance) (Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	close(infoCh)
+	close(algoCh)
 
-	var info *entity.Service
-	for i := range infoCh {
-		if info == nil {
-			info = i
+	var algo *entity.Algorithm
+	for a := range algoCh {
+		if algo == nil {
+			algo = a
 			continue
 		}
-		if i.Parallel != info.Parallel {
-			return nil, fmt.Errorf("inconsistent parallel configuration")
+		if a != algo {
+			return nil, fmt.Errorf("inconsistent service algorithms")
 		}
-	}
-
-	// To make manual sessions for now, TODO: FIX/REMOVE
-	var parallel bool
-	if info != nil {
-		parallel = *info.Parallel
-	} else {
-		parallel = true
 	}
 
 	s := &socket.Socket{Type: socket.Requester, Host: "0.0.0.0", Port: 0, Dial: false}
@@ -72,7 +64,7 @@ func NewPool(ctx context.Context, instances ...*entity.Instance) (Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &pool{Workers: workerInstances, Socket: s, socket: socket, parallel: parallel}, nil
+	return &pool{Workers: workerInstances, Socket: s, socket: socket, algo: algo}, nil
 }
 
 type pool struct {
@@ -80,11 +72,11 @@ type pool struct {
 	socket  socket.ContextSocket `json:"-"`
 	Workers []*Instance          `json:"workers"`
 
-	parallel bool `json:"-"`
+	algo *entity.Algorithm
 }
 
-func (p *pool) SetParallelization(parallel bool) {
-	p.parallel = parallel
+func (p *pool) SetAlgorithm(algo *entity.Algorithm) {
+	p.algo = algo
 }
 
 func (p *pool) SocketConfig() *socket.Socket {
@@ -93,7 +85,7 @@ func (p *pool) SocketConfig() *socket.Socket {
 	return cfg
 }
 
-func (p *pool) ConfigureExecution(ctx context.Context, configuration *Configuration) error {
+func (p *pool) ConfigureExecution(ctx context.Context, i *entity.Instance) error {
 	if len(p.Workers) == 0 {
 		return fmt.Errorf("no workers")
 	}
@@ -101,7 +93,7 @@ func (p *pool) ConfigureExecution(ctx context.Context, configuration *Configurat
 	for _, worker := range p.Workers {
 		w := worker
 		g.Go(func() error {
-			if err := w.ConfigureExecution(gctx, configuration); err != nil {
+			if err := w.ConfigureExecution(gctx, i); err != nil {
 				return fmt.Errorf("error configuring worker: %w", err)
 			}
 			return nil
@@ -130,57 +122,59 @@ func (p *pool) RunExecution(ctx context.Context) error {
 
 func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error) {
 	var orders []finance.Order
-	if p.parallel {
-		g, _ := errgroup.WithContext(ctx)
-		orderWriteMutex := sync.Mutex{}
-		for _, symbol := range symbols {
-			s := symbol
-			g.Go(func() error {
-				context, err := p.socket.Get()
-				if err != nil {
-					return err
-				}
-				defer context.Close()
-				request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: []string{s}, Portfolio: portfolio}}
-				rsp, err := request.Process(context)
-				if err != nil {
-					return fmt.Errorf("error processing request: %w", err)
-				}
-				if rsp.Data == nil {
+	for _, function := range p.algo.Functions {
+		if *function.ParallelExecution {
+			g, _ := errgroup.WithContext(ctx)
+			orderWriteMutex := sync.Mutex{}
+			for _, symbol := range symbols {
+				s := symbol
+				g.Go(func() error {
+					context, err := p.socket.Get()
+					if err != nil {
+						return err
+					}
+					defer context.Close()
+					request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: []string{s}, Portfolio: portfolio}}
+					rsp, err := request.Process(context)
+					if err != nil {
+						return fmt.Errorf("error processing request: %w", err)
+					}
+					if rsp.Data == nil {
+						return nil
+					}
+					orderWriteMutex.Lock()
+					defer orderWriteMutex.Unlock()
+					order := []finance.Order{}
+					err = rsp.DecodeData(&order)
+					if err != nil {
+						return fmt.Errorf("error decoding response: %w", err)
+					}
+					orders = append(orders, order...)
 					return nil
-				}
-				orderWriteMutex.Lock()
-				defer orderWriteMutex.Unlock()
-				order := []finance.Order{}
-				err = rsp.DecodeData(&order)
-				if err != nil {
-					return fmt.Errorf("error decoding response: %w", err)
-				}
-				orders = append(orders, order...)
-				return nil
-			})
-		}
-		err := g.Wait()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		context, err := p.socket.Get()
-		if err != nil {
-			return nil, err
-		}
-		defer context.Close()
-		request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: symbols, Portfolio: portfolio}}
-		rsp, err := request.Process(context)
-		if err != nil {
-			return nil, fmt.Errorf("error processing request: %w", err)
-		}
-		if rsp.Data == nil {
-			return nil, nil
-		}
-		err = rsp.DecodeData(&orders)
-		if err != nil {
-			return nil, fmt.Errorf("error decoding response: %w", err)
+				})
+			}
+			err := g.Wait()
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			context, err := p.socket.Get()
+			if err != nil {
+				return nil, err
+			}
+			defer context.Close()
+			request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: symbols, Portfolio: portfolio}}
+			rsp, err := request.Process(context)
+			if err != nil {
+				return nil, fmt.Errorf("error processing request: %w", err)
+			}
+			if rsp.Data == nil {
+				return nil, nil
+			}
+			err = rsp.DecodeData(&orders)
+			if err != nil {
+				return nil, fmt.Errorf("error decoding response: %w", err)
+			}
 		}
 	}
 	return &orders, nil

@@ -3,10 +3,10 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -36,11 +36,13 @@ func TestInstanceCommand(t *testing.T) {
 	suite.Run(t, new(InstanceTest))
 }
 
-func (test *InstanceTest) SetupTest() {
+func (test *InstanceTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
+}
 
+func (test *InstanceTest) SetupTest() {
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
@@ -49,22 +51,11 @@ func (test *InstanceTest) SetupTest() {
 	test.Require().NoError(err)
 
 	services := repository.Service{Conn: test.db}
-	instances := repository.Instance{Conn: test.db}
 	test.testService, err = services.Create(context.TODO(), "test-image")
 	test.Require().NoError(err)
 
-	err = services.Update(context.Background(), test.testService.Image, nil, false)
-	test.Require().NoError(err)
-
-	instanceID := uuid.New().String()
-	test.testInstance, err = instances.Create(context.TODO(), instanceID, test.testService.Image)
-	test.Require().NoError(err)
-
-	test.serviceInstance = helper.NewServiceInstance(test.T())
-	err = instances.UpdateHostPort(context.Background(), test.testInstance.ID, test.serviceInstance.Host, test.serviceInstance.Port)
-	test.Require().NoError(err)
-
-	err = instances.UpdateStatus(context.Background(), test.testInstance.ID, entity.InstanceStatusRunning, nil)
+	instances := repository.Instance{Conn: test.db}
+	test.testInstance, err = instances.Create(context.TODO(), "instanceID", &test.testService.Image)
 	test.Require().NoError(err)
 }
 
@@ -87,30 +78,7 @@ func (test *InstanceTest) TearDownSubTest() {
 	test.NoError(test.serviceInstance.Close())
 }
 
-func (test *InstanceTest) TestInstanceInterviewFailGetInfo() {
-	b := new(mockStream.Message)
-	b.On("MustGet", stream.DBDep).Return(test.db)
-	b.On("ParsePayload", &st.InstanceInterviewCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		payload := args.Get(0).(*st.InstanceInterviewCommand)
-		payload.ID = test.testInstance.ID
-	})
-	ctx := context.Background()
-	commandCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	responses := map[string][]byte{
-		"info": []byte(`{"task": "info", "data":`),
-	}
-	go test.serviceInstance.Process(commandCtx, responses)
-
-	err := InstanceInterview(commandCtx, b)
-	test.Error(err)
-	test.EqualError(err, "error reading instance info: error decoding message: unexpected end of JSON input")
-
-	err = test.serviceInstance.Close()
-	test.NoError(err)
-}
-
-func (test *InstanceTest) TestInstanceInterviewSuccessful() {
+func (test *InstanceTest) TestInstanceInterview() {
 	services := repository.Service{Conn: test.db}
 
 	b := new(mockStream.Message)
@@ -121,33 +89,23 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 	})
 
 	type TestCase struct {
-		Payload      string
-		ExpectedType string
-		Parameters   []entity.Parameter
-		Parallel     bool
+		Payload   string
+		Algorithm entity.Algorithm
+		err       string
 	}
 
 	testCases := []TestCase{
 		{
-			Payload:    `{"type":"backtest", "parallel": false, "parameters":[]}`,
-			Parameters: []entity.Parameter{},
-			Parallel:   false,
+			Payload: "asdf",
+			err:     "error decoding message",
 		},
 		{
-			Payload: `{"type":"worker", "parallel": true, "parameters":[{"key": "param1", "type": "int", "default": "3"}]}`,
-			Parameters: []entity.Parameter{
-				{
-					Key:     "param1",
-					Type:    "int",
-					Value:   "",
-					Default: "3",
-				},
-			},
-			Parallel: true,
+			Payload:   `{"file_path": "/file.py"}`,
+			Algorithm: entity.Algorithm{FilePath: "/file.py"},
 		},
 	}
-	for _, testCase := range testCases {
-		test.Run(testCase.ExpectedType, func() {
+	for id, testCase := range testCases {
+		test.Run(fmt.Sprintf("Test%d", id), func() {
 			ctx := context.Background()
 			commandCtx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
@@ -157,11 +115,15 @@ func (test *InstanceTest) TestInstanceInterviewSuccessful() {
 			go test.serviceInstance.Process(commandCtx, responses)
 
 			err := InstanceInterview(commandCtx, b)
-			test.NoError(err)
-
-			service, err := services.Get(context.Background(), test.testService.Image)
-			test.NoError(err)
-			test.Equal(testCase.Parallel, *service.Parallel)
+			if len(testCase.err) == 0 {
+				test.Require().NoError(err)
+				service, err := services.Get(context.Background(), test.testService.Image)
+				test.NoError(err)
+				test.Require().NotNil(service.Algorithm)
+				test.Equal(testCase.Algorithm, *service.Algorithm)
+			} else {
+				test.ErrorContains(err, testCase.err)
+			}
 		})
 	}
 }
@@ -173,54 +135,93 @@ func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
 		payload := args.Get(0).(*st.InstanceSanityCheckCommand)
 		payload.IDs = []string{test.testInstance.ID}
 	})
-	ctx := context.Background()
-	commandCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
 
-	responses := map[string][]byte{
-		"info": []byte(`{"task": "info", "data": {"type": "test-service-type", "parameters": []}}`),
+	type TestCase struct {
+		Payload string
+		err     string
 	}
-	go test.serviceInstance.Process(commandCtx, responses)
 
-	err := InstanceSanityCheck(commandCtx, b)
-	test.NoError(err)
+	testCases := []TestCase{
+		{
+			Payload: `asdf`,
+			err:     "error decoding message",
+		},
+		{
+			Payload: `{"file_path": "/file.py"}`,
+		},
+	}
+
+	for id, testCase := range testCases {
+		test.Run(fmt.Sprintf("Test%d", id), func() {
+
+			ctx := context.Background()
+			commandCtx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			responses := map[string][]byte{
+				"info": []byte(`{"task": "info", "data":` + testCase.Payload + `}`),
+			}
+			go test.serviceInstance.Process(commandCtx, responses)
+
+			err := InstanceSanityCheck(commandCtx, b)
+			if len(testCase.err) == 0 {
+				test.NoError(err)
+			} else {
+				test.ErrorContains(err, testCase.err)
+			}
+		})
+	}
 }
 
-func (test *InstanceTest) TestInstanceStopFail() {
-	b := new(mockStream.Message)
-	c := new(mockContainer.Container)
-	c.On("Stop", mock.Anything, test.testInstance.ID, true).Return(errors.New("error stopping instance"))
+func (test *InstanceTest) TestInstanceStop() {
+	test.Run("fail to unmarshal", func() {
+		b := new(mockStream.Message)
+		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(errors.New("error unmarshalling"))
+		ctx := context.Background()
+		commandCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
 
-	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
-
-	b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		payload := args.Get(0).(*st.InstanceStopCommand)
-		payload.ID = test.testInstance.ID
+		err := InstanceStop(commandCtx, b)
+		test.Error(err)
+		test.ErrorContains(err, "error unmarshalling")
 	})
-	ctx := context.Background()
-	commandCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
+	test.Run("fail to stop", func() {
+		b := new(mockStream.Message)
+		c := new(mockContainer.Container)
 
-	err := InstanceStop(commandCtx, b)
-	test.Error(err)
-	test.EqualError(err, "error stopping instance")
-}
+		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*st.InstanceStopCommand)
+			payload.ID = test.testInstance.ID
+		})
+		b.On("MustGet", serviceDependency.ContainerDep).Return(c)
 
-func (test *InstanceTest) TestInstanceStopSuccessful() {
-	b := new(mockStream.Message)
-	c := new(mockContainer.Container)
-	c.On("Stop", mock.Anything, test.testInstance.ID, true).Return(nil)
+		c.On("Stop", mock.Anything, test.testInstance.ID, true).Return(errors.New("error stopping instance"))
 
-	b.On("MustGet", serviceDependency.ContainerDep).Return(c)
+		ctx := context.Background()
+		commandCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
 
-	b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		payload := args.Get(0).(*st.InstanceStopCommand)
-		payload.ID = test.testInstance.ID
+		err := InstanceStop(commandCtx, b)
+		test.Error(err)
+		test.EqualError(err, "error stopping instance")
 	})
-	ctx := context.Background()
-	commandCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
+	test.Run("Successful", func() {
+		b := new(mockStream.Message)
+		c := new(mockContainer.Container)
 
-	err := InstanceStop(commandCtx, b)
-	test.NoError(err)
+		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*st.InstanceStopCommand)
+			payload.ID = test.testInstance.ID
+		})
+		b.On("MustGet", serviceDependency.ContainerDep).Return(c)
+
+		c.On("Stop", mock.Anything, test.testInstance.ID, true).Return(nil)
+
+		ctx := context.Background()
+		commandCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+
+		err := InstanceStop(commandCtx, b)
+		test.NoError(err)
+	})
 }

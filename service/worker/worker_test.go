@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	mockSocket "github.com/lhjnilsson/foreverbull/tests/mocks/service/socket"
 	"github.com/stretchr/testify/mock"
@@ -41,7 +42,7 @@ func (test *WorkerTest) TestConfigureNormal() {
 
 	test.rw.On("Write", mock.Anything).Return(nil)
 	test.rw.On("Read").Return(data, nil)
-	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.worker.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.NoError(err)
 }
 
@@ -51,14 +52,14 @@ func (test *WorkerTest) TestConfigureError() {
 
 	test.rw.On("Write", mock.Anything).Return(nil)
 	test.rw.On("Read").Return(data, nil)
-	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.worker.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.Error(err)
 	test.EqualError(err, "error configuring instance: General Error")
 }
 
 func (test *WorkerTest) TestConfigureSocketError() {
 	test.rw.On("Write", mock.Anything).Return(errors.New("Write Error"))
-	err := test.worker.ConfigureExecution(context.Background(), &Configuration{})
+	err := test.worker.ConfigureExecution(context.Background(), &entity.Instance{})
 	test.Error(err)
 	test.EqualError(err, "error configuring instance: Write Error")
 }

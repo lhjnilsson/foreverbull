@@ -11,10 +11,9 @@ import (
 
 const ServiceTable = `CREATE TABLE IF NOT EXISTS service (
 image text PRIMARY KEY,
+algorithm JSONB,
 status TEXT NOT NULL DEFAULT 'CREATED',
-error TEXT,
-parallel BOOLEAN,
-parameters JSONB);
+error TEXT);
 
 CREATE TABLE IF NOT EXISTS service_status (
 	image text REFERENCES service(image) ON DELETE CASCADE,
@@ -63,8 +62,7 @@ func (db *Service) Create(ctx context.Context, image string) (*entity.Service, e
 func (db *Service) Get(ctx context.Context, image string) (*entity.Service, error) {
 	s := entity.Service{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service.image, parameters, parallel,
-		ss.status, ss.error, ss.occurred_at
+		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
 		FROM service
 		INNER JOIN (
 			SELECT image, status, error, occurred_at FROM service_status ORDER BY occurred_at DESC
@@ -76,15 +74,14 @@ func (db *Service) Get(ctx context.Context, image string) (*entity.Service, erro
 	defer rows.Close()
 
 	for rows.Next() {
-		status := entity.ServiceStatus{}
+		ss := entity.ServiceStatus{}
 		err = rows.Scan(
-			&s.Image, &s.Parameters, &s.Parallel,
-			&status.Status, &status.Error, &status.OccurredAt,
+			&s.Image, &s.Algorithm, &ss.Status, &ss.Error, &ss.OccurredAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get service: %w", err)
 		}
-		s.Statuses = append(s.Statuses, status)
+		s.Statuses = append(s.Statuses, ss)
 	}
 	if s.Image == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
@@ -92,10 +89,10 @@ func (db *Service) Get(ctx context.Context, image string) (*entity.Service, erro
 	return &s, nil
 }
 
-func (db *Service) Update(ctx context.Context, image string, parameters *[]entity.Parameter, parallel bool) error {
+func (db *Service) SetAlgorithm(ctx context.Context, image string, algorithm *entity.Algorithm) error {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE service SET parameters=$2, parallel=$3 WHERE image=$1`,
-		image, parameters, parallel,
+		`UPDATE service SET algorithm=$2 WHERE image=$1`,
+		image, algorithm,
 	)
 	return err
 }
@@ -117,7 +114,7 @@ func (db *Service) UpdateStatus(ctx context.Context, image string, status entity
 
 func (db *Service) List(ctx context.Context) (*[]entity.Service, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service.image, parameters, parallel, ss.status, ss.error, ss.occurred_at
+		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
 		FROM service
 		INNER JOIN (
 			SELECT image, status, error, occurred_at FROM service_status ORDER BY occurred_at DESC
@@ -131,11 +128,10 @@ func (db *Service) List(ctx context.Context) (*[]entity.Service, error) {
 	services := []entity.Service{}
 	var inReturnSlice bool
 	for rows.Next() {
-		status := entity.ServiceStatus{}
+		ss := entity.ServiceStatus{}
 		s := entity.Service{}
 		err = rows.Scan(
-			&s.Image, &s.Parameters, &s.Parallel,
-			&status.Status, &status.Error, &status.OccurredAt,
+			&s.Image, &s.Algorithm, &ss.Status, &ss.Error, &ss.OccurredAt,
 		)
 		if err != nil {
 			return nil, err
@@ -143,12 +139,12 @@ func (db *Service) List(ctx context.Context) (*[]entity.Service, error) {
 		inReturnSlice = false
 		for i := range services {
 			if services[i].Image == s.Image {
-				services[i].Statuses = append(services[i].Statuses, status)
+				services[i].Statuses = append(services[i].Statuses, ss)
 				inReturnSlice = true
 			}
 		}
 		if !inReturnSlice {
-			s.Statuses = append(s.Statuses, status)
+			s.Statuses = append(s.Statuses, ss)
 			services = append(services, s)
 		}
 	}

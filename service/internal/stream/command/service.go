@@ -59,7 +59,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 	}
 
 	instances := repository.Instance{Conn: db}
-	_, err = instances.Create(ctx, command.InstanceID, command.Image)
+	_, err = instances.Create(ctx, command.InstanceID, &command.Image)
 	if err != nil {
 		return fmt.Errorf("error creating instance: %w", err)
 	}

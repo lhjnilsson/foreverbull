@@ -89,7 +89,7 @@ func (test *ServiceModuleTest) TestAPIClient() {
 	instances := repository.Instance{Conn: pool}
 	testService, err := services.Create(context.Background(), "docker.io/library/python:3.12-alpine")
 	test.Require().NoError(err)
-	testInstance, err := instances.Create(context.Background(), "instance_123", testService.Image)
+	testInstance, err := instances.Create(context.Background(), "instance_123", &testService.Image)
 	test.Require().NoError(err)
 
 	test.Run("Create Client", func() {

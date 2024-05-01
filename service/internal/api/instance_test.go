@@ -90,7 +90,7 @@ func (test *InstanceTest) TestListInstances() {
 	for _, testCase := range testCases {
 		image := AddService(test.T(), test.conn, testCase.Image)
 		for i := 0; i < testCase.ExpectedInstances; i++ {
-			AddInstance(test.T(), test.conn, image)
+			AddInstance(test.T(), test.conn, &image)
 		}
 	}
 
@@ -141,7 +141,7 @@ func (test *InstanceTest) TestGetInstance() {
 	test.Equal(404, w.Code)
 
 	serviceName := AddService(test.T(), test.conn, "test_service")
-	instanceID := AddInstance(test.T(), test.conn, serviceName)
+	instanceID := AddInstance(test.T(), test.conn, &serviceName)
 
 	req = httptest.NewRequest("GET", "/instances/"+instanceID, nil)
 	w = httptest.NewRecorder()
@@ -155,7 +155,7 @@ func (test *InstanceTest) TestPatchInstance() {
 	test.router.GET("/instances/:instanceID", GetInstance)
 
 	serviceName := AddService(test.T(), test.conn, "test_service")
-	instanceID := AddInstance(test.T(), test.conn, serviceName)
+	instanceID := AddInstance(test.T(), test.conn, &serviceName)
 
 	payload := `{"host": "127.0.0.1", "port": 1337}`
 	req := httptest.NewRequest("PATCH", "/instances/"+instanceID, strings.NewReader(payload))

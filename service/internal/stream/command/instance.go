@@ -32,14 +32,13 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting instance: %w", err)
 	}
-	info, err := i.GetInfo()
+	algorithm, err := i.GetAlgorithm()
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	fmt.Println("INFO ", info.Parallel)
-	err = services.Update(ctx, i.Image, info.Parameters, *info.Parallel)
+	err = services.SetAlgorithm(ctx, *i.Image, algorithm)
 	if err != nil {
-		return fmt.Errorf("error updating service info: %w", err)
+		return fmt.Errorf("error setting algorithm: %w", err)
 	}
 	return nil
 }
@@ -73,7 +72,7 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 					time.Sleep(time.Second / 5)
 					continue
 				}
-				_, err = i.GetInfo()
+				_, err = i.GetAlgorithm()
 				if err != nil {
 					return fmt.Errorf("error reading instance info: %w", err)
 				}
@@ -99,13 +98,12 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 
 func InstanceStop(ctx context.Context, message stream.Message) error {
 	instance := st.InstanceStopCommand{}
-	container := message.MustGet(dependency.ContainerDep).(container.Container)
-
 	err := message.ParsePayload(&instance)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling InstanceStop payload: %w", err)
 	}
 
+	container := message.MustGet(dependency.ContainerDep).(container.Container)
 	err = container.Stop(ctx, instance.ID, true)
 	if err != nil {
 		return err

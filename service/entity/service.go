@@ -13,23 +13,28 @@ const (
 	ServiceStatusError     ServiceStatusType = "ERROR"
 )
 
-type Parameter struct {
-	Key     string `json:"key"`
-	Type    string `json:"type"`
-	Value   string `json:"value"`
-	Default string `json:"default"`
-}
-
-type Service struct {
-	Image      string       `json:"image" binding:"required"`
-	Parallel   *bool        `json:"parallel" mapstructure:"parallel" binding:"required"`
-	Parameters *[]Parameter `json:"parameters" mapstructure:"parameters"`
-
-	Statuses []ServiceStatus `json:"statuses"`
+type Algorithm struct {
+	FilePath  string `json:"file_path" mapstructure:"file_path"`
+	Functions []struct {
+		Name       string `json:"name" mapstructure:"name"`
+		Parameters []struct {
+			Key     string  `json:"key" mapstructure:"key"`
+			Default *string `json:"default" mapstructure:"default"`
+			Type    string  `json:"type" mapstructure:"type"`
+		} `json:"parameters" mapstructure:"parameters"`
+		ParallelExecution *bool `json:"parallel_execution" mapstructure:"parallel_execution"`
+	}
 }
 
 type ServiceStatus struct {
 	Status     ServiceStatusType `json:"status"`
 	Error      *string           `json:"message"`
 	OccurredAt time.Time         `json:"occurred_at"`
+}
+
+type Service struct {
+	Image     string     `json:"image" binding:"required"`
+	Algorithm *Algorithm `json:"algorithm" binding:"required"`
+
+	Statuses []ServiceStatus `json:"statuses"`
 }

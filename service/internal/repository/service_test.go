@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,11 +17,14 @@ type ServiceTest struct {
 	conn *pgxpool.Pool
 }
 
-func (test *ServiceTest) SetupTest() {
-	var err error
+func (test *ServiceTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
+}
+
+func (test *ServiceTest) SetupTest() {
+	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	ctx := context.Background()
@@ -62,31 +64,24 @@ func (test *ServiceTest) TestGet() {
 	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
 }
 
-func (test *ServiceTest) TestUpdate() {
+func (test *ServiceTest) TestSetAlgorithm() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	parameters := []entity.Parameter{
-		{
-			Key:   "key1",
-			Type:  "int",
-			Value: "22",
-		},
+	algorithm := &entity.Algorithm{
+		FilePath: "/file.py",
 	}
-
-	err = db.Update(ctx, "image", &parameters, true)
+	err = db.SetAlgorithm(ctx, "image", algorithm)
 	test.NoError(err)
 
 	service, err := db.Get(ctx, "image")
 	test.NoError(err)
 	test.Equal("image", service.Image)
-	test.Len(service.Statuses, 1)
-	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
-	test.Len(*service.Parameters, 1)
-	test.True(*service.Parallel)
+	test.NotNil(service.Algorithm)
+	test.Equal("/file.py", service.Algorithm.FilePath)
 }
 
 func (test *ServiceTest) TestUpdateStatus() {
@@ -99,17 +94,12 @@ func (test *ServiceTest) TestUpdateStatus() {
 	err = db.UpdateStatus(ctx, "image", entity.ServiceStatusReady, nil)
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "image", entity.ServiceStatusError, errors.New("test_error"))
-	test.NoError(err)
-
 	service, err := db.Get(ctx, "image")
 	test.NoError(err)
 	test.Equal("image", service.Image)
-	test.Len(service.Statuses, 3)
-	test.Equal(entity.ServiceStatusError, service.Statuses[0].Status)
-	test.Equal("test_error", *service.Statuses[0].Error)
-	test.Equal(entity.ServiceStatusReady, service.Statuses[1].Status)
-	test.Equal(entity.ServiceStatusCreated, service.Statuses[2].Status)
+	test.Len(service.Statuses, 2)
+	test.Equal(entity.ServiceStatusReady, service.Statuses[0].Status)
+	test.Equal(entity.ServiceStatusCreated, service.Statuses[1].Status)
 }
 
 func (test *ServiceTest) TestList() {
@@ -118,28 +108,12 @@ func (test *ServiceTest) TestList() {
 	db := &Service{Conn: test.conn}
 	_, err := db.Create(ctx, "image1")
 	test.NoError(err)
-	err = db.UpdateStatus(ctx, "image1", entity.ServiceStatusReady, nil)
-	test.NoError(err)
-
 	_, err = db.Create(ctx, "image2")
-	test.NoError(err)
-	err = db.UpdateStatus(ctx, "image2", entity.ServiceStatusError, errors.New("test_error"))
 	test.NoError(err)
 
 	services, err := db.List(ctx)
 	test.NoError(err)
 	test.Len(*services, 2)
-
-	service2 := (*services)[0]
-	test.Equal("image2", service2.Image)
-	test.Len(service2.Statuses, 2)
-	test.Equal(entity.ServiceStatusError, service2.Statuses[0].Status)
-	test.Equal("test_error", *service2.Statuses[0].Error)
-
-	service1 := (*services)[1]
-	test.Equal("image1", service1.Image)
-	test.Len(service1.Statuses, 2)
-	test.Equal(entity.ServiceStatusReady, service1.Statuses[0].Status)
 }
 
 func (test *ServiceTest) TestDelete() {
@@ -152,7 +126,7 @@ func (test *ServiceTest) TestDelete() {
 	err = db.Delete(ctx, "image")
 	test.NoError(err)
 
-	services, err := db.List(ctx)
-	test.Nil(err)
-	test.Empty(*services)
+	service, err := db.Get(ctx, "image")
+	test.Error(err)
+	test.Nil(service)
 }
