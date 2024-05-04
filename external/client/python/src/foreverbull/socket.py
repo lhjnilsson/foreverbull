@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 import pydantic
 
@@ -7,8 +6,8 @@ import pydantic
 class Request(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
     task: str
-    data: Optional[any] = None
-    error: Optional[str] = None
+    data: pydantic.SkipValidation[any] = None
+    error: pydantic.SkipValidation[any] = None
 
     def serialize(self) -> bytes:
         return self.model_dump_json().encode()
@@ -33,8 +32,8 @@ class Request(pydantic.BaseModel):
 class Response(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
     task: str
-    error: Optional[str] = None
-    data: Optional[any] = None
+    error: pydantic.SkipValidation[any] = None
+    data: pydantic.SkipValidation[any] = None
 
     def serialize(self) -> bytes:
         return self.model_dump_json().encode()

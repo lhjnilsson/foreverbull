@@ -11,33 +11,29 @@ from foreverbull import Algorithm, entity, socket, worker
 from .exceptions import ConfigurationError
 
 
-class BaseSession:
+class Session(threading.Thread):
     def __init__(
         self,
-        session: entity.backtest.Session,
-        service: entity.service.Service,
+        algorithm: entity.service.Service.Algorithm,
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
         stop_event: Event,
     ):
-        self._session = session
-        self._service = service
+        self._algorithm = algorithm
         self._surveyor = surveyor
         self._states = states
         self._workers = workers
         self._stop_event = stop_event
+        self.socket_config = None
         self.logger = logging.getLogger(__name__)
-
-    @property
-    def session(self):
-        return self._session
+        threading.Thread.__init__(self)
 
     @property
     def service(self):
         return self._service
 
-    def configure_execution(self, instance: entity.service.Instance):
+    def _configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring workers")
         self._surveyor.send(socket.Request(task="configure_execution", data=instance.model_dump()).serialize())
         responders = 0
@@ -54,10 +50,25 @@ class BaseSession:
                 raise ConfigurationError("Workers did not respond in time for configuration")
         self.logger.info("all workers configured")
 
-    def run_execution(self):
-        from uuid import uuid4
+    def _get_broker_session_socket(self):
+        broker_hostname = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
+        broker_session_port = os.getenv("BROKER_SESSION_PORT")
+        if broker_session_port is None:
+            raise ConfigurationError("BROKER_SESSION_PORT not set")
+        socket = pynng.Req0(dial=f"tcp://{broker_hostname}:{broker_session_port}", block_on_dial=True)
+        socket.send_timeout = 1000
+        socket.recv_timeout = 1000
+        return socket
 
-        self.logger.info(f"running backtest, {str(uuid4().hex)}")
+    def new_backtest_execution(self) -> entity.backtest.Execution:
+        sock = self._get_broker_session_socket()
+        sock.send(socket.Request(task="new_execution", data=self._algorithm).serialize())
+        rsp = socket.Response.deserialize(sock.recv())
+        if rsp.error:
+            raise Exception(rsp.error)
+        return entity.backtest.Execution(**rsp.data)
+
+    def _run_execution(self):
         self._surveyor.send(socket.Request(task="run_execution").serialize())
         responders = 0
         while True:
@@ -71,69 +82,31 @@ class BaseSession:
                 raise Exception("Workers did not respond in time for execution")
         self.logger.info("all workers executing")
 
-
-class ManualSession(BaseSession):
-    def __init__(
-        self,
-        session: entity.backtest.Session,
-        service: entity.service.Service,
-        surveyor: pynng.Surveyor0,
-        states: pynng.Sub0,
-        workers: list[worker.Worker],
-        stop_event: Event,
-    ):
-        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
-        self.logger = logging.getLogger(__name__)
-
-    def configure_execution(self, instance: entity.service.Instance):
-        sock = pynng.Req0(
-            dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}", block_on_dial=True
-        )
-        sock.send_timeout = 1000
-        sock.recv_timeout = 1000
-        data = {"execution": instance.model_dump_json(), "service": self.service.model_dump_json()}
-        sock.send(socket.Request(task="new_execution", data=data).serialize())
+    def run_backtest_execution(self, execution: entity.backtest.Execution):
+        sock = self._get_broker_session_socket()
+        sock.send(socket.Request(task="configure_execution", data=execution).serialize())
         rsp = socket.Response.deserialize(sock.recv())
         if rsp.error:
             raise Exception(rsp.error)
-        return super().configure_execution(instance)
-
-    def run_execution(self):
-        super().run_execution()
-        sock = pynng.Req0(
-            dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{self._session.port}", block_on_dial=True
-        )
+        instance = entity.service.Instance(**rsp.data)
+        self._configure_execution(instance)
+        self._run_execution()
         sock.send(socket.Request(task="run_execution").serialize())
         rsp = socket.Response.deserialize(sock.recv())
         if rsp.error:
             raise Exception(rsp.error)
 
-
-class Session(threading.Thread, BaseSession):
-    def __init__(
-        self,
-        session: entity.backtest.Session,
-        service: entity.service.Service,
-        surveyor: pynng.Surveyor0,
-        states: pynng.Sub0,
-        workers: list[worker.Worker],
-        stop_event: Event,
-    ):
-        threading.Thread.__init__(self)
-        BaseSession.__init__(self, session, service, surveyor, states, workers, stop_event)
-        self.logger = logging.getLogger(__name__)
+    def run(self):
         self.socket_config = entity.service.SocketConfig(
             hostname=_socket.gethostbyname(_socket.gethostname()),
             port=5555,
             socket_type=entity.service.SocketConfig.SocketType.REPLIER,
             listen=True,
         )
-
-    def run(self):
-        socket = pynng.Rep0(listen="tcp://0.0.0.0:5555")
-        socket.recv_timeout = 300
+        sock = pynng.Rep0(listen="tcp://0.0.0.0:5555")
+        sock.recv_timeout = 300
         while not self._stop_event.is_set():
-            ctx = socket.new_context()
+            ctx = sock.new_context()
             try:
                 try:
                     b = ctx.recv()
@@ -141,19 +114,18 @@ class Session(threading.Thread, BaseSession):
                     continue
                 try:
                     req = socket.Request.deserialize(b)
-                except Exception:
-                    # lib.nng_msg_free(self._nng_msg) seems to not work properly
-                    # TODO FIX, maybe upstream in pynng
+                except Exception as e:
+                    self.logger.warning("Error deserializing request: %s", repr(e))
                     continue
                 self.logger.info("received request: %s", req)
                 match req.task:
                     case "info":
-                        ctx.send(socket.Response(task="info", data=self.service).serialize())
+                        ctx.send(socket.Response(task="info", data=self._algorithm).serialize())
                     case "configure_execution":
-                        data = self.configure_execution(entity.backtest.Execution(**req.data))
+                        data = self._configure_execution(entity.service.Instance(**req.data))
                         ctx.send(socket.Response(task="configure_execution", data=data).serialize())
                     case "run_execution":
-                        data = self.run_execution()
+                        data = self._run_execution()
                         ctx.send(socket.Response(task="run_execution", data=data).serialize())
                     case "stop":
                         ctx.send(socket.Response(task="stop").serialize())
@@ -164,13 +136,12 @@ class Session(threading.Thread, BaseSession):
                 self.logger.error("Error in socket runner: %s", repr(e))
             finally:
                 ctx.close()
-        socket.close()
+        sock.close()
 
 
 class Foreverbull:
-    def __init__(self, session: entity.backtest.Session, file_path: str = None, executors=2):
-        self._session = session
-        self._threaded_session = None
+    def __init__(self, file_path: str = None, executors=2):
+        self._session = None
         self._file_path = file_path
         if self._file_path:
             try:
@@ -191,7 +162,6 @@ class Foreverbull:
         if self._file_path is None:
             raise Exception("No algo file provided")
         algo = Algorithm.from_file_path(self._file_path)
-        service = algo.get_entity()
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
         self._worker_surveyor_socket.sendout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000
@@ -229,27 +199,16 @@ class Foreverbull:
             except pynng.exceptions.Timeout:
                 raise Exception("Workers did not respond in time")
         self.logger.info("workers started")
-        if self._session.manual:
-            return ManualSession(
-                self._session,
-                service,
-                self._worker_surveyor_socket,
-                self._worker_states_socket,
-                self._workers,
-                self._stop_event,
-            )
-        else:
-            s = Session(
-                self._session,
-                service,
-                self._worker_surveyor_socket,
-                self._worker_states_socket,
-                self._workers,
-                self._stop_event,
-            )
-            s.start()
-            self._threaded_session = s
-            return s
+        s = Session(
+            algo.get_entity(),
+            self._worker_surveyor_socket,
+            self._worker_states_socket,
+            self._workers,
+            self._stop_event,
+        )
+        s.start()
+        self._session = s
+        return s
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if not self._stop_event.is_set():
@@ -259,6 +218,5 @@ class Foreverbull:
         self._worker_surveyor_socket.close()
         self._worker_states_socket.close()
         self._stop_event = None
-        if self._threaded_session:
-            self._threaded_session.join()
-            self._threaded_session = None
+        self._session.join()
+        self._session = None

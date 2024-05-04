@@ -22,28 +22,23 @@ def setup_worker():
 
     stop_event = Event()
 
-    request_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
-    request_socket.recv_timeout = 5000
-    request_socket.send_timeout = 5000
-
     def setup(worker: worker.Worker, file_name):
         w = worker(survey_address, state_address, stop_event, file_name)
         w.start()
         msg = state_socket.recv()
         assert msg == b"ready"
-        return survey_socket, request_socket
+        return survey_socket
 
     yield setup
 
     stop_event.set()
     survey_socket.close()
     state_socket.close()
-    request_socket.close()
 
 
 @pytest.mark.parametrize("instance,expected_error", [])
 def test_configure_worker_exceptions(parallel_algo_file, instance, expected_error):
-    file_name, parameters, process_symbols = parallel_algo_file
+    file_name, parameters, _ = parallel_algo_file
     w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), file_name)
     with (
         pytest.raises(exceptions.ConfigurationError, match=expected_error),
@@ -74,7 +69,7 @@ def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_proce
 
     file_name, instance, process_symbols = request.getfixturevalue(algo)
 
-    survey_socket, server_socket = setup_worker(workerclass, file_name)
+    survey_socket = setup_worker(workerclass, file_name)
 
     survey_socket.send(Request(task="configure_execution", data=instance).serialize())
     response = Response.deserialize(survey_socket.recv())
@@ -86,4 +81,4 @@ def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_proce
     assert response.task == "run_execution"
     assert response.error is None
 
-    process_symbols(server_socket, "exc_123")
+    process_symbols()

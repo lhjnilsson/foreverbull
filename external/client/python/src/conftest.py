@@ -1,8 +1,10 @@
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from multiprocessing import get_start_method, set_start_method
 
+import pynng
 import pytest
 import yfinance
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, engine, text
@@ -29,21 +31,19 @@ def execution(database):
         end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
-        database=os.environ.get("DATABASE_URL"),
-        parameters=None,
-        port=5656,
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def parallel_algo_file(ingest_config, database):
-    def _process_symbols(server_socket, execution):
+    def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
+        orders = []
         while start < ingest_config.end:
             for symbol in ingest_config.symbols:
                 req = entity.service.Request(
@@ -55,10 +55,11 @@ def parallel_algo_file(ingest_config, database):
                 response = socket.Response.deserialize(server_socket.recv())
                 assert response.task == "handle_data"
                 assert response.error is None
-                if response.data:
-                    order = Order(**response.data)
-                    assert order.symbol == symbol
+                assert response.data
+                for order in response.data:
+                    orders.append(Order(**order))
             start += timedelta(days=1)
+        return orders
 
     instance = entity.service.Instance(
         id="test",
@@ -67,13 +68,19 @@ def parallel_algo_file(ingest_config, database):
         functions={"handle_data": entity.service.Instance.Parameter(parameters={})},
     )
 
+    process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
+    process_socket.recv_timeout = 5000
+    process_socket.send_timeout = 5000
+    _process_symbols = partial(_process_symbols, process_socket)
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
+from random import choice
 from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
 def handle_data(asset: Asset, portfolio: Portfolio) -> Order:
-    pass
+    return choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)])
     
 Algorithm(
     functions=[
@@ -83,18 +90,21 @@ Algorithm(
 """
         )
         f.flush()
+
         yield f.name, instance, _process_symbols
+        process_socket.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def non_parallel_algo_file(ingest_config, database):
-    def _process_symbols(server_socket, execution):
+    def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
+        orders = []
         while start < ingest_config.end:
             req = entity.service.Request(
                 timestamp=start,
@@ -105,7 +115,12 @@ def non_parallel_algo_file(ingest_config, database):
             response = socket.Response.deserialize(server_socket.recv())
             assert response.task == "handle_data"
             assert response.error is None
+            assert response.data
+            for order in response.data:
+                orders.append(Order(**order))
+
             start += timedelta(days=1)
+        return orders
 
     instance = entity.service.Instance(
         id="test",
@@ -118,14 +133,23 @@ def non_parallel_algo_file(ingest_config, database):
         },
     )
 
+    process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
+    process_socket.recv_timeout = 5000
+    process_socket.send_timeout = 5000
+    _process_symbols = partial(_process_symbols, process_socket)
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
+from random import choice
 from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
-def handle_data(assets: Assets, portfolio: Portfolio) -> Order:
-    pass
-    
+def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order]:
+    orders = []
+    for asset in assets:
+        orders.append(choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)]))
+    return orders
+
 Algorithm(
     functions=[
         Function(callable=handle_data)
@@ -135,17 +159,19 @@ Algorithm(
         )
         f.flush()
         yield f.name, instance, _process_symbols
+        process_socket.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def parallel_algo_file_with_parameters(ingest_config, database):
-    def _process_symbols(server_socket, execution):
+    def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
+        orders = []
         while start < ingest_config.end:
             for symbol in ingest_config.symbols:
                 req = entity.service.Request(
@@ -157,10 +183,12 @@ def parallel_algo_file_with_parameters(ingest_config, database):
                 response = socket.Response.deserialize(server_socket.recv())
                 assert response.task == "handle_data"
                 assert response.error is None
-                if response.data:
-                    order = Order(**response.data)
-                    assert order.symbol == symbol
+                assert response.data
+                for order in response.data:
+                    orders.append(Order(**order))
+
             start += timedelta(days=1)
+        return orders
 
     instance = entity.service.Instance(
         id="test",
@@ -176,13 +204,19 @@ def parallel_algo_file_with_parameters(ingest_config, database):
         },
     )
 
+    process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
+    process_socket.recv_timeout = 5000
+    process_socket.send_timeout = 5000
+    _process_symbols = partial(_process_symbols, process_socket)
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
+from random import choice
 from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
 def handle_data(asset: Asset, portfolio: Portfolio, low: int, high: int) -> Order:
-    pass
+    return choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)])
     
 Algorithm(
     functions=[
@@ -193,17 +227,19 @@ Algorithm(
         )
         f.flush()
         yield f.name, instance, _process_symbols
+        process_socket.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def non_parallel_algo_file_with_parameters(ingest_config, database):
-    def _process_symbols(server_socket, execution):
+    def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
+        orders = []
         while start < ingest_config.end:
             req = entity.service.Request(
                 timestamp=start,
@@ -214,7 +250,11 @@ def non_parallel_algo_file_with_parameters(ingest_config, database):
             response = socket.Response.deserialize(server_socket.recv())
             assert response.task == "handle_data"
             assert response.error is None
+            assert response.data
+            for order in response.data:
+                orders.append(Order(**order))
             start += timedelta(days=1)
+        return orders
 
     instance = entity.service.Instance(
         id="test",
@@ -230,13 +270,22 @@ def non_parallel_algo_file_with_parameters(ingest_config, database):
         },
     )
 
+    process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
+    process_socket.recv_timeout = 5000
+    process_socket.send_timeout = 5000
+    _process_symbols = partial(_process_symbols, process_socket)
+
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
+from random import choice
 from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
-def handle_data(assets: Assets, portfolio: Portfolio, low: int, high: int) -> Order:
-    pass
+def handle_data(assets: Assets, portfolio: Portfolio, low: int, high: int) -> list[Order]:
+    orders = []
+    for asset in assets:
+        orders.append(choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)]))
+    return orders
     
 Algorithm(
     functions=[
@@ -247,6 +296,7 @@ Algorithm(
         )
         f.flush()
         yield f.name, instance, _process_symbols
+        process_socket.close()
 
 
 @pytest.fixture(scope="session")

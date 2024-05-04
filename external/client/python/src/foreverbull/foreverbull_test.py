@@ -1,109 +1,97 @@
+import os
+import time
 from threading import Event, Thread
 
 import pynng
 import pytest
 
-from foreverbull import Foreverbull, entity, socket
-from foreverbull.foreverbull import ManualSession, Session
-
-
-@pytest.fixture
-def manual_server():
-    class Server(Thread):
-        def __init__(self, host: str, port: int):
-            Thread.__init__(self)
-            self.stop_event = Event()
-            self.socket = pynng.Rep0(listen=f"tcp://{host}:{port}")
-
-            self.new_execution_data = None
-            self.new_execution_error = None
-            self.run_execution_data = None
-            self.run_execution_error = None
-
-        def run(self):
-            self.socket.recv_timeout = 100
-            while not self.stop_event.is_set():
-                try:
-                    req = socket.Request.deserialize(self.socket.recv())
-                    if req.task == "new_execution":
-                        self.socket.send(
-                            socket.Response(
-                                task="", data=self.run_execution_data, error=self.run_execution_error
-                            ).serialize()
-                        )
-                    elif req.task == "run_execution":
-                        self.socket.send(
-                            socket.Response(
-                                task="", data=self.run_execution_data, error=self.run_execution_error
-                            ).serialize()
-                        )
-                except pynng.exceptions.Timeout:
-                    pass
-            self.socket.close()
-
-        def stop(self):
-            self.stop_event.set()
-
-    server = Server("127.0.0.1", 6969)
-    server.start()
-    yield server, entity.service.SocketConfig(host="127.0.0.1", port=6969)
-    server.stop()
-    server.join()
+from foreverbull import Foreverbull, socket
 
 
 @pytest.mark.parametrize(
-    "session,expected_session_type",
+    "algo",
     [
-        (
-            entity.backtest.Session(
-                backtest="test",
-                manual=False,
-                executions=0,
-            ),
-            Session,
-        ),
-        (
-            entity.backtest.Session(
-                backtest="test",
-                manual=True,
-                executions=0,
-            ),
-            ManualSession,
-        ),
+        "parallel_algo_file",
+        "non_parallel_algo_file",
+        "parallel_algo_file_with_parameters",
+        "non_parallel_algo_file_with_parameters",
     ],
 )
+def test_foreverbull_over_socket(algo, request):
+    file_name, parameters, process_symbols = request.getfixturevalue(algo)
+
+    with Foreverbull(file_name):
+        time.sleep(1.0)  # wait for the server to start
+        requester = pynng.Req0(dial="tcp://127.0.0.1:5555", block_on_dial=True)
+        requester.send_timeout = 1000
+        requester.recv_timeout = 1000
+
+        req = socket.Request(task="info")
+        requester.send(req.serialize())
+        rsp = socket.Response.deserialize(requester.recv())
+        assert rsp.task == "info"
+        assert rsp.error is None
+
+        req = socket.Request(task="configure_execution", data=parameters)
+        requester.send(req.serialize())
+        rsp = socket.Response.deserialize(requester.recv())
+        assert rsp.task == "configure_execution"
+        assert rsp.error is None
+
+        req = socket.Request(task="run_execution")
+        requester.send(req.serialize())
+        rsp = socket.Response.deserialize(requester.recv())
+        assert rsp.task == "run_execution"
+        assert rsp.error is None
+
+        orders = process_symbols()
+        assert len(orders)
+
+
 @pytest.mark.parametrize(
-    "algo,expected_service",
+    "algo",
     [
-        ("parallel_algo_file", None),
+        "parallel_algo_file",
+        "non_parallel_algo_file",
+        "parallel_algo_file_with_parameters",
+        "non_parallel_algo_file_with_parameters",
     ],
 )
-def test_foreverbull(
-    spawn_process,
-    execution,
-    manual_server,
-    session,
-    expected_session_type,
-    algo,
-    expected_service,
-    request,
-):
-    server, socket_config = manual_server
-    server.new_execution_data = execution
-    server.new_execution_error = None
-    server.run_execution_data = execution
-    server.run_execution_error = None
-    session.port = socket_config.port
+def test_foreverbull_manual(execution, algo, request):
+    file_name, parameters, process_symbols = request.getfixturevalue(algo)
 
-    algo_file, configuration, process_symbols = request.getfixturevalue(algo)
+    stop_event = Event()
 
-    with (
-        Foreverbull(session, file_path=algo_file) as foreverbull,
-        pynng.Req0(listen=f"tcp://127.0.0.1:{execution.port}") as socket,
-    ):
-        assert isinstance(foreverbull, expected_session_type)
-        assert foreverbull.service
-        foreverbull.configure_execution(configuration)
-        foreverbull.run_execution()
+    def server():
+        sock = pynng.Rep0(listen="tcp://127.0.0.1:6969")
+        sock.recv_timeout = 500
+        sock.send_timeout = 500
+        while not stop_event.is_set():
+            try:
+                req = sock.recv()
+                req = socket.Request.deserialize(req)
+                if req.task == "new_execution":
+                    rsp = socket.Response(task="new_execution", data=execution)
+                elif req.task == "configure_execution":
+                    rsp = socket.Response(task="configure_execution", data=parameters)
+                elif req.task == "run_execution":
+                    rsp = socket.Response(task="run_execution")
+                else:
+                    rsp = socket.Response(error="Unknown task")
+                sock.send(rsp.serialize())
+            except pynng.exceptions.Timeout:
+                pass
+        sock.close()
 
-        process_symbols(socket, "exc_123")
+    os.environ["BROKER_SESSION_PORT"] = "6969"
+    server_thread = Thread(target=server)
+    server_thread.start()
+
+    with Foreverbull(file_name) as foreverbull:
+        execution = foreverbull.new_backtest_execution()
+        foreverbull.run_backtest_execution(execution)
+
+        process_symbols()
+
+    stop_event.set()
+    server_thread.join()

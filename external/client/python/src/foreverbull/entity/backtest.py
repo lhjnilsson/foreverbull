@@ -93,11 +93,8 @@ class Execution(pydantic.BaseModel):
     benchmark: Optional[str] = None
     symbols: Optional[List[str]] = None
     capital_base: int = 100000
-    database: Optional[str] = None
 
     statuses: List[ExecutionStatus] = []
-
-    port: int | None = None
 
     @pydantic.field_serializer("start")
     def start_iso(self, start: datetime, _info):

@@ -8,6 +8,7 @@ set_start_method("spawn")
 
 
 def test_positive_returns(foreverbull):
-    with foreverbull(monkey, []) as fb:
-        fb.configure_execution(entity.backtest.Execution())
-        fb.run_execution()
+    with foreverbull(monkey, []) as foreverbull:
+        execution = foreverbull.new_backtest_execution()
+        result = foreverbull.run_backtest_execution(execution)
+        assert result
