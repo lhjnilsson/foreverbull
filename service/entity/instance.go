@@ -80,3 +80,65 @@ func (i *Instance) GetAlgorithm() (*Algorithm, error) {
 	}
 	return &algo, nil
 }
+
+func (i *Instance) Configure() error {
+	iSocket, err := i.GetSocket()
+	if err != nil {
+		return err
+	}
+	s, err := socket.GetContextSocket(context.Background(), iSocket)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	ctxSock, err := s.Get()
+	if err != nil {
+		return err
+	}
+	defer ctxSock.Close()
+
+	req := message.Request{Task: "configure_execution", Data: i}
+	rsp, err := req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	req = message.Request{Task: "run_execution", Data: i}
+	rsp, err = req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	return nil
+}
+
+func (i *Instance) Stop() error {
+	iSocket, err := i.GetSocket()
+	if err != nil {
+		return err
+	}
+	s, err := socket.GetContextSocket(context.Background(), iSocket)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	ctxSock, err := s.Get()
+	if err != nil {
+		return err
+	}
+	defer ctxSock.Close()
+
+	req := message.Request{Task: "stop", Data: i}
+	rsp, err := req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	return nil
+}

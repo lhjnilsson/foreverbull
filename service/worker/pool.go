@@ -7,7 +7,6 @@ import (
 	"time"
 
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
@@ -15,56 +14,18 @@ import (
 )
 
 type Pool interface {
-	SocketConfig() *socket.Socket
-	ConfigureExecution(context.Context, *entity.Instance) error
-	RunExecution(context.Context) error
+	GetPort() int
+	SetAlgorithm(algo *entity.Algorithm)
 	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error)
-	StopExecution(context.Context) error
-	Stop(context.Context) error
 }
 
-func NewPool(ctx context.Context, instances ...*entity.Instance) (Pool, error) {
-	var workerInstances []*Instance
-	for _, instance := range instances {
-		workerInstances = append(workerInstances, &Instance{Service: instance})
-	}
-
-	algoCh := make(chan *entity.Algorithm, len(instances))
-	g, _ := errgroup.WithContext(ctx)
-	for _, instance := range instances {
-		i := instance
-		g.Go(func() error {
-			a, err := i.GetAlgorithm()
-			if err != nil {
-				return err
-			}
-			algoCh <- a
-			return nil
-		})
-	}
-	err := g.Wait()
-	if err != nil {
-		return nil, err
-	}
-	close(algoCh)
-
-	var algo *entity.Algorithm
-	for a := range algoCh {
-		if algo == nil {
-			algo = a
-			continue
-		}
-		if a != algo {
-			return nil, fmt.Errorf("inconsistent service algorithms")
-		}
-	}
-
+func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 	s := &socket.Socket{Type: socket.Requester, Host: "0.0.0.0", Port: 0, Dial: false}
 	socket, err := socket.GetContextSocket(ctx, s)
 	if err != nil {
 		return nil, err
 	}
-	return &pool{Workers: workerInstances, Socket: s, socket: socket, algo: algo}, nil
+	return &pool{Socket: s, socket: socket, algo: algo}, nil
 }
 
 type pool struct {
@@ -79,10 +40,8 @@ func (p *pool) SetAlgorithm(algo *entity.Algorithm) {
 	p.algo = algo
 }
 
-func (p *pool) SocketConfig() *socket.Socket {
-	cfg := p.Socket
-	cfg.Host = environment.GetServerAddress()
-	return cfg
+func (p *pool) GetPort() int {
+	return p.Socket.Port
 }
 
 func (p *pool) ConfigureExecution(ctx context.Context, i *entity.Instance) error {

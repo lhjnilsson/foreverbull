@@ -22,3 +22,11 @@ type ImageURI struct {
 }
 
 type ImageResponse entity.Image
+
+type ConfigureInstanceRequest struct {
+	BrokerPort  int                                `json:"broker_port" binding:"required"`
+	DatabaseURL string                             `json:"database_url" binding:"required"`
+	Functions   map[string]entity.InstanceFunction `json:"functions" binding:"required"`
+}
+
+type ConfigureInstanceResponse entity.Instance

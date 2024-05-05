@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -24,6 +25,22 @@ type Algorithm struct {
 		} `json:"parameters" mapstructure:"parameters"`
 		ParallelExecution *bool `json:"parallel_execution" mapstructure:"parallel_execution"`
 	}
+}
+
+func (a *Algorithm) Configure() (map[string]InstanceFunction, error) {
+	functions := map[string]InstanceFunction{}
+	for _, function := range a.Functions {
+		parameters := map[string]string{}
+		for _, parameter := range function.Parameters {
+			if parameter.Default == nil {
+				return nil, fmt.Errorf("parameter %s has no default value", parameter.Key)
+			}
+			parameters[parameter.Key] = *parameter.Default
+		}
+		functions[function.Name] = InstanceFunction{Parameters: parameters}
+	}
+	return functions, nil
+
 }
 
 type ServiceStatus struct {

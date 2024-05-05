@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/container"
+	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/service/internal/stream/dependency"
 	st "github.com/lhjnilsson/foreverbull/service/stream"
@@ -68,6 +69,13 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 					}
 					return fmt.Errorf("error getting instance: %w", err)
 				}
+				if i.Statuses[0].Status == entity.InstanceStatusStopped {
+					return fmt.Errorf("instance is stopped")
+				}
+				if i.Statuses[0].Status == entity.InstanceStatusError {
+					return fmt.Errorf("instance is in error state: %s", *i.Statuses[0].Error)
+				}
+
 				if i.Host == nil || i.Port == nil {
 					time.Sleep(time.Second / 5)
 					continue

@@ -15,11 +15,14 @@ import (
 	docker "github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/finance"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/api"
+	"github.com/lhjnilsson/foreverbull/service/internal/container"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
+	"github.com/lhjnilsson/foreverbull/service/worker"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -62,9 +65,10 @@ func (test *ServiceModuleTest) SetupTest() {
 			h.NewLifeCycleRouter,
 		),
 		stream.OrchestrationLifecycle,
+		finance.Module,
 		Module,
 	)
-	test.NoError(test.app.Start(context.TODO()))
+	test.Require().NoError(test.app.Start(context.TODO()))
 }
 
 func (test *ServiceModuleTest) TearDownTest() {
@@ -155,9 +159,11 @@ func (test *ServiceModuleTest) TestCreateService() {
 		test.T().Skip("images not set")
 	}
 
+	client, err := api.NewClient()
+	test.Require().NoError(err)
+
 	type ServiceResponse struct {
 		Image    string
-		Parallel bool
 		Statuses []struct {
 			Status string
 		}
@@ -171,7 +177,7 @@ func (test *ServiceModuleTest) TestCreateService() {
 		testCases = append(testCases, TestCase{Image: image})
 	}
 	for _, testcase := range testCases {
-		test.Run(testcase.Image, func() {
+		test.Run("Create_"+testcase.Image, func() {
 			payload := `{"image": "` + testcase.Image + `"}`
 			rsp := helper.Request(test.T(), http.MethodPost, "/service/api/services", payload)
 			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
@@ -188,10 +194,16 @@ func (test *ServiceModuleTest) TestCreateService() {
 				if err != nil {
 					return false, fmt.Errorf("failed to decode response: %s", err.Error())
 				}
-				if data.Statuses[0].Status != "READY" {
-					return false, nil
+				switch data.Statuses[0].Status {
+				case "READY":
+					return true, nil
+				case "ERROR":
+					return false, fmt.Errorf("service in error state")
+				case "STOPPED":
+					return false, fmt.Errorf("service in stopped state")
 				}
-				return true, nil
+				fmt.Println("STATUS: ", data.Statuses[0].Status)
+				return false, nil
 			}
 			err := helper.WaitUntilCondition(test.T(), condition, time.Second*10)
 			test.NoError(err)
@@ -206,6 +218,60 @@ func (test *ServiceModuleTest) TestCreateService() {
 				test.Failf("Failed to decode response: %w", err.Error())
 				return
 			}
+		})
+		test.Run("Configure_"+testcase.Image, func() {
+			pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+			test.NoError(err)
+
+			instances := repository.Instance{Conn: pool}
+			_, err = instances.Create(context.Background(), "instance_"+testcase.Image, &testcase.Image)
+			test.NoError(err)
+
+			c, err := container.NewContainerRegistry()
+			test.Require().NoError(err)
+			instanceID := "instance_" + testcase.Image
+
+			_, err = c.Start(context.Background(), testcase.Image, instanceID, nil)
+			test.Require().NoError(err)
+
+			condition := func() (bool, error) {
+				instance, err := client.GetInstance(context.Background(), instanceID)
+				if err != nil {
+					return false, fmt.Errorf("failed to get instance: %w", err)
+				}
+				switch instance.Statuses[0].Status {
+				case "RUNNING":
+					return true, nil
+				case "ERROR":
+					return false, fmt.Errorf("instance in error state")
+				case "STOPPED":
+					return false, fmt.Errorf("instance in stopped state")
+				}
+				return false, nil
+			}
+			err = helper.WaitUntilCondition(test.T(), condition, time.Second*10)
+			test.NoError(err)
+			// DO Magic
+
+			service, err := client.GetService(context.Background(), testcase.Image)
+			test.NoError(err)
+			functions, err := service.Algorithm.Configure()
+			test.NoError(err)
+			wPool, err := worker.NewPool(context.Background(), service.Algorithm)
+			test.NoError(err)
+
+			configRequest := api.ConfigureInstanceRequest{
+				BrokerPort:  wPool.GetPort(),
+				DatabaseURL: environment.GetPostgresURL(),
+				Functions:   functions,
+			}
+
+			instance, err := client.ConfigureInstance(context.Background(), instanceID, &configRequest)
+			test.NoError(err)
+			test.NotNil(instance)
+
+			// End of magic
+			test.NoError(client.StopInstance(context.Background(), instanceID))
 		})
 	}
 }
