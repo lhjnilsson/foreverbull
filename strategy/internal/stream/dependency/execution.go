@@ -28,15 +28,10 @@ type execution struct {
 }
 
 func (e *execution) Configure(ctx context.Context) error {
-	cfg := service.Instance{}
-	return e.worker.ConfigureExecution(ctx, &cfg)
+	return nil
 }
 
 func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]finance.Order, error) {
-	if err := e.worker.RunExecution(ctx); err != nil {
-		return nil, fmt.Errorf("error running worker execution: %w", err)
-	}
-
 	orders, err := e.worker.Process(ctx, e.command.Timestamp, e.command.Symbols, portfolio)
 	if err != nil {
 		return nil, fmt.Errorf("error processing symbols: %w", err)
@@ -45,7 +40,7 @@ func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]f
 }
 
 func (e *execution) Stop(ctx context.Context) error {
-	return e.worker.Stop(ctx)
+	return nil
 }
 
 func GetExecution(ctx context.Context, message stream.Message) (interface{}, error) {
@@ -87,7 +82,7 @@ func GetWorkerPool(ctx context.Context, message stream.Message) (interface{}, er
 		}
 		instances = append(instances, &instance)
 	}
-	pool, err := worker.NewPool(ctx, instances...)
+	pool, err := worker.NewPool(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating worker pool: %w", err)
 	}

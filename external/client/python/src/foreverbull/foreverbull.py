@@ -25,7 +25,6 @@ class Session(threading.Thread):
         self._states = states
         self._workers = workers
         self._stop_event = stop_event
-        self.socket_config = None
         self.logger = logging.getLogger(__name__)
         threading.Thread.__init__(self)
 
@@ -97,13 +96,8 @@ class Session(threading.Thread):
             raise Exception(rsp.error)
 
     def run(self):
-        self.socket_config = entity.service.SocketConfig(
-            hostname=_socket.gethostbyname(_socket.gethostname()),
-            port=5555,
-            socket_type=entity.service.SocketConfig.SocketType.REPLIER,
-            listen=True,
-        )
-        sock = pynng.Rep0(listen="tcp://0.0.0.0:5555")
+        local_port = os.environ.get("LOCAL_PORT", 5555)
+        sock = pynng.Rep0(listen=f"tcp://0.0.0.0:{local_port}")
         sock.recv_timeout = 300
         while not self._stop_event.is_set():
             ctx = sock.new_context()

@@ -31,11 +31,7 @@ type manualSession struct {
 
 func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 	defer func() {
-		err := ms.workers.Stop(context.TODO())
-		if err != nil {
-			log.Err(err).Msg("failed to stop workers")
-		}
-		err = ms.backtest.Stop(context.TODO())
+		err := ms.backtest.Stop(context.TODO())
 		if err != nil {
 			log.Err(err).Msg("failed to stop engine")
 		}
@@ -109,7 +105,8 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				break
 			}
 			ms.executionEntity.Database = environment.GetPostgresURL()
-			ms.executionEntity.Port = &ms.workers.SocketConfig().Port
+			port := ms.workers.GetPort()
+			ms.executionEntity.Port = &port
 			ms.execution = NewExecution(ms.backtest, ms.workers)
 			rsp.Data = ms.executionEntity
 		case "run_execution":
@@ -124,7 +121,7 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				Benchmark: ms.executionEntity.Benchmark,
 				Symbols:   &ms.executionEntity.Symbols,
 			}
-			err = ms.execution.Configure(context.Background(), nil, &backtestCfg)
+			err = ms.execution.Configure(context.Background(), &backtestCfg)
 			if err != nil {
 				return fmt.Errorf("failed to configure execution: %w", err)
 			}
@@ -172,8 +169,5 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 }
 
 func (ms *manualSession) Stop(ctx context.Context) error {
-	if err := ms.workers.Stop(ctx); err != nil {
-		return fmt.Errorf("failed to stop workers: %w", err)
-	}
 	return ms.socket.Close()
 }

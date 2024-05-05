@@ -27,12 +27,12 @@ type session struct {
 
 func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance,
-	executions *repository.Execution, periods *repository.Period, workers ...*service.Instance) (Session, *socket.Socket, error) {
+	executions *repository.Execution, periods *repository.Period) (Session, *socket.Socket, error) {
 	b, err := backtest.NewZiplineEngine(ctx, backtestInstance)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating zipline engine: %w", err)
 	}
-	workerPool, err := worker.NewPool(ctx, workers...)
+	workerPool, err := worker.NewPool(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating worker pool: %w", err)
 	}

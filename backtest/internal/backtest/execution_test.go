@@ -37,7 +37,7 @@ func (test *ExecutionTest) TestConfigure() {
 	test.backtest.On("ConfigureExecution", mock.Anything, backtestcfg).Return(nil)
 	test.workers.On("ConfigureExecution", mock.Anything, workercfg).Return(nil)
 
-	err := test.execution.Configure(context.TODO(), workercfg, backtestcfg)
+	err := test.execution.Configure(context.TODO(), backtestcfg)
 	test.Nil(err)
 }
 

@@ -15,6 +15,29 @@ type Client struct {
 	mock.Mock
 }
 
+// ConfigureInstance provides a mock function with given fields: ctx, InstanceID, config
+func (_m *Client) ConfigureInstance(ctx context.Context, InstanceID string, config *api.ConfigureInstanceRequest) (*api.InstanceResponse, error) {
+	ret := _m.Called(ctx, InstanceID, config)
+
+	var r0 *api.InstanceResponse
+	if rf, ok := ret.Get(0).(func(context.Context, string, *api.ConfigureInstanceRequest) *api.InstanceResponse); ok {
+		r0 = rf(ctx, InstanceID, config)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*api.InstanceResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, string, *api.ConfigureInstanceRequest) error); ok {
+		r1 = rf(ctx, InstanceID, config)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DownloadImage provides a mock function with given fields: ctx, image
 func (_m *Client) DownloadImage(ctx context.Context, image string) (*api.ImageResponse, error) {
 	ret := _m.Called(ctx, image)
@@ -151,6 +174,20 @@ func (_m *Client) ListServices(ctx context.Context) (*[]api.ServiceResponse, err
 	}
 
 	return r0, r1
+}
+
+// StopInstance provides a mock function with given fields: ctx, InstanceID
+func (_m *Client) StopInstance(ctx context.Context, InstanceID string) error {
+	ret := _m.Called(ctx, InstanceID)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, InstanceID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 type mockConstructorTestingTNewClient interface {

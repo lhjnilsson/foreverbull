@@ -7,14 +7,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
-	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	"github.com/shopspring/decimal"
-	"golang.org/x/sync/errgroup"
 )
 
 type Execution interface {
-	Configure(context.Context, *service.Instance, *backtest.BacktestConfig) error
+	Configure(context.Context, *backtest.BacktestConfig) error
 	Run(context.Context, *entity.Execution) error
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
@@ -35,13 +33,8 @@ type execution struct {
 /*
 Configure
 */
-func (b *execution) Configure(ctx context.Context, instance *service.Instance, backtestCfg *backtest.BacktestConfig) error {
-	g, gctx := errgroup.WithContext(ctx)
-	if instance != nil {
-		g.Go(func() error { return b.workers.ConfigureExecution(gctx, instance) })
-	}
-	g.Go(func() error { return b.backtest.ConfigureExecution(gctx, backtestCfg) })
-	return g.Wait()
+func (b *execution) Configure(ctx context.Context, backtestCfg *backtest.BacktestConfig) error {
+	return b.backtest.ConfigureExecution(ctx, backtestCfg)
 }
 
 /*
@@ -49,23 +42,9 @@ Run
 Runs configured workers and backtest until completed
 */
 func (b *execution) Run(ctx context.Context, execution *entity.Execution) error {
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		err := b.backtest.RunExecution(gctx)
-		if err != nil {
-			return fmt.Errorf("error running Execution engine: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		err := b.workers.RunExecution(gctx)
-		if err != nil {
-			return fmt.Errorf("error running Execution workers: %w", err)
-		}
-		return nil
-	})
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("error running Execution: %w", err)
+	err := b.backtest.RunExecution(ctx)
+	if err != nil {
+		return fmt.Errorf("error running Execution engine: %w", err)
 	}
 	for {
 		period, err := b.backtest.GetMessage()
@@ -90,7 +69,7 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 			Positions: positions,
 		}
 
-		orders, err := b.workers.Process(gctx, period.Timestamp, execution.Symbols, &portfolio)
+		orders, err := b.workers.Process(ctx, period.Timestamp, execution.Symbols, &portfolio)
 		if err != nil {
 			return fmt.Errorf("error processing ohlc: %w", err)
 		}
@@ -159,22 +138,8 @@ Stop
 Halts all workers and backtest
 */
 func (b *execution) Stop(ctx context.Context) error {
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		if err := b.backtest.Stop(gctx); err != nil {
-			return fmt.Errorf("error stopping Execution engine: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		if err := b.workers.Stop(gctx); err != nil {
-			return fmt.Errorf("error stopping workers: %w", err)
-		}
-		return nil
-	})
-	err := g.Wait()
-	if err != nil {
-		return fmt.Errorf("error stopping Execution: %w", err)
+	if err := b.backtest.Stop(ctx); err != nil {
+		return fmt.Errorf("error stopping Execution engine: %w", err)
 	}
 	return nil
 }

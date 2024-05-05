@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/service/backtest"
-	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 )
 
@@ -23,12 +21,6 @@ type automatedSession struct {
 func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 	for _, execution := range *as.executions {
 		exec := NewExecution(as.backtest, as.workers)
-
-		databaseURL := environment.GetPostgresURL()
-		workerCfg := &service.Instance{
-			BrokerPort:  &as.workers.SocketConfig().Port,
-			DatabaseURL: &databaseURL,
-		}
 		backtestCfg := &backtest.BacktestConfig{
 			Calendar: &execution.Calendar,
 			Start:    &execution.Start,
@@ -41,7 +33,7 @@ func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 			Symbols:   &execution.Symbols,
 		}
 
-		err := exec.Configure(context.Background(), workerCfg, backtestCfg)
+		err := exec.Configure(context.Background(), backtestCfg)
 		if err != nil {
 			return fmt.Errorf("failed to configure execution: %w", err)
 		}

@@ -5,12 +5,10 @@ package mocks
 import (
 	context "context"
 
-	financeentity "github.com/lhjnilsson/foreverbull/finance/entity"
-	entity "github.com/lhjnilsson/foreverbull/service/entity"
-
+	entity "github.com/lhjnilsson/foreverbull/finance/entity"
 	mock "github.com/stretchr/testify/mock"
 
-	socket "github.com/lhjnilsson/foreverbull/service/socket"
+	serviceentity "github.com/lhjnilsson/foreverbull/service/entity"
 
 	time "time"
 )
@@ -20,35 +18,35 @@ type Pool struct {
 	mock.Mock
 }
 
-// ConfigureExecution provides a mock function with given fields: _a0, _a1
-func (_m *Pool) ConfigureExecution(_a0 context.Context, _a1 *entity.Instance) error {
-	ret := _m.Called(_a0, _a1)
+// GetPort provides a mock function with given fields:
+func (_m *Pool) GetPort() int {
+	ret := _m.Called()
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *entity.Instance) error); ok {
-		r0 = rf(_a0, _a1)
+	var r0 int
+	if rf, ok := ret.Get(0).(func() int); ok {
+		r0 = rf()
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(int)
 	}
 
 	return r0
 }
 
 // Process provides a mock function with given fields: ctx, timestamp, symbols, portfolio
-func (_m *Pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *financeentity.Portfolio) (*[]financeentity.Order, error) {
+func (_m *Pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *entity.Portfolio) (*[]entity.Order, error) {
 	ret := _m.Called(ctx, timestamp, symbols, portfolio)
 
-	var r0 *[]financeentity.Order
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *financeentity.Portfolio) *[]financeentity.Order); ok {
+	var r0 *[]entity.Order
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *entity.Portfolio) *[]entity.Order); ok {
 		r0 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*[]financeentity.Order)
+			r0 = ret.Get(0).(*[]entity.Order)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *financeentity.Portfolio) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *entity.Portfolio) error); ok {
 		r1 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		r1 = ret.Error(1)
@@ -57,62 +55,9 @@ func (_m *Pool) Process(ctx context.Context, timestamp time.Time, symbols []stri
 	return r0, r1
 }
 
-// RunExecution provides a mock function with given fields: _a0
-func (_m *Pool) RunExecution(_a0 context.Context) error {
-	ret := _m.Called(_a0)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// SocketConfig provides a mock function with given fields:
-func (_m *Pool) SocketConfig() *socket.Socket {
-	ret := _m.Called()
-
-	var r0 *socket.Socket
-	if rf, ok := ret.Get(0).(func() *socket.Socket); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*socket.Socket)
-		}
-	}
-
-	return r0
-}
-
-// Stop provides a mock function with given fields: _a0
-func (_m *Pool) Stop(_a0 context.Context) error {
-	ret := _m.Called(_a0)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// StopExecution provides a mock function with given fields: _a0
-func (_m *Pool) StopExecution(_a0 context.Context) error {
-	ret := _m.Called(_a0)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
+// SetAlgorithm provides a mock function with given fields: algo
+func (_m *Pool) SetAlgorithm(algo *serviceentity.Algorithm) {
+	_m.Called(algo)
 }
 
 type mockConstructorTestingTNewPool interface {

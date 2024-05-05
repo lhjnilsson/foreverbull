@@ -3,12 +3,11 @@
 package mocks
 
 import (
-	backtestentity "github.com/lhjnilsson/foreverbull/backtest/entity"
-	backtest "github.com/lhjnilsson/foreverbull/service/backtest"
-
 	context "context"
 
-	entity "github.com/lhjnilsson/foreverbull/service/entity"
+	backtest "github.com/lhjnilsson/foreverbull/service/backtest"
+
+	entity "github.com/lhjnilsson/foreverbull/backtest/entity"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -18,13 +17,13 @@ type Execution struct {
 	mock.Mock
 }
 
-// Configure provides a mock function with given fields: _a0, _a1, _a2
-func (_m *Execution) Configure(_a0 context.Context, _a1 *entity.Instance, _a2 *backtest.BacktestConfig) error {
-	ret := _m.Called(_a0, _a1, _a2)
+// Configure provides a mock function with given fields: _a0, _a1
+func (_m *Execution) Configure(_a0 context.Context, _a1 *backtest.BacktestConfig) error {
+	ret := _m.Called(_a0, _a1)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *entity.Instance, *backtest.BacktestConfig) error); ok {
-		r0 = rf(_a0, _a1, _a2)
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.BacktestConfig) error); ok {
+		r0 = rf(_a0, _a1)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -33,11 +32,11 @@ func (_m *Execution) Configure(_a0 context.Context, _a1 *entity.Instance, _a2 *b
 }
 
 // Run provides a mock function with given fields: _a0, _a1
-func (_m *Execution) Run(_a0 context.Context, _a1 *backtestentity.Execution) error {
+func (_m *Execution) Run(_a0 context.Context, _a1 *entity.Execution) error {
 	ret := _m.Called(_a0, _a1)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *backtestentity.Execution) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *entity.Execution) error); ok {
 		r0 = rf(_a0, _a1)
 	} else {
 		r0 = ret.Error(0)
@@ -61,15 +60,15 @@ func (_m *Execution) Stop(_a0 context.Context) error {
 }
 
 // StoreDataFrameAndGetPeriods provides a mock function with given fields: _a0, _a1
-func (_m *Execution) StoreDataFrameAndGetPeriods(_a0 context.Context, _a1 string) (*[]backtestentity.Period, error) {
+func (_m *Execution) StoreDataFrameAndGetPeriods(_a0 context.Context, _a1 string) (*[]entity.Period, error) {
 	ret := _m.Called(_a0, _a1)
 
-	var r0 *[]backtestentity.Period
-	if rf, ok := ret.Get(0).(func(context.Context, string) *[]backtestentity.Period); ok {
+	var r0 *[]entity.Period
+	if rf, ok := ret.Get(0).(func(context.Context, string) *[]entity.Period); ok {
 		r0 = rf(_a0, _a1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*[]backtestentity.Period)
+			r0 = ret.Get(0).(*[]entity.Period)
 		}
 	}
 
