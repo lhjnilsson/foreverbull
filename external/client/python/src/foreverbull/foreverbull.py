@@ -1,6 +1,5 @@
 import logging
 import os
-import socket as _socket
 import threading
 from multiprocessing import Event
 
