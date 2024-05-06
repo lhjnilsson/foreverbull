@@ -74,8 +74,8 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				break
 			}
 			type NewExecutionEntry struct {
-				Execution *entity.Execution `json:"execution" mapstructure:"execution"`
-				Service   *service.Service  `json:"service" mapstructure:"service"`
+				Execution *entity.Execution  `json:"execution" mapstructure:"execution"`
+				Algorithm *service.Algorithm `json:"algorithm" mapstructure:"algorithm"`
 			}
 			var ne NewExecutionEntry
 			err = req.DecodeData(&ne)
@@ -87,10 +87,11 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				err = errors.New("execution is not specified, cannot create execution")
 				break
 			}
-			if ne.Service == nil {
-				err = errors.New("service is not specified, cannot create execution")
+			if ne.Algorithm == nil {
+				err = errors.New("algorithm is not specified, cannot create execution")
 				break
 			}
+			ms.workers.SetAlgorithm(ne.Algorithm)
 			if ne.Execution.Start.Before(ms.session.backtest.Start) {
 				err = errors.New("execution cant start before backtest start")
 				break

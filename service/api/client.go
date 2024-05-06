@@ -12,6 +12,7 @@ import (
 type Client interface {
 	ListServices(ctx context.Context) (*[]ServiceResponse, error)
 	GetService(ctx context.Context, image string) (*ServiceResponse, error)
+	CreateService(ctx context.Context, service *CreateServiceRequest) (*ServiceResponse, error)
 
 	ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error)
 	GetInstance(ctx context.Context, InstanceID string) (*InstanceResponse, error)
@@ -66,6 +67,26 @@ func (c *client) GetService(ctx context.Context, name string) (*ServiceResponse,
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &service, nil
+}
+
+func (c *client) CreateService(ctx context.Context, service *CreateServiceRequest) (*ServiceResponse, error) {
+	body, err := json.Marshal(service)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.client.Post(c.baseURL+"/services", "application/json", body)
+	if err != nil {
+		return nil, err
+	}
+	if req.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("unexpected status code: %d", req.StatusCode)
+	}
+	var createdService ServiceResponse
+	err = json.NewDecoder(req.Body).Decode(&createdService)
+	if err != nil {
+		return nil, err
+	}
+	return &createdService, nil
 }
 
 func (c *client) ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error) {

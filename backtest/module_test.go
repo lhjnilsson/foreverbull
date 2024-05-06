@@ -237,12 +237,17 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	execution := new(entity.Execution)
 	test.NoError(helper.SocketRequest(test.T(), socket, "get_backtest", nil, execution))
 	type NewExecution struct {
-		Execution *entity.Execution      `json:"execution" mapstructure:"execution"`
-		Service   *serviceEntity.Service `json:"service" mapstructure:"service"`
+		Execution *entity.Execution        `json:"execution" mapstructure:"execution"`
+		Algorithm *serviceEntity.Algorithm `json:"algorithm" mapstructure:"algorithm"`
 	}
+	algorithm := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
+	algo := &serviceEntity.Algorithm{}
+	err = json.Unmarshal([]byte(algorithm), algo)
+	test.NoError(err)
+
 	ne := NewExecution{
 		Execution: execution,
-		Service:   &serviceEntity.Service{},
+		Algorithm: algo,
 	}
 	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", &ne, execution))
 
@@ -273,4 +278,13 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
+}
+
+func TestParse(t *testing.T) {
+	payload := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
+	algorithm := &serviceEntity.Algorithm{}
+	err := json.Unmarshal(payload, algorithm)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -93,7 +93,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 						return err
 					}
 					defer context.Close()
-					request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: []string{s}, Portfolio: portfolio}}
+					request := &message.Request{Task: function.Name, Data: Request{Timestamp: timestamp, Symbols: []string{s}, Portfolio: portfolio}}
 					rsp, err := request.Process(context)
 					if err != nil {
 						return fmt.Errorf("error processing request: %w", err)
@@ -122,7 +122,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				return nil, err
 			}
 			defer context.Close()
-			request := &message.Request{Task: "period", Data: Request{Timestamp: timestamp, Symbols: symbols, Portfolio: portfolio}}
+			request := &message.Request{Task: function.Name, Data: Request{Timestamp: timestamp, Symbols: symbols, Portfolio: portfolio}}
 			rsp, err := request.Process(context)
 			if err != nil {
 				return nil, fmt.Errorf("error processing request: %w", err)

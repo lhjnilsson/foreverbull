@@ -39,6 +39,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 	var backtestInstance *service.Instance
 	var pool worker.Pool
 
+	g, gctx := errgroup.WithContext(ctx)
 	if b.Service != nil {
 		s, err := sAPI.GetService(ctx, *b.Service)
 		if err != nil {
@@ -52,13 +53,11 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 		if err != nil {
 			return nil, err
 		}
-
 		configure := serviceAPI.ConfigureInstanceRequest{
 			BrokerPort:  pool.GetPort(),
 			DatabaseURL: environment.GetPostgresURL(),
 			Functions:   functions,
 		}
-		g, gctx := errgroup.WithContext(ctx)
 		for _, id := range command.WorkerInstanceIDs {
 			i := id
 			g.Go(func() error {
@@ -69,20 +68,25 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 				return nil
 			})
 		}
-		g.Go(func() error {
-			var err error
-			instance, err := sAPI.GetInstance(gctx, command.BacktestInstanceID)
-			if err != nil {
-				return err
-			}
-			b := service.Instance(*instance)
-			backtestInstance = &b
-			return nil
-		})
-		err = g.Wait()
+	} else {
+		pool, err = worker.NewPool(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
+	}
+	g.Go(func() error {
+		var err error
+		instance, err := sAPI.GetInstance(gctx, command.BacktestInstanceID)
+		if err != nil {
+			return err
+		}
+		b := service.Instance(*instance)
+		backtestInstance = &b
+		return nil
+	})
+	err = g.Wait()
+	if err != nil {
+		return nil, err
 	}
 	if backtestInstance == nil {
 		return nil, fmt.Errorf("backtest instance is missing")
