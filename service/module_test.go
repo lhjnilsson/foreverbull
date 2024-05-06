@@ -36,6 +36,10 @@ type ServiceModuleTest struct {
 }
 
 func TestModuleService(t *testing.T) {
+	images := os.Getenv("IMAGES")
+	if images == "" {
+		t.Skip("images not set")
+	}
 	suite.Run(t, new(ServiceModuleTest))
 }
 
@@ -154,11 +158,6 @@ func (test *ServiceModuleTest) TestAPIClient() {
 }
 
 func (test *ServiceModuleTest) TestCreateService() {
-	images := os.Getenv("IMAGES")
-	if images == "" {
-		test.T().Skip("images not set")
-	}
-
 	client, err := api.NewClient()
 	test.Require().NoError(err)
 
