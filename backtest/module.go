@@ -32,6 +32,11 @@ var Module = fx.Options(
 		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (BacktestStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
+			serviceAPI, err := serviceAPI.NewClient()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create service api client: %w", err)
+			}
+			dc.AddSingleton(dependency.GetServiceAPI, serviceAPI)
 			httpClient := dependency.GetHTTPClient()
 			dc.AddSingleton(dependency.GetHTTPClientKey, httpClient)
 			dc.AddMethod(dependency.GetBacktestKey, dependency.GetBacktest)

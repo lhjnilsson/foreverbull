@@ -21,6 +21,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
+	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
 	serviceEntity "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/mitchellh/mapstructure"
@@ -39,10 +40,6 @@ type BacktestModuleTest struct {
 }
 
 func TestModuleBacktest(t *testing.T) {
-	workerImage := os.Getenv("WORKER_IMAGE")
-	if workerImage == "" {
-		t.Skip("worker image not set")
-	}
 	backtestImage := os.Getenv("BACKTEST_IMAGE")
 	if backtestImage == "" {
 		t.Skip("backtest image not set")
@@ -138,6 +135,13 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 
 	for _, image := range strings.Split(images, ",") {
 		test.Run(image, func() {
+			sAPI, err := serviceAPI.NewClient()
+			test.Require().NoError(err)
+			_, err = sAPI.CreateService(context.Background(), &serviceAPI.CreateServiceRequest{
+				Image: image,
+			})
+			test.Require().NoError(err)
+
 			_, err = pool.Exec(context.Background(), "UPDATE backtest SET service=$1 WHERE name=$2", image, test.backtestName)
 			test.Require().NoError(err)
 
@@ -155,7 +159,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 				test.Failf("Failed to create session: %s", string(rspData))
 			}
 			data := &SessionResponse{}
-			err := json.NewDecoder(rsp.Body).Decode(data)
+			err = json.NewDecoder(rsp.Body).Decode(data)
 			if err != nil {
 				test.Failf("Failed to decode response: %s", err.Error())
 			}
