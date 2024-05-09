@@ -25,7 +25,7 @@ jobs:
     defaults:
       run:
         working-directory: ./external/client/python
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
