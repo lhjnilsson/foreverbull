@@ -90,7 +90,7 @@ class Instance(pydantic.BaseModel):
     database_url: str | None = None
     functions: dict[str, Parameter] | None = None
 
-    statuses: List[Status] = []
+    statuses: List[Status] | None = []
 
 
 class Request(pydantic.BaseModel):

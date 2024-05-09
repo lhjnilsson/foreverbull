@@ -1,5 +1,6 @@
 import argparse
 import inspect
+import os
 import time
 from typing import Any
 
@@ -25,13 +26,14 @@ class TestingSession:
         self._fb = None
 
     def __call__(self, algo: callable, parameters: [] = []) -> Any:
-        return Foreverbull(self.session, file_path=inspect.getfile(algo))
+        return Foreverbull(file_path=inspect.getfile(algo))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def foreverbull(request):
     session = broker.backtest.run(request.config.getoption("--backtest", skip=True), manual=True)
     while session.port is None:
         time.sleep(0.5)
         session = broker.backtest.get_session(session.id)
+    os.environ["BROKER_SESSION_PORT"] = str(session.port)
     return TestingSession(session)

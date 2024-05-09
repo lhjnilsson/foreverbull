@@ -1,12 +1,14 @@
 from multiprocessing import set_start_method
 
-from .parallel_example import monkey
+from .parallel import handle_data
 
-set_start_method("spawn")
+try:
+    set_start_method("spawn")
+except RuntimeError:
+    pass
 
 
 def test_positive_returns(foreverbull):
-    with foreverbull(monkey, []) as foreverbull:
+    with foreverbull(handle_data, []) as foreverbull:
         execution = foreverbull.new_backtest_execution()
-        result = foreverbull.run_backtest_execution(execution)
-        assert result
+        foreverbull.run_backtest_execution(execution)

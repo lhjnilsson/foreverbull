@@ -2,12 +2,15 @@ from multiprocessing import set_start_method
 
 from foreverbull import entity
 
-from .non_parallel_example import monkey
+from .non_parallel import handle_data
 
-set_start_method("spawn")
+try:
+    set_start_method("spawn")
+except RuntimeError:
+    pass
 
 
 def test_positive_returns(foreverbull):
-    with foreverbull(monkey, []) as fb:
-        fb.configure_execution(entity.backtest.Execution())
-        fb.run_execution()
+    with foreverbull(handle_data, []) as foreverbull:
+        execution = foreverbull.new_backtest_execution()
+        foreverbull.run_backtest_execution(execution)

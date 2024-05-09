@@ -25,8 +25,9 @@ type manualSession struct {
 	Socket socket.Socket        `json:"-"`
 	socket socket.ContextSocket `json:"-"`
 
-	execution       Execution         `json:"-"`
-	executionEntity *entity.Execution `json:"-"`
+	execution       Execution          `json:"-"`
+	executionEntity *entity.Execution  `json:"-"`
+	executionAlgo   *service.Algorithm `json:"-"`
 }
 
 func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
@@ -71,13 +72,13 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				err = errors.New("execution already exists")
 				break
 			}
-			var algo service.Algorithm
-			err = req.DecodeData(&algo)
+			ms.executionAlgo = &service.Algorithm{}
+			err = req.DecodeData(ms.executionAlgo)
 			if err != nil {
 				err = errors.New("failed to decode data")
 				break
 			}
-			ms.workers.SetAlgorithm(&algo)
+			ms.workers.SetAlgorithm(ms.executionAlgo)
 			ms.executionEntity, err = ms.session.executions.Create(context.Background(), ms.session.session.ID,
 				ms.session.backtest.Calendar, ms.session.backtest.Start, ms.session.backtest.End, ms.session.backtest.Symbols, ms.session.backtest.Benchmark)
 			if err != nil {
@@ -87,6 +88,11 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			ms.execution = NewExecution(ms.backtest, ms.workers)
 			rsp.Data = ms.executionEntity
 		case "configure_execution":
+			functions, err := ms.executionAlgo.Configure()
+			if err != nil {
+				err = fmt.Errorf("failed to get configure function: %w", err)
+				break
+			}
 			port := ms.workers.GetPort()
 			instance := service.Instance{
 				BrokerPort: &port,
@@ -94,6 +100,7 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 					url := environment.GetPostgresURL()
 					return &url
 				}(),
+				Functions: &functions,
 			}
 			rsp.Data = &instance
 		case "run_execution":
