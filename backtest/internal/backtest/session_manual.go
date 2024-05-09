@@ -88,8 +88,8 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			ms.execution = NewExecution(ms.backtest, ms.workers)
 			rsp.Data = ms.executionEntity
 		case "configure_execution":
-			functions, err := ms.executionAlgo.Configure()
-			if err != nil {
+			functions, confErr := ms.executionAlgo.Configure()
+			if confErr != nil {
 				err = fmt.Errorf("failed to get configure function: %w", err)
 				break
 			}
