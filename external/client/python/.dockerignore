@@ -1,6 +1,5 @@
 **/*
 
 !src/**/*
-!parallel_example.py
-!non_parallel_example.py
+!examples/**/*
 !pyproject.toml
