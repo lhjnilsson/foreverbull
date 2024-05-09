@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types"
 	docker "github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/finance"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -228,8 +229,8 @@ func (test *ServiceModuleTest) TestCreateService() {
 
 			c, err := container.NewContainerRegistry()
 			test.Require().NoError(err)
-			instanceID := "instance_" + testcase.Image
 
+			instanceID := uuid.New().String()
 			_, err = c.Start(context.Background(), testcase.Image, instanceID, nil)
 			test.Require().NoError(err)
 
@@ -250,7 +251,6 @@ func (test *ServiceModuleTest) TestCreateService() {
 			}
 			err = helper.WaitUntilCondition(test.T(), condition, time.Second*10)
 			test.NoError(err)
-			// DO Magic
 
 			service, err := client.GetService(context.Background(), testcase.Image)
 			test.NoError(err)
@@ -269,7 +269,6 @@ func (test *ServiceModuleTest) TestCreateService() {
 			test.NoError(err)
 			test.NotNil(instance)
 
-			// End of magic
 			test.NoError(client.StopInstance(context.Background(), instanceID))
 		})
 	}

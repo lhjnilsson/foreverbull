@@ -235,5 +235,8 @@ jobs:
       - name: Run backtest as pytest
         run: |
           python -m pytest examples/ --backtest=github_action_test
+      - name: Sleep for 20 seconds to make all containers stop
+        run: sleep 20s
+        shell: bash
       - name: Stop Environment
         run: foreverbull env stop
