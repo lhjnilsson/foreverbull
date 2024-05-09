@@ -103,11 +103,17 @@ jobs:
           name: foreverbull
           path: /tmp/foreverbull.tar
           retention-days: 1
-      - name: Upload client
+      - name: Upload parallel_example
         uses: actions/upload-artifact@v2
         with:
-          name: client
-          path: /tmp/client.tar
+          name: parallel_example
+          path: /tmp/parallel_example.tar
+          retention-days: 1
+      - name: Upload non_parallel_example
+        uses: actions/upload-artifact@v2
+        with:
+          name: non_parallel_example
+          path: /tmp/non_parallel_example.tar
           retention-days: 1
       - name: Upload zipline
         uses: actions/upload-artifact@v2
@@ -199,18 +205,16 @@ jobs:
         with:
           name: foreverbull
           path: /tmp
-      - name: Download client
+      - name: Download foreverbull
         uses: actions/download-artifact@v2
         with:
-          name: client
+          name: foreverbull
           path: /tmp
       - name: Download zipline
         uses: actions/download-artifact@v2
         with:
           name: zipline
           path: /tmp
-      - name: Load client
-        run: docker load -i /tmp/client.tar
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: load foreverbull
