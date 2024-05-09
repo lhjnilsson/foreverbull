@@ -1,7 +1,5 @@
 from multiprocessing import set_start_method
 
-from foreverbull import entity
-
 from .non_parallel import handle_data
 
 try:
