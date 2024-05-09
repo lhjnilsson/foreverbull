@@ -72,7 +72,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           file: ./docker/Dockerfile
-          tags: lhjnilsson/foreverbull:${{ env.GITHUB_SHA }}
+          tags: lhjnilsson/foreverbull:${{ GITHUB_SHA }}
           outputs: type=docker,dest=/tmp/foreverbull.tar
       - name: Build Parallel Example
         uses: docker/build-push-action@v2
@@ -80,7 +80,7 @@ jobs:
           context: external/client/python
           file: ./external/client/python/Dockerfile
           build-args: ALGO_FILE=examples/parallel.py
-          tags: lhjnilsson/parallel-example:${{ env.GITHUB_SHA }}
+          tags: lhjnilsson/parallel-example:${{ GITHUB_SHA }}
           outputs: type=docker,dest=/tmp/parallel_example.tar
       - name: Build Non-Parallel Example
         uses: docker/build-push-action@v2
@@ -88,14 +88,14 @@ jobs:
           context: external/client/python
           file: ./external/client/python/Dockerfile
           build-args: ALGO_FILE=examples/non_parallel.py
-          tags: lhjnilsson/non-parallel-example:${{ env.GITHUB_SHA }}
+          tags: lhjnilsson/non-parallel-example:${{ GITHUB_SHA }}
           outputs: type=docker,dest=/tmp/non_parallel_example.tar
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
           context: external/client/python
           file: ./external/client/python/zipline.Dockerfile
-          tags: lhjnilsson/zipline:${{ env.GITHUB_SHA }}
+          tags: lhjnilsson/zipline:${{ GITHUB_SHA }}
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload foreverbull
         uses: actions/upload-artifact@v2
@@ -155,8 +155,8 @@ jobs:
           ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
           ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
           ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          IMAGES: lhjnilsson/parallel-example:${{ env.GITHUB_SHA }},lhjnilsson/non-parallel-example:${{ env.GITHUB_SHA }}
-          BACKTEST_IMAGE: lhjnilsson/zipline:${{ env.GITHUB_SHA }}
+          IMAGES: lhjnilsson/parallel-example:${{ GITHUB_SHA }},lhjnilsson/non-parallel-example:${{ GITHUB_SHA }}
+          BACKTEST_IMAGE: lhjnilsson/zipline:${{ GITHUB_SHA }}
           HOSTNAME: host.docker.internal
           LOG_LEVEL: info
           DISABLE_LOKI_LOGGING: true
@@ -225,7 +225,7 @@ jobs:
           python -m pip install pytest
       - name: Create environment
         run: |
-          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:${{ env.GITHUB_SHA }} --backtest-image lhjnilsson/zipline:${{ env.GITHUB_SHA }}
+          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:${{ GITHUB_SHA }} --backtest-image lhjnilsson/zipline:${{ GITHUB_SHA }}
       - name: create backtest
         run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
