@@ -24,9 +24,6 @@ type Execution struct {
 	Symbols   []string  `json:"symbols" mapstructure:"symbols"`
 
 	Statuses []ExecutionStatus `json:"statuses"`
-
-	Port     *int   `json:"port" mapstructure:"port"`
-	Database string `json:"database" mapstructure:"database"`
 }
 
 type ExecutionStatus struct {

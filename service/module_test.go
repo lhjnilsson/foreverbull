@@ -36,8 +36,8 @@ type ServiceModuleTest struct {
 }
 
 func TestModuleService(t *testing.T) {
-	images := os.Getenv("IMAGES")
-	if images == "" {
+	_, found := os.LookupEnv("IMAGES")
+	if !found {
 		t.Skip("images not set")
 	}
 	suite.Run(t, new(ServiceModuleTest))
@@ -172,7 +172,7 @@ func (test *ServiceModuleTest) TestCreateService() {
 	}
 
 	testCases := []TestCase{}
-	for _, image := range strings.Split(images, ",") {
+	for _, image := range strings.Split(os.Getenv("IMAGES"), ",") {
 		testCases = append(testCases, TestCase{Image: image})
 	}
 	for _, testcase := range testCases {

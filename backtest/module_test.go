@@ -228,32 +228,29 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	err = json.NewDecoder(rsp.Body).Decode(data)
 	test.NoError(err)
 
+	test.T().Logf("Connecting to port %d", *data.Port)
 	socket, err := reqSocket.NewSocket()
 	test.NoError(err)
 	defer socket.Close()
 	err = socket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *data.Port))
 	test.NoError(err)
 
+	test.T().Log("Sending new_execution")
 	execution := new(entity.Execution)
-	test.NoError(helper.SocketRequest(test.T(), socket, "get_backtest", nil, execution))
-	type NewExecution struct {
-		Execution *entity.Execution        `json:"execution" mapstructure:"execution"`
-		Algorithm *serviceEntity.Algorithm `json:"algorithm" mapstructure:"algorithm"`
-	}
 	algorithm := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
 	algo := &serviceEntity.Algorithm{}
 	err = json.Unmarshal([]byte(algorithm), algo)
 	test.NoError(err)
+	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", algo, execution))
 
-	ne := NewExecution{
-		Execution: execution,
-		Algorithm: algo,
-	}
-	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", &ne, execution))
+	test.T().Log("Sending configure_execution")
+	instance := new(serviceEntity.Instance)
+	test.NoError(helper.SocketRequest(test.T(), socket, "configure_execution", execution, instance))
 
+	test.Require().NotNil(instance.BrokerPort)
 	workerSocket, err := repSocket.NewSocket()
 	test.NoError(err)
-	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *execution.Port))
+	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *instance.BrokerPort))
 	test.NoError(err)
 
 	type WorkerRequest struct {
@@ -274,7 +271,9 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		return nil, nil
 	})
 
+	test.T().Log("Sending run_execution")
 	test.NoError(helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
+	test.T().Log("Sending stop")
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()

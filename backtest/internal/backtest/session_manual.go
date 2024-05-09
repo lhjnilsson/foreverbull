@@ -66,50 +66,36 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 		}
 		rsp = message.Response{Task: req.Task}
 		switch req.Task {
-		case "get_backtest":
-			rsp.Data = ms.session.backtest
 		case "new_execution":
 			if ms.execution != nil {
 				err = errors.New("execution already exists")
 				break
 			}
-			type NewExecutionEntry struct {
-				Execution *entity.Execution  `json:"execution" mapstructure:"execution"`
-				Algorithm *service.Algorithm `json:"algorithm" mapstructure:"algorithm"`
-			}
-			var ne NewExecutionEntry
-			err = req.DecodeData(&ne)
+			var algo service.Algorithm
+			err = req.DecodeData(&algo)
 			if err != nil {
 				err = errors.New("failed to decode data")
 				break
 			}
-			if ne.Execution == nil {
-				err = errors.New("execution is not specified, cannot create execution")
-				break
-			}
-			if ne.Algorithm == nil {
-				err = errors.New("algorithm is not specified, cannot create execution")
-				break
-			}
-			ms.workers.SetAlgorithm(ne.Algorithm)
-			if ne.Execution.Start.Before(ms.session.backtest.Start) {
-				err = errors.New("execution cant start before backtest start")
-				break
-			}
-			if ne.Execution.End.After(ms.session.backtest.End) {
-				err = errors.New("execution cant end after backtest end")
-				break
-			}
-			ms.executionEntity, err = ms.session.executions.Create(context.Background(), ms.session.session.ID, ne.Execution.Calendar, ne.Execution.Start, ne.Execution.End, ne.Execution.Symbols, ne.Execution.Benchmark)
+			ms.workers.SetAlgorithm(&algo)
+			ms.executionEntity, err = ms.session.executions.Create(context.Background(), ms.session.session.ID,
+				ms.session.backtest.Calendar, ms.session.backtest.Start, ms.session.backtest.End, ms.session.backtest.Symbols, ms.session.backtest.Benchmark)
 			if err != nil {
 				err = fmt.Errorf("failed to create execution: %w", err)
 				break
 			}
-			ms.executionEntity.Database = environment.GetPostgresURL()
-			port := ms.workers.GetPort()
-			ms.executionEntity.Port = &port
 			ms.execution = NewExecution(ms.backtest, ms.workers)
 			rsp.Data = ms.executionEntity
+		case "configure_execution":
+			port := ms.workers.GetPort()
+			instance := service.Instance{
+				BrokerPort: &port,
+				DatabaseURL: func() *string {
+					url := environment.GetPostgresURL()
+					return &url
+				}(),
+			}
+			rsp.Data = &instance
 		case "run_execution":
 			backtestCfg := backtest.BacktestConfig{
 				Calendar: &ms.executionEntity.Calendar,
