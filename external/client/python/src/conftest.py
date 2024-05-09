@@ -35,7 +35,7 @@ def execution(database):
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(ingest_config, database):
+def parallel_algo_file(spawn_process, ingest_config, database):
     def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
@@ -96,7 +96,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(ingest_config, database):
+def non_parallel_algo_file(spawn_process, ingest_config, database):
     def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
@@ -163,7 +163,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(ingest_config, database):
+def parallel_algo_file_with_parameters(spawn_process, ingest_config, database):
     def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
@@ -231,7 +231,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(ingest_config, database):
+def non_parallel_algo_file_with_parameters(spawn_process, ingest_config, database):
     def _process_symbols(server_socket):
         start = ingest_config.start
         portfolio = entity.finance.Portfolio(
