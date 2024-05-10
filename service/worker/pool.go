@@ -13,6 +13,12 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Request struct {
+	Timestamp time.Time          `json:"timestamp"`
+	Symbols   []string           `json:"symbols"`
+	Portfolio *finance.Portfolio `json:"portfolio"`
+}
+
 type Pool interface {
 	GetPort() int
 	SetAlgorithm(algo *entity.Algorithm)
@@ -29,9 +35,8 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 }
 
 type pool struct {
-	Socket  *socket.Socket       `json:"socket"`
-	socket  socket.ContextSocket `json:"-"`
-	Workers []*Instance          `json:"workers"`
+	Socket *socket.Socket       `json:"socket"`
+	socket socket.ContextSocket `json:"-"`
 
 	algo *entity.Algorithm
 }
@@ -42,41 +47,6 @@ func (p *pool) SetAlgorithm(algo *entity.Algorithm) {
 
 func (p *pool) GetPort() int {
 	return p.Socket.Port
-}
-
-func (p *pool) ConfigureExecution(ctx context.Context, i *entity.Instance) error {
-	if len(p.Workers) == 0 {
-		return fmt.Errorf("no workers")
-	}
-	g, gctx := errgroup.WithContext(ctx)
-	for _, worker := range p.Workers {
-		w := worker
-		g.Go(func() error {
-			if err := w.ConfigureExecution(gctx, i); err != nil {
-				return fmt.Errorf("error configuring worker: %w", err)
-			}
-			return nil
-		})
-	}
-	err := g.Wait()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *pool) RunExecution(ctx context.Context) error {
-	g, gctx := errgroup.WithContext(ctx)
-	for _, worker := range p.Workers {
-		worker := worker
-		g.Go(func() error {
-			if err := worker.RunExecution(gctx); err != nil {
-				return fmt.Errorf("error running worker: %w", err)
-			}
-			return nil
-		})
-	}
-	return g.Wait()
 }
 
 func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error) {
@@ -137,35 +107,4 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 		}
 	}
 	return &orders, nil
-}
-
-func (p *pool) StopExecution(ctx context.Context) error {
-	g, gctx := errgroup.WithContext(ctx)
-	for _, worker := range p.Workers {
-		worker := worker
-		g.Go(func() error {
-			if err := worker.StopExecution(gctx); err != nil {
-				return fmt.Errorf("error stopping worker: %w", err)
-			}
-			return nil
-		})
-	}
-
-	return g.Wait()
-}
-
-func (p *pool) Stop(ctx context.Context) error {
-	p.socket.Close()
-	g, gctx := errgroup.WithContext(ctx)
-	for _, worker := range p.Workers {
-		worker := worker
-		g.Go(func() error {
-			if err := worker.Stop(gctx); err != nil {
-				return fmt.Errorf("error stopping worker: %w", err)
-			}
-			return nil
-		})
-	}
-	defer p.socket.Close()
-	return g.Wait()
 }
