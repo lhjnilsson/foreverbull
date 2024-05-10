@@ -223,14 +223,15 @@ func (test *ServiceModuleTest) TestCreateService() {
 			pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 			test.NoError(err)
 
+			instanceID := uuid.New().String()
+
 			instances := repository.Instance{Conn: pool}
-			_, err = instances.Create(context.Background(), "instance_"+testcase.Image, &testcase.Image)
+			_, err = instances.Create(context.Background(), instanceID, &testcase.Image)
 			test.NoError(err)
 
 			c, err := container.NewContainerRegistry()
 			test.Require().NoError(err)
 
-			instanceID := uuid.New().String()
 			_, err = c.Start(context.Background(), testcase.Image, instanceID, nil)
 			test.Require().NoError(err)
 
