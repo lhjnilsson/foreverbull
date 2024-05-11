@@ -25,6 +25,10 @@ type Algorithm struct {
 		} `json:"parameters" mapstructure:"parameters"`
 		ParallelExecution *bool `json:"parallel_execution" mapstructure:"parallel_execution"`
 	}
+	Namespace map[string]struct {
+		Type      string `json:"type" mapstructure:"type"`
+		ValueType string `json:"value_type" mapstructure:"value_type"`
+	} `json:"namespace" mapstructure:"namespace"`
 }
 
 func (a *Algorithm) Configure() (map[string]InstanceFunction, error) {

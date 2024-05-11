@@ -5,10 +5,10 @@ import (
 )
 
 type Portfolio struct {
-	Cash  decimal.Decimal `json:"cash"`
-	Value decimal.Decimal `json:"value"`
+	Cash  decimal.Decimal `json:"cash" mapstructure:"cash"`
+	Value decimal.Decimal `json:"value" mapstructure:"value"`
 
-	Positions []Position `json:"positions"`
+	Positions []Position `json:"positions" mapstructure:"positions"`
 }
 
 /*

@@ -3,16 +3,16 @@ import tempfile
 import pytest
 
 from foreverbull import entity
-from foreverbull.models import Algorithm
+from foreverbull.models import Algorithm, Namespace
 
-"""
+
 def test_namespace():
-    n = Namespace(key1=dict[str,int],key2=list[float])
+    n = Namespace(key1=dict[str, int], key2=list[float])
+    print("Namespace", n)
     assert n.contains("key1", dict[str, int])
     assert n.contains("key2", list[float])
     with pytest.raises(KeyError):
         n.contains("key3", dict[str, int])
-"""
 
 
 class TestNonParallel:
