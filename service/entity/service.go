@@ -14,21 +14,27 @@ const (
 	ServiceStatusError     ServiceStatusType = "ERROR"
 )
 
+type AlgorithmFunction struct {
+	Name       string `json:"name" mapstructure:"name"`
+	Parameters []struct {
+		Key     string  `json:"key" mapstructure:"key"`
+		Default *string `json:"default" mapstructure:"default"`
+		Type    string  `json:"type" mapstructure:"type"`
+	} `json:"parameters" mapstructure:"parameters"`
+	ParallelExecution bool `json:"parallel_execution" mapstructure:"parallel_execution"`
+	RunFirst          bool `json:"run_first" mapstructure:"run_first"`
+	RunLast           bool `json:"run_last" mapstructure:"run_last"`
+}
+
+type AlgorithmNamespace struct {
+	Type      string `json:"type" mapstructure:"type"`
+	ValueType string `json:"value_type" mapstructure:"value_type"`
+}
+
 type Algorithm struct {
-	FilePath  string `json:"file_path" mapstructure:"file_path"`
-	Functions []struct {
-		Name       string `json:"name" mapstructure:"name"`
-		Parameters []struct {
-			Key     string  `json:"key" mapstructure:"key"`
-			Default *string `json:"default" mapstructure:"default"`
-			Type    string  `json:"type" mapstructure:"type"`
-		} `json:"parameters" mapstructure:"parameters"`
-		ParallelExecution *bool `json:"parallel_execution" mapstructure:"parallel_execution"`
-	}
-	Namespace map[string]struct {
-		Type      string `json:"type" mapstructure:"type"`
-		ValueType string `json:"value_type" mapstructure:"value_type"`
-	} `json:"namespace" mapstructure:"namespace"`
+	FilePath  string                        `json:"file_path" mapstructure:"file_path"`
+	Functions []AlgorithmFunction           `json:"functions" mapstructure:"functions"`
+	Namespace map[string]AlgorithmNamespace `json:"namespace" mapstructure:"namespace"`
 }
 
 func (a *Algorithm) Configure() (map[string]InstanceFunction, error) {

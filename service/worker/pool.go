@@ -186,6 +186,28 @@ func (p *pool) startNamespaceListener() {
 		sendResponse(context, response)
 	}
 }
+func (p *pool) orderedFunctions() <-chan entity.AlgorithmFunction {
+	ch := make(chan entity.AlgorithmFunction)
+	go func() {
+		for _, function := range p.algo.Functions {
+			if function.RunFirst && !function.RunLast {
+				ch <- function
+			}
+		}
+		for _, function := range p.algo.Functions {
+			if !function.RunFirst && !function.RunLast {
+				ch <- function
+			}
+		}
+		for _, function := range p.algo.Functions {
+			if !function.RunFirst && function.RunLast {
+				ch <- function
+			}
+		}
+		close(ch)
+	}()
+	return ch
+}
 
 func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error) {
 	if p.algo == nil {
@@ -194,8 +216,9 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 	p.namespace.Flush()
 
 	var orders []finance.Order
-	for _, function := range p.algo.Functions {
-		if *function.ParallelExecution {
+	functions := p.orderedFunctions()
+	for function := range functions {
+		if function.ParallelExecution {
 			g, _ := errgroup.WithContext(ctx)
 			orderWriteMutex := sync.Mutex{}
 			for _, symbol := range symbols {
@@ -241,7 +264,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
 			if rsp.Data == nil {
-				return nil, nil
+				continue
 			}
 			err = rsp.DecodeData(&orders)
 			if err != nil {
