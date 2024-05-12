@@ -57,10 +57,10 @@ class Namespace(typing.Dict):
 
 
 class Function:
-    def __init__(self, callable: callable, namespace_return_key: str | None = None, input_key: str = "symbols"):
+    def __init__(self, callable: callable, run_first: bool = False, run_last: bool = False):
         self.callable = callable
-        self.namespace_return_key = namespace_return_key
-        self.input_key = input_key
+        self.run_first = run_first
+        self.run_last = run_last
 
 
 class Algorithm:
@@ -70,6 +70,7 @@ class Algorithm:
     _namespace: Namespace | None = None
 
     def __init__(self, functions: list[Function], namespace: Namespace = dict()):
+        Algorithm._algo = None
         Algorithm._file_path = getabsfile(functions[0].callable)
         Algorithm._functions = {}
         Algorithm._namespace = Namespace(**namespace)
@@ -97,19 +98,6 @@ class Algorithm:
                         type=type_to_str(value.annotation),
                     )
                     parameters.append(parameter)
-            annotation = signature(f.callable).return_annotation
-            if annotation == _empty:
-                raise Exception("No return type found for function {}".format(f.__name__))
-
-            if annotation == entity.finance.Order:
-                return_type = entity.service.Service.Algorithm.Function.ReturnType.ORDER
-            elif annotation == typing.List[entity.finance.Order] or annotation == list[entity.finance.Order]:
-                return_type = entity.service.Service.Algorithm.Function.ReturnType.LIST_OF_ORDERS
-            else:
-                return_type = entity.service.Service.Algorithm.Function.ReturnType.NAMESPACE_VALUE
-                if f.namespace_return_key is None:
-                    raise Exception("No namespace return key found for function {}".format(f.__name__))
-
             function = {
                 "callable": f.callable,
                 "asset_key": asset_key,
@@ -118,9 +106,8 @@ class Algorithm:
                     name=f.callable.__name__,
                     parameters=parameters,
                     parallel_execution=parallel_execution,
-                    return_type=return_type,
-                    input_key=f.input_key,
-                    namespace_return_key=f.namespace_return_key,
+                    run_first=f.run_first,
+                    run_last=f.run_last,
                 ),
             }
 
@@ -189,4 +176,6 @@ class Algorithm:
         else:
             assets = Assets(request.timestamp, db, request.symbols)
             orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=request.portfolio)
+            if not orders:
+                orders = []
         return orders

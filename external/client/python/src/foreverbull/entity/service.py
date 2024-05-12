@@ -43,9 +43,8 @@ class Service(pydantic.BaseModel):
             name: str
             parameters: List[Parameter]
             parallel_execution: bool
-            return_type: ReturnType
-            input_key: str = "symbols"
-            namespace_return_key: str | None = None
+            run_first: bool
+            run_last: bool
 
         file_path: str
         functions: list[Function]

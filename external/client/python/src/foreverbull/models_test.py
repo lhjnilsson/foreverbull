@@ -8,7 +8,6 @@ from foreverbull.models import Algorithm, Namespace
 
 def test_namespace():
     n = Namespace(key1=dict[str, int], key2=list[float])
-    print("Namespace", n)
     assert n.contains("key1", dict[str, int])
     assert n.contains("key2", list[float])
     with pytest.raises(KeyError):
@@ -55,9 +54,8 @@ Algorithm(
                         ),
                     ],
                     parallel_execution=False,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.LIST_OF_ORDERS,
-                    input_key="symbols",
-                    namespace_return_key=None,
+                    run_first=False,
+                    run_last=False,
                 ),
             ],
         )
@@ -117,9 +115,8 @@ Algorithm(
                         ),
                     ],
                     parallel_execution=True,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.ORDER,
-                    input_key="symbols",
-                    namespace_return_key=None,
+                    run_first=False,
+                    run_last=False,
                 ),
             ],
         )
@@ -179,9 +176,8 @@ Algorithm(
                         ),
                     ],
                     parallel_execution=True,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.ORDER,
-                    input_key="symbols",
-                    namespace_return_key=None,
+                    run_first=False,
+                    run_last=False,
                 ),
             ],
             namespace={
@@ -208,25 +204,25 @@ Algorithm(
         self.algo.configure(parameters)
 
 
-'''
 class TestMultiStepWithNamespace:
     example = b"""
-from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
+from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order, Namespace
 
-def filter_assets(assets: list[Asset]) -> list[str]:
-    pass
 
-def measure_assets(asses: Asset, low: int = 5, high: int = 10) -> dict[str, float]:
+def measure_assets(asset: Asset, low: int = 5, high: int = 10) -> None:
     pass
     
-def create_orders(assets: list[Asset], portfolio: Portfolio) -> list[Order]:
+def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
+    pass
+
+def filter_assets(assets: Assets) -> None:
     pass
 
 Algorithm(
     functions=[
-        Function(callable=filter_assets, namespace_return_key="qualified_symbols"),
-        Function(callable=measure_assets, namespace_return_key="asset_metrics", input_key="qualified_symbols"),
-        Function(callable=create_orders, input_key="asset_metrics")
+        Function(callable=measure_assets),
+        Function(callable=create_orders, run_last=True),
+        Function(callable=filter_assets, run_first=True),
     ],
     namespace={"qualified_symbols": list[str], "asset_metrics": dict[str, float]}
 )
@@ -246,14 +242,6 @@ Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
-                    name="filter_assets",
-                    parameters=[],
-                    parallel_execution=False,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.NAMESPACE_VALUE,
-                    input_key="symbols",
-                    namespace_return_key="qualified_symbols",
-                ),
-                entity.service.Service.Algorithm.Function(
                     name="measure_assets",
                     parameters=[
                         entity.service.Service.Algorithm.Function.Parameter(
@@ -268,17 +256,22 @@ Algorithm(
                         ),
                     ],
                     parallel_execution=True,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.NAMESPACE_VALUE,
-                    input_key="qualified_symbols",
-                    namespace_return_key="asset_metrics",
+                    run_first=False,
+                    run_last=False,
                 ),
                 entity.service.Service.Algorithm.Function(
                     name="create_orders",
                     parameters=[],
                     parallel_execution=False,
-                    return_type=entity.service.Service.Algorithm.Function.ReturnType.LIST_OF_ORDERS,
-                    input_key="asset_metrics",
-                    namespace_return_key=None,
+                    run_first=False,
+                    run_last=True,
+                ),
+                entity.service.Service.Algorithm.Function(
+                    name="filter_assets",
+                    parameters=[],
+                    parallel_execution=False,
+                    run_first=True,
+                    run_last=False,
                 ),
             ],
             namespace={
@@ -310,4 +303,3 @@ Algorithm(
         }
 
         self.algo.configure(configuration)
-'''

@@ -61,6 +61,7 @@ def test_run_worker_unable_to_connect():
         "non_parallel_algo_file",
         "parallel_algo_file_with_parameters",
         "non_parallel_algo_file_with_parameters",
+        "multistep_algo_with_namespace",
     ],
 )
 def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_process, algo, request):
@@ -68,7 +69,6 @@ def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_proce
         pytest.skip("WorkerProcess not supported with THREADED_EXECUTION")
 
     file_name, instance, process_symbols = request.getfixturevalue(algo)
-
     survey_socket = setup_worker(workerclass, file_name)
 
     survey_socket.send(Request(task="configure_execution", data=instance).serialize())
