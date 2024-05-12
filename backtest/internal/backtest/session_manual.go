@@ -78,7 +78,11 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				err = errors.New("failed to decode data")
 				break
 			}
-			ms.workers.SetAlgorithm(ms.executionAlgo)
+			err = ms.workers.SetAlgorithm(ms.executionAlgo)
+			if err != nil {
+				err = fmt.Errorf("failed to set algorithm: %w", err)
+				break
+			}
 			ms.executionEntity, err = ms.session.executions.Create(context.Background(), ms.session.session.ID,
 				ms.session.backtest.Calendar, ms.session.backtest.Start, ms.session.backtest.End, ms.session.backtest.Symbols, ms.session.backtest.Benchmark)
 			if err != nil {
