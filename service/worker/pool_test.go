@@ -147,7 +147,10 @@ func (test *PoolTest) TestProcessNonParallel() {
 		Positions: []finance.Position{},
 	}
 
-	go test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
+	go func() {
+		_, err := test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
+		test.Require().NoError(err)
+	}()
 
 	bytes, err := test.socket.Recv()
 	test.Require().NoError(err)
@@ -197,7 +200,10 @@ func (test *PoolTest) TestProcessParallel() {
 		Positions: []finance.Position{},
 	}
 
-	go test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
+	go func() {
+		_, err := test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
+		test.Require().NoError(err)
+	}()
 
 	recievedSymbols := []string{}
 	for _, _ = range symbols {
