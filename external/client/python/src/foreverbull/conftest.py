@@ -1,11 +1,8 @@
-import os
 from datetime import timedelta
-from threading import Thread
 
-import pynng
 import pytest
 
-from foreverbull import socket, worker
+from foreverbull import worker
 from foreverbull.entity.finance import Portfolio
 from foreverbull.socket import Request, Response
 

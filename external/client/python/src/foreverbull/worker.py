@@ -58,6 +58,8 @@ class Worker:
             self._database_engine = engine
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
+
+        os.environ["NAMESPACE_PORT"] = str(instance.namespace_port)
         self.logger.info("worker configured correctly")
 
     def run(self):

@@ -2,7 +2,7 @@ import importlib
 import types
 import typing
 from functools import partial
-from inspect import _empty, getabsfile, signature
+from inspect import getabsfile, signature
 
 from foreverbull import entity
 from foreverbull.data import Asset, Assets
