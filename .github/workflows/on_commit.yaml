@@ -90,6 +90,14 @@ jobs:
           build-args: ALGO_FILE=examples/non_parallel.py
           tags: lhjnilsson/non-parallel-example:on_commit
           outputs: type=docker,dest=/tmp/non_parallel_example.tar
+      - name: Build Multistep with Namespace
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/multistep_with_namespace.py
+          tags: lhjnilsson/multistep-with-namespace-example:on_commit
+          outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
@@ -140,6 +148,11 @@ jobs:
         with:
           name: non_parallel_example
           path: /tmp
+      - name: Download multistep with namespace
+        uses: actions/download-artifact@v2
+        with:
+          name: multistep_with_namespace
+          path: /tmp
       - name: Download zipline
         uses: actions/download-artifact@v2
         with:
@@ -149,6 +162,8 @@ jobs:
         run: docker load -i /tmp/parallel_example.tar
       - name: Load Non-Parallel Example
         run: docker load -i /tmp/non_parallel_example.tar
+      - name: Load Multistep with Namespace
+        run: docker load -i /tmp/multistep_with_namespace.tar
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: Set up Go
@@ -161,7 +176,7 @@ jobs:
           ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
           ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
           ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          IMAGES: lhjnilsson/parallel-example:on_commit,lhjnilsson/non-parallel-example:on_commit
+          IMAGES: lhjnilsson/parallel-example:on_commit,lhjnilsson/non-parallel-example:on_commit,lhjnilsson/multistep-with-namespace-example:on_commit
           BACKTEST_IMAGE: lhjnilsson/zipline:on_commit
           HOSTNAME: host.docker.internal
           LOG_LEVEL: info
