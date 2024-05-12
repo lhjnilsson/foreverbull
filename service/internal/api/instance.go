@@ -141,6 +141,13 @@ func ConfigureInstance(c *gin.Context) {
 		return
 	}
 
+	err = repository_i.UpdateNamespacePort(c, uri.InstanceID, request.NamespacePort)
+	if err != nil {
+		log.Err(err).Msg("error updating instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
 	err = repository_i.UpdateDatabaseURL(c, uri.InstanceID, request.DatabaseURL)
 	if err != nil {
 		log.Err(err).Msg("error updating instance")

@@ -25,6 +25,7 @@ type Request struct {
 
 type Pool interface {
 	GetPort() int
+	GetNamespacePort() int
 	SetAlgorithm(algo *entity.Algorithm) error
 	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error)
 	Close() error
@@ -37,12 +38,18 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 		return nil, err
 	}
 
-	namespaceSocket := &socket.Socket{Type: socket.Replier, Host: "0.0.0", Port: 6767, Dial: false}
+	namespaceSocket := &socket.Socket{Type: socket.Replier, Host: "0.0.0", Port: 0, Dial: false}
 	nSock, err := rep.NewSocket()
 	if err != nil {
 		log.Error().Err(err).Msg("error creating socket")
 		return nil, err
 	}
+	namespaceSocket.Port, err = socket.ListenToFreePort(nSock, namespaceSocket.Host)
+	if err != nil {
+		log.Error().Err(err).Msg("error listening to free port")
+		return nil, err
+	}
+
 	err = nSock.SetOption(mangos.OptionRecvDeadline, time.Second/2)
 	if err != nil {
 		return nil, fmt.Errorf("error setting receive deadline: %w", err)
@@ -50,11 +57,6 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 	err = nSock.SetOption(mangos.OptionSendDeadline, time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("error setting send deadline: %w", err)
-	}
-	err = nSock.Listen(fmt.Sprintf("tcp://%v:%v", namespaceSocket.Host, namespaceSocket.Port))
-	if err != nil {
-		log.Error().Err(err).Msg("error listening")
-		return nil, err
 	}
 
 	var n *namespace

@@ -111,6 +111,8 @@ func CreateNamespace(algo *entity.Algorithm) (*namespace, error) {
 				n.containers[key] = &objectContainer[string]{items: map[string]string{}}
 			case "float64":
 				n.containers[key] = &objectContainer[float64]{items: map[string]float64{}}
+			case "float":
+				n.containers[key] = &objectContainer[float64]{items: map[string]float64{}}
 			case "int":
 				n.containers[key] = &objectContainer[int]{items: map[string]int{}}
 			case "bool":
@@ -123,6 +125,8 @@ func CreateNamespace(algo *entity.Algorithm) (*namespace, error) {
 			case "string":
 				n.containers[key] = &arrayContainer[string]{items: []string{}}
 			case "float64":
+				n.containers[key] = &arrayContainer[float64]{items: []float64{}}
+			case "float":
 				n.containers[key] = &arrayContainer[float64]{items: []float64{}}
 			case "int":
 				n.containers[key] = &arrayContainer[int]{items: []int{}}

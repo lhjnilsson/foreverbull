@@ -109,6 +109,22 @@ func (test *InstanceTest) TestUpdateBrokerPort() {
 	test.Equal(1234, *instance.BrokerPort)
 }
 
+func (test *InstanceTest) TestUpdateNamespacePort() {
+	ctx := context.Background()
+
+	db := &Instance{Conn: test.conn}
+	_, err := db.Create(ctx, "instance", nil)
+	test.NoError(err)
+
+	err = db.UpdateNamespacePort(ctx, "instance", 1234)
+	test.NoError(err)
+
+	instance, err := db.Get(ctx, "instance")
+	test.NoError(err)
+	test.Require().NotNil(instance.NamespacePort)
+	test.Equal(1234, *instance.NamespacePort)
+}
+
 func (test *InstanceTest) TestUpdateDatabaseURL() {
 	ctx := context.Background()
 

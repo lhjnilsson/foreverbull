@@ -18,6 +18,34 @@ type Pool struct {
 	mock.Mock
 }
 
+// Close provides a mock function with given fields:
+func (_m *Pool) Close() error {
+	ret := _m.Called()
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// GetNamespacePort provides a mock function with given fields:
+func (_m *Pool) GetNamespacePort() int {
+	ret := _m.Called()
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func() int); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	return r0
+}
+
 // GetPort provides a mock function with given fields:
 func (_m *Pool) GetPort() int {
 	ret := _m.Called()
@@ -56,8 +84,17 @@ func (_m *Pool) Process(ctx context.Context, timestamp time.Time, symbols []stri
 }
 
 // SetAlgorithm provides a mock function with given fields: algo
-func (_m *Pool) SetAlgorithm(algo *serviceentity.Algorithm) {
-	_m.Called(algo)
+func (_m *Pool) SetAlgorithm(algo *serviceentity.Algorithm) error {
+	ret := _m.Called(algo)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*serviceentity.Algorithm) error); ok {
+		r0 = rf(algo)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 type mockConstructorTestingTNewPool interface {

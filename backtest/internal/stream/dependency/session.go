@@ -54,9 +54,10 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 			return nil, err
 		}
 		configure := serviceAPI.ConfigureInstanceRequest{
-			BrokerPort:  pool.GetPort(),
-			DatabaseURL: environment.GetPostgresURL(),
-			Functions:   functions,
+			BrokerPort:    pool.GetPort(),
+			NamespacePort: pool.GetNamespacePort(),
+			DatabaseURL:   environment.GetPostgresURL(),
+			Functions:     functions,
 		}
 		for _, id := range command.WorkerInstanceIDs {
 			i := id

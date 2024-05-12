@@ -34,22 +34,22 @@ type NanomsgSocket struct {
 	SendTimeout int           `json:"send_timeout"`
 }
 
-func (s *NanomsgSocket) listenToFreePort() error {
+func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 	var err error
 
 	for i := environment.GetBacktestPortRangeStart(); i <= environment.GetBacktestPortRangeEnd(); i++ {
-		s.Port = i
-		err = s.socket.Listen(fmt.Sprintf("tcp://%v:%v", s.Host, s.Port))
+		port := i
+		err = socket.Listen(fmt.Sprintf("tcp://%v:%v", host, port))
 		if err == nil {
-			return nil
+			return port, nil
 		}
 		if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
 			log.Debug().Msgf("Port %v already in use, trying next port", i)
 			continue
 		}
-		return err
+		return 0, fmt.Errorf("error listening to port %v: %v", i, err)
 	}
-	return errors.New("no free ports in range")
+	return 0, errors.New("no free ports in range")
 }
 
 /*
@@ -105,7 +105,7 @@ func (s *NanomsgSocket) Connect() error {
 		}
 	} else if s.Listen {
 		if s.Port == 0 {
-			err = s.listenToFreePort()
+			s.Port, err = ListenToFreePort(s.socket, s.Host)
 		} else {
 			err = s.socket.Listen(fmt.Sprintf("tcp://%v:%v", s.Host, s.Port))
 		}

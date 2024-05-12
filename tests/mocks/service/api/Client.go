@@ -38,6 +38,29 @@ func (_m *Client) ConfigureInstance(ctx context.Context, InstanceID string, conf
 	return r0, r1
 }
 
+// CreateService provides a mock function with given fields: ctx, service
+func (_m *Client) CreateService(ctx context.Context, service *api.CreateServiceRequest) (*api.ServiceResponse, error) {
+	ret := _m.Called(ctx, service)
+
+	var r0 *api.ServiceResponse
+	if rf, ok := ret.Get(0).(func(context.Context, *api.CreateServiceRequest) *api.ServiceResponse); ok {
+		r0 = rf(ctx, service)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*api.ServiceResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *api.CreateServiceRequest) error); ok {
+		r1 = rf(ctx, service)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DownloadImage provides a mock function with given fields: ctx, image
 func (_m *Client) DownloadImage(ctx context.Context, image string) (*api.ImageResponse, error) {
 	ret := _m.Called(ctx, image)

@@ -33,11 +33,12 @@ type Instance struct {
 	ID    string  `json:"id"`
 	Image *string `json:"image"`
 
-	Host        *string                      `json:"host"`
-	Port        *int                         `json:"port"`
-	BrokerPort  *int                         `json:"broker_port" mapstructure:"broker_port"`
-	DatabaseURL *string                      `json:"database_url" mapstructure:"database_url"`
-	Functions   *map[string]InstanceFunction `json:"functions" mapstructure:"functions"`
+	Host          *string                      `json:"host"`
+	Port          *int                         `json:"port"`
+	BrokerPort    *int                         `json:"broker_port" mapstructure:"broker_port"`
+	NamespacePort *int                         `json:"namespace_port" mapstructure:"namespace_port"`
+	DatabaseURL   *string                      `json:"database_url" mapstructure:"database_url"`
+	Functions     *map[string]InstanceFunction `json:"functions" mapstructure:"functions"`
 
 	Statuses []InstanceStatus `json:"statuses"`
 }
