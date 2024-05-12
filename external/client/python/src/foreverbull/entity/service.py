@@ -87,6 +87,7 @@ class Instance(pydantic.BaseModel):
     host: str | None = None
     port: int | None = None
     broker_port: int | None = None
+    namespace_port: int | None = None
     database_url: str | None = None
     functions: dict[str, Parameter] | None = None
 
