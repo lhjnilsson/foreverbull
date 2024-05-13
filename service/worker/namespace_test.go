@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/service/entity"
@@ -27,7 +26,7 @@ func (test *ContainerTest) TestObjectContainer() {
 		items: map[string]string{},
 	}
 
-	err := n.Set(`{"key": "value"}`)
+	err := n.Set(map[string]interface{}{"key": "value"})
 	test.NoError(err)
 
 	value, isType := n.Get().(map[string]string)
@@ -40,7 +39,7 @@ func (test *ContainerTest) TestArrayContainer() {
 		items: []string{},
 	}
 
-	err := n.Set(`["value"]`)
+	err := n.Set([]interface{}{"value"})
 	test.NoError(err)
 
 	value, isType := n.Get().([]string)
@@ -49,15 +48,22 @@ func (test *ContainerTest) TestArrayContainer() {
 }
 
 func (test *ContainerTest) TestNamespace() {
-	algoS := `{"namespace": {"rsi": {"type": "object", "value_type": "float64"}, "symbols": {"type": "array", "value_type": "string"}}}`
-	algo := entity.Algorithm{}
-	err := json.Unmarshal([]byte(algoS), &algo)
-	test.NoError(err)
+	algo := entity.Algorithm{
+		Namespace: map[string]entity.AlgorithmNamespace{},
+	}
+	algo.Namespace["rsi"] = entity.AlgorithmNamespace{
+		Type:      "object",
+		ValueType: "float",
+	}
+	algo.Namespace["symbols"] = entity.AlgorithmNamespace{
+		Type:      "array",
+		ValueType: "string",
+	}
 
 	n, err := CreateNamespace(&algo)
 	test.NoError(err)
 
-	err = n.Set("rsi", `{"key": 1.0}`)
+	err = n.Set("rsi", map[string]float64{"key": 1.0})
 	test.NoError(err)
 
 	value, err := n.Get("rsi")
@@ -66,7 +72,7 @@ func (test *ContainerTest) TestNamespace() {
 	test.True(isType)
 	test.Equal(1.0, v["key"])
 
-	err = n.Set("symbols", `["AAPL"]`)
+	err = n.Set("symbols", []string{"AAPL"})
 	test.NoError(err)
 
 	value, err = n.Get("symbols")

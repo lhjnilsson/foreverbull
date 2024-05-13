@@ -97,9 +97,11 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				err = fmt.Errorf("failed to get configure function: %w", err)
 				break
 			}
-			port := ms.workers.GetPort()
+			brokerPort := ms.workers.GetPort()
+			namespacePort := ms.workers.GetNamespacePort()
 			instance := service.Instance{
-				BrokerPort: &port,
+				BrokerPort:    &brokerPort,
+				NamespacePort: &namespacePort,
 				DatabaseURL: func() *string {
 					url := environment.GetPostgresURL()
 					return &url

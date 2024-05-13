@@ -123,6 +123,12 @@ jobs:
           name: non_parallel_example
           path: /tmp/non_parallel_example.tar
           retention-days: 1
+      - name: Upload multistep with namespace
+        uses: actions/upload-artifact@v2
+        with:
+          name: multistep_with_namespace
+          path: /tmp/multistep_with_namespace.tar
+          retention-days: 1
       - name: Upload zipline
         uses: actions/upload-artifact@v2
         with:

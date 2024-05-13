@@ -1,11 +1,11 @@
 package worker
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/lhjnilsson/foreverbull/service/entity"
+	"github.com/mitchellh/mapstructure"
 )
 
 type containerDataTypes interface {
@@ -29,21 +29,11 @@ func (n *objectContainer[T]) Get() interface{} {
 
 func (n *objectContainer[T]) Set(value interface{}) error {
 	obj := map[string]T{}
-	switch v := value.(type) {
-	case string:
-		err := json.Unmarshal([]byte(v), &obj)
-		if err != nil {
-			return fmt.Errorf("failed to decode value: %w", err)
-		}
-	case []byte:
-		err := json.Unmarshal(v, &obj)
-		if err != nil {
-			return fmt.Errorf("failed to decode value: %w", err)
-		}
-
-	default:
-		return fmt.Errorf("unsupported type: %T", value)
+	err := mapstructure.Decode(value, &obj)
+	if err != nil {
+		return fmt.Errorf("error decoding map: %w", err)
 	}
+
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	for key, value := range obj {
@@ -68,25 +58,20 @@ func (n *arrayContainer[T]) Get() interface{} {
 }
 
 func (n *arrayContainer[T]) Set(value interface{}) error {
-	obj := []T{}
-	switch v := value.(type) {
-	case string:
-		err := json.Unmarshal([]byte(v), &obj)
-		if err != nil {
-			return fmt.Errorf("failed to decode value: %w", err)
-		}
-	case []byte:
-		err := json.Unmarshal(v, &obj)
-		if err != nil {
-			return fmt.Errorf("failed to decode value: %w", err)
-		}
-	default:
-		return fmt.Errorf("unsupported type: %T", value)
-	}
+	items, ok := value.([]T)
+	if !ok {
+		for _, item := range value.([]interface{}) {
+			item, ok := item.(T)
+			if !ok {
+				return fmt.Errorf("error decoding array: invalid type")
+			}
 
+			items = append(items, item)
+		}
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	n.items = append(n.items, obj...)
+	n.items = append(n.items, items...)
 	return nil
 }
 
@@ -101,9 +86,6 @@ func CreateNamespace(algo *entity.Algorithm) (*namespace, error) {
 		containers: map[string]container{},
 	}
 	for key, value := range algo.Namespace {
-		switch value.ValueType {
-		}
-
 		switch value.Type {
 		case "object":
 			switch value.ValueType {

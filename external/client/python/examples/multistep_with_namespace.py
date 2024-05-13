@@ -8,7 +8,7 @@ def measure_assets(asset: Asset, portfolio: Portfolio, low: int = 5, high: int =
 
 
 def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
-    metrics = sorted(assets.metric, lambda m: m[1])
+    metrics = sorted(assets.metric.items(), key=lambda m: m[1])
     return [
         Order(symbol=metrics[0][0], amount=-10),
         Order(symbol=metrics[-1][0], amount=10),
