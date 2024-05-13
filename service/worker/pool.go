@@ -38,7 +38,7 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 		return nil, err
 	}
 
-	namespaceSocket := &socket.Socket{Type: socket.Replier, Host: "0.0.0", Port: 0, Dial: false}
+	namespaceSocket := &socket.Socket{Type: socket.Replier, Host: "0.0.0.0", Port: 0, Dial: false}
 	nSock, err := rep.NewSocket()
 	if err != nil {
 		log.Error().Err(err).Msg("error creating socket")

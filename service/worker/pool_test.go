@@ -175,6 +175,7 @@ func (test *PoolTest) TestProcessNonParallel() {
 	bytes, err = response.Encode()
 	test.Require().NoError(err)
 	test.Require().NoError(test.socket.Send(bytes))
+	time.Sleep(time.Second)
 }
 
 func (test *PoolTest) TestProcessParallel() {
@@ -234,6 +235,7 @@ func (test *PoolTest) TestProcessParallel() {
 	}
 	slices.Sort(recievedSymbols)
 	test.EqualValues(symbols, recievedSymbols)
+	time.Sleep(time.Second)
 }
 
 func (test *PoolTest) TestOrderAndNamespace() {
@@ -380,4 +382,5 @@ func (test *PoolTest) TestOrderAndNamespace() {
 	bytes, err = response.Encode()
 	test.Require().NoError(err)
 	test.Require().NoError(test.socket.Send(bytes))
+	time.Sleep(time.Second)
 }
