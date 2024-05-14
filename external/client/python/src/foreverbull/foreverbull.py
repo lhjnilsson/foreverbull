@@ -54,8 +54,8 @@ class Session(threading.Thread):
         if broker_session_port is None:
             raise ConfigurationError("BROKER_SESSION_PORT not set")
         socket = pynng.Req0(dial=f"tcp://{broker_hostname}:{broker_session_port}", block_on_dial=True)
-        socket.send_timeout = 1000
-        socket.recv_timeout = 1000
+        socket.send_timeout = 5000
+        socket.recv_timeout = 5000
         return socket
 
     def new_backtest_execution(self) -> entity.backtest.Execution:
