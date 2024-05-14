@@ -11,11 +11,17 @@ import (
 
 const InstanceTable = `CREATE TABLE IF NOT EXISTS service_instance (
 id text PRIMARY KEY,
-image text references service(image) ON DELETE CASCADE,
-status text NOT NULL DEFAULT 'CREATED',
-error TEXT,
+image text,
+
 host text,
-port integer);
+port integer,
+broker_port integer,
+namespace_port integer,
+database_url text,
+functions JSONB,
+
+status text NOT NULL DEFAULT 'CREATED',
+error TEXT);
 
 CREATE TABLE IF NOT EXISTS service_instance_status (
 	id text REFERENCES service_instance(id) ON DELETE CASCADE,
@@ -50,7 +56,7 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, id string, image string) (*entity.Instance, error) {
+func (db *Instance) Create(ctx context.Context, id string, image *string) (*entity.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
 		id, image,
@@ -64,7 +70,8 @@ func (db *Instance) Create(ctx context.Context, id string, image string) (*entit
 func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error) {
 	i := entity.Instance{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url, functions,
+		sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
@@ -77,7 +84,7 @@ func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error
 
 	for rows.Next() {
 		status := entity.InstanceStatus{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL, &i.Functions,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
@@ -101,6 +108,38 @@ func (db *Instance) UpdateHostPort(ctx context.Context, id, host string, port in
 	return nil
 }
 
+func (db *Instance) UpdateBrokerPort(ctx context.Context, id string, brokerPort int) error {
+	_, err := db.Conn.Exec(ctx,
+		`UPDATE service_instance SET broker_port=$2 WHERE id=$1`,
+		id, brokerPort,
+	)
+	return err
+}
+
+func (db *Instance) UpdateNamespacePort(ctx context.Context, id string, namespacePort int) error {
+	_, err := db.Conn.Exec(ctx,
+		`UPDATE service_instance SET namespace_port=$2 WHERE id=$1`,
+		id, namespacePort,
+	)
+	return err
+}
+
+func (db *Instance) UpdateDatabaseURL(ctx context.Context, id, databaseURL string) error {
+	_, err := db.Conn.Exec(ctx,
+		`UPDATE service_instance SET database_url=$2 WHERE id=$1`,
+		id, databaseURL,
+	)
+	return err
+}
+
+func (db *Instance) UpdateFunctions(ctx context.Context, id string, functions *map[string]entity.InstanceFunction) error {
+	_, err := db.Conn.Exec(ctx,
+		`UPDATE service_instance SET functions=$2 WHERE id=$1`,
+		id, functions,
+	)
+	return err
+}
+
 func (db *Instance) UpdateStatus(ctx context.Context, id string, status entity.InstanceStatusType, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx,
@@ -118,7 +157,8 @@ func (db *Instance) UpdateStatus(ctx context.Context, id string, status entity.I
 
 func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url, functions,
+		sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
@@ -134,7 +174,7 @@ func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 	for rows.Next() {
 		status := entity.InstanceStatus{}
 		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL, &i.Functions,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err
@@ -156,7 +196,7 @@ func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 
 func (db *Instance) ListByImage(ctx context.Context, image string) (*[]entity.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port,
+		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url, functions,
 		sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
@@ -174,7 +214,7 @@ func (db *Instance) ListByImage(ctx context.Context, image string) (*[]entity.In
 	for rows.Next() {
 		status := entity.InstanceStatus{}
 		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port,
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL, &i.Functions,
 			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, err

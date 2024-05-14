@@ -7,18 +7,23 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types"
 	docker "github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/finance"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/api"
+	"github.com/lhjnilsson/foreverbull/service/internal/container"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
+	"github.com/lhjnilsson/foreverbull/service/worker"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -32,6 +37,10 @@ type ServiceModuleTest struct {
 }
 
 func TestModuleService(t *testing.T) {
+	_, found := os.LookupEnv("IMAGES")
+	if !found {
+		t.Skip("images not set")
+	}
 	suite.Run(t, new(ServiceModuleTest))
 }
 
@@ -61,9 +70,10 @@ func (test *ServiceModuleTest) SetupTest() {
 			h.NewLifeCycleRouter,
 		),
 		stream.OrchestrationLifecycle,
+		finance.Module,
 		Module,
 	)
-	test.NoError(test.app.Start(context.TODO()))
+	test.Require().NoError(test.app.Start(context.TODO()))
 }
 
 func (test *ServiceModuleTest) TearDownTest() {
@@ -88,7 +98,7 @@ func (test *ServiceModuleTest) TestAPIClient() {
 	instances := repository.Instance{Conn: pool}
 	testService, err := services.Create(context.Background(), "docker.io/library/python:3.12-alpine")
 	test.Require().NoError(err)
-	testInstance, err := instances.Create(context.Background(), "instance_123", testService.Image)
+	testInstance, err := instances.Create(context.Background(), "instance_123", &testService.Image)
 	test.Require().NoError(err)
 
 	test.Run("Create Client", func() {
@@ -149,18 +159,11 @@ func (test *ServiceModuleTest) TestAPIClient() {
 }
 
 func (test *ServiceModuleTest) TestCreateService() {
-	workerImage := os.Getenv("WORKER_IMAGE")
-	if workerImage == "" {
-		test.T().Skip("worker image not set")
-	}
-	backtestImage := os.Getenv("BACKTEST_IMAGE")
-	if backtestImage == "" {
-		test.T().Skip("backtest image not set")
-	}
+	client, err := api.NewClient()
+	test.Require().NoError(err)
 
 	type ServiceResponse struct {
-		Name     string
-		Type     string
+		Image    string
 		Statuses []struct {
 			Status string
 		}
@@ -168,16 +171,13 @@ func (test *ServiceModuleTest) TestCreateService() {
 	type TestCase struct {
 		Image string
 	}
-	testCases := []TestCase{
-		{
-			Image: os.Getenv("BACKTEST_IMAGE"),
-		},
-		{
-			Image: os.Getenv("WORKER_IMAGE"),
-		},
+
+	testCases := []TestCase{}
+	for _, image := range strings.Split(os.Getenv("IMAGES"), ",") {
+		testCases = append(testCases, TestCase{Image: image})
 	}
 	for _, testcase := range testCases {
-		test.Run(testcase.Image, func() {
+		test.Run("Create_"+testcase.Image, func() {
 			payload := `{"image": "` + testcase.Image + `"}`
 			rsp := helper.Request(test.T(), http.MethodPost, "/service/api/services", payload)
 			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
@@ -194,11 +194,16 @@ func (test *ServiceModuleTest) TestCreateService() {
 				if err != nil {
 					return false, fmt.Errorf("failed to decode response: %s", err.Error())
 				}
-				fmt.Println("Status: ", data)
-				if data.Statuses[0].Status != "READY" {
-					return false, nil
+				switch data.Statuses[0].Status {
+				case "READY":
+					return true, nil
+				case "ERROR":
+					return false, fmt.Errorf("service in error state")
+				case "STOPPED":
+					return false, fmt.Errorf("service in stopped state")
 				}
-				return true, nil
+				fmt.Println("STATUS: ", data.Statuses[0].Status)
+				return false, nil
 			}
 			err := helper.WaitUntilCondition(test.T(), condition, time.Second*10)
 			test.NoError(err)
@@ -213,7 +218,60 @@ func (test *ServiceModuleTest) TestCreateService() {
 				test.Failf("Failed to decode response: %w", err.Error())
 				return
 			}
-			fmt.Println("DATA: ", data)
+		})
+		test.Run("Configure_"+testcase.Image, func() {
+			pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+			test.NoError(err)
+
+			instanceID := uuid.New().String()
+
+			instances := repository.Instance{Conn: pool}
+			_, err = instances.Create(context.Background(), instanceID, &testcase.Image)
+			test.NoError(err)
+
+			c, err := container.NewContainerRegistry()
+			test.Require().NoError(err)
+
+			_, err = c.Start(context.Background(), testcase.Image, instanceID, nil)
+			test.Require().NoError(err)
+
+			condition := func() (bool, error) {
+				instance, err := client.GetInstance(context.Background(), instanceID)
+				if err != nil {
+					return false, fmt.Errorf("failed to get instance: %w", err)
+				}
+				switch instance.Statuses[0].Status {
+				case "RUNNING":
+					return true, nil
+				case "ERROR":
+					return false, fmt.Errorf("instance in error state")
+				case "STOPPED":
+					return false, fmt.Errorf("instance in stopped state")
+				}
+				return false, nil
+			}
+			err = helper.WaitUntilCondition(test.T(), condition, time.Second*10)
+			test.NoError(err)
+
+			service, err := client.GetService(context.Background(), testcase.Image)
+			test.NoError(err)
+			functions, err := service.Algorithm.Configure()
+			test.NoError(err)
+			wPool, err := worker.NewPool(context.Background(), service.Algorithm)
+			test.NoError(err)
+
+			configRequest := api.ConfigureInstanceRequest{
+				BrokerPort:    wPool.GetPort(),
+				NamespacePort: wPool.GetNamespacePort(),
+				DatabaseURL:   environment.GetPostgresURL(),
+				Functions:     functions,
+			}
+
+			instance, err := client.ConfigureInstance(context.Background(), instanceID, &configRequest)
+			test.NoError(err)
+			test.NotNil(instance)
+
+			test.NoError(client.StopInstance(context.Background(), instanceID))
 		})
 	}
 }

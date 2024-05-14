@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
 )
@@ -75,7 +74,6 @@ func (s *ExecutionTest) TestCreate() {
 	//s.Equal(*s.storedBacktest.Start, e.Start)
 	//s.Equal(*s.storedBacktest.End, e.End)
 	s.Equal(s.storedBacktest.Symbols, e.Symbols)
-	s.Nil(e.Parameters)
 	s.Equal(1, len(e.Statuses))
 	s.Equal(entity.ExecutionStatusCreated, e.Statuses[0].Status)
 	s.Nil(e.Statuses[0].Error)
@@ -96,7 +94,6 @@ func (s *ExecutionTest) TestGet() {
 	s.Equal(s.storedBacktest.Start, e.Start)
 	s.Equal(s.storedBacktest.End, e.End)
 	s.Equal(s.storedBacktest.Symbols, e.Symbols)
-	s.Nil(e.Parameters)
 	s.Equal(1, len(e.Statuses))
 	s.Equal(entity.ExecutionStatusCreated, e.Statuses[0].Status)
 	s.Nil(e.Statuses[0].Error)
@@ -125,28 +122,6 @@ func (s *ExecutionTest) TestUpdateSimulationDetails() {
 	//s.Equal(newEnd, e.End)
 	s.Equal(benchmark, *e.Benchmark)
 	s.Equal(symbols, e.Symbols)
-	s.Nil(e.Parameters)
-	s.Equal(1, len(e.Statuses))
-	s.Equal(entity.ExecutionStatusCreated, e.Statuses[0].Status)
-	s.Nil(e.Statuses[0].Error)
-	s.NotNil(e.Statuses[0].OccurredAt)
-}
-
-func (s *ExecutionTest) TestUpdateParameters() {
-	db := Execution{Conn: s.conn}
-	ctx := context.Background()
-	e, err := db.Create(ctx, s.storedSession.ID, s.storedBacktest.Calendar,
-		s.storedBacktest.Start, s.storedBacktest.End, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
-	s.NoError(err)
-	parameters := []service.Parameter{
-		{Key: "test", Value: "test"},
-	}
-	err = db.UpdateParameters(ctx, e.ID, &parameters)
-	s.NoError(err)
-	e, err = db.Get(ctx, e.ID)
-	s.NoError(err)
-	s.NotNil(e.ID)
-	s.Equal(parameters, e.Parameters)
 	s.Equal(1, len(e.Statuses))
 	s.Equal(entity.ExecutionStatusCreated, e.Statuses[0].Status)
 	s.Nil(e.Statuses[0].Error)
@@ -167,7 +142,6 @@ func (s *ExecutionTest) TestUpdateStatus() {
 	e, err = db.Get(ctx, e.ID)
 	s.NoError(err)
 	s.NotNil(e.ID)
-	s.Nil(e.Parameters)
 	s.Equal(3, len(e.Statuses))
 	s.Equal(entity.ExecutionStatusFailed, e.Statuses[0].Status)
 	s.Equal("test", *e.Statuses[0].Error)

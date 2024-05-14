@@ -1,107 +1,99 @@
 import enum
 import socket
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import List
 
 import pydantic
 
-from .base import Base
+from .finance import Portfolio
 
 
-class Parameter(Base):
-    key: str
-    default: Optional[str] = None
-    value: Optional[str] = None
-    type: str
+class SocketConfig(pydantic.BaseModel):
+    class SocketType(str, enum.Enum):
+        REQUESTER = "REQUESTER"
+        REPLIER = "REPLIER"
+        PUBLISHER = "PUBLISHER"
+        SUBSCRIBER = "SUBSCRIBER"
 
-
-class Info(Base):
-    version: str
-    parameters: List[Parameter]
-
-
-class SocketType(str, enum.Enum):
-    REQUESTER = "REQUESTER"
-    REPLIER = "REPLIER"
-    PUBLISHER = "PUBLISHER"
-    SUBSCRIBER = "SUBSCRIBER"
-
-
-class SocketConfig(Base):
     socket_type: SocketType = SocketType.REPLIER
     host: str = socket.gethostbyname(socket.gethostname())
     port: int = 0
     listen: bool = True
     recv_timeout: int = 20000
-    sendout: int = 20000
+    send_timeout: int = 20000
 
 
-class ServiceStatusType(str, enum.Enum):
-    CREATED = "CREATED"
-    INTERVIEW = "INTERVIEW"
-    READY = "READY"
-    ERROR = "ERROR"
+class Service(pydantic.BaseModel):
+    class Algorithm(pydantic.BaseModel):
+        class Namespace(pydantic.BaseModel):
+            type: str
+            value_type: str
 
+        class Function(pydantic.BaseModel):
+            class ReturnType(str, enum.Enum):
+                NAMESPACE_VALUE = "NAMESPACE_VALUE"
+                ORDER = "ORDER"
+                LIST_OF_ORDERS = "LIST_OF_ORDERS"
 
-class ServiceStatus(Base):
-    status: ServiceStatusType
-    error: str | None = None
-    occurred_at: datetime
+            class Parameter(pydantic.BaseModel):
+                key: str
+                default: str | None = None
+                type: str
 
+            name: str
+            parameters: List[Parameter]
+            parallel_execution: bool
+            run_first: bool
+            run_last: bool
 
-class Service(Base):
+        file_path: str
+        functions: list[Function]
+        namespace: dict[str, Namespace] = {}
+
+    class Status(pydantic.BaseModel):
+        class Type(str, enum.Enum):
+            CREATED = "CREATED"
+            INTERVIEW = "INTERVIEW"
+            READY = "READY"
+            ERROR = "ERROR"
+
+        status: Type
+        error: str | None = None
+        occurred_at: datetime
+
     image: str
-    type: str | None = None
-    Parameters: List[Parameter] = []
+    algorithm: Algorithm | None = None
 
-    statuses: List[ServiceStatus]
-
-
-class InstanceStatusType(str, enum.Enum):
-    CREATED = "CREATED"
-    RUNNING = "RUNNING"
-    STOPPED = "STOPPED"
-    ERROR = "ERROR"
+    statuses: List[Status]
 
 
-class InstanceStatus(Base):
-    status: InstanceStatusType
-    error: str | None = None
-    occurred_at: datetime
+class Instance(pydantic.BaseModel):
+    class Parameter(pydantic.BaseModel):
+        parameters: dict[str, str]
 
+    class Status(pydantic.BaseModel):
+        class Type(str, enum.Enum):
+            CREATED = "CREATED"
+            RUNNING = "RUNNING"
+            STOPPED = "STOPPED"
+            ERROR = "ERROR"
 
-class Instance(Base):
+        status: Type
+        error: str | None = None
+        occurred_at: datetime
+
     id: str
-    image: str
     host: str | None = None
     port: int | None = None
+    broker_port: int | None = None
+    namespace_port: int | None = None
+    database_url: str | None = None
+    functions: dict[str, Parameter] | None = None
 
-    statuses: List[InstanceStatus]
-
-
-class Request(Base):
-    task: str
-    data: Optional[Any] = None
-    error: Optional[str] = None
-
-    @pydantic.field_validator("data")
-    def validate_data(cls, v):
-        if v is None:
-            return v
-        if isinstance(v, dict):
-            return v
-        return v.model_dump()
+    statuses: List[Status] | None = []
 
 
-class Response(Base):
-    task: str
-    error: Optional[str] = None
-    data: Optional[Any] = None
-
-    @pydantic.field_validator("data")
-    def validate_data(cls, v):
-        if v is None:
-            return v
-        if isinstance(v, dict):
-            return v
-        return v.model_dump()
+class Request(pydantic.BaseModel):
+    timestamp: datetime
+    symbols: list[str]
+    portfolio: Portfolio

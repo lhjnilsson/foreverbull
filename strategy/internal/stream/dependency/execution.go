@@ -3,17 +3,13 @@ package dependency
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	ss "github.com/lhjnilsson/foreverbull/strategy/stream"
-	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 )
 
 const Trading stream.Dependency = "get_trading"
@@ -32,50 +28,19 @@ type execution struct {
 }
 
 func (e *execution) Configure(ctx context.Context) error {
-	cfg := worker.Configuration{
-		Execution:  e.command.ExecutionID,
-		Port:       e.worker.SocketConfig().Port,
-		Parameters: make([]service.Parameter, 0),
-		Database:   environment.GetPostgresURL(),
-	}
-	return e.worker.ConfigureExecution(ctx, &cfg)
+	return nil
 }
 
 func (e *execution) Run(ctx context.Context, portfolio *finance.Portfolio) (*[]finance.Order, error) {
-	if err := e.worker.RunExecution(ctx); err != nil {
-		return nil, fmt.Errorf("error running worker execution: %w", err)
-	}
-
-	orders := make([]finance.Order, 0)
-	orderLock := new(sync.Mutex)
-
-	g, gctx := errgroup.WithContext(ctx)
-	for _, symbol := range e.command.Symbols {
-		symbol := symbol
-		g.Go(func() error {
-			order, err := e.worker.Process(gctx, e.command.ExecutionID, e.command.Timestamp, symbol, portfolio)
-			if err != nil {
-				return fmt.Errorf("error processing symbol: %w", err)
-			}
-			if order == nil {
-				return nil
-			}
-			orderLock.Lock()
-			orders = append(orders, *order)
-			orderLock.Unlock()
-			log.Info().Str("symbol", symbol).Any("order", order).Msg("order received")
-			return nil
-		})
-	}
-	err := g.Wait()
+	orders, err := e.worker.Process(ctx, e.command.Timestamp, e.command.Symbols, portfolio)
 	if err != nil {
 		return nil, fmt.Errorf("error processing symbols: %w", err)
 	}
-	return &orders, nil
+	return orders, nil
 }
 
 func (e *execution) Stop(ctx context.Context) error {
-	return e.worker.Stop(ctx)
+	return nil
 }
 
 func GetExecution(ctx context.Context, message stream.Message) (interface{}, error) {
@@ -117,7 +82,7 @@ func GetWorkerPool(ctx context.Context, message stream.Message) (interface{}, er
 		}
 		instances = append(instances, &instance)
 	}
-	pool, err := worker.NewPool(ctx, instances...)
+	pool, err := worker.NewPool(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating worker pool: %w", err)
 	}

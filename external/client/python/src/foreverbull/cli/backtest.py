@@ -180,21 +180,20 @@ def run(
 
     if backtest_name:
         session = broker.backtest.run(backtest_name, manual=True if file_path else False)
-        foreverbull = Foreverbull(session, file_path=file_path)
+        foreverbull = Foreverbull(file_path=file_path)
         with foreverbull as fb:
-            show_progress(fb.session)
+            show_progress(session)
         return
 
     # TODO: Actually fetch the correct session with session_id from env
     # To be set from container in foreverbull broker
-    session = entity.backtest.Session(id="dummy123", backtest="dummy", executions=0)
-    foreverbull = Foreverbull(session, file_path=file_path)
+    foreverbull = Foreverbull(file_path=file_path)
     with foreverbull as fb:
-        broker.service.update_instance(socket.gethostname(), fb.socket_config)
+        broker.service.update_instance(socket.gethostname(), True)
         signal.signal(signal.SIGINT, lambda x, y: foreverbull._stop_event.set())
         signal.signal(signal.SIGTERM, lambda x, y: foreverbull._stop_event.set())
         fb.join()
-        broker.service.update_instance(socket.gethostname(), None)
+        broker.service.update_instance(socket.gethostname(), False)
 
 
 @backtest.command()

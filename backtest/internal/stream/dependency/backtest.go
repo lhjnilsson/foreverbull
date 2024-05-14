@@ -23,6 +23,8 @@ type HTTPClient struct {
 	Client  *http.Client
 }
 
+const GetServiceAPI stream.Dependency = "get_service_api"
+
 func (c *HTTPClient) Get(ctx context.Context, url string, v any) error {
 	rsp, err := c.Client.Get(c.BaseURL + url)
 	if err != nil {

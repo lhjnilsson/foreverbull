@@ -23,7 +23,8 @@ from zipline.utils.paths import data_path, data_root
 
 from foreverbull.broker.storage import Storage
 from foreverbull.entity import backtest
-from foreverbull.entity.service import Request, Response, SocketConfig
+from foreverbull.entity.service import SocketConfig
+from foreverbull.socket import Request, Response
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 
 from . import entity
@@ -68,7 +69,7 @@ class Execution(threading.Thread):
     def stop(self):
         socket = pynng.Req0(dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}", block_on_dial=True)
         request = Request(task="stop")
-        socket.send(request.dump())
+        socket.send(request.serialize())
         socket.recv()
         self.join()
         socket.close()
@@ -247,28 +248,28 @@ class Execution(threading.Thread):
         while True:
             try:
                 context_socket = self._socket.new_context()
-                message = Request.load(context_socket.recv())
+                message = Request.deserialize(context_socket.recv())
                 self.logger.info(f"received task: {message.task}")
                 active_execution = trading_algorithm and data
                 try:
                     if message.task == "info":
-                        context_socket.send(Response(task=message.task, data=self.info()).dump())
+                        context_socket.send(Response(task=message.task, data=self.info()).serialize())
                     elif message.task == "ingest":
                         ingest_config = entity.IngestConfig(**message.data)
                         ingest_config = self._ingest(ingest_config)
-                        context_socket.send(Response(task=message.task, data=ingest_config).dump())
+                        context_socket.send(Response(task=message.task, data=ingest_config).serialize())
                     elif message.task == "download_ingestion":
                         self._download_ingestion(**message.data)
-                        context_socket.send(Response(task=message.task).dump())
+                        context_socket.send(Response(task=message.task).serialize())
                     elif message.task == "upload_ingestion":
                         self._upload_ingestion(**message.data)
-                        context_socket.send(Response(task=message.task).dump())
+                        context_socket.send(Response(task=message.task).serialize())
                     elif message.task == "configure_execution":
                         config = backtest.Execution(**message.data)
                         self._trading_algorithm, config = self._get_algorithm(config)
-                        context_socket.send(Response(task=message.task, data=config).dump())
+                        context_socket.send(Response(task=message.task, data=config).serialize())
                     elif message.task == "run_execution" and not active_execution:
-                        context_socket.send(Response(task=message.task).dump())
+                        context_socket.send(Response(task=message.task).serialize())
                         try:
                             self._trading_algorithm.run()
                         except StopExcecution:
@@ -277,54 +278,54 @@ class Execution(threading.Thread):
                         period = entity.Period.from_zipline(
                             trading_algorithm, [trading_algorithm.get_order(order.id) for order in self._new_orders]
                         )
-                        context_socket.send(Request(task=message.task, data=period).dump())
+                        context_socket.send(Request(task=message.task, data=period).serialize())
                     elif not active_execution and message.task == "get_period":
-                        context_socket.send(Response(task=message.task, data=None).dump())
+                        context_socket.send(Response(task=message.task, data=None).serialize())
                     elif active_execution and message.task == "continue":
                         self._new_orders = []
-                        context_socket.send(Response(task=message.task).dump())
+                        context_socket.send(Response(task=message.task).serialize())
                         if trading_algorithm:
                             self._new_orders = trading_algorithm.blotter.new_orders
                         return
                     elif not active_execution and message.task == "continue":
-                        context_socket.send(Response(task=message.task, error="no active execution").dump())
+                        context_socket.send(Response(task=message.task, error="no active execution").serialize())
                     elif active_execution and message.task == "can_trade":
                         asset = entity.Asset(**message.data)
                         can_trade = self._broker.can_trade(asset, trading_algorithm, data)
-                        context_socket.send(Response(task=message.task, data=can_trade).dump())
+                        context_socket.send(Response(task=message.task, data=can_trade).serialize())
                     elif active_execution and message.task == "order":
                         order = entity.Order(**message.data)
                         order = self._broker.order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        context_socket.send(Response(task=message.task, data=order).serialize())
                     elif active_execution and message.task == "get_order":
                         order = entity.Order(**message.data)
                         order = self._broker.get_order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        context_socket.send(Response(task=message.task, data=order).serialize())
                     elif active_execution and message.task == "get_open_orders":
                         orders = self._broker.get_open_orders(trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=orders).dump())
+                        context_socket.send(Response(task=message.task, data=orders).serialize())
                     elif active_execution and message.task == "cancel_order":
                         order = entity.Order(**message.data)
                         order = self._broker.cancel_order(order, trading_algorithm)
-                        context_socket.send(Response(task=message.task, data=order).dump())
+                        context_socket.send(Response(task=message.task, data=order).serialize())
                     elif message.task == "get_execution_result":
                         result = self._result()
-                        context_socket.send(Response(task=message.task, data=result.model_dump()).dump())
+                        context_socket.send(Response(task=message.task, data=result.model_dump()).serialize())
                     elif message.task == "upload_result":
                         self._upload_result(**message.data)
-                        context_socket.send(Response(task=message.task).dump())
+                        context_socket.send(Response(task=message.task).serialize())
                 except Exception as e:
                     self.logger.exception(e)
                     self.logger.error(f"error processing request: {e}")
-                    context_socket.send(Response(task=message.task, error=str(e)).dump())
+                    context_socket.send(Response(task=message.task, error=str(e)).serialize())
                     context_socket.close()
                 if message.task == "stop" and active_execution:
                     ## Raise to force Zipline TradingAlgorithm to stop, not good way to do this
-                    context_socket.send(Response(task=message.task).dump())
+                    context_socket.send(Response(task=message.task).serialize())
                     context_socket.close()
                     raise StopExcecution()
                 elif message.task == "stop":
-                    context_socket.send(Response(task=message.task).dump())
+                    context_socket.send(Response(task=message.task).serialize())
                     return
                 context_socket.close()
             except pynng.Timeout:

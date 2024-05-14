@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service"
+	serviceAPI "github.com/lhjnilsson/foreverbull/service/api"
+	serviceEntity "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
@@ -37,10 +40,6 @@ type BacktestModuleTest struct {
 }
 
 func TestModuleBacktest(t *testing.T) {
-	workerImage := os.Getenv("WORKER_IMAGE")
-	if workerImage == "" {
-		t.Skip("worker image not set")
-	}
 	backtestImage := os.Getenv("BACKTEST_IMAGE")
 	if backtestImage == "" {
 		t.Skip("backtest image not set")
@@ -48,7 +47,7 @@ func TestModuleBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestModuleTest))
 }
 
-func (test *BacktestModuleTest) SetupTest() {
+func (test *BacktestModuleTest) SetupSuite() {
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 		NATS:     true,
@@ -85,7 +84,7 @@ func (test *BacktestModuleTest) SetupTest() {
 		Module,
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
-	payload := `{"name":"test","service":"` + os.Getenv("WORKER_IMAGE") + `","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	payload := `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
 	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
@@ -120,46 +119,68 @@ func (test *BacktestModuleTest) SetupTest() {
 	test.backtestName = "test"
 }
 
-func (test *BacktestModuleTest) TearDownTest() {
+func (test *BacktestModuleTest) TearDownSuite() {
 	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
 }
 
 func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
-	type SessionResponse struct {
-		ID       string
-		Statuses []struct {
-			Status string
-		}
+	images, exists := os.LookupEnv("IMAGES")
+	if !exists {
+		test.T().Skip("IMAGES not set")
 	}
 
-	payload := `{"backtest": "test", "executions": [{}]}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
-	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
-		rspData, _ := io.ReadAll(rsp.Body)
-		test.Failf("Failed to create session: %s", string(rspData))
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+
+	for _, image := range strings.Split(images, ",") {
+		test.Run(image, func() {
+			sAPI, err := serviceAPI.NewClient()
+			test.Require().NoError(err)
+			_, err = sAPI.CreateService(context.Background(), &serviceAPI.CreateServiceRequest{
+				Image: image,
+			})
+			test.Require().NoError(err)
+
+			_, err = pool.Exec(context.Background(), "UPDATE backtest SET service=$1 WHERE name=$2", image, test.backtestName)
+			test.Require().NoError(err)
+
+			type SessionResponse struct {
+				ID       string
+				Statuses []struct {
+					Status string
+				}
+			}
+
+			payload := `{"backtest": "test", "executions": [{}]}`
+			rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
+			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
+				rspData, _ := io.ReadAll(rsp.Body)
+				test.Failf("Failed to create session: %s", string(rspData))
+			}
+			data := &SessionResponse{}
+			err = json.NewDecoder(rsp.Body).Decode(data)
+			if err != nil {
+				test.Failf("Failed to decode response: %s", err.Error())
+			}
+			condition := func() (bool, error) {
+				rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
+				if rsp.StatusCode != http.StatusOK {
+					return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
+				}
+				data := &SessionResponse{}
+				err := json.NewDecoder(rsp.Body).Decode(data)
+				if err != nil {
+					return false, fmt.Errorf("failed to decode response: %s", err.Error())
+				}
+				if data.Statuses[0].Status == "COMPLETED" {
+					return true, nil
+				}
+				return false, nil
+			}
+			test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+		})
 	}
-	data := &SessionResponse{}
-	err := json.NewDecoder(rsp.Body).Decode(data)
-	if err != nil {
-		test.Failf("Failed to decode response: %s", err.Error())
-	}
-	condition := func() (bool, error) {
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
-		if rsp.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
-		}
-		data := &SessionResponse{}
-		err := json.NewDecoder(rsp.Body).Decode(data)
-		if err != nil {
-			return false, fmt.Errorf("failed to decode response: %s", err.Error())
-		}
-		if data.Statuses[0].Status == "COMPLETED" {
-			return true, nil
-		}
-		return false, nil
-	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 }
 
 func (test *BacktestModuleTest) TestRunBacktestManual() {
@@ -207,18 +228,29 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	err = json.NewDecoder(rsp.Body).Decode(data)
 	test.NoError(err)
 
+	test.T().Logf("Connecting to port %d", *data.Port)
 	socket, err := reqSocket.NewSocket()
 	test.NoError(err)
 	defer socket.Close()
 	err = socket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *data.Port))
 	test.NoError(err)
 
+	test.T().Log("Sending new_execution")
 	execution := new(entity.Execution)
-	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", nil, execution))
+	algorithm := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
+	algo := &serviceEntity.Algorithm{}
+	err = json.Unmarshal([]byte(algorithm), algo)
+	test.NoError(err)
+	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", algo, execution))
 
+	test.T().Log("Sending configure_execution")
+	instance := new(serviceEntity.Instance)
+	test.NoError(helper.SocketRequest(test.T(), socket, "configure_execution", execution, instance))
+
+	test.Require().NotNil(instance.BrokerPort)
 	workerSocket, err := repSocket.NewSocket()
 	test.NoError(err)
-	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *execution.Port))
+	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *instance.BrokerPort))
 	test.NoError(err)
 
 	type WorkerRequest struct {
@@ -239,8 +271,19 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		return nil, nil
 	})
 
+	test.T().Log("Sending run_execution")
 	test.NoError(helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
+	test.T().Log("Sending stop")
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
+}
+
+func TestParse(t *testing.T) {
+	payload := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
+	algorithm := &serviceEntity.Algorithm{}
+	err := json.Unmarshal(payload, algorithm)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

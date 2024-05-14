@@ -19,19 +19,28 @@ const (
 	InstanceStatusError   InstanceStatusType = "ERROR"
 )
 
-type Instance struct {
-	ID    string  `json:"id"`
-	Image string  `json:"image"`
-	Host  *string `json:"host"`
-	Port  *int    `json:"port"`
-
-	Statuses []InstanceStatus `json:"statuses"`
+type InstanceFunction struct {
+	Parameters map[string]string `json:"parameters" mapstructure:"parameters"`
 }
 
 type InstanceStatus struct {
 	Status     InstanceStatusType `json:"status"`
 	Error      *string            `json:"message"`
 	OccurredAt time.Time          `json:"occurred_at"`
+}
+
+type Instance struct {
+	ID    string  `json:"id"`
+	Image *string `json:"image"`
+
+	Host          *string                      `json:"host"`
+	Port          *int                         `json:"port"`
+	BrokerPort    *int                         `json:"broker_port" mapstructure:"broker_port"`
+	NamespacePort *int                         `json:"namespace_port" mapstructure:"namespace_port"`
+	DatabaseURL   *string                      `json:"database_url" mapstructure:"database_url"`
+	Functions     *map[string]InstanceFunction `json:"functions" mapstructure:"functions"`
+
+	Statuses []InstanceStatus `json:"statuses"`
 }
 
 func (i *Instance) GetSocket() (*socket.Socket, error) {
@@ -41,7 +50,7 @@ func (i *Instance) GetSocket() (*socket.Socket, error) {
 	return &socket.Socket{Type: socket.Requester, Host: *i.Host, Port: *i.Port, Listen: false, Dial: true}, nil
 }
 
-func (i *Instance) GetInfo() (*Service, error) {
+func (i *Instance) GetAlgorithm() (*Algorithm, error) {
 	iSocket, err := i.GetSocket()
 	if err != nil {
 		return nil, err
@@ -66,9 +75,71 @@ func (i *Instance) GetInfo() (*Service, error) {
 		return nil, errors.New(rsp.Error)
 	}
 
-	service := Service{}
-	if err := rsp.DecodeData(&service); err != nil {
+	algo := Algorithm{}
+	if err := rsp.DecodeData(&algo); err != nil {
 		return nil, err
 	}
-	return &service, nil
+	return &algo, nil
+}
+
+func (i *Instance) Configure() error {
+	iSocket, err := i.GetSocket()
+	if err != nil {
+		return err
+	}
+	s, err := socket.GetContextSocket(context.Background(), iSocket)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	ctxSock, err := s.Get()
+	if err != nil {
+		return err
+	}
+	defer ctxSock.Close()
+
+	req := message.Request{Task: "configure_execution", Data: i}
+	rsp, err := req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	req = message.Request{Task: "run_execution", Data: i}
+	rsp, err = req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	return nil
+}
+
+func (i *Instance) Stop() error {
+	iSocket, err := i.GetSocket()
+	if err != nil {
+		return err
+	}
+	s, err := socket.GetContextSocket(context.Background(), iSocket)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	ctxSock, err := s.Get()
+	if err != nil {
+		return err
+	}
+	defer ctxSock.Close()
+
+	req := message.Request{Task: "stop", Data: i}
+	rsp, err := req.Process(ctxSock)
+	if err != nil {
+		return err
+	}
+	if rsp.Error != "" {
+		return errors.New(rsp.Error)
+	}
+	return nil
 }

@@ -12,9 +12,12 @@ import (
 type Client interface {
 	ListServices(ctx context.Context) (*[]ServiceResponse, error)
 	GetService(ctx context.Context, image string) (*ServiceResponse, error)
+	CreateService(ctx context.Context, service *CreateServiceRequest) (*ServiceResponse, error)
 
 	ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error)
 	GetInstance(ctx context.Context, InstanceID string) (*InstanceResponse, error)
+	ConfigureInstance(ctx context.Context, InstanceID string, config *ConfigureInstanceRequest) (*InstanceResponse, error)
+	StopInstance(ctx context.Context, InstanceID string) error
 
 	GetImage(ctx context.Context, image string) (*ImageResponse, error)
 	DownloadImage(ctx context.Context, image string) (*ImageResponse, error)
@@ -66,6 +69,26 @@ func (c *client) GetService(ctx context.Context, name string) (*ServiceResponse,
 	return &service, nil
 }
 
+func (c *client) CreateService(ctx context.Context, service *CreateServiceRequest) (*ServiceResponse, error) {
+	body, err := json.Marshal(service)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.client.Post(c.baseURL+"/services", "application/json", body)
+	if err != nil {
+		return nil, err
+	}
+	if req.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("unexpected status code: %d", req.StatusCode)
+	}
+	var createdService ServiceResponse
+	err = json.NewDecoder(req.Body).Decode(&createdService)
+	if err != nil {
+		return nil, err
+	}
+	return &createdService, nil
+}
+
 func (c *client) ListInstances(ctx context.Context, image string) (*[]InstanceResponse, error) {
 	req, err := c.client.Get(c.baseURL + "/instances?" + "image=" + image)
 	if err != nil {
@@ -96,6 +119,37 @@ func (c *client) GetInstance(ctx context.Context, InstanceID string) (*InstanceR
 		return nil, err
 	}
 	return &instance, nil
+}
+
+func (c *client) ConfigureInstance(ctx context.Context, InstanceID string, config *ConfigureInstanceRequest) (*InstanceResponse, error) {
+	body, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	rsp, err := c.client.Post(c.baseURL+"/instances/"+InstanceID+"/configure", "application/json", body)
+	if err != nil {
+		return nil, err
+	}
+	if rsp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", rsp.StatusCode)
+	}
+	var instance InstanceResponse
+	err = json.NewDecoder(rsp.Body).Decode(&instance)
+	if err != nil {
+		return nil, err
+	}
+	return &instance, nil
+}
+
+func (c *client) StopInstance(ctx context.Context, InstanceID string) error {
+	req, err := c.client.Post(c.baseURL+"/instances/"+InstanceID+"/stop", "application/json", nil)
+	if err != nil {
+		return err
+	}
+	if req.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", req.StatusCode)
+	}
+	return nil
 }
 
 func (c *client) GetImage(ctx context.Context, image string) (*ImageResponse, error) {

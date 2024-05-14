@@ -171,7 +171,7 @@ func (test *NanomsgTestSuite) TestWrite() {
 		_, closePeer := test.GetReplier(1337, false)
 		defer closePeer()
 
-		socket := NanomsgSocket{SocketType: Requester, Dial: true, Port: 1337, SEndout: 1}
+		socket := NanomsgSocket{SocketType: Requester, Dial: true, Port: 1337, SendTimeout: 1}
 		err := socket.Connect()
 		defer socket.Close()
 		test.Nil(err)
@@ -186,7 +186,7 @@ func (test *NanomsgTestSuite) TestWrite() {
 		_, closePeer := test.GetReplier(1337, false)
 		defer closePeer()
 
-		socket := NanomsgSocket{SocketType: Requester, Dial: true, Port: 1337, SEndout: 1}
+		socket := NanomsgSocket{SocketType: Requester, Dial: true, Port: 1337, SendTimeout: 1}
 		err := socket.Connect()
 		socket.Close()
 		test.Nil(err)

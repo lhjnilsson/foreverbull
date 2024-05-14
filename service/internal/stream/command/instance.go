@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/service/container"
+	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/service/internal/stream/dependency"
 	st "github.com/lhjnilsson/foreverbull/service/stream"
@@ -32,13 +33,13 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting instance: %w", err)
 	}
-	info, err := i.GetInfo()
+	algorithm, err := i.GetAlgorithm()
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	err = services.UpdateParameters(ctx, i.Image, info.Parameters)
+	err = services.SetAlgorithm(ctx, *i.Image, algorithm)
 	if err != nil {
-		return fmt.Errorf("error updating service info: %w", err)
+		return fmt.Errorf("error setting algorithm: %w", err)
 	}
 	return nil
 }
@@ -68,11 +69,18 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 					}
 					return fmt.Errorf("error getting instance: %w", err)
 				}
+				if i.Statuses[0].Status == entity.InstanceStatusStopped {
+					return fmt.Errorf("instance is stopped")
+				}
+				if i.Statuses[0].Status == entity.InstanceStatusError {
+					return fmt.Errorf("instance is in error state: %s", *i.Statuses[0].Error)
+				}
+
 				if i.Host == nil || i.Port == nil {
 					time.Sleep(time.Second / 5)
 					continue
 				}
-				_, err = i.GetInfo()
+				_, err = i.GetAlgorithm()
 				if err != nil {
 					return fmt.Errorf("error reading instance info: %w", err)
 				}
@@ -98,13 +106,12 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 
 func InstanceStop(ctx context.Context, message stream.Message) error {
 	instance := st.InstanceStopCommand{}
-	container := message.MustGet(dependency.ContainerDep).(container.Container)
-
 	err := message.ParsePayload(&instance)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling InstanceStop payload: %w", err)
 	}
 
+	container := message.MustGet(dependency.ContainerDep).(container.Container)
 	err = container.Stop(ctx, instance.ID, true)
 	if err != nil {
 		return err

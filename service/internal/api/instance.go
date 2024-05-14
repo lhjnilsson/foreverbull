@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
+	"github.com/lhjnilsson/foreverbull/service/api"
 	"github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/internal/repository"
 	"github.com/rs/zerolog/log"
@@ -111,5 +112,99 @@ func PatchInstance(c *gin.Context) {
 		return
 	}
 	log.Info().Str("id", uri.InstanceID).Msg("updated instance")
+	c.JSON(http.StatusOK, instance)
+}
+
+func ConfigureInstance(c *gin.Context) {
+	var uri instanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		log.Debug().Err(err).Msg("error binding uri")
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	var request api.ConfigureInstanceRequest
+	err := c.ShouldBindJSON(&request)
+	if err != nil {
+		log.Debug().Err(err).Msg("error binding request")
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
+	repository_i := repository.Instance{Conn: pgx_tx}
+
+	err = repository_i.UpdateBrokerPort(c, uri.InstanceID, request.BrokerPort)
+	if err != nil {
+		log.Err(err).Msg("error updating instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	err = repository_i.UpdateNamespacePort(c, uri.InstanceID, request.NamespacePort)
+	if err != nil {
+		log.Err(err).Msg("error updating instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	err = repository_i.UpdateDatabaseURL(c, uri.InstanceID, request.DatabaseURL)
+	if err != nil {
+		log.Err(err).Msg("error updating instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	err = repository_i.UpdateFunctions(c, uri.InstanceID, &request.Functions)
+	if err != nil {
+		log.Err(err).Msg("error updating instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	instance, err := repository_i.Get(c, uri.InstanceID)
+	if err != nil {
+		log.Err(err).Msg("error getting instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	err = instance.Configure()
+	if err != nil {
+		log.Err(err).Msg("error configuring instance")
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	log.Info().Str("id", uri.InstanceID).Msg("instance configured")
+	c.JSON(http.StatusOK, instance)
+}
+
+func StopInstance(c *gin.Context) {
+	var uri instanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		log.Debug().Err(err).Msg("error binding uri")
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
+	repository_i := repository.Instance{Conn: pgx_tx}
+
+	instance, err := repository_i.Get(c, uri.InstanceID)
+	if err != nil {
+		log.Err(err).Msg("error getting instance")
+		c.JSON(internalHTTP.DatabaseError(err))
+		return
+	}
+
+	err = instance.Stop()
+	if err != nil {
+		log.Err(err).Msg("error stopping instance")
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	log.Info().Str("id", uri.InstanceID).Msg("instance stopped")
 	c.JSON(http.StatusOK, instance)
 }

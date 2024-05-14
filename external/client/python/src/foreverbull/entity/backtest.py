@@ -2,10 +2,7 @@ import enum
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import field_serializer
-
-from .base import Base
-from .service import Parameter
+import pydantic
 
 
 class BacktestStatusType(str, enum.Enum):
@@ -16,13 +13,13 @@ class BacktestStatusType(str, enum.Enum):
     ERROR = "ERROR"
 
 
-class BacktestStatus(Base):
+class BacktestStatus(pydantic.BaseModel):
     status: BacktestStatusType
     error: str | None = None
     occurred_at: datetime
 
 
-class Backtest(Base):
+class Backtest(pydantic.BaseModel):
     name: str
     service: Optional[str] = None
     calendar: str = "XNYS"
@@ -38,13 +35,13 @@ class Backtest(Base):
 
     sessions: int | None = None
 
-    @field_serializer("start")
+    @pydantic.field_serializer("start")
     def start_iso(self, start: datetime, _info):
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         return start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    @field_serializer("end")
+    @pydantic.field_serializer("end")
     def end_iso(self, end: datetime, _info):
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
@@ -58,13 +55,13 @@ class SessionStatusType(str, enum.Enum):
     FAILED = "FAILED"
 
 
-class SessionStatus(Base):
+class SessionStatus(pydantic.BaseModel):
     status: SessionStatusType
     error: str | None = None
     occurred_at: datetime
 
 
-class Session(Base):
+class Session(pydantic.BaseModel):
     id: Optional[str] = None
     backtest: str
     manual: bool = False
@@ -82,13 +79,13 @@ class ExecutionStatusType(str, enum.Enum):
     FAILED = "FAILED"
 
 
-class ExecutionStatus(Base):
+class ExecutionStatus(pydantic.BaseModel):
     status: ExecutionStatusType
     error: str | None = None
     occurred_at: datetime
 
 
-class Execution(Base):
+class Execution(pydantic.BaseModel):
     id: Optional[str] = None
     calendar: str = "XNYS"
     start: Optional[datetime] = None
@@ -96,14 +93,10 @@ class Execution(Base):
     benchmark: Optional[str] = None
     symbols: Optional[List[str]] = None
     capital_base: int = 100000
-    database: Optional[str] = None
-    parameters: Optional[List[Parameter]] = []
 
     statuses: List[ExecutionStatus] = []
 
-    port: int | None = None
-
-    @field_serializer("start")
+    @pydantic.field_serializer("start")
     def start_iso(self, start: datetime, _info):
         if start is None:
             return None
@@ -112,7 +105,7 @@ class Execution(Base):
             start = start.replace(tzinfo=timezone.utc)
         return start.isoformat()
 
-    @field_serializer("end")
+    @pydantic.field_serializer("end")
     def end_iso(self, end: datetime, _info):
         if end is None:
             return None

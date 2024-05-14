@@ -1,3 +1,5 @@
+import socket as _socket
+
 import requests
 
 from foreverbull import entity
@@ -40,9 +42,18 @@ def list_instances(image: str = None) -> requests.Request:
 
 
 @api_call(response_model=entity.service.Instance)
-def update_instance(container_id: str, socket: entity.service.SocketConfig = None) -> requests.Request:
+def update_instance(container_id: str, online: bool) -> requests.Request:
+    if online:
+        socket_config = entity.service.SocketConfig(
+            hostname=_socket.gethostbyname(_socket.gethostname()),
+            port=5555,
+            socket_type=entity.service.SocketConfig.SocketType.REPLIER,
+            listen=True,
+        )
+    else:
+        socket_config = None
     return requests.Request(
         method="PATCH",
         url=f"/service/api/instances/{container_id}",
-        json={**socket.model_dump()} if socket else {},
+        json={**socket_config.model_dump()} if socket_config else {},
     )

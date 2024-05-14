@@ -10,7 +10,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.21
+          go-version: 1.22
       - name: Build
         run: go build -v ./...
       - name: Test
@@ -25,7 +25,7 @@ jobs:
     defaults:
       run:
         working-directory: ./external/client/python
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -72,22 +72,38 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           file: ./docker/Dockerfile
-          tags: lhjnilsson/foreverbull:latest
+          tags: lhjnilsson/foreverbull:on_commit
           outputs: type=docker,dest=/tmp/foreverbull.tar
-      - name: Build Example
+      - name: Build Parallel Example
         uses: docker/build-push-action@v2
         with:
           context: external/client/python
           file: ./external/client/python/Dockerfile
-          build-args: ALGO_FILE=example.py
-          tags: lhjnilsson/client:latest
-          outputs: type=docker,dest=/tmp/client.tar
+          build-args: ALGO_FILE=examples/parallel.py
+          tags: lhjnilsson/parallel-example:on_commit
+          outputs: type=docker,dest=/tmp/parallel_example.tar
+      - name: Build Non-Parallel Example
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/non_parallel.py
+          tags: lhjnilsson/non-parallel-example:on_commit
+          outputs: type=docker,dest=/tmp/non_parallel_example.tar
+      - name: Build Multistep with Namespace
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/multistep_with_namespace.py
+          tags: lhjnilsson/multistep-with-namespace-example:on_commit
+          outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
           context: external/client/python
           file: ./external/client/python/zipline.Dockerfile
-          tags: lhjnilsson/zipline:latest
+          tags: lhjnilsson/zipline:on_commit
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload foreverbull
         uses: actions/upload-artifact@v2
@@ -95,11 +111,23 @@ jobs:
           name: foreverbull
           path: /tmp/foreverbull.tar
           retention-days: 1
-      - name: Upload client
+      - name: Upload parallel_example
         uses: actions/upload-artifact@v2
         with:
-          name: client
-          path: /tmp/client.tar
+          name: parallel_example
+          path: /tmp/parallel_example.tar
+          retention-days: 1
+      - name: Upload non_parallel_example
+        uses: actions/upload-artifact@v2
+        with:
+          name: non_parallel_example
+          path: /tmp/non_parallel_example.tar
+          retention-days: 1
+      - name: Upload multistep with namespace
+        uses: actions/upload-artifact@v2
+        with:
+          name: multistep_with_namespace
+          path: /tmp/multistep_with_namespace.tar
           retention-days: 1
       - name: Upload zipline
         uses: actions/upload-artifact@v2
@@ -116,37 +144,49 @@ jobs:
       - uses: actions/checkout@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      - name: Download client
+      - name: Download Parallel Example
         uses: actions/download-artifact@v2
         with:
-          name: client
+          name: parallel_example
+          path: /tmp
+      - name: Download Non-Parallel Example
+        uses: actions/download-artifact@v2
+        with:
+          name: non_parallel_example
+          path: /tmp
+      - name: Download multistep with namespace
+        uses: actions/download-artifact@v2
+        with:
+          name: multistep_with_namespace
           path: /tmp
       - name: Download zipline
         uses: actions/download-artifact@v2
         with:
           name: zipline
           path: /tmp
-      - name: Load client
-        run: docker load -i /tmp/client.tar
+      - name: Load Parallel Example
+        run: docker load -i /tmp/parallel_example.tar
+      - name: Load Non-Parallel Example
+        run: docker load -i /tmp/non_parallel_example.tar
+      - name: Load Multistep with Namespace
+        run: docker load -i /tmp/multistep_with_namespace.tar
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.20.4
-
+          go-version: 1.22
       - name: Integration Tests
         run: CONFIG_PATH=${PWD} go test -timeout 300s -run TestModule  ./... -p 1
         env:
           ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
           ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
           ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          WORKER_IMAGE: lhjnilsson/client:latest
-          BACKTEST_IMAGE: lhjnilsson/zipline:latest
+          IMAGES: lhjnilsson/parallel-example:on_commit,lhjnilsson/non-parallel-example:on_commit,lhjnilsson/multistep-with-namespace-example:on_commit
+          BACKTEST_IMAGE: lhjnilsson/zipline:on_commit
           HOSTNAME: host.docker.internal
           LOG_LEVEL: info
           DISABLE_LOKI_LOGGING: true
-
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
@@ -186,18 +226,16 @@ jobs:
         with:
           name: foreverbull
           path: /tmp
-      - name: Download client
+      - name: Download foreverbull
         uses: actions/download-artifact@v2
         with:
-          name: client
+          name: foreverbull
           path: /tmp
       - name: Download zipline
         uses: actions/download-artifact@v2
         with:
           name: zipline
           path: /tmp
-      - name: Load client
-        run: docker load -i /tmp/client.tar
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: load foreverbull
@@ -212,11 +250,14 @@ jobs:
           python -m pip install pytest
       - name: Create environment
         run: |
-          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:latest --backtest-image lhjnilsson/zipline:latest
+          foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
       - name: create backtest
         run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
         run: |
-          python -m pytest example_test.py --backtest=github_action_test
+          python -m pytest examples/ --backtest=github_action_test
+      - name: Sleep for 20 seconds to make all containers stop
+        run: sleep 20s
+        shell: bash
       - name: Stop Environment
         run: foreverbull env stop

@@ -17,7 +17,7 @@ func AddService(t *testing.T, conn *pgxpool.Pool, image string) string {
 	return service.Image
 }
 
-func AddInstance(t *testing.T, conn *pgxpool.Pool, image string) string {
+func AddInstance(t *testing.T, conn *pgxpool.Pool, image *string) string {
 	repository := repository.Instance{Conn: conn}
 	instance, err := repository.Create(context.Background(), uuid.New().String(), image)
 	assert.Nil(t, err)

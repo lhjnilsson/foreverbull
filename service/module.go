@@ -73,6 +73,8 @@ var Module = fx.Options(
 			serviceAPI.GET("/instances", api.ListInstances)
 			serviceAPI.GET("/instances/:instanceID", api.GetInstance)
 			serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
+			serviceAPI.POST("/instances/:instanceID/configure", api.ConfigureInstance)
+			serviceAPI.POST("/instances/:instanceID/stop", api.StopInstance)
 
 			serviceAPI.GET("/images/*name", api.GetImage)
 			serviceAPI.POST("/images/*name", api.PullImage)

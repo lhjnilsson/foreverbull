@@ -31,25 +31,25 @@ type NanomsgSocket struct {
 	Dial        bool          `json:"dial"`
 	Listen      bool          `json:"listen"`
 	RecvTimeout int           `json:"recv_timeout"`
-	SEndout     int           `json:"sendout"`
+	SendTimeout int           `json:"send_timeout"`
 }
 
-func (s *NanomsgSocket) listenToFreePort() error {
+func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 	var err error
 
 	for i := environment.GetBacktestPortRangeStart(); i <= environment.GetBacktestPortRangeEnd(); i++ {
-		s.Port = i
-		err = s.socket.Listen(fmt.Sprintf("tcp://%v:%v", s.Host, s.Port))
+		port := i
+		err = socket.Listen(fmt.Sprintf("tcp://%v:%v", host, port))
 		if err == nil {
-			return nil
+			return port, nil
 		}
 		if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
 			log.Debug().Msgf("Port %v already in use, trying next port", i)
 			continue
 		}
-		return err
+		return 0, fmt.Errorf("error listening to port %v: %v", i, err)
 	}
-	return errors.New("no free ports in range")
+	return 0, errors.New("no free ports in range")
 }
 
 /*
@@ -81,15 +81,15 @@ func (s *NanomsgSocket) Connect() error {
 	if s.RecvTimeout == 0 {
 		s.RecvTimeout = 10 // default to 10 seconds
 	}
-	if s.SEndout == 0 {
-		s.SEndout = 10 // default to 10 seconds
+	if s.SendTimeout == 0 {
+		s.SendTimeout = 10 // default to 10 seconds
 	}
 	if s.SocketType != "Publisher" && s.SocketType != "Subscriber" {
 		err = s.socket.SetOption(mangos.OptionRecvDeadline, time.Second*time.Duration(s.RecvTimeout))
 		if err != nil {
 			return fmt.Errorf("error setting recv timeout: %v", err)
 		}
-		err = s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+		err = s.socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SendTimeout))
 		if err != nil {
 			return fmt.Errorf("error setting send timeout: %v", err)
 		}
@@ -105,7 +105,7 @@ func (s *NanomsgSocket) Connect() error {
 		}
 	} else if s.Listen {
 		if s.Port == 0 {
-			err = s.listenToFreePort()
+			s.Port, err = ListenToFreePort(s.socket, s.Host)
 		} else {
 			err = s.socket.Listen(fmt.Sprintf("tcp://%v:%v", s.Host, s.Port))
 		}
@@ -134,7 +134,7 @@ func (s *NanomsgSocket) Get() (ReadWriter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error setting recv timeout: %v", err)
 	}
-	err = socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SEndout))
+	err = socket.SetOption(mangos.OptionSendDeadline, time.Second*time.Duration(s.SendTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("error setting send timeout: %v", err)
 	}
