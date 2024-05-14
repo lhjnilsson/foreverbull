@@ -261,9 +261,10 @@ func (test *ServiceModuleTest) TestCreateService() {
 			test.NoError(err)
 
 			configRequest := api.ConfigureInstanceRequest{
-				BrokerPort:  wPool.GetPort(),
-				DatabaseURL: environment.GetPostgresURL(),
-				Functions:   functions,
+				BrokerPort:    wPool.GetPort(),
+				NamespacePort: wPool.GetNamespacePort(),
+				DatabaseURL:   environment.GetPostgresURL(),
+				Functions:     functions,
 			}
 
 			instance, err := client.ConfigureInstance(context.Background(), instanceID, &configRequest)
