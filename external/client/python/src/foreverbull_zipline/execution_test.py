@@ -60,9 +60,9 @@ def test_info(execution_socket: pynng.Rep0):
 def test_ingest(
     database,
     execution_socket: pynng.Rep0,
-    ingest_config,
+    backtest_entity,
 ):
-    execution_socket.send(Request(task="ingest", data=ingest_config).serialize())
+    execution_socket.send(Request(task="ingest", data=backtest_entity).serialize())
     response = Response.deserialize(execution_socket.recv())
     assert response.task == "ingest"
     assert response.error is None
@@ -117,7 +117,7 @@ def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, bench
         datetime(2023, 4, 30, tzinfo=timezone.utc),
     ],
 )
-def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, ingest_config, start, end):
+def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, backtest_entity, start, end):
     execution_socket.send(Request(task="info").serialize())
     Response.deserialize(execution_socket.recv())
 
@@ -135,17 +135,17 @@ def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, inges
     assert response.error is None
 
     if start is None:
-        assert execution.start == ingest_config.start
-    elif start < ingest_config.start:
-        assert execution.start == ingest_config.start
-    elif start > ingest_config.start:
+        assert execution.start == backtest_entity.start
+    elif start < backtest_entity.start:
+        assert execution.start == backtest_entity.start
+    elif start > backtest_entity.start:
         assert execution.start == start
 
     if end is None:
-        assert execution.end == ingest_config.end
-    elif end > ingest_config.end:
-        assert execution.end == ingest_config.end
-    elif end < ingest_config.end:
+        assert execution.end == backtest_entity.end
+    elif end > backtest_entity.end:
+        assert execution.end == backtest_entity.end
+    elif end < backtest_entity.end:
         assert execution.end == end
 
     while True:

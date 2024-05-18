@@ -11,13 +11,6 @@ class Asset(Base):
     symbol: str
 
 
-class IngestConfig(Base):
-    calendar: Optional[str] = None
-    start: Optional[datetime] = None
-    end: Optional[datetime] = None
-    symbols: List[str] = []
-
-
 class Position(Base):
     symbol: str
     amount: int
