@@ -123,6 +123,8 @@ class Session(threading.Thread):
                     case "stop":
                         ctx.send(socket.Response(task="stop").serialize())
                         break
+                    case _:
+                        ctx.send(socket.Response(task=req.task, error="Unknown task").serialize())
             except pynng.exceptions.Timeout:
                 pass
             except Exception as e:

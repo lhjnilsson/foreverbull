@@ -53,7 +53,7 @@ def namespace_server():
 def test_asset(database, backtest_entity):
     with database.connect() as conn:
         for symbol in backtest_entity.symbols:
-            asset = Asset(datetime.now(), conn, symbol)
+            asset = Asset(backtest_entity.end, conn, symbol)
             assert asset is not None
             assert asset.symbol == symbol
             stock_data = asset.stock_data
