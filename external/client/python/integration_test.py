@@ -24,7 +24,7 @@ def execution() -> entity.backtest.Execution:
     return entity.backtest.Execution(
         calendar="XNYS",
         start=datetime(2022, 1, 3, tzinfo=timezone.utc),
-        end=datetime(2022, 12, 29, tzinfo=timezone.utc),
+        end=datetime(2023, 12, 29, tzinfo=timezone.utc),
         benchmark=None,
         # Top 25 largest companies on sp500
         symbols=[
@@ -53,7 +53,7 @@ def execution() -> entity.backtest.Execution:
             "V",
             "VZ",
             "WMT",
-        ][:5],
+        ],
         capital_base=100000,
     )
 
@@ -94,7 +94,7 @@ def foreverbull_bundle(execution, database):
         execution._ingest(backtest_entity)
 
 
-def initialize(context):
+def baseline_performance_initialize(context):
     context.i = 0
     context.held_positions = []
 
@@ -129,7 +129,7 @@ def baseline_performance(foreverbull_bundle, execution):
 
     trading_calendar = get_calendar("XNYS")
     _run(
-        initialize=initialize,
+        initialize=baseline_performance_initialize,
         handle_data=partial(baseline_performance_handle_data, execution=execution),
         before_trading_start=None,
         analyze=None,
@@ -154,10 +154,6 @@ def baseline_performance(foreverbull_bundle, execution):
     )
 
     return pd.read_pickle("baseline_performance.pickle").reset_index(drop=True)
-
-
-def test_baseline(baseline_performance):
-    print(baseline_performance["portfolio_value"])
 
 
 @pytest.fixture(scope="session")

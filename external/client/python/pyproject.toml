@@ -18,6 +18,7 @@ dependencies = [
   "cython>=3.0.0,<4.0",
   "docker>=7.0.0,<8.0.0",
   "pandas-datareader@git+https://github.com/pydata/pandas-datareader.git",
+  "requests<2.32.0",
 ]
 dynamic = ["version"]
 

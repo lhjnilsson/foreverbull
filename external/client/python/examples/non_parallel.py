@@ -5,14 +5,15 @@ def handle_data(assets: Assets, portfolio: Portfolio) -> Order:
     orders = []
     for asset in assets:
         stock_data = asset.stock_data
+        position = portfolio.get_position(asset)
         if len(stock_data) < 30:
             return None
-        short_rolling = stock_data["close"].tail(10).mean()
-        long_rolling = stock_data["close"].tail(30).mean()
-        if short_rolling.iloc[-1] > long_rolling.iloc[-1]:
+        short_mean = stock_data["close"].tail(10).mean()
+        long_mean = stock_data["close"].tail(30).mean()
+        if short_mean > long_mean and position is None:
             orders.append(Order(symbol=asset.symbol, amount=10))
-        elif short_rolling.iloc[-1] < long_rolling.iloc[-1]:
-            orders.append(Order(symbol=asset.symbol, amount=-10))
+        elif short_mean < long_mean and position is not None:
+            orders.append(Order(symbol=asset.symbol, amount=-position.amount))
     return orders
 
 
