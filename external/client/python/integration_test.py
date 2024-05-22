@@ -20,7 +20,7 @@ from foreverbull_zipline.execution import Execution
 
 
 @pytest.fixture(scope="session")
-def execution() -> entity.backtest.Execution:
+def execution(spawn_process) -> entity.backtest.Execution:
     return entity.backtest.Execution(
         calendar="XNYS",
         start=datetime(2022, 1, 3, tzinfo=timezone.utc),
