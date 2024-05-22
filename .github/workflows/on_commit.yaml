@@ -59,6 +59,9 @@ jobs:
       - name: Unittest
         run: |
           python -m hatch run dev:test
+      - name: Integration test
+        run: |
+          python -m hatch run dev:integration_test
 
   build-docker-containers:
     runs-on: ubuntu-latest
