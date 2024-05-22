@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 )
 
 type automatedSession struct {
 	session session `json:"-"`
 
-	backtest backtest.Backtest `json:"-"`
-	workers  worker.Pool       `json:"-"`
+	backtest engine.Engine `json:"-"`
+	workers  worker.Pool   `json:"-"`
 
 	executions *[]entity.Execution `json:"-"`
 }
@@ -21,24 +21,12 @@ type automatedSession struct {
 func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 	for _, execution := range *as.executions {
 		exec := NewExecution(as.backtest, as.workers)
-		backtestCfg := &backtest.BacktestConfig{
-			Calendar: &execution.Calendar,
-			Start:    &execution.Start,
-			End:      &execution.End,
-			Timezone: func() *string {
-				tz := "UTC"
-				return &tz
-			}(),
-			Benchmark: execution.Benchmark,
-			Symbols:   &execution.Symbols,
-		}
-
-		err := exec.Configure(context.Background(), backtestCfg)
+		err := exec.Configure(context.Background(), &execution)
 		if err != nil {
 			return fmt.Errorf("failed to configure execution: %w", err)
 		}
 
-		err = as.session.executions.UpdateSimulationDetails(context.Background(), execution.ID, *backtestCfg.Calendar, *backtestCfg.Start, *backtestCfg.End, backtestCfg.Benchmark, *backtestCfg.Symbols)
+		err = as.session.executions.UpdateSimulationDetails(context.Background(), &execution)
 		if err != nil {
 			return fmt.Errorf("failed to update execution simulation details: %w", err)
 		}

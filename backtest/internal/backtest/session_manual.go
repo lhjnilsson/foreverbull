@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
@@ -19,8 +19,8 @@ import (
 type manualSession struct {
 	session session `json:"-"`
 
-	backtest backtest.Backtest `json:"-"`
-	workers  worker.Pool       `json:"-"`
+	backtest engine.Engine `json:"-"`
+	workers  worker.Pool   `json:"-"`
 
 	Socket socket.Socket        `json:"-"`
 	socket socket.ContextSocket `json:"-"`
@@ -110,18 +110,7 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			}
 			rsp.Data = &instance
 		case "run_execution":
-			backtestCfg := backtest.BacktestConfig{
-				Calendar: &ms.executionEntity.Calendar,
-				Start:    &ms.executionEntity.Start,
-				End:      &ms.executionEntity.End,
-				Timezone: func() *string {
-					tz := "UTC"
-					return &tz
-				}(),
-				Benchmark: ms.executionEntity.Benchmark,
-				Symbols:   &ms.executionEntity.Symbols,
-			}
-			err = ms.execution.Configure(context.Background(), &backtestCfg)
+			err = ms.execution.Configure(context.Background(), ms.executionEntity)
 			if err != nil {
 				return fmt.Errorf("failed to configure execution: %w", err)
 			}

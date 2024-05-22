@@ -1,8 +1,10 @@
-package backtest
+package engine
 
 import (
 	"context"
 	"time"
+
+	"github.com/lhjnilsson/foreverbull/backtest/entity"
 )
 
 type OrderStatus int
@@ -27,27 +29,6 @@ type Position struct {
 	CostBasis     float64   `json:"cost_basis" mapstructure:"cost_basis"`
 	LastSalePrice float64   `json:"last_price" mapstructure:"last_sale_price"`
 	LastSaleDate  time.Time `json:"last_sale_date" mapstructure:"last_sale_date"`
-}
-
-type IngestConfig struct {
-	Calendar string    `json:"calendar" mapstructure:"calendar"`
-	Start    time.Time `json:"start" mapstructure:"start"`
-	End      time.Time `json:"end" mapstructure:"end"`
-	Symbols  []string  `json:"symbols" mapstructure:"symbols"`
-	Database string    `json:"database" mapstructure:"database"`
-}
-
-type BacktestConfig struct {
-	Calendar  *string    `json:"calendar" mapstructure:"calendar"`
-	Start     *time.Time `json:"start" mapstructure:"start"`
-	End       *time.Time `json:"end" mapstructure:"end"`
-	Timezone  *string    `json:"timezone" mapstructure:"timezone"`
-	Benchmark *string    `json:"benchmark" mapstructure:"benchmark"`
-	Symbols   *[]string  `json:"symbols" mapstructure:"symbols"`
-}
-
-type Execution struct {
-	Execution string `json:"execution" mapstructure:"execution"`
 }
 
 type Period struct {
@@ -107,15 +88,15 @@ type Result struct {
 	} `json:"periods" mapstructure:"periods"`
 }
 
-type Backtest interface {
-	Ingest(context.Context, *IngestConfig) error
+type Engine interface {
+	Ingest(context.Context, *entity.Backtest) error
 	UploadIngestion(context.Context, string) error
 	DownloadIngestion(context.Context, string) error
-	ConfigureExecution(context.Context, *BacktestConfig) error
+	ConfigureExecution(context.Context, *entity.Execution) error
 	RunExecution(context.Context) error
 	GetMessage() (*Period, error)
 	Continue() error
-	GetExecutionResult(execution *Execution) (*Result, error)
+	GetExecutionResult(executionID string) (*Result, error)
 	Stop(context.Context) error
 
 	Order(*Order) (*Order, error)

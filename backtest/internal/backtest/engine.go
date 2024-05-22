@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lhjnilsson/foreverbull/service/entity"
+	"github.com/lhjnilsson/foreverbull/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/backtest/entity"
+	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/message"
 	"github.com/lhjnilsson/foreverbull/service/socket"
 )
@@ -14,7 +16,7 @@ import (
 NewZiplineEngine
 Returns a Zipline backtest engine
 */
-func NewZiplineEngine(ctx context.Context, service *entity.Instance) (Backtest, error) {
+func NewZiplineEngine(ctx context.Context, service *service.Instance) (engine.Engine, error) {
 	z := Zipline{}
 	s, err := service.GetSocket()
 	if err != nil {
@@ -41,14 +43,14 @@ type Zipline struct {
 	Running             bool                 `json:"running"`
 }
 
-func (z *Zipline) Ingest(ctx context.Context, config *IngestConfig) error {
+func (z *Zipline) Ingest(ctx context.Context, backtest *entity.Backtest) error {
 	sock, err := z.socket.Get()
 	if err != nil {
 		return fmt.Errorf("error opening context: %w", err)
 	}
 	defer sock.Close()
 
-	req := message.Request{Task: "ingest", Data: config}
+	req := message.Request{Task: "ingest", Data: backtest}
 	rsp, err := req.Process(sock)
 	if err != nil {
 		return fmt.Errorf("error ingesting: %w", err)
@@ -56,7 +58,7 @@ func (z *Zipline) Ingest(ctx context.Context, config *IngestConfig) error {
 	if len(rsp.Error) > 0 {
 		return errors.New(rsp.Error)
 	}
-	if err := rsp.DecodeData(config); err != nil {
+	if err := rsp.DecodeData(backtest); err != nil {
 		return fmt.Errorf("error decoding data: %w", err)
 	}
 	return nil
@@ -98,7 +100,7 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, ingestion_name string) 
 	return nil
 }
 
-func (z *Zipline) ConfigureExecution(ctx context.Context, config *BacktestConfig) error {
+func (z *Zipline) ConfigureExecution(ctx context.Context, execution *entity.Execution) error {
 	socket, err := z.socket.Get()
 	if err != nil {
 		return fmt.Errorf("error getting socket for instance: %w", err)
@@ -106,12 +108,12 @@ func (z *Zipline) ConfigureExecution(ctx context.Context, config *BacktestConfig
 	defer socket.Close()
 
 	var rsp *message.Response
-	req := message.Request{Task: "configure_execution", Data: config}
+	req := message.Request{Task: "configure_execution", Data: execution}
 	rsp, err = req.Process(socket)
 	if err != nil {
 		return fmt.Errorf("error configuring: %w", err)
 	}
-	return rsp.DecodeData(config)
+	return rsp.DecodeData(execution)
 }
 
 /*
@@ -137,7 +139,7 @@ func (z *Zipline) RunExecution(ctx context.Context) error {
 GetMessage
 Returns feed message from a running execution
 */
-func (z *Zipline) GetMessage() (*Period, error) {
+func (z *Zipline) GetMessage() (*engine.Period, error) {
 	if !z.Running {
 		return nil, errors.New("backtest engine is not running")
 	}
@@ -155,7 +157,7 @@ func (z *Zipline) GetMessage() (*Period, error) {
 	if rsp.Data == nil {
 		return nil, nil
 	}
-	period := Period{}
+	period := engine.Period{}
 	if err = rsp.DecodeData(&period); err != nil {
 		return nil, fmt.Errorf("error decoding period- data: %w", err)
 	}
@@ -186,10 +188,13 @@ Gets the result of the execution
 
 TODO: How to use bigger buffer in req.Process fashion? or how to send result in batches
 */
-func (z *Zipline) GetExecutionResult(execution *Execution) (*Result, error) {
+func (z *Zipline) GetExecutionResult(executionID string) (*engine.Result, error) {
 	var err error
 	var data []byte
 	var rspData []byte
+	execution := map[string]string{
+		"execution": executionID,
+	}
 
 	rsp := message.Response{}
 	req := message.Request{Task: "upload_result", Data: execution}
@@ -241,7 +246,7 @@ func (z *Zipline) GetExecutionResult(execution *Execution) (*Result, error) {
 	if rsp.HasError() {
 		return nil, fmt.Errorf("GetResult from zipline backtest: %v", rsp.Error)
 	}
-	var result Result
+	var result engine.Result
 	if err = rsp.DecodeData(&result); err != nil {
 		return nil, fmt.Errorf("GetResult decoding data: %v", err)
 	}
@@ -252,7 +257,7 @@ func (z *Zipline) GetExecutionResult(execution *Execution) (*Result, error) {
 Order
 places a new order, can be positive or negative value for long or short
 */
-func (b *Zipline) Order(order *Order) (*Order, error) {
+func (b *Zipline) Order(order *engine.Order) (*engine.Order, error) {
 	ctxSock, err := b.socket.Get()
 	if err != nil {
 		return nil, fmt.Errorf("error opening context socket: %w", err)
@@ -274,7 +279,7 @@ func (b *Zipline) Order(order *Order) (*Order, error) {
 GetOrder
 Get information about an order, if its filled or not
 */
-func (b *Zipline) GetOrder(order *Order) (*Order, error) {
+func (b *Zipline) GetOrder(order *engine.Order) (*engine.Order, error) {
 	ctxSock, err := b.socket.Get()
 	if err != nil {
 		return nil, fmt.Errorf("error opening context socket: %w", err)
@@ -286,7 +291,7 @@ func (b *Zipline) GetOrder(order *Order) (*Order, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error processing order: %w", err)
 	}
-	newOrder := Order{}
+	newOrder := engine.Order{}
 	if err = rsp.DecodeData(&newOrder); err != nil {
 		return nil, fmt.Errorf("error decoding order- data: %w", err)
 	}
@@ -297,7 +302,7 @@ func (b *Zipline) GetOrder(order *Order) (*Order, error) {
 CancelOrder
 Cancels an order being placed
 */
-func (b *Zipline) CancelOrder(order *Order) error {
+func (b *Zipline) CancelOrder(order *engine.Order) error {
 	ctxSock, err := b.socket.Get()
 	if err != nil {
 		return fmt.Errorf("error opening context socket: %w", err)

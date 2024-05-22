@@ -5,9 +5,8 @@ import (
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
-	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest"
+	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/engine"
 	mockWorker "github.com/lhjnilsson/foreverbull/tests/mocks/service/worker"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -15,13 +14,13 @@ import (
 
 type ExecutionTest struct {
 	suite.Suite
-	backtest  *mockBacktest.Backtest
+	backtest  *mockEngine.Engine
 	workers   *mockWorker.Pool
 	execution *execution
 }
 
 func (test *ExecutionTest) SetupTest() {
-	test.backtest = new(mockBacktest.Backtest)
+	test.backtest = new(mockEngine.Engine)
 	test.workers = new(mockWorker.Pool)
 	test.execution = NewExecution(test.backtest, test.workers).(*execution)
 }
@@ -32,12 +31,12 @@ func TestExecution(t *testing.T) {
 
 func (test *ExecutionTest) TestConfigure() {
 	workercfg := &service.Instance{}
-	backtestcfg := &backtest.BacktestConfig{}
+	execution := &entity.Execution{}
 
-	test.backtest.On("ConfigureExecution", mock.Anything, backtestcfg).Return(nil)
+	test.backtest.On("ConfigureExecution", mock.Anything, execution).Return(nil)
 	test.workers.On("ConfigureExecution", mock.Anything, workercfg).Return(nil)
 
-	err := test.execution.Configure(context.TODO(), backtestcfg)
+	err := test.execution.Configure(context.TODO(), execution)
 	test.Nil(err)
 }
 
