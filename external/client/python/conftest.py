@@ -97,15 +97,12 @@ def populate_database():
             for symbol in backtest.symbols:
                 feed = yfinance.Ticker(symbol)
                 info = feed.info
-                try:
-                    asset = entity.finance.Asset(
-                        symbol=info["symbol"],
-                        name=info["longName"],
-                        title=info["shortName"],
-                        asset_type=info["quoteType"],
-                    )
-                except KeyError:
-                    print("INFO: ", info)
+                asset = entity.finance.Asset(
+                    symbol=info["symbol"],
+                    name=info["longName"],
+                    title=info["shortName"],
+                    asset_type=info["quoteType"],
+                )
                 conn.execute(
                     text(
                         """INSERT INTO asset (symbol, name, title, asset_type) 
@@ -157,6 +154,5 @@ def database(backtest_entity: entity.backtest.Backtest, verify_database, populat
         Base.metadata.create_all(engine)
         os.environ["DATABASE_URL"] = postgres.get_connection_url()
         if not verify_database(engine, backtest_entity):
-            print("POPULATING DATABASE")
-        populate_database(engine, backtest_entity)
+            populate_database(engine, backtest_entity)
         yield engine
