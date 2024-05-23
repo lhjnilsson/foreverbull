@@ -286,6 +286,9 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         assert response.data is not None
         result = pd.DataFrame(response.data["periods"]).reset_index(drop=True)
         result = result.drop(columns=["timestamp"])
+        with open("result.json", "w") as f:
+            f.write(result.to_json())
+
         baseline_performance = baseline_performance[result.columns]
         assert baseline_performance.equals(result)
 
