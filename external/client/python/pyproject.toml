@@ -6,7 +6,7 @@ packages = [{ include = "foreverbull", from = "src" }]
 requires-python = ">=3.11.0,<3.12"
 dependencies = [
   "pydantic>=2.0.2,<3.0.0",
-  "pynng@git+https://github.com/codypiersall/pynng.git",
+  "pynng>=0.8.0,<1.0.0",
   "minio>=7.1.14,<8.0.0",
   "pandas>=2.0.3,<3.0.0",
   "requests>=2.26.0,<3.0.0",
@@ -17,8 +17,9 @@ dependencies = [
   "pyfolio-reloaded>=0.9.5,<1.0.0",
   "cython>=3.0.0,<4.0",
   "docker>=7.0.0,<8.0.0",
-  "pandas-datareader@git+https://github.com/pydata/pandas-datareader.git",
+  "pandas-datareader>=0.10.0,<1.0.0",
   "requests<2.32.0",
+  "tables<3.9.2",                     # seems like 3.9.3 cant run on mac arm64
 ]
 dynamic = ["version"]
 
@@ -48,7 +49,6 @@ dependencies = [
   "black>=21.7b0,<30",
   "isort>=5.9.3,<6.0.0",
   "pytest-cov>=3.0.0,<4.0.0",
-  "bcolz-zipline@git+https://github.com/stefan-jansen/bcolz-zipline.git",
   "zipline-reloaded>=3.0.0,<4.0.0",
   "ta-lib>=0.4.26,<0.5.0",
   "testcontainers[postgres]",
