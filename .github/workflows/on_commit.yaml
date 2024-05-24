@@ -64,11 +64,13 @@ jobs:
           python -m hatch run dev:integration_test
 
       - uses: actions/upload-artifact@master
+        if: always()
         with:
           name: baseline_performance.pickle
           path: baseline_performance.pickle
           retention-days: 1
       - uses: actions/upload-artifact@master
+        if: always()
         with:
           name: result.json
           path: result.json
