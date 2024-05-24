@@ -66,12 +66,12 @@ jobs:
       - uses: actions/upload-artifact@master
         with:
           name: baseline_performance.pickle
-          path: ./external/client/python/baseline_performance.pickle
+          path: ./baseline_performance.pickle
           retention-days: 1
       - uses: actions/upload-artifact@master
         with:
           name: result.json
-          path: ./external/client/python/result.json
+          path: ./result.json
           retention-days: 1
 
   build-docker-containers:
