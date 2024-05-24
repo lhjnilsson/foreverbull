@@ -60,7 +60,7 @@ lint = "ruff src/"
 lint_no_fix = "ruff --no-fix src/"
 format = "ruff format src/"
 test = "pytest src/"
-integration_test = "pytest integration_test.py"
+integration_test = "pytest integration_test.py -xvs"
 coverage = ""
 
 examples = "pytest examples/monkey --backtest test_name -xvvs"
