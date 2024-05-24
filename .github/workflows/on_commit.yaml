@@ -63,14 +63,12 @@ jobs:
         run: |
           python -m hatch run dev:integration_test
       - name: Baseline performance
-        if: failure()
         uses: actions/upload-artifact@master
         with:
           name: baseline_performance.pickle
           path: ./baseline_performance.pickle
           retention-days: 1
       - name: Upload result.json
-        if: failure()
         uses: actions/upload-artifact@master
         with:
           name: result.json
