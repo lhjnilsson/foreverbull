@@ -62,14 +62,13 @@ jobs:
       - name: Integration test
         run: |
           python -m hatch run dev:integration_test
-      - name: Baseline performance
-        uses: actions/upload-artifact@master
+
+      - uses: actions/upload-artifact@master
         with:
           name: baseline_performance.pickle
           path: ./external/client/python/baseline_performance.pickle
           retention-days: 1
-      - name: Upload result.json
-        uses: actions/upload-artifact@master
+      - uses: actions/upload-artifact@master
         with:
           name: result.json
           path: ./external/client/python/result.json
