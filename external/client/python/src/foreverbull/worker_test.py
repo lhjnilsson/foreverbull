@@ -23,7 +23,7 @@ def setup_worker():
     stop_event = Event()
 
     def setup(worker: worker.Worker, file_name):
-        w = worker(survey_address, state_address, stop_event, file_name)
+        w = worker(survey_address, state_address, None, stop_event, file_name)
         w.start()
         msg = state_socket.recv()
         assert msg == b"ready"
@@ -48,7 +48,7 @@ def test_configure_worker_exceptions(parallel_algo_file, instance, expected_erro
 
 
 def test_run_worker_unable_to_connect():
-    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", Event(), "test")
+    w = worker.Worker("ipc:///tmp/worker_pool.ipc", "ipc:///tmp/worker_pool_state.ipc", None, Event(), "test")
     exit_code = w.run()
     assert exit_code == 1
 
