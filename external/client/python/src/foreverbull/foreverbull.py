@@ -134,6 +134,18 @@ class Session(threading.Thread):
         sock.close()
 
 
+from multiprocessing import Queue
+
+
+def logging_thread(q: Queue):
+    while True:
+        record = q.get()
+        if record is None:
+            break
+        logger = logging.getLogger(record.name)
+        logger.handle(record)
+
+
 class Foreverbull:
     def __init__(self, file_path: str = None, executors=2):
         self._session = None
@@ -163,6 +175,9 @@ class Foreverbull:
         self._worker_states_socket = pynng.Sub0(listen=self._worker_states_address)
         self._worker_states_socket.subscribe(b"")
         self._worker_states_socket.recv_timeout = 30000
+        self._log_queue = Queue()
+        self._log_thread = threading.Thread(target=logging_thread, args=(self._log_queue,))
+        self._log_thread.start()
         self._stop_event = Event()
         self.logger.info("starting workers")
         for i in range(self._executors):
@@ -171,6 +186,7 @@ class Foreverbull:
                 w = worker.WorkerThread(
                     self._worker_surveyor_address,
                     self._worker_states_address,
+                    self._log_queue,
                     self._stop_event,
                     algo.get_entity().file_path,
                 )
@@ -178,6 +194,7 @@ class Foreverbull:
                 w = worker.WorkerProcess(
                     self._worker_surveyor_address,
                     self._worker_states_address,
+                    self._log_queue,
                     self._stop_event,
                     algo.get_entity().file_path,
                 )
@@ -208,7 +225,9 @@ class Foreverbull:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if not self._stop_event.is_set():
             self._stop_event.set()
+        self._log_queue.put_nowait(None)
         [worker.join() for worker in self._workers]
+        self._log_thread.join()
         self.logger.info("workers stopped")
         self._worker_surveyor_socket.close()
         self._worker_states_socket.close()

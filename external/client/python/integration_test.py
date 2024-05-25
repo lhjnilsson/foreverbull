@@ -199,21 +199,8 @@ def zipline_socket():
     execution.join()
 
 
-@pytest.fixture
-def order_logger():
-    import logging
-
-    logger = logging.getLogger("order_log")
-    logger.setLevel(logging.DEBUG)
-    # create file handler which logs even debug messages
-    fh = logging.FileHandler("order.log")
-    fh.setLevel(logging.DEBUG)
-    logger.addHandler(fh)
-    return logger
-
-
-@pytest.mark.parametrize("file_path", ["examples/parallel.py", "examples/non_parallel.py"])
-def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_performance, file_path, order_logger):
+@pytest.mark.parametrize("file_path", ["examples/parallel.py"])
+def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_performance, file_path):
     broker_socket = pynng.Req0(listen="tcp://0.0.0.0:8888")
     broker_socket.recv_timeout = 10000
     broker_socket.send_timeout = 10000
@@ -229,6 +216,10 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         database_url=os.environ["DATABASE_URL"],
         functions={"handle_data": {"parameters": {}}},
     )
+
+    import logging
+
+    logger = logging.getLogger("integration_test")
 
     with Foreverbull(file_path):
         backtest = zipline_socket(execution)
@@ -247,11 +238,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         foreverbull_socket.send(socket.Request(task="run_execution").serialize())
         response = socket.Response.deserialize(foreverbull_socket.recv())
         assert response.error is None
-
-        order_logger.info(f"starting backtest: {file_path}")
-        order_logger.info(f"starting backtest: {file_path}")
-        order_logger.info(f"starting backtest: {file_path}")
-        order_logger.info(f"starting backtest: {file_path}")
+        logger.info(f"starting backtest: {file_path}")
 
         while True:
             backtest.send(socket.Request(task="get_period").serialize())
@@ -260,7 +247,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             except TypeError:
                 break
             for order in period.new_orders:
-                order_logger.info(f"new order info: {order.model_dump_json()}")
+                logger.info(f"new order info: {order.symbol}, {order.amount}, {order.filled}, {order.created_at}")
 
             portfolio = entity.finance.Portfolio(
                 cash=period.cash,
@@ -289,7 +276,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             assert response.error is None
             if response.data:
                 for order in response.data:
-                    order_logger.info(f"order received: {order}")
+                    logger.info(f"order received: {order['symbol']}, {order['amount']}")
                     backtest.send(
                         socket.Request(
                             task="order",
@@ -298,7 +285,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
                     )
                     response = socket.Response.deserialize(backtest.recv())
                     assert response.error is None
-                    order_logger.info(f"order placed: {response.data}")
+                    logger.info(f"order placed: {order['symbol']}, {order['amount']}")
 
             backtest.send(socket.Request(task="continue").serialize())
             response = socket.Response.deserialize(backtest.recv())

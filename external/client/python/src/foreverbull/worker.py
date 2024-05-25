@@ -1,6 +1,7 @@
 import logging
+import logging.handlers
 import os
-from multiprocessing import Event, Process
+from multiprocessing import Event, Process, Queue
 from threading import Thread
 
 import pynng
@@ -11,14 +12,16 @@ from foreverbull.data import get_engine
 
 
 class Worker:
-    def __init__(self, survey_address: str, state_address: str, stop_event: Event, file_path: str):
+    def __init__(
+        self, survey_address: str, state_address: str, logging_queue: Queue, stop_event: Event, file_path: str
+    ):
         self._survey_address = survey_address
         self._state_address = state_address
+        self._logging_queue = logging_queue
         self._stop_event = stop_event
         self._database = None
         self._file_path = file_path
         self._parallel = False
-        self.logger = logging.getLogger(__name__)
         super(Worker, self).__init__()
 
     @staticmethod
@@ -63,6 +66,10 @@ class Worker:
         self.logger.info("worker configured correctly")
 
     def run(self):
+        if self._logging_queue:
+            handler = logging.handlers.QueueHandler(self._logging_queue)
+            logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+        self.logger = logging.getLogger(__name__)
         try:
             responder = pynng.Respondent0(dial=self._survey_address, block_on_dial=True)
             responder.send_timeout = 5000
@@ -106,10 +113,10 @@ class Worker:
                 context_socket = self.socket.new_context()
                 request = socket.Request.deserialize(context_socket.recv())
                 data = entity.service.Request(**request.data)
-                self.logger.debug(f"processing request: {data}")
+                self.logger.info("Processing symbols: %s", data.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(request.task, db, data)
-                self.logger.debug(f"Sending response {orders}")
+                self.logger.info("Sending orders to broker: %s", orders)
                 context_socket.send(socket.Response(task=request.task, data=orders).serialize())
                 context_socket.close()
             except pynng.exceptions.Timeout:
