@@ -1,7 +1,7 @@
 import logging
 import os
 import threading
-from multiprocessing import Event
+from multiprocessing import Event, Queue
 
 import pynng
 
@@ -132,9 +132,6 @@ class Session(threading.Thread):
             finally:
                 ctx.close()
         sock.close()
-
-
-from multiprocessing import Queue
 
 
 def logging_thread(q: Queue):
