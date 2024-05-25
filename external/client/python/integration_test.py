@@ -203,7 +203,7 @@ def zipline_socket():
 def order_logger():
     import logging
 
-    logger = logging.getLogger("spam_application")
+    logger = logging.getLogger("order_log")
     logger.setLevel(logging.DEBUG)
     # create file handler which logs even debug messages
     fh = logging.FileHandler("order.log")

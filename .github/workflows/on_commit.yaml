@@ -79,8 +79,8 @@ jobs:
       - uses: actions/upload-artifact@master
         if: always()
         with:
-          name: order.log
-          path: ./external/client/python/order.log
+          name: logs
+          path: ./external/client/python/*.log
           retention-days: 1
 
   build-docker-containers:
