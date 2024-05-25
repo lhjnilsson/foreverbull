@@ -76,6 +76,13 @@ jobs:
           path: ./external/client/python/result.json
           retention-days: 1
 
+      - uses: actions/upload-artifact@master
+        if: always()
+        with:
+          name: order.log
+          path: ./external/client/python/order.log
+          retention-days: 1
+
   build-docker-containers:
     runs-on: ubuntu-latest
     timeout-minutes: 30

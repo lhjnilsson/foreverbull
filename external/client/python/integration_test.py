@@ -199,8 +199,21 @@ def zipline_socket():
     execution.join()
 
 
+@pytest.fixture
+def order_logger():
+    import logging
+
+    logger = logging.getLogger("spam_application")
+    logger.setLevel(logging.DEBUG)
+    # create file handler which logs even debug messages
+    fh = logging.FileHandler("order.log")
+    fh.setLevel(logging.DEBUG)
+    logger.addHandler(fh)
+    return logger
+
+
 @pytest.mark.parametrize("file_path", ["examples/parallel.py", "examples/non_parallel.py"])
-def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_performance, file_path):
+def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_performance, file_path, order_logger):
     broker_socket = pynng.Req0(listen="tcp://0.0.0.0:8888")
     broker_socket.recv_timeout = 10000
     broker_socket.send_timeout = 10000
@@ -235,12 +248,20 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         response = socket.Response.deserialize(foreverbull_socket.recv())
         assert response.error is None
 
+        order_logger.info(f"starting backtest: {file_path}")
+        order_logger.info(f"starting backtest: {file_path}")
+        order_logger.info(f"starting backtest: {file_path}")
+        order_logger.info(f"starting backtest: {file_path}")
+
         while True:
             backtest.send(socket.Request(task="get_period").serialize())
             try:
                 period = Period(**socket.Response.deserialize(backtest.recv()).data)
             except TypeError:
                 break
+            for order in period.new_orders:
+                order_logger.info(f"new order info: {order.model_dump_json()}")
+
             portfolio = entity.finance.Portfolio(
                 cash=period.cash,
                 value=period.positions_value,
@@ -268,6 +289,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             assert response.error is None
             if response.data:
                 for order in response.data:
+                    order_logger.info(f"order received: {order}")
                     backtest.send(
                         socket.Request(
                             task="order",
@@ -276,6 +298,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
                     )
                     response = socket.Response.deserialize(backtest.recv())
                     assert response.error is None
+                    order_logger.info(f"order placed: {response.data}")
 
             backtest.send(socket.Request(task="continue").serialize())
             response = socket.Response.deserialize(backtest.recv())
