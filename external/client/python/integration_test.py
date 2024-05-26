@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -99,6 +100,12 @@ def baseline_performance_initialize(context):
     context.held_positions = []
 
 
+handle_data_logger = logging.getLogger("handle_data")
+handle_data_logger.level = logging.INFO
+file_handler = logging.FileHandler("baseline_performance.log")
+handle_data_logger.addHandler(file_handler)
+
+
 def baseline_performance_handle_data(context, data, execution: entity.backtest.Execution):
     context.i += 1
     if context.i < 30:
@@ -107,12 +114,17 @@ def baseline_performance_handle_data(context, data, execution: entity.backtest.E
     for s in execution.symbols:
         short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
         long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
+        handle_data_logger.info(f"Symbol {s}, short_mean: {short_mean}, long_mean: {long_mean}")
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
+            handle_data_logger.info(f"Buying {s}")
             context.held_positions.append(s)
         elif short_mean < long_mean and s in context.held_positions:
             order_target(symbol(s), 0)
+            handle_data_logger.info(f"Selling {s}")
             context.held_positions.remove(s)
+        else:
+            handle_data_logger.info(f"Nothing to do for {s}")
 
 
 @pytest.fixture(scope="session")

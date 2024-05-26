@@ -3,25 +3,29 @@ import logging
 from foreverbull import Algorithm, Asset, Function, Order, Portfolio
 
 logger = logging.getLogger("parallel")
+logger.level = logging.INFO
+logger.propagate = False
+file_handler = logging.FileHandler("parallel.log")
+for handler in logger.handlers:
+    logger.removeHandler(handler)
+logger.addHandler(file_handler)
 
 
 def handle_data(asset: Asset, portfolio: Portfolio) -> Order:
-    logger.debug(f"Handling data for {asset.symbol}")
     stock_data = asset.stock_data
     position = portfolio.get_position(asset)
-    logger.debug(f"{asset.symbol} position: {position}")
     if len(stock_data) < 30:
-        logger.debug(f"Insufficient data for {asset.symbol}")
         return None
     short_mean = stock_data["close"].tail(10).mean()
     long_mean = stock_data["close"].tail(30).mean()
+    logger.info(f"Symbol {asset.symbol}, short_mean: {short_mean}, long_mean: {long_mean}")
     if short_mean > long_mean and position is None:
-        logger.debug(f"Buying {asset.symbol}, short_mean: {short_mean}, long_mean: {long_mean}")
+        logger.info(f"Buying {asset.symbol}")
         return Order(symbol=asset.symbol, amount=10)
     elif short_mean < long_mean and position is not None:
-        logger.debug(f"Selling {asset.symbol}, short_mean: {short_mean}, long_mean: {long_mean}")
+        logger.info(f"Selling {asset.symbol}")
         return Order(symbol=asset.symbol, amount=-position.amount)
-    logger.debug(f"No action for {asset.symbol}")
+    logger.info(f"Nothing to do for {asset.symbol}")
     return None
 
 
