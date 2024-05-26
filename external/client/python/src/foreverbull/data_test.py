@@ -50,6 +50,23 @@ def namespace_server():
     thread.join()
 
 
+def test_msft_09_jan(database):
+    with database.connect() as conn:
+        asset = Asset(datetime(2023, 1, 9, 21), conn, "MSFT")
+        assert asset is not None
+        assert asset.symbol == "MSFT"
+        stock_data = asset.stock_data
+        assert stock_data is not None
+        assert isinstance(stock_data, pandas.DataFrame)
+        assert len(stock_data) > 0
+        assert "open" in stock_data.columns
+        assert "high" in stock_data.columns
+        assert "low" in stock_data.columns
+        assert "close" in stock_data.columns
+        assert "volume" in stock_data.columns
+        assert stock_data["close"].tail(30).mean() == 239.83333333333334
+
+
 def test_asset(database, backtest_entity):
     with database.connect() as conn:
         for symbol in backtest_entity.symbols:
