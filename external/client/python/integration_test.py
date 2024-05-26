@@ -114,7 +114,9 @@ def baseline_performance_handle_data(context, data, execution: entity.backtest.E
     for s in execution.symbols:
         short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
         long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
-        handle_data_logger.info(f"Symbol {s}, short_mean: {short_mean}, long_mean: {long_mean}")
+        handle_data_logger.info(
+            f"Symbol {s}, short_mean: {short_mean}, long_mean: {long_mean}, date: {context.datetime}"
+        )
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
             handle_data_logger.info(f"Buying {s}")

@@ -18,7 +18,7 @@ def handle_data(asset: Asset, portfolio: Portfolio) -> Order:
         return None
     short_mean = stock_data["close"].tail(10).mean()
     long_mean = stock_data["close"].tail(30).mean()
-    logger.info(f"Symbol {asset.symbol}, short_mean: {short_mean}, long_mean: {long_mean}")
+    logger.info(f"Symbol {asset.symbol}, short_mean: {short_mean}, long_mean: {long_mean}, date: {asset._as_of}")
     if short_mean > long_mean and position is None:
         logger.info(f"Buying {asset.symbol}")
         return Order(symbol=asset.symbol, amount=10)
