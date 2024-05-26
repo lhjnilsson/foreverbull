@@ -153,12 +153,7 @@ def populate_database():
 
 @pytest.fixture(scope="session")
 def database(backtest_entity: entity.backtest.Backtest, verify_database, populate_database):
-    postgres = PostgresContainer("postgres:alpine")
-    postgres.with_volume_mapping(
-        host=os.path.abspath(".data/test/postgres"), container="/var/lib/postgresql/data", mode="rw"
-    )
-
-    with postgres:
+    with PostgresContainer("postgres:alpine") as postgres:
         engine = create_engine(postgres.get_connection_url())
         Base.metadata.create_all(engine)
         os.environ["DATABASE_URL"] = postgres.get_connection_url()
