@@ -64,6 +64,8 @@ def test_msft_09_jan(database):
         assert "low" in stock_data.columns
         assert "close" in stock_data.columns
         assert "volume" in stock_data.columns
+        print("STOCKDATA: ")
+        print(stock_data.tail(30))
         assert stock_data["close"].tail(30).mean() == 239.83333333333334
 
 
