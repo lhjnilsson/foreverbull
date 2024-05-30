@@ -278,7 +278,7 @@ jobs:
         run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
         run: |
-          cd examples && python -m pytest . --backtest=github_action_test
+          python -m pytest examples/ --backtest=github_action_test
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash

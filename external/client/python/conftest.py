@@ -2,11 +2,14 @@ import os
 from datetime import datetime, timedelta, timezone
 from multiprocessing import get_start_method, set_start_method
 
-import pytest
-import yfinance
-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
-from sqlalchemy.orm import declarative_base
-from testcontainers.postgres import PostgresContainer
+try:
+    import pytest
+    import yfinance
+    from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
+    from sqlalchemy.orm import declarative_base
+    from testcontainers.postgres import PostgresContainer
+except ImportError:
+    pass  # If we run example tests in CI this will fail to import, however we never use them anyway
 
 from foreverbull import entity
 
