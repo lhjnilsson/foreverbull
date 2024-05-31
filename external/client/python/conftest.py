@@ -2,11 +2,16 @@ import os
 from datetime import datetime, timedelta, timezone
 from multiprocessing import get_start_method, set_start_method
 
+import pytest
+
 try:
-    import pytest
     import yfinance
-    from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
-    from sqlalchemy.orm import declarative_base
+except ImportError:
+    pass  # If we run example tests in CI this will fail to import, however we never use them anyway
+from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
+from sqlalchemy.orm import declarative_base
+
+try:
     from testcontainers.postgres import PostgresContainer
 except ImportError:
     pass  # If we run example tests in CI this will fail to import, however we never use them anyway
