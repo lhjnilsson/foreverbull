@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/finance/supplier"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
@@ -32,15 +33,23 @@ type FinanceAPI struct {
 var Module = fx.Options(
 	fx.Provide(
 		func() (supplier.Marketdata, supplier.Trading, error) {
-			md, err := marketdata.NewAlpacaClient()
-			if err != nil {
-				return nil, nil, err
+			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
+				md, err := marketdata.NewYahooClient()
+				if err != nil {
+					return nil, nil, err
+				}
+				return md, nil, nil
+			} else {
+				md, err := marketdata.NewAlpacaClient()
+				if err != nil {
+					return nil, nil, err
+				}
+				t, err := trading.NewAlpacaClient()
+				if err != nil {
+					return nil, nil, err
+				}
+				return md, t, nil
 			}
-			t, err := trading.NewAlpacaClient()
-			if err != nil {
-				return nil, nil, err
-			}
-			return md, t, nil
 		},
 		func() (apiDef.Client, error) {
 			return apiDef.NewClient()

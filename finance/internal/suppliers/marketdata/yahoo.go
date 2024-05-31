@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/finance/entity"
@@ -73,12 +74,15 @@ type AssetResponse struct {
 				LongName  string `json:"longName"`
 			} `json:"quoteType"`
 		} `json:"result"`
-		Error interface{} `json:"error"`
+		Error struct {
+			Code        string `json:"code"`
+			Description string `json:"description"`
+		} `json:"error"`
 	} `json:"quoteSummary"`
 }
 
 func (y *YahooClient) GetAsset(symbol string) (*entity.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + symbol
+	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
 	resp, err := y.doRequest(url, "modules=quoteType")
 	if err != nil {
 		return nil, fmt.Errorf("error: %v", err)
@@ -90,7 +94,10 @@ func (y *YahooClient) GetAsset(symbol string) (*entity.Asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Data: ", data)
+	if data.QuoteSummary.Error.Code != "" {
+
+		return nil, fmt.Errorf("%v", data.QuoteSummary.Error.Description)
+	}
 
 	asset := entity.Asset{
 		Symbol: data.QuoteSummary.Result[0].QuoteType.Symbol,
@@ -118,7 +125,10 @@ type OHLCResponse struct {
 				} `json:"quote"`
 			} `json:"indicators"`
 		} `json:"result"`
-		Error interface{} `json:"error"`
+		Error struct {
+			Code        int    `json:"code"`
+			Description string `json:"description"`
+		}
 	}
 }
 
@@ -126,7 +136,7 @@ func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OH
 	startUnix := start.Unix()
 	endUnix := end.Unix()
 
-	url := "https://query2.finance.yahoo.com/v8/finance/chart/" + symbol
+	url := "https://query2.finance.yahoo.com/v8/finance/chart/" + strings.ToUpper(symbol)
 	resp, err := y.doRequest(url, fmt.Sprintf("period1=%d", startUnix), fmt.Sprintf("period2=%d", endUnix), fmt.Sprintf("interval=%s", "1d"))
 	if err != nil {
 		return nil, nil
@@ -138,8 +148,8 @@ func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OH
 	if err != nil {
 		return nil, err
 	}
-	if data.Chart.Error != nil {
-		return nil, fmt.Errorf("Error: %v", data.Chart.Error)
+	if data.Chart.Error.Code != 0 {
+		return nil, fmt.Errorf("%v", data.Chart.Error.Description)
 	}
 
 	ohlcs := make([]entity.OHLC, 0)

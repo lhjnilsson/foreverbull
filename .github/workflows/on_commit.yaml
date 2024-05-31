@@ -273,6 +273,62 @@ jobs:
           python -m pip install pytest
       - name: Create environment
         run: |
+          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
+      - name: create backtest
+        run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
+      - name: Run backtest as pytest
+        run: |
+          python -m pytest examples/ --backtest=github_action_test
+      - name: Sleep for 20 seconds to make all containers stop
+        run: sleep 20s
+        shell: bash
+      - name: Stop Environment
+        run: foreverbull env stop
+
+  end-to-end-tests-with-alpaca:
+    needs: [lint-unit-tests, python-lint-unit-tests, build-docker-containers]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./external/client/python
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Download Foreverbull
+        uses: actions/download-artifact@v2
+        with:
+          name: foreverbull
+          path: /tmp
+      - name: Download foreverbull
+        uses: actions/download-artifact@v2
+        with:
+          name: foreverbull
+          path: /tmp
+      - name: Download zipline
+        uses: actions/download-artifact@v2
+        with:
+          name: zipline
+          path: /tmp
+      - name: Load zipline
+        run: docker load -i /tmp/zipline.tar
+      - name: load foreverbull
+        run: docker load -i /tmp/foreverbull.tar
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install library and pytest
+        run: |
+          python -m pip install -e .
+          python -m pip install pytest
+      - name: Create environment
+        run: |
           foreverbull env start ${{ secrets.ALPACA_MARKETS_API_KEY }} ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
       - name: create backtest
         run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft

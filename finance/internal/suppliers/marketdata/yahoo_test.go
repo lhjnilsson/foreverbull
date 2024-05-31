@@ -25,22 +25,54 @@ func TestYahooClient(t *testing.T) {
 }
 
 func (test *YahooTest) TestGetAsset() {
-	asset, err := test.client.GetAsset("AAPL")
-	test.Require().NoError(err)
-	test.Require().NotNil(asset)
+	type TestCase struct {
+		Symbol        string
+		ExpectedName  string
+		expectedError error
+	}
 
-	fmt.Println("Asset: ", asset)
+	testCases := []TestCase{
+		{"AAPL", "Apple Inc.", nil},
+		{"GOOGL", "Alphabet Inc.", nil},
+		{"MSFT", "Microsoft Corporation", nil},
+		{"---", "", fmt.Errorf("Quote not found for ticker symbol: ---")},
+	}
+
+	for _, tc := range testCases {
+		asset, err := test.client.GetAsset(tc.Symbol)
+		if tc.expectedError != nil {
+			test.Error(err)
+			test.Equal(tc.expectedError.Error(), err.Error())
+		} else {
+			test.NoError(err)
+			test.NotNil(asset)
+			test.Equal(tc.ExpectedName, asset.Name)
+		}
+	}
 }
 
 func (test *YahooTest) TestGetOHLC() {
-	start, err := time.Parse("2006-01-02", "2021-01-01")
-	test.Require().NoError(err)
-	end, err := time.Parse("2006-01-02", "2021-02-01")
-	test.Require().NoError(err)
+	type TestCase struct {
+		Symbol         string
+		Start          string
+		End            string
+		ExpectedLength int
+	}
 
-	ohlc, err := test.client.GetOHLC("AAPL", start, end)
-	test.Require().NoError(err)
-	test.Require().NotNil(ohlc)
+	testCases := []TestCase{
+		{"AAPL", "2021-01-01", "2021-02-01", 19},
+		{"GOOGL", "2015-01-01", "2024-02-01", 2285},
+	}
 
-	fmt.Println("OHLC: ", (*ohlc)[0].Time)
+	for _, tc := range testCases {
+		start, err := time.Parse("2006-01-02", tc.Start)
+		test.Require().NoError(err)
+		end, err := time.Parse("2006-01-02", tc.End)
+		test.Require().NoError(err)
+
+		ohlc, err := test.client.GetOHLC(tc.Symbol, start, end)
+		test.Require().NoError(err)
+		test.NotNil(ohlc)
+		test.Equal(tc.ExpectedLength, len(*ohlc))
+	}
 }
