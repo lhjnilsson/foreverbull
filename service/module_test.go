@@ -272,6 +272,8 @@ func (test *ServiceModuleTest) TestCreateService() {
 			test.NotNil(instance)
 
 			test.NoError(client.StopInstance(context.Background(), instanceID))
+
+			test.NoError(wPool.Close())
 		})
 	}
 }
