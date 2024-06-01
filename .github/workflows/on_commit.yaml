@@ -200,7 +200,7 @@ jobs:
         with:
           go-version: 1.22
       - name: Integration Tests
-        run: CONFIG_PATH=${PWD} go test -timeout 300s -run TestModule  ./... -p 1
+        run: go test -timeout 300s -run TestModule  ./... -p 1
         env:
           ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
           ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
