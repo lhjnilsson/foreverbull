@@ -31,23 +31,23 @@ type Stream interface {
 	RunOrchestration(ctx context.Context, orchestration *MessageOrchestration) error
 }
 
-func NewJetstream() (nats.JetStreamContext, error) {
+func New() (*nats.Conn, nats.JetStreamContext, error) {
 	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
-		return nil, fmt.Errorf("error connecting to nats: %w", err)
+		return nil, nil, fmt.Errorf("error connecting to nats: %w", err)
 	}
 	jt, err := nc.JetStream()
 	if err != nil {
-		return nil, fmt.Errorf("error connecting to jetstream: %w", err)
+		return nil, nil, fmt.Errorf("error connecting to jetstream: %w", err)
 	}
 	_, err = jt.AddStream(&nats.StreamConfig{
 		Name:     "foreverbull",
 		Subjects: []string{"foreverbull.>"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error creating stream: %w", err)
+		return nil, nil, fmt.Errorf("error creating stream: %w", err)
 	}
-	return jt, nil
+	return nc, jt, nil
 }
 
 type NATSStream struct {

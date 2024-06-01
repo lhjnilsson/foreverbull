@@ -19,6 +19,7 @@ type OrchestrationTest struct {
 
 	conn *pgxpool.Pool
 
+	nc     *nats.Conn
 	jt     nats.JetStreamContext
 	stream NATSStream
 
@@ -38,7 +39,7 @@ func (test *OrchestrationTest) SetupTest() {
 	err = RecreateTables(context.Background(), test.conn)
 	test.Require().NoError(err)
 
-	test.jt, err = NewJetstream()
+	test.nc, test.jt, err = New()
 	test.Require().NoError(err)
 
 	test.orchestration = fx.New(
@@ -62,6 +63,8 @@ func (test *OrchestrationTest) TearDownTest() {
 
 	err = test.orchestration.Stop(context.Background())
 	test.NoError(err)
+
+	test.nc.Close()
 }
 
 func TestOrchestration(t *testing.T) {

@@ -56,8 +56,8 @@ func (test *ServiceModuleTest) SetupTest() {
 	test.NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			func() (nats.JetStreamContext, error) {
-				return stream.NewJetstream()
+			func() (*nats.Conn, nats.JetStreamContext, error) {
+				return stream.New()
 			},
 			func() *pgxpool.Pool {
 				return pool
