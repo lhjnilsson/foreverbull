@@ -1,0 +1,235 @@
+name: release
+on: push
+#on:
+#  push:
+#    branches:
+#      - main
+
+permissions: read-all
+
+jobs:
+  version_tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get the version
+        id: version
+        run: echo "version=0.0.$(date +"%y%m%d%H%M")" >> "$GITHUB_OUTPUT"
+
+  build_docker_python:
+    needs: version_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Parallel Example
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          platforms: linux/amd64,linux/arm64
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/parallel.py
+          tags: lhjnilsson/parallel-example:${{needs.version_tag.outputs.version}}
+          outputs: type=docker,dest=/tmp/parallel_example.tar
+      - name: Build Non-Parallel Example
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          platforms: linux/amd64,linux/arm64
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/non_parallel.py
+          tags: lhjnilsson/non-parallel-example:${{needs.version_tag.outputs.version}}
+          outputs: type=docker,dest=/tmp/non_parallel_example.tar
+      - name: Build Multistep with Namespace
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          platforms: linux/amd64,linux/arm64
+          file: ./external/client/python/Dockerfile
+          build-args: ALGO_FILE=examples/multistep_with_namespace.py
+          tags: lhjnilsson/multistep-with-namespace-example:${{needs.version_tag.outputs.version}}
+          outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
+      - name: Build Zipline
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          platforms: linux/amd64,linux/arm64
+          file: ./external/client/python/zipline.Dockerfile
+          tags: lhjnilsson/zipline:${{needs.version_tag.outputs.version}}
+          outputs: type=docker,dest=/tmp/zipline.tar
+      - name: Upload parallel_example
+        uses: actions/upload-artifact@v2
+        with:
+          name: parallel_example
+          path: /tmp/parallel_example.tar
+          retention-days: 1
+      - name: Upload non_parallel_example
+        uses: actions/upload-artifact@v2
+        with:
+          name: non_parallel_example
+          path: /tmp/non_parallel_example.tar
+          retention-days: 1
+      - name: Upload multistep with namespace
+        uses: actions/upload-artifact@v2
+        with:
+          name: multistep_with_namespace
+          path: /tmp/multistep_with_namespace.tar
+          retention-days: 1
+      - name: Upload zipline
+        uses: actions/upload-artifact@v2
+        with:
+          name: zipline
+          path: /tmp/zipline.tar
+          retention-days: 1
+      - name: Upload examples
+        uses: actions/upload-artifact@v2
+        with:
+          name: examples
+          path: external/client/python/examples
+          retention-days: 1
+
+  build_docker_go:
+    needs: version_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push foreverbull
+        uses: docker/build-push-action@v5
+        with:
+          file: ./docker/release.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: lhjnilsson/foreverbull:${{needs.version_tag.outputs.version}}
+          outputs: type=docker,dest=/tmp/foreverbull.tar
+      - name: Upload foreverbull
+        uses: actions/upload-artifact@v2
+        with:
+          name: foreverbull
+          path: /tmp/foreverbull.tar
+          retention-days: 1
+
+  build_python_client:
+    needs: version_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip hatch
+      - name: Build
+        run: |
+          cd external/client/python
+          hatch version ${{needs.version_tag.outputs.version}}
+          hatch build
+      - name: Upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: python-dist
+          path: external/client/python/dist/*
+          retention-days: 1
+
+  end_to_end_test:
+    needs:
+      [version_tag, build_docker_python, build_docker_go, build_python_client]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+      - name: Download Python Dist
+        uses: actions/download-artifact@v2
+        with:
+          name: python-dist
+      - name: Install Python Dist
+        run: |
+          python -m pip install external/client/python/dist/foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
+
+  publish:
+    needs:
+      [version_tag, build_docker_python, build_docker_go, build_python_client]
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      packages: write
+      contents: write
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Download parallel_example
+        uses: actions/download-artifact@v2
+        with:
+          name: parallel_example
+      - name: Download non_parallel_example
+        uses: actions/download-artifact@v2
+        with:
+          name: non_parallel_example
+      - name: Download multistep with namespace
+        uses: actions/download-artifact@v2
+        with:
+          name: multistep_with_namespace
+      - name: Download zipline
+        uses: actions/download-artifact@v2
+        with:
+          name: zipline
+      - name: Download foreverbull
+        uses: actions/download-artifact@v2
+        with:
+          name: foreverbull
+
+      - name: Load parallel_example
+        run: docker load -i /tmp/parallel_example.tar
+      - name: Load non_parallel_example
+        run: docker load -i /tmp/non_parallel_example.tar
+      - name: Load multistep with namespace
+        run: docker load -i /tmp/multistep_with_namespace.tar
+      - name: Load zipline
+        run: docker load -i /tmp/zipline.tar
+      - name: Load foreverbull
+        run: docker load -i /tmp/foreverbull.tar
+
+      - name: Push parallel_example
+        run: docker push lhjnilsson/parallel-example:${{needs.version_tag.outputs.version}}
+      - name: Push non_parallel_example
+        run: docker push lhjnilsson/non-parallel-example:${{needs.version_tag.outputs.version}}
+      - name: Push multistep with namespace
+        run: docker push lhjnilsson/multistep-with-namespace-example:${{needs.version_tag.outputs.version}}
+      - name: Push zipline
+        run: docker push lhjnilsson/zipline:${{needs.version_tag.outputs.version}}
+      - name: Push foreverbull
+        run: docker push lhjnilsson/foreverbull:${{needs.version_tag.outputs.version}}
+
+      - name: Download Python Dist
+        uses: actions/download-artifact@v2
+        with:
+          name: python-dist
+      - name: Publish to pypi
+        run: |
+          python -m pip install --upgrade hatch 
+          hatch publish external/client/python/dist/* -u ${{ secrets.PYPI_USERNAME }} -a ${{ secrets.PYPI_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
+            foreverbull-${{needs.version_tag.outputs.version}}.tar.gz
+          name: ${{needs.version_tag.outputs.version}}
+          tag_name: ${{needs.version_tag.outputs.version}}
+          body: |
+            Release ${{needs.version_tag.outputs.version}}
+          prerelease: true
