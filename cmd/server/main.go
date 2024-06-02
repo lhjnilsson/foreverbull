@@ -26,7 +26,7 @@ var CoreModules = fx.Options(
 			return pgxpool.New(context.TODO(), environment.GetPostgresURL())
 		},
 		storage.NewMinioStorage,
-		stream.NewJetstream,
+		stream.New,
 		http.NewEngine,
 	),
 	fx.Invoke(

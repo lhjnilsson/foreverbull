@@ -76,3 +76,6 @@ class Portfolio(pydantic.BaseModel):
             (position for position in self.positions if position.symbol == asset.symbol),
             None,
         )
+
+    def get_position(self, asset: Asset) -> Position:
+        return self[asset]

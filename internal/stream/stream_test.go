@@ -17,6 +17,7 @@ import (
 type NatsStreamTest struct {
 	suite.Suite
 
+	nc     *nats.Conn
 	jt     nats.JetStreamContext
 	stream NATSStream
 }
@@ -34,7 +35,7 @@ func (test *NatsStreamTest) SetupTest() {
 	err = RecreateTables(context.Background(), pool)
 	test.Require().NoError(err)
 
-	test.jt, err = NewJetstream()
+	test.nc, test.jt, err = New()
 	test.Require().NoError(err)
 
 	stream, err := NewNATSStream(test.jt, "test", dc, pool)
@@ -47,6 +48,7 @@ func (test *NatsStreamTest) SetupTest() {
 
 func (test *NatsStreamTest) TearDownTest() {
 	test.NoError(test.stream.Unsubscribe())
+	test.nc.Close()
 }
 
 func TestNatStream(t *testing.T) {

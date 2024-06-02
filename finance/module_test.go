@@ -46,8 +46,8 @@ func (test *FinanceModuleTest) SetupTest() {
 	test.Require().NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			func() (nats.JetStreamContext, error) {
-				return stream.NewJetstream()
+			func() (*nats.Conn, nats.JetStreamContext, error) {
+				return stream.New()
 			},
 			func() *pgxpool.Pool {
 				return pool
@@ -70,7 +70,7 @@ func (test *FinanceModuleTest) TearDownTest() {
 }
 
 func (test *FinanceModuleTest) TestIngestCommand() {
-	st, err := stream.NewJetstream()
+	_, st, err := stream.New()
 	test.NoError(err)
 	stream, err := stream.NewNATSStream(st, "finance_test", stream.NewDependencyContainer(), test.pool)
 	test.NoError(err)

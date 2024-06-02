@@ -166,7 +166,7 @@ class Algorithm:
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
             for symbol in request.symbols:
-                a = Asset(request.timestamp, None, symbol)
+                a = Asset(request.timestamp, db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
                     asset=a,
                     portfolio=request.portfolio,

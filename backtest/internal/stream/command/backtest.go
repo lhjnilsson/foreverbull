@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/backtest/engine"
 	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 )
 
 func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
@@ -45,15 +44,9 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
-	ingestConfig := backtest.IngestConfig{
-		Calendar: b.Calendar,
-		Start:    b.Start,
-		End:      b.End,
-		Symbols:  b.Symbols,
-		Database: environment.GetPostgresURL(),
-	}
-	ingest := func(e backtest.Backtest) error {
-		err = e.Ingest(ctx, &ingestConfig)
+
+	ingest := func(e engine.Engine) error {
+		err = e.Ingest(ctx, b)
 		if err != nil {
 			return fmt.Errorf("error ingesting: %w", err)
 		}
@@ -69,7 +62,7 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting backtest engine: %w", err)
 	}
-	e := engineInstance.(backtest.Backtest)
+	e := engineInstance.(engine.Engine)
 	err = ingest(e)
 	if err != nil {
 		return fmt.Errorf("error ingesting: %w", err)

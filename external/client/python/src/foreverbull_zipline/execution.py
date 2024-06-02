@@ -83,26 +83,27 @@ class Execution(threading.Thread):
         }
 
     @property
-    def ingestion(self) -> entity.IngestConfig:
+    def ingestion(self) -> backtest.Backtest:
         if self.bundle is None:
-            return entity.IngestConfig(calendar=None, start=None, end=None, symbols=[])
+            raise LookupError("Bundle is not loaded")
         assets = self.bundle.asset_finder.retrieve_all(self.bundle.asset_finder.sids)
         start = assets[0].start_date.tz_localize("UTC")
         end = assets[0].end_date.tz_localize("UTC")
         calendar = self.bundle.equity_daily_bar_reader.trading_calendar.name
-        return entity.IngestConfig(calendar=calendar, start=start, end=end, symbols=[asset.symbol for asset in assets])
+        return [a.symbol for a in assets], start, end, calendar
 
-    def _ingest(self, config: entity.IngestConfig) -> entity.IngestConfig:
+    def _ingest(self, backtest: backtest.Backtest) -> backtest.Backtest:
         self.logger.debug("ingestion started")
-        bundles.register("foreverbull", SQLIngester(), calendar_name=config.calendar)
+        bundles.register("foreverbull", SQLIngester(), calendar_name=backtest.calendar)
         SQLIngester.engine = DatabaseEngine()
-        SQLIngester.from_date = config.start
-        SQLIngester.to_date = config.end
-        SQLIngester.symbols = config.symbols
+        SQLIngester.from_date = backtest.start
+        SQLIngester.to_date = backtest.end
+        SQLIngester.symbols = backtest.symbols
         bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
         self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
         self.logger.debug("ingestion completed")
-        return self.ingestion
+        backtest.symbols, backtest.start, backtest.end, backtest.calendar = self.ingestion
+        return backtest
 
     def _download_ingestion(self, name: str):
         storage = Storage.from_environment()
@@ -255,9 +256,9 @@ class Execution(threading.Thread):
                     if message.task == "info":
                         context_socket.send(Response(task=message.task, data=self.info()).serialize())
                     elif message.task == "ingest":
-                        ingest_config = entity.IngestConfig(**message.data)
-                        ingest_config = self._ingest(ingest_config)
-                        context_socket.send(Response(task=message.task, data=ingest_config).serialize())
+                        b = backtest.Backtest(**message.data)
+                        b = self._ingest(b)
+                        context_socket.send(Response(task=message.task, data=b).serialize())
                     elif message.task == "download_ingestion":
                         self._download_ingestion(**message.data)
                         context_socket.send(Response(task=message.task).serialize())

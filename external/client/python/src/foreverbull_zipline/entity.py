@@ -11,13 +11,6 @@ class Asset(Base):
     symbol: str
 
 
-class IngestConfig(Base):
-    calendar: Optional[str] = None
-    start: Optional[datetime] = None
-    end: Optional[datetime] = None
-    symbols: List[str] = []
-
-
 class Position(Base):
     symbol: str
     amount: int
@@ -152,7 +145,7 @@ class Result(Base):
         @classmethod
         def from_zipline(cls, period):
             return cls(
-                timestamp=period["period_open"].to_pydatetime().replace(tzinfo=timezone.utc),
+                timestamp=period["period_close"].to_pydatetime().replace(tzinfo=timezone.utc),
                 pnl=period["pnl"],
                 returns=period["returns"],
                 portfolio_value=period["portfolio_value"],

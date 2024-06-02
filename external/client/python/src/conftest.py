@@ -7,13 +7,8 @@ from threading import Thread
 
 import pynng
 import pytest
-import yfinance
-from sqlalchemy import Column, DateTime, Integer, String, create_engine, engine, text
-from sqlalchemy.orm import declarative_base
-from testcontainers.postgres import PostgresContainer
 
 from foreverbull import Order, entity, socket
-from foreverbull_zipline.entity import IngestConfig
 
 
 @pytest.fixture(scope="session")
@@ -76,17 +71,17 @@ def namespace_server():
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(spawn_process, ingest_config, database):
+def parallel_algo_file(spawn_process, execution, database):
     def _process_symbols(server_socket):
-        start = ingest_config.start
+        start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
         orders = []
-        while start < ingest_config.end:
-            for symbol in ingest_config.symbols:
+        while start < execution.end:
+            for symbol in execution.symbols:
                 req = entity.service.Request(
                     timestamp=start,
                     symbols=[symbol],
@@ -137,19 +132,19 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, ingest_config, database):
+def non_parallel_algo_file(spawn_process, execution, database):
     def _process_symbols(server_socket):
-        start = ingest_config.start
+        start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
         orders = []
-        while start < ingest_config.end:
+        while start < execution.end:
             req = entity.service.Request(
                 timestamp=start,
-                symbols=ingest_config.symbols,
+                symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(socket.Request(task="non_parallel_algo", data=req).serialize())
@@ -204,17 +199,17 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, ingest_config, database):
+def parallel_algo_file_with_parameters(spawn_process, execution, database):
     def _process_symbols(server_socket):
-        start = ingest_config.start
+        start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
         orders = []
-        while start < ingest_config.end:
-            for symbol in ingest_config.symbols:
+        while start < execution.end:
+            for symbol in execution.symbols:
                 req = entity.service.Request(
                     timestamp=start,
                     symbols=[symbol],
@@ -272,19 +267,19 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, ingest_config, database):
+def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
     def _process_symbols(server_socket):
-        start = ingest_config.start
+        start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
         orders = []
-        while start < ingest_config.end:
+        while start < execution.end:
             req = entity.service.Request(
                 timestamp=start,
-                symbols=ingest_config.symbols,
+                symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(socket.Request(task="non_parallel_algo_with_parameters", data=req).serialize())
@@ -341,20 +336,20 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, ingest_config, database, namespace_server):
+def multistep_algo_with_namespace(spawn_process, execution, database, namespace_server):
     def _process_symbols(server_socket):
-        start = ingest_config.start
+        start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
         orders = []
-        while start < ingest_config.end:
+        while start < execution.end:
             # filter assets
             req = entity.service.Request(
                 timestamp=start,
-                symbols=ingest_config.symbols,
+                symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(socket.Request(task="filter_assets", data=req).serialize())
@@ -363,7 +358,7 @@ def multistep_algo_with_namespace(spawn_process, ingest_config, database, namesp
             assert response.error is None
 
             # measure assets
-            for symbol in ingest_config.symbols:
+            for symbol in execution.symbols:
                 req = entity.service.Request(
                     timestamp=start,
                     symbols=[symbol],
@@ -377,7 +372,7 @@ def multistep_algo_with_namespace(spawn_process, ingest_config, database, namesp
             # create orders
             req = entity.service.Request(
                 timestamp=start,
-                symbols=ingest_config.symbols,
+                symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(socket.Request(task="create_orders", data=req).serialize())
@@ -443,88 +438,11 @@ Algorithm(
 
 
 @pytest.fixture(scope="session")
-def ingest_config():
-    return IngestConfig(
+def backtest_entity():
+    return entity.backtest.Backtest(
+        name="testing_backtest",
         calendar="NYSE",
         start=datetime(2023, 1, 3, tzinfo=timezone.utc),
         end=datetime(2023, 3, 31, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
     )
-
-
-Base = declarative_base()
-
-
-class Asset(Base):
-    __tablename__ = "asset"
-    symbol = Column("symbol", String(), primary_key=True)
-    name = Column("name", String())
-    title = Column("title", String())
-    asset_type = Column("asset_type", String())
-
-
-class OHLC(Base):
-    __tablename__ = "ohlc"
-    id = Column(Integer, primary_key=True)
-    symbol = Column(String())
-    open = Column(Integer())
-    high = Column(Integer())
-    low = Column(Integer())
-    close = Column(Integer())
-    volume = Column(Integer())
-    time = Column(DateTime())
-
-
-@pytest.fixture(scope="session")
-def database(ingest_config):
-    with PostgresContainer("postgres:alpine") as postgres:
-        engine = create_engine(postgres.get_connection_url())
-        Base.metadata.create_all(engine)
-        populate_database(engine, ingest_config)
-        os.environ["DATABASE_URL"] = postgres.get_connection_url()
-        yield engine
-
-
-def populate_database(database: engine.Engine, ic: IngestConfig):
-    with database.connect() as conn:
-        for symbol in ic.symbols:
-            feed = yfinance.Ticker(symbol)
-            info = feed.info
-            asset = Asset(
-                symbol=info["symbol"], name=info["longName"], title=info["shortName"], asset_type=info["quoteType"]
-            )
-            conn.execute(
-                text(
-                    """INSERT INTO asset (symbol, name, title, asset_type) 
-                    VALUES (:symbol, :name, :title, :asset_type)"""
-                ),
-                {"symbol": asset.symbol, "name": asset.name, "title": asset.title, "asset_type": asset.asset_type},
-            )
-            data = feed.history(start=ic.start, end=ic.end + timedelta(days=1))
-            for idx, row in data.iterrows():
-                time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)
-                ohlc = OHLC(
-                    symbol=symbol,
-                    open=row.Open,
-                    high=row.High,
-                    low=row.Low,
-                    close=row.Close,
-                    volume=row.Volume,
-                    time=time,
-                )
-                conn.execute(
-                    text(
-                        """INSERT INTO ohlc (symbol, open, high, low, close, volume, time) 
-                        VALUES (:symbol, :open, :high, :low, :close, :volume, :time)"""
-                    ),
-                    {
-                        "symbol": ohlc.symbol,
-                        "open": ohlc.open,
-                        "high": ohlc.high,
-                        "low": ohlc.low,
-                        "close": ohlc.close,
-                        "volume": ohlc.volume,
-                        "time": ohlc.time,
-                    },
-                )
-        conn.commit()

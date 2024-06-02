@@ -4,37 +4,37 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	finance "github.com/lhjnilsson/foreverbull/finance/entity"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 	"github.com/lhjnilsson/foreverbull/service/worker"
 	"github.com/shopspring/decimal"
 )
 
 type Execution interface {
-	Configure(context.Context, *backtest.BacktestConfig) error
+	Configure(context.Context, *entity.Execution) error
 	Run(context.Context, *entity.Execution) error
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
 
-func NewExecution(b backtest.Backtest, w worker.Pool) Execution {
+func NewExecution(e engine.Engine, w worker.Pool) Execution {
 	return &execution{
-		backtest: b,
-		workers:  w,
+		engine:  e,
+		workers: w,
 	}
 }
 
 type execution struct {
-	backtest backtest.Backtest `json:"-"`
-	workers  worker.Pool       `json:"-"`
+	engine  engine.Engine `json:"-"`
+	workers worker.Pool   `json:"-"`
 }
 
 /*
 Configure
 */
-func (b *execution) Configure(ctx context.Context, backtestCfg *backtest.BacktestConfig) error {
-	return b.backtest.ConfigureExecution(ctx, backtestCfg)
+func (b *execution) Configure(ctx context.Context, execution *entity.Execution) error {
+	return b.engine.ConfigureExecution(ctx, execution)
 }
 
 /*
@@ -42,12 +42,12 @@ Run
 Runs configured workers and backtest until completed
 */
 func (b *execution) Run(ctx context.Context, execution *entity.Execution) error {
-	err := b.backtest.RunExecution(ctx)
+	err := b.engine.RunExecution(ctx)
 	if err != nil {
 		return fmt.Errorf("error running Execution engine: %w", err)
 	}
 	for {
-		period, err := b.backtest.GetMessage()
+		period, err := b.engine.GetMessage()
 		if err != nil {
 			return fmt.Errorf("error getting message: %w", err)
 		}
@@ -74,23 +74,19 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 			return fmt.Errorf("error processing ohlc: %w", err)
 		}
 		for _, order := range *orders {
-			_, err = b.backtest.Order(&backtest.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
+			_, err = b.engine.Order(&engine.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
 			if err != nil {
 				return fmt.Errorf("error placing order: %w", err)
 			}
 		}
-		if err := b.backtest.Continue(); err != nil {
+		if err := b.engine.Continue(); err != nil {
 			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
 }
 
-type Result struct {
-	Periods []entity.Period `json:"periods"`
-}
-
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {
-	result, err := b.backtest.GetExecutionResult(&backtest.Execution{Execution: excID})
+	result, err := b.engine.GetExecutionResult(excID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting data for result: %v", err)
 	}
@@ -138,7 +134,7 @@ Stop
 Halts all workers and backtest
 */
 func (b *execution) Stop(ctx context.Context) error {
-	if err := b.backtest.Stop(ctx); err != nil {
+	if err := b.engine.Stop(ctx); err != nil {
 		return fmt.Errorf("error stopping Execution engine: %w", err)
 	}
 	return nil

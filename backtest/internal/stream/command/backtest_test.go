@@ -15,8 +15,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
+	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/engine"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
-	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/service/backtest"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -111,7 +111,7 @@ func (test *CommandBacktestTest) TestBacktestIngestCommand() {
 	m := new(mockStream.Message)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
-	backtest := new(mockBacktest.Backtest)
+	backtest := new(mockEngine.Engine)
 	m.On("Call", mock.Anything, dependency.GetBacktestKey).Return(backtest, nil)
 	backtest.On("Ingest", mock.Anything, mock.Anything).Return(nil)
 	backtest.On("UploadIngestion", mock.Anything, mock.Anything).Return(nil)

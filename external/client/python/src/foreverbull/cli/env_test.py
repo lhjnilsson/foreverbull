@@ -129,7 +129,7 @@ def test_env_start():
         mock_containers.return_value = MockedDockerProperty({})
         mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
-        result = runner.invoke(env, ["start", "api_key", "api_secret"])
+        result = runner.invoke(env, ["start"])
 
         if result.exception:
             traceback.print_exception(*result.exc_info)

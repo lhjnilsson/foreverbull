@@ -107,16 +107,16 @@ def status():
     std.print(table)
 
 
-API_KEY = Annotated[str, typer.Argument(help="alpaca.markets api key")]
-API_SECRET = Annotated[str, typer.Argument(help="alpaca.markets api secret")]
+ALPACA_KEY = Annotated[str, typer.Option(help="alpaca.markets api key")]
+ALPACA_SECRET = Annotated[str, typer.Option(help="alpaca.markets api secret")]
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
 BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
 
 
 @env.command()
 def start(
-    api_key: API_KEY,
-    api_secret: API_SECRET,
+    alpaca_key: ALPACA_KEY = None,
+    alpaca_secret: ALPACA_SECRET = None,
     broker_image: BROKER_IMAGE_OPT = BROKER_IMAGE,
     backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
 ):
@@ -288,8 +288,8 @@ def start(
                         "MINIO_URL": "minio:9000",
                         "DOCKER_NETWORK": NETWORK_NAME,
                         "ALPACA_MARKETS_BASE_URL": "https://paper-api.alpaca.markets",
-                        "ALPACA_MARKETS_API_KEY": api_key,
-                        "ALPACA_MARKETS_API_SECRET": api_secret,
+                        "ALPACA_MARKETS_API_KEY": alpaca_key,
+                        "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
                     },
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},

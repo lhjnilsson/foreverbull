@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/lhjnilsson/foreverbull/backtest/internal/backtest"
 	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/service/backtest"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 )
 

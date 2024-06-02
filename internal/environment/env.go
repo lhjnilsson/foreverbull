@@ -80,8 +80,8 @@ var envVars = []envVar{
 	{MINIO_SECRET_KEY, func() (string, error) { return MINIO_SECRET_KEY_DEFAULT, nil }},
 	{MARKET_DATA_PROVIDER, func() (string, error) { return MARKET_DATA_PROVIDER_DEFAULT, nil }},
 	{ALPACA_BASE_URL, func() (string, error) { return ALPACA_BASE_URL_DEFAULT, nil }},
-	{ALPACA_API_KEY, func() (string, error) { return "", fmt.Errorf("ALPACA_API_KEY is required") }},
-	{ALPACA_API_SECRET, func() (string, error) { return "", fmt.Errorf("ALPACA_API_SECRET is required") }},
+	{ALPACA_API_KEY, func() (string, error) { return "", nil }},
+	{ALPACA_API_SECRET, func() (string, error) { return "", nil }},
 }
 
 func Setup() error {
