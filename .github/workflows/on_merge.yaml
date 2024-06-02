@@ -77,7 +77,7 @@ jobs:
           python -m pip install --upgrade pip hatch
       - name: Build and publish Python client
         env:
-          HATCH_INDEX_USER: ${{ secrets.PYPI_USERNAME }}
+          HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.PYPI_TOKEN }}
         run: |
           cd external/client/python
