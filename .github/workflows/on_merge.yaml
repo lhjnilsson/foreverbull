@@ -1,9 +1,8 @@
 name: release
-on: push
-#on:
-#  push:
-#    branches:
-#      - main
+on:
+  push:
+    branches:
+      - main
 
 permissions: read-all
 
@@ -84,3 +83,20 @@ jobs:
           hatch version ${{needs.version_tag.outputs.version}}
           hatch build
           hatch publish
+
+  create_release:
+    needs: [version_tag, build_python_client]
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      packages: write
+      contents: write
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{needs.version_tag.outputs.version}}
+          tag_name: ${{needs.version_tag.outputs.version}}
+          body: |
+            Release ${{needs.version_tag.outputs.version}}
+          prerelease: true
