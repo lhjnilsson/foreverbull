@@ -76,8 +76,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip hatch
       - name: Build and publish Python client
+        env:
+          HATCH_INDEX_USER: ${{ secrets.PYPI_USERNAME }}
+          HATCH_INDEX_AUTH: ${{ secrets.PYPI_TOKEN }}
         run: |
           cd external/client/python
           hatch version ${{needs.version_tag.outputs.version}}
           hatch build
-          hatch publish -u ${{ secrets.PYPI_USERNAME }} -a ${{ secrets.PYPI_TOKEN }}
+          hatch publish
