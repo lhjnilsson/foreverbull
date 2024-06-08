@@ -93,6 +93,12 @@ class Session(threading.Thread):
         rsp = socket.Response.deserialize(sock.recv())
         if rsp.error:
             raise Exception(rsp.error)
+        while True:
+            socket.send(socket.Request(task="current_period").serialize())
+            rsp = socket.Response.deserialize(sock.recv())
+            if not rsp.data:
+                break
+            self.logger.info("current period: %s", rsp.data["timestamp"])
 
     def run(self):
         local_port = os.environ.get("LOCAL_PORT", 5555)

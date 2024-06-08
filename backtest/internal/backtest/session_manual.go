@@ -114,24 +114,31 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			if err != nil {
 				return fmt.Errorf("failed to configure execution: %w", err)
 			}
-			err = ms.execution.Run(context.TODO(), ms.executionEntity)
-			if err != nil {
-				return fmt.Errorf("failed to run execution: %w", err)
-			}
-			if rsp.Error == "" {
-				periods, err := ms.execution.StoreDataFrameAndGetPeriods(context.Background(), ms.executionEntity.ID)
+			go func() {
+				err = ms.execution.Run(context.TODO(), ms.executionEntity)
 				if err != nil {
-					return fmt.Errorf("failed to store data frame and get periods: %w", err)
+					log.Err(err).Msg("failed to run execution")
+					return
 				}
-				for _, period := range *periods {
-					err = ms.session.periods.Store(context.Background(), ms.executionEntity.ID, &period)
+				if rsp.Error == "" {
+					periods, err := ms.execution.StoreDataFrameAndGetPeriods(context.Background(), ms.executionEntity.ID)
 					if err != nil {
-						return fmt.Errorf("failed to store period: %w", err)
+						log.Err(err).Msg("failed to get periods")
+						return
+					}
+					for _, period := range *periods {
+						err = ms.session.periods.Store(context.Background(), ms.executionEntity.ID, &period)
+						if err != nil {
+							log.Err(err).Msg("failed to store period")
+							return
+						}
 					}
 				}
-			}
-			ms.execution = nil
-			ms.executionEntity = nil
+				ms.execution = nil
+				ms.executionEntity = nil
+			}()
+		case "current_period":
+			rsp.Data = ms.execution.CurrentPeriod()
 		case "stop":
 			byteMsg, err = rsp.Encode()
 			if err != nil {
