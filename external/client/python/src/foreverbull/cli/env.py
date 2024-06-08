@@ -89,18 +89,22 @@ def status():
     table.add_column("Local image ID")
 
     table.add_row(
-        "Running" if postgres_container else "Stopped",
+        postgres_container.status if postgres_container else "Not Found",
         "Postgres",
         postgres_image.short_id if postgres_image else "Not found",
     )
     table.add_row(
-        "Running" if nats_container else "Stopped", "NATS", nats_image.short_id if nats_image else "Not found"
+        nats_container.status if nats_container else "Not Found",
+        "NATS",
+        nats_image.short_id if nats_image else "Not found",
     )
     table.add_row(
-        "Running" if minio_container else "Stopped", "Minio", minio_image.short_id if minio_image else "Not found"
+        minio_container.status if minio_container else "Not Found",
+        "Minio",
+        minio_image.short_id if minio_image else "Not found",
     )
     table.add_row(
-        "Running" if foreverbull_container else "Stopped",
+        foreverbull_container.status if foreverbull_container else "Not Found",
         "Foreverbull",
         foreverbull_image.short_id if foreverbull_image else "Not found",
     )
