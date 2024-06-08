@@ -142,7 +142,7 @@ def get(
 @backtest.command()
 def run(
     file_path: Annotated[str, typer.Argument(help="name of the file to use")],
-    backtest_name: Annotated[str, typer.Option(help="name of the backtest")] = None,
+    backtest_name: Annotated[str, typer.Option(help="name of the backtest")],
 ):
     def show_progress(session: entity.backtest.Session):
         with Progress() as progress:
@@ -178,22 +178,11 @@ def run(
         )
         std.print(table)
 
-    if backtest_name:
-        session = broker.backtest.run(backtest_name, manual=True if file_path else False)
-        foreverbull = Foreverbull(file_path=file_path)
-        with foreverbull as fb:
-            show_progress(session)
-        return
-
-    # TODO: Actually fetch the correct session with session_id from env
-    # To be set from container in foreverbull broker
+    session = broker.backtest.run(backtest_name, manual=True if file_path else False)
     foreverbull = Foreverbull(file_path=file_path)
-    with foreverbull as fb:
-        broker.service.update_instance(socket.gethostname(), True)
-        signal.signal(signal.SIGINT, lambda x, y: foreverbull._stop_event.set())
-        signal.signal(signal.SIGTERM, lambda x, y: foreverbull._stop_event.set())
-        fb.join()
-        broker.service.update_instance(socket.gethostname(), False)
+    with foreverbull:
+        show_progress(session)
+    return
 
 
 @backtest.command()

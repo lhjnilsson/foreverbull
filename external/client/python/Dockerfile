@@ -19,4 +19,4 @@ RUN cp ${ALGO_FILE} /algos/algo.py
 
 WORKDIR /algos
 
-CMD [ "python", "-m", "foreverbull", "backtest", "run", "algo.py"]
+CMD [ "python", "-m", "foreverbull", "/app/src/foreverbull/_run_instance.py", "algo.py"]
