@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker
 import typer
@@ -14,7 +15,6 @@ from foreverbull._version import version
 env = typer.Typer()
 
 std = Console()
-std_err = Console(stderr=True)
 
 INIT_DB_SCIPT = """
 #!/bin/bash
@@ -127,11 +127,24 @@ def start(
     d = docker.from_env()
     std.print("Starting environment")
 
+    def get_or_pull_image(image_name):
+        try:
+            d.images.get(image_name)
+        except docker.errors.ImageNotFound:
+            try:
+                d.images.pull(image_name)
+            except Exception as e:
+                return e
+        except Exception as e:
+            return e
+        return None
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         transient=False,
     ) as progress:
+        download_images = progress.add_task("[yellow]Downloading images")
         net_task_id = progress.add_task("[yellow]Setting up network")
         postgres_task_id = progress.add_task("[yellow]Setting up postgres")
         nats_task_id = progress.add_task("[yellow]Setting up nats")
@@ -139,16 +152,24 @@ def start(
         health_task_id = progress.add_task("[yellow]Waiting for services to start")
         foreverbull_task_id = progress.add_task("[yellow]Setting up foreverbull")
 
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for image in [POSTGRES_IMAGE, NATS_IMAGE, MINIO_IMAGE, broker_image, backtest_image]:
+                futures.append(executor.submit(get_or_pull_image, image))
+                wait(futures)
+            for future in futures:
+                if future.result():
+                    progress.update(download_images, description=f"[red]Failed to download images: {future.result()}")
+                    exit(1)
+
+        progress.update(download_images, description="[blue]Images downloaded", completed=True)
+
         try:
             d.networks.get(NETWORK_NAME)
         except docker.errors.NotFound:
             d.networks.create(NETWORK_NAME, driver="bridge")
         progress.update(net_task_id, description="[blue]Network created", completed=True)
 
-        try:
-            d.images.get(POSTGRES_IMAGE)
-        except docker.errors.ImageNotFound:
-            d.images.pull(POSTGRES_IMAGE)
         try:
             postgres_container = d.containers.get("foreverbull_postgres")
             if postgres_container.status != "running":
@@ -181,15 +202,10 @@ def start(
                     volumes={init_db_file.name: {"bind": "/docker-entrypoint-initdb.d/init.sh", "mode": "ro"}},
                 )
             except Exception as e:
-                progress.update(postgres_task_id, description="[red]Failed to start postgres", completed=True)
-                std_err.log("Failed to start postgres: ", e)
+                progress.update(postgres_task_id, description=f"[red]Failed to start postgres: {e}", completed=True)
                 exit(1)
         progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
 
-        try:
-            d.images.get(NATS_IMAGE)
-        except docker.errors.ImageNotFound:
-            d.images.pull(NATS_IMAGE)
         try:
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.status != "running":
@@ -214,15 +230,10 @@ def start(
                     command="-js -sd /var/lib/nats/data",
                 )
             except Exception as e:
-                progress.update(nats_task_id, description="[red]Failed to start nats", completed=True)
-                std_err.log("Failed to start nats: ", e)
+                progress.update(nats_task_id, description=f"[red]Failed to start nats: {e}", completed=True)
                 exit(1)
         progress.update(nats_task_id, description="[blue]NATS started", completed=True)
 
-        try:
-            d.images.get(MINIO_IMAGE)
-        except docker.errors.ImageNotFound:
-            d.images.pull(MINIO_IMAGE)
         try:
             d.containers.get("foreverbull_minio")
         except docker.errors.NotFound:
@@ -237,8 +248,7 @@ def start(
                     command='server --console-address ":9001" /data',
                 )
             except Exception as e:
-                progress.update(minio_task_id, description="[red]Failed to start minio", completed=True)
-                std_err.log("Failed to start minio: ", e)
+                progress.update(minio_task_id, description=f"[red]Failed to start minio: {e}", completed=True)
                 exit(1)
         progress.update(minio_task_id, description="[blue]Minio started", completed=True)
 
@@ -256,10 +266,6 @@ def start(
             progress.update(health_task_id, description="[red]Failed to start services, timeout", completed=True)
             exit(1)
 
-        try:
-            d.images.get(broker_image)
-        except docker.errors.ImageNotFound:
-            d.images.pull(broker_image)
         try:
             foreverbull_container = d.containers.get("foreverbull_foreverbull")
             if foreverbull_container.status != "running":
@@ -299,8 +305,9 @@ def start(
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
                 )
             except Exception as e:
-                progress.update(foreverbull_task_id, description="[red]Failed to start foreverbull", completed=True)
-                std_err.log("Failed to start foreverbull: ", e)
+                progress.update(
+                    foreverbull_task_id, description=f"[red]Failed to start foreverbull: {e}", completed=True
+                )
                 exit(1)
         progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
     std.print("Environment started")
