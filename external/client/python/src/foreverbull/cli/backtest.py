@@ -1,3 +1,4 @@
+import os
 import signal
 import socket
 import time
@@ -179,8 +180,16 @@ def run(
         std.print(table)
 
     session = broker.backtest.run(backtest_name, manual=True if file_path else False)
+    while session.port is None:
+        time.sleep(0.5)
+        session = broker.backtest.get_session(session.id)
+        if session.statuses[-1].status == broker.SessionStatusType.FAILED:
+            raise Exception(f"Session failed: {session.statuses[-1].error}")
+    os.environ["BROKER_SESSION_PORT"] = str(session.port)
     foreverbull = Foreverbull(file_path=file_path)
-    with foreverbull:
+    with foreverbull as fb:
+        execution = fb.new_backtest_execution()
+        fb.run_backtest_execution(execution)
         show_progress(session)
     return
 

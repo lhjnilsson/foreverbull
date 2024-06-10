@@ -44,3 +44,12 @@ type CreateSessionBody struct {
 		Benchmark *string   `json:"benchmark"`
 	} `json:"executions"`
 }
+
+type CreateIngestionBody struct {
+	Calendar string   `json:"calendar" binding:"required"`
+	Start    string   `json:"start" binding:"required"`
+	End      string   `json:"end" binding:"required"`
+	Symbols  []string `json:"symbols" binding:"required,gte=1"`
+}
+
+type CreateIngestionResponse entity.Ingestion

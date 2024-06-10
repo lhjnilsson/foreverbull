@@ -22,6 +22,9 @@ const (
 	DOCKER_NETWORK         = "DOCKER_NETWORK"
 	DOCKER_NETWORK_DEFAULT = "foreverbull"
 
+	BACKTEST_INGESTION_DEFAULT_NAME         = "BACKTEST_INGESTION_DEFAULT_NAME"
+	BACKTEST_INGESTION_DEFAULT_NAME_DEFAULT = "default_ingestion"
+
 	BACKTEST_IMAGE                    = "BACKTEST_IMAGE"
 	BACKTEST_IMAGE_DEFAULT            = "lhjnilson/zipline:latest"
 	BACKTEST_PORT_RANGE_START         = "BACKTEST_PORT_RANGE_START"
@@ -65,6 +68,7 @@ type envVar struct {
 var envVars = []envVar{
 	{SERVER_ADDRESS, func() (string, error) { return SERVER_ADDRESS_DEFAULT, nil }},
 	{HTTP_PORT, func() (string, error) { return HTTP_PORT_DEFAULT, nil }},
+	{BACKTEST_INGESTION_DEFAULT_NAME, func() (string, error) { return BACKTEST_INGESTION_DEFAULT_NAME_DEFAULT, nil }},
 	{BACKTEST_IMAGE, func() (string, error) { return BACKTEST_IMAGE_DEFAULT, nil }},
 	{BACKTEST_PORT_RANGE_START, func() (string, error) { return BACKTEST_PORT_RANGE_START_DEFAULT, nil }},
 	{BACKTEST_PORT_RANGE_END, func() (string, error) { return BACKTEST_PORT_RANGE_END_DEFAULT, nil }},
@@ -127,6 +131,10 @@ func GetUIStaticPath() string {
 
 func GetDockerNetworkName() string {
 	return os.Getenv(DOCKER_NETWORK)
+}
+
+func GetBacktestIngestionDefaultName() string {
+	return os.Getenv(BACKTEST_INGESTION_DEFAULT_NAME)
 }
 
 func GetBacktestImage() string {

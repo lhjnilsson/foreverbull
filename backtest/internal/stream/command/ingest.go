@@ -5,42 +5,41 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/backtest/engine"
-	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
-
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/stream/dependency"
+	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 )
 
-func UpdateBacktestStatus(ctx context.Context, message stream.Message) error {
+func UpdateIngestStatus(ctx context.Context, message stream.Message) error {
 	db := message.MustGet(stream.DBDep).(postgres.Query)
 
-	command := bs.UpdateBacktestStatusCommand{}
+	command := bs.UpdateIngestStatusCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
-		return fmt.Errorf("error unmarshalling UpdateBacktestStatus payload: %w", err)
+		return fmt.Errorf("error unmarshalling UpdateIngestStatus payload: %w", err)
 	}
 
-	backtests := repository.Backtest{Conn: db}
-	err = backtests.UpdateStatus(ctx, command.BacktestName, command.Status, command.Error)
+	ingestions := repository.Ingestion{Conn: db}
+	err = ingestions.UpdateStatus(ctx, command.Name, command.Status, command.Error)
 	if err != nil {
-		return fmt.Errorf("error updating backtest status: %w", err)
+		return fmt.Errorf("error updating ingestion status: %w", err)
 	}
 	return nil
 }
 
-func BacktestIngest(ctx context.Context, message stream.Message) error {
+func Ingest(ctx context.Context, message stream.Message) error {
 	db := message.MustGet(stream.DBDep).(postgres.Query)
 
-	command := bs.BacktestIngestCommand{}
+	command := bs.IngestCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling MarketdataDownloaded payload: %w", err)
 	}
 
 	backtests := repository.Backtest{Conn: db}
-	b, err := backtests.Get(ctx, command.BacktestName)
+	b, err := backtests.Get(ctx, command.Name)
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
@@ -58,7 +57,7 @@ func BacktestIngest(ctx context.Context, message stream.Message) error {
 		return nil
 	}
 
-	engineInstance, err := message.Call(ctx, dependency.GetBacktestKey)
+	engineInstance, err := message.Call(ctx, dependency.GetIngestEngineKey)
 	if err != nil {
 		return fmt.Errorf("error getting backtest engine: %w", err)
 	}

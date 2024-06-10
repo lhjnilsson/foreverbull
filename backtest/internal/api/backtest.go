@@ -7,9 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/backtest/api"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
-	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/rs/zerolog/log"
 )
 
@@ -32,8 +30,6 @@ func ListBacktests(c *gin.Context) {
 }
 
 func CreateBacktest(c *gin.Context) {
-	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
-
 	var body api.CreateBacktestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		log.Debug().Err(err).Msg("error binding request")
@@ -63,13 +59,7 @@ func CreateBacktest(c *gin.Context) {
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-	orch, err := bs.NewBacktestIngestOrchestration(backtest)
-	if err != nil {
-		log.Err(err).Msg("error creating backtest ingest orchestration")
-		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-	stream.Add(orch)
+
 	log.Info().Str("backtest", backtest.Name).Msg("created backtest")
 	c.JSON(http.StatusCreated, backtest)
 }
@@ -95,7 +85,6 @@ func GetBacktest(c *gin.Context) {
 
 func UpdateBacktest(c *gin.Context) {
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
-	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	var uri backtestUri
 	if err := c.ShouldBindUri(&uri); err != nil {
@@ -132,14 +121,6 @@ func UpdateBacktest(c *gin.Context) {
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-
-	orch, err := bs.NewBacktestIngestOrchestration(backtest)
-	if err != nil {
-		log.Err(err).Msg("error creating backtest ingest orchestration")
-		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-	stream.Add(orch)
 	log.Info().Str("backtest", backtest.Name).Msg("updated backtest")
 	c.JSON(http.StatusOK, backtest)
 }
