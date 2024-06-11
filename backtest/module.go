@@ -64,6 +64,9 @@ var Module = fx.Options(
 					ctx.Next()
 				},
 			)
+			backtestAPI.POST("/ingestion", api.CreateIngestion)
+			backtestAPI.GET("/ingestion", api.GetIngestion)
+
 			backtestAPI.GET("/backtests", api.ListBacktests)
 			backtestAPI.POST("/backtests", api.CreateBacktest)
 			backtestAPI.GET("/backtests/:name", api.GetBacktest)
