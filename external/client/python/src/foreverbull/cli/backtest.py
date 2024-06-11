@@ -1,6 +1,4 @@
 import os
-import signal
-import socket
 import time
 from datetime import datetime
 
