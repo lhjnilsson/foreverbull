@@ -1,4 +1,3 @@
-import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -100,12 +99,6 @@ def baseline_performance_initialize(context):
     context.held_positions = []
 
 
-handle_data_logger = logging.getLogger("handle_data")
-handle_data_logger.level = logging.INFO
-file_handler = logging.FileHandler("baseline_performance.log")
-handle_data_logger.addHandler(file_handler)
-
-
 def baseline_performance_handle_data(context, data, execution: entity.backtest.Execution):
     context.i += 1
     if context.i < 30:
@@ -114,19 +107,12 @@ def baseline_performance_handle_data(context, data, execution: entity.backtest.E
     for s in execution.symbols:
         short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
         long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
-        handle_data_logger.info(
-            f"Symbol {s}, short_mean: {short_mean}, long_mean: {long_mean}, date: {context.datetime}"
-        )
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
-            handle_data_logger.info(f"Buying {s}")
             context.held_positions.append(s)
         elif short_mean < long_mean and s in context.held_positions:
             order_target(symbol(s), 0)
-            handle_data_logger.info(f"Selling {s}")
             context.held_positions.remove(s)
-        else:
-            handle_data_logger.info(f"Nothing to do for {s}")
 
 
 @pytest.fixture(scope="session")
@@ -231,10 +217,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         functions={"handle_data": {"parameters": {}}},
     )
 
-    import logging
-
-    logger = logging.getLogger("integration_test")
-
     with Foreverbull(file_path):
         backtest = zipline_socket(execution)
         foreverbull_socket = pynng.Req0(dial="tcp://127.0.0.1:5555")
@@ -252,7 +234,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         foreverbull_socket.send(socket.Request(task="run_execution").serialize())
         response = socket.Response.deserialize(foreverbull_socket.recv())
         assert response.error is None
-        logger.info(f"starting backtest: {file_path}")
 
         while True:
             backtest.send(socket.Request(task="get_period").serialize())
@@ -260,8 +241,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
                 period = Period(**socket.Response.deserialize(backtest.recv()).data)
             except TypeError:
                 break
-            for order in period.new_orders:
-                logger.info(f"new order info: {order.symbol}, {order.amount}, {order.filled}, {order.created_at}")
 
             portfolio = entity.finance.Portfolio(
                 cash=period.cash,
@@ -290,7 +269,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             assert response.error is None
             if response.data:
                 for order in response.data:
-                    logger.info(f"order received: {order['symbol']}, {order['amount']}")
                     backtest.send(
                         socket.Request(
                             task="order",
@@ -299,7 +277,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
                     )
                     response = socket.Response.deserialize(backtest.recv())
                     assert response.error is None
-                    logger.info(f"order placed: {order['symbol']}, {order['amount']}")
 
             backtest.send(socket.Request(task="continue").serialize())
             response = socket.Response.deserialize(backtest.recv())
@@ -310,9 +287,6 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         assert response.data is not None
         result = pd.DataFrame(response.data["periods"]).reset_index(drop=True)
         result = result.drop(columns=["timestamp"])
-        with open("result.json", "w") as f:
-            f.write(result.to_json())
-
         baseline_performance = baseline_performance[result.columns]
         assert baseline_performance.equals(result)
 

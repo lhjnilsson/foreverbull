@@ -150,6 +150,7 @@ def run(
             while not progress.finished:
                 time.sleep(0.5)
                 session = broker.backtest.get_session(session.id)
+                print("SESSION: ", session)
                 status = session.statuses[0].status
                 if previous_status and previous_status != status:
                     match status:
@@ -177,11 +178,11 @@ def run(
         )
         std.print(table)
 
-    session = broker.backtest.run(backtest_name, manual=True if file_path else False)
+    session = broker.backtest.run(backtest_name, manual=True)
     while session.port is None:
         time.sleep(0.5)
         session = broker.backtest.get_session(session.id)
-        if session.statuses[-1].status == broker.SessionStatusType.FAILED:
+        if session.statuses[-1].status == entity.backtest.SessionStatusType.FAILED:
             raise Exception(f"Session failed: {session.statuses[-1].error}")
     os.environ["BROKER_SESSION_PORT"] = str(session.port)
     foreverbull = Foreverbull(file_path=file_path)

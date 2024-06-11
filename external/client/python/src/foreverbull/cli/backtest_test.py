@@ -209,6 +209,8 @@ def test_backtest_run(spawn_process, parallel_algo_file):
     with (
         patch("foreverbull.broker.backtest.run") as mock_run,
         patch("foreverbull.broker.backtest.get_session") as mock_get,
+        patch("foreverbull.foreverbull.Session.new_backtest_execution") as mock_new_exc,
+        patch("foreverbull.foreverbull.Session.run_backtest_execution") as mock_run_exc,
     ):
         mock_run.return_value = entity.backtest.Session(
             id="id123",
@@ -220,22 +222,28 @@ def test_backtest_run(spawn_process, parallel_algo_file):
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses[2:],
             ),
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses[1:],
             ),
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses,
             ),
         ]
+        mock_new_exc.return_value = None
+        mock_run_exc.return_value = None
+
         result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
         if not result.exit_code == 0:
@@ -268,6 +276,8 @@ def test_backtest_run_failed(spawn_process, parallel_algo_file):
     with (
         patch("foreverbull.broker.backtest.run") as mock_run,
         patch("foreverbull.broker.backtest.get_session") as mock_get,
+        patch("foreverbull.foreverbull.Session.new_backtest_execution") as mock_new_exc,
+        patch("foreverbull.foreverbull.Session.run_backtest_execution") as mock_run_exc,
     ):
         mock_run.return_value = entity.backtest.Session(
             id="id123",
@@ -279,22 +289,28 @@ def test_backtest_run_failed(spawn_process, parallel_algo_file):
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses[2:],
             ),
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses[1:],
             ),
             entity.backtest.Session(
                 id="id123",
                 backtest="test",
+                port=1234,
                 executions=1,
                 statuses=statuses,
             ),
         ]
+        mock_new_exc.return_value = None
+        mock_run_exc.return_value = None
+
         result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
         if not result.exit_code == 1:

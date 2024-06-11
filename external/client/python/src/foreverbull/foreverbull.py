@@ -94,7 +94,7 @@ class Session(threading.Thread):
         if rsp.error:
             raise Exception(rsp.error)
         while True:
-            socket.send(socket.Request(task="current_period").serialize())
+            sock.send(socket.Request(task="current_period").serialize())
             rsp = socket.Response.deserialize(sock.recv())
             if not rsp.data:
                 break
