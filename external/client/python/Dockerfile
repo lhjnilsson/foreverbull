@@ -16,7 +16,8 @@ RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
 ARG ALGO_FILE
 RUN mkdir /algos
 RUN cp ${ALGO_FILE} /algos/algo.py
+RUN cp src/foreverbull/_run_instance.py /algos/_run_instance.py
 
 WORKDIR /algos
 
-CMD [ "python", "-m", "foreverbull", "/app/src/foreverbull/_run_instance.py", "algo.py"]
+CMD [ "python", "-m", "_run_instance", "algo.py"]

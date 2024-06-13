@@ -84,11 +84,11 @@ func (test *BacktestModuleTest) SetupSuite() {
 		Module,
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
-	payload := `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
+	payload := `{"symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/ingest", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
-		test.Failf("Failed to create backtest: %s", string(rspData))
+		test.Failf("Failed to ingest data: %s", string(rspData))
 	}
 	condition := func() (bool, error) {
 		type BacktestResponse struct {
@@ -96,7 +96,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 				Status string
 			}
 		}
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/backtests/test", nil)
+		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/ingest", nil)
 		if rsp.StatusCode != http.StatusOK {
 			return false, fmt.Errorf("failed to get backtest: %d", rsp.StatusCode)
 		}
@@ -116,6 +116,12 @@ func (test *BacktestModuleTest) SetupSuite() {
 	}
 	test.Require().NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 
+	payload = `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	rsp = helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
+	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
+		rspData, _ := io.ReadAll(rsp.Body)
+		test.Failf("Failed to create backtest: %s", string(rspData))
+	}
 	test.backtestName = "test"
 }
 
