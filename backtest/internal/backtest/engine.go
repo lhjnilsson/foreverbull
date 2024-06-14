@@ -43,14 +43,14 @@ type Zipline struct {
 	Running             bool                 `json:"running"`
 }
 
-func (z *Zipline) Ingest(ctx context.Context, backtest *entity.Backtest) error {
+func (z *Zipline) Ingest(ctx context.Context, ingestion *entity.Ingestion) error {
 	sock, err := z.socket.Get()
 	if err != nil {
 		return fmt.Errorf("error opening context: %w", err)
 	}
 	defer sock.Close()
 
-	req := message.Request{Task: "ingest", Data: backtest}
+	req := message.Request{Task: "ingest", Data: ingestion}
 	rsp, err := req.Process(sock)
 	if err != nil {
 		return fmt.Errorf("error ingesting: %w", err)
@@ -58,7 +58,7 @@ func (z *Zipline) Ingest(ctx context.Context, backtest *entity.Backtest) error {
 	if len(rsp.Error) > 0 {
 		return errors.New(rsp.Error)
 	}
-	if err := rsp.DecodeData(backtest); err != nil {
+	if err := rsp.DecodeData(ingestion); err != nil {
 		return fmt.Errorf("error decoding data: %w", err)
 	}
 	return nil

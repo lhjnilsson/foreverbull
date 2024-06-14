@@ -138,7 +138,11 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				ms.executionEntity = nil
 			}()
 		case "current_period":
-			rsp.Data = ms.execution.CurrentPeriod()
+			if ms.execution == nil {
+				rsp.Data = nil
+			} else {
+				rsp.Data = ms.execution.CurrentPeriod()
+			}
 		case "stop":
 			byteMsg, err = rsp.Encode()
 			if err != nil {

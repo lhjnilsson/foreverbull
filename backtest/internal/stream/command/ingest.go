@@ -38,19 +38,19 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error unmarshalling MarketdataDownloaded payload: %w", err)
 	}
 
-	backtests := repository.Backtest{Conn: db}
-	b, err := backtests.Get(ctx, command.Name)
+	ingestions := repository.Ingestion{Conn: db}
+	i, err := ingestions.Get(ctx, command.Name)
 	if err != nil {
-		return fmt.Errorf("error getting backtest: %w", err)
+		return fmt.Errorf("error getting ingestion: %w", err)
 	}
 
 	ingest := func(e engine.Engine) error {
-		err = e.Ingest(ctx, b)
+		err = e.Ingest(ctx, i)
 		if err != nil {
 			return fmt.Errorf("error ingesting: %w", err)
 		}
 
-		err = e.UploadIngestion(ctx, b.Name)
+		err = e.UploadIngestion(ctx, i.Name)
 		if err != nil {
 			return fmt.Errorf("error uploading ingestion: %w", err)
 		}

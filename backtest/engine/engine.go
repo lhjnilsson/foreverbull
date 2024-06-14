@@ -89,7 +89,7 @@ type Result struct {
 }
 
 type Engine interface {
-	Ingest(context.Context, *entity.Backtest) error
+	Ingest(context.Context, *entity.Ingestion) error
 	UploadIngestion(context.Context, string) error
 	DownloadIngestion(context.Context, string) error
 	ConfigureExecution(context.Context, *entity.Execution) error

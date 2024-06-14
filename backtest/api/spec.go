@@ -23,11 +23,10 @@ type CreateBacktestBody struct {
 	Name    string  `json:"name" binding:"required,gte=3,lte=32"`
 	Service *string `json:"service"`
 
-	Start     string   `json:"start" binding:"required"`
-	End       string   `json:"end" binding:"required"`
-	Calendar  string   `json:"calendar" binding:"required"`
-	Symbols   []string `json:"symbols" binding:"required,gte=1"`
-	Benchmark *string  `json:"benchmark"`
+	Start     *string   `json:"start"`
+	End       *string   `json:"end"`
+	Symbols   *[]string `json:"symbols"`
+	Benchmark *string   `json:"benchmark"`
 }
 
 type CreateBacktestResponse entity.Backtest
