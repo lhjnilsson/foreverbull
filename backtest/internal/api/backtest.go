@@ -74,7 +74,7 @@ func CreateBacktest(c *gin.Context) {
 
 	var end time.Time
 	if body.End != nil {
-		end, err := api.ParseTime(*body.End)
+		end, err = api.ParseTime(*body.End)
 		if err != nil {
 			log.Debug().Err(err).Msg("error parsing end time")
 			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
@@ -113,7 +113,7 @@ func CreateBacktest(c *gin.Context) {
 		return
 	}
 
-	log.Info().Str("backtest", backtest.Name).Msg("created backtest")
+	log.Info().Any("backtest", backtest).Msg("created backtest")
 	c.JSON(http.StatusCreated, backtest)
 }
 

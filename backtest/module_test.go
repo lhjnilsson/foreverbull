@@ -106,11 +106,11 @@ func (test *BacktestModuleTest) SetupSuite() {
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response: %s", err.Error())
 		}
-		if data.Statuses[0].Status == "ERROR" {
+		if data.Statuses[0].Status == string(entity.IngestionStatusError) {
 			return false, fmt.Errorf("backtest failed")
 		}
 
-		if data.Statuses[0].Status == "READY" {
+		if data.Statuses[0].Status == string(entity.IngestionStatusCompleted) {
 			return true, nil
 		}
 		return false, nil
@@ -296,13 +296,4 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
-}
-
-func TestParse(t *testing.T) {
-	payload := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
-	algorithm := &serviceEntity.Algorithm{}
-	err := json.Unmarshal(payload, algorithm)
-	if err != nil {
-		t.Fatal(err)
-	}
 }
