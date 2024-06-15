@@ -15,15 +15,17 @@ const (
 )
 
 type Backtest struct {
-	Name      string           `json:"name"`
-	Service   *string          `json:"service"`
-	Calendar  string           `json:"calendar" mapstructure:"calendar" required:"true"`
-	Start     time.Time        `json:"start" mapstructure:"start" required:"true"`
-	End       time.Time        `json:"end" mapstructure:"end" required:"true"`
-	Benchmark *string          `json:"benchmark" mapstructure:"benchmark" required:"true"`
-	Symbols   []string         `json:"symbols" mapstructure:"symbols" required:"true"`
-	Statuses  []BacktestStatus `json:"statuses"`
-	Sessions  int              `json:"sessions"`
+	Name    string  `json:"name"`
+	Service *string `json:"service"`
+
+	Calendar  string    `json:"calendar" mapstructure:"calendar"`
+	Start     time.Time `json:"start" mapstructure:"start"`
+	End       time.Time `json:"end" mapstructure:"end"`
+	Benchmark *string   `json:"benchmark" mapstructure:"benchmark"`
+	Symbols   []string  `json:"symbols" mapstructure:"symbols"`
+
+	Statuses []BacktestStatus `json:"statuses"`
+	Sessions int              `json:"sessions"`
 }
 
 type BacktestStatus struct {

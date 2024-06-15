@@ -76,6 +76,8 @@ def test_foreverbull_manual(execution, algo, request):
                     rsp = socket.Response(task="configure_execution", data=parameters)
                 elif req.task == "run_execution":
                     rsp = socket.Response(task="run_execution")
+                elif req.task == "current_period":
+                    rsp = socket.Response(task="current_period", data={"timestamp": 1})
                 else:
                     rsp = socket.Response(error="Unknown task")
                 sock.send(rsp.serialize())
@@ -89,9 +91,11 @@ def test_foreverbull_manual(execution, algo, request):
 
     with Foreverbull(file_name) as foreverbull:
         execution = foreverbull.new_backtest_execution()
-        foreverbull.run_backtest_execution(execution)
+        run_thread = Thread(target=foreverbull.run_backtest_execution, args=(execution,))
+        run_thread.start()
 
         process_symbols()
+        stop_event.set()
+        run_thread.join()
 
-    stop_event.set()
     server_thread.join()

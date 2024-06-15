@@ -14,6 +14,7 @@ import (
 type Execution interface {
 	Configure(context.Context, *entity.Execution) error
 	Run(context.Context, *entity.Execution) error
+	CurrentPeriod() *engine.Period
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
@@ -28,6 +29,8 @@ func NewExecution(e engine.Engine, w worker.Pool) Execution {
 type execution struct {
 	engine  engine.Engine `json:"-"`
 	workers worker.Pool   `json:"-"`
+
+	currentPeriod *engine.Period `json:"-"`
 }
 
 /*
@@ -46,6 +49,9 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 	if err != nil {
 		return fmt.Errorf("error running Execution engine: %w", err)
 	}
+	defer func() {
+		b.currentPeriod = nil
+	}()
 	for {
 		period, err := b.engine.GetMessage()
 		if err != nil {
@@ -54,6 +60,8 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 		if period == nil {
 			return nil
 		}
+		b.currentPeriod = period
+
 		positions := make([]finance.Position, 0)
 		for _, p := range period.Positions {
 			positions = append(positions, finance.Position{
@@ -83,6 +91,10 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
+}
+
+func (b *execution) CurrentPeriod() *engine.Period {
+	return b.currentPeriod
 }
 
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {

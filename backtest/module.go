@@ -39,7 +39,7 @@ var Module = fx.Options(
 			dc.AddSingleton(dependency.GetServiceAPI, serviceAPI)
 			httpClient := dependency.GetHTTPClient()
 			dc.AddSingleton(dependency.GetHTTPClientKey, httpClient)
-			dc.AddMethod(dependency.GetBacktestKey, dependency.GetBacktest)
+			dc.AddMethod(dependency.GetIngestEngineKey, dependency.GetIngestEngine)
 			dc.AddMethod(dependency.GetBacktestSessionKey, dependency.GetBacktestSession)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
@@ -64,6 +64,9 @@ var Module = fx.Options(
 					ctx.Next()
 				},
 			)
+			backtestAPI.POST("/ingestion", api.CreateIngestion)
+			backtestAPI.GET("/ingestion", api.GetIngestion)
+
 			backtestAPI.GET("/backtests", api.ListBacktests)
 			backtestAPI.POST("/backtests", api.CreateBacktest)
 			backtestAPI.GET("/backtests/:name", api.GetBacktest)
@@ -109,7 +112,7 @@ var Module = fx.Options(
 		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					err := s.CommandSubscriber("backtest", "ingest", command.BacktestIngest)
+					err := s.CommandSubscriber("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
@@ -117,7 +120,7 @@ var Module = fx.Options(
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
-					err = s.CommandSubscriber("backtest", "status", command.UpdateBacktestStatus)
+					err = s.CommandSubscriber("ingest", "status", command.UpdateIngestStatus)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.status: %w", err)
 					}

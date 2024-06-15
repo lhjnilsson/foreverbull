@@ -2,15 +2,17 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/backtest/api"
+	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
-	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/exp/slices"
 )
 
 type backtestUri struct {
@@ -32,7 +34,19 @@ func ListBacktests(c *gin.Context) {
 }
 
 func CreateBacktest(c *gin.Context) {
-	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
+	ingestion_b := repository.Ingestion{Conn: c.MustGet(TXDependency).(pgx.Tx)}
+	i, err := ingestion_b.Get(c, environment.GetBacktestIngestionDefaultName())
+	if err != nil {
+		log.Err(err).Msg("error getting ingestion")
+		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "No ingestion found, create one before creating a backtest"})
+		return
+	}
+
+	if i.Statuses[0].Status != entity.IngestionStatusCompleted {
+		log.Debug().Msg("ingestion not ready")
+		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Ingestion not ready"})
+		return
+	}
 
 	var body api.CreateBacktestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -41,36 +55,65 @@ func CreateBacktest(c *gin.Context) {
 		return
 	}
 
-	start, err := api.ParseTime(body.Start)
-	if err != nil {
-		log.Debug().Err(err).Msg("error parsing start time")
-		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
-		return
+	var start time.Time
+	if body.Start != nil {
+		start, err = api.ParseTime(*body.Start)
+		if err != nil {
+			log.Debug().Err(err).Msg("error parsing start time")
+			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
+			return
+		}
+		if start.Before(i.Start) {
+			log.Debug().Msg("start time before ingestion start time")
+			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Start time before ingestion start time"})
+			return
+		}
+	} else {
+		start = i.Start
 	}
-	end, err := api.ParseTime(body.End)
-	if err != nil {
-		log.Debug().Err(err).Msg("error parsing end time")
-		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
-		return
+
+	var end time.Time
+	if body.End != nil {
+		end, err = api.ParseTime(*body.End)
+		if err != nil {
+			log.Debug().Err(err).Msg("error parsing end time")
+			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
+			return
+		}
+		if end.After(i.End) {
+			log.Debug().Msg("end time after ingestion end time")
+			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "End time after ingestion end time"})
+			return
+		}
+	} else {
+		end = i.End
+	}
+
+	var symbols []string
+	if body.Symbols != nil {
+		for _, symbol := range *body.Symbols {
+			if !slices.Contains(i.Symbols, symbol) {
+				log.Debug().Str("symbol", symbol).Msg("symbol not in ingestion")
+				c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Symbol not in ingestion"})
+				return
+			}
+		}
+		symbols = *body.Symbols
+	} else {
+		symbols = i.Symbols
 	}
 
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
 	repository_b := repository.Backtest{Conn: pgx_tx}
 	backtest, err := repository_b.Create(c, body.Name, body.Service,
-		start, end, body.Calendar, body.Symbols, body.Benchmark)
+		start, end, i.Calendar, symbols, body.Benchmark)
 	if err != nil {
 		log.Err(err).Msg("error creating backtest")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-	orch, err := bs.NewBacktestIngestOrchestration(backtest)
-	if err != nil {
-		log.Err(err).Msg("error creating backtest ingest orchestration")
-		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-	stream.Add(orch)
-	log.Info().Str("backtest", backtest.Name).Msg("created backtest")
+
+	log.Info().Any("backtest", backtest).Msg("created backtest")
 	c.JSON(http.StatusCreated, backtest)
 }
 
@@ -95,12 +138,19 @@ func GetBacktest(c *gin.Context) {
 
 func UpdateBacktest(c *gin.Context) {
 	pgx_tx := c.MustGet(TXDependency).(pgx.Tx)
-	stream := c.MustGet(OrchestrationDependency).(*stream.OrchestrationOutput)
 
 	var uri backtestUri
 	if err := c.ShouldBindUri(&uri); err != nil {
 		log.Debug().Err(err).Msg("error binding uri")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
+		return
+	}
+
+	ingestion_b := repository.Ingestion{Conn: pgx_tx}
+	i, err := ingestion_b.Get(c, environment.GetBacktestIngestionDefaultName())
+	if err != nil {
+		log.Err(err).Msg("error getting ingestion")
+		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "No ingestion found, create one before creating a backtest"})
 		return
 	}
 
@@ -110,36 +160,48 @@ func UpdateBacktest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
-	start, err := api.ParseTime(body.Start)
+
+	start, err := api.ParseTime(*body.Start)
 	if err != nil {
 		log.Debug().Err(err).Msg("error parsing start time")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
-	end, err := api.ParseTime(body.End)
+	if start.Before(i.Start) {
+		log.Debug().Msg("start time before ingestion start time")
+		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Start time before ingestion start time"})
+		return
+	}
+
+	end, err := api.ParseTime(*body.End)
 	if err != nil {
 		log.Debug().Err(err).Msg("error parsing end time")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: err.Error()})
 		return
 	}
+	if end.After(i.End) {
+		log.Debug().Msg("end time after ingestion end time")
+		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "End time after ingestion end time"})
+		return
+	}
+
+	for _, symbol := range *body.Symbols {
+		if !slices.Contains(i.Symbols, symbol) {
+			log.Debug().Str("symbol", symbol).Msg("symbol not in ingestion")
+			c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Symbol not in ingestion"})
+			return
+		}
+	}
 
 	repository_b := repository.Backtest{Conn: pgx_tx}
 
 	backtest, err := repository_b.Update(c, uri.Name, body.Service,
-		start, end, body.Calendar, body.Symbols, body.Benchmark)
+		start, end, i.Calendar, *body.Symbols, body.Benchmark)
 	if err != nil {
 		log.Err(err).Msg("error updating backtest")
 		c.JSON(internalHTTP.DatabaseError(err))
 		return
 	}
-
-	orch, err := bs.NewBacktestIngestOrchestration(backtest)
-	if err != nil {
-		log.Err(err).Msg("error creating backtest ingest orchestration")
-		c.JSON(http.StatusInternalServerError, internalHTTP.APIError{Message: err.Error()})
-		return
-	}
-	stream.Add(orch)
 	log.Info().Str("backtest", backtest.Name).Msg("updated backtest")
 	c.JSON(http.StatusOK, backtest)
 }

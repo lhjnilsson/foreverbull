@@ -50,10 +50,10 @@ func GetHTTPClient() *HTTPClient {
 	}
 }
 
-const GetBacktestKey stream.Dependency = "get_backtest"
+const GetIngestEngineKey stream.Dependency = "get_ingest_engine"
 
-func GetBacktest(ctx context.Context, message stream.Message) (interface{}, error) {
-	command := bs.BacktestIngestCommand{}
+func GetIngestEngine(ctx context.Context, message stream.Message) (interface{}, error) {
+	command := bs.IngestCommand{}
 	err := message.ParsePayload(&command)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling MarketdataDownloaded payload: %w", err)

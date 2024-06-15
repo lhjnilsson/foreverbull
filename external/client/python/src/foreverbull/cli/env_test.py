@@ -1,3 +1,4 @@
+import tempfile
 import traceback
 from collections import namedtuple
 from datetime import datetime
@@ -7,6 +8,7 @@ import docker
 import pytest
 from typer.testing import CliRunner
 
+from foreverbull import entity
 from foreverbull.cli.env import env
 
 runner = CliRunner(mix_stderr=False)
@@ -125,11 +127,30 @@ def test_env_start():
         patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
         patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
         patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
+        tempfile.NamedTemporaryFile() as ingest_file,
+        patch("foreverbull.broker.backtest.ingest") as mock_ingest,
     ):
+        ingest_file.write(
+            b'{"calendar": "XNYS", "symbols": ["AAPL", "MSFT"], "start": "2021-01-01", "end": "2021-01-02"}'
+        )
+        ingest_file.flush()
         mock_containers.return_value = MockedDockerProperty({})
         mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
-        result = runner.invoke(env, ["start"])
+        mock_ingest.return_value = entity.backtest.Ingestion(
+            calendar="XNYS",
+            symbols=["AAPL", "MSFT"],
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 2),
+            statuses=[
+                entity.backtest.IngestionStatus(
+                    status=entity.backtest.IngestionStatusType.COMPLETED,
+                    error=None,
+                    occurred_at=datetime.now(),
+                )
+            ],
+        )
+        result = runner.invoke(env, ["start", "--ingestion-config", ingest_file.name])
 
         if result.exception:
             traceback.print_exception(*result.exc_info)

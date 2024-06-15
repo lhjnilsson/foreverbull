@@ -1,5 +1,4 @@
-import signal
-import socket
+import os
 import time
 from datetime import datetime
 
@@ -47,9 +46,9 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
-    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
-    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")] = None,
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")] = None,
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")] = None,
     service: Annotated[str, typer.Option(help="worker service to use")] = None,
     benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] = None,
 ):
@@ -58,30 +57,10 @@ def create(
         service=service,
         start=start,
         end=end,
-        symbols=[symbol.strip().upper() for symbol in symbols.split(",")],
+        symbols=[symbol.strip().upper() for symbol in symbols.split(",")] if symbols else None,
         benchmark=benchmark,
     )
-    with Progress() as progress:
-        task = progress.add_task("Created", total=2)
-        backtest = broker.backtest.create(backtest)
-        previous_status = backtest.statuses[0].status
-        while not progress.finished:
-            time.sleep(0.5)
-            backtest = broker.backtest.get(name)
-            status = backtest.statuses[0].status
-            if previous_status and previous_status != status:
-                match status:
-                    case entity.backtest.BacktestStatusType.INGESTING:
-                        progress.advance(task)
-                        progress.update(task, description="Ingesting")
-                    case entity.backtest.BacktestStatusType.READY:
-                        progress.advance(task)
-                        progress.update(task, description="Ready")
-                    case entity.backtest.BacktestStatusType.ERROR:
-                        std_err.log(f"[red]Error while creating backtest: {backtest.statuses[0].error}")
-                        exit(1)
-                previous_status = status
-
+    backtest = broker.backtest.create(backtest)
     table = Table(title="Created Backtest")
     table.add_column("Name")
     table.add_column("Status")
@@ -142,7 +121,7 @@ def get(
 @backtest.command()
 def run(
     file_path: Annotated[str, typer.Argument(help="name of the file to use")],
-    backtest_name: Annotated[str, typer.Option(help="name of the backtest")] = None,
+    backtest_name: Annotated[str, typer.Option(help="name of the backtest")],
 ):
     def show_progress(session: entity.backtest.Session):
         with Progress() as progress:
@@ -151,6 +130,7 @@ def run(
             while not progress.finished:
                 time.sleep(0.5)
                 session = broker.backtest.get_session(session.id)
+                print("SESSION: ", session)
                 status = session.statuses[0].status
                 if previous_status and previous_status != status:
                     match status:
@@ -178,22 +158,19 @@ def run(
         )
         std.print(table)
 
-    if backtest_name:
-        session = broker.backtest.run(backtest_name, manual=True if file_path else False)
-        foreverbull = Foreverbull(file_path=file_path)
-        with foreverbull as fb:
-            show_progress(session)
-        return
-
-    # TODO: Actually fetch the correct session with session_id from env
-    # To be set from container in foreverbull broker
+    session = broker.backtest.run(backtest_name, manual=True)
+    while session.port is None:
+        time.sleep(0.5)
+        session = broker.backtest.get_session(session.id)
+        if session.statuses[-1].status == entity.backtest.SessionStatusType.FAILED:
+            raise Exception(f"Session failed: {session.statuses[-1].error}")
+    os.environ["BROKER_SESSION_PORT"] = str(session.port)
     foreverbull = Foreverbull(file_path=file_path)
     with foreverbull as fb:
-        broker.service.update_instance(socket.gethostname(), True)
-        signal.signal(signal.SIGINT, lambda x, y: foreverbull._stop_event.set())
-        signal.signal(signal.SIGTERM, lambda x, y: foreverbull._stop_event.set())
-        fb.join()
-        broker.service.update_instance(socket.gethostname(), False)
+        execution = fb.new_backtest_execution()
+        fb.run_backtest_execution(execution)
+        show_progress(session)
+    return
 
 
 @backtest.command()

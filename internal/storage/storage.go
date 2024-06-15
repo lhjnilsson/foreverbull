@@ -15,12 +15,15 @@ type BlobStorage interface {
 	ListResults(ctx context.Context) (*[]Object, error)
 	GetResultInfo(ctx context.Context, name string) (*Object, error)
 	ListIngestions(ctx context.Context) (*[]Object, error)
+	GetIngestionInfo(ctx context.Context, name string) (*Object, error)
 }
 
 type Object struct {
 	Name         string    `json:"name"`
 	Size         int64     `json:"size"`
 	LastModified time.Time `json:"last_modified"`
+
+	Metadata map[string]string `json:"metadata"`
 }
 
 func NewMinioStorage() (BlobStorage, error) {
@@ -69,6 +72,7 @@ func (s *MinioStorage) ListResults(ctx context.Context) (*[]Object, error) {
 			Name:         object.Key,
 			Size:         object.Size,
 			LastModified: object.LastModified,
+			Metadata:     object.UserMetadata,
 		})
 	}
 	return &results, nil
@@ -83,6 +87,7 @@ func (s *MinioStorage) GetResultInfo(ctx context.Context, name string) (*Object,
 		Name:         object.Key,
 		Size:         object.Size,
 		LastModified: object.LastModified,
+		Metadata:     object.UserMetadata,
 	}
 	return &result, nil
 }
@@ -99,9 +104,24 @@ func (s *MinioStorage) ListIngestions(ctx context.Context) (*[]Object, error) {
 			Name:         object.Key,
 			Size:         object.Size,
 			LastModified: object.LastModified,
+			Metadata:     object.UserMetadata,
 		})
 	}
 	return &results, nil
+}
+
+func (s *MinioStorage) GetIngestionInfo(ctx context.Context, name string) (*Object, error) {
+	object, err := s.client.StatObject(ctx, "backtest-ingestions", name, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	result := Object{
+		Name:         object.Key,
+		Size:         object.Size,
+		LastModified: object.LastModified,
+		Metadata:     object.UserMetadata,
+	}
+	return &result, nil
 }
 
 func NewLocalStorage() (*LocalStorage, error) {

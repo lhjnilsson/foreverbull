@@ -126,7 +126,7 @@ type OHLCResponse struct {
 			} `json:"indicators"`
 		} `json:"result"`
 		Error struct {
-			Code        int    `json:"code"`
+			Code        string `json:"code"`
 			Description string `json:"description"`
 		}
 	}
@@ -148,8 +148,8 @@ func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OH
 	if err != nil {
 		return nil, err
 	}
-	if data.Chart.Error.Code != 0 {
-		return nil, fmt.Errorf("%v", data.Chart.Error.Description)
+	if data.Chart.Error.Code != "" {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %v", symbol, data.Chart.Error.Description)
 	}
 
 	ohlcs := make([]entity.OHLC, 0)

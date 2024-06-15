@@ -5,12 +5,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -21,12 +22,9 @@ type BacktestTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	stream *stream.OrchestrationOutput
 }
 
 func (test *BacktestTest) SetupTest() {
-	test.stream = &stream.OrchestrationOutput{}
-
 	helper.SetupEnvironment(test.T(), &helper.Containers{
 		Postgres: true,
 	})
@@ -35,6 +33,13 @@ func (test *BacktestTest) SetupTest() {
 
 	err = repository.Recreate(context.TODO(), pool)
 	test.Require().NoError(err)
+
+	ingestions := repository.Ingestion{Conn: pool}
+	start := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err = ingestions.Create(context.TODO(), environment.GetBacktestIngestionDefaultName(), start, end, "XNYS", []string{"AAPL"})
+	test.Require().NoError(err)
+	test.Require().NoError(ingestions.UpdateStatus(context.TODO(), environment.GetBacktestIngestionDefaultName(), entity.IngestionStatusCompleted, nil))
 
 	test.router = http.NewEngine()
 	test.router.Use(
@@ -45,7 +50,6 @@ func (test *BacktestTest) SetupTest() {
 				return
 			}
 
-			ctx.Set(OrchestrationDependency, test.stream)
 			ctx.Set(TXDependency, tx)
 			ctx.Next()
 			err = tx.Commit(context.Background())
@@ -58,7 +62,6 @@ func (test *BacktestTest) SetupTest() {
 }
 
 func (test *BacktestTest) SetupSubTest() {
-	test.stream = &stream.OrchestrationOutput{}
 }
 
 func TestBacktest(t *testing.T) {
@@ -98,12 +101,6 @@ func (test *BacktestTest) TestCreateBacktest() {
 			expectedCode: 201,
 		},
 		{
-			name: "no calendar",
-			payload: `{"name": "no calendar", "service": "worker",
-			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
-			expectedCode: 400,
-		},
-		{
 			name: "no benchmark",
 			payload: `{"name": "no benchmark", "service": "worker", 
 			"calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", 
@@ -111,10 +108,9 @@ func (test *BacktestTest) TestCreateBacktest() {
 			expectedCode: 201,
 		},
 		{
-			name: "no symbols",
-			payload: `{"name": "no symbols", "service": "worker",
-			"symbols": [], "calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z"}`,
-			expectedCode: 400,
+			name:         "only name",
+			payload:      `{"name": "only name"}`,
+			expectedCode: 201,
 		},
 	}
 	for _, testCase := range testCases {
@@ -123,12 +119,6 @@ func (test *BacktestTest) TestCreateBacktest() {
 			w := httptest.NewRecorder()
 			test.router.ServeHTTP(w, req)
 			test.Equal(testCase.expectedCode, w.Code, testCase.name)
-			if testCase.expectedCode == 201 {
-				test.True(test.stream.Contains("ingest backtest"))
-			} else {
-				test.False(test.stream.Contains("ingest backtest"))
-			}
-
 		})
 	}
 }
@@ -182,11 +172,6 @@ func (test *BacktestTest) TestCreateBacktestTimeFormats() {
 			w := httptest.NewRecorder()
 			test.router.ServeHTTP(w, req)
 			test.Equal(testCase.ExpectedCode, w.Code, testCase.name)
-			if testCase.ExpectedCode == 201 {
-				test.True(test.stream.Contains("ingest backtest"))
-			} else {
-				test.False(test.stream.Contains("ingest backtest"))
-			}
 		})
 	}
 }
@@ -227,17 +212,12 @@ func (test *BacktestTest) TestUpdateBacktest() {
 	test.router.ServeHTTP(w, req)
 	test.Equal(201, w.Code)
 
-	// Recreate to make sure its created after we update
-	test.True(test.stream.Contains("ingest backtest"))
-	test.stream = &stream.OrchestrationOutput{}
-
 	payload = `{"name": "test_backtest", "calendar": "XNYS", 
 	"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"], "benchmark": "SPY"}`
 	req = httptest.NewRequest("PUT", "/backtests/test_backtest", strings.NewReader(payload))
 	w = httptest.NewRecorder()
 	test.router.ServeHTTP(w, req)
 	test.Equal(200, w.Code)
-	test.True(test.stream.Contains("ingest backtest"))
 }
 
 func (test *BacktestTest) TestDeleteBacktest() {

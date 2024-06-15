@@ -1,0 +1,17 @@
+{
+  "calendar": "XNYS",
+  "start": "2020-01-01",
+  "end": "2020-12-31",
+  "symbols": [
+    "AAPL",
+    "GOOGL",
+    "MSFT",
+    "AMZN",
+    "META",
+    "TSLA",
+    "NFLX",
+    "NVDA",
+    "INTC",
+    "AMD"
+  ]
+}

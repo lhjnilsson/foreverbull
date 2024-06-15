@@ -5,6 +5,23 @@ from foreverbull import entity
 from .http import api_call
 
 
+@api_call(response_model=entity.backtest.Ingestion)
+def ingest(ingestion: entity.backtest.Ingestion) -> requests.Request:
+    return requests.Request(
+        method="POST",
+        url="/backtest/api/ingestion",
+        json=ingestion.model_dump(),
+    )
+
+
+@api_call(response_model=entity.backtest.Ingestion)
+def get_ingestion() -> requests.Request:
+    return requests.Request(
+        method="GET",
+        url="/backtest/api/ingestion",
+    )
+
+
 @api_call(response_model=entity.backtest.Backtest)
 def list() -> requests.Request:
     return requests.Request(
@@ -15,10 +32,12 @@ def list() -> requests.Request:
 
 @api_call(response_model=entity.backtest.Backtest)
 def create(backtest: entity.backtest.Backtest) -> requests.Request:
+    print("backtest.model_dump(exclude_none=True):", backtest.model_dump(exclude_none=True))
+
     return requests.Request(
         method="POST",
         url="/backtest/api/backtests",
-        json=backtest.model_dump(),
+        json=backtest.model_dump(exclude_none=True),
     )
 
 

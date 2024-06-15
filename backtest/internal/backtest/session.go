@@ -6,6 +6,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	service "github.com/lhjnilsson/foreverbull/service/entity"
 	"github.com/lhjnilsson/foreverbull/service/socket"
 	"github.com/lhjnilsson/foreverbull/service/worker"
@@ -55,7 +56,7 @@ func NewSession(ctx context.Context,
 			Socket: sock,
 			socket: socket,
 		}
-		return &ms, &sock, b.DownloadIngestion(ctx, storedBacktest.Name)
+		return &ms, &sock, b.DownloadIngestion(ctx, environment.GetBacktestIngestionDefaultName())
 	} else {
 		executions, err := executions.ListBySession(ctx, storedSession.ID)
 		if err != nil {
@@ -70,7 +71,7 @@ func NewSession(ctx context.Context,
 
 			executions: executions,
 		}
-		return &as, nil, b.DownloadIngestion(ctx, storedBacktest.Name)
+		return &as, nil, b.DownloadIngestion(ctx, environment.GetBacktestIngestionDefaultName())
 
 	}
 }

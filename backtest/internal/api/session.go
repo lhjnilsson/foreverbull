@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/backtest/api"
-	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	bs "github.com/lhjnilsson/foreverbull/backtest/stream"
 	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
@@ -69,11 +68,6 @@ func CreateSession(c *gin.Context) {
 	if err != nil {
 		log.Err(err).Msg("error getting backtest")
 		c.JSON(internalHTTP.DatabaseError(err))
-		return
-	}
-	if backtest.Statuses[0].Status != entity.BacktestStatusReady {
-		log.Debug().Msg("backtest not ready")
-		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "backtest not ready"})
 		return
 	}
 

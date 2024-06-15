@@ -27,6 +27,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
+	"go.nanomsg.org/mangos/v3"
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
 	reqSocket "go.nanomsg.org/mangos/v3/protocol/req"
 	"go.uber.org/fx"
@@ -84,11 +85,11 @@ func (test *BacktestModuleTest) SetupSuite() {
 		Module,
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
-	payload := `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
+	payload := `{"symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/ingestion", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
-		test.Failf("Failed to create backtest: %s", string(rspData))
+		test.Failf("Failed to ingest data: %s", string(rspData))
 	}
 	condition := func() (bool, error) {
 		type BacktestResponse struct {
@@ -96,7 +97,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 				Status string
 			}
 		}
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/backtests/test", nil)
+		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/ingestion", nil)
 		if rsp.StatusCode != http.StatusOK {
 			return false, fmt.Errorf("failed to get backtest: %d", rsp.StatusCode)
 		}
@@ -105,17 +106,23 @@ func (test *BacktestModuleTest) SetupSuite() {
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response: %s", err.Error())
 		}
-		if data.Statuses[0].Status == "ERROR" {
+		if data.Statuses[0].Status == string(entity.IngestionStatusError) {
 			return false, fmt.Errorf("backtest failed")
 		}
 
-		if data.Statuses[0].Status == "READY" {
+		if data.Statuses[0].Status == string(entity.IngestionStatusCompleted) {
 			return true, nil
 		}
 		return false, nil
 	}
 	test.Require().NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 
+	payload = `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
+	rsp = helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
+	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
+		rspData, _ := io.ReadAll(rsp.Body)
+		test.Failf("Failed to create backtest: %s", string(rspData))
+	}
 	test.backtestName = "test"
 }
 
@@ -234,6 +241,8 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	defer socket.Close()
 	err = socket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *data.Port))
 	test.NoError(err)
+	test.NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second*5))
+	test.NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second*5))
 
 	test.T().Log("Sending new_execution")
 	execution := new(entity.Execution)
@@ -266,6 +275,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		}
 	}
 	go helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (interface{}, error) {
+		time.Sleep(time.Second / 4) // Simulate work
 		wr := WorkerRequest{}
 		err = mapstructure.Decode(data, &wr)
 		return nil, nil
@@ -273,17 +283,17 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 
 	test.T().Log("Sending run_execution")
 	test.NoError(helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
+	time.Sleep(time.Second)
+	for {
+		period := &entity.Period{}
+		test.Require().NoError(helper.SocketRequest(test.T(), socket, "current_period", nil, period))
+		if period.Timestamp.IsZero() {
+			break
+		}
+		time.Sleep(time.Second / 5)
+	}
 	test.T().Log("Sending stop")
 	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
-}
-
-func TestParse(t *testing.T) {
-	payload := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
-	algorithm := &serviceEntity.Algorithm{}
-	err := json.Unmarshal(payload, algorithm)
-	if err != nil {
-		t.Fatal(err)
-	}
 }

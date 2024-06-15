@@ -5,7 +5,9 @@ package mocks
 import (
 	context "context"
 
+	engine "github.com/lhjnilsson/foreverbull/backtest/engine"
 	entity "github.com/lhjnilsson/foreverbull/backtest/entity"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -23,6 +25,22 @@ func (_m *Execution) Configure(_a0 context.Context, _a1 *entity.Execution) error
 		r0 = rf(_a0, _a1)
 	} else {
 		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// CurrentPeriod provides a mock function with given fields:
+func (_m *Execution) CurrentPeriod() *engine.Period {
+	ret := _m.Called()
+
+	var r0 *engine.Period
+	if rf, ok := ret.Get(0).(func() *engine.Period); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*engine.Period)
+		}
 	}
 
 	return r0

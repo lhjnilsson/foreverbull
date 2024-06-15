@@ -72,5 +72,9 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error running session: %w", err)
 	}
+	err = s.Stop(ctx)
+	if err != nil {
+		return fmt.Errorf("error stopping session: %w", err)
+	}
 	return nil
 }

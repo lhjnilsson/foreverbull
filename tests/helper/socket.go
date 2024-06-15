@@ -13,14 +13,22 @@ func SocketRequest(t *testing.T, socket mangos.Socket, task string, data interfa
 	t.Helper()
 	req := message.Request{Task: task, Data: data}
 	msg, err := req.Encode()
-	assert.Nil(t, err)
+	if err != nil {
+		return err
+	}
 	err = socket.Send(msg)
-	assert.Nil(t, err)
+	if err != nil {
+		return err
+	}
 	msg, err = socket.Recv()
-	assert.Nil(t, err)
+	if err != nil {
+		return err
+	}
 	rsp := message.Response{}
 	err = rsp.Decode(msg)
-	assert.Nil(t, err)
+	if err != nil {
+		return err
+	}
 	if rsp.Error != "" {
 		return fmt.Errorf("error: %s", rsp.Error)
 	}
