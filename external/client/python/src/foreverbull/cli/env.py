@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import time
@@ -315,17 +316,13 @@ def start(
                 exit(1)
             time.sleep(2)
             try:
-                import json
-
                 with open(ingestion_config, "r") as f:
                     ingestion_config = json.load(f)
 
                 ingestion = broker.backtest.ingest(entity.backtest.Ingestion(**ingestion_config))
-                print("INGESTION: ", ingestion)
                 while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
                     time.sleep(0.5)
                     ingestion = broker.backtest.get_ingestion()
-                    print("INGESTION: ", ingestion)
                     if ingestion.statuses[0].status == entity.backtest.IngestionStatusType.ERROR:
                         progress.update(
                             ingestion_task_id,

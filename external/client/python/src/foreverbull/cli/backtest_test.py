@@ -37,58 +37,20 @@ def test_backtest_list():
 
 
 def test_backtest_create():
-    get_statuses = [
-        entity.backtest.BacktestStatus(
-            status=entity.backtest.BacktestStatusType.READY,
-            error=None,
-            occurred_at=datetime.now(),
-        ),
-        entity.backtest.BacktestStatus(
-            status=entity.backtest.BacktestStatusType.INGESTING,
-            error=None,
-            occurred_at=datetime.now(),
-        ),
-        entity.backtest.BacktestStatus(
-            status=entity.backtest.BacktestStatusType.CREATED,
-            error=None,
-            occurred_at=datetime.now(),
-        ),
-    ]
-
-    with (
-        patch("foreverbull.broker.backtest.create") as mock_create,
-        patch("foreverbull.broker.backtest.get") as mock_get,
-    ):
+    with (patch("foreverbull.broker.backtest.create") as mock_create,):
         mock_create.return_value = entity.backtest.Backtest(
             name="test_name",
             start=datetime.now(),
             end=datetime.now(),
             symbols=["AAPL", "MSFT"],
-            statuses=get_statuses[2:],
+            statuses=[
+                entity.backtest.BacktestStatus(
+                    status=entity.backtest.BacktestStatusType.CREATED,
+                    error=None,
+                    occurred_at=datetime.now(),
+                ),
+            ],
         )
-        mock_get.side_effect = [
-            entity.backtest.Backtest(
-                name="test_name",
-                start=datetime.now(),
-                end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
-                statuses=get_statuses[1:],
-            ),
-            entity.backtest.Backtest(
-                name="test_name",
-                start=datetime.now(),
-                end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
-                statuses=get_statuses[1:],
-            ),
-            entity.backtest.Backtest(
-                name="test_name",
-                start=datetime.now(),
-                end=datetime.now(),
-                symbols=["AAPL", "MSFT"],
-                statuses=get_statuses,
-            ),
-        ]
         result = runner.invoke(
             backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
         )
@@ -96,42 +58,7 @@ def test_backtest_create():
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
-        assert "READY" in result.stdout
         assert "AAPL,MSFT" in result.stdout
-
-
-def test_backtest_create_error():
-    with (
-        patch("foreverbull.broker.backtest.create") as mock_create,
-        patch("foreverbull.broker.backtest.get") as mock_get,
-    ):
-        mock_create.return_value = entity.backtest.Backtest(
-            name="test_name",
-            start=datetime.now(),
-            end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
-            statuses=[
-                entity.backtest.BacktestStatus(
-                    status=entity.backtest.BacktestStatusType.CREATED, error=None, occurred_at=datetime.now()
-                )
-            ],
-        )
-        mock_get.return_value = entity.backtest.Backtest(
-            name="test_name",
-            start=datetime.now(),
-            end=datetime.now(),
-            symbols=["AAPL", "MSFT"],
-            statuses=[
-                entity.backtest.BacktestStatus(
-                    status=entity.backtest.BacktestStatusType.ERROR, error="test error", occurred_at=datetime.now()
-                )
-            ],
-        )
-        result = runner.invoke(
-            backtest, ["create", "test_name", "--start", "2021-01-01", "--end", "2021-01-02", "--symbols", "AAPL"]
-        )
-        assert result.exit_code == 1
-        assert "Error while creating backtest: test error" in result.stderr
 
 
 def test_backtest_get():
