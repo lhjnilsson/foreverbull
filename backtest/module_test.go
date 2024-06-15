@@ -241,8 +241,8 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	defer socket.Close()
 	err = socket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *data.Port))
 	test.NoError(err)
-	socket.SetOption(mangos.OptionSendDeadline, time.Second*5)
-	socket.SetOption(mangos.OptionRecvDeadline, time.Second*5)
+	test.NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second*5))
+	test.NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second*5))
 
 	test.T().Log("Sending new_execution")
 	execution := new(entity.Execution)
@@ -286,7 +286,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	time.Sleep(time.Second)
 	for {
 		period := &entity.Period{}
-		helper.SocketRequest(test.T(), socket, "current_period", nil, period)
+		test.Require().NoError(helper.SocketRequest(test.T(), socket, "current_period", nil, period))
 		if period.Timestamp.IsZero() {
 			break
 		}
