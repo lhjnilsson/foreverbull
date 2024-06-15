@@ -61,9 +61,8 @@ func (test *CommandIngestTest) TestUpdateIngestStatus() {
 }
 
 func (test *CommandIngestTest) TestIngestCommand() {
-	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
-		"test-calendar", []string{"test-symbol"}, nil)
+	ingestions := repository.Ingestion{Conn: test.db}
+	_, err := ingestions.Create(context.Background(), "test-ingestion", time.Now(), time.Now(), "test-calendar", []string{})
 	test.NoError(err)
 
 	m := new(mockStream.Message)
@@ -76,7 +75,7 @@ func (test *CommandIngestTest) TestIngestCommand() {
 
 	m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*bs.IngestCommand)
-		command.Name = "test-backtest"
+		command.Name = "test-ingestion"
 		command.ServiceInstanceID = "test-instance"
 	})
 
