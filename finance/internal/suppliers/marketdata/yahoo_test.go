@@ -57,11 +57,13 @@ func (test *YahooTest) TestGetOHLC() {
 		Start          string
 		End            string
 		ExpectedLength int
+		ExpectedErr    error
 	}
 
 	testCases := []TestCase{
-		{"AAPL", "2021-01-01", "2021-02-01", 19},
-		{"GOOGL", "2015-01-01", "2024-02-01", 2285},
+		{"AAPL", "2021-01-01", "2021-02-01", 19, nil},
+		{"GOOGL", "2015-01-01", "2024-02-01", 2285, nil},
+		{"NON_EXISTING", "2021-01-01", "2021-02-01", 0, fmt.Errorf("fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")},
 	}
 
 	for _, tc := range testCases {
@@ -71,8 +73,14 @@ func (test *YahooTest) TestGetOHLC() {
 		test.Require().NoError(err)
 
 		ohlc, err := test.client.GetOHLC(tc.Symbol, start, end)
-		test.Require().NoError(err)
-		test.NotNil(ohlc)
-		test.Equal(tc.ExpectedLength, len(*ohlc))
+		if tc.ExpectedErr != nil {
+			test.Error(err)
+			test.Equal(tc.ExpectedErr.Error(), err.Error())
+		} else {
+			test.NoError(err)
+			test.NotNil(ohlc)
+			test.Equal(tc.ExpectedLength, len(*ohlc))
+		}
 	}
+
 }

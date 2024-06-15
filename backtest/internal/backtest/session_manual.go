@@ -169,5 +169,9 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 }
 
 func (ms *manualSession) Stop(ctx context.Context) error {
+	err := ms.workers.Close()
+	if err != nil {
+		return err
+	}
 	return ms.socket.Close()
 }

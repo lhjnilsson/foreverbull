@@ -5,11 +5,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/tests/helper"
@@ -31,6 +33,13 @@ func (test *BacktestTest) SetupTest() {
 
 	err = repository.Recreate(context.TODO(), pool)
 	test.Require().NoError(err)
+
+	ingestions := repository.Ingestion{Conn: pool}
+	start := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err = ingestions.Create(context.TODO(), environment.GetBacktestIngestionDefaultName(), start, end, "XNYS", []string{"AAPL"})
+	test.Require().NoError(err)
+	test.Require().NoError(ingestions.UpdateStatus(context.TODO(), environment.GetBacktestIngestionDefaultName(), entity.IngestionStatusCompleted, nil))
 
 	test.router = http.NewEngine()
 	test.router.Use(
@@ -92,12 +101,6 @@ func (test *BacktestTest) TestCreateBacktest() {
 			expectedCode: 201,
 		},
 		{
-			name: "no calendar",
-			payload: `{"name": "no calendar", "service": "worker",
-			"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", "symbols": ["AAPL"]}`,
-			expectedCode: 400,
-		},
-		{
 			name: "no benchmark",
 			payload: `{"name": "no benchmark", "service": "worker", 
 			"calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z", 
@@ -105,10 +108,9 @@ func (test *BacktestTest) TestCreateBacktest() {
 			expectedCode: 201,
 		},
 		{
-			name: "no symbols",
-			payload: `{"name": "no symbols", "service": "worker",
-			"symbols": [], "calendar": "XNYS", "start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:00:00Z"}`,
-			expectedCode: 400,
+			name:         "only name",
+			payload:      `{"name": "only name"}`,
+			expectedCode: 201,
 		},
 	}
 	for _, testCase := range testCases {

@@ -46,9 +46,9 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
-    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
-    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")] = None,
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")] = None,
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")] = None,
     service: Annotated[str, typer.Option(help="worker service to use")] = None,
     benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] = None,
 ):
@@ -57,30 +57,10 @@ def create(
         service=service,
         start=start,
         end=end,
-        symbols=[symbol.strip().upper() for symbol in symbols.split(",")],
+        symbols=[symbol.strip().upper() for symbol in symbols.split(",")] if symbols else None,
         benchmark=benchmark,
     )
-    with Progress() as progress:
-        task = progress.add_task("Created", total=2)
-        backtest = broker.backtest.create(backtest)
-        previous_status = backtest.statuses[0].status
-        while not progress.finished:
-            time.sleep(0.5)
-            backtest = broker.backtest.get(name)
-            status = backtest.statuses[0].status
-            if previous_status and previous_status != status:
-                match status:
-                    case entity.backtest.BacktestStatusType.INGESTING:
-                        progress.advance(task)
-                        progress.update(task, description="Ingesting")
-                    case entity.backtest.BacktestStatusType.READY:
-                        progress.advance(task)
-                        progress.update(task, description="Ready")
-                    case entity.backtest.BacktestStatusType.ERROR:
-                        std_err.log(f"[red]Error while creating backtest: {backtest.statuses[0].error}")
-                        exit(1)
-                previous_status = status
-
+    backtest = broker.backtest.create(backtest)
     table = Table(title="Created Backtest")
     table.add_column("Name")
     table.add_column("Status")

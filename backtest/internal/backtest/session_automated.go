@@ -51,5 +51,5 @@ func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 }
 
 func (as *automatedSession) Stop(ctx context.Context) error {
-	return nil
+	return as.workers.Close()
 }

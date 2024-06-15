@@ -70,7 +70,7 @@ func NewIngestOrchestration(ingest *entity.Ingestion) (*stream.MessageOrchestrat
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusReady, nil)
+	msg2, err = NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusCompleted, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func NewIngestOrchestration(ingest *entity.Ingestion) (*stream.MessageOrchestrat
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateBacktestStatusCommand(ingest.Name, entity.BacktestStatusError, nil)
+	msg2, err = NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusError, nil)
 	if err != nil {
 		return nil, err
 	}

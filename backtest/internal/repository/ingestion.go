@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lhjnilsson/foreverbull/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 )
@@ -89,6 +90,9 @@ func (db *Ingestion) Get(ctx context.Context, name string) (*entity.Ingestion, e
 			return nil, err
 		}
 		ingestion.Statuses = append(ingestion.Statuses, status)
+	}
+	if ingestion.Name == "" {
+		return nil, &pgconn.PgError{Code: "02000"}
 	}
 	return &ingestion, nil
 }

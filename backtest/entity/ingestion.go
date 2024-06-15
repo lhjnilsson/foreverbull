@@ -7,7 +7,7 @@ type IngestionStatusType string
 const (
 	IngestionStatusCreated   IngestionStatusType = "CREATED"
 	IngestionStatusIngesting IngestionStatusType = "INGESTING"
-	IngestionStatusReady     IngestionStatusType = "READY"
+	IngestionStatusCompleted IngestionStatusType = "COMPLETED"
 	IngestionStatusError     IngestionStatusType = "ERROR"
 )
 

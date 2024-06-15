@@ -58,8 +58,10 @@ func TransactionMiddleware(dependencyKey string, sql *pgxpool.Pool) gin.HandlerF
 			if r := recover(); r != nil {
 				err = tx.Rollback(ctx)
 				if err != nil {
+					log.Err(err).Msg("error rolling back transaction")
 					ctx.AbortWithStatusJSON(DatabaseError(err))
 				}
+				log.Err(fmt.Errorf("panic: %v", r)).Msg("panic in transaction")
 				ctx.AbortWithStatusJSON(http.StatusInternalServerError, fmt.Errorf("panic: %v", r))
 			}
 		}()

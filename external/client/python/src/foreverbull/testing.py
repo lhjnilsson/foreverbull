@@ -4,7 +4,7 @@ import os
 import time
 from typing import Any
 
-from foreverbull import Foreverbull, broker
+from foreverbull import Foreverbull, broker, entity
 
 try:
     import pytest
@@ -35,7 +35,7 @@ def foreverbull(request):
     while session.port is None:
         time.sleep(0.5)
         session = broker.backtest.get_session(session.id)
-        if session.statuses[-1].status == broker.SessionStatusType.FAILED:
+        if session.statuses[0].status == entity.backtest.SessionStatusType.FAILED:
             raise Exception(f"Session failed: {session.statuses[-1].error}")
     os.environ["BROKER_SESSION_PORT"] = str(session.port)
     return TestingSession(session)

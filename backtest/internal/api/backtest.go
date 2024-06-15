@@ -42,7 +42,7 @@ func CreateBacktest(c *gin.Context) {
 		return
 	}
 
-	if i.Statuses[0].Status != entity.IngestionStatusReady {
+	if i.Statuses[0].Status != entity.IngestionStatusCompleted {
 		log.Debug().Msg("ingestion not ready")
 		c.JSON(http.StatusBadRequest, internalHTTP.APIError{Message: "Ingestion not ready"})
 		return
@@ -73,7 +73,7 @@ func CreateBacktest(c *gin.Context) {
 	}
 
 	var end time.Time
-	if body.End == nil {
+	if body.End != nil {
 		end, err := api.ParseTime(*body.End)
 		if err != nil {
 			log.Debug().Err(err).Msg("error parsing end time")

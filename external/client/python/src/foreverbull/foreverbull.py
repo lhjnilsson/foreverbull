@@ -93,6 +93,9 @@ class Session(threading.Thread):
         rsp = socket.Response.deserialize(sock.recv())
         if rsp.error:
             raise Exception(rsp.error)
+        import time
+
+        time.sleep(2)
         while True:
             sock.send(socket.Request(task="current_period").serialize())
             rsp = socket.Response.deserialize(sock.recv())

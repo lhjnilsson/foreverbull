@@ -10,6 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
 
+from foreverbull import broker, entity
 from foreverbull._version import version
 
 env = typer.Typer()
@@ -111,18 +112,20 @@ def status():
     std.print(table)
 
 
-ALPACA_KEY = Annotated[str, typer.Option(help="alpaca.markets api key")]
-ALPACA_SECRET = Annotated[str, typer.Option(help="alpaca.markets api secret")]
+ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")]
+ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")]
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
 BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
+INGESTION_CONFIG_OPT = Annotated[str, typer.Option(help="Path to ingestion config file")]
 
 
 @env.command()
 def start(
-    alpaca_key: ALPACA_KEY = None,
-    alpaca_secret: ALPACA_SECRET = None,
+    alpaca_key: ALPACA_KEY_OPT = None,
+    alpaca_secret: ALPACA_SECRET_OPT = None,
     broker_image: BROKER_IMAGE_OPT = BROKER_IMAGE,
     backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
+    ingestion_config: INGESTION_CONFIG_OPT = "ingestion.json",
 ):
     d = docker.from_env()
     std.print("Starting environment")
@@ -151,6 +154,7 @@ def start(
         minio_task_id = progress.add_task("[yellow]Setting up minio")
         health_task_id = progress.add_task("[yellow]Waiting for services to start")
         foreverbull_task_id = progress.add_task("[yellow]Setting up foreverbull")
+        ingestion_task_id = progress.add_task("[yellow]Creating Ingestion")
 
         with ThreadPoolExecutor() as executor:
             futures = []
@@ -308,6 +312,30 @@ def start(
                 progress.update(
                     foreverbull_task_id, description=f"[red]Failed to start foreverbull: {e}", completed=True
                 )
+                exit(1)
+            time.sleep(2)
+            try:
+                import json
+
+                with open(ingestion_config, "r") as f:
+                    ingestion_config = json.load(f)
+
+                ingestion = broker.backtest.ingest(entity.backtest.Ingestion(**ingestion_config))
+                print("INGESTION: ", ingestion)
+                while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
+                    time.sleep(0.5)
+                    ingestion = broker.backtest.get_ingestion()
+                    print("INGESTION: ", ingestion)
+                    if ingestion.statuses[0].status == entity.backtest.IngestionStatusType.ERROR:
+                        progress.update(
+                            ingestion_task_id,
+                            description=f"[red]Failed to ingest: {ingestion.statuses[0].error}",
+                            completed=True,
+                        )
+                        exit(1)
+                progress.update(ingestion_task_id, description="[blue]Ingestion completed", completed=True)
+            except Exception as e:
+                progress.update(ingestion_task_id, description=f"[red]Failed to ingest: {e}", completed=True)
                 exit(1)
         progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
     std.print("Environment started")
