@@ -8,14 +8,14 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/backtest"
-	"github.com/lhjnilsson/foreverbull/finance"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/service"
-	"github.com/lhjnilsson/foreverbull/strategy"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/lhjnilsson/foreverbull/pkg/service"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy"
 
 	"go.uber.org/fx"
 )

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lhjnilsson/foreverbull/service/message"
+	"github.com/lhjnilsson/foreverbull/pkg/service/message"
 	"github.com/stretchr/testify/assert"
 	"go.nanomsg.org/mangos/v3"
 )

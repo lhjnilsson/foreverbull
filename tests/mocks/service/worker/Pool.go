@@ -5,10 +5,10 @@ package mocks
 import (
 	context "context"
 
-	entity "github.com/lhjnilsson/foreverbull/finance/entity"
+	entity "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	mock "github.com/stretchr/testify/mock"
 
-	serviceentity "github.com/lhjnilsson/foreverbull/service/entity"
+	serviceentity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
 
 	time "time"
 )

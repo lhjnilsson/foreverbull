@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	api "github.com/lhjnilsson/foreverbull/finance/api"
+	api "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 
 	mock "github.com/stretchr/testify/mock"
 )

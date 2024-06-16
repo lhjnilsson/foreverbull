@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	entity "github.com/lhjnilsson/foreverbull/finance/entity"
+	entity "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	mock "github.com/stretchr/testify/mock"
 )
 

@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	socket "github.com/lhjnilsson/foreverbull/service/socket"
+	socket "github.com/lhjnilsson/foreverbull/pkg/service/socket"
 	mock "github.com/stretchr/testify/mock"
 )
 

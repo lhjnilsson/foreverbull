@@ -5,8 +5,8 @@ package mocks
 import (
 	context "context"
 
-	engine "github.com/lhjnilsson/foreverbull/backtest/engine"
-	entity "github.com/lhjnilsson/foreverbull/backtest/entity"
+	engine "github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	entity "github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 
 	mock "github.com/stretchr/testify/mock"
 )
