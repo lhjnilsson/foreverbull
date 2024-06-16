@@ -11,10 +11,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
 )
 
@@ -34,7 +34,7 @@ func (test *ServiceTest) SetupTest() {
 	test.stream = &stream.OrchestrationOutput{}
 	test.container = new(mockContainer.Container)
 
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())

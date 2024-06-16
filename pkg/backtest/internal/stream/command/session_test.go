@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/internal_/backtest"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
@@ -33,7 +33,7 @@ func TestCommandSession(t *testing.T) {
 }
 
 func (test *CommandSessionTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 

@@ -9,12 +9,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/strategy/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockSupplier "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	mockDependency "github.com/lhjnilsson/foreverbull/tests/mocks/strategy/internal_/stream/dependency"
@@ -30,7 +30,7 @@ type ExecutionCommandTest struct {
 }
 
 func (test *ExecutionCommandTest) SetupSuite() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 }

@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockSupplier "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
@@ -38,7 +38,7 @@ func TestIngestCommand(t *testing.T) {
 }
 
 func (test *IngestCommandTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 

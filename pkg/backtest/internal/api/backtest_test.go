@@ -9,12 +9,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -25,7 +25,7 @@ type BacktestTest struct {
 }
 
 func (test *BacktestTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())

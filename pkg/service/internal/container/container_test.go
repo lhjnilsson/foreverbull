@@ -8,7 +8,7 @@ import (
 	cType "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -42,7 +42,7 @@ func (test *ContainerTest) SetupTest() {
 	test.container = *container
 
 	// Postgres, just to also create network
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 }

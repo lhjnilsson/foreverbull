@@ -17,13 +17,13 @@ import (
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	serviceAPI "github.com/lhjnilsson/foreverbull/pkg/service/api"
 	serviceEntity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -49,7 +49,7 @@ func TestModuleBacktest(t *testing.T) {
 }
 
 func (test *BacktestModuleTest) SetupSuite() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 		NATS:     true,
 		Minio:    true,
@@ -86,7 +86,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 	)
 	test.Require().NoError(test.app.Start(context.Background()))
 	payload := `{"symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/ingestion", payload)
+	rsp := test_helper.Request(test.T(), http.MethodPost, "/backtest/api/ingestion", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
 		test.Failf("Failed to ingest data: %s", string(rspData))
@@ -97,7 +97,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 				Status string
 			}
 		}
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/ingestion", nil)
+		rsp := test_helper.Request(test.T(), http.MethodGet, "/backtest/api/ingestion", nil)
 		if rsp.StatusCode != http.StatusOK {
 			return false, fmt.Errorf("failed to get backtest: %d", rsp.StatusCode)
 		}
@@ -115,10 +115,10 @@ func (test *BacktestModuleTest) SetupSuite() {
 		}
 		return false, nil
 	}
-	test.Require().NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+	test.Require().NoError(test_helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 
 	payload = `{"name":"test","symbols":["AAPL"],"calendar": "XNYS", "start":"2020-01-01T00:00:00Z","end":"2020-01-31T00:00:00Z"}`
-	rsp = helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
+	rsp = test_helper.Request(test.T(), http.MethodPost, "/backtest/api/backtests", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
 		test.Failf("Failed to create backtest: %s", string(rspData))
@@ -127,7 +127,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 }
 
 func (test *BacktestModuleTest) TearDownSuite() {
-	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
+	test_helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.NoError(test.app.Stop(context.Background()))
 }
 
@@ -160,7 +160,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 			}
 
 			payload := `{"backtest": "test", "executions": [{}]}`
-			rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
+			rsp := test_helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
 			if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 				rspData, _ := io.ReadAll(rsp.Body)
 				test.Failf("Failed to create session: %s", string(rspData))
@@ -171,7 +171,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 				test.Failf("Failed to decode response: %s", err.Error())
 			}
 			condition := func() (bool, error) {
-				rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
+				rsp := test_helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
 				if rsp.StatusCode != http.StatusOK {
 					return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
 				}
@@ -185,7 +185,7 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 				}
 				return false, nil
 			}
-			test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+			test.NoError(test_helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 		})
 	}
 }
@@ -199,7 +199,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		Port *int
 	}
 	payload := `{"backtest": "test", "manual": true}`
-	rsp := helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
+	rsp := test_helper.Request(test.T(), http.MethodPost, "/backtest/api/sessions", payload)
 	if !test.Equal(http.StatusCreated, rsp.StatusCode) {
 		rspData, _ := io.ReadAll(rsp.Body)
 		test.Failf("Failed to create session: %s", string(rspData))
@@ -210,7 +210,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		test.Failf("Failed to decode response: %s", err.Error())
 	}
 	condition := func() (bool, error) {
-		rsp := helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
+		rsp := test_helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
 		if rsp.StatusCode != http.StatusOK {
 			return false, fmt.Errorf("failed to get session: %d", rsp.StatusCode)
 		}
@@ -227,9 +227,9 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		}
 		return false, nil
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*30))
+	test.NoError(test_helper.WaitUntilCondition(test.T(), condition, time.Second*30))
 
-	rsp = helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
+	rsp = test_helper.Request(test.T(), http.MethodGet, "/backtest/api/sessions/"+data.ID, nil)
 	test.Equal(http.StatusOK, rsp.StatusCode)
 	data = &SessionResponse{}
 	err = json.NewDecoder(rsp.Body).Decode(data)
@@ -250,11 +250,11 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	algo := &serviceEntity.Algorithm{}
 	err = json.Unmarshal([]byte(algorithm), algo)
 	test.NoError(err)
-	test.NoError(helper.SocketRequest(test.T(), socket, "new_execution", algo, execution))
+	test.NoError(test_helper.SocketRequest(test.T(), socket, "new_execution", algo, execution))
 
 	test.T().Log("Sending configure_execution")
 	instance := new(serviceEntity.Instance)
-	test.NoError(helper.SocketRequest(test.T(), socket, "configure_execution", execution, instance))
+	test.NoError(test_helper.SocketRequest(test.T(), socket, "configure_execution", execution, instance))
 
 	test.Require().NotNil(instance.BrokerPort)
 	workerSocket, err := repSocket.NewSocket()
@@ -274,7 +274,7 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 			}
 		}
 	}
-	go helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (interface{}, error) {
+	go test_helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (interface{}, error) {
 		time.Sleep(time.Second / 4) // Simulate work
 		wr := WorkerRequest{}
 		err = mapstructure.Decode(data, &wr)
@@ -282,18 +282,18 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	})
 
 	test.T().Log("Sending run_execution")
-	test.NoError(helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
+	test.NoError(test_helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
 	time.Sleep(time.Second)
 	for {
 		period := &entity.Period{}
-		test.Require().NoError(helper.SocketRequest(test.T(), socket, "current_period", nil, period))
+		test.Require().NoError(test_helper.SocketRequest(test.T(), socket, "current_period", nil, period))
 		if period.Timestamp.IsZero() {
 			break
 		}
 		time.Sleep(time.Second / 5)
 	}
 	test.T().Log("Sending stop")
-	test.NoError(helper.SocketRequest(test.T(), socket, "stop", nil, nil))
+	test.NoError(test_helper.SocketRequest(test.T(), socket, "stop", nil, nil))
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
 }

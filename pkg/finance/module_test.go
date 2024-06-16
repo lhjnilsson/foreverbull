@@ -11,9 +11,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
@@ -36,7 +36,7 @@ func TestFinanceModule(t *testing.T) {
 }
 
 func (test *FinanceModuleTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 		NATS:     true,
 	})
@@ -83,5 +83,5 @@ func (test *FinanceModuleTest) TestIngestCommand() {
 		ohlc := repository.OHLC{Conn: test.pool}
 		return ohlc.Exists(context.Background(), []string{"AAPL"}, time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 31, 0, 0, 0, 0, time.UTC))
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), ohlcExists, 10*time.Second))
+	test.NoError(test_helper.WaitUntilCondition(test.T(), ohlcExists, 10*time.Second))
 }

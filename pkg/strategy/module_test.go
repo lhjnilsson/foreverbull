@@ -13,12 +13,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	financeEntity "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
@@ -42,7 +42,7 @@ func (test *ModuleTests) SetupSuite() {
 }
 
 func (test *ModuleTests) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 		NATS:     true,
 		Loki:     true,
@@ -77,13 +77,13 @@ func (test *ModuleTests) SetupTest() {
 }
 
 func (test *ModuleTests) TearDownTest() {
-	helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
+	test_helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
 	test.Require().NoError(test.app.Stop(context.Background()))
 }
 
 func (test *ModuleTests) TestRunStrategyExecution() {
 	payload := fmt.Sprintf(`{"name": "test-strategy", "min_days": 30, "symbols": ["AAPL", "MSFT", "GOOG"], "service": "%s"}`, os.Getenv("WORKER_IMAGE"))
-	rsp := helper.Request(test.T(), "POST", "/strategy/api/strategies", payload)
+	rsp := test_helper.Request(test.T(), "POST", "/strategy/api/strategies", payload)
 	test.Equal(201, rsp.StatusCode)
 
 	type ExecutionResponse struct {
@@ -94,13 +94,13 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 		StartPortfolio financeEntity.Portfolio `json:"start_portfolio"`
 		PlacedOrders   []financeEntity.Order   `json:"placed_orders"`
 	}
-	rsp = helper.Request(test.T(), "POST", "/strategy/api/executions", fmt.Sprintf(`{"strategy": "%s"}`, "test-strategy"))
+	rsp = test_helper.Request(test.T(), "POST", "/strategy/api/executions", fmt.Sprintf(`{"strategy": "%s"}`, "test-strategy"))
 	test.Equal(201, rsp.StatusCode)
 	response := &ExecutionResponse{}
 	err := json.NewDecoder(rsp.Body).Decode(response)
 	test.NoError(err)
 	condition := func() (bool, error) {
-		rsp := helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
+		rsp := test_helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
 		if rsp.StatusCode != 200 {
 			return false, nil
 		}
@@ -114,9 +114,9 @@ func (test *ModuleTests) TestRunStrategyExecution() {
 		}
 		return response.Statuses[0].Status == entity.ExecutionStatusCompleted, nil
 	}
-	test.NoError(helper.WaitUntilCondition(test.T(), condition, time.Second*20))
+	test.NoError(test_helper.WaitUntilCondition(test.T(), condition, time.Second*20))
 
-	rsp = helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
+	rsp = test_helper.Request(test.T(), "GET", "/strategy/api/executions/"+response.ID, "")
 	test.Equal(200, rsp.StatusCode)
 	response = &ExecutionResponse{}
 	err = json.NewDecoder(rsp.Body).Decode(response)

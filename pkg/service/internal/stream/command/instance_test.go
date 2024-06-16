@@ -10,11 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	st "github.com/lhjnilsson/foreverbull/pkg/service/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
 	"github.com/stretchr/testify/mock"
@@ -29,7 +29,7 @@ type InstanceTest struct {
 	testService  *entity.Service
 	testInstance *entity.Instance
 
-	serviceInstance *helper.ServiceInstance
+	serviceInstance *test_helper.ServiceInstance
 }
 
 func TestInstanceCommand(t *testing.T) {
@@ -37,7 +37,7 @@ func TestInstanceCommand(t *testing.T) {
 }
 
 func (test *InstanceTest) SetupSuite() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 }
@@ -64,7 +64,7 @@ func (test *InstanceTest) TearDownTest() {
 }
 
 func (test *InstanceTest) SetupSubTest() {
-	test.serviceInstance = helper.NewServiceInstance(test.T())
+	test.serviceInstance = test_helper.NewServiceInstance(test.T())
 
 	instances := repository.Instance{Conn: test.db}
 	err := instances.UpdateHostPort(context.Background(), test.testInstance.ID, test.serviceInstance.Host, test.serviceInstance.Port)

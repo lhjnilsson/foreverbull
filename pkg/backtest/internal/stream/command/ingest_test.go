@@ -8,10 +8,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/engine"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
@@ -26,7 +26,7 @@ type CommandIngestTest struct {
 
 func (test *CommandIngestTest) SetupSuite() {
 	var err error
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())

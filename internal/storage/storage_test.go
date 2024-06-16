@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/suite"
 )
@@ -58,7 +58,7 @@ func (test *StorageTest) TearDownSuite() {
 }
 
 func (test *StorageTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Minio: true,
 	})
 

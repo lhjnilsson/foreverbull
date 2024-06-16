@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/suite"
 )
@@ -31,7 +31,7 @@ func (test *InstanceTest) SetupTest() {
 	var err error
 	test.stream = new(mockStream.Stream)
 
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())

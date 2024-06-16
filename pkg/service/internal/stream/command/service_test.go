@@ -8,11 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/service/stream"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
 	"github.com/stretchr/testify/mock"
@@ -32,7 +32,7 @@ func TestServiceCommands(t *testing.T) {
 }
 
 func (test *ServiceTest) SetupSuite() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 

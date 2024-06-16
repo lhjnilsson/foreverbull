@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/message"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
@@ -30,7 +30,7 @@ type PoolTest struct {
 }
 
 func (test *PoolTest) SetupSuite() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{})
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
 }
 
 func (test *PoolTest) SetupTest() {
