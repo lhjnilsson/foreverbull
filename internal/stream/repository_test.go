@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/tests/helper"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,7 +18,7 @@ type RepositoryTest struct {
 }
 
 func (test *RepositoryTest) SetupTest() {
-	helper.SetupEnvironment(test.T(), &helper.Containers{Postgres: true})
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{Postgres: true})
 
 	var err error
 	test.db, err = pgxpool.New(context.TODO(), environment.GetPostgresURL())
