@@ -14,10 +14,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	mockBacktest "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/internal_/backtest"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -49,7 +48,7 @@ func (test *CommandSessionTest) TearDownTest() {
 }
 
 func (test *CommandSessionTest) TestUpdateSessionCommand() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	backtests := repository.Backtest{Conn: test.db}
@@ -102,10 +101,10 @@ func (test *CommandSessionTest) TestSessionRunCommand() {
 	s, err := sessions.Create(context.Background(), "test-backtest", false)
 	test.NoError(err)
 
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
-	session := new(mockBacktest.Session)
+	session := new(backtest.MockSession)
 	session.On("GetSocket").Return(&socket.Socket{})
 	session.On("Run", mock.Anything, mock.Anything).Return(nil)
 	session.On("Stop", mock.Anything).Return(nil)

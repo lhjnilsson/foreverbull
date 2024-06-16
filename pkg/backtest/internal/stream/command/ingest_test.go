@@ -9,11 +9,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/engine"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -42,7 +41,7 @@ func TestCommandIngest(t *testing.T) {
 }
 
 func (test *CommandIngestTest) TestUpdateIngestStatus() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	ingestions := repository.Ingestion{Conn: test.db}
@@ -65,10 +64,10 @@ func (test *CommandIngestTest) TestIngestCommand() {
 	_, err := ingestions.Create(context.Background(), "test-ingestion", time.Now(), time.Now(), "test-calendar", []string{})
 	test.NoError(err)
 
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
-	backtest := new(mockEngine.Engine)
+	backtest := new(engine.MockEngine)
 	m.On("Call", mock.Anything, dependency.GetIngestEngineKey).Return(backtest, nil)
 	backtest.On("Ingest", mock.Anything, mock.Anything).Return(nil)
 	backtest.On("UploadIngestion", mock.Anything, mock.Anything).Return(nil)

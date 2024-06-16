@@ -12,10 +12,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/service/container"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/stretchr/testify/suite"
-
-	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
 )
 
 type ServiceTest struct {
@@ -23,7 +22,7 @@ type ServiceTest struct {
 
 	router    *gin.Engine
 	stream    *stream.OrchestrationOutput
-	container *mockContainer.Container
+	container *container.MockContainer
 
 	conn *pgxpool.Pool
 }
@@ -32,7 +31,7 @@ func (test *ServiceTest) SetupTest() {
 	var err error
 
 	test.stream = &stream.OrchestrationOutput{}
-	test.container = new(mockContainer.Container)
+	test.container = new(container.MockContainer)
 
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,

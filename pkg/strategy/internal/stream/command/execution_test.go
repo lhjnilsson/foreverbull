@@ -11,13 +11,11 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/strategy/stream"
-	mockSupplier "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
-	mockDependency "github.com/lhjnilsson/foreverbull/tests/mocks/strategy/internal_/stream/dependency"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -49,10 +47,10 @@ func TestExecutionCommand(t *testing.T) {
 }
 
 func (test *ExecutionCommandTest) TestRunExecution() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
-	trading := new(mockSupplier.Trading)
+	trading := new(supplier.MockTrading)
 	portfolio := finance.Portfolio{
 		Cash:  decimal.NewFromFloat(245.5),
 		Value: decimal.NewFromFloat(123.23),
@@ -89,7 +87,7 @@ func (test *ExecutionCommandTest) TestRunExecution() {
 		},
 	}
 
-	executionRunner := new(mockDependency.Execution)
+	executionRunner := new(dependency.MockExecution)
 	executionRunner.On("Configure", mock.Anything).Return(nil)
 	executionRunner.On("Run", mock.Anything, &portfolio).Return(&orders, nil)
 	executionRunner.On("Stop", mock.Anything).Return(nil)
@@ -105,7 +103,7 @@ func (test *ExecutionCommandTest) TestRunExecution() {
 }
 
 func (test *ExecutionCommandTest) TestUpdateExecutionStatus() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	strategies := repository.Strategy{Conn: test.db}

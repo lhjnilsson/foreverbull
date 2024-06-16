@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/http"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -22,14 +22,14 @@ type InstanceTest struct {
 	suite.Suite
 
 	router *gin.Engine
-	stream *mockStream.Stream
+	stream *stream.MockStream
 
 	conn *pgxpool.Pool
 }
 
 func (test *InstanceTest) SetupTest() {
 	var err error
-	test.stream = new(mockStream.Stream)
+	test.stream = new(stream.MockStream)
 
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,

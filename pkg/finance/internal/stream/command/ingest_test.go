@@ -13,8 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	mockSupplier "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -30,7 +29,7 @@ type IngestCommandTest struct {
 	storedOHLCStart time.Time
 	storedOHLCEnd   time.Time
 
-	marketdata *mockSupplier.Marketdata
+	marketdata *supplier.MockMarketdata
 }
 
 func TestIngestCommand(t *testing.T) {
@@ -68,14 +67,14 @@ func (test *IngestCommandTest) SetupTest() {
 	}))
 	test.storedOHLCEnd = time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	test.marketdata = new(mockSupplier.Marketdata)
+	test.marketdata = new(supplier.MockMarketdata)
 }
 
 func (test *IngestCommandTest) TearDownTest() {
 }
 
 func (test *IngestCommandTest) TestIngestCommandNoIngestion() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
@@ -90,7 +89,7 @@ func (test *IngestCommandTest) TestIngestCommandNoIngestion() {
 }
 
 func (test *IngestCommandTest) TestIngestCommandIngestNewOHLC() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
@@ -120,7 +119,7 @@ func (test *IngestCommandTest) TestIngestCommandIngestNewOHLC() {
 }
 
 func (test *IngestCommandTest) TestIngestCommandIngestAll() {
-	m := new(mockStream.Message)
+	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 

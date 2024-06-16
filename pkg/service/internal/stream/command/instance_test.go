@@ -11,12 +11,11 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/service/container"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	st "github.com/lhjnilsson/foreverbull/pkg/service/stream"
-	mockStream "github.com/lhjnilsson/foreverbull/tests/mocks/internal_/stream"
-	mockContainer "github.com/lhjnilsson/foreverbull/tests/mocks/service/container"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -81,7 +80,7 @@ func (test *InstanceTest) TearDownSubTest() {
 func (test *InstanceTest) TestInstanceInterview() {
 	services := repository.Service{Conn: test.db}
 
-	b := new(mockStream.Message)
+	b := new(stream.MockMessage)
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("ParsePayload", &st.InstanceInterviewCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*st.InstanceInterviewCommand)
@@ -129,7 +128,7 @@ func (test *InstanceTest) TestInstanceInterview() {
 }
 
 func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
-	b := new(mockStream.Message)
+	b := new(stream.MockMessage)
 	b.On("MustGet", stream.DBDep).Return(test.db)
 	b.On("ParsePayload", &st.InstanceSanityCheckCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*st.InstanceSanityCheckCommand)
@@ -175,7 +174,7 @@ func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
 
 func (test *InstanceTest) TestInstanceStop() {
 	test.Run("fail to unmarshal", func() {
-		b := new(mockStream.Message)
+		b := new(stream.MockMessage)
 		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(errors.New("error unmarshalling"))
 		ctx := context.Background()
 		commandCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -186,8 +185,8 @@ func (test *InstanceTest) TestInstanceStop() {
 		test.ErrorContains(err, "error unmarshalling")
 	})
 	test.Run("fail to stop", func() {
-		b := new(mockStream.Message)
-		c := new(mockContainer.Container)
+		b := new(stream.MockMessage)
+		c := new(container.MockContainer)
 
 		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
 			payload := args.Get(0).(*st.InstanceStopCommand)
@@ -206,8 +205,8 @@ func (test *InstanceTest) TestInstanceStop() {
 		test.EqualError(err, "error stopping instance")
 	})
 	test.Run("Successful", func() {
-		b := new(mockStream.Message)
-		c := new(mockContainer.Container)
+		b := new(stream.MockMessage)
+		c := new(container.MockContainer)
 
 		b.On("ParsePayload", &st.InstanceStopCommand{}).Return(nil).Run(func(args mock.Arguments) {
 			payload := args.Get(0).(*st.InstanceStopCommand)

@@ -4,24 +4,24 @@ import (
 	"context"
 	"testing"
 
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	mockEngine "github.com/lhjnilsson/foreverbull/tests/mocks/backtest/engine"
-	mockWorker "github.com/lhjnilsson/foreverbull/tests/mocks/service/worker"
+	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 type ExecutionTest struct {
 	suite.Suite
-	backtest  *mockEngine.Engine
-	workers   *mockWorker.Pool
+	backtest  *engine.MockEngine
+	workers   *worker.MockPool
 	execution *execution
 }
 
 func (test *ExecutionTest) SetupTest() {
-	test.backtest = new(mockEngine.Engine)
-	test.workers = new(mockWorker.Pool)
+	test.backtest = new(engine.MockEngine)
+	test.workers = new(worker.MockPool)
 	test.execution = NewExecution(test.backtest, test.workers).(*execution)
 }
 

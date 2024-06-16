@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
-	mocks "github.com/lhjnilsson/foreverbull/tests/mocks/finance/supplier"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 )
@@ -16,11 +16,11 @@ type PortfolioTest struct {
 	suite.Suite
 
 	router  *gin.Engine
-	trading *mocks.Trading
+	trading *supplier.MockTrading
 }
 
 func (test *PortfolioTest) SetupTest() {
-	test.trading = new(mocks.Trading)
+	test.trading = new(supplier.MockTrading)
 
 	test.router = http.NewEngine()
 	test.router.Use(
