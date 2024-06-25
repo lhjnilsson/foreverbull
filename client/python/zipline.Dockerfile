@@ -7,20 +7,20 @@ RUN apt-get install -y libhdf5-dev liblapack-dev gfortran cmake build-essential 
 RUN apt install -y libatlas-base-dev python3-dev gfortran pkg-config libfreetype6-dev hdf5-tools
 RUN ln -s /usr/include/locale.h /usr/include/xlocale.h
 
-RUN curl -L -o ta-lib-0.4.0-src.tar.gz  http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz 
+RUN curl -L -o ta-lib-0.4.0-src.tar.gz  http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
 RUN tar xvfz ta-lib-0.4.0-src.tar.gz
 WORKDIR /ta-lib
 RUN cp /usr/share/automake-1.16/config.guess .
 RUN ./configure --prefix=/usr/local
 RUN make
 RUN make install
-RUN apt upgrade -y 
+RUN apt upgrade -y
 
 
 RUN pip install "Cython>=3.0.0,<4.0"
 RUN pip install setuptools_scm --upgrade
 RUN pip install toml --upgrade
-RUN pip install numpy --upgrade
+RUN pip install "numpy<2.0.0" --upgrade
 RUN apt install git -y
 WORKDIR /
 RUN git clone https://github.com/stefan-jansen/bcolz-zipline.git
