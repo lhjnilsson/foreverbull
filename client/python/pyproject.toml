@@ -20,7 +20,7 @@ dependencies = [
   "pandas-datareader>=0.10.0,<1.0.0",
   "requests<2.32.0",
   "tables<3.9.2",                     # seems like 3.9.3 cant run on mac arm64
-  "numpy>2.0.0",
+  "numpy<2.0.0",
 ]
 dynamic = ["version"]
 
