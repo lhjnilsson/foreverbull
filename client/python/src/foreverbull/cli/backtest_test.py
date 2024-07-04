@@ -269,3 +269,13 @@ def test_backtest_executions():
         assert "id123" in result.stdout
         assert "COMPLETED" in result.stdout
         assert "1" in result.stdout
+
+
+import os
+
+import pytest
+
+
+@pytest.mark.skipif(os.environ.get("BROKER_IMAGE") is None, reason="BROKER_IMAGE is not set")
+def testy_test(foreverbull_container):
+    pass

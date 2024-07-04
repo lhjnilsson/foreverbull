@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker
+import docker.errors
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn

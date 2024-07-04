@@ -3,7 +3,7 @@ name = "foreverbull"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
 packages = [{ include = "foreverbull", from = "src" }]
-requires-python = ">=3.11.0"
+requires-python = "3.13.0"
 dependencies = [
   "pydantic>=2.0.2,<3.0.0",
   "pynng>=0.8.0,<1.0.0",
@@ -30,18 +30,8 @@ foreverbull = "foreverbull.cli:cli"
 [project.entry-points.pytest11]
 foreverbull = "foreverbull.testing"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.version]
-path = "src/foreverbull/_version.py"
-
-[tool.hatch.envs.dev]
-dependencies = [
+[tool.rye]
+dev-dependencies = [
   "yfinance>=0.1.87,<1.0.0",
   "pytest>=6.2.4,<7.0.0",
   "pytest-mock>=3.6.1,<4.0.0",
@@ -55,16 +45,6 @@ dependencies = [
   "testcontainers[postgres]",
   "requests<2.32.0",
 ]
-
-[tool.hatch.envs.dev.scripts]
-lint = "ruff src/"
-lint_no_fix = "ruff --no-fix src/"
-format = "ruff format src/"
-test = "pytest src/ -xvs"
-integration_test = 'pytest integration_test.py -xvs --log-cli-level=INFO  --log-format="%(name)s %(levelname)s %(message)s" --log-file="integration_test.log"'
-coverage = ""
-
-examples = "pytest examples/monkey --backtest test_name -xvvs"
 
 [tool.ruff]
 fix = true
