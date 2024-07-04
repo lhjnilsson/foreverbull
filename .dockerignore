@@ -2,14 +2,10 @@
 
 !go.mod
 !go.sum
-!backtest/**/*
+!pkg/**/*
 !cmd/**/*
 !docs/**/*
-!finance/**/*
 !internal/**/*
-!service/**/*
-!strategy/**/*
-!tests/**/*
 
 
 # UI files
