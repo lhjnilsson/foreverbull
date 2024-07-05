@@ -45,7 +45,7 @@ def list_instances(image: str = None) -> requests.Request:
 def update_instance(container_id: str, online: bool) -> requests.Request:
     if online:
         socket_config = entity.service.SocketConfig(
-            hostname=_socket.gethostbyname(_socket.gethostname()),
+            host=_socket.gethostbyname(_socket.gethostname()),
             port=5555,
             socket_type=entity.service.SocketConfig.SocketType.REPLIER,
             listen=True,

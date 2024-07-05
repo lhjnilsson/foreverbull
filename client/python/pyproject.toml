@@ -3,7 +3,6 @@ name = "foreverbull"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
 packages = [{ include = "foreverbull", from = "src" }]
-requires-python = "3.13.0"
 dependencies = [
   "pydantic>=2.0.2,<3.0.0",
   "pynng>=0.8.0,<1.0.0",

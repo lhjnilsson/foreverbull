@@ -1,4 +1,5 @@
 import os
+from typing import Generic, TypeVar
 
 import requests
 from pydantic import BaseModel
@@ -20,7 +21,7 @@ class RequestError(Exception):
         super().__init__(f"{method} call {url} gave bad return code: {code}. Text: {text}")
 
 
-def api_call(response_model: BaseModel = None):
+def api_call(response_model: BaseModel | None = None):
     s = requests.Session()
 
     def wrapper(func):
@@ -32,7 +33,7 @@ def api_call(response_model: BaseModel = None):
                 raise RequestError(req, rsp)
             if response_model:
                 if isinstance(rsp.json(), list):
-                    return [response_model(**x) for x in rsp.json()]
+                    return [response_model.model_validate(**x) for x in rsp.json()]
                 return response_model.model_validate(rsp.json())
             return rsp.json()
 
