@@ -259,6 +259,8 @@ scipy==1.14.0
     # via zipline-reloaded
 seaborn==0.13.2
     # via pyfolio-reloaded
+setuptools==70.2.0
+    # via foreverbull
 shellingham==1.5.4
     # via typer
 six==1.16.0

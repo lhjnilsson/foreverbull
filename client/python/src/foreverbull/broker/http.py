@@ -1,5 +1,4 @@
 import os
-from typing import Generic, TypeVar
 
 import requests
 from pydantic import BaseModel
