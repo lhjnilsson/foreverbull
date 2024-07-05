@@ -21,7 +21,6 @@ func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshalling UpdateSessionStatus payload: %w", err)
 	}
-
 	sessions := repository.Session{Conn: db}
 	err = sessions.UpdateStatus(ctx, command.SessionID, command.Status, command.Error)
 	if err != nil {

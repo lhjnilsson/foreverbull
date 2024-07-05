@@ -44,7 +44,6 @@ func New() (*nats.Conn, nats.JetStreamContext, error) {
 	for s := range jt.Streams() {
 		fmt.Println("--stream: ", s)
 	}
-	fmt.Println("hello from here------")
 	_, err = jt.AddStream(&nats.StreamConfig{
 		Name:     "foreverbull",
 		Subjects: []string{"foreverbull.>"},
