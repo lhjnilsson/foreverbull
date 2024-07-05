@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/docker/docker/api/types"
+	dockerImage "github.com/docker/docker/api/types/image"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -31,9 +31,9 @@ func TestImage(t *testing.T) {
 
 func (test *ImageTest) TestInfoAndPull() {
 	// Delete image in case it exists and end with remove to cleanup
-	_, _ = test.image.client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+	_, _ = test.image.client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", dockerImage.RemoveOptions{})
 	defer func() {
-		_, _ = test.image.client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+		_, _ = test.image.client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", dockerImage.RemoveOptions{})
 	}()
 	test.Run("info, not stored", func() {
 		_, err := test.image.Info(context.TODO(), "docker.io/library/python:3.12-alpine")

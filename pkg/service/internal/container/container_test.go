@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/docker/docker/api/types"
 	cType "github.com/docker/docker/api/types/container"
+	dockerImage "github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -67,7 +67,7 @@ func (test *ContainerTest) TestStartSaveStop() {
 		if err != nil {
 			test.Contains(err.Error(), "No such container")
 		}
-		_, err = client.ImageRemove(context.TODO(), newImageName, types.ImageRemoveOptions{})
+		_, err = client.ImageRemove(context.TODO(), newImageName, dockerImage.RemoveOptions{})
 		test.Require().NoError(err)
 	})
 
