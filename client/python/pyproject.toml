@@ -2,7 +2,6 @@
 name = "foreverbull"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
-packages = [{ include = "foreverbull", from = "src" }]
 dependencies = [
   "pydantic>=2.0.2,<3.0.0",
   "pynng>=0.8.0,<1.0.0",
@@ -20,6 +19,7 @@ dependencies = [
   "requests<2.32.0",
   "tables<3.9.2",                     # seems like 3.9.3 cant run on mac arm64
   "numpy<2.0.0",
+  "setuptools>=70.2.0<71.0.0",
 ]
 dynamic = ["version"]
 
@@ -28,6 +28,10 @@ foreverbull = "foreverbull.cli:cli"
 
 [project.entry-points.pytest11]
 foreverbull = "foreverbull.testing"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["foreverbull"]
 
 [tool.rye]
 dev-dependencies = [
@@ -50,7 +54,7 @@ fix = true
 target-version = "py311"
 line-length = 120
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 force-single-line = true
 lines-between-types = 1
 lines-after-imports = 2
