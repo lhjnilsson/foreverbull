@@ -1,12 +1,14 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lhjnilsson/foreverbull/pkg/service/api"
 	"github.com/lhjnilsson/foreverbull/pkg/service/container"
+	"github.com/rs/zerolog/log"
 )
 
 func GetImage(c *gin.Context) {
@@ -29,6 +31,7 @@ func GetImage(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"msg": err})
 			return
 		}
+		fmt.Println("ERROR: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})
 		return
 	}
@@ -38,6 +41,7 @@ func GetImage(c *gin.Context) {
 func PullImage(c *gin.Context) {
 	var uri api.ImageURI
 	if err := c.ShouldBindUri(&uri); err != nil {
+		log.Debug().Err(err).Msg("failed to bind uri")
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
 		return
 	}
@@ -51,6 +55,7 @@ func PullImage(c *gin.Context) {
 	images := c.MustGet(ImageDependency).(container.Image)
 	image, err := images.Pull(c, name)
 	if err != nil {
+		log.Err(err).Msg("failed to pull image")
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})
 		return
 	}

@@ -32,6 +32,7 @@ type Stream interface {
 }
 
 func New() (*nats.Conn, nats.JetStreamContext, error) {
+	fmt.Println("BUILDING NATS STREAM-----")
 	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
 		return nil, nil, fmt.Errorf("error connecting to nats: %w", err)
@@ -40,6 +41,10 @@ func New() (*nats.Conn, nats.JetStreamContext, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("error connecting to jetstream: %w", err)
 	}
+	for s := range jt.Streams() {
+		fmt.Println("--stream: ", s)
+	}
+	fmt.Println("hello from here------")
 	_, err = jt.AddStream(&nats.StreamConfig{
 		Name:     "foreverbull",
 		Subjects: []string{"foreverbull.>"},
