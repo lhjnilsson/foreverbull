@@ -227,6 +227,8 @@ github.com/testcontainers/testcontainers-go v0.31.0 h1:W0VwIhcEVhRflwL9as3dhY6jX
 github.com/testcontainers/testcontainers-go v0.31.0/go.mod h1:D2lAoA0zUFiSY+eAflqK5mcUx/A5hrrORaEQrd0SefI=
 github.com/testcontainers/testcontainers-go v0.32.0 h1:ug1aK08L3gCHdhknlTTwWjPHPS+/alvLJU/DRxTD/ME=
 github.com/testcontainers/testcontainers-go v0.32.0/go.mod h1:CRHrzHLQhlXUsa5gXjTOfqIEJcrK5+xMDmBr/WMI88E=
+github.com/testcontainers/testcontainers-go/modules/minio v0.32.0 h1:UkxQFr58VVfpLDHocPZcRfWKbr6GYisF0dnYekHFRkU=
+github.com/testcontainers/testcontainers-go/modules/minio v0.32.0/go.mod h1:bbDbxrKJIaany5xhDnSpBY3kcXb4H8Hbql0rtd+48fc=
 github.com/testcontainers/testcontainers-go/modules/nats v0.31.0 h1:MSSg43cfKO/X/vYAdG0/mtMhjjmlDKV0nR+x0QgPJQ4=
 github.com/testcontainers/testcontainers-go/modules/nats v0.31.0/go.mod h1:0F0vQsyILLmcT7MNRM2lP163plS0p7uWWUaKFdbZtkk=
 github.com/testcontainers/testcontainers-go/modules/nats v0.32.0 h1:wYCAJOKZhjr3tmF2iw3ehKqgk5ZmUP/ehVu4y2iQa2M=
