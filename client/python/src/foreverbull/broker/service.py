@@ -1,48 +1,37 @@
 import socket as _socket
-
-import requests
+from typing import List
 
 from foreverbull import entity
 
-from .http import api_call
+from .http import Session, inject_session
 
 
-@api_call(response_model=entity.service.Service)
-def list() -> requests.Request:
-    return requests.Request(
-        method="GET",
-        url="/service/api/services",
-    )
+@inject_session
+def list(session: Session) -> List[entity.service.Service]:
+    rsp = session.request("GET", "/service/api/services")
+    return [entity.service.Service.parse_obj(s) for s in rsp.json()]
 
 
-@api_call(response_model=entity.service.Service)
-def create(image: str) -> requests.Request:
-    return requests.Request(
-        method="POST",
-        url="/service/api/services",
-        json={"image": image},
-    )
+@inject_session
+def create(session: Session, image: str) -> entity.service.Service:
+    rsp = session.request("POST", "/service/api/services", json={"image": image})
+    return entity.service.Service.parse_obj(rsp.json())
 
 
-@api_call(response_model=entity.service.Service)
-def get(image: str) -> requests.Request:
-    return requests.Request(
-        method="GET",
-        url=f"/service/api/services/{image}",
-    )
+@inject_session
+def get(session: Session, image: str) -> entity.service.Service:
+    rsp = session.request("GET", f"/service/api/services/{image}")
+    return entity.service.Service.parse_obj(rsp.json())
 
 
-@api_call(response_model=entity.service.Instance)
-def list_instances(image: str = None) -> requests.Request:
-    return requests.Request(
-        method="GET",
-        url="/service/api/instances",
-        params={"image": image},
-    )
+@inject_session
+def list_instances(session: Session, image: str | None = None) -> List[entity.service.Instance]:
+    rsp = session.request("GET", "/service/api/instances", params={"image": image})
+    return [entity.service.Instance.parse_obj(i) for i in rsp.json()]
 
 
-@api_call(response_model=entity.service.Instance)
-def update_instance(container_id: str, online: bool) -> requests.Request:
+@inject_session
+def update_instance(session: Session, container_id: str, online: bool) -> entity.service.Instance:
     if online:
         socket_config = entity.service.SocketConfig(
             host=_socket.gethostbyname(_socket.gethostname()),
@@ -52,8 +41,8 @@ def update_instance(container_id: str, online: bool) -> requests.Request:
         )
     else:
         socket_config = None
-    return requests.Request(
-        method="PATCH",
-        url=f"/service/api/instances/{container_id}",
-        json={**socket_config.model_dump()} if socket_config else {},
+
+    rsp = session.request(
+        "PATCH", f"/service/api/instances/{container_id}", json={**socket_config.model_dump()} if socket_config else {}
     )
+    return entity.service.Instance.parse_obj(rsp.json())

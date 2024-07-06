@@ -1,41 +1,41 @@
 import os
+from functools import wraps
+from typing import Callable, Concatenate
 
 import requests
-from pydantic import BaseModel
-
-host = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
-port = os.getenv("BROKER_HTTP_PORT", "8080")
 
 
 class RequestError(Exception):
     """Container of Exceptions from HTTP Client"""
 
-    def __init__(self, request: requests.Request, response: requests.Response):
-        self.request = request
+    def __init__(self, response: requests.Response):
         self.response = response
-        method = request.method
-        url = request.url
+        method = response.request.method
+        url = response.request.url
         code = response.status_code
         text = response.text
         super().__init__(f"{method} call {url} gave bad return code: {code}. Text: {text}")
 
 
-def api_call(response_model: BaseModel | None = None):
-    s = requests.Session()
+class Session(requests.Session):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.headers.update({"Content-Type": "application/json"})
+        self._host = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
+        self._port = os.getenv("BROKER_HTTP_PORT", "8080")
 
-    def wrapper(func):
-        def make_request(*args, **kwargs):
-            req: requests.Request = func(*args, **kwargs)
-            req.url = f"http://{host}:{port}{req.url}"
-            rsp = s.send(req.prepare())
-            if not rsp.ok:
-                raise RequestError(req, rsp)
-            if response_model:
-                if isinstance(rsp.json(), list):
-                    return [response_model.model_validate(**x) for x in rsp.json()]
-                return response_model.model_validate(rsp.json())
-            return rsp.json()
+    def request(self, method, url, *args, **kwargs) -> requests.Response:
+        rsp = super().request(method, f"http://{self._host}:{self._port}{url}", **kwargs)
+        if not rsp.ok:
+            raise RequestError(rsp)
+        return rsp
 
-        return make_request
+
+def inject_session[R, **P](f: Callable[Concatenate[Session, P], R]) -> Callable[P, R]:
+    s = Session()
+
+    @wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return f(s, *args, **kwargs)
 
     return wrapper
