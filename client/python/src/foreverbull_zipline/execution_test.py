@@ -30,7 +30,7 @@ def execution_socket():
                 dial=f"tcp://{execution.socket_config.host}:{execution.socket_config.port}", block_on_dial=True
             )
             socket.recv_timeout = 10000
-            socket.sendout = 10000
+            socket.send_timeout = 10000
             break
         except pynng.exceptions.ConnectionRefused:
             logging.getLogger("execution-test").warning("Failed to connect to execution socket, retrying...")
@@ -69,7 +69,7 @@ def test_ingest(
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark):
     execution_socket.send(Request(task="info").serialize())
     Response.deserialize(execution_socket.recv())
 
@@ -117,7 +117,7 @@ def test_run_benchmark(execution: Execution, execution_socket: pynng.Rep0, bench
         datetime(2023, 4, 30, tzinfo=timezone.utc),
     ],
 )
-def test_run_with_time(execution: Execution, execution_socket: pynng.Rep0, backtest_entity, start, end):
+def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Rep0, backtest_entity, start, end):
     execution_socket.send(Request(task="info").serialize())
     Response.deserialize(execution_socket.recv())
 
@@ -189,7 +189,7 @@ def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
 
 # None should be all ingested symbols
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"], None])
-def test_multiple_runs_different_symbols(execution: Execution, execution_socket: pynng.Rep0, symbols):
+def test_multiple_runs_different_symbols(execution: backtest.Execution, execution_socket: pynng.Rep0, symbols):
     execution.symbols = symbols
     execution_socket.send(Request(task="configure_execution", data=execution).serialize())
     response = Response.deserialize(execution_socket.recv())
@@ -244,7 +244,7 @@ def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_broker(execution: Execution, execution_socket: pynng.Rep0, benchmark):
+def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark):
     execution.benchmark = benchmark
 
     execution_socket.send(Request(task="configure_execution", data=execution).serialize())

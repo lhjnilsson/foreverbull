@@ -50,16 +50,17 @@ def namespace_server():
     thread.join()
 
 
-def test_asset_getattr_setattr(namespace_server):
-    asset = Asset(datetime.now(), None, "AAPL")
-    assert asset is not None
-    asset.rsi = 56.4
+def test_asset_getattr_setattr(database, namespace_server):
+    with database.connext() as conn:
+        asset = Asset(datetime.now(), conn, "AAPL")
+        assert asset is not None
+        asset.rsi = 56.4
 
-    assert "rsi" in namespace_server
-    assert namespace_server["rsi"] == {"AAPL": 56.4}
+        assert "rsi" in namespace_server
+        assert namespace_server["rsi"] == {"AAPL": 56.4}
 
-    namespace_server["pe"] = {"AAPL": 12.3}
-    assert asset.pe == 12.3
+        namespace_server["pe"] = {"AAPL": 12.3}
+        assert asset.pe == 12.3
 
 
 def test_assets(database, backtest_entity):
@@ -79,13 +80,14 @@ def test_assets(database, backtest_entity):
             assert "volume" in stock_data.columns
 
 
-def test_assets_getattr_setattr(namespace_server):
-    assets = Assets(datetime.now(), None, [])
-    assert assets is not None
-    assets.holdings = ["AAPL", "MSFT"]
+def test_assets_getattr_setattr(database, namespace_server):
+    with database.connect() as conn:
+        assets = Assets(datetime.now(), conn, [])
+        assert assets is not None
+        assets.holdings = ["AAPL", "MSFT"]
 
-    assert "holdings" in namespace_server
-    assert namespace_server["holdings"] == ["AAPL", "MSFT"]
+        assert "holdings" in namespace_server
+        assert namespace_server["holdings"] == ["AAPL", "MSFT"]
 
-    namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
-    assert assets.pe == {"AAPL": 12.3, "MSFT": 23.4}
+        namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
+        assert assets.pe == {"AAPL": 12.3, "MSFT": 23.4}

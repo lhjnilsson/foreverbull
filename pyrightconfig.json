@@ -1,4 +1,6 @@
 {
   "venvPath": "client/python/",
-  "venv": ".venv"
+  "venv": ".venv",
+  "include": ["client/python"],
+  "exclude": ["client/python/.venv", "**/*_test.py", "**/conftest.py"]
 }

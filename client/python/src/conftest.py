@@ -81,14 +81,14 @@ def namespace_server():
 
 @pytest.fixture(scope="function")
 def parallel_algo_file(spawn_process, execution, database):
-    def _process_symbols(server_socket):
+    def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
-        orders = []
+        orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
                 req = entity.service.Request(
@@ -116,7 +116,7 @@ def parallel_algo_file(spawn_process, execution, database):
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
     process_socket.recv_timeout = 5000
     process_socket.send_timeout = 5000
-    _process_symbols = partial(_process_symbols, process_socket)
+    _process_symbols = partial(_process_symbols, server_socket=process_socket)
 
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -142,14 +142,14 @@ Algorithm(
 
 @pytest.fixture(scope="function")
 def non_parallel_algo_file(spawn_process, execution, database):
-    def _process_symbols(server_socket):
+    def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
-        orders = []
+        orders: list[Order] = []
         while start < execution.end:
             req = entity.service.Request(
                 timestamp=start,
@@ -181,7 +181,7 @@ def non_parallel_algo_file(spawn_process, execution, database):
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5657")
     process_socket.recv_timeout = 5000
     process_socket.send_timeout = 5000
-    _process_symbols = partial(_process_symbols, process_socket)
+    _process_symbols = partial(_process_symbols, server_socket=process_socket)
 
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -209,14 +209,14 @@ Algorithm(
 
 @pytest.fixture(scope="function")
 def parallel_algo_file_with_parameters(spawn_process, execution, database):
-    def _process_symbols(server_socket):
+    def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
-        orders = []
+        orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
                 req = entity.service.Request(
@@ -252,7 +252,7 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5658")
     process_socket.recv_timeout = 5000
     process_socket.send_timeout = 5000
-    _process_symbols = partial(_process_symbols, process_socket)
+    _process_symbols = partial(_process_symbols, server_socket=process_socket)
 
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -277,14 +277,14 @@ Algorithm(
 
 @pytest.fixture(scope="function")
 def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
-    def _process_symbols(server_socket):
+    def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
-        orders = []
+        orders: list[Order] = []
         while start < execution.end:
             req = entity.service.Request(
                 timestamp=start,
@@ -318,7 +318,7 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5659")
     process_socket.recv_timeout = 5000
     process_socket.send_timeout = 5000
-    _process_symbols = partial(_process_symbols, process_socket)
+    _process_symbols = partial(_process_symbols, server_socket=process_socket)
 
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -346,14 +346,14 @@ Algorithm(
 
 @pytest.fixture(scope="function")
 def multistep_algo_with_namespace(spawn_process, execution, database, namespace_server):
-    def _process_symbols(server_socket):
+    def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
             cash=0,
             value=0,
             positions=[],
         )
-        orders = []
+        orders: list[Order] = []
         while start < execution.end:
             # filter assets
             req = entity.service.Request(
@@ -414,7 +414,7 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5660")
     process_socket.recv_timeout = 5000
     process_socket.send_timeout = 5000
-    _process_symbols = partial(_process_symbols, process_socket)
+    _process_symbols = partial(_process_symbols, server_socket=process_socket)
 
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
@@ -517,7 +517,10 @@ def verify_database():
                     text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
                     {"symbol": symbol},
                 )
-                start, end = result.fetchone()
+                res = result.fetchone()
+                if res is None:
+                    return False
+                start, end = res
                 if start is None or end is None:
                     return False
                 if start.date() != backtest.start.date() or end.date() != backtest.end.date():

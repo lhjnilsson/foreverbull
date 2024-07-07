@@ -14,9 +14,11 @@ class Request(pydantic.BaseModel):
         return self.model_dump_json().encode()
 
     @classmethod
-    def deserialize(cls, data: bytes) -> "Request":
+    def deserialize(cls, data: bytes | dict) -> "Request":
         if isinstance(data, dict):
             return cls(**data)
+        elif isinstance(data, memoryview):
+            return cls(**json.loads(data.tobytes().decode()))
         return cls(**json.loads(data.decode()))
 
     @pydantic.field_validator("data")
@@ -40,9 +42,11 @@ class Response(pydantic.BaseModel):
         return self.model_dump_json().encode()
 
     @classmethod
-    def deserialize(cls, data: bytes) -> "Request":
+    def deserialize(cls, data: bytes | dict) -> "Response":
         if isinstance(data, dict):
             return cls(**data)
+        elif isinstance(data, memoryview):
+            return cls(**json.loads(data.tobytes().decode()))
         return cls(**json.loads(data.decode()))
 
     @pydantic.field_validator("data")

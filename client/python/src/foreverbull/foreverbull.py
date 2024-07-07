@@ -1,7 +1,7 @@
 import logging
 import os
 import threading
-from multiprocessing import Event, Queue
+from multiprocessing import Event, Queue, synchronize
 
 import pynng
 
@@ -17,7 +17,7 @@ class Session(threading.Thread):
         surveyor: pynng.Surveyor0,
         states: pynng.Sub0,
         workers: list[worker.Worker],
-        stop_event: Event,
+        stop_event: synchronize.Event,
     ):
         self._algorithm = algorithm
         self._surveyor = surveyor
@@ -26,10 +26,6 @@ class Session(threading.Thread):
         self._stop_event = stop_event
         self.logger = logging.getLogger(__name__)
         threading.Thread.__init__(self)
-
-    @property
-    def service(self):
-        return self._service
 
     def _configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring workers")
@@ -153,7 +149,7 @@ def logging_thread(q: Queue):
 
 
 class Foreverbull:
-    def __init__(self, file_path: str = None, executors=2):
+    def __init__(self, file_path: str | None = None, executors=2):
         self._session = None
         self._file_path = file_path
         if self._file_path:
@@ -164,10 +160,10 @@ class Foreverbull:
         self._executors = executors
 
         self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
-        self._worker_surveyor_socket: pynng.Surveyor0 = None
+        self._worker_surveyor_socket: pynng.Surveyor0 | None = None
         self._worker_states_address = "ipc:///tmp/worker_states.ipc"
-        self._worker_states_socket: pynng.Sub0 = None
-        self._stop_event: Event = None
+        self._worker_states_socket: pynng.Sub0 | None = None
+        self._stop_event: synchronize.Event | None = None
         self._workers = []
         self.logger = logging.getLogger(__name__)
 
@@ -176,7 +172,7 @@ class Foreverbull:
             raise Exception("No algo file provided")
         algo = Algorithm.from_file_path(self._file_path)
         self._worker_surveyor_socket = pynng.Surveyor0(listen=self._worker_surveyor_address)
-        self._worker_surveyor_socket.sendout = 30000
+        self._worker_surveyor_socket.send_timeout = 30000
         self._worker_surveyor_socket.recv_timeout = 30000
         self._worker_states_socket = pynng.Sub0(listen=self._worker_states_address)
         self._worker_states_socket.subscribe(b"")
@@ -229,14 +225,17 @@ class Foreverbull:
         return s
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if not self._stop_event.is_set():
+        if self._stop_event and not self._stop_event.is_set():
             self._stop_event.set()
         self._log_queue.put_nowait(None)
         [worker.join() for worker in self._workers]
         self._log_thread.join()
         self.logger.info("workers stopped")
-        self._worker_surveyor_socket.close()
-        self._worker_states_socket.close()
+        if self._worker_surveyor_socket:
+            self._worker_surveyor_socket.close()
+        if self._worker_states_socket:
+            self._worker_states_socket.close()
         self._stop_event = None
-        self._session.join()
-        self._session = None
+        if self._session:
+            self._session.join()
+            self._session = None

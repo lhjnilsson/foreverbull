@@ -11,7 +11,7 @@ for handler in logger.handlers:
 logger.addHandler(file_handler)
 
 
-def handle_data(asset: Asset, portfolio: Portfolio) -> Order:
+def handle_data(asset: Asset, portfolio: Portfolio) -> Order | None:
     stock_data = asset.stock_data
     position = portfolio.get_position(asset)
     if len(stock_data) < 30:

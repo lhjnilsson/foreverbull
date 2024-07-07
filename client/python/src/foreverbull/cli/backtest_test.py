@@ -29,7 +29,7 @@ def test_backtest_list():
         ]
         result = runner.invoke(backtest, ["list"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
         assert "READY" in result.stdout
@@ -107,7 +107,7 @@ def test_backtest_get():
         ]
         result = runner.invoke(backtest, ["get", "test"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test" in result.stdout
         assert "READY" in result.stdout
@@ -173,7 +173,7 @@ def test_backtest_run(spawn_process, parallel_algo_file):
 
         result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "id123" in result.stdout
         assert "COMPLETED" in result.stdout
@@ -240,7 +240,7 @@ def test_backtest_run_failed(spawn_process, parallel_algo_file):
 
         result = runner.invoke(backtest, ["run", algofile, "--backtest-name", "test"])
 
-        if not result.exit_code == 1:
+        if not result.exit_code == 1 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "Error while running session: test error" in result.stderr
 
@@ -249,8 +249,11 @@ def test_backtest_executions():
     executions = [
         entity.backtest.Execution(
             id="id123",
+            calendar="demo",
             start=datetime.now(),
             end=datetime.now(),
+            symbols=["AAPL", "MSFT"],
+            benchmark="SPY",
             statuses=[
                 entity.backtest.ExecutionStatus(
                     status=entity.backtest.ExecutionStatusType.COMPLETED,
@@ -264,7 +267,7 @@ def test_backtest_executions():
         mock_list_executions.return_value = executions
         result = runner.invoke(backtest, ["executions", "1"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "id123" in result.stdout
         assert "COMPLETED" in result.stdout

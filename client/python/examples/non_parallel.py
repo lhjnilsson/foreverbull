@@ -5,7 +5,7 @@ from foreverbull import Algorithm, Assets, Function, Order, Portfolio
 logger = logging.getLogger("non_parallel")
 
 
-def handle_data(assets: Assets, portfolio: Portfolio) -> Order:
+def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order] | None:
     orders = []
     for asset in assets:
         logger.debug(f"Handling data for {asset.symbol}")

@@ -79,7 +79,7 @@ def test_foreverbull_manual(execution, algo, request):
                 elif req.task == "current_period":
                     rsp = socket.Response(task="current_period", data={"timestamp": 1})
                 else:
-                    rsp = socket.Response(error="Unknown task")
+                    rsp = socket.Response(task=req.task, error="Unknown task")
                 sock.send(rsp.serialize())
             except pynng.exceptions.Timeout:
                 pass

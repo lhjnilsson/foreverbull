@@ -58,7 +58,7 @@ class Order(pydantic.BaseModel):
 
 class Position(pydantic.BaseModel):
     symbol: str
-    amount: float
+    amount: int
     cost_basis: float
 
 
@@ -66,16 +66,3 @@ class Portfolio(pydantic.BaseModel):
     cash: float
     value: float
     positions: list[Position]
-
-    def __contains__(self, asset: Asset) -> bool:
-        symbols = [position.symbol for position in self.positions]
-        return asset.symbol in symbols
-
-    def __getitem__(self, asset: Asset) -> Position:
-        return next(
-            (position for position in self.positions if position.symbol == asset.symbol),
-            None,
-        )
-
-    def get_position(self, asset: Asset) -> Position:
-        return self[asset]

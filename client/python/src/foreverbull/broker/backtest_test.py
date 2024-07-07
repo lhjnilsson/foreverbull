@@ -174,10 +174,11 @@ def test_backtest_list_executions(argument, return_value, expected_model):
             },
             Execution(
                 id="test_service",
-                name="test_service",
+                calendar="demo",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],
+                benchmark="SPY",
             ),
         ),
     ],

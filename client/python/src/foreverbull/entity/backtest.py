@@ -25,7 +25,7 @@ class Ingestion(pydantic.BaseModel):
     end: datetime
     symbols: list[str]
 
-    statuses: List[IngestionStatus] | None = None
+    statuses: List[IngestionStatus] = []
 
     @pydantic.field_serializer("start")
     def start_iso(self, start: datetime, _info):
@@ -61,12 +61,9 @@ class Backtest(pydantic.BaseModel):
     start: datetime | None = None
     end: datetime | None = None
     benchmark: str | None = None
-    symbols: List[str] | None = None
+    symbols: List[str]
 
-    data_frequency: str = "daily"
-    capital_base: int = 100_000
-
-    statuses: List[BacktestStatus] | None = None
+    statuses: List[BacktestStatus] = []
 
     sessions: int | None = None
 
@@ -101,7 +98,7 @@ class SessionStatus(pydantic.BaseModel):
 
 
 class Session(pydantic.BaseModel):
-    id: Optional[str] = None
+    id: str
     backtest: str
     manual: bool = False
     executions: int
@@ -125,13 +122,12 @@ class ExecutionStatus(pydantic.BaseModel):
 
 
 class Execution(pydantic.BaseModel):
-    id: Optional[str] = None
-    calendar: str = "XNYS"
-    start: Optional[datetime] = None
-    end: Optional[datetime] = None
-    benchmark: Optional[str] = None
-    symbols: Optional[List[str]] = None
-    capital_base: int = 100000
+    id: str | None = None
+    calendar: str
+    start: datetime
+    end: datetime
+    benchmark: str | None
+    symbols: List[str]
 
     statuses: List[ExecutionStatus] = []
 

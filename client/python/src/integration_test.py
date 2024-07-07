@@ -54,12 +54,11 @@ def execution(spawn_process) -> entity.backtest.Execution:
             "VZ",
             "WMT",
         ],
-        capital_base=100000,
     )
 
 
 @pytest.fixture(scope="session")
-def foreverbull_bundle(execution, database):
+def foreverbull_bundle(execution: entity.backtest.Execution, database):
     backtest_entity = entity.backtest.Backtest(
         name="test_backtest",
         calendar=execution.calendar,
@@ -90,8 +89,8 @@ def foreverbull_bundle(execution, database):
         sanity_check(bundles.load("foreverbull", os.environ, None))
     except (ValueError, LookupError) as exc:
         print("Creating bundle", exc)
-        execution = Execution()
-        execution._ingest(backtest_entity)
+        exc = Execution()
+        exc._ingest(backtest_entity)
 
 
 def baseline_performance_initialize(context):

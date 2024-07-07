@@ -10,8 +10,8 @@ def main():
     foreverbull = Foreverbull(file_path=sys.argv[1])
     with foreverbull as fb:
         broker.service.update_instance(socket.gethostname(), True)
-        signal.signal(signal.SIGINT, lambda x, y: foreverbull._stop_event.set())
-        signal.signal(signal.SIGTERM, lambda x, y: foreverbull._stop_event.set())
+        signal.signal(signal.SIGINT, lambda x, y: fb._stop_event.set())
+        signal.signal(signal.SIGTERM, lambda x, y: fb._stop_event.set())
         fb.join()
         broker.service.update_instance(socket.gethostname(), False)
 
