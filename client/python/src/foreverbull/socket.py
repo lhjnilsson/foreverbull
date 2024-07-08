@@ -23,13 +23,9 @@ class Request(pydantic.BaseModel):
 
     @pydantic.field_validator("data")
     def validate_data(cls, v):
-        if v is None:
-            return v
-        if isinstance(v, dict):
-            return v
-        if isinstance(v, list):
-            return v
-        return v.model_dump()
+        if hasattr(v, "model_dump"):
+            return v.model_dump()
+        return v
 
 
 class Response(pydantic.BaseModel):
@@ -51,10 +47,6 @@ class Response(pydantic.BaseModel):
 
     @pydantic.field_validator("data")
     def validate_data(cls, v):
-        if v is None:
-            return v
-        if isinstance(v, dict):
-            return v
-        if isinstance(v, list):
-            return v
-        return v.model_dump()
+        if hasattr(v, "model_dump"):
+            return v.model_dump()
+        return v

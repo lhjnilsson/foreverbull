@@ -36,7 +36,11 @@ class Broker:
         return order
 
     def get_open_orders(self, trading_algorithm: TradingAlgorithm) -> list[entity.Order]:
-        return [entity.Order.from_zipline(o) for _, o in trading_algorithm.get_open_orders().items()]
+        orders: list[entity.Order] = []
+        for _, open_orders in trading_algorithm.get_open_orders().items():
+            for order in open_orders:
+                orders.append(entity.Order.from_zipline(order))
+        return orders
 
     def cancel_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
         trading_algorithm.cancel_order(order.id)

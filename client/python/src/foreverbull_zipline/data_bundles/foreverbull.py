@@ -1,7 +1,7 @@
 import os
 import warnings
 from datetime import datetime
-from typing import Generator, Tuple
+from typing import Iterable, Tuple
 
 import numpy as np
 import pandas as pd
@@ -59,7 +59,7 @@ class SQLIngester:
         data.set_index("Date", inplace=True)
         return data
 
-    def writer(self, show_progress: bool) -> Generator[Tuple[int, pd.DataFrame]]:
+    def writer(self, show_progress: bool) -> Iterable[Tuple[int, pd.DataFrame]]:
         with maybe_show_progress(self.symbols, show_progress, label="Ingesting from SQL") as it:
             for index, symbol in enumerate(it):  # type: ignore
                 data = self.get_stock_data(symbol)

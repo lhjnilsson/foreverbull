@@ -162,10 +162,12 @@ class Execution(threading.Thread):
         try:
             if config.start:
                 start = pd.Timestamp(config.start)
-                if start is not pd.Timestamp:
+                if type(start) is not pd.Timestamp:
                     raise ConfigError(f"Invalid start date: {config.start}")
                 start_date = start.normalize().tz_localize(None)
                 first_traded_date = find_first_traded_dt(bundle, *symbols)
+                if first_traded_date is None:
+                    raise ConfigError("No data for the selected symbols")
                 if start_date < first_traded_date:
                     start_date = first_traded_date
             else:
@@ -175,10 +177,12 @@ class Execution(threading.Thread):
 
             if config.end:
                 end = pd.Timestamp(config.end)
-                if end is not pd.Timestamp:
+                if type(end) is not pd.Timestamp:
                     raise ConfigError(f"Invalid end date: {config.end}")
                 end_date = end.normalize().tz_localize(None)
                 last_traded_date = find_last_traded_dt(bundle, *symbols)
+                if last_traded_date is None:
+                    raise ConfigError("No data for the selected symbols")
                 if end_date > last_traded_date:
                     end_date = last_traded_date
             else:

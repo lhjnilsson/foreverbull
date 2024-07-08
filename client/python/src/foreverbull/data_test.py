@@ -51,7 +51,7 @@ def namespace_server():
 
 
 def test_asset_getattr_setattr(database, namespace_server):
-    with database.connext() as conn:
+    with database.connect() as conn:
         asset = Asset(datetime.now(), conn, "AAPL")
         assert asset is not None
         asset.rsi = 56.4

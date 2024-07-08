@@ -25,19 +25,6 @@ class Worker:
         self._parallel = False
         super(Worker, self).__init__()
 
-    @staticmethod
-    def _eval_param(type: str, val):
-        if type == "int":
-            return int(val)
-        elif type == "float":
-            return float(val)
-        elif type == "bool":
-            return bool(val)
-        elif type == "str":
-            return str(val)
-        else:
-            raise TypeError("Unknown parameter type")
-
     def configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring worker")
         self._algo = Algorithm.from_file_path(self._file_path)
@@ -136,11 +123,9 @@ class Worker:
         self.socket.close()
 
 
-class WorkerThread(Worker, Thread):
-    def run(self):
-        super(Worker).run()
+class WorkerThread(Worker, Thread):  # type: ignore
+    pass
 
 
-class WorkerProcess(Worker, Process):
-    def run(self):
-        super(Worker).run()
+class WorkerProcess(Worker, Process):  # type: ignore
+    pass

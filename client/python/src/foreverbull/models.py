@@ -1,28 +1,29 @@
+import builtins
 import importlib.util
 import types
 import typing
 from functools import partial
 from inspect import getabsfile, signature
-from typing import Any, Callable, get_args
+from typing import Any, Callable
 
 from sqlalchemy import Connection
 
 from foreverbull import entity
-from foreverbull.data import Asset, Assets
+from foreverbull.data import Asset, Assets, Portfolio
 
 
-def type_to_str[T: (int, float, bool, str)](type: T) -> str:
-    match get_args(type):
-        case int():
+def type_to_str[T: (int, float, bool, str)](t: T) -> str:
+    match t:
+        case builtins.int:
             return "int"
-        case float():
+        case builtins.float:
             return "float"
-        case bool():
+        case builtins.bool:
             return "bool"
-        case str():
+        case builtins.str:
             return "string"
         case _:
-            raise Exception("Unknown parameter type: {}".format(type))
+            raise TypeError("Unsupported type: ", type(t))
 
 
 class Namespace(typing.Dict):
@@ -85,7 +86,7 @@ class Algorithm:
             parallel_execution: bool | None = None
 
             for key, value in signature(f.callable).parameters.items():
-                if value.annotation == entity.finance.Portfolio:
+                if value.annotation == Portfolio:
                     portfolio_key = key
                     continue
                 if value.annotation == Assets:

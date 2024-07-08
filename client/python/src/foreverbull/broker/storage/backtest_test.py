@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+import urllib3
 from pandas import DataFrame
 
 from foreverbull.broker.storage.backtest import Backtest
@@ -29,10 +30,12 @@ def test_backtest_upload_backtest_result(mocked_backtest: Backtest):
 
 def test_backtest_download_backtest_results(mocked_backtest: Backtest):
     buffer = io.BytesIO()
-    df = DataFrame(np.random.randint(0, 100, size=(100, 4)), columns=list("ABCD"))
+    df = DataFrame(np.random.randint(0, 100, size=(100, 4)))
     df.to_pickle(buffer)
     buffer.seek(0)
-    mocked_backtest.client.get_object = Mock(return_value=buffer.getvalue())
+    urllib3.BaseHTTPResponse = Mock()
+    urllib3.BaseHTTPResponse.read = Mock(return_value=buffer.getvalue())
+    mocked_backtest.client.get_object = Mock(return_value=urllib3.BaseHTTPResponse)
 
     assert df.equals(mocked_backtest.download_backtest_results("backtest"))
     mocked_backtest.client.get_object.assert_called_once_with("backtest-results", "backtest")
