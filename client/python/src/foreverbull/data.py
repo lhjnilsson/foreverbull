@@ -24,7 +24,7 @@ def get_engine(url: str):
         engine.connect()
         return engine
     except Exception as e:
-        log.warning(f"Could not connect to {url}: {e}")
+        log.warning(f"Could not connect to {url}")
 
     database_host = re.search(r"@([^/]+):", url)
     if database_host is None:
@@ -35,15 +35,19 @@ def get_engine(url: str):
         raise Exception("Could not find database port in URL")
     database_port = database_port.group(1)
 
+    new_url = ""
     for hostname in ["localhost", "postgres", "127.0.0.1"]:
-        try:
-            url = url.replace(f"@{database_host}:", f"@{hostname}:", 1)
-            url = url.replace(f":{database_port}", ":5432", 1)
-            engine = create_engine(url)
-            engine.connect()
-            return engine
-        except Exception as e:
-            log.warning(f"Could not connect to {url}: {e}")
+        for port in [database_port, "5432"]:
+            try:
+
+                new_url = url.replace(f"@{database_host}:", f"@{hostname}:", 1)
+                new_url = new_url.replace(f":{database_port}", ":5432", 1)
+                engine = create_engine(new_url)
+                engine.connect()
+                log.info(f"Connected to {new_url}")
+                return engine
+            except Exception as e:
+                log.warning(f"Could not connect to {new_url}")
     raise Exception("Could not connect to database")
 
 
