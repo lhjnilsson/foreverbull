@@ -167,13 +167,13 @@ class Execution(threading.Thread):
                 start_date = start.normalize().tz_localize(None)
                 first_traded_date = find_first_traded_dt(bundle, *symbols)
                 if first_traded_date is None:
-                    raise ConfigError("No data for the selected symbols")
+                    raise ConfigError("unable to determine first traded date")
                 if start_date < first_traded_date:
                     start_date = first_traded_date
             else:
                 start_date = find_first_traded_dt(bundle, *symbols)
             if not isinstance(start_date, pd.Timestamp):
-                raise ConfigError("No data for the selected symbols")
+                raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
 
             if config.end:
                 end = pd.Timestamp(config.end)
@@ -182,13 +182,13 @@ class Execution(threading.Thread):
                 end_date = end.normalize().tz_localize(None)
                 last_traded_date = find_last_traded_dt(bundle, *symbols)
                 if last_traded_date is None:
-                    raise ConfigError("No data for the selected symbols")
+                    raise ConfigError("unable to determine last traded date")
                 if end_date > last_traded_date:
                     end_date = last_traded_date
             else:
                 end_date = find_last_traded_dt(bundle, *symbols)
             if not isinstance(end_date, pd.Timestamp):
-                raise ConfigError("No data for the selected symbols")
+                raise ConfigError(f"expected end_date to be a pd.Timestamp, is: {type(end_date)}")
 
         except pytz.exceptions.UnknownTimeZoneError as e:
             self.logger.error("Unknown time zone: %s", repr(e))
