@@ -3,15 +3,14 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 import pandas as pd
+from pydantic import BaseModel
 
-from foreverbull.entity.base import Base
 
-
-class Asset(Base):
+class Asset(BaseModel):
     symbol: str
 
 
-class Position(Base):
+class Position(BaseModel):
     symbol: str
     amount: int
     cost_basis: float
@@ -27,7 +26,7 @@ class OrderStatus(enum.IntEnum):
     HELD = 4
 
 
-class Order(Base):
+class Order(BaseModel):
     id: Optional[str] = None
     symbol: str
     amount: int
@@ -61,7 +60,7 @@ class Order(Base):
         )
 
 
-class Period(Base):
+class Period(BaseModel):
     timestamp: datetime
     cash_flow: float
     starting_cash: float
@@ -101,8 +100,8 @@ class Period(Base):
         )
 
 
-class Result(Base):
-    class Period(Base):
+class Result(BaseModel):
+    class Period(BaseModel):
         timestamp: datetime
         pnl: float
         returns: float

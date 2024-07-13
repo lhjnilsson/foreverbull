@@ -54,9 +54,6 @@ func (test *ServiceTest) TearDownSuite() {
 }
 
 func (test *ServiceTest) TestUpdateServiceStatus() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-
 	services := repository.Service{Conn: test.db}
 
 	type TestCase struct {
@@ -70,6 +67,8 @@ func (test *ServiceTest) TestUpdateServiceStatus() {
 	}
 	for _, tc := range testCases {
 		test.Run(string(tc.Status), func() {
+			m := new(stream.MockMessage)
+			m.On("MustGet", stream.DBDep).Return(test.db)
 			m.On("ParsePayload", &ss.UpdateServiceStatusCommand{}).Return(nil).Run(func(args mock.Arguments) {
 				command := args.Get(0).(*ss.UpdateServiceStatusCommand)
 				command.Image = test.testService.Image

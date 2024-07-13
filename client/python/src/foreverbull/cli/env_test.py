@@ -4,7 +4,7 @@ from collections import namedtuple
 from datetime import datetime
 from unittest.mock import PropertyMock, patch
 
-import docker
+import docker.errors
 import pytest
 from typer.testing import CliRunner
 
@@ -117,7 +117,7 @@ def test_env_status(containers, images):
         mock_images.return_value = MockedDockerProperty(images, on_not_found=docker.errors.ImageNotFound(""))
         result = runner.invoke(env, ["status"])
 
-        if result.exception:
+        if result.exception and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert result.exit_code == 0
 
@@ -152,7 +152,7 @@ def test_env_start():
         )
         result = runner.invoke(env, ["start", "--ingestion-config", ingest_file.name])
 
-        if result.exception:
+        if result.exception and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert result.exit_code == 0
 
@@ -168,6 +168,6 @@ def test_env_stop():
         mock_network.return_value = MockedDockerProperty({})
         result = runner.invoke(env, ["stop"])
 
-        if result.exception:
+        if result.exception and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert result.exit_code == 0

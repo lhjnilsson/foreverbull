@@ -1,4 +1,5 @@
 import zipline
+import zipline.errors
 from zipline import TradingAlgorithm
 from zipline.protocol import BarData
 
@@ -15,9 +16,9 @@ class Broker:
             equity = trading_algorithm.symbol(asset.symbol)
         except zipline.errors.SymbolNotFound as e:
             raise BrokerError(repr(e))
-        return {"status": data.can_trade(equity)}
+        return data.can_trade(equity)
 
-    def order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> dict:
+    def order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
         try:
             asset = trading_algorithm.symbol(order.symbol)
         except zipline.errors.SymbolNotFound as e:
@@ -25,24 +26,23 @@ class Broker:
         order.id = trading_algorithm.order(
             asset=asset, amount=order.amount, limit_price=order.limit_price, stop_price=order.stop_price
         )
-        order = entity.Order.from_zipline(trading_algorithm.get_order(order.id))
-        return order
+        return entity.Order.from_zipline(trading_algorithm.get_order(order.id))
 
-    def get_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> dict:
+    def get_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
         event = trading_algorithm.get_order(order.id)
         if event is None:
             raise BrokerError(f"order {order.id} not found")
         order = entity.Order.from_zipline(event)
         return order
 
-    def get_open_orders(self, trading_algorithm: TradingAlgorithm) -> dict:
-        response = {"orders": []}
+    def get_open_orders(self, trading_algorithm: TradingAlgorithm) -> list[entity.Order]:
+        orders: list[entity.Order] = []
         for _, open_orders in trading_algorithm.get_open_orders().items():
             for order in open_orders:
-                response["orders"].append(entity.Order.from_zipline(order))
-        return response
+                orders.append(entity.Order.from_zipline(order))
+        return orders
 
-    def cancel_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> dict:
+    def cancel_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
         trading_algorithm.cancel_order(order.id)
         event = trading_algorithm.get_order(order.id)
         if event is None:

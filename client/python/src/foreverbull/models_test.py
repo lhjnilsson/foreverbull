@@ -20,7 +20,7 @@ from foreverbull import Algorithm, Function, Assets, Portfolio, Order
 
 def handle_data(low: int, high: int, assets: Assets, portfolio: Portfolio) -> list[Order]:
     pass
-    
+
 Algorithm(
     functions=[
         Function(callable=handle_data)
@@ -33,12 +33,12 @@ Algorithm(
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
-            self.algo = Algorithm.from_file_path(f.name)
+            self._algo = Algorithm.from_file_path(f.name)
             self.file_path = f.name
-            yield
+            yield self.algo
 
     def test_entity(self, algo):
-        assert self.algo.get_entity() == entity.service.Service.Algorithm(
+        assert self._algo.get_entity() == entity.service.Service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
@@ -70,7 +70,7 @@ Algorithm(
             )
         }
 
-        self.algo.configure(parameters)
+        self._algo.configure(parameters)
 
 
 class TestParallel:
@@ -79,7 +79,7 @@ from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
-    
+
 Algorithm(
     functions=[
         Function(callable=handle_data)
@@ -92,12 +92,12 @@ Algorithm(
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
-            self.algo = Algorithm.from_file_path(f.name)
+            self._algo = Algorithm.from_file_path(f.name)
             self.file_path = f.name
             yield
 
     def test_entity(self, algo):
-        assert self.algo.get_entity() == entity.service.Service.Algorithm(
+        assert self._algo.get_entity() == entity.service.Service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
@@ -130,7 +130,7 @@ Algorithm(
                 },
             )
         }
-        self.algo.configure(parameters)
+        self._algo.configure(parameters)
 
 
 class TestWithNamespace:
@@ -139,7 +139,7 @@ from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
-    
+
 Algorithm(
     functions=[
         Function(callable=handle_data)
@@ -153,12 +153,12 @@ Algorithm(
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
-            self.algo = Algorithm.from_file_path(f.name)
+            self._algo = Algorithm.from_file_path(f.name)
             self.file_path = f.name
             yield
 
     def test_entity(self, algo):
-        assert self.algo.get_entity() == entity.service.Service.Algorithm(
+        assert self._algo.get_entity() == entity.service.Service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
@@ -201,7 +201,7 @@ Algorithm(
                 },
             )
         }
-        self.algo.configure(parameters)
+        self._algo.configure(parameters)
 
 
 class TestMultiStepWithNamespace:
@@ -211,7 +211,7 @@ from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order, Na
 
 def measure_assets(asset: Asset, low: int = 5, high: int = 10) -> None:
     pass
-    
+
 def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
     pass
 
@@ -233,12 +233,12 @@ Algorithm(
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(self.example)
             f.flush()
-            self.algo = Algorithm.from_file_path(f.name)
+            self._algo = Algorithm.from_file_path(f.name)
             self.file_path = f.name
             yield
 
     def test_entity(self, algo):
-        assert self.algo.get_entity() == entity.service.Service.Algorithm(
+        assert self._algo.get_entity() == entity.service.Service.Algorithm(
             file_path=self.file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
@@ -302,4 +302,4 @@ Algorithm(
             ),
         }
 
-        self.algo.configure(configuration)
+        self._algo.configure(configuration)

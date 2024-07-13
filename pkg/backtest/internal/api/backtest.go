@@ -90,7 +90,7 @@ func CreateBacktest(c *gin.Context) {
 	}
 
 	var symbols []string
-	if body.Symbols != nil {
+	if body.Symbols != nil && len(*body.Symbols) > 0 {
 		for _, symbol := range *body.Symbols {
 			if !slices.Contains(i.Symbols, symbol) {
 				log.Debug().Str("symbol", symbol).Msg("symbol not in ingestion")

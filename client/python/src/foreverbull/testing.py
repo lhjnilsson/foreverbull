@@ -1,4 +1,3 @@
-import argparse
 import inspect
 import os
 import time
@@ -8,12 +7,13 @@ from foreverbull import Foreverbull, broker, entity
 
 try:
     import pytest
+    from _pytest.config.argparsing import Parser
 except ImportError:
     print("pytest not installed, please install it with `pip install pytest`")
     exit(1)
 
 
-def pytest_addoption(parser: argparse.ArgumentParser):
+def pytest_addoption(parser: Parser):
     parser.addoption(
         "--backtest",
         action="store",
@@ -25,7 +25,7 @@ class TestingSession:
         self.session = session
         self._fb = None
 
-    def __call__(self, module, parameters: [] = []) -> Any:
+    def __call__(self, module, parameters: list = []) -> Any:
         return Foreverbull(file_path=inspect.getfile(module))
 
 

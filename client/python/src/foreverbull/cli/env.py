@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker
+import docker.errors
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -12,7 +13,8 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 from foreverbull import broker, entity
-from foreverbull._version import version
+
+version = "0.1.0"
 
 env = typer.Typer()
 
@@ -113,8 +115,8 @@ def status():
     std.print(table)
 
 
-ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")]
-ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")]
+ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
+ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
 BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
 INGESTION_CONFIG_OPT = Annotated[str, typer.Option(help="Path to ingestion config file")]
@@ -306,6 +308,7 @@ def start(
                         "ALPACA_MARKETS_API_KEY": alpaca_key,
                         "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
+                        "LOG_LEVEL": "INFO",
                     },
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
                 )
@@ -319,7 +322,7 @@ def start(
                 with open(ingestion_config, "r") as f:
                     ingestion_config = json.load(f)
 
-                ingestion = broker.backtest.ingest(entity.backtest.Ingestion(**ingestion_config))
+                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.parse_obj(ingestion_config))
                 while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
                     time.sleep(0.5)
                     ingestion = broker.backtest.get_ingestion()

@@ -1,25 +1,29 @@
-import importlib
+import builtins
+import importlib.util
 import types
 import typing
 from functools import partial
 from inspect import getabsfile, signature
+from typing import Any, Callable
+
+from sqlalchemy import Connection
 
 from foreverbull import entity
-from foreverbull.data import Asset, Assets
+from foreverbull.data import Asset, Assets, Portfolio
 
 
-def type_to_str(type: any) -> str:
-    match type():
-        case int():
+def type_to_str[T: (int, float, bool, str)](t: T) -> str:
+    match t:
+        case builtins.int:
             return "int"
-        case float():
+        case builtins.float:
             return "float"
-        case bool():
+        case builtins.bool:
             return "bool"
-        case str():
+        case builtins.str:
             return "string"
         case _:
-            raise Exception("Unknown parameter type: {}".format(type))
+            raise TypeError("Unsupported type: ", type(t))
 
 
 class Namespace(typing.Dict):
@@ -38,7 +42,7 @@ class Namespace(typing.Dict):
                 raise TypeError("Unsupported namespace type")
         return
 
-    def contains(self, key: str, type: types.GenericAlias) -> bool:
+    def contains(self, key: str, type: Any) -> bool:
         if key not in self:
             raise KeyError("Key {} not found in namespace".format(key))
         if type.__origin__ == dict:
@@ -57,19 +61,19 @@ class Namespace(typing.Dict):
 
 
 class Function:
-    def __init__(self, callable: callable, run_first: bool = False, run_last: bool = False):
+    def __init__(self, callable: Callable, run_first: bool = False, run_last: bool = False):
         self.callable = callable
         self.run_first = run_first
         self.run_last = run_last
 
 
 class Algorithm:
-    _algo = None
-    _file_path: str | None = None
-    _functions: dict | None = None
-    _namespace: Namespace | None = None
+    _algo: "Algorithm | None"
+    _file_path: str
+    _functions: dict
+    _namespace: Namespace
 
-    def __init__(self, functions: list[Function], namespace: Namespace = dict()):
+    def __init__(self, functions: list[Function], namespace: Namespace | dict = {}):
         Algorithm._algo = None
         Algorithm._file_path = getabsfile(functions[0].callable)
         Algorithm._functions = {}
@@ -79,9 +83,10 @@ class Algorithm:
             parameters = []
             asset_key = None
             portfolio_key = None
+            parallel_execution: bool | None = None
 
             for key, value in signature(f.callable).parameters.items():
-                if value.annotation == entity.finance.Portfolio:
+                if value.annotation == Portfolio:
                     portfolio_key = key
                     continue
                 if value.annotation == Assets:
@@ -98,6 +103,9 @@ class Algorithm:
                         type=type_to_str(value.annotation),
                     )
                     parameters.append(parameter)
+            if parallel_execution is None:
+                raise TypeError("Function {} must have a parameter of type Asset or Assets".format(f.callable.__name__))
+
             function = {
                 "callable": f.callable,
                 "asset_key": asset_key,
@@ -128,6 +136,10 @@ class Algorithm:
             "",
             file_path,
         )
+        if spec is None:
+            raise Exception("No spec found in {}".format(file_path))
+        if spec.loader is None:
+            raise Exception("No loader found in {}".format(file_path))
         source = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(source)
         if Algorithm._algo is None:
@@ -149,9 +161,13 @@ class Algorithm:
 
         for function_name, function in Algorithm._functions.items():
             configuration = parameters.get(function_name)
-
+            if configuration is None:
+                continue
             for parameter in function["entity"].parameters:
-                value = _eval_param("int", configuration.parameters.get(parameter.key))
+                param = configuration.parameters.get(parameter.key)
+                if param is None:
+                    continue
+                value = _eval_param("int", param)
                 Algorithm._functions[function_name]["callable"] = partial(
                     function["callable"],
                     **{parameter.key: value},
@@ -160,22 +176,23 @@ class Algorithm:
     def process(
         self,
         function_name: str,
-        db: any,
+        db: Connection,
         request: entity.service.Request,
     ) -> list[entity.finance.Order]:
+        p = Portfolio(**request.portfolio.dict())
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
             for symbol in request.symbols:
                 a = Asset(request.timestamp, db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
                     asset=a,
-                    portfolio=request.portfolio,
+                    portfolio=p,
                 )
                 if order:
                     orders.append(order)
         else:
             assets = Assets(request.timestamp, db, request.symbols)
-            orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=request.portfolio)
+            orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
             if not orders:
                 orders = []
         return orders

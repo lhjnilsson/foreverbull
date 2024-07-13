@@ -35,8 +35,8 @@ def list():
         table.add_row(
             backtest.name,
             backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-            backtest.start.isoformat(),
-            backtest.end.isoformat(),
+            backtest.start.isoformat() if backtest.start else "",
+            backtest.end.isoformat() if backtest.end else "",
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
@@ -46,18 +46,18 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Option(help="start time of the backtest")] = None,
-    end: Annotated[datetime, typer.Option(help="end time of the backtest")] = None,
-    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")] = None,
-    service: Annotated[str, typer.Option(help="worker service to use")] = None,
-    benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] = None,
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")] | None = None,
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")] | None = None,
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")] | None = None,
+    service: Annotated[str, typer.Option(help="worker service to use")] | None = None,
+    benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] | None = None,
 ):
     backtest = entity.backtest.Backtest(
         name=name,
         service=service,
         start=start,
         end=end,
-        symbols=[symbol.strip().upper() for symbol in symbols.split(",")] if symbols else None,
+        symbols=[symbol.strip().upper() for symbol in symbols.split(",")] if symbols else [],
         benchmark=benchmark,
     )
     backtest = broker.backtest.create(backtest)
@@ -72,8 +72,8 @@ def create(
     table.add_row(
         backtest.name,
         backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-        backtest.start.isoformat(),
-        backtest.end.isoformat(),
+        backtest.start.isoformat() if backtest.start else "",
+        backtest.end.isoformat() if backtest.end else "",
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
@@ -96,8 +96,8 @@ def get(
     table.add_row(
         backtest.name,
         backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-        backtest.start.isoformat(),
-        backtest.end.isoformat(),
+        backtest.start.isoformat() if backtest.start else "",
+        backtest.end.isoformat() if backtest.end else "",
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
@@ -130,7 +130,6 @@ def run(
             while not progress.finished:
                 time.sleep(0.5)
                 session = broker.backtest.get_session(session.id)
-                print("SESSION: ", session)
                 status = session.statuses[0].status
                 if previous_status and previous_status != status:
                     match status:

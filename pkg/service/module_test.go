@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	docker "github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -88,9 +88,9 @@ func (test *ServiceModuleTest) NoTestAPIClient() {
 	// Delete image in case it exists and end with remove to cleanup
 	d, err := docker.NewClientWithOpts(docker.FromEnv, docker.WithAPIVersionNegotiation())
 	test.Require().NoError(err)
-	_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+	_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", image.RemoveOptions{})
 	defer func() {
-		_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+		_, _ = d.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", image.RemoveOptions{})
 	}()
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())

@@ -6,14 +6,14 @@ COPY external/ui/ /app
 RUN npm install
 RUN npm run build
 
-FROM golang:1.21-alpine as backend
+FROM golang:1.22-alpine as backend
 
 WORKDIR /app
 COPY . /app
 
 RUN go build -o /foreverbull cmd/server/main.go
 
-FROM golang:1.21-alpine
+FROM golang:1.22-alpine
 
 WORKDIR /app
 COPY --from=frontend /app/dist /app/ui

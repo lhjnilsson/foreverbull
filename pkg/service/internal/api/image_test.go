@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/lhjnilsson/foreverbull/internal/http"
@@ -45,9 +45,9 @@ func (test *ImageTest) TestGetAndPull() {
 	// Delete image in case it exists and end with remove to cleanup
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	test.Require().NoError(err)
-	_, _ = client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+	_, _ = client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", image.RemoveOptions{})
 	defer func() {
-		_, _ = client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", types.ImageRemoveOptions{})
+		_, _ = client.ImageRemove(context.TODO(), "docker.io/library/python:3.12-alpine", image.RemoveOptions{})
 	}()
 
 	test.Run("get", func() {

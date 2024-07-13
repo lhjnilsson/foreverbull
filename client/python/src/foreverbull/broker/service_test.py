@@ -30,7 +30,7 @@ def test_service_list(return_value, expected_model):
                 "instances": [],
                 "statuses": [],
             },
-            Service(image="test_image", instances=[], statuses=[]),
+            Service(image="test_image", statuses=[]),
         ),
     ],
 )
@@ -52,7 +52,7 @@ def test_service_create(argument, return_value, expected_model):
                 "instances": [],
                 "statuses": [],
             },
-            Service(image="test_image", instances=[], statuses=[]),
+            Service(image="test_image", statuses=[]),
         ),
     ],
 )
@@ -88,7 +88,7 @@ def test_service_list_instances(argument, return_value, expected_model):
                 "image": "test_image",
                 "statuses": [],
             },
-            Instance(id="test_container", image="test_image", statuses=[]),
+            Instance(id="test_container", statuses=[]),
         ),
     ],
 )

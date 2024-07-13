@@ -41,13 +41,13 @@ class StopExcecution(Exception):
 
 class Execution(threading.Thread):
     def __init__(self, host=os.getenv("LOCAL_HOST", socket.gethostbyname(socket.gethostname())), port=5555):
-        self._socket = None
+        self._socket: pynng.Socket | None = None
         self.socket_config = SocketConfig(
             host=host,
             port=port,
         )
-        self._broker: Broker = None
-        self._trading_algorithm: TradingAlgorithm = None
+        self._broker: Broker = Broker()
+        self._trading_algorithm: TradingAlgorithm | None = None
         self._new_orders = []
         self.logger = logging.getLogger(__name__)
         super(Execution, self).__init__()
@@ -62,7 +62,6 @@ class Execution(threading.Thread):
         else:
             raise RuntimeError("Could not bind to socket")
         self._socket.recv_timeout = 500
-        self._broker = Broker()
         self._process_request()
         self._socket.close()
 
@@ -83,7 +82,7 @@ class Execution(threading.Thread):
         }
 
     @property
-    def ingestion(self) -> backtest.Backtest:
+    def ingestion(self) -> tuple[list[str], pd.Timestamp, pd.Timestamp, str]:
         if self.bundle is None:
             raise LookupError("Bundle is not loaded")
         assets = self.bundle.asset_finder.retrieve_all(self.bundle.asset_finder.sids)
@@ -96,7 +95,11 @@ class Execution(threading.Thread):
         self.logger.debug("ingestion started")
         bundles.register("foreverbull", SQLIngester(), calendar_name=backtest.calendar)
         SQLIngester.engine = DatabaseEngine()
+        if backtest.start is None:
+            raise Exception("Backtest start date is not set")
         SQLIngester.from_date = backtest.start
+        if backtest.end is None:
+            raise Exception("Backtest end date is not set")
         SQLIngester.to_date = backtest.end
         SQLIngester.symbols = backtest.symbols
         bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
@@ -158,20 +161,35 @@ class Execution(threading.Thread):
 
         try:
             if config.start:
-                start_date = pd.Timestamp(config.start).normalize().tz_localize(None)
+                start = pd.Timestamp(config.start)
+                if type(start) is not pd.Timestamp:
+                    raise ConfigError(f"Invalid start date: {config.start}")
+                start_date = start.normalize().tz_localize(None)
                 first_traded_date = find_first_traded_dt(bundle, *symbols)
+                if first_traded_date is None:
+                    raise ConfigError("unable to determine first traded date")
                 if start_date < first_traded_date:
                     start_date = first_traded_date
             else:
                 start_date = find_first_traded_dt(bundle, *symbols)
+            if not isinstance(start_date, pd.Timestamp):
+                raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
 
             if config.end:
-                end_date = pd.Timestamp(config.end).normalize().tz_localize(None)
+                end = pd.Timestamp(config.end)
+                if type(end) is not pd.Timestamp:
+                    raise ConfigError(f"Invalid end date: {config.end}")
+                end_date = end.normalize().tz_localize(None)
                 last_traded_date = find_last_traded_dt(bundle, *symbols)
+                if last_traded_date is None:
+                    raise ConfigError("unable to determine last traded date")
                 if end_date > last_traded_date:
                     end_date = last_traded_date
             else:
                 end_date = find_last_traded_dt(bundle, *symbols)
+            if not isinstance(end_date, pd.Timestamp):
+                raise ConfigError(f"expected end_date to be a pd.Timestamp, is: {type(end_date)}")
+
         except pytz.exceptions.UnknownTimeZoneError as e:
             self.logger.error("Unknown time zone: %s", repr(e))
             raise ConfigError(repr(e))
@@ -196,7 +214,6 @@ class Execution(threading.Thread):
             start_session=start_date,
             end_session=end_date,
             trading_calendar=trading_calendar,
-            capital_base=config.capital_base,
             data_frequency="daily",
         )
         metrics_set = "default"
@@ -245,13 +262,14 @@ class Execution(threading.Thread):
         storage = Storage.from_environment()
         storage.backtest.upload_backtest_result(execution, self.result)
 
-    def _process_request(self, trading_algorithm: TradingAlgorithm = None, data: BarData = None):
+    def _process_request(self, trading_algorithm: TradingAlgorithm | None = None, data: BarData = None):
         while True:
+            if self._socket is None:
+                return
+            context_socket = self._socket.new_context()
             try:
-                context_socket = self._socket.new_context()
                 message = Request.deserialize(context_socket.recv())
                 self.logger.info(f"received task: {message.task}")
-                active_execution = trading_algorithm and data
                 try:
                     if message.task == "info":
                         context_socket.send(Response(task=message.task, data=self.info()).serialize())
@@ -269,43 +287,45 @@ class Execution(threading.Thread):
                         config = backtest.Execution(**message.data)
                         self._trading_algorithm, config = self._get_algorithm(config)
                         context_socket.send(Response(task=message.task, data=config).serialize())
-                    elif message.task == "run_execution" and not active_execution:
+                    elif message.task == "run_execution" and not trading_algorithm:
+                        if self._trading_algorithm is None:
+                            raise Exception("No execution configured")
                         context_socket.send(Response(task=message.task).serialize())
                         try:
                             self._trading_algorithm.run()
                         except StopExcecution:
                             pass
-                    elif active_execution and message.task == "get_period":
+                    elif trading_algorithm and data and message.task == "get_period":
                         period = entity.Period.from_zipline(
                             trading_algorithm, [trading_algorithm.get_order(order.id) for order in self._new_orders]
                         )
                         context_socket.send(Request(task=message.task, data=period).serialize())
-                    elif not active_execution and message.task == "get_period":
+                    elif not trading_algorithm and message.task == "get_period":
                         context_socket.send(Response(task=message.task, data=None).serialize())
-                    elif active_execution and message.task == "continue":
+                    elif trading_algorithm and message.task == "continue":
                         self._new_orders = []
                         context_socket.send(Response(task=message.task).serialize())
                         if trading_algorithm:
                             self._new_orders = trading_algorithm.blotter.new_orders
                         return
-                    elif not active_execution and message.task == "continue":
+                    elif not trading_algorithm and message.task == "continue":
                         context_socket.send(Response(task=message.task, error="no active execution").serialize())
-                    elif active_execution and message.task == "can_trade":
+                    elif trading_algorithm and data and message.task == "can_trade":
                         asset = entity.Asset(**message.data)
                         can_trade = self._broker.can_trade(asset, trading_algorithm, data)
                         context_socket.send(Response(task=message.task, data=can_trade).serialize())
-                    elif active_execution and message.task == "order":
+                    elif trading_algorithm and message.task == "order":
                         order = entity.Order(**message.data)
                         order = self._broker.order(order, trading_algorithm)
                         context_socket.send(Response(task=message.task, data=order).serialize())
-                    elif active_execution and message.task == "get_order":
+                    elif trading_algorithm and message.task == "get_order":
                         order = entity.Order(**message.data)
                         order = self._broker.get_order(order, trading_algorithm)
                         context_socket.send(Response(task=message.task, data=order).serialize())
-                    elif active_execution and message.task == "get_open_orders":
+                    elif trading_algorithm and message.task == "get_open_orders":
                         orders = self._broker.get_open_orders(trading_algorithm)
                         context_socket.send(Response(task=message.task, data=orders).serialize())
-                    elif active_execution and message.task == "cancel_order":
+                    elif trading_algorithm and message.task == "cancel_order":
                         order = entity.Order(**message.data)
                         order = self._broker.cancel_order(order, trading_algorithm)
                         context_socket.send(Response(task=message.task, data=order).serialize())
@@ -320,7 +340,7 @@ class Execution(threading.Thread):
                     self.logger.error(f"error processing request: {e}")
                     context_socket.send(Response(task=message.task, error=str(e)).serialize())
                     context_socket.close()
-                if message.task == "stop" and active_execution:
+                if message.task == "stop" and trading_algorithm:
                     ## Raise to force Zipline TradingAlgorithm to stop, not good way to do this
                     context_socket.send(Response(task=message.task).serialize())
                     context_socket.close()

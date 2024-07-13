@@ -2,8 +2,6 @@
 name = "foreverbull"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
-packages = [{ include = "foreverbull", from = "src" }]
-requires-python = ">=3.11.0"
 dependencies = [
   "pydantic>=2.0.2,<3.0.0",
   "pynng>=0.8.0,<1.0.0",
@@ -20,8 +18,10 @@ dependencies = [
   "pandas-datareader>=0.10.0,<1.0.0",
   "requests<2.32.0",
   "tables<3.9.2",                     # seems like 3.9.3 cant run on mac arm64
+  "numpy<2.0.0",
+  "setuptools>=70.2.0,<71.0.0",
 ]
-dynamic = ["version"]
+version = "0.0.1"
 
 [project.scripts]
 foreverbull = "foreverbull.cli:cli"
@@ -29,18 +29,12 @@ foreverbull = "foreverbull.cli:cli"
 [project.entry-points.pytest11]
 foreverbull = "foreverbull.testing"
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["foreverbull"]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.version]
-path = "src/foreverbull/_version.py"
-
-[tool.hatch.envs.dev]
-dependencies = [
+[tool.rye]
+dev-dependencies = [
   "yfinance>=0.1.87,<1.0.0",
   "pytest>=6.2.4,<7.0.0",
   "pytest-mock>=3.6.1,<4.0.0",
@@ -55,22 +49,12 @@ dependencies = [
   "requests<2.32.0",
 ]
 
-[tool.hatch.envs.dev.scripts]
-lint = "ruff src/"
-lint_no_fix = "ruff --no-fix src/"
-format = "ruff format src/"
-test = "pytest src/ -xvs"
-integration_test = 'pytest integration_test.py -xvs --log-cli-level=INFO  --log-format="%(name)s %(levelname)s %(message)s" --log-file="integration_test.log"'
-coverage = ""
-
-examples = "pytest examples/monkey --backtest test_name -xvvs"
-
 [tool.ruff]
 fix = true
 target-version = "py311"
 line-length = 120
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 force-single-line = true
 lines-between-types = 1
 lines-after-imports = 2

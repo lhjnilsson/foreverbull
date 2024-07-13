@@ -122,6 +122,7 @@ func NewLifeCycleRouter(lc fx.Lifecycle, engine *gin.Engine) error {
 		fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				go func() {
+					log.Info().Msgf("Starting server on %s", server.Addr)
 					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						log.Err(err).Msg("error starting server")
 					}

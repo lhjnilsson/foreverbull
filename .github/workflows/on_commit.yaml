@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python ${{ matrix.python-version }}
@@ -46,23 +46,16 @@ jobs:
           sudo make &&
           sudo make install &&
           sudo ldconfig
-      - name: Install python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade setuptools
-          python -m pip install --upgrade hatch
-      - name: Setup python environment
-        run: |
-          python -m hatch env create dev
+      - name: Install rye
+        uses: eifinger/setup-rye@v4
+      - name: Sync dependencies
+        run: rye sync --no-lock
       - name: Lint
         run: |
-          python -m hatch run dev:lint
+          rye lint
       - name: Unittest
         run: |
-          python -m hatch run dev:test
-      - name: Integration test
-        run: |
-          python -m hatch run dev:integration_test
+          rye test -- src
 
   build-docker-containers:
     runs-on: ubuntu-latest
@@ -204,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v2
       - name: Set up Docker Buildx
@@ -260,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v2
       - name: Set up Docker Buildx

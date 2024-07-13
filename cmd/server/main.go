@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"time"
 
 	"github.com/urfave/cli/v2"
 
@@ -23,7 +25,18 @@ import (
 var CoreModules = fx.Options(
 	fx.Provide(
 		func() (*pgxpool.Pool, error) {
-			return pgxpool.New(context.TODO(), environment.GetPostgresURL())
+			pool, err := pgxpool.New(context.TODO(), environment.GetPostgresURL())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create postgres pool: %w", err)
+			}
+			for {
+				err = pool.Ping(context.TODO())
+				if err == nil {
+					return pool, nil
+				}
+				log.Printf("failed to ping postgres, retrying in %d seconds", 3)
+				time.Sleep(time.Second * time.Duration(3))
+			}
 		},
 		storage.NewMinioStorage,
 		stream.New,

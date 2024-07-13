@@ -48,8 +48,6 @@ func (test *CommandSessionTest) TearDownTest() {
 }
 
 func (test *CommandSessionTest) TestUpdateSessionCommand() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	backtests := repository.Backtest{Conn: test.db}
 	backtest, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
@@ -71,6 +69,8 @@ func (test *CommandSessionTest) TestUpdateSessionCommand() {
 	}
 
 	for _, tc := range testCases {
+		m := new(stream.MockMessage)
+		m.On("MustGet", stream.DBDep).Return(test.db)
 		m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			command := args.Get(0).(*ss.UpdateSessionStatusCommand)
 			command.SessionID = session.ID
@@ -85,6 +85,7 @@ func (test *CommandSessionTest) TestUpdateSessionCommand() {
 		test.NoError(err)
 		test.Equal(tc.Status, session.Statuses[0].Status)
 		if tc.Error != nil {
+			test.Require().NotNil(session.Statuses[0].Error)
 			test.Equal(tc.Error.Error(), *session.Statuses[0].Error)
 		} else {
 			test.Nil(session.Statuses[0].Error)

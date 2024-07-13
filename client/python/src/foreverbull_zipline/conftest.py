@@ -5,10 +5,11 @@ import pytest
 from zipline.data import bundles
 
 import foreverbull_zipline
+from foreverbull import entity
 
 
 @pytest.fixture(scope="session")
-def foreverbull_bundle(backtest_entity, database):
+def foreverbull_bundle(backtest_entity: entity.backtest.Backtest, database):
     def load_or_create(bundle_name):
         try:
             return bundles.load(bundle_name, os.environ, None)

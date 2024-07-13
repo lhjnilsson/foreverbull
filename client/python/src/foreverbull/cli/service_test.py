@@ -26,7 +26,7 @@ def test_service_list():
         ]
         result = runner.invoke(service, ["list"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test" in result.stdout
         assert "test" in result.stdout
@@ -72,7 +72,7 @@ def test_service_create():
             ),
         ]
         result = runner.invoke(service, ["create", "test"])
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "Service ready" in result.stdout
 
@@ -116,7 +116,7 @@ def test_service_create_error():
             ),
         ]
         result = runner.invoke(service, ["create", "test"])
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "Error while creating service: error" in result.stderr
 
@@ -139,7 +139,6 @@ def test_service_get():
         mock_list_instances.return_value = [
             entity.service.Instance(
                 id="id123",
-                image="test_image",
                 host="hostname",
                 port=1234,
                 statuses=[
@@ -153,7 +152,7 @@ def test_service_get():
         ]
         result = runner.invoke(service, ["get", "test_image"])
 
-        if not result.exit_code == 0:
+        if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert mock_get.called
         assert mock_list_instances.called

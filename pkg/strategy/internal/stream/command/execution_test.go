@@ -103,8 +103,6 @@ func (test *ExecutionCommandTest) TestRunExecution() {
 }
 
 func (test *ExecutionCommandTest) TestUpdateExecutionStatus() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	strategies := repository.Strategy{Conn: test.db}
 	strategy, err := strategies.Create(context.Background(), "test-strategy", []string{"symbol"}, 0, "worker-service")
@@ -124,6 +122,8 @@ func (test *ExecutionCommandTest) TestUpdateExecutionStatus() {
 		{Status: entity.ExecutionStatusFailed, Error: errors.New("test error")},
 	}
 	for _, tc := range testCases {
+		m := new(stream.MockMessage)
+		m.On("MustGet", stream.DBDep).Return(test.db)
 		m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			arg := args.Get(0).(*ss.UpdateExecutionStatusCommand)
 			arg.ExecutionID = execution.ID

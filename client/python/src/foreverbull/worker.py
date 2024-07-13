@@ -1,7 +1,8 @@
 import logging
 import logging.handlers
 import os
-from multiprocessing import Event, Process, Queue
+from multiprocessing import Process, Queue
+from multiprocessing.synchronize import Event
 from threading import Thread
 
 import pynng
@@ -24,19 +25,6 @@ class Worker:
         self._parallel = False
         super(Worker, self).__init__()
 
-    @staticmethod
-    def _eval_param(type: str, val):
-        if type == "int":
-            return int(val)
-        elif type == "float":
-            return float(val)
-        elif type == "bool":
-            return bool(val)
-        elif type == "str":
-            return str(val)
-        else:
-            raise TypeError("Unknown parameter type")
-
     def configure_execution(self, instance: entity.service.Instance):
         self.logger.info("configuring worker")
         self._algo = Algorithm.from_file_path(self._file_path)
@@ -50,9 +38,12 @@ class Worker:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
 
         try:
-            self._algo.configure(instance.functions)
+            self._algo.configure(instance.functions if instance.functions else {})
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to setup algorithm: {e}")
+
+        if instance.database_url is None:
+            raise exceptions.ConfigurationError("Database URL is not set")
 
         try:
             engine = get_engine(instance.database_url)
@@ -83,8 +74,9 @@ class Worker:
 
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
+            request = socket.Request(task="", data=None)
             try:
-                request = socket.Request.deserialize(responder.recv())
+                request = request.deserialize(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
                     instance = entity.service.Instance(**request.data)
@@ -107,10 +99,9 @@ class Worker:
     def run_execution(self):
         while True:
             request = None
-            context_socket = None
+            context_socket = self.socket.new_context()
             try:
                 self.logger.debug("Getting context socket")
-                context_socket = self.socket.new_context()
                 request = socket.Request.deserialize(context_socket.recv())
                 data = entity.service.Request(**request.data)
                 self.logger.info("Processing symbols: %s", data.symbols)
@@ -132,9 +123,9 @@ class Worker:
         self.socket.close()
 
 
-class WorkerThread(Worker, Thread):
+class WorkerThread(Worker, Thread):  # type: ignore
     pass
 
 
-class WorkerProcess(Worker, Process):
+class WorkerProcess(Worker, Process):  # type: ignore
     pass

@@ -179,4 +179,5 @@ yarn-error.log*
 *.sql
 
 # Loki metric folder
-tests/helper/metrics/loki/*
+internal/test_helper/metrics/
+client/python/baseline_performance.pickle
