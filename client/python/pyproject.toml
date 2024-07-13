@@ -21,7 +21,7 @@ dependencies = [
   "numpy<2.0.0",
   "setuptools>=70.2.0,<71.0.0",
 ]
-dynamic = ["version"]
+version = "0.0.1"
 
 [project.scripts]
 foreverbull = "foreverbull.cli:cli"
