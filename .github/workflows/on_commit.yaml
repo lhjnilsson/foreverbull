@@ -145,7 +145,14 @@ jobs:
           retention-days: 1
 
   go-module-tests:
-    needs: [lint-unit-tests, python-lint-unit-tests, build-docker-containers]
+    needs:
+      [
+        lint-unit-tests,
+        python-lint-unit-tests,
+        build-docker-foreverbull,
+        build-docker-zipline,
+        build-docker-python,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -200,7 +207,14 @@ jobs:
         shell: bash
 
   end-to-end-tests:
-    needs: [lint-unit-tests, python-lint-unit-tests, build-docker-containers]
+    needs:
+      [
+        lint-unit-tests,
+        python-lint-unit-tests,
+        build-docker-foreverbull,
+        build-docker-zipline,
+        build-docker-python,
+      ]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -256,7 +270,14 @@ jobs:
         run: foreverbull env stop
 
   end-to-end-tests-with-alpaca:
-    needs: [lint-unit-tests, python-lint-unit-tests, build-docker-containers]
+    needs:
+      [
+        lint-unit-tests,
+        python-lint-unit-tests,
+        build-docker-foreverbull,
+        build-docker-zipline,
+        build-docker-python,
+      ]
     runs-on: ubuntu-latest
     defaults:
       run:
