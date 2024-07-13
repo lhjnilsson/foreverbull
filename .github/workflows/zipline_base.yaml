@@ -21,8 +21,8 @@ jobs:
       - name: Build and push Zipline
         uses: docker/build-push-action@v2
         with:
-          context: external/client/python
+          context: client/python
           platforms: linux/amd64,linux/arm64
-          file: ./external/client/python/zipline_base.Dockerfile
+          file: ./client/python/zipline_base.Dockerfile
           tags: lhjnilsson/zipline_base:latest
           push: true

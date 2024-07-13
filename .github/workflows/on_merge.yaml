@@ -34,9 +34,9 @@ jobs:
       - name: Build and push Zipline
         uses: docker/build-push-action@v2
         with:
-          context: external/client/python
+          context: client/python
           platforms: linux/amd64,linux/arm64
-          file: ./external/client/python/zipline.Dockerfile
+          file: ./client/python/zipline.Dockerfile
           tags: lhjnilsson/zipline:${{needs.version_tag.outputs.version}}
           push: true
 
@@ -75,7 +75,7 @@ jobs:
         uses: eifinger/setup-rye@v4
       - name: Build and publish Python client
         run: |
-          cd external/client/python
+          cd client/python
           rye version ${{needs.version_tag.outputs.version}}
           rye build
           rye publish -y --token ${{ secrets.PYPI_TOKEN }}
