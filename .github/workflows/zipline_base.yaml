@@ -1,0 +1,29 @@
+name: "build and publish zipline base"
+on:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  build_push_zipline_base:
+    needs: version_tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push Zipline
+        uses: docker/build-push-action@v2
+        with:
+          context: external/client/python
+          platforms: linux/amd64,linux/arm64
+          file: ./external/client/python/zipline_base.Dockerfile
+          tags: lhjnilsson/zipline_base:latest
+          push: true
