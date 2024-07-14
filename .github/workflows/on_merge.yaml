@@ -57,7 +57,7 @@ jobs:
       - name: Build and push foreverbull
         uses: docker/build-push-action@v5
         with:
-          file: ./docker/release.Dockerfile
+          file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: lhjnilsson/foreverbull:${{needs.version_tag.outputs.version}}
           push: true
