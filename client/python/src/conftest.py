@@ -519,11 +519,15 @@ def verify_database():
                 )
                 res = result.fetchone()
                 if res is None:
+                    print("FAIL TO FETCH MIN MAX")
                     return False
                 start, end = res
                 if start is None or end is None:
+                    print("START TIME AND TIME IS NONE")
                     return False
                 if start.date() != backtest.start.date() or end.date() != backtest.end.date():
+                    print("START TIME AND TIME IS NOT EQUAL")
+                    print(start.date(), backtest.start.date(), end.date(), backtest.end.date())
                     return False
             return True
 
@@ -584,7 +588,9 @@ def populate_database():
 
 @pytest.fixture(scope="session")
 def database(backtest_entity: entity.backtest.Backtest, verify_database, populate_database):
-    with PostgresContainer("postgres:alpine") as postgres:
+    postgres = PostgresContainer("postgres:alpine")
+    postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
+    with postgres as postgres:
         engine = create_engine(postgres.get_connection_url())
         Base.metadata.create_all(engine)
         os.environ["DATABASE_URL"] = postgres.get_connection_url()
