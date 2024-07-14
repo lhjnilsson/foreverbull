@@ -46,7 +46,7 @@ jobs:
           sudo make &&
           sudo make install &&
           sudo ldconfig
-      - name: Install rye
+      - name: Setup rye
         uses: eifinger/setup-rye@v4
       - name: Sync dependencies
         run: rye sync --no-lock
