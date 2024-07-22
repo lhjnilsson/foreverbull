@@ -8,6 +8,7 @@ from threading import Thread
 import pynng
 import pytest
 import yfinance
+from google.protobuf.timestamp_pb2 import Timestamp
 from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
 from sqlalchemy.orm import declarative_base
 from testcontainers.core.container import DockerContainer
@@ -18,6 +19,8 @@ from testcontainers.nats import NatsContainer
 from testcontainers.postgres import PostgresContainer
 
 from foreverbull import Order, entity, socket
+from foreverbull.entity.finance import OrderStatus
+from foreverbull.pb_gen import finance_pb2, service_pb2
 
 
 @pytest.fixture(scope="session")
@@ -50,25 +53,26 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
+            request = service_pb2.Message()
             try:
-                message = s.recv()
+                request.ParseFromString(s.recv())
             except pynng.exceptions.Timeout:
                 continue
             except pynng.exceptions.Closed:
                 break
-            request = socket.Request.deserialize(message)
             if request.task.startswith("get:"):
                 key = request.task[4:]
-                response = socket.Response(task=request.task, data=namespace.get(key))
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task)
+                response.data.update(namespace.get(key))
+                s.send(response.SerializeToString())
             elif request.task.startswith("set:"):
                 key = request.task[4:]
                 namespace[key] = request.data
-                response = socket.Response(task=request.task)
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task)
+                s.send(response.SerializeToString())
             else:
-                response = socket.Response(task=request.task, error="Invalid task")
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task, error="Invalid task")
+                s.send(response.SerializeToString())
 
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()
@@ -91,18 +95,33 @@ def parallel_algo_file(spawn_process, execution, database):
         orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
-                req = entity.service.Request(
-                    timestamp=start,
-                    symbols=[symbol],
-                    portfolio=portfolio,
+                pb = finance_pb2.Portfolio(**portfolio.model_dump())
+                request = service_pb2.Request(
+                    task="parallel_algo",
+                    portfolio=pb,
                 )
-                server_socket.send(socket.Request(task="parallel_algo", data=req).serialize())
-                response = socket.Response.deserialize(server_socket.recv())
+                request.timestamp.FromDatetime(start)
+                request.symbols.extend([symbol])
+
+                server_socket.send(request.SerializeToString())
+                response = service_pb2.Request()
+                response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
-                assert response.error is None
-                assert response.data
-                for order in response.data:
-                    orders.append(Order(**order))
+                assert response.HasField("error")
+                for order in response.orders:
+                    orders.append(
+                        Order(
+                            id=order.id,
+                            symbol=order.symbol,
+                            amount=order.amount,
+                            filled=order.filled,
+                            commission=order.commission,
+                            limit_price=order.limit_price,
+                            stop_price=order.stop_price,
+                            created_at=order.created_at.ToDatetime(),
+                            status=OrderStatus(order.status),
+                        )
+                    )
             start += timedelta(days=1)
         return orders
 
@@ -151,19 +170,33 @@ def non_parallel_algo_file(spawn_process, execution, database):
         )
         orders: list[Order] = []
         while start < execution.end:
-            req = entity.service.Request(
-                timestamp=start,
-                symbols=execution.symbols,
-                portfolio=portfolio,
+            pb = finance_pb2.Portfolio(**portfolio.model_dump())
+            request = service_pb2.Request(
+                task="non_parallel_algo",
+                portfolio=pb,
             )
-            server_socket.send(socket.Request(task="non_parallel_algo", data=req).serialize())
-            response = socket.Response.deserialize(server_socket.recv())
-            assert response.task == "non_parallel_algo"
-            assert response.error is None
-            assert response.data
-            for order in response.data:
-                orders.append(Order(**order))
+            request.timestamp.FromDatetime(start)
+            request.symbols.extend([execution.symbols])
 
+            server_socket.send(request.SerializeToString())
+            response = service_pb2.Request()
+            response.ParseFromString(server_socket.recv())
+            assert response.task == "non_parallel_algo"
+            assert response.HasField("error")
+            for order in response.orders:
+                orders.append(
+                    Order(
+                        id=order.id,
+                        symbol=order.symbol,
+                        amount=order.amount,
+                        filled=order.filled,
+                        commission=order.commission,
+                        limit_price=order.limit_price,
+                        stop_price=order.stop_price,
+                        created_at=order.created_at.ToDatetime(),
+                        status=OrderStatus(order.status),
+                    )
+                )
             start += timedelta(days=1)
         return orders
 
@@ -219,18 +252,33 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
         orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
-                req = entity.service.Request(
-                    timestamp=start,
-                    symbols=[symbol],
-                    portfolio=portfolio,
+                pb = finance_pb2.Portfolio(**portfolio.model_dump())
+                request = service_pb2.Request(
+                    task="parallel_algo_with_parameters",
+                    portfolio=pb,
                 )
-                server_socket.send(socket.Request(task="parallel_algo_with_parameters", data=req).serialize())
-                response = socket.Response.deserialize(server_socket.recv())
+                request.timestamp.FromDatetime(start)
+                request.symbols.extend([symbol])
+
+                server_socket.send(request.SerializeToString())
+                response = service_pb2.Request()
+                response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo_with_parameters"
-                assert response.error is None
-                assert response.data
-                for order in response.data:
-                    orders.append(Order(**order))
+                assert response.HasField("error")
+                for order in response.orders:
+                    orders.append(
+                        Order(
+                            id=order.id,
+                            symbol=order.symbol,
+                            amount=order.amount,
+                            filled=order.filled,
+                            commission=order.commission,
+                            limit_price=order.limit_price,
+                            stop_price=order.stop_price,
+                            created_at=order.created_at.ToDatetime(),
+                            status=OrderStatus(order.status),
+                        )
+                    )
 
             start += timedelta(days=1)
         return orders
@@ -286,18 +334,33 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
         )
         orders: list[Order] = []
         while start < execution.end:
-            req = entity.service.Request(
-                timestamp=start,
-                symbols=execution.symbols,
-                portfolio=portfolio,
+            pb = finance_pb2.Portfolio(**portfolio.model_dump())
+            request = service_pb2.Request(
+                task="non_parallel_algo_with_parameters",
+                portfolio=pb,
             )
-            server_socket.send(socket.Request(task="non_parallel_algo_with_parameters", data=req).serialize())
-            response = socket.Response.deserialize(server_socket.recv())
+            request.timestamp.FromDatetime(start)
+            request.symbols.extend([execution.symbols])
+
+            server_socket.send(request.SerializeToString())
+            response = service_pb2.Request()
+            response.ParseFromString(server_socket.recv())
             assert response.task == "non_parallel_algo_with_parameters"
-            assert response.error is None
-            assert response.data
-            for order in response.data:
-                orders.append(Order(**order))
+            assert response.HasField("error")
+            for order in response.orders:
+                orders.append(
+                    Order(
+                        id=order.id,
+                        symbol=order.symbol,
+                        amount=order.amount,
+                        filled=order.filled,
+                        commission=order.commission,
+                        limit_price=order.limit_price,
+                        stop_price=order.stop_price,
+                        created_at=order.created_at.ToDatetime(),
+                        status=OrderStatus(order.status),
+                    )
+                )
             start += timedelta(days=1)
         return orders
 
@@ -353,41 +416,48 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
             value=0,
             positions=[],
         )
+        portfolio = finance_pb2.Portfolio(**portfolio.model_dump())
         orders: list[Order] = []
         while start < execution.end:
             # filter assets
-            req = entity.service.Request(
-                timestamp=start,
+            req = service_pb2.Request(
+                task="filter_assets",
+                timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
                 portfolio=portfolio,
             )
-            server_socket.send(socket.Request(task="filter_assets", data=req).serialize())
-            response = socket.Response.deserialize(server_socket.recv())
+            server_socket.send(req.SerializeToString())
+            response = service_pb2.Request()
+            response.ParseFromString(server_socket.recv())
             assert response.task == "filter_assets"
-            assert response.error is None
+            assert response.HasField("error")
 
             # measure assets
             for symbol in execution.symbols:
-                req = entity.service.Request(
-                    timestamp=start,
+                req = service_pb2.Request(
+                    task="measure_assets",
+                    timestamp=Timestamp().FromDatetime(start),
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-                server_socket.send(socket.Request(task="measure_assets", data=req).serialize())
-                response = socket.Response.deserialize(server_socket.recv())
+                server_socket.send(req.SerializeToString())
+                response = service_pb2.Request()
+                response.ParseFromString(server_socket.recv())
                 assert response.task == "measure_assets"
-                assert response.error is None
+                assert response.HasField("error")
 
             # create orders
-            req = entity.service.Request(
-                timestamp=start,
+            req = service_pb2.Request(
+                task="create_orders",
+                timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
                 portfolio=portfolio,
             )
-            server_socket.send(socket.Request(task="create_orders", data=req).serialize())
-            response = socket.Response.deserialize(server_socket.recv())
+            server_socket.send(req.SerializeToString())
+            response = service_pb2.Request()
+            response.ParseFromString(server_socket.recv())
             assert response.task == "create_orders"
-            assert response.error is None
+            assert response.HasField("error")
             start += timedelta(days=1)
         return orders
 

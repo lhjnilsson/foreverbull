@@ -8,6 +8,7 @@ import pytest
 
 from foreverbull import socket
 from foreverbull.data import Asset, Assets
+from foreverbull.pb_gen import service_pb2
 
 
 @pytest.fixture
@@ -21,25 +22,25 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
+            request = service_pb2.Message()
             try:
-                message = s.recv()
+                data = s.recv()
             except pynng.exceptions.Timeout:
                 continue
             except pynng.exceptions.Closed:
                 break
-            request = socket.Request.deserialize(message)
+            request.ParseFromString(data)
             if request.task.startswith("get:"):
                 key = request.task[4:]
-                response = socket.Response(task=request.task, data=namespace.get(key))
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task)
+                response.data.update(data)
             elif request.task.startswith("set:"):
                 key = request.task[4:]
                 namespace[key] = request.data
-                response = socket.Response(task=request.task)
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task)
             else:
-                response = socket.Response(task=request.task, error="Invalid task")
-                s.send(response.serialize())
+                response = service_pb2.Message(task=request.task, error="Invalid task")
+            s.send(response.SerializeToString())
 
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()

@@ -13,11 +13,11 @@ def setup_worker():
     survey_address = "ipc:///tmp/worker_pool.ipc"
     survey_socket = pynng.Surveyor0(listen=survey_address)
     survey_socket.recv_timeout = 5000
-    survey_socket.sendout = 5000
+    survey_socket.send_timeout = 5000
     state_address = "ipc:///tmp/worker_pool_state.ipc"
     state_socket = pynng.Sub0(listen=state_address)
     state_socket.recv_timeout = 5000
-    state_socket.sendout = 5000
+    state_socket.send_timeout = 5000
     state_socket.subscribe(b"")
 
     stop_event = Event()

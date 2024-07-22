@@ -6,6 +6,7 @@ import pynng
 import pytest
 
 from foreverbull import Foreverbull, socket
+from foreverbull.pb_gen import service_pb2
 
 
 @pytest.mark.parametrize(
@@ -26,23 +27,27 @@ def test_foreverbull_over_socket(algo, request):
         requester.send_timeout = 1000
         requester.recv_timeout = 1000
 
-        req = socket.Request(task="info")
-        requester.send(req.serialize())
-        rsp = socket.Response.deserialize(requester.recv())
+        req = service_pb2.Message(task="info")
+        requester.send(req.SerializeToString())
+        rsp = service_pb2.Message()
+        rsp.ParseFromString(requester.recv())
         assert rsp.task == "info"
-        assert rsp.error is None
+        assert rsp.HasField("error")
 
-        req = socket.Request(task="configure_execution", data=parameters)
-        requester.send(req.serialize())
-        rsp = socket.Response.deserialize(requester.recv())
+        req = service_pb2.Message(task="configure_execution")
+        req.data.update(parameters)
+        requester.send(req.SerializeToString())
+        rsp = service_pb2.Message()
+        rsp.ParseFromString(requester.recv())
         assert rsp.task == "configure_execution"
-        assert rsp.error is None
+        assert rsp.HasField("error")
 
-        req = socket.Request(task="run_execution")
-        requester.send(req.serialize())
-        rsp = socket.Response.deserialize(requester.recv())
+        req = service_pb2.Message(task="run_execution")
+        requester.send(req.SerializeToString())
+        rsp = service_pb2.Message()
+        rsp.ParseFromString(requester.recv())
         assert rsp.task == "run_execution"
-        assert rsp.error is None
+        assert rsp.HasField("error")
 
         orders = process_symbols()
         assert len(orders)
@@ -68,19 +73,20 @@ def test_foreverbull_manual(execution, algo, request):
         sock.send_timeout = 500
         while not stop_event.is_set():
             try:
-                req = sock.recv()
-                req = socket.Request.deserialize(req)
+                req = service_pb2.Message()
+                req.ParseFromString(sock.recv())
+                rsp = service_pb2.Message(task=req.task)
                 if req.task == "new_execution":
-                    rsp = socket.Response(task="new_execution", data=execution)
+                    rsp.data.update(execution.model_dump())
                 elif req.task == "configure_execution":
-                    rsp = socket.Response(task="configure_execution", data=parameters)
+                    rsp.data.update(parameters)
                 elif req.task == "run_execution":
-                    rsp = socket.Response(task="run_execution")
+                    pass
                 elif req.task == "current_period":
-                    rsp = socket.Response(task="current_period", data={"timestamp": 1})
+                    rsp.data.update({"timestamp": 1})
                 else:
-                    rsp = socket.Response(task=req.task, error="Unknown task")
-                sock.send(rsp.serialize())
+                    rsp.error = "Unknown task"
+                sock.send(rsp.SerializeToString())
             except pynng.exceptions.Timeout:
                 pass
         sock.close()

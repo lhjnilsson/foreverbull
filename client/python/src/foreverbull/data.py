@@ -10,6 +10,7 @@ from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
 
 from foreverbull import entity, socket
+from foreverbull.pb_gen import service_pb2
 
 
 # Hacky way to get the database URL, TODO: find a better way
@@ -72,22 +73,29 @@ class Asset:
 
     def __getattr__(self, name: str) -> Any:
         with namespace_socket() as s:
-            request = socket.Request(task=f"get:{name}")
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.Message(
+                task=f"get:{name}",
+            )
+            s.send(request.SerializeToString())
+            response = service_pb2.Message()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return response.data[self._symbol]
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__[T: (int, float, bool, str)](self, name: str, value: T) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = socket.Request(task=f"set:{name}", data={self._symbol: value})
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.Message(
+                task=f"set:{name}",
+            )
+            request.data.update({self._symbol: value})
+            s.send(request.SerializeToString())
+            response = service_pb2.Message()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return None
 
@@ -112,22 +120,30 @@ class Assets:
 
     def __getattr__(self, name: str) -> Any:
         with namespace_socket() as s:
-            request = socket.Request(task=f"get:{name}")
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.Message(
+                task=f"get:{name}",
+            )
+            s.send(request.SerializeToString())
+            response = service_pb2.Message()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return response.data
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__[T: (int, float, bool, str)](self, name: str, value: dict[str, T]) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = socket.Request(task=f"set:{name}", data=value)
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.Message(
+                task=f"set:{name}",
+            )
+            for k, v in value.items():
+                request.data.update({k: v})
+            s.send(request.SerializeToString())
+            response = service_pb2.Message()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return None
 

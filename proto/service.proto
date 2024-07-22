@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package foreverbull.service;
+
+option go_package = "./pb_gen";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "finance.proto";
+
+message Request {
+    string task = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    repeated string symbols = 3;
+    foreverbull.finance.Portfolio portfolio = 4;
+    repeated foreverbull.finance.Order orders = 5;
+    optional string error = 6;
+}
+
+message Message {
+    string task = 1;
+    google.protobuf.Struct data = 2;
+    optional string error = 3;
+}

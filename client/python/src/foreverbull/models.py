@@ -2,6 +2,7 @@ import builtins
 import importlib.util
 import types
 import typing
+from datetime import datetime
 from functools import partial
 from inspect import getabsfile, signature
 from typing import Any, Callable
@@ -177,7 +178,9 @@ class Algorithm:
         self,
         function_name: str,
         db: Connection,
-        request: entity.service.Request,
+        portfolio: entity.finance.Portfolio,
+        timestamp: datetime,
+        symbols: list[str],
     ) -> list[entity.finance.Order]:
         p = Portfolio(**request.portfolio.dict())
         if Algorithm._functions[function_name]["entity"].parallel_execution:

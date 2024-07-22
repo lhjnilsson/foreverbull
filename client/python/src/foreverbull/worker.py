@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from foreverbull import Algorithm, entity, exceptions, socket
 from foreverbull.data import get_engine
+from foreverbull.pb_gen import service_pb2
 
 
 class Worker:
@@ -74,16 +75,18 @@ class Worker:
 
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
-            request = socket.Request(task="", data=None)
+            request = service_pb2.Message()
             try:
-                request = request.deserialize(responder.recv())
+                request.ParseFromString(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
-                    instance = entity.service.Instance(**request.data)
+                    instance = entity.service.Instance.parse_obj(**request.data)
                     self.configure_execution(instance)
-                    responder.send(socket.Response(task=request.task, error=None).serialize())
+                    response = service_pb2.Message(task=request.task, error=None)
+                    responder.send(response.SerializeToString())
                 elif request.task == "run_execution":
-                    responder.send(socket.Response(task=request.task, error=None).serialize())
+                    response = service_pb2.Message(task=request.task, error=None)
+                    responder.send(response.SerializeToString())
                     self.run_execution()
             except pynng.exceptions.Timeout:
                 self.logger.debug("Timeout in pynng while running, continuing...")
@@ -91,7 +94,8 @@ class Worker:
             except Exception as e:
                 self.logger.error("Error processing request")
                 self.logger.exception(repr(e))
-                responder.send(socket.Response(task=request.task, error=repr(e)).serialize())
+                response = service_pb2.Message(task=request.task, error=repr(e))
+                responder.send(response.SerializeToString())
             self.logger.info(f"Request processed: {request.task}")
         responder.close()
         state.close()
@@ -99,23 +103,30 @@ class Worker:
     def run_execution(self):
         while True:
             request = None
+            self.logger.debug("Getting context socket")
             context_socket = self.socket.new_context()
             try:
-                self.logger.debug("Getting context socket")
-                request = socket.Request.deserialize(context_socket.recv())
-                data = entity.service.Request(**request.data)
-                self.logger.info("Processing symbols: %s", data.symbols)
+                request = service_pb2.Request()
+                request.ParseFromString(context_socket.recv())
+                self.logger.info("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
-                    orders = self._algo.process(request.task, db, data)
+                    orders = self._algo.process(
+                        request.task,
+                        db,
+                        request.portfolio,
+                        request.timestamp.ToDatetime(),
+                        [symbol for symbol in request.symbols],
+                    )
                 self.logger.info("Sending orders to broker: %s", orders)
-                context_socket.send(socket.Response(task=request.task, data=orders).serialize())
+                context_socket.send(request.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    context_socket.send(socket.Response(task=request.task, error=repr(e)).serialize())
+                    request.error = repr(e)
+                    context_socket.send(request.SerializeToString())
                 if context_socket:
                     context_socket.close()
             if self._stop_event.is_set():
