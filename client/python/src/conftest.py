@@ -18,7 +18,7 @@ from testcontainers.minio import MinioContainer
 from testcontainers.nats import NatsContainer
 from testcontainers.postgres import PostgresContainer
 
-from foreverbull import Order, entity, socket
+from foreverbull import Order, entity
 from foreverbull.entity.finance import OrderStatus
 from foreverbull.pb_gen import finance_pb2, service_pb2
 

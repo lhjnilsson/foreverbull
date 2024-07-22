@@ -9,7 +9,7 @@ import pynng
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
 
-from foreverbull import entity, socket
+from foreverbull import entity
 from foreverbull.pb_gen import service_pb2
 
 
@@ -24,7 +24,7 @@ def get_engine(url: str):
         engine = create_engine(url)
         engine.connect()
         return engine
-    except Exception as e:
+    except Exception:
         log.warning(f"Could not connect to {url}")
 
     database_host = re.search(r"@([^/]+):", url)
@@ -47,7 +47,7 @@ def get_engine(url: str):
                 engine.connect()
                 log.info(f"Connected to {new_url}")
                 return engine
-            except Exception as e:
+            except Exception:
                 log.warning(f"Could not connect to {new_url}")
     raise Exception("Could not connect to database")
 

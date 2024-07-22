@@ -5,7 +5,7 @@ from threading import Event, Thread
 import pynng
 import pytest
 
-from foreverbull import Foreverbull, socket
+from foreverbull import Foreverbull
 from foreverbull.pb_gen import service_pb2
 
 

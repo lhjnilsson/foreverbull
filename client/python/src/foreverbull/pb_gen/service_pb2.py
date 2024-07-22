@@ -16,11 +16,6 @@ _runtime_version.ValidateProtobufRuntimeVersion(_runtime_version.Domain.PUBLIC, 
 _sym_db = _symbol_database.Default()
 
 
-from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-
-from . import finance_pb2 as finance__pb2
-
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
     b'\n\rservice.proto\x12\x13\x66oreverbull.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\rfinance.proto"\xd4\x01\n\x07Request\x12\x0c\n\x04task\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07symbols\x18\x03 \x03(\t\x12\x31\n\tportfolio\x18\x04 \x01(\x0b\x32\x1e.foreverbull.finance.Portfolio\x12*\n\x06orders\x18\x05 \x03(\x0b\x32\x1a.foreverbull.finance.Order\x12\x12\n\x05\x65rror\x18\x06 \x01(\tH\x00\x88\x01\x01\x42\x08\n\x06_error"\\\n\x07Message\x12\x0c\n\x04task\x18\x01 \x01(\t\x12%\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x08\n\x06_errorB\nZ\x08./pb_genb\x06proto3'
 )

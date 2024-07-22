@@ -182,11 +182,11 @@ class Algorithm:
         timestamp: datetime,
         symbols: list[str],
     ) -> list[entity.finance.Order]:
-        p = Portfolio(**request.portfolio.dict())
+        p = Portfolio(**portfolio.dict())
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
-            for symbol in request.symbols:
-                a = Asset(request.timestamp, db, symbol)
+            for symbol in symbols:
+                a = Asset(timestamp, db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
                     asset=a,
                     portfolio=p,
@@ -194,7 +194,7 @@ class Algorithm:
                 if order:
                     orders.append(order)
         else:
-            assets = Assets(request.timestamp, db, request.symbols)
+            assets = Assets(timestamp, db, symbols)
             orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
             if not orders:
                 orders = []

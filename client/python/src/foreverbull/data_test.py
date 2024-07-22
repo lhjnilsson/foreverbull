@@ -6,7 +6,6 @@ import pandas
 import pynng
 import pytest
 
-from foreverbull import socket
 from foreverbull.data import Asset, Assets
 from foreverbull.pb_gen import service_pb2
 
