@@ -33,10 +33,10 @@ class Namespace(typing.Dict):
         for key, value in kwargs.items():
             if not isinstance(value, types.GenericAlias):
                 raise TypeError("Namespace values must be type annotations")
-            if value.__origin__ == dict:
+            if value.__origin__ is dict:
                 self[key] = {"type": "object"}
                 self[key]["value_type"] = type_to_str(value.__args__[1])
-            elif value.__origin__ == list:
+            elif value.__origin__ is list:
                 self[key] = {"type": "array"}
                 self[key]["value_type"] = type_to_str(value.__args__[0])
             else:
@@ -46,15 +46,15 @@ class Namespace(typing.Dict):
     def contains(self, key: str, type: Any) -> bool:
         if key not in self:
             raise KeyError("Key {} not found in namespace".format(key))
-        if type.__origin__ == dict:
+        if type.__origin__ is dict:
             if self[key]["type"] != "object":
                 raise TypeError("Key {} is not of type object".format(key))
-            if self[key]["value_type"] != type_to_str(type.__args__[1]):
+            if self[key]["value_type"] is not type_to_str(type.__args__[1]):
                 raise TypeError("Key {} is not of type {}".format(key, type))
-        elif type.__origin__ == list:
+        elif type.__origin__ is list:
             if self[key]["type"] != "array":
                 raise TypeError("Key {} is not of type array".format(key))
-            if self[key]["value_type"] != type_to_str(type.__args__[0]):
+            if self[key]["value_type"] is not type_to_str(type.__args__[0]):
                 raise TypeError("Key {} is not of type {}".format(key, type))
         else:
             raise TypeError("Unsupported namespace type")
