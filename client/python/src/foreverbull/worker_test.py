@@ -5,7 +5,7 @@ import pynng
 import pytest
 
 from foreverbull import exceptions, worker
-from foreverbull.socket import Request, Response
+from foreverbull.pb_gen import service_pb2
 
 
 @pytest.fixture(scope="function")
@@ -71,14 +71,19 @@ def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_proce
     file_name, instance, process_symbols = request.getfixturevalue(algo)
     survey_socket = setup_worker(workerclass, file_name)
 
-    survey_socket.send(Request(task="configure_execution", data=instance).serialize())
-    response = Response.deserialize(survey_socket.recv())
+    request = service_pb2.Message(task="configure_execution")
+    request.data.update(instance.model_dump())
+    survey_socket.send(request.SerializeToString())
+    response = service_pb2.Message()
+    response.ParseFromString(survey_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    survey_socket.send(Request(task="run_execution", data=None).serialize())
-    response = Response.deserialize(survey_socket.recv())
+    request = service_pb2.Message(task="run_execution")
+    survey_socket.send(request.SerializeToString())
+    response = service_pb2.Message()
+    response.ParseFromString(survey_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
     process_symbols()

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from foreverbull import Algorithm, entity, exceptions
 from foreverbull.data import get_engine
-from foreverbull.pb_gen import service_pb2
+from foreverbull.pb_gen import finance_pb2, service_pb2
 
 
 class Worker:
@@ -80,7 +80,7 @@ class Worker:
                 request.ParseFromString(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
-                    instance = entity.service.Instance.parse_obj(**request.data)
+                    instance = entity.service.Instance.model_validate(request.data)
                     self.configure_execution(instance)
                     response = service_pb2.Message(task=request.task, error=None)
                     responder.send(response.SerializeToString())
@@ -118,6 +118,8 @@ class Worker:
                         [symbol for symbol in request.symbols],
                     )
                 self.logger.info("Sending orders to broker: %s", orders)
+                for order in orders:
+                    request.orders.append(finance_pb2.Order(**order.model_dump()))
                 context_socket.send(request.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:

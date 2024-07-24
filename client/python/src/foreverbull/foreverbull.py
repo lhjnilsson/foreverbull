@@ -67,7 +67,7 @@ class Session(threading.Thread):
         rsp.ParseFromString(sock.recv())
         if rsp.HasField("error"):
             raise Exception(rsp.error)
-        return entity.backtest.Execution.parse_obj({k: v for k, v in rsp.data.items()})
+        return entity.backtest.Execution.model_validate(rsp.data)
 
     def _run_execution(self):
         req = service_pb2.Message(task="run_execution")
@@ -93,7 +93,7 @@ class Session(threading.Thread):
         response.ParseFromString(sock.recv())
         if response.HasField("error"):
             raise Exception(response.error)
-        instance = entity.service.Instance.parse_obj({k: v for k, v in response.data.items()})
+        instance = entity.service.Instance.model_validate(response.data)
         self._configure_execution(instance)
         self._run_execution()
         request = service_pb2.Message(task="run_execution")
@@ -140,9 +140,7 @@ class Session(threading.Thread):
                         response.data.update(self._algorithm.model_dump())
                         ctx.send(response.SerializeToString())
                     case "configure_execution":
-                        self._configure_execution(
-                            entity.service.Instance.parse_obj({k: v for k, v in req.data.items()})
-                        )
+                        self._configure_execution(entity.service.Instance.model_validate(req.data))
                         ctx.send(response.SerializeToString())
                     case "run_execution":
                         self._run_execution()

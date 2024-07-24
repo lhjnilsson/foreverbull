@@ -32,22 +32,22 @@ def test_foreverbull_over_socket(algo, request):
         rsp = service_pb2.Message()
         rsp.ParseFromString(requester.recv())
         assert rsp.task == "info"
-        assert rsp.HasField("error")
+        assert rsp.HasField("error") is False
 
         req = service_pb2.Message(task="configure_execution")
-        req.data.update(parameters)
+        req.data.update(parameters.model_dump())
         requester.send(req.SerializeToString())
         rsp = service_pb2.Message()
         rsp.ParseFromString(requester.recv())
         assert rsp.task == "configure_execution"
-        assert rsp.HasField("error")
+        assert rsp.HasField("error") is False
 
         req = service_pb2.Message(task="run_execution")
         requester.send(req.SerializeToString())
         rsp = service_pb2.Message()
         rsp.ParseFromString(requester.recv())
         assert rsp.task == "run_execution"
-        assert rsp.HasField("error")
+        assert rsp.HasField("error") is False
 
         orders = process_symbols()
         assert len(orders)
@@ -75,17 +75,19 @@ def test_foreverbull_manual(execution, algo, request):
             try:
                 req = service_pb2.Message()
                 req.ParseFromString(sock.recv())
+                print("----RECEIVED REQUEST", req.task)
                 rsp = service_pb2.Message(task=req.task)
                 if req.task == "new_execution":
                     rsp.data.update(execution.model_dump())
                 elif req.task == "configure_execution":
-                    rsp.data.update(parameters)
+                    rsp.data.update(parameters.model_dump())
                 elif req.task == "run_execution":
                     pass
                 elif req.task == "current_period":
                     rsp.data.update({"timestamp": 1})
                 else:
                     rsp.error = "Unknown task"
+                print("----SENDING RESPONSE", rsp.task)
                 sock.send(rsp.SerializeToString())
             except pynng.exceptions.Timeout:
                 pass

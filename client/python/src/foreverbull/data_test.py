@@ -32,11 +32,11 @@ def namespace_server():
             if request.task.startswith("get:"):
                 key = request.task[4:]
                 response = service_pb2.Message(task=request.task)
-                response.data.update(data)
+                response.data.update(namespace.get(key, {}))
             elif request.task.startswith("set:"):
                 key = request.task[4:]
-                namespace[key] = request.data
-                response = service_pb2.Message(task=request.task)
+                namespace[key] = {k: v for k, v in request.data.items()}
+                response = service_pb2.Message(task=request.task, data=request.data)
             else:
                 response = service_pb2.Message(task=request.task, error="Invalid task")
             s.send(response.SerializeToString())
@@ -84,10 +84,10 @@ def test_assets_getattr_setattr(database, namespace_server):
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, [])
         assert assets is not None
-        assets.holdings = ["AAPL", "MSFT"]
+        assets.holdings = {"AAPL": True, "MSFT": False}
 
         assert "holdings" in namespace_server
-        assert namespace_server["holdings"] == ["AAPL", "MSFT"]
+        assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
 
         namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
         assert assets.pe == {"AAPL": 12.3, "MSFT": 23.4}

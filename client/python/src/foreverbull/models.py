@@ -11,6 +11,7 @@ from sqlalchemy import Connection
 
 from foreverbull import entity
 from foreverbull.data import Asset, Assets, Portfolio
+from foreverbull.pb_gen import finance_pb2
 
 
 def type_to_str[T: (int, float, bool, str)](t: T) -> str:
@@ -178,11 +179,12 @@ class Algorithm:
         self,
         function_name: str,
         db: Connection,
-        portfolio: entity.finance.Portfolio,
+        portfolio: finance_pb2.Portfolio,
         timestamp: datetime,
         symbols: list[str],
     ) -> list[entity.finance.Order]:
-        p = Portfolio(**portfolio.dict())
+        p = Portfolio(cash=portfolio.cash, value=portfolio.value,
+            positions=[entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost) for p in portfolio.positions])
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
             for symbol in symbols:

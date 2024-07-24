@@ -128,7 +128,7 @@ class Assets:
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return response.data
+            return {k: v for k, v in response.data.items()}
 
     def __setattr__[T: (int, float, bool, str)](self, name: str, value: dict[str, T]) -> None:
         if name.startswith("_"):

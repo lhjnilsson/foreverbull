@@ -91,9 +91,3 @@ class Instance(pydantic.BaseModel):
     functions: dict[str, Parameter] | None = None
 
     statuses: List[Status] | None = []
-
-
-class Request(pydantic.BaseModel):
-    timestamp: datetime
-    symbols: list[str]
-    portfolio: Portfolio
