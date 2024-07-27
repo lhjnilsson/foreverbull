@@ -107,7 +107,7 @@ def parallel_algo_file(spawn_process, execution, database):
                 response = service_pb2.Request()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
-                assert response.HasField("error")
+                assert response.HasField("error") is False
                 for order in response.orders:
                     orders.append(
                         Order(
@@ -176,13 +176,13 @@ def non_parallel_algo_file(spawn_process, execution, database):
                 portfolio=pb,
             )
             request.timestamp.FromDatetime(start)
-            request.symbols.extend([execution.symbols])
+            request.symbols.extend(execution.symbols)
 
             server_socket.send(request.SerializeToString())
             response = service_pb2.Request()
             response.ParseFromString(server_socket.recv())
             assert response.task == "non_parallel_algo"
-            assert response.HasField("error")
+            assert response.HasField("error") is False
             for order in response.orders:
                 orders.append(
                     Order(
@@ -264,7 +264,7 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
                 response = service_pb2.Request()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo_with_parameters"
-                assert response.HasField("error")
+                assert response.HasField("error") is False
                 for order in response.orders:
                     orders.append(
                         Order(
@@ -340,13 +340,13 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
                 portfolio=pb,
             )
             request.timestamp.FromDatetime(start)
-            request.symbols.extend([execution.symbols])
+            request.symbols.extend(execution.symbols)
 
             server_socket.send(request.SerializeToString())
             response = service_pb2.Request()
             response.ParseFromString(server_socket.recv())
             assert response.task == "non_parallel_algo_with_parameters"
-            assert response.HasField("error")
+            assert response.HasField("error") is False
             for order in response.orders:
                 orders.append(
                     Order(
@@ -430,7 +430,7 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
             response = service_pb2.Request()
             response.ParseFromString(server_socket.recv())
             assert response.task == "filter_assets"
-            assert response.HasField("error")
+            assert response.HasField("error") is False
 
             # measure assets
             for symbol in execution.symbols:
@@ -444,7 +444,7 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
                 response = service_pb2.Request()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "measure_assets"
-                assert response.HasField("error")
+                assert response.HasField("error") is False
 
             # create orders
             req = service_pb2.Request(
@@ -457,7 +457,7 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
             response = service_pb2.Request()
             response.ParseFromString(server_socket.recv())
             assert response.task == "create_orders"
-            assert response.HasField("error")
+            assert response.HasField("error") is False
             start += timedelta(days=1)
         return orders
 

@@ -18,15 +18,13 @@ class Broker:
             raise BrokerError(repr(e))
         return data.can_trade(equity)
 
-    def order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
+    def order(self, symbol: str, amount: int, trading_algorithm: TradingAlgorithm) -> entity.Order:
         try:
-            asset = trading_algorithm.symbol(order.symbol)
+            asset = trading_algorithm.symbol(symbol)
         except zipline.errors.SymbolNotFound as e:
             raise BrokerError(repr(e))
-        order.id = trading_algorithm.order(
-            asset=asset, amount=order.amount, limit_price=order.limit_price, stop_price=order.stop_price
-        )
-        return entity.Order.from_zipline(trading_algorithm.get_order(order.id))
+        order_id = trading_algorithm.order(asset=asset, amount=amount)
+        return entity.Order.from_zipline(trading_algorithm.get_order(order_id))
 
     def get_order(self, order: entity.Order, trading_algorithm: TradingAlgorithm) -> entity.Order:
         event = trading_algorithm.get_order(order.id)

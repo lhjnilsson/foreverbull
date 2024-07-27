@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package foreverbull.finance;
+package foreverbull.pb.finance;
 
 option go_package = "./pb_gen";
 
@@ -12,7 +12,6 @@ message Position {
 
     double amount = 3;
     double cost = 4;
-    string side = 5;
 }
 
 message Portfolio {

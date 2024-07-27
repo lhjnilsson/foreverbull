@@ -6,7 +6,6 @@ import pynng
 import pytest
 
 from foreverbull.entity import backtest
-from foreverbull.socket import Request, Response
 from foreverbull_zipline import entity
 from foreverbull_zipline.execution import Execution
 

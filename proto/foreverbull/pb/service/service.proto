@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package foreverbull.pb.service;
+
+import "google/protobuf/timestamp.proto";
+import "foreverbull/pb/finance/finance.proto";
+
+
+message ServiceInfoResponse {
+    message Socket {
+        string host = 1;
+        int32 port = 2;
+    }
+    string serviceType = 1;
+    string version = 2;
+    Socket socket = 3;
+}
+
+
+message Request {
+    string task = 1;
+    optional bytes data = 2;
+}
+
+
+message Response {
+    string task = 1;
+    optional bytes data = 2;
+    optional string error = 3;
+}
+
+message WorkerRequest {
+    string task = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    repeated string symbols = 3;
+    foreverbull.pb.finance.Portfolio portfolio = 4;
+}
+
+message WorkerResponse {
+    string task = 1;
+    repeated foreverbull.pb.finance.Order orders = 2;
+    optional string error = 3;
+}

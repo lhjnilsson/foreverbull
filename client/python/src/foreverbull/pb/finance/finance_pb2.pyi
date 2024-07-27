@@ -51,12 +51,10 @@ class Position(google.protobuf.message.Message):
     EXCHANGE_FIELD_NUMBER: builtins.int
     AMOUNT_FIELD_NUMBER: builtins.int
     COST_FIELD_NUMBER: builtins.int
-    SIDE_FIELD_NUMBER: builtins.int
     symbol: builtins.str
     exchange: builtins.str
     amount: builtins.float
     cost: builtins.float
-    side: builtins.str
     def __init__(
         self,
         *,
@@ -64,13 +62,10 @@ class Position(google.protobuf.message.Message):
         exchange: builtins.str = ...,
         amount: builtins.float = ...,
         cost: builtins.float = ...,
-        side: builtins.str = ...,
     ) -> None: ...
     def ClearField(
         self,
-        field_name: typing.Literal[
-            "amount", b"amount", "cost", b"cost", "exchange", b"exchange", "side", b"side", "symbol", b"symbol"
-        ],
+        field_name: typing.Literal["amount", b"amount", "cost", b"cost", "exchange", b"exchange", "symbol", b"symbol"],
     ) -> None: ...
 
 global___Position = Position
