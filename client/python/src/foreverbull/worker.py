@@ -10,7 +10,8 @@ from sqlalchemy import text
 
 from foreverbull import Algorithm, entity, exceptions
 from foreverbull.data import get_engine
-from foreverbull.pb_gen import finance_pb2, service_pb2
+from foreverbull.pb.finance import finance_pb2
+from foreverbull.pb.service import service_pb2
 
 
 class Worker:

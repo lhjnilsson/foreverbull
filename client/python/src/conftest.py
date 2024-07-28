@@ -20,7 +20,8 @@ from testcontainers.postgres import PostgresContainer
 
 from foreverbull import Order, entity
 from foreverbull.entity.finance import OrderStatus
-from foreverbull.pb_gen import finance_pb2, service_pb2
+from foreverbull.pb.finance import finance_pb2
+from foreverbull.pb.service import service_pb2
 
 
 @pytest.fixture(scope="session")
@@ -35,7 +36,7 @@ def execution(database):
     return entity.backtest.Execution(
         id="test",
         calendar="NYSE",
-        start=datetime(2023, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc),
+        start=datetime(2023, 1, 3, 0, 0, 0, 0, tzinfo=timezone.utc),
         end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",

@@ -6,7 +6,7 @@ from multiprocessing import Event, Queue, synchronize
 import pynng
 
 from foreverbull import Algorithm, entity, worker
-from foreverbull.pb_gen import service_pb2
+from foreverbull.pb.service import service_pb2
 
 from .exceptions import ConfigurationError
 

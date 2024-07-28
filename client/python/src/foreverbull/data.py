@@ -10,7 +10,7 @@ from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
 
 from foreverbull import entity
-from foreverbull.pb_gen import service_pb2
+from foreverbull.pb.service import service_pb2
 
 
 # Hacky way to get the database URL, TODO: find a better way

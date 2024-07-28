@@ -26,6 +26,7 @@ from zipline.utils.paths import data_path, data_root
 from foreverbull.broker.storage import Storage
 from foreverbull.entity import backtest
 from foreverbull.entity.service import SocketConfig
+from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
@@ -275,8 +276,8 @@ class Execution(threading.Thread):
                             req.start_date.ToDatetime(), req.end_date.ToDatetime(), [s for s in req.symbols]
                         )
                         rsp = backtest_pb2.IngestResponse(
-                            start_date=Timestamp().FromDatetime(start),
-                            end_date=Timestamp().FromDatetime(end),
+                            start_date=pb_utils.to_proto_timestamp(start),
+                            end_date=pb_utils.to_proto_timestamp(end),
                             symbols=symbols,
                         )
                         response = service_pb2.Response(task=request.task, data=rsp.SerializeToString())
@@ -297,7 +298,13 @@ class Execution(threading.Thread):
                             exc.end_date.ToDatetime(),
                             [s for s in exc.symbols],
                         )
-                        response = service_pb2.Response(task=request.task)
+                        ce_response = backtest_pb2.ConfigureResponse(
+                            start_date=pb_utils.to_proto_timestamp(self._trading_algorithm.sim_params.start_session),
+                            end_date=pb_utils.to_proto_timestamp(self._trading_algorithm.sim_params.end_session),
+                            symbols=[s for s in self._trading_algorithm.namespace["symbols"]],
+                            benchmark=exc.benchmark,
+                        )
+                        response = service_pb2.Response(task=request.task, data=ce_response.SerializeToString())
                         context_socket.send(response.SerializeToString())
                     elif request.task == "run_execution" and not trading_algorithm:
                         if self._trading_algorithm is None:
@@ -311,29 +318,29 @@ class Execution(threading.Thread):
                     elif trading_algorithm and data and request.task == "get_portfolio":
                         p: Portfolio = trading_algorithm.portfolio
                         portfolio = backtest_pb2.GetPortfolioResponse(
-                            timestamp=Timestamp().FromDatetime(trading_algorithm.datetime),
-                            cash_flow=p.cash_flow,
-                            starting_cash=p.starting_cash,
-                            portfolio_value=p.portfolio_value,
-                            pnl=p.pnl,
-                            returns=p.returns,
-                            cash=p.cash,
-                            position_value=p.position_value,
-                            position_exposure=p.position_exposure,
+                            timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
+                            cash_flow=p.cash_flow,  # type: ignore
+                            starting_cash=p.starting_cash,  # type: ignore
+                            portfolio_value=p.portfolio_value,  # type: ignore
+                            pnl=p.pnl,  # type: ignore
+                            returns=p.returns,  # type: ignore
+                            cash=p.cash,  # type: ignore
+                            positions_value=p.positions_value,  # type: ignore
+                            positions_exposure=p.positions_exposure,  # type: ignore
                             positions=[
                                 backtest_pb2.Position(
                                     symbol=p.sid.symbol,
                                     amount=p.amount,
                                     cost_basis=p.cost_basis,
                                     last_sale_price=p.last_sale_price,
-                                    last_sale_date=Timestamp().FromDatetime(p.last_sale_date),
+                                    last_sale_date=pb_utils.to_proto_timestamp(p.last_sale_date),
                                 )
-                                for _, p in p.positions.items()
+                                for _, p in p.positions.items()  # type: ignore
                             ],
                         )
                         response = service_pb2.Response(task=request.task, data=portfolio.SerializeToString())
                         context_socket.send(response.SerializeToString())
-                    elif not trading_algorithm and request.task == "get_period":
+                    elif not trading_algorithm and request.task == "get_portfolio":
                         response = service_pb2.Response(task=request.task, error="no active execution")
                         context_socket.send(response.SerializeToString())
                     elif trading_algorithm and request.task == "continue":
@@ -356,7 +363,9 @@ class Execution(threading.Thread):
                             period = self.result.loc[row]
                             rsp.periods.append(
                                 backtest_pb2.Period(
-                                    timestamp=period["period_close"].to_pydatetime().replace(tzinfo=timezone.utc),
+                                    timestamp=pb_utils.to_proto_timestamp(
+                                        period["period_close"].to_pydatetime().replace(tzinfo=timezone.utc)
+                                    ),
                                     PNL=period["pnl"],
                                     returns=period["returns"],
                                     portfolio_value=period["portfolio_value"],

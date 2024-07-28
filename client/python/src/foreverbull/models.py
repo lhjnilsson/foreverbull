@@ -11,7 +11,7 @@ from sqlalchemy import Connection
 
 from foreverbull import entity
 from foreverbull.data import Asset, Assets, Portfolio
-from foreverbull.pb_gen import finance_pb2
+from foreverbull.pb.finance import finance_pb2
 
 
 def type_to_str[T: (int, float, bool, str)](t: T) -> str:

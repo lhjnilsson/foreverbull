@@ -226,8 +226,8 @@ class GetPortfolioResponse(google.protobuf.message.Message):
     PNL_FIELD_NUMBER: builtins.int
     RETURNS_FIELD_NUMBER: builtins.int
     CASH_FIELD_NUMBER: builtins.int
-    POSITION_VALUE_FIELD_NUMBER: builtins.int
-    POSITION_EXPOSURE_FIELD_NUMBER: builtins.int
+    POSITIONS_VALUE_FIELD_NUMBER: builtins.int
+    POSITIONS_EXPOSURE_FIELD_NUMBER: builtins.int
     POSITIONS_FIELD_NUMBER: builtins.int
     cash_flow: builtins.float
     starting_cash: builtins.float
@@ -235,8 +235,8 @@ class GetPortfolioResponse(google.protobuf.message.Message):
     pnl: builtins.float
     returns: builtins.float
     cash: builtins.float
-    position_value: builtins.float
-    position_exposure: builtins.float
+    positions_value: builtins.float
+    positions_exposure: builtins.float
     @property
     def timestamp(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
     @property
@@ -251,8 +251,8 @@ class GetPortfolioResponse(google.protobuf.message.Message):
         pnl: builtins.float = ...,
         returns: builtins.float = ...,
         cash: builtins.float = ...,
-        position_value: builtins.float = ...,
-        position_exposure: builtins.float = ...,
+        positions_value: builtins.float = ...,
+        positions_exposure: builtins.float = ...,
         positions: collections.abc.Iterable[global___Position] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["timestamp", b"timestamp"]) -> builtins.bool: ...
@@ -267,12 +267,12 @@ class GetPortfolioResponse(google.protobuf.message.Message):
             b"pnl",
             "portfolio_value",
             b"portfolio_value",
-            "position_exposure",
-            b"position_exposure",
-            "position_value",
-            b"position_value",
             "positions",
             b"positions",
+            "positions_exposure",
+            b"positions_exposure",
+            "positions_value",
+            b"positions_value",
             "returns",
             b"returns",
             "starting_cash",

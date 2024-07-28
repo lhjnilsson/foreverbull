@@ -49,8 +49,8 @@ message GetPortfolioResponse {
     double pnl = 5;
     double returns = 6;
     double cash = 7;
-    double position_value = 8;
-    double position_exposure = 9;
+    double positions_value = 8;
+    double positions_exposure = 9;
 
     repeated Position positions = 10;
 }
