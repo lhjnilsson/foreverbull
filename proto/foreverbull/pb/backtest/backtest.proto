@@ -6,6 +6,7 @@ option go_package = "./pb_gen";
 
 import "google/protobuf/timestamp.proto";
 import "foreverbull/pb/finance/finance.proto";
+import "foreverbull/pb/service/service.proto";
 
 message IngestRequest {
     google.protobuf.Timestamp start_date = 1;
@@ -106,4 +107,40 @@ message ResultResponse {
 
 message UploadResultRequest {
     string execution = 1;
+}
+
+message NewExecutionRequest {
+    foreverbull.pb.service.Algorithm algorithm = 1;
+}
+
+message NewExecutionResponse {
+    string id = 1;
+    google.protobuf.Timestamp start_date = 2;
+    google.protobuf.Timestamp end_date = 3;
+    repeated string symbols = 4;
+    optional string error = 5;
+}
+
+message ConfigureExecutionRequest {
+    string execution = 1;
+    google.protobuf.Timestamp start_date = 2;
+    google.protobuf.Timestamp end_date = 3;
+    repeated string symbols = 4;
+    optional string benchmark = 5;
+}
+
+message ConfigureExecutionResponse {
+    string execution = 1;
+    int32 brokerPort = 2;
+    int32 namespacePort = 3;
+    optional string error = 4;
+}
+
+message RunExecutionRequest {
+    string execution = 1;
+}
+
+message RunExecutionResponse {
+    string execution = 1;
+    optional string error = 2;
 }

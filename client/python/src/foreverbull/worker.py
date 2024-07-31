@@ -27,35 +27,34 @@ class Worker:
         self._parallel = False
         super(Worker, self).__init__()
 
-    def configure_execution(self, instance: entity.service.Instance):
+    def configure_execution(self, data: bytes):
+        req = service_pb2.ConfigureExecutionRequest()
+        req.ParseFromString(data)
+
         self.logger.info("configuring worker")
         self._algo = Algorithm.from_file_path(self._file_path)
         try:
             self.socket = pynng.Rep0(
-                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{instance.broker_port}", block_on_dial=True
+                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{req.brokerPort}", block_on_dial=True
             )
             self.socket.recv_timeout = 5000
             self.socket.send_timeout = 5000
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
 
-        try:
-            self._algo.configure(instance.functions if instance.functions else {})
-        except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to setup algorithm: {e}")
-
-        if instance.database_url is None:
-            raise exceptions.ConfigurationError("Database URL is not set")
+        for function in req.functions:
+            for parameter in function.parameters:
+                self._algo.configure(function.name, parameter.key, parameter.value, parameter.valueType)
 
         try:
-            engine = get_engine(instance.database_url)
+            engine = get_engine(req.databaseURL)
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1 from asset;"))
             self._database_engine = engine
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
 
-        os.environ["NAMESPACE_PORT"] = str(instance.namespace_port)
+        os.environ["NAMESPACE_PORT"] = str(req.namespacePort)
         self.logger.info("worker configured correctly")
 
     def run(self):
@@ -76,17 +75,16 @@ class Worker:
 
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
-            request = service_pb2.Message()
+            request = service_pb2.Request()
             try:
                 request.ParseFromString(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure_execution":
-                    instance = entity.service.Instance.model_validate(request.data)
-                    self.configure_execution(instance)
-                    response = service_pb2.Message(task=request.task, error=None)
+                    self.configure_execution(request.data)
+                    response = service_pb2.Response(task=request.task, error=None)
                     responder.send(response.SerializeToString())
                 elif request.task == "run_execution":
-                    response = service_pb2.Message(task=request.task, error=None)
+                    response = service_pb2.Response(task=request.task, error=None)
                     responder.send(response.SerializeToString())
                     self.run_execution()
             except pynng.exceptions.Timeout:
@@ -95,7 +93,7 @@ class Worker:
             except Exception as e:
                 self.logger.error("Error processing request")
                 self.logger.exception(repr(e))
-                response = service_pb2.Message(task=request.task, error=repr(e))
+                response = service_pb2.Response(task=request.task, error=repr(e))
                 responder.send(response.SerializeToString())
             self.logger.info(f"Request processed: {request.task}")
         responder.close()
@@ -107,8 +105,9 @@ class Worker:
             self.logger.debug("Getting context socket")
             context_socket = self.socket.new_context()
             try:
-                request = service_pb2.Request()
+                request = service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
+                response = service_pb2.WorkerResponse(task=request.task, error=None)
                 self.logger.info("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
@@ -120,16 +119,17 @@ class Worker:
                     )
                 self.logger.info("Sending orders to broker: %s", orders)
                 for order in orders:
-                    request.orders.append(finance_pb2.Order(**order.model_dump()))
-                context_socket.send(request.SerializeToString())
+                    response.orders.append(finance_pb2.Order(**order.model_dump()))
+                context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
                 context_socket.close()
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    request.error = repr(e)
-                    context_socket.send(request.SerializeToString())
+                    response = service_pb2.WorkerResponse()
+                    response.error = repr(e)
+                    context_socket.send(response.SerializeToString())
                 if context_socket:
                     context_socket.close()
             if self._stop_event.is_set():

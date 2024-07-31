@@ -1,3 +1,4 @@
+import builtins
 import logging
 import os
 import re
@@ -6,10 +7,12 @@ from datetime import datetime
 from typing import Any, Iterator
 
 import pynng
+from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
 
 from foreverbull import entity
+from foreverbull.pb import pb_utils
 from foreverbull.pb.service import service_pb2
 
 
@@ -73,27 +76,29 @@ class Asset:
 
     def __getattr__(self, name: str) -> Any:
         with namespace_socket() as s:
-            request = service_pb2.Message(
-                task=f"get:{name}",
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return response.data[self._symbol]
+            return response.value[self._symbol]
 
     def __setattr__[T: (int, float, bool, str)](self, name: str, value: T) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = service_pb2.Message(
-                task=f"set:{name}",
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.SET,
             )
-            request.data.update({self._symbol: value})
+            request.value.update({self._symbol: value})
             s.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -118,30 +123,34 @@ class Assets:
         self._db = db
         self._symbols = symbols
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__[T: (int, float, bool, str)](self, name: str) -> dict:
         with namespace_socket() as s:
-            request = service_pb2.Message(
-                task=f"get:{name}",
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return {k: v for k, v in response.data.items()}
+            return pb_utils.protobuf_struct_to_dict(response.value)
 
     def __setattr__[T: (int, float, bool, str)](self, name: str, value: dict[str, T]) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = service_pb2.Message(
-                task=f"set:{name}",
-            )
+            struct = Struct()
             for k, v in value.items():
-                request.data.update({k: v})
+                struct.update({k: v})
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.SET,
+                value=struct,
+            )
             s.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)

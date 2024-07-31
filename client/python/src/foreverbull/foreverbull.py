@@ -1,11 +1,14 @@
 import logging
 import os
 import threading
+import time
 from multiprocessing import Event, Queue, synchronize
 
 import pynng
 
 from foreverbull import Algorithm, entity, worker
+from foreverbull.pb import pb_utils
+from foreverbull.pb.backtest import backtest_pb2
 from foreverbull.pb.service import service_pb2
 
 from .exceptions import ConfigurationError
@@ -28,15 +31,14 @@ class Session(threading.Thread):
         self.logger = logging.getLogger(__name__)
         threading.Thread.__init__(self)
 
-    def _configure_execution(self, instance: entity.service.Instance):
+    def _configure_execution(self, data: bytes):
         self.logger.info("configuring workers")
-        request = service_pb2.Message(task="configure_execution")
-        request.data.update(instance.model_dump())
+        request = service_pb2.Request(task="configure_execution", data=data)
         self._surveyor.send(request.SerializeToString())
         responders = 0
         while True:
             try:
-                rsp = service_pb2.Message()
+                rsp = service_pb2.Response()
                 rsp.ParseFromString(self._surveyor.recv())
                 if rsp.HasField("error"):
                     raise ConfigurationError(rsp.error)
@@ -60,17 +62,32 @@ class Session(threading.Thread):
 
     def new_backtest_execution(self) -> entity.backtest.Execution:
         sock = self._get_broker_session_socket()
-        request = service_pb2.Message(task="new_execution")
-        request.data.update(self._algorithm.model_dump())
+        functions = [service_pb2.Algorithm.Function() for function in self._algorithm.functions]
+        namespaces = [service_pb2.Algorithm.Namespace() for ns in self._algorithm.namespace]
+        algorithm = service_pb2.Algorithm(
+            file_path=self._algorithm.file_path,
+            functions=functions,
+            namespaces=namespaces,
+        )
+        exc_request = backtest_pb2.NewExecutionRequest(algorithm=algorithm)
+        request = service_pb2.Request(task="new_execution", data=exc_request.SerializeToString())
         sock.send(request.SerializeToString())
-        rsp = service_pb2.Message()
+        rsp = service_pb2.Response()
         rsp.ParseFromString(sock.recv())
         if rsp.HasField("error"):
             raise Exception(rsp.error)
-        return entity.backtest.Execution.model_validate(rsp.data)
+        exc = backtest_pb2.NewExecutionResponse()
+        exc.ParseFromString(rsp.data)
+        return entity.backtest.Execution(
+            id=exc.id,
+            start=exc.start_date.ToDatetime(),
+            end=exc.end_date.ToDatetime(),
+            benchmark=None,
+            symbols=[s for s in exc.symbols],
+        )
 
     def _run_execution(self):
-        req = service_pb2.Message(task="run_execution")
+        req = service_pb2.Request(task="run_execution")
         self._surveyor.send(req.SerializeToString())
         responders = 0
         while True:
@@ -86,35 +103,43 @@ class Session(threading.Thread):
 
     def run_backtest_execution(self, execution: entity.backtest.Execution):
         sock = self._get_broker_session_socket()
-        request = service_pb2.Message(task="configure_execution")
-        request.data.update(execution.model_dump())
+        if execution.id is None:
+            raise Exception("Execution ID not set")
+        config = backtest_pb2.ConfigureExecutionRequest(
+            execution=execution.id,
+            start_date=pb_utils.to_proto_timestamp(execution.start),
+            end_date=pb_utils.to_proto_timestamp(execution.end),
+            symbols=execution.symbols,
+            benchmark=execution.benchmark,
+        )
+        request = service_pb2.Request(task="configure_execution", data=config.SerializeToString())
         sock.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(sock.recv())
         if response.HasField("error"):
             raise Exception(response.error)
-        instance = entity.service.Instance.model_validate(response.data)
-        self._configure_execution(instance)
+        self._configure_execution(response.data)
         self._run_execution()
-        request = service_pb2.Message(task="run_execution")
+        run_request = backtest_pb2.RunExecutionRequest(execution=execution.id)
+        request = service_pb2.Request(task="run_execution", data=run_request.SerializeToString())
         sock.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(sock.recv())
         if response.HasField("error"):
             raise Exception(response.error)
-        import time
-
         time.sleep(2)
         while True:
-            request = service_pb2.Message(task="current_period")
+            request = service_pb2.Request(task="current_period")
             sock.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.Response()
             response.ParseFromString(sock.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
             if not response.HasField("data"):
                 break
-            self.logger.info("current period: %s", response.data["timestamp"])
+            period = backtest_pb2.Period()
+            period.ParseFromString(response.data)
+            self.logger.info("current period: %s", period.timestamp.ToDatetime())
 
     def run(self):
         local_port = os.environ.get("LOCAL_PORT", 5555)
@@ -128,19 +153,49 @@ class Session(threading.Thread):
                 except Exception:
                     continue
                 try:
-                    req = service_pb2.Message()
+                    req = service_pb2.Request()
                     req.ParseFromString(b)
                 except Exception as e:
                     self.logger.warning("Error deserializing request: %s", repr(e))
                     continue
                 self.logger.info("received request: %s", req)
-                response = service_pb2.Message(task=req.task)
+                response = service_pb2.Response(task=req.task)
                 match req.task:
                     case "info":
-                        response.data.update(self._algorithm.model_dump())
+                        algorithm = service_pb2.Algorithm(
+                            file_path=self._algorithm.file_path,
+                            functions=[
+                                service_pb2.Algorithm.Function(
+                                    name=function.name,
+                                    parameters=[
+                                        service_pb2.Algorithm.FunctionParameter(
+                                            key=param.key,
+                                            defaultValue=param.default,
+                                            valueType=param.type,
+                                        )
+                                        for param in function.parameters
+                                    ],
+                                    parallelExecution=function.parallel_execution,
+                                    runFirst=function.run_first,
+                                    runLast=function.run_last,
+                                )
+                                for function in self._algorithm.functions
+                            ],
+                            namespaces=[
+                                service_pb2.Algorithm.Namespace(
+                                    key=key,
+                                    definition=service_pb2.Algorithm.NamespaceDefinition(
+                                        dataType=ns.type,
+                                        valueType=ns.value_type,
+                                    ),
+                                )
+                                for key, ns in self._algorithm.namespace.items()
+                            ],
+                        )
+                        response.data = algorithm.SerializeToString()
                         ctx.send(response.SerializeToString())
                     case "configure_execution":
-                        self._configure_execution(entity.service.Instance.model_validate(req.data))
+                        self._configure_execution(req.data)
                         ctx.send(response.SerializeToString())
                     case "run_execution":
                         self._run_execution()

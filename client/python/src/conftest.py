@@ -20,6 +20,7 @@ from testcontainers.postgres import PostgresContainer
 
 from foreverbull import Order, entity
 from foreverbull.entity.finance import OrderStatus
+from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
 
@@ -35,7 +36,6 @@ def spawn_process():
 def execution(database):
     return entity.backtest.Execution(
         id="test",
-        calendar="NYSE",
         start=datetime(2023, 1, 3, 0, 0, 0, 0, tzinfo=timezone.utc),
         end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
         symbols=["AAPL", "MSFT", "TSLA"],
@@ -54,25 +54,23 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
-            request = service_pb2.Message()
+            request = service_pb2.NamespaceRequest()
             try:
                 request.ParseFromString(s.recv())
             except pynng.exceptions.Timeout:
                 continue
             except pynng.exceptions.Closed:
                 break
-            if request.task.startswith("get:"):
-                key = request.task[4:]
-                response = service_pb2.Message(task=request.task)
-                response.data.update(namespace.get(key))
+            if request.type == service_pb2.NamespaceRequestType.GET:
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
                 s.send(response.SerializeToString())
-            elif request.task.startswith("set:"):
-                key = request.task[4:]
-                namespace[key] = request.data
-                response = service_pb2.Message(task=request.task)
+            elif request.type == service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = service_pb2.NamespaceResponse()
                 s.send(response.SerializeToString())
             else:
-                response = service_pb2.Message(task=request.task, error="Invalid task")
+                response = service_pb2.NamespaceResponse(error="Invalid task")
                 s.send(response.SerializeToString())
 
     thread = Thread(target=runner, args=(s, namespace))
@@ -97,15 +95,15 @@ def parallel_algo_file(spawn_process, execution, database):
         while start < execution.end:
             for symbol in execution.symbols:
                 pb = finance_pb2.Portfolio(**portfolio.model_dump())
-                request = service_pb2.Request(
+                request = service_pb2.WorkerRequest(
                     task="parallel_algo",
+                    timestamp=pb_utils.to_proto_timestamp(start),
+                    symbols=[symbol],
                     portfolio=pb,
                 )
-                request.timestamp.FromDatetime(start)
-                request.symbols.extend([symbol])
 
                 server_socket.send(request.SerializeToString())
-                response = service_pb2.Request()
+                response = service_pb2.WorkerResponse()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
                 assert response.HasField("error") is False
@@ -126,11 +124,11 @@ def parallel_algo_file(spawn_process, execution, database):
             start += timedelta(days=1)
         return orders
 
-    instance = entity.service.Instance(
-        id="test",
-        broker_port=5656,
-        database_url=os.environ["DATABASE_URL"],
-        functions={"parallel_algo": entity.service.Instance.Parameter(parameters={})},
+    request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=5656,
+        namespacePort=7878,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[],
     )
 
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5656")
@@ -156,7 +154,7 @@ Algorithm(
         )
         f.flush()
 
-        yield f.name, instance, _process_symbols
+        yield f.name, request, _process_symbols
         process_socket.close()
 
 
@@ -172,15 +170,15 @@ def non_parallel_algo_file(spawn_process, execution, database):
         orders: list[Order] = []
         while start < execution.end:
             pb = finance_pb2.Portfolio(**portfolio.model_dump())
-            request = service_pb2.Request(
+            request = service_pb2.WorkerRequest(
                 task="non_parallel_algo",
+                timestamp=pb_utils.to_proto_timestamp(start),
+                symbols=execution.symbols,
                 portfolio=pb,
             )
-            request.timestamp.FromDatetime(start)
-            request.symbols.extend(execution.symbols)
 
             server_socket.send(request.SerializeToString())
-            response = service_pb2.Request()
+            response = service_pb2.WorkerResponse()
             response.ParseFromString(server_socket.recv())
             assert response.task == "non_parallel_algo"
             assert response.HasField("error") is False
@@ -201,15 +199,11 @@ def non_parallel_algo_file(spawn_process, execution, database):
             start += timedelta(days=1)
         return orders
 
-    instance = entity.service.Instance(
-        id="test",
-        broker_port=5657,
-        database_url=os.environ["DATABASE_URL"],
-        functions={
-            "non_parallel_algo": entity.service.Instance.Parameter(
-                parameters={},
-            )
-        },
+    request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=5657,
+        namespacePort=7878,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[],
     )
 
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5657")
@@ -237,7 +231,7 @@ Algorithm(
 """
         )
         f.flush()
-        yield f.name, instance, _process_symbols
+        yield f.name, request, _process_symbols
         process_socket.close()
 
 
@@ -254,15 +248,14 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
         while start < execution.end:
             for symbol in execution.symbols:
                 pb = finance_pb2.Portfolio(**portfolio.model_dump())
-                request = service_pb2.Request(
+                request = service_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
+                    timestamp=pb_utils.to_proto_timestamp(start),
+                    symbols=[symbol],
                     portfolio=pb,
                 )
-                request.timestamp.FromDatetime(start)
-                request.symbols.extend([symbol])
-
                 server_socket.send(request.SerializeToString())
-                response = service_pb2.Request()
+                response = service_pb2.WorkerResponse()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo_with_parameters"
                 assert response.HasField("error") is False
@@ -284,18 +277,19 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
             start += timedelta(days=1)
         return orders
 
-    instance = entity.service.Instance(
-        id="test",
-        broker_port=5658,
-        database_url=os.environ["DATABASE_URL"],
-        functions={
-            "parallel_algo_with_parameters": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "15",
-                    "high": "25",
-                }
+    request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=5658,
+        namespacePort=7878,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[
+            service_pb2.ConfigureExecutionRequest.Function(
+                name="parallel_algo_with_parameters",
+                parameters=[
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                ],
             )
-        },
+        ],
     )
 
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5658")
@@ -320,7 +314,7 @@ Algorithm(
 """
         )
         f.flush()
-        yield f.name, instance, _process_symbols
+        yield f.name, request, _process_symbols
         process_socket.close()
 
 
@@ -336,15 +330,15 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
         orders: list[Order] = []
         while start < execution.end:
             pb = finance_pb2.Portfolio(**portfolio.model_dump())
-            request = service_pb2.Request(
+            request = service_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
+                timestamp=pb_utils.to_proto_timestamp(start),
+                symbols=execution.symbols,
                 portfolio=pb,
             )
-            request.timestamp.FromDatetime(start)
-            request.symbols.extend(execution.symbols)
 
             server_socket.send(request.SerializeToString())
-            response = service_pb2.Request()
+            response = service_pb2.WorkerResponse()
             response.ParseFromString(server_socket.recv())
             assert response.task == "non_parallel_algo_with_parameters"
             assert response.HasField("error") is False
@@ -365,18 +359,19 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
             start += timedelta(days=1)
         return orders
 
-    instance = entity.service.Instance(
-        id="test",
-        broker_port=5659,
-        database_url=os.environ["DATABASE_URL"],
-        functions={
-            "non_parallel_algo_with_parameters": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "15",
-                    "high": "25",
-                },
+    request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=5659,
+        namespacePort=7878,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[
+            service_pb2.ConfigureExecutionRequest.Function(
+                name="non_parallel_algo_with_parameters",
+                parameters=[
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                ],
             )
-        },
+        ],
     )
 
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5659")
@@ -404,7 +399,7 @@ Algorithm(
 """
         )
         f.flush()
-        yield f.name, instance, _process_symbols
+        yield f.name, request, _process_symbols
         process_socket.close()
 
 
@@ -421,65 +416,68 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
         orders: list[Order] = []
         while start < execution.end:
             # filter assets
-            req = service_pb2.Request(
+            req = service_pb2.WorkerRequest(
                 task="filter_assets",
                 timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
-            response = service_pb2.Request()
+            response = service_pb2.WorkerResponse()
             response.ParseFromString(server_socket.recv())
             assert response.task == "filter_assets"
             assert response.HasField("error") is False
 
             # measure assets
             for symbol in execution.symbols:
-                req = service_pb2.Request(
+                req = service_pb2.WorkerRequest(
                     task="measure_assets",
                     timestamp=Timestamp().FromDatetime(start),
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
                 server_socket.send(req.SerializeToString())
-                response = service_pb2.Request()
+                response = service_pb2.WorkerResponse()
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "measure_assets"
                 assert response.HasField("error") is False
 
             # create orders
-            req = service_pb2.Request(
+            req = service_pb2.WorkerRequest(
                 task="create_orders",
                 timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
                 portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
-            response = service_pb2.Request()
+            response = service_pb2.WorkerResponse()
             response.ParseFromString(server_socket.recv())
             assert response.task == "create_orders"
             assert response.HasField("error") is False
             start += timedelta(days=1)
         return orders
 
-    instance = entity.service.Instance(
-        id="test",
-        broker_port=5660,
-        database_url=os.environ["DATABASE_URL"],
-        functions={
-            "filter_assets": entity.service.Instance.Parameter(
-                parameters={},
+    request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=5660,
+        namespacePort=7878,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[
+            service_pb2.ConfigureExecutionRequest.Function(
+                name="measure_assets",
+                parameters=[
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                ],
             ),
-            "measure_assets": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
+            service_pb2.ConfigureExecutionRequest.Function(
+                name="create_orders",
+                parameters=[],
             ),
-            "create_orders": entity.service.Instance.Parameter(
-                parameters={},
+            service_pb2.ConfigureExecutionRequest.Function(
+                name="filter_assets",
+                parameters=[],
             ),
-        },
+        ],
     )
 
     process_socket = pynng.Req0(listen="tcp://127.0.0.1:5660")
@@ -513,7 +511,7 @@ Algorithm(
 """
         )
         f.flush()
-        yield f.name, instance, _process_symbols
+        yield f.name, request, _process_symbols
         process_socket.close()
 
 
@@ -546,7 +544,6 @@ class OHLC(Base):
 def backtest_entity():
     return entity.backtest.Backtest(
         name="testing_backtest",
-        calendar="NYSE",
         start=datetime(2022, 1, 3, tzinfo=timezone.utc),
         end=datetime(2023, 12, 29, tzinfo=timezone.utc),
         symbols=[

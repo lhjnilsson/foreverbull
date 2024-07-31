@@ -148,7 +148,7 @@ class Algorithm:
             raise Exception("No algo found in {}".format(file_path))
         return Algorithm._algo
 
-    def configure(self, parameters: dict[str, entity.service.Instance.Parameter]) -> None:
+    def configure(self, function_name: str, param_key: str, param_value: str, param_type: str) -> None:
         def _eval_param(type: str, val: str):
             if type == "int":
                 return int(val)
@@ -160,20 +160,12 @@ class Algorithm:
                 return str(val)
             else:
                 raise TypeError("Unknown parameter type")
-
-        for function_name, function in Algorithm._functions.items():
-            configuration = parameters.get(function_name)
-            if configuration is None:
-                continue
-            for parameter in function["entity"].parameters:
-                param = configuration.parameters.get(parameter.key)
-                if param is None:
-                    continue
-                value = _eval_param("int", param)
-                Algorithm._functions[function_name]["callable"] = partial(
-                    function["callable"],
-                    **{parameter.key: value},
-                )
+        value = _eval_param(param_type, param_value)
+        function = Algorithm._functions[function_name]
+        Algorithm._functions[function_name]["callable"] = partial(
+            function["callable"],
+            **{param_key: value},
+        )
 
     def process(
         self,

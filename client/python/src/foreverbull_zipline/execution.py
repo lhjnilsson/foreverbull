@@ -31,7 +31,6 @@ from foreverbull.pb.backtest import backtest_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 
-from . import entity
 from .broker import Broker
 
 

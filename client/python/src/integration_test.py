@@ -14,16 +14,17 @@ from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.run_algo import BenchmarkSpec, _run
 
 from foreverbull import Foreverbull, entity
-from foreverbull.pb_gen import backtest_pb2, finance_pb2, service_pb2
+from foreverbull.pb import pb_utils
+from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb.finance import finance_pb2
+from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
-from foreverbull_zipline.entity import Period
 from foreverbull_zipline.execution import Execution
 
 
 @pytest.fixture(scope="session")
 def execution(spawn_process) -> entity.backtest.Execution:
     return entity.backtest.Execution(
-        calendar="XNYS",
         start=datetime(2022, 1, 3, tzinfo=timezone.utc),
         end=datetime(2023, 12, 29, tzinfo=timezone.utc),
         benchmark=None,
@@ -62,7 +63,6 @@ def execution(spawn_process) -> entity.backtest.Execution:
 def foreverbull_bundle(execution: entity.backtest.Execution, database):
     backtest_entity = entity.backtest.Backtest(
         name="test_backtest",
-        calendar=execution.calendar,
         start=execution.start,
         end=execution.end,
         symbols=execution.symbols,
@@ -84,14 +84,14 @@ def foreverbull_bundle(execution: entity.backtest.Execution, database):
                 print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
 
-    bundles.register("foreverbull", SQLIngester(), calendar_name=execution.calendar)
+    bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
     try:
         print("Loading bundle")
         sanity_check(bundles.load("foreverbull", os.environ, None))
     except (ValueError, LookupError) as exc:
         print("Creating bundle", exc)
         exc = Execution()
-        exc._ingest(backtest_entity)
+        exc._ingest(backtest_entity.start, backtest_entity.end, backtest_entity.symbols)
 
 
 def baseline_performance_initialize(context):
@@ -177,23 +177,28 @@ def zipline_socket():
     def run(
         execution: entity.backtest.Execution,
     ):
-        request = service_pb2.Message(task="configure_execution")
-        request.data.update(execution.model_dump())
+        exc_request = backtest_pb2.ConfigureRequest(
+            start_date=pb_utils.to_proto_timestamp(execution.start),
+            end_date=pb_utils.to_proto_timestamp(execution.end),
+            symbols=execution.symbols,
+            benchmark=execution.benchmark,
+        )
+        request = service_pb2.Request(task="configure_execution", data=exc_request.SerializeToString())
         pynng_socket.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(pynng_socket.recv())
         if response.HasField("error"):
             raise Exception(response.error)
-        request = service_pb2.Message(task="run_execution")
+        request = service_pb2.Request(task="run_execution")
         pynng_socket.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(pynng_socket.recv())
         if response.HasField("error"):
             raise Exception(response.error)
         return pynng_socket
 
     yield run
-    request = service_pb2.Message(task="stop")
+    request = service_pb2.Request(task="stop")
     pynng_socket.send(request.SerializeToString())
     pynng_socket.recv()
     pynng_socket.close()
@@ -210,12 +215,11 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
     namespace_socket.recv_timeout = 10000
     namespace_socket.send_timeout = 10000
 
-    service_instance = entity.service.Instance(
-        id="test_instance",
-        broker_port=8888,
-        namespace_port=9999,
-        database_url=os.environ["DATABASE_URL"],
-        functions={"handle_data": {"parameters": {}}},
+    configure_request = service_pb2.ConfigureExecutionRequest(
+        brokerPort=8888,
+        namespacePort=9999,
+        databaseURL=os.environ["DATABASE_URL"],
+        functions=[],
     )
 
     with Foreverbull(file_path):
@@ -224,72 +228,84 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         foreverbull_socket.recv_timeout = 10000
         foreverbull_socket.send_timeout = 10000
 
-        request = service_pb2.Message(task="configure_execution")
-        request.data.update(service_instance.model_dump())
+        request = service_pb2.Request(task="configure_execution", data=configure_request.SerializeToString())
         foreverbull_socket.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(foreverbull_socket.recv())
         assert response.HasField("error") is False
-        request = service_pb2.Message(task="run_execution")
+        request = service_pb2.Request(task="run_execution")
         foreverbull_socket.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(foreverbull_socket.recv())
         assert response.HasField("error") is False
 
         while True:
-            request = service_pb2.Message(task="get_period")
+            request = service_pb2.Request(task="get_portfolio")
             backtest.send(request.SerializeToString())
-            period = backtest_pb2.Period()
-            period.ParseFromString(backtest.recv())
+            response = service_pb2.Response()
+            response.ParseFromString(backtest.recv())
+            if response.HasField("error"):
+                assert response.error == "no active execution"
+                break
+            portfolio = backtest_pb2.GetPortfolioResponse()
+            portfolio.ParseFromString(response.data)
 
-            portfolio = finance_pb2.Portfolio(
-                cash=period.starting_cash,
-                value=period.portfolio_value,
-                positions=period.positions,
+            p = finance_pb2.Portfolio(
+                cash=portfolio.starting_cash,
+                value=portfolio.portfolio_value,
+                positions=[
+                    finance_pb2.Position(symbol=p.symbol, exchange="backtest", amount=p.amount, cost=p.cost_basis)
+                    for p in portfolio.positions
+                ],
             )
 
-            request = service_pb2.Request(
+            request = service_pb2.WorkerRequest(
                 task="handle_data",
-                timestamp=period.timestamp,
+                timestamp=portfolio.timestamp,
                 symbols=execution.symbols,
-                portfolio=portfolio,
+                portfolio=p,
             )
             broker_socket.send(request.SerializeToString())
-            response = service_pb2.Request()
+            response = service_pb2.WorkerResponse()
             response.ParseFromString(broker_socket.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            for o in response.orders:
-                order = entity.finance.Order(
-                    symbol=o.symbol,
-                    amount=o.amount,
-                    limit_price=o.limit_price,
-                    stop_price=o.stop_price,
-                )
-                order_request = service_pb2.Message(
-                    task="place_order",
-                )
-                order_request.data.update(order.model_dump())
-                backtest.send(order_request.SerializeToString())
-                response = service_pb2.Message()
-                response.ParseFromString(backtest.recv())
-                if response.HasField("error"):
-                    raise Exception(response.error)
 
-            request = service_pb2.Message(task="continue")
+            continue_request = backtest_pb2.ContinueRequest(orders=[])
+            for o in response.orders:
+                continue_request.orders.append(
+                    backtest_pb2.Order(
+                        symbol=o.symbol,
+                        amount=o.amount,
+                    )
+                )
+
+            request = service_pb2.Request(task="continue", data=continue_request.SerializeToString())
             backtest.send(request.SerializeToString())
-            response = service_pb2.Message()
+            response = service_pb2.Response()
             response.ParseFromString(backtest.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
 
-        request = service_pb2.Message(task="get_execution_result")
+        request = service_pb2.Request(task="get_execution_result")
         backtest.send(request.SerializeToString())
-        response = service_pb2.Message()
+        response = service_pb2.Response()
         response.ParseFromString(backtest.recv())
         assert response.HasField("error") is False
-        result = pd.DataFrame(response.data["periods"]).reset_index(drop=True)
-        result = result.drop(columns=["timestamp"])
+        result_response = backtest_pb2.ResultResponse()
+        result_response.ParseFromString(response.data)
+        p = []
+        for period in result_response.periods:
+            p.append(
+                {
+                    "portfolio_value": period.portfolio_value,
+                    "returns": period.returns,
+                    "alpha": period.alpha,
+                    "beta": period.beta,
+                    "sharpe": period.sharpe,
+                }
+            )
+        result = pd.DataFrame(p).reset_index(drop=True)
         baseline_performance = baseline_performance[result.columns]
         assert baseline_performance.equals(result)
 

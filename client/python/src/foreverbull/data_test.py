@@ -7,7 +7,7 @@ import pynng
 import pytest
 
 from foreverbull.data import Asset, Assets
-from foreverbull.pb_gen import service_pb2
+from foreverbull.pb.service import service_pb2
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
-            request = service_pb2.Message()
+            request = service_pb2.NamespaceRequest()
             try:
                 data = s.recv()
             except pynng.exceptions.Timeout:
@@ -29,16 +29,15 @@ def namespace_server():
             except pynng.exceptions.Closed:
                 break
             request.ParseFromString(data)
-            if request.task.startswith("get:"):
-                key = request.task[4:]
-                response = service_pb2.Message(task=request.task)
-                response.data.update(namespace.get(key, {}))
-            elif request.task.startswith("set:"):
-                key = request.task[4:]
-                namespace[key] = {k: v for k, v in request.data.items()}
-                response = service_pb2.Message(task=request.task, data=request.data)
+            if request.type == service_pb2.NamespaceRequestType.GET:
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
+            elif request.type == service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace[request.key])
             else:
-                response = service_pb2.Message(task=request.task, error="Invalid task")
+                response = service_pb2.NamespaceResponse(error="Invalid request type")
             s.send(response.SerializeToString())
 
     thread = Thread(target=runner, args=(s, namespace))

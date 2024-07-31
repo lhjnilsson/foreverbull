@@ -30,11 +30,6 @@ class Service(pydantic.BaseModel):
             value_type: str
 
         class Function(pydantic.BaseModel):
-            class ReturnType(str, enum.Enum):
-                NAMESPACE_VALUE = "NAMESPACE_VALUE"
-                ORDER = "ORDER"
-                LIST_OF_ORDERS = "LIST_OF_ORDERS"
-
             class Parameter(pydantic.BaseModel):
                 key: str
                 default: str | None = None
