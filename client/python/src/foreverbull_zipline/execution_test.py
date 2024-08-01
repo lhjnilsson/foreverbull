@@ -7,7 +7,7 @@ import pytest
 
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.execution import Execution
 
@@ -66,7 +66,7 @@ def test_ingest(
     execution_socket: pynng.Rep0,
     backtest_entity: backtest.Backtest,
 ):
-    ingest_request = backtest_pb2.IngestRequest(
+    ingest_request = engine_pb2.IngestRequest(
         start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
         end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
         symbols=backtest_entity.symbols,
@@ -77,7 +77,7 @@ def test_ingest(
     response.ParseFromString(execution_socket.recv())
     assert response.task == "ingest"
     assert response.HasField("error") is False
-    ingest_response = backtest_pb2.IngestResponse()
+    ingest_response = engine_pb2.IngestResponse()
     ingest_response.ParseFromString(response.data)
     assert ingest_response.start_date == pb_utils.to_proto_timestamp(backtest_entity.start)
     assert ingest_response.end_date == pb_utils.to_proto_timestamp(backtest_entity.end)
@@ -86,7 +86,7 @@ def test_ingest(
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark: str | None):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(execution.start),
         end_date=pb_utils.to_proto_timestamp(execution.end),
         symbols=execution.symbols,
@@ -113,10 +113,10 @@ def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Re
         if response.HasField("data") is False:
             break
         assert response.HasField("error") is False
-        portfolio = backtest_pb2.GetPortfolioResponse()
+        portfolio = engine_pb2.GetPortfolioResponse()
         portfolio.ParseFromString(response.data)
 
-        continue_request = backtest_pb2.ContinueRequest()
+        continue_request = engine_pb2.ContinueRequest()
         execution_socket.send(
             service_pb2.Request(task="continue", data=continue_request.SerializeToString()).SerializeToString()
         )
@@ -147,7 +147,7 @@ def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Re
 )
 @pytest.mark.skip(reason="unsure how to handle this, if we should raise exception is date is after possible date")
 def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Rep0, backtest_entity, start, end):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(start),
         end_date=pb_utils.to_proto_timestamp(end),
         symbols=execution.symbols,
@@ -160,7 +160,7 @@ def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Re
     assert response.task == "configure_execution"
     assert response.HasField("error") is False
 
-    ce_response = backtest_pb2.ConfigureResponse()
+    ce_response = engine_pb2.ConfigureResponse()
     ce_response.ParseFromString(response.data)
     assert ce_response.start_date == pb_utils.to_proto_timestamp(start)
     assert ce_response.end_date == pb_utils.to_proto_timestamp(end)
@@ -181,10 +181,10 @@ def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Re
         if response.HasField("data") is False:
             break
         assert response.HasField("error") is False
-        portfolio = backtest_pb2.GetPortfolioResponse()
+        portfolio = engine_pb2.GetPortfolioResponse()
         portfolio.ParseFromString(response.data)
 
-        continue_request = backtest_pb2.ContinueRequest()
+        continue_request = engine_pb2.ContinueRequest()
         execution_socket.send(
             service_pb2.Request(task="continue", data=continue_request.SerializeToString()).SerializeToString()
         )
@@ -195,7 +195,7 @@ def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Re
 
 
 def test_premature_stop(execution: backtest.Execution, execution_socket: pynng.Rep0):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(execution.start),
         end_date=pb_utils.to_proto_timestamp(execution.end),
         symbols=execution.symbols,
@@ -236,7 +236,7 @@ def test_premature_stop(execution: backtest.Execution, execution_socket: pynng.R
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
 def test_multiple_runs_different_symbols(execution: backtest.Execution, execution_socket: pynng.Rep0, symbols):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(execution.start),
         end_date=pb_utils.to_proto_timestamp(execution.end),
         symbols=symbols,
@@ -248,7 +248,7 @@ def test_multiple_runs_different_symbols(execution: backtest.Execution, executio
     response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
     assert response.HasField("error") is False
-    ce_response = backtest_pb2.ConfigureResponse()
+    ce_response = engine_pb2.ConfigureResponse()
     ce_response.ParseFromString(response.data)
     assert ce_response.start_date == pb_utils.to_proto_timestamp(execution.start)
     assert ce_response.end_date == pb_utils.to_proto_timestamp(execution.end)
@@ -277,7 +277,7 @@ def test_multiple_runs_different_symbols(execution: backtest.Execution, executio
 
 
 def test_get_result(execution: backtest.Execution, execution_socket: pynng.Rep0):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(execution.start),
         end_date=pb_utils.to_proto_timestamp(execution.end),
         symbols=execution.symbols,
@@ -315,14 +315,14 @@ def test_get_result(execution: backtest.Execution, execution_socket: pynng.Rep0)
     response.ParseFromString(execution_socket.recv())
     assert response.task == "get_execution_result"
     assert response.HasField("error") is False
-    result = backtest_pb2.ResultResponse()
+    result = engine_pb2.ResultResponse()
     result.ParseFromString(response.data)
     assert len(result.periods)
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark: str | None):
-    ce_request = backtest_pb2.ConfigureRequest(
+    ce_request = engine_pb2.ConfigureRequest(
         start_date=pb_utils.to_proto_timestamp(execution.start),
         end_date=pb_utils.to_proto_timestamp(execution.end),
         symbols=execution.symbols,
@@ -347,9 +347,9 @@ def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, ben
     assert response.task == "continue"
     assert response.HasField("error") is False
 
-    continue_request = backtest_pb2.ContinueRequest(
+    continue_request = engine_pb2.ContinueRequest(
         orders=[
-            backtest_pb2.Order(symbol=execution.symbols[0], amount=10),
+            engine_pb2.Order(symbol=execution.symbols[0], amount=10),
         ]
     )
     request = service_pb2.Request(task="continue", data=continue_request.SerializeToString())
@@ -364,7 +364,7 @@ def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, ben
     response.ParseFromString(execution_socket.recv())
     assert response.task == "get_portfolio"
     assert response.HasField("error") is False
-    portfolio = backtest_pb2.GetPortfolioResponse()
+    portfolio = engine_pb2.GetPortfolioResponse()
     portfolio.ParseFromString(response.data)
     assert len(portfolio.positions) == 1
     assert portfolio.positions[0].symbol == execution.symbols[0]
@@ -375,9 +375,9 @@ def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, ben
     assert response.task == "continue"
     assert response.HasField("error") is False
 
-    continue_request = backtest_pb2.ContinueRequest(
+    continue_request = engine_pb2.ContinueRequest(
         orders=[
-            backtest_pb2.Order(symbol=execution.symbols[0], amount=15),
+            engine_pb2.Order(symbol=execution.symbols[0], amount=15),
         ]
     )
     request = service_pb2.Request(task="continue", data=continue_request.SerializeToString())
@@ -401,6 +401,6 @@ def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, ben
     response.ParseFromString(execution_socket.recv())
     assert response.task == "get_execution_result"
     assert response.HasField("error") is False
-    result = backtest_pb2.ResultResponse()
+    result = engine_pb2.ResultResponse()
     result.ParseFromString(response.data)
     assert len(result.periods)

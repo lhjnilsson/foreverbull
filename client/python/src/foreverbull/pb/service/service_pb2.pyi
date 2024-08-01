@@ -387,16 +387,9 @@ global___ConfigureExecutionRequest = ConfigureExecutionRequest
 class ConfigureExecutionResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    ERROR_FIELD_NUMBER: builtins.int
-    error: builtins.str
     def __init__(
         self,
-        *,
-        error: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_error", b"_error", "error", b"error"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_error", b"_error", "error", b"error"]) -> None: ...
-    def WhichOneof(self, oneof_group: typing.Literal["_error", b"_error"]) -> typing.Literal["error"] | None: ...
 
 global___ConfigureExecutionResponse = ConfigureExecutionResponse
 

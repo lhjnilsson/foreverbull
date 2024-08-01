@@ -15,7 +15,7 @@ from zipline.utils.run_algo import BenchmarkSpec, _run
 
 from foreverbull import Foreverbull, entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
@@ -177,7 +177,7 @@ def zipline_socket():
     def run(
         execution: entity.backtest.Execution,
     ):
-        exc_request = backtest_pb2.ConfigureRequest(
+        exc_request = engine_pb2.ConfigureRequest(
             start_date=pb_utils.to_proto_timestamp(execution.start),
             end_date=pb_utils.to_proto_timestamp(execution.end),
             symbols=execution.symbols,
@@ -247,7 +247,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             if response.HasField("error"):
                 assert response.error == "no active execution"
                 break
-            portfolio = backtest_pb2.GetPortfolioResponse()
+            portfolio = engine_pb2.GetPortfolioResponse()
             portfolio.ParseFromString(response.data)
 
             p = finance_pb2.Portfolio(
@@ -271,10 +271,10 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
             if response.HasField("error"):
                 raise Exception(response.error)
 
-            continue_request = backtest_pb2.ContinueRequest(orders=[])
+            continue_request = engine_pb2.ContinueRequest(orders=[])
             for o in response.orders:
                 continue_request.orders.append(
-                    backtest_pb2.Order(
+                    engine_pb2.Order(
                         symbol=o.symbol,
                         amount=o.amount,
                     )
@@ -292,7 +292,7 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
         response = service_pb2.Response()
         response.ParseFromString(backtest.recv())
         assert response.HasField("error") is False
-        result_response = backtest_pb2.ResultResponse()
+        result_response = engine_pb2.ResultResponse()
         result_response.ParseFromString(response.data)
         p = []
         for period in result_response.periods:

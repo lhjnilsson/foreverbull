@@ -74,7 +74,6 @@ message ConfigureExecutionRequest {
 }
 
 message ConfigureExecutionResponse {
-    optional string error = 1;
 }
 
 message WorkerRequest {
