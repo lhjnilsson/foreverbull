@@ -4,13 +4,11 @@ from datetime import datetime, timezone
 
 import pynng
 import pytest
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2
 from foreverbull.pb.service import service_pb2
-from foreverbull_zipline import entity
 from foreverbull_zipline.execution import Execution
 
 

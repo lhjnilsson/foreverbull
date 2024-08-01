@@ -10,7 +10,6 @@ import pandas as pd
 import pynng
 import pytz
 import six
-from google.protobuf.timestamp_pb2 import Timestamp
 from zipline import TradingAlgorithm
 from zipline.data import bundles
 from zipline.data.bundles.core import BundleData
@@ -24,7 +23,6 @@ from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.paths import data_path, data_root
 
 from foreverbull.broker.storage import Storage
-from foreverbull.entity import backtest
 from foreverbull.entity.service import SocketConfig
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2

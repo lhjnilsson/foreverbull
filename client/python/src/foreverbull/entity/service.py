@@ -5,8 +5,6 @@ from typing import List
 
 import pydantic
 
-from .finance import Portfolio
-
 
 class SocketConfig(pydantic.BaseModel):
     class SocketType(str, enum.Enum):

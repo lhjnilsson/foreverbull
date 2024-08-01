@@ -160,6 +160,7 @@ class Algorithm:
                 return str(val)
             else:
                 raise TypeError("Unknown parameter type")
+
         value = _eval_param(param_type, param_value)
         function = Algorithm._functions[function_name]
         Algorithm._functions[function_name]["callable"] = partial(
@@ -175,8 +176,14 @@ class Algorithm:
         timestamp: datetime,
         symbols: list[str],
     ) -> list[entity.finance.Order]:
-        p = Portfolio(cash=portfolio.cash, value=portfolio.value,
-            positions=[entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost) for p in portfolio.positions])
+        p = Portfolio(
+            cash=portfolio.cash,
+            value=portfolio.value,
+            positions=[
+                entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost)
+                for p in portfolio.positions
+            ],
+        )
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
             for symbol in symbols:

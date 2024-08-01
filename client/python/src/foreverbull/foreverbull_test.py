@@ -91,7 +91,7 @@ def test_foreverbull_manual(execution: backtest.Execution, algo, request):
                 elif req.task == "run_execution":
                     pass
                 elif req.task == "current_period":
-                    rsp.data = period = backtest_pb2.Period(
+                    rsp.data = backtest_pb2.Period(
                         timestamp=pb_utils.to_proto_timestamp(datetime.now())
                     ).SerializeToString()
                 else:

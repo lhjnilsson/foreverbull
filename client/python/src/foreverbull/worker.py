@@ -8,7 +8,7 @@ from threading import Thread
 import pynng
 from sqlalchemy import text
 
-from foreverbull import Algorithm, entity, exceptions
+from foreverbull import Algorithm, exceptions
 from foreverbull.data import get_engine
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
