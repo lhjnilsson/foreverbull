@@ -300,9 +300,9 @@ def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_per
                 {
                     "portfolio_value": period.portfolio_value,
                     "returns": period.returns,
-                    "alpha": period.alpha,
-                    "beta": period.beta,
-                    "sharpe": period.sharpe,
+                    "alpha": period.alpha if period.HasField("alpha") else None,
+                    "beta": period.beta if period.HasField("beta") else None,
+                    "sharpe": period.sharpe if period.HasField("sharpe") else None,
                 }
             )
         result = pd.DataFrame(p).reset_index(drop=True)

@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, engine
 
 from foreverbull import entity
 from foreverbull.pb import pb_utils
+from foreverbull.pb.finance import finance_pb2  # noqa
 from foreverbull.pb.service import service_pb2
 
 
