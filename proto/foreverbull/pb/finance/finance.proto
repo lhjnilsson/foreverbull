@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package foreverbull.pb.finance;
 
-option go_package = "./pb_gen";
+option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/finance";
 
 import "google/protobuf/timestamp.proto";
 
