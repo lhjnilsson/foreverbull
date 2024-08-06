@@ -8,7 +8,7 @@ import pynng
 
 from foreverbull import Algorithm, entity, worker
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.service import service_pb2
 
 from .exceptions import ConfigurationError
@@ -129,7 +129,7 @@ class Session(threading.Thread):
             raise Exception(response.error)
         time.sleep(2)
         while True:
-            request = service_pb2.Request(task="current_period")
+            request = service_pb2.Request(task="current_portfolio")
             sock.send(request.SerializeToString())
             response = service_pb2.Response()
             response.ParseFromString(sock.recv())
@@ -137,7 +137,7 @@ class Session(threading.Thread):
                 raise Exception(response.error)
             if not response.HasField("data"):
                 break
-            period = backtest_pb2.Period()
+            period = engine_pb2.GetPortfolioResponse()
             period.ParseFromString(response.data)
             self.logger.info("current period: %s", period.timestamp.ToDatetime())
 

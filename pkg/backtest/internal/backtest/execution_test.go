@@ -44,7 +44,7 @@ func (test *ExecutionTest) TestRun() {
 	test.backtest.On("RunExecution", mock.Anything).Return(nil)
 	test.workers.On("RunExecution", mock.Anything).Return(nil)
 
-	test.backtest.On("GetMessage").Return(nil, nil)
+	test.backtest.On("GetPortfolio").Return(nil, NoActiveExecution)
 
 	test.NoError(test.execution.Run(context.Background(), &entity.Execution{}))
 }

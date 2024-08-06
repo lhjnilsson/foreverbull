@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/container"
@@ -18,6 +19,7 @@ import (
 	st "github.com/lhjnilsson/foreverbull/pkg/service/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 )
 
 type InstanceTest struct {
@@ -87,19 +89,20 @@ func (test *InstanceTest) TestInstanceInterview() {
 		payload.ID = test.testInstance.ID
 	})
 
+	algo := service_pb.Algorithm{
+		FilePath: "/file.py",
+	}
+	bytes, err := proto.Marshal(&algo)
+	test.Require().NoError(err)
+
 	type TestCase struct {
-		Payload   string
+		Payload   []byte
 		Algorithm entity.Algorithm
 		err       string
 	}
-
 	testCases := []TestCase{
 		{
-			Payload: "asdf",
-			err:     "error decoding message",
-		},
-		{
-			Payload:   `{"file_path": "/file.py"}`,
+			Payload:   bytes,
 			Algorithm: entity.Algorithm{FilePath: "/file.py"},
 		},
 	}
@@ -109,7 +112,7 @@ func (test *InstanceTest) TestInstanceInterview() {
 			commandCtx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 			responses := map[string][]byte{
-				"info": []byte(`{"task": "info", "data":` + testCase.Payload + `}`),
+				"info": testCase.Payload,
 			}
 			go test.serviceInstance.Process(commandCtx, responses)
 
@@ -135,18 +138,19 @@ func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
 		payload.IDs = []string{test.testInstance.ID}
 	})
 
+	algo := service_pb.Algorithm{
+		FilePath: "/file.py",
+	}
+	bytes, err := proto.Marshal(&algo)
+	test.Require().NoError(err)
+
 	type TestCase struct {
-		Payload string
+		Payload []byte
 		err     string
 	}
-
 	testCases := []TestCase{
 		{
-			Payload: `asdf`,
-			err:     "error decoding message",
-		},
-		{
-			Payload: `{"file_path": "/file.py"}`,
+			Payload: bytes,
 		},
 	}
 
@@ -158,7 +162,7 @@ func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
 			defer cancel()
 
 			responses := map[string][]byte{
-				"info": []byte(`{"task": "info", "data":` + testCase.Payload + `}`),
+				"info": testCase.Payload,
 			}
 			go test.serviceInstance.Process(commandCtx, responses)
 

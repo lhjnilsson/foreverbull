@@ -3,17 +3,17 @@ package worker
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/pb"
+	finance_pb "github.com/lhjnilsson/foreverbull/internal/pb/finance"
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	"github.com/lhjnilsson/foreverbull/internal/socket"
 	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/message"
-	"github.com/lhjnilsson/foreverbull/pkg/service/socket"
 	"github.com/rs/zerolog/log"
-	"go.nanomsg.org/mangos/v3"
-	"go.nanomsg.org/mangos/v3/protocol/rep"
+	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -32,160 +32,76 @@ type Pool interface {
 }
 
 func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
-	s := &socket.Socket{Type: socket.Requester, Host: "0.0.0.0", Port: 0, Dial: false}
-	sock, err := socket.GetContextSocket(ctx, s)
+	s, err := socket.NewRequester("0.0.0.0", 0, false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating requester: %w", err)
 	}
-
-	namespaceSocket := &socket.Socket{Type: socket.Replier, Host: "0.0.0.0", Port: 0, Dial: false}
-	nSock, err := rep.NewSocket()
+	namespaceSocket, err := socket.NewReplier("0.0.0.0", 0, false)
 	if err != nil {
-		log.Error().Err(err).Msg("error creating socket")
-		return nil, err
-	}
-	namespaceSocket.Port, err = socket.ListenToFreePort(nSock, namespaceSocket.Host)
-	if err != nil {
-		log.Error().Err(err).Msg("error listening to free port")
-		return nil, err
-	}
-
-	err = nSock.SetOption(mangos.OptionRecvDeadline, time.Second/2)
-	if err != nil {
-		return nil, fmt.Errorf("error setting receive deadline: %w", err)
-	}
-	err = nSock.SetOption(mangos.OptionSendDeadline, time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("error setting send deadline: %w", err)
+		return nil, fmt.Errorf("error creating replier: %w", err)
 	}
 
 	var n *namespace
 	if algo != nil {
-		n, err = CreateNamespace(algo)
-		if err != nil {
-			return nil, err
-		}
+		n = CreateNamespace(algo.Namespace)
 	}
 
-	p := &pool{Socket: s, socket: sock,
-		NamespaceSocket: namespaceSocket, namespaceSocket: nSock,
-		algo: algo, namespace: n}
+	p := &pool{Socket: s, NamespaceSocket: namespaceSocket, algo: algo, namespace: n}
 	go p.startNamespaceListener()
 	return p, nil
 }
 
 type pool struct {
-	Socket *socket.Socket       `json:"socket"`
-	socket socket.ContextSocket `json:"-"`
-
-	NamespaceSocket *socket.Socket `json:"namespace_socket"`
-	namespaceSocket mangos.Socket  `json:"-"`
+	Socket          socket.Requester `json:"socket"`
+	NamespaceSocket socket.Replier   `json:"namespace_socket"`
 
 	algo      *entity.Algorithm
 	namespace *namespace
 }
 
 func (p *pool) SetAlgorithm(algo *entity.Algorithm) error {
-	n, err := CreateNamespace(algo)
-	if err != nil {
-		return fmt.Errorf("error creating namespace: %w", err)
-	}
+	n := CreateNamespace(algo.Namespace)
 	p.algo = algo
 	p.namespace = n
 	return nil
 }
 
 func (p *pool) GetPort() int {
-	return p.Socket.Port
+	return p.Socket.GetPort()
 }
 
 func (p *pool) GetNamespacePort() int {
-	return p.NamespaceSocket.Port
+	return p.NamespaceSocket.GetPort()
 }
 
 func (p *pool) startNamespaceListener() {
-	sendResponse := func(context mangos.Context, response *message.Response) {
-		bytes, err := response.Encode()
-		if err != nil {
-			log.Error().Err(err).Msg("error encoding response")
-			return
-		}
-		err = context.Send(bytes)
-		if err != nil {
-			if err == mangos.ErrClosed {
-				log.Err(err).Msg("socket closed while sending response")
-				return
-			}
-			log.Error().Err(err).Msg("error writing response")
-			return
-		}
-		context.Close()
-	}
-
 	for {
-		context, err := p.namespaceSocket.OpenContext()
+		request := service_pb.NamespaceRequest{}
+		response := service_pb.NamespaceResponse{}
+		sock, err := p.NamespaceSocket.Recieve(&request)
 		if err != nil {
-			if err == mangos.ErrClosed {
+			if err == socket.Closed {
+				log.Info().Msg("namespace socket closed")
 				return
 			}
-			log.Error().Err(err).Msg("error getting context")
+			log.Error().Err(err).Msg("error reading from namespace socket")
 			continue
 		}
-		bytes, err := context.Recv()
-		if err != nil {
-			if err == mangos.ErrClosed {
-				return
-			}
-			log.Error().Err(err).Msg("error reading from context")
-			continue
-		}
-		request := &message.Request{}
-		err = request.Decode(bytes)
-		if err != nil {
-			log.Error().Err(err).Msg("error decoding request")
-			context.Close()
-			continue
-		}
-		response := &message.Response{Task: request.Task}
-		task := strings.Split(request.Task, ":")
-		if len(task) != 2 {
-			log.Warn().Msg("invalid task")
-			response.Error = "invalid task"
-			sendResponse(context, response)
-			continue
-		}
-		x, n := task[0], task[1]
-		switch x {
-		case "get":
-			value, err := p.namespace.Get(n)
+		switch request.Type {
+		case service_pb.NamespaceRequestType_GET:
+			value := p.namespace.Get(request.Key)
+			response.Value = value
+		case service_pb.NamespaceRequestType_SET:
+			err := p.namespace.Set(request.Key, request.Value)
 			if err != nil {
-				log.Warn().Msg("error getting namespace")
-				response.Error = err.Error()
-				sendResponse(context, response)
-				continue
+				error := err.Error()
+				response.Error = &error
 			}
-			response.Data = value
-		case "set":
-			if request.Data == nil {
-				log.Warn().Msg("no data in set request")
-				response.Error = "no data in set request"
-				sendResponse(context, response)
-				continue
-			}
-			err := p.namespace.Set(n, request.Data)
-			if err != nil {
-				log.Warn().Msg("error setting namespace")
-				response.Error = err.Error()
-				sendResponse(context, response)
-				continue
-			}
-		default:
-			log.Warn().Msg("invalid task")
-			response.Error = "invalid task"
-			sendResponse(context, response)
-			continue
 		}
-		sendResponse(context, response)
+		err = sock.Reply(&response)
+		if err != nil {
+			log.Error().Err(err).Msg("error writing to namespace socket")
+		}
 	}
 }
 func (p *pool) orderedFunctions() <-chan entity.AlgorithmFunction {
@@ -217,6 +133,18 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 	}
 	p.namespace.Flush()
 
+	portfolio_pb := finance_pb.Portfolio{
+		Cash:  portfolio.Cash.InexactFloat64(),
+		Value: portfolio.Value.InexactFloat64(),
+	}
+	for _, pos := range portfolio.Positions {
+		portfolio_pb.Positions = append(portfolio_pb.Positions, &finance_pb.Position{
+			Symbol: pos.Symbol,
+			Amount: pos.Amount.InexactFloat64(),
+			Cost:   pos.CostBasis.InexactFloat64(),
+		})
+	}
+
 	var orders []finance.Order
 	functions := p.orderedFunctions()
 	for function := range functions {
@@ -226,27 +154,27 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 			for _, symbol := range symbols {
 				s := symbol
 				g.Go(func() error {
-					context, err := p.socket.Get()
-					if err != nil {
-						return err
+					request := service_pb.WorkerRequest{
+						Task:      function.Name,
+						Timestamp: pb.TimeToProtoTimestamp(timestamp),
+						Symbols:   []string{s},
+						Portfolio: &portfolio_pb,
 					}
-					defer context.Close()
-					request := &message.Request{Task: function.Name, Data: Request{Timestamp: timestamp, Symbols: []string{s}, Portfolio: portfolio}}
-					rsp, err := request.Process(context)
+					response := service_pb.WorkerResponse{}
+					err := p.Socket.Request(&request, &response)
 					if err != nil {
 						return fmt.Errorf("error processing request: %w", err)
 					}
-					if rsp.Data == nil {
-						return nil
-					}
+
 					orderWriteMutex.Lock()
 					defer orderWriteMutex.Unlock()
-					order := []finance.Order{}
-					err = rsp.DecodeData(&order)
-					if err != nil {
-						return fmt.Errorf("error decoding response: %w", err)
+					for _, order := range response.Orders {
+						amount := decimal.NewFromInt32(order.Amount)
+						orders = append(orders, finance.Order{
+							Symbol: order.Symbol,
+							Amount: &amount,
+						})
 					}
-					orders = append(orders, order...)
 					return nil
 				})
 			}
@@ -255,22 +183,23 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				return nil, err
 			}
 		} else {
-			context, err := p.socket.Get()
-			if err != nil {
-				return nil, err
+			request := service_pb.WorkerRequest{
+				Task:      function.Name,
+				Timestamp: pb.TimeToProtoTimestamp(timestamp),
+				Symbols:   symbols,
+				Portfolio: &portfolio_pb,
 			}
-			defer context.Close()
-			request := &message.Request{Task: function.Name, Data: Request{Timestamp: timestamp, Symbols: symbols, Portfolio: portfolio}}
-			rsp, err := request.Process(context)
+			response := service_pb.WorkerResponse{}
+			err := p.Socket.Request(&request, &response)
 			if err != nil {
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
-			if rsp.Data == nil {
-				continue
-			}
-			err = rsp.DecodeData(&orders)
-			if err != nil {
-				return nil, fmt.Errorf("error decoding response: %w", err)
+			for _, order := range response.Orders {
+				amount := decimal.NewFromInt32(order.Amount)
+				orders = append(orders, finance.Order{
+					Symbol: order.Symbol,
+					Amount: &amount,
+				})
 			}
 		}
 	}
@@ -278,14 +207,14 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 }
 
 func (p *pool) Close() error {
-	if p.socket != nil {
-		err := p.socket.Close()
+	if p.Socket != nil {
+		err := p.Socket.Close()
 		if err != nil {
 			return err
 		}
 	}
-	if p.namespaceSocket != nil {
-		err := p.namespaceSocket.Close()
+	if p.NamespaceSocket != nil {
+		err := p.NamespaceSocket.Close()
 		if err != nil {
 			return err
 		}

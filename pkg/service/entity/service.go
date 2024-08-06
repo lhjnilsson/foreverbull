@@ -14,16 +14,18 @@ const (
 	ServiceStatusError     ServiceStatusType = "ERROR"
 )
 
+type FunctionParameter struct {
+	Key     string  `json:"key" mapstructure:"key"`
+	Default *string `json:"default" mapstructure:"default"`
+	Type    string  `json:"type" mapstructure:"type"`
+}
+
 type AlgorithmFunction struct {
-	Name       string `json:"name" mapstructure:"name"`
-	Parameters []struct {
-		Key     string  `json:"key" mapstructure:"key"`
-		Default *string `json:"default" mapstructure:"default"`
-		Type    string  `json:"type" mapstructure:"type"`
-	} `json:"parameters" mapstructure:"parameters"`
-	ParallelExecution bool `json:"parallel_execution" mapstructure:"parallel_execution"`
-	RunFirst          bool `json:"run_first" mapstructure:"run_first"`
-	RunLast           bool `json:"run_last" mapstructure:"run_last"`
+	Name              string              `json:"name" mapstructure:"name"`
+	Parameters        []FunctionParameter `json:"parameters" mapstructure:"parameters"`
+	ParallelExecution bool                `json:"parallel_execution" mapstructure:"parallel_execution"`
+	RunFirst          bool                `json:"run_first" mapstructure:"run_first"`
+	RunLast           bool                `json:"run_last" mapstructure:"run_last"`
 }
 
 type AlgorithmNamespace struct {

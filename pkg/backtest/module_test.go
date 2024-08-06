@@ -15,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	h "github.com/lhjnilsson/foreverbull/internal/http"
+	backtest_pb "github.com/lhjnilsson/foreverbull/internal/pb/backtest"
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -23,14 +25,13 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	serviceAPI "github.com/lhjnilsson/foreverbull/pkg/service/api"
-	serviceEntity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/mitchellh/mapstructure"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
 	repSocket "go.nanomsg.org/mangos/v3/protocol/rep"
 	reqSocket "go.nanomsg.org/mangos/v3/protocol/req"
 	"go.uber.org/fx"
+	"google.golang.org/protobuf/proto"
 )
 
 type BacktestModuleTest struct {
@@ -245,21 +246,32 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	test.NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second*5))
 
 	test.T().Log("Sending new_execution")
-	execution := new(entity.Execution)
-	algorithm := []byte(`{"file_path": "/algo.py", "functions": [{"name": "handle_data", "parallel_execution": true}]}`)
-	algo := &serviceEntity.Algorithm{}
-	err = json.Unmarshal([]byte(algorithm), algo)
-	test.NoError(err)
-	test.NoError(test_helper.SocketRequest(test.T(), socket, "new_execution", algo, execution))
+	new_execution_req := backtest_pb.NewExecutionRequest{
+		Algorithm: &service_pb.Algorithm{
+			FilePath: "/algo.py",
+			Functions: []*service_pb.Algorithm_Function{
+				{
+					Name:              "handle_data",
+					ParallelExecution: true,
+				},
+			},
+		},
+	}
+	new_execution_rsp := backtest_pb.NewExecutionResponse{}
+	test_helper.SocketRequest(test.T(), socket, "new_execution", &new_execution_req, &new_execution_rsp)
+	conf_execution_req := backtest_pb.ConfigureExecutionRequest{
+		Execution: new_execution_rsp.Id,
+		StartDate: new_execution_rsp.StartDate,
+		EndDate:   new_execution_rsp.EndDate,
+		Symbols:   new_execution_rsp.Symbols,
+	}
+	conf_execution_rsp := backtest_pb.ConfigureExecutionResponse{}
+	test_helper.SocketRequest(test.T(), socket, "configure_execution", &conf_execution_req, &conf_execution_rsp)
 
-	test.T().Log("Sending configure_execution")
-	instance := new(serviceEntity.Instance)
-	test.NoError(test_helper.SocketRequest(test.T(), socket, "configure_execution", execution, instance))
-
-	test.Require().NotNil(instance.BrokerPort)
+	test.Require().NotNil(conf_execution_rsp.BrokerPort)
 	workerSocket, err := repSocket.NewSocket()
 	test.NoError(err)
-	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", *instance.BrokerPort))
+	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", conf_execution_rsp.BrokerPort))
 	test.NoError(err)
 
 	type WorkerRequest struct {
@@ -274,26 +286,26 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 			}
 		}
 	}
-	go test_helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (interface{}, error) {
-		time.Sleep(time.Second / 4) // Simulate work
-		wr := WorkerRequest{}
-		err = mapstructure.Decode(data, &wr)
+	go test_helper.SocketReplier(test.T(), workerSocket, func(data interface{}) (proto.Message, error) {
+		time.Sleep(time.Second / 8) // Simulate work
 		return nil, nil
 	})
 
 	test.T().Log("Sending run_execution")
-	test.NoError(test_helper.SocketRequest(test.T(), socket, "run_execution", nil, nil))
+	run_execution_req := backtest_pb.RunExecutionRequest{}
+	test_helper.SocketRequest(test.T(), socket, "run_execution", &run_execution_req, nil)
 	time.Sleep(time.Second)
 	for {
-		period := &entity.Period{}
-		test.Require().NoError(test_helper.SocketRequest(test.T(), socket, "current_period", nil, period))
-		if period.Timestamp.IsZero() {
+		portfolio_rsp := backtest_pb.GetPortfolioResponse{}
+		test_helper.SocketRequest(test.T(), socket, "current_portfolio", nil, &portfolio_rsp)
+		if portfolio_rsp.Timestamp.AsTime().IsZero() {
 			break
 		}
 		time.Sleep(time.Second / 5)
 	}
 	test.T().Log("Sending stop")
-	test.NoError(test_helper.SocketRequest(test.T(), socket, "stop", nil, nil))
+
+	test_helper.SocketRequest(test.T(), socket, "stop", nil, nil)
 	time.Sleep(time.Second * 5)
 	workerSocket.Close()
 }
