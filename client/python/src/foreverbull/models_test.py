@@ -61,16 +61,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5", "int")
+        self._algo.configure("handle_data", "high", "10", "int")
 
 
 class TestParallel:
@@ -122,15 +114,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5", "int")
+        self._algo.configure("handle_data", "high", "10", "int")
 
 
 class TestWithNamespace:
@@ -193,15 +178,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5", "int")
+        self._algo.configure("handle_data", "high", "10", "int")
 
 
 class TestMultiStepWithNamespace:
@@ -287,19 +265,5 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        configuration = {
-            "filter_assets": entity.service.Instance.Parameter(
-                parameters={},
-            ),
-            "measure_assets": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            ),
-            "create_orders": entity.service.Instance.Parameter(
-                parameters={},
-            ),
-        }
-
-        self._algo.configure(configuration)
+        self._algo.configure("measure_assets", "low", "5", "int")
+        self._algo.configure("measure_assets", "high", "10", "int")
