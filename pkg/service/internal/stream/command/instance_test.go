@@ -92,7 +92,10 @@ func (test *InstanceTest) TestInstanceInterview() {
 	algo := service_pb.Algorithm{
 		FilePath: "/file.py",
 	}
-	bytes, err := proto.Marshal(&algo)
+	info := service_pb.ServiceInfoResponse{
+		Algorithm: &algo,
+	}
+	bytes, err := proto.Marshal(&info)
 	test.Require().NoError(err)
 
 	type TestCase struct {
