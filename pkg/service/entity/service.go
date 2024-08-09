@@ -28,15 +28,10 @@ type AlgorithmFunction struct {
 	RunLast           bool                `json:"run_last" mapstructure:"run_last"`
 }
 
-type AlgorithmNamespace struct {
-	Type      string `json:"type" mapstructure:"type"`
-	ValueType string `json:"value_type" mapstructure:"value_type"`
-}
-
 type Algorithm struct {
-	FilePath  string                        `json:"file_path" mapstructure:"file_path"`
-	Functions []AlgorithmFunction           `json:"functions" mapstructure:"functions"`
-	Namespace map[string]AlgorithmNamespace `json:"namespace" mapstructure:"namespace"`
+	FilePath   string              `json:"file_path" mapstructure:"file_path"`
+	Functions  []AlgorithmFunction `json:"functions" mapstructure:"functions"`
+	Namespaces []string            `json:"namespaces" mapstructure:"namespaces"`
 }
 
 func (a *Algorithm) Configure() (map[string]InstanceFunction, error) {

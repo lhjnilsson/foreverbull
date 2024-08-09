@@ -10,13 +10,9 @@ import "foreverbull/pb/finance/finance.proto";
 
 
 message ServiceInfoResponse {
-    message Socket {
-        string host = 1;
-        int32 port = 2;
-    }
     string serviceType = 1;
     string version = 2;
-    Socket socket = 3;
+    optional Algorithm algorithm = 3;
 }
 
 
@@ -33,14 +29,6 @@ message Response {
 }
 
 message Algorithm {
-    message NamespaceDefinition {
-        string dataType = 1;
-        string valueType = 2;
-    }
-    message Namespace {
-        string key = 1;
-        NamespaceDefinition definition = 2;
-    }
     message FunctionParameter {
         string key = 1;
         optional string defaultValue = 2;
@@ -56,7 +44,7 @@ message Algorithm {
     }
     string file_path = 1;
     repeated Function functions = 2;
-    repeated Namespace namespaces = 3;
+    repeated string namespaces = 3;
 }
 
 message ConfigureExecutionRequest {

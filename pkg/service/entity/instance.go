@@ -48,30 +48,48 @@ func (i *Instance) GetSocket() (socket.Requester, error) {
 	return socket.NewRequester(*i.Host, *i.Port, true)
 }
 
-func (i *Instance) GetAlgorithm() (*Algorithm, error) {
+func (i *Instance) GetInfo() (string, *Algorithm, error) {
 	request := service_pb.Request{
 		Task: "info",
 	}
 	response := service_pb.Response{}
 	socket, err := i.GetSocket()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get socket: %v", err)
+		return "", nil, fmt.Errorf("failed to get socket: %v", err)
 	}
 	if err := socket.Request(&request, &response); err != nil {
-		return nil, fmt.Errorf("failed to send request: %v", err)
+		return "", nil, fmt.Errorf("failed to send request: %v", err)
 	}
 	if response.Error != nil {
-		return nil, fmt.Errorf("error in response: %s", *response.Error)
+		return "", nil, fmt.Errorf("error in response: %s", *response.Error)
 	}
-	algorithm := service_pb.Algorithm{}
-	fmt.Println("response.Data: ", string(response.Data))
-	if err := proto.Unmarshal(response.Data, &algorithm); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
+	service_info_rsp := service_pb.ServiceInfoResponse{}
+	if err := proto.Unmarshal(response.Data, &service_info_rsp); err != nil {
+		return "", nil, fmt.Errorf("failed to unmarshal response: %v", err)
 	}
-	a := Algorithm{
-		FilePath: algorithm.FilePath,
+	var a *Algorithm
+	if service_info_rsp.Algorithm != nil {
+		algorithm := service_info_rsp.Algorithm
+		a = &Algorithm{
+			FilePath:   algorithm.FilePath,
+			Namespaces: service_info_rsp.Algorithm.Namespaces,
+		}
+		for _, function := range algorithm.Functions {
+			f := AlgorithmFunction{
+				Name: function.Name,
+			}
+			for _, parameter := range function.Parameters {
+				p := FunctionParameter{
+					Key:     parameter.Key,
+					Type:    parameter.ValueType,
+					Default: parameter.DefaultValue,
+				}
+				f.Parameters = append(f.Parameters, p)
+			}
+			a.Functions = append(a.Functions, f)
+		}
 	}
-	return &a, nil
+	return service_info_rsp.ServiceType, a, nil
 }
 
 func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {

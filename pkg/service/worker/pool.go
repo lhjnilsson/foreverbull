@@ -43,7 +43,7 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 
 	var n *namespace
 	if algo != nil {
-		n = CreateNamespace(algo.Namespace)
+		n = CreateNamespace(algo.Namespaces)
 	}
 
 	p := &pool{Socket: s, NamespaceSocket: namespaceSocket, algo: algo, namespace: n}
@@ -60,7 +60,7 @@ type pool struct {
 }
 
 func (p *pool) SetAlgorithm(algo *entity.Algorithm) error {
-	n := CreateNamespace(algo.Namespace)
+	n := CreateNamespace(algo.Namespaces)
 	p.algo = algo
 	p.namespace = n
 	return nil

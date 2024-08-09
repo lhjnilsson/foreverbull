@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -23,12 +22,12 @@ type namespace struct {
 	values map[string]*namespaceContainer
 }
 
-func CreateNamespace(namespaces map[string]entity.AlgorithmNamespace) *namespace {
+func CreateNamespace(namespaces []string) *namespace {
 	ns := &namespace{
 		values: make(map[string]*namespaceContainer),
 	}
-	for k, _ := range namespaces {
-		ns.values[k] = &namespaceContainer{
+	for _, n := range namespaces {
+		ns.values[n] = &namespaceContainer{
 			value: &structpb.Struct{},
 		}
 	}
