@@ -322,7 +322,7 @@ def start(
                 with open(ingestion_config, "r") as f:
                     ingestion_config = json.load(f)
 
-                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.parse_obj(ingestion_config))
+                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.model_validate(ingestion_config))
                 while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
                     time.sleep(0.5)
                     ingestion = broker.backtest.get_ingestion()

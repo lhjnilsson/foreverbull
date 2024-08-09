@@ -57,7 +57,6 @@ class BacktestStatus(pydantic.BaseModel):
 class Backtest(pydantic.BaseModel):
     name: str
     service: Optional[str] = None
-    calendar: str = "XNYS"
     start: datetime | None = None
     end: datetime | None = None
     benchmark: str | None = None
@@ -123,7 +122,6 @@ class ExecutionStatus(pydantic.BaseModel):
 
 class Execution(pydantic.BaseModel):
     id: str | None = None
-    calendar: str
     start: datetime
     end: datetime
     benchmark: str | None

@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/socket"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 )
 
@@ -27,7 +27,7 @@ type session struct {
 
 func NewSession(ctx context.Context,
 	storedBacktest *entity.Backtest, storedSession *entity.Session, backtestInstance *service.Instance, workerPool worker.Pool,
-	executions *repository.Execution, periods *repository.Period) (Session, *socket.Socket, error) {
+	executions *repository.Execution, periods *repository.Period) (Session, socket.Replier, error) {
 	b, err := NewZiplineEngine(ctx, backtestInstance)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating zipline engine: %w", err)
@@ -41,10 +41,9 @@ func NewSession(ctx context.Context,
 	}
 
 	if storedSession.Manual {
-		sock := socket.Socket{Type: socket.Replier, Host: "0.0.0.0", Port: 0, Listen: true, Dial: false}
-		socket, err := socket.GetContextSocket(ctx, &sock)
+		replier, err := socket.NewReplier("0.0.0.0", 0, false)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get socket: %w", err)
+			return nil, nil, fmt.Errorf("failed to create replier: %w", err)
 		}
 
 		ms := manualSession{
@@ -53,10 +52,9 @@ func NewSession(ctx context.Context,
 			backtest: b,
 			workers:  workerPool,
 
-			Socket: sock,
-			socket: socket,
+			Socket: replier,
 		}
-		return &ms, &sock, b.DownloadIngestion(ctx, environment.GetBacktestIngestionDefaultName())
+		return &ms, replier, b.DownloadIngestion(ctx, environment.GetBacktestIngestionDefaultName())
 	} else {
 		executions, err := executions.ListBySession(ctx, storedSession.ID)
 		if err != nil {

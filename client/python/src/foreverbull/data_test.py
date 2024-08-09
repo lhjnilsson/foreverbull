@@ -6,8 +6,8 @@ import pandas
 import pynng
 import pytest
 
-from foreverbull import socket
 from foreverbull.data import Asset, Assets
+from foreverbull.pb.service import service_pb2
 
 
 @pytest.fixture
@@ -21,25 +21,24 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
+            request = service_pb2.NamespaceRequest()
             try:
-                message = s.recv()
+                data = s.recv()
             except pynng.exceptions.Timeout:
                 continue
             except pynng.exceptions.Closed:
                 break
-            request = socket.Request.deserialize(message)
-            if request.task.startswith("get:"):
-                key = request.task[4:]
-                response = socket.Response(task=request.task, data=namespace.get(key))
-                s.send(response.serialize())
-            elif request.task.startswith("set:"):
-                key = request.task[4:]
-                namespace[key] = request.data
-                response = socket.Response(task=request.task)
-                s.send(response.serialize())
+            request.ParseFromString(data)
+            if request.type == service_pb2.NamespaceRequestType.GET:
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
+            elif request.type == service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace[request.key])
             else:
-                response = socket.Response(task=request.task, error="Invalid task")
-                s.send(response.serialize())
+                response = service_pb2.NamespaceResponse(error="Invalid request type")
+            s.send(response.SerializeToString())
 
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()
@@ -84,10 +83,10 @@ def test_assets_getattr_setattr(database, namespace_server):
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, [])
         assert assets is not None
-        assets.holdings = ["AAPL", "MSFT"]
+        assets.holdings = {"AAPL": True, "MSFT": False}
 
         assert "holdings" in namespace_server
-        assert namespace_server["holdings"] == ["AAPL", "MSFT"]
+        assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
 
         namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
         assert assets.pe == {"AAPL": 12.3, "MSFT": 23.4}

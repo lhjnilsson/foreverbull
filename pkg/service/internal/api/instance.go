@@ -155,13 +155,6 @@ func ConfigureInstance(c *gin.Context) {
 		return
 	}
 
-	err = repository_i.UpdateFunctions(c, uri.InstanceID, &request.Functions)
-	if err != nil {
-		log.Err(err).Msg("error updating instance")
-		c.JSON(internalHTTP.DatabaseError(err))
-		return
-	}
-
 	instance, err := repository_i.Get(c, uri.InstanceID)
 	if err != nil {
 		log.Err(err).Msg("error getting instance")
@@ -169,7 +162,7 @@ func ConfigureInstance(c *gin.Context) {
 		return
 	}
 
-	err = instance.Configure()
+	err = instance.Configure(&request.Functions)
 	if err != nil {
 		log.Err(err).Msg("error configuring instance")
 		c.JSON(http.StatusBadRequest, gin.H{"msg": err})

@@ -6,14 +6,17 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/pb"
+	backtest_pb "github.com/lhjnilsson/foreverbull/internal/pb/backtest"
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/message"
-	"github.com/lhjnilsson/foreverbull/pkg/service/socket"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"go.nanomsg.org/mangos/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 type manualSession struct {
@@ -22,8 +25,7 @@ type manualSession struct {
 	backtest engine.Engine `json:"-"`
 	workers  worker.Pool   `json:"-"`
 
-	Socket socket.Socket        `json:"-"`
-	socket socket.ContextSocket `json:"-"`
+	Socket socket.Replier `json:"-"`
 
 	execution       Execution          `json:"-"`
 	executionEntity *entity.Execution  `json:"-"`
@@ -36,19 +38,15 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 		if err != nil {
 			log.Err(err).Msg("failed to stop engine")
 		}
-		err = ms.socket.Close()
+		err = ms.Socket.Close()
 		if err != nil {
 			log.Err(err).Msg("failed to close socket")
 		}
 	}()
 	for {
-		socket, err := ms.socket.Get()
-		if err != nil {
-			return fmt.Errorf("failed to get socket: %w", err)
-		}
-		defer socket.Close()
-		var rsp message.Response
-		byteMsg, err := socket.Read()
+
+		request := service_pb.Request{}
+		msg, err := ms.Socket.Recieve(&request)
 		if err != nil {
 			if err == mangos.ErrRecvTimeout {
 				select {
@@ -61,23 +59,43 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			return err
 		}
 		activity <- true
-		req := message.Request{}
-		if err = req.Decode(byteMsg); err != nil {
-			continue
-		}
-		rsp = message.Response{Task: req.Task}
-		switch req.Task {
+		rsp := service_pb.Response{Task: request.Task}
+		switch request.Task {
 		case "new_execution":
 			if ms.execution != nil {
 				err = errors.New("execution already exists")
 				break
 			}
-			ms.executionAlgo = &service.Algorithm{}
-			err = req.DecodeData(ms.executionAlgo)
+			execution_req := backtest_pb.NewExecutionRequest{}
+			err = proto.Unmarshal(request.Data, &execution_req)
 			if err != nil {
-				err = errors.New("failed to decode data")
+				err = errors.New("failed to unmarshal data")
 				break
 			}
+			ms.executionAlgo = &service.Algorithm{
+				FilePath:  execution_req.Algorithm.FilePath,
+				Namespace: make(map[string]service.AlgorithmNamespace),
+			}
+			for _, function := range execution_req.Algorithm.Functions {
+				function_def := service.AlgorithmFunction{
+					Name:              function.Name,
+					ParallelExecution: function.ParallelExecution,
+					RunFirst:          function.RunFirst,
+					RunLast:           function.RunLast,
+				}
+				for _, parameter := range function.Parameters {
+					function_def.Parameters = append(function_def.Parameters, service.FunctionParameter{
+						Key:     parameter.Key,
+						Default: parameter.DefaultValue,
+						Type:    parameter.ValueType,
+					})
+				}
+				ms.executionAlgo.Functions = append(ms.executionAlgo.Functions, function_def)
+			}
+			for _, namespace := range execution_req.Algorithm.Namespaces {
+				ms.executionAlgo.Namespace[namespace.Key] = service.AlgorithmNamespace{}
+			}
+
 			err = ms.workers.SetAlgorithm(ms.executionAlgo)
 			if err != nil {
 				err = fmt.Errorf("failed to set algorithm: %w", err)
@@ -90,7 +108,17 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				break
 			}
 			ms.execution = NewExecution(ms.backtest, ms.workers)
-			rsp.Data = ms.executionEntity
+			execution_rsp := backtest_pb.NewExecutionResponse{
+				Id:        ms.executionEntity.ID,
+				StartDate: pb.TimeToProtoTimestamp(ms.session.backtest.Start),
+				EndDate:   pb.TimeToProtoTimestamp(ms.session.backtest.End),
+				Symbols:   ms.session.backtest.Symbols,
+			}
+			rsp.Data, err = proto.Marshal(&execution_rsp)
+			if err != nil {
+				err = fmt.Errorf("failed to marshal data: %w", err)
+				break
+			}
 		case "configure_execution":
 			functions, confErr := ms.executionAlgo.Configure()
 			if confErr != nil {
@@ -99,16 +127,39 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 			}
 			brokerPort := ms.workers.GetPort()
 			namespacePort := ms.workers.GetNamespacePort()
-			instance := service.Instance{
-				BrokerPort:    &brokerPort,
-				NamespacePort: &namespacePort,
-				DatabaseURL: func() *string {
-					url := environment.GetPostgresURL()
-					return &url
-				}(),
-				Functions: &functions,
+			config_request := backtest_pb.ConfigureExecutionRequest{}
+			err = proto.Unmarshal(request.Data, &config_request)
+			if err != nil {
+				err = errors.New("failed to unmarshal data")
+				break
 			}
-			rsp.Data = &instance
+			ms.executionEntity.Start = config_request.EndDate.AsTime()
+			ms.executionEntity.End = config_request.EndDate.AsTime()
+			ms.executionEntity.Symbols = config_request.Symbols
+			ms.executionEntity.Benchmark = config_request.Benchmark
+
+			config_response := service_pb.ConfigureExecutionRequest{
+				BrokerPort:    int32(brokerPort),
+				NamespacePort: int32(namespacePort),
+				DatabaseURL:   environment.GetPostgresURL(),
+			}
+			for name, function := range functions {
+				f_def := service_pb.ConfigureExecutionRequest_Function{
+					Name: name,
+				}
+				for key, value := range function.Parameters {
+					f_def.Parameters = append(f_def.Parameters, &service_pb.ConfigureExecutionRequest_FunctionParameter{
+						Key:   key,
+						Value: value,
+					})
+				}
+				config_response.Functions = append(config_response.Functions, &f_def)
+			}
+			rsp.Data, err = proto.Marshal(&config_response)
+			if err != nil {
+				err = fmt.Errorf("failed to marshal data: %w", err)
+				break
+			}
 		case "run_execution":
 			err = ms.execution.Configure(context.Background(), ms.executionEntity)
 			if err != nil {
@@ -120,50 +171,48 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 					log.Err(err).Msg("failed to run execution")
 					return
 				}
-				if rsp.Error == "" {
-					periods, err := ms.execution.StoreDataFrameAndGetPeriods(context.Background(), ms.executionEntity.ID)
+				periods, err := ms.execution.StoreDataFrameAndGetPeriods(context.Background(), ms.executionEntity.ID)
+				if err != nil {
+					log.Err(err).Msg("failed to get periods")
+					return
+				}
+				for _, period := range *periods {
+					err = ms.session.periods.Store(context.Background(), ms.executionEntity.ID, &period)
 					if err != nil {
-						log.Err(err).Msg("failed to get periods")
+						log.Err(err).Msg("failed to store period")
 						return
-					}
-					for _, period := range *periods {
-						err = ms.session.periods.Store(context.Background(), ms.executionEntity.ID, &period)
-						if err != nil {
-							log.Err(err).Msg("failed to store period")
-							return
-						}
 					}
 				}
 				ms.execution = nil
 				ms.executionEntity = nil
 			}()
-		case "current_period":
+		case "current_portfolio":
 			if ms.execution == nil {
 				rsp.Data = nil
 			} else {
-				rsp.Data = ms.execution.CurrentPeriod()
+				portfolio := ms.execution.CurrentPortfolio()
+				data, err := proto.Marshal(portfolio)
+				if err != nil {
+					return fmt.Errorf("failed to marshal data: %w", err)
+				}
+				rsp.Data = data
 			}
 		case "stop":
-			byteMsg, err = rsp.Encode()
+			err = msg.Reply(&rsp)
 			if err != nil {
-				return fmt.Errorf("failed to encode message: %w", err)
-			}
-			if err = socket.Write(byteMsg); err != nil {
-				return fmt.Errorf("failed to write message: %w", err)
+				return fmt.Errorf("failed to reply: %w", err)
 			}
 			return nil
 		default:
 			err = errors.New("unknown task")
 		}
 		if err != nil {
-			rsp.Error = err.Error()
+			errStr := err.Error()
+			rsp.Error = &errStr
 		}
-		byteMsg, err = rsp.Encode()
+		err = msg.Reply(&rsp)
 		if err != nil {
-			return fmt.Errorf("failed to encode message: %w", err)
-		}
-		if err = socket.Write(byteMsg); err != nil {
-			return fmt.Errorf("failed to write message: %w", err)
+			return fmt.Errorf("failed to reply: %w", err)
 		}
 	}
 }
@@ -173,5 +222,5 @@ func (ms *manualSession) Stop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return ms.socket.Close()
+	return ms.Socket.Close()
 }

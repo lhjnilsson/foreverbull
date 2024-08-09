@@ -141,29 +141,6 @@ func (test *InstanceTest) TestUpdateDatabaseURL() {
 	test.Equal("database_url", *instance.DatabaseURL)
 }
 
-func (test *InstanceTest) TestUpdateFunctions() {
-	ctx := context.Background()
-
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
-
-	functions := map[string]entity.InstanceFunction{
-		"function": {
-			Parameters: map[string]string{
-				"param": "value",
-			},
-		},
-	}
-	err = db.UpdateFunctions(ctx, "instance", &functions)
-	test.NoError(err)
-
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
-	test.Require().NotNil(instance.Functions)
-	test.Equal(functions, *instance.Functions)
-}
-
 func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 

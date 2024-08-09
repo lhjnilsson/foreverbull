@@ -36,8 +36,8 @@ class Order(pydantic.BaseModel):
     amount: Optional[int] = None
     filled: Optional[int] = None
     commission: Optional[float] = None
-    limit_price: Optional[int] = None
-    stop_price: Optional[int] = None
+    limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
     created_at: Optional[datetime] = None
     status: Optional[OrderStatus] = None
 

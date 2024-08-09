@@ -7,6 +7,7 @@
 #   all-features: false
 #   with-sources: false
 #   generate-hashes: false
+#   universal: false
 
 -e file:.
 annotated-types==0.7.0
@@ -115,6 +116,8 @@ pillow==10.3.0
     # via matplotlib
 prompt-toolkit==3.0.47
     # via ipython
+protobuf==5.27.2
+    # via foreverbull
 psycopg2-binary==2.9.9
     # via foreverbull
 ptyprocess==0.7.0
@@ -182,6 +185,8 @@ traitlets==5.14.3
     # via ipython
     # via matplotlib-inline
 typer==0.12.3
+    # via foreverbull
+types-protobuf==5.27.0.20240626
     # via foreverbull
 typing-extensions==4.12.2
     # via minio

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	backtest_pb "github.com/lhjnilsson/foreverbull/internal/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
@@ -14,7 +15,7 @@ import (
 type Execution interface {
 	Configure(context.Context, *entity.Execution) error
 	Run(context.Context, *entity.Execution) error
-	CurrentPeriod() *engine.Period
+	CurrentPortfolio() *backtest_pb.GetPortfolioResponse
 	StoreDataFrameAndGetPeriods(context.Context, string) (*[]entity.Period, error)
 	Stop(context.Context) error
 }
@@ -30,7 +31,7 @@ type execution struct {
 	engine  engine.Engine `json:"-"`
 	workers worker.Pool   `json:"-"`
 
-	currentPeriod *engine.Period `json:"-"`
+	currentPortfolio *backtest_pb.GetPortfolioResponse `json:"-"`
 }
 
 /*
@@ -50,51 +51,50 @@ func (b *execution) Run(ctx context.Context, execution *entity.Execution) error 
 		return fmt.Errorf("error running Execution engine: %w", err)
 	}
 	defer func() {
-		b.currentPeriod = nil
+		b.currentPortfolio = nil
 	}()
 	for {
-		period, err := b.engine.GetMessage()
+		portfolio, err := b.engine.GetPortfolio()
+		if err != nil && err == NoActiveExecution {
+			return nil
+		}
 		if err != nil {
 			return fmt.Errorf("error getting message: %w", err)
 		}
-		if period == nil {
-			return nil
-		}
-		b.currentPeriod = period
+		b.currentPortfolio = portfolio
 
 		positions := make([]finance.Position, 0)
-		for _, p := range period.Positions {
+		for _, p := range portfolio.Positions {
 			positions = append(positions, finance.Position{
 				Symbol:    p.Symbol,
-				Amount:    decimal.NewFromInt(p.Amount),
+				Amount:    decimal.NewFromInt32(p.Amount),
 				CostBasis: decimal.NewFromFloat(p.CostBasis),
 			})
 		}
 
-		portfolio := finance.Portfolio{
-			Cash:      decimal.NewFromFloat(period.Cash),
-			Value:     decimal.NewFromFloat(period.PortfolioValue),
+		financePortfolio := finance.Portfolio{
+			Cash:      decimal.NewFromFloat(portfolio.Cash),
+			Value:     decimal.NewFromFloat(portfolio.PortfolioValue),
 			Positions: positions,
 		}
 
-		orders, err := b.workers.Process(ctx, period.Timestamp, execution.Symbols, &portfolio)
+		orders, err := b.workers.Process(ctx, portfolio.Timestamp.AsTime(), execution.Symbols, &financePortfolio)
 		if err != nil {
 			return fmt.Errorf("error processing ohlc: %w", err)
 		}
+		backtestOrders := make([]engine.Order, 0)
 		for _, order := range *orders {
-			_, err = b.engine.Order(&engine.Order{Symbol: order.Symbol, Amount: int(order.Amount.IntPart())})
-			if err != nil {
-				return fmt.Errorf("error placing order: %w", err)
-			}
+			backtestOrders = append(backtestOrders, engine.Order{Symbol: order.Symbol, Amount: int32(order.Amount.IntPart())})
 		}
-		if err := b.engine.Continue(); err != nil {
+
+		if err := b.engine.Continue(&backtestOrders); err != nil {
 			return fmt.Errorf("error continuing backtest: %w", err)
 		}
 	}
 }
 
-func (b *execution) CurrentPeriod() *engine.Period {
-	return b.currentPeriod
+func (b *execution) CurrentPortfolio() *backtest_pb.GetPortfolioResponse {
+	return b.currentPortfolio
 }
 
 func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID string) (*[]entity.Period, error) {
@@ -105,37 +105,37 @@ func (b *execution) StoreDataFrameAndGetPeriods(ctx context.Context, excID strin
 	var periods []entity.Period
 	for _, p := range result.Periods {
 		periods = append(periods, entity.Period{
-			Timestamp:              p.Timestamp,
-			PNL:                    p.PNL,
-			Returns:                p.Returns,
-			PortfolioValue:         p.PortfolioValue,
-			LongsCount:             p.LongsCount,
-			ShortsCount:            p.ShortsCount,
-			LongValue:              p.LongValue,
-			ShortValue:             p.ShortValue,
-			StartingExposure:       p.StartingExposure,
-			EndingExposure:         p.EndingExposure,
-			LongExposure:           p.LongExposure,
-			ShortExposure:          p.ShortExposure,
-			CapitalUsed:            p.CapitalUsed,
-			GrossLeverage:          p.GrossLeverage,
-			NetLeverage:            p.NetLeverage,
-			StartingValue:          p.StartingValue,
-			EndingValue:            p.EndingValue,
-			StartingCash:           p.StartingCash,
-			EndingCash:             p.EndingCash,
-			MaxDrawdown:            p.MaxDrawdown,
-			MaxLeverage:            p.MaxLeverage,
-			ExcessReturns:          p.ExcessReturns,
-			TreasuryPeriodReturn:   p.TreasuryPeriodReturn,
-			AlgorithmPeriodReturns: p.AlgorithmPeriodReturns,
-			AlgoVolatility:         p.AlgoVolatility,
-			Sharpe:                 p.Sharpe,
-			Sortino:                p.Sortino,
-			BenchmarkPeriodReturns: p.BenchmarkPeriodReturns,
-			BenchmarkVolatility:    p.BenchmarkVolatility,
-			Alpha:                  p.Alpha,
-			Beta:                   p.Beta,
+			Timestamp:             p.Timestamp,
+			PNL:                   p.PNL,
+			Returns:               p.Returns,
+			PortfolioValue:        p.PortfolioValue,
+			LongsCount:            p.LongsCount,
+			ShortsCount:           p.ShortsCount,
+			LongValue:             p.LongValue,
+			ShortValue:            p.ShortValue,
+			StartingExposure:      p.StartingExposure,
+			EndingExposure:        p.EndingExposure,
+			LongExposure:          p.LongExposure,
+			ShortExposure:         p.ShortExposure,
+			CapitalUsed:           p.CapitalUsed,
+			GrossLeverage:         p.GrossLeverage,
+			NetLeverage:           p.NetLeverage,
+			StartingValue:         p.StartingValue,
+			EndingValue:           p.EndingValue,
+			StartingCash:          p.StartingCash,
+			EndingCash:            p.EndingCash,
+			MaxDrawdown:           p.MaxDrawdown,
+			MaxLeverage:           p.MaxLeverage,
+			ExcessReturns:         p.ExcessReturn,
+			TreasuryPeriodReturn:  p.TreasuryPeriodReturn,
+			AlgorithmPeriodReturn: p.AlgorithmPeriodReturn,
+			AlgoVolatility:        p.AlgoVolatility,
+			Sharpe:                p.Sharpe,
+			Sortino:               p.Sortino,
+			BenchmarkPeriodReturn: p.BenchmarkPeriodReturn,
+			BenchmarkVolatility:   p.BenchmarkVolatility,
+			Alpha:                 p.Alpha,
+			Beta:                  p.Beta,
 		})
 	}
 	return &periods, nil

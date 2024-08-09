@@ -5,8 +5,6 @@ from typing import List
 
 import pydantic
 
-from .finance import Portfolio
-
 
 class SocketConfig(pydantic.BaseModel):
     class SocketType(str, enum.Enum):
@@ -25,16 +23,7 @@ class SocketConfig(pydantic.BaseModel):
 
 class Service(pydantic.BaseModel):
     class Algorithm(pydantic.BaseModel):
-        class Namespace(pydantic.BaseModel):
-            type: str
-            value_type: str
-
         class Function(pydantic.BaseModel):
-            class ReturnType(str, enum.Enum):
-                NAMESPACE_VALUE = "NAMESPACE_VALUE"
-                ORDER = "ORDER"
-                LIST_OF_ORDERS = "LIST_OF_ORDERS"
-
             class Parameter(pydantic.BaseModel):
                 key: str
                 default: str | None = None
@@ -48,7 +37,7 @@ class Service(pydantic.BaseModel):
 
         file_path: str
         functions: list[Function]
-        namespace: dict[str, Namespace] = {}
+        namespaces: list[str]
 
     class Status(pydantic.BaseModel):
         class Type(str, enum.Enum):
@@ -91,9 +80,3 @@ class Instance(pydantic.BaseModel):
     functions: dict[str, Parameter] | None = None
 
     statuses: List[Status] | None = []
-
-
-class Request(pydantic.BaseModel):
-    timestamp: datetime
-    symbols: list[str]
-    portfolio: Portfolio

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/socket"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -106,7 +105,6 @@ func (test *CommandSessionTest) TestSessionRunCommand() {
 	m.On("MustGet", stream.DBDep).Return(test.db)
 
 	session := new(backtest.MockSession)
-	session.On("GetSocket").Return(&socket.Socket{})
 	session.On("Run", mock.Anything, mock.Anything).Return(nil)
 	session.On("Stop", mock.Anything).Return(nil)
 

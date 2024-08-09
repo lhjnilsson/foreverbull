@@ -108,7 +108,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 		return nil, fmt.Errorf("error creating session: %w", err)
 	}
 	if socket != nil {
-		err = sessionStorage.UpdatePort(ctx, storedSession.ID, socket.Port)
+		err = sessionStorage.UpdatePort(ctx, storedSession.ID, socket.GetPort())
 		if err != nil {
 			return nil, err
 		}

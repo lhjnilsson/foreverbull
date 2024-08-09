@@ -19,7 +19,7 @@ class Backtest:
         response = self.client.get_object("backtest-results", f"{backtest}")
         try:
             df = pd.read_pickle(io.BytesIO(response.read()))
-            if type(df) != pd.DataFrame:
+            if type(df) is not pd.DataFrame:
                 raise ValueError("Data is not a DataFrame")
             return df
         except Exception as e:
