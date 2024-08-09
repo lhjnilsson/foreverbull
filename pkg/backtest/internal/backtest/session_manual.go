@@ -73,8 +73,8 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				break
 			}
 			ms.executionAlgo = &service.Algorithm{
-				FilePath:  execution_req.Algorithm.FilePath,
-				Namespace: make(map[string]service.AlgorithmNamespace),
+				FilePath:   execution_req.Algorithm.FilePath,
+				Namespaces: execution_req.Algorithm.Namespaces,
 			}
 			for _, function := range execution_req.Algorithm.Functions {
 				function_def := service.AlgorithmFunction{
@@ -91,9 +91,6 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 					})
 				}
 				ms.executionAlgo.Functions = append(ms.executionAlgo.Functions, function_def)
-			}
-			for _, namespace := range execution_req.Algorithm.Namespaces {
-				ms.executionAlgo.Namespace[namespace.Key] = service.AlgorithmNamespace{}
 			}
 
 			err = ms.workers.SetAlgorithm(ms.executionAlgo)
