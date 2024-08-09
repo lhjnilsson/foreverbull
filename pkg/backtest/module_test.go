@@ -129,7 +129,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 func (test *BacktestModuleTest) TearDownSuite() {
 	test_helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
-	test.NoError(test.app.Stop(context.Background()))
+	test.NoError(test.app.Stop(context.Background()), "failed to stop app")
 }
 
 func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
@@ -181,8 +181,11 @@ func (test *BacktestModuleTest) TestRunBacktestAutomatic() {
 				if err != nil {
 					return false, fmt.Errorf("failed to decode response: %s", err.Error())
 				}
-				if data.Statuses[0].Status == "COMPLETED" {
+				if data.Statuses[0].Status == string(entity.SessionStatusCompleted) {
 					return true, nil
+				}
+				if data.Statuses[0].Status == string(entity.SessionStatusFailed) {
+					return false, fmt.Errorf("backtest failed")
 				}
 				return false, nil
 			}
@@ -265,14 +268,14 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 		EndDate:   new_execution_rsp.EndDate,
 		Symbols:   new_execution_rsp.Symbols,
 	}
-	conf_execution_rsp := backtest_pb.ConfigureExecutionResponse{}
+	conf_execution_rsp := service_pb.ConfigureExecutionRequest{}
 	test_helper.SocketRequest(test.T(), socket, "configure_execution", &conf_execution_req, &conf_execution_rsp)
 
-	test.Require().NotNil(conf_execution_rsp.BrokerPort)
+	test.Require().NotZero(conf_execution_rsp.BrokerPort, "Broker port is zero")
 	workerSocket, err := repSocket.NewSocket()
 	test.NoError(err)
 	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", conf_execution_rsp.BrokerPort))
-	test.NoError(err)
+	test.Require().NoError(err, fmt.Sprintf("Failed to connect to broker port %d", conf_execution_rsp.BrokerPort))
 
 	type WorkerRequest struct {
 		Execution string
@@ -298,10 +301,10 @@ func (test *BacktestModuleTest) TestRunBacktestManual() {
 	for {
 		portfolio_rsp := backtest_pb.GetPortfolioResponse{}
 		test_helper.SocketRequest(test.T(), socket, "current_portfolio", nil, &portfolio_rsp)
-		if portfolio_rsp.Timestamp.AsTime().IsZero() {
+		if portfolio_rsp.Timestamp == nil {
 			break
 		}
-		time.Sleep(time.Second / 5)
+		time.Sleep(time.Second / 4)
 	}
 	test.T().Log("Sending stop")
 

@@ -93,7 +93,7 @@ func (i *Instance) GetInfo() (string, *Algorithm, error) {
 }
 
 func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
-	socket, err := i.GetSocket()
+	s, err := i.GetSocket()
 	if err != nil {
 		return fmt.Errorf("failed to get socket: %v", err)
 	}
@@ -108,8 +108,9 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		}
 		for k, v := range value.Parameters {
 			param := service_pb.ConfigureExecutionRequest_FunctionParameter{
-				Key:   k,
-				Value: v,
+				Key:       k,
+				Value:     v,
+				ValueType: "int", // TODO: Dont hardcode
 			}
 			f.Parameters = append(f.Parameters, &param)
 		}
@@ -124,7 +125,7 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		Data: data,
 	}
 	response := service_pb.Response{}
-	if err := socket.Request(&request, &response); err != nil {
+	if err := s.Request(&request, &response, socket.WithReadTimeout(time.Second), socket.WithSendTimeout(time.Second)); err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
 	if response.Error != nil {
@@ -135,7 +136,7 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		Task: "run_execution",
 	}
 	response = service_pb.Response{}
-	if err := socket.Request(&request, &response); err != nil {
+	if err := s.Request(&request, &response, socket.WithReadTimeout(time.Second), socket.WithSendTimeout(time.Second)); err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
 	if response.Error != nil {

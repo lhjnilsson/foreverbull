@@ -95,6 +95,7 @@ class Worker:
                 self.logger.exception(repr(e))
                 response = service_pb2.Response(task=request.task, error=repr(e))
                 responder.send(response.SerializeToString())
+                break
             self.logger.info(f"Request processed: {request.task}")
         responder.close()
         state.close()

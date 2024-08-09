@@ -65,6 +65,33 @@ def test_foreverbull_over_socket(algo, request):
         "non_parallel_algo_file_with_parameters",
     ],
 )
+def test_bad_configuration(algo, request):
+    file_name, configure_response, process_symbols = request.getfixturevalue(algo)
+
+    with Foreverbull(file_name):
+        time.sleep(1.0)  # wait for the server to start
+        requester = pynng.Req0(dial="tcp://127.0.0.1:5555", block_on_dial=True)
+        requester.send_timeout = 1000
+        requester.recv_timeout = 1000
+
+        configure_response.brokerPort = 0
+        req = service_pb2.Request(task="configure_execution", data=configure_response.SerializeToString())
+        requester.send(req.SerializeToString())
+        rsp = service_pb2.Response()
+        rsp.ParseFromString(requester.recv())
+        assert rsp.task == "configure_execution"
+        assert rsp.HasField("error") is True
+
+
+@pytest.mark.parametrize(
+    "algo",
+    [
+        "parallel_algo_file",
+        "non_parallel_algo_file",
+        "parallel_algo_file_with_parameters",
+        "non_parallel_algo_file_with_parameters",
+    ],
+)
 def test_foreverbull_manual(execution: backtest.Execution, algo, request):
     file_name, configure_response, process_symbols = request.getfixturevalue(algo)
 

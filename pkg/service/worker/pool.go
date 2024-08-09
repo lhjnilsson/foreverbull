@@ -209,13 +209,13 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 func (p *pool) Close() error {
 	if p.Socket != nil {
 		err := p.Socket.Close()
-		if err != nil {
+		if err != nil && err != socket.Closed {
 			return err
 		}
 	}
 	if p.NamespaceSocket != nil {
 		err := p.NamespaceSocket.Close()
-		if err != nil {
+		if err != nil && err != socket.Closed {
 			return err
 		}
 	}

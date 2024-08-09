@@ -39,7 +39,7 @@ func SocketReplier(t *testing.T, socket mangos.Socket, replier func(interface{})
 	for {
 		msg, err := socket.Recv()
 		if err != nil && err.Error() == "object closed" {
-			t.Fatal("socket closed")
+			break
 		}
 		require.Nil(t, err, "failed to receive message")
 		req := service_pb.Request{}

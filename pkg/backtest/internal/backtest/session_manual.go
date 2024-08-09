@@ -130,7 +130,7 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				err = errors.New("failed to unmarshal data")
 				break
 			}
-			ms.executionEntity.Start = config_request.EndDate.AsTime()
+			ms.executionEntity.Start = config_request.StartDate.AsTime()
 			ms.executionEntity.End = config_request.EndDate.AsTime()
 			ms.executionEntity.Symbols = config_request.Symbols
 			ms.executionEntity.Benchmark = config_request.Benchmark
@@ -217,7 +217,13 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 func (ms *manualSession) Stop(ctx context.Context) error {
 	err := ms.workers.Close()
 	if err != nil {
+		log.Err(err).Msg("failed to close workers")
 		return err
 	}
-	return ms.Socket.Close()
+	err = ms.Socket.Close()
+	if err != nil && err != socket.Closed {
+		log.Err(err).Msg("failed to close socket")
+		return err
+	}
+	return nil
 }

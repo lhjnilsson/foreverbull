@@ -28,7 +28,9 @@ func CreateNamespace(namespaces []string) *namespace {
 	}
 	for _, n := range namespaces {
 		ns.values[n] = &namespaceContainer{
-			value: &structpb.Struct{},
+			value: &structpb.Struct{
+				Fields: make(map[string]*structpb.Value),
+			},
 		}
 	}
 	return ns
@@ -59,6 +61,8 @@ func (n *namespace) Flush() {
 	for _, v := range n.values {
 		v.sync.Lock()
 		defer v.sync.Unlock()
-		v.value = &structpb.Struct{}
+		v.value = &structpb.Struct{
+			Fields: make(map[string]*structpb.Value),
+		}
 	}
 }

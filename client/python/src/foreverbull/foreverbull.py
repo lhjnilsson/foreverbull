@@ -175,48 +175,52 @@ class Session(threading.Thread):
                     continue
                 self.logger.info("received request: %s", req)
                 response = service_pb2.Response(task=req.task)
-                match req.task:
-                    case "info":
-                        algorithm = service_pb2.Algorithm(
-                            file_path=self._algorithm.file_path,
-                            functions=[
-                                service_pb2.Algorithm.Function(
-                                    name=function.name,
-                                    parameters=[
-                                        service_pb2.Algorithm.FunctionParameter(
-                                            key=param.key,
-                                            defaultValue=param.default,
-                                            valueType=param.type,
-                                        )
-                                        for param in function.parameters
-                                    ],
-                                    parallelExecution=function.parallel_execution,
-                                    runFirst=function.run_first,
-                                    runLast=function.run_last,
-                                )
-                                for function in self._algorithm.functions
-                            ],
-                            namespaces=self._algorithm.namespaces,
-                        )
-                        service_info = service_pb2.ServiceInfoResponse(
-                            serviceType="worker",
-                            version="0.0.0",
-                            algorithm=algorithm,
-                        )
-                        response.data = service_info.SerializeToString()
-                        ctx.send(response.SerializeToString())
-                    case "configure_execution":
-                        self._configure_execution(req.data)
-                        ctx.send(response.SerializeToString())
-                    case "run_execution":
-                        self._run_execution()
-                        ctx.send(response.SerializeToString())
-                    case "stop":
-                        ctx.send(response.SerializeToString())
-                        break
-                    case _:
-                        response.error = "Unknown task"
-                        ctx.send(response.SerializeToString())
+                try:
+                    match req.task:
+                        case "info":
+                            algorithm = service_pb2.Algorithm(
+                                file_path=self._algorithm.file_path,
+                                functions=[
+                                    service_pb2.Algorithm.Function(
+                                        name=function.name,
+                                        parameters=[
+                                            service_pb2.Algorithm.FunctionParameter(
+                                                key=param.key,
+                                                defaultValue=param.default,
+                                                valueType=param.type,
+                                            )
+                                            for param in function.parameters
+                                        ],
+                                        parallelExecution=function.parallel_execution,
+                                        runFirst=function.run_first,
+                                        runLast=function.run_last,
+                                    )
+                                    for function in self._algorithm.functions
+                                ],
+                                namespaces=self._algorithm.namespaces,
+                            )
+                            service_info = service_pb2.ServiceInfoResponse(
+                                serviceType="worker",
+                                version="0.0.0",
+                                algorithm=algorithm,
+                            )
+                            response.data = service_info.SerializeToString()
+                            ctx.send(response.SerializeToString())
+                        case "configure_execution":
+                            self._configure_execution(req.data)
+                            ctx.send(response.SerializeToString())
+                        case "run_execution":
+                            self._run_execution()
+                            ctx.send(response.SerializeToString())
+                        case "stop":
+                            ctx.send(response.SerializeToString())
+                            break
+                        case _:
+                            response.error = "Unknown task"
+                            ctx.send(response.SerializeToString())
+                except Exception as e:
+                    response.error = repr(e)
+                    ctx.send(response.SerializeToString())
             except pynng.exceptions.Timeout:
                 pass
             except Exception as e:

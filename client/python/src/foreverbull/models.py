@@ -124,7 +124,7 @@ class Algorithm:
             elif type == "str":
                 return str(val)
             else:
-                raise TypeError("Unknown parameter type")
+                raise TypeError(f"Unknown parameter type: {type}")
 
         value = _eval_param(param_type, param_value)
         function = Algorithm._functions[function_name]

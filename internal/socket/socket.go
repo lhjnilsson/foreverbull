@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/rs/zerolog/log"
@@ -30,6 +31,27 @@ func sockError(err error) error {
 	}
 }
 
+type OptionSetter interface {
+	SetOption(name string, value interface{}) error
+}
+
+func WithSendTimeout(t time.Duration) func(OptionSetter) error {
+	return func(o OptionSetter) error {
+		return o.SetOption(mangos.OptionSendDeadline, t)
+	}
+}
+
+func WithReadTimeout(t time.Duration) func(OptionSetter) error {
+	return func(o OptionSetter) error {
+		return o.SetOption(mangos.OptionRecvDeadline, t)
+	}
+}
+
+type Options struct {
+	SendTimeout time.Duration
+	ReadTimeout time.Duration
+}
+
 type Base interface {
 	GetHost() string
 	GetPort() int
@@ -38,10 +60,10 @@ type Base interface {
 
 type Requester interface {
 	Base
-	Request(msg proto.Message, reply proto.Message) error
+	Request(msg proto.Message, reply proto.Message, opts ...func(OptionSetter) error) error
 }
 
-func NewRequester(host string, port int, dial bool) (Requester, error) {
+func NewRequester(host string, port int, dial bool, options ...func(OptionSetter) error) (Requester, error) {
 	req, err := req.NewSocket()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create requester socket: %v", err)
@@ -64,6 +86,11 @@ func NewRequester(host string, port int, dial bool) (Requester, error) {
 			}
 		}
 	}
+	for _, opt := range options {
+		if err := opt(req); err != nil {
+			return nil, fmt.Errorf("failed to set option: %v", err)
+		}
+	}
 	return &requester{socket: req, host: host, port: port}, nil
 }
 
@@ -82,10 +109,13 @@ func (r *requester) GetPort() int {
 }
 
 func (r *requester) Close() error {
-	return r.socket.Close()
+	if err := r.socket.Close(); err != nil {
+		return sockError(err)
+	}
+	return nil
 }
 
-func (r *requester) Request(msg proto.Message, reply proto.Message) error {
+func (r *requester) Request(msg proto.Message, reply proto.Message, options ...func(OptionSetter) error) error {
 	bytes, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %v", err)
@@ -95,6 +125,11 @@ func (r *requester) Request(msg proto.Message, reply proto.Message) error {
 		return sockError(err)
 	}
 	defer ctx.Close()
+	for _, opt := range options {
+		if err := opt(ctx); err != nil {
+			return fmt.Errorf("failed to set option: %v", err)
+		}
+	}
 	if err := ctx.Send(bytes); err != nil {
 		return sockError(err)
 	}
@@ -112,14 +147,14 @@ func (r *requester) Request(msg proto.Message, reply proto.Message) error {
 
 type Replier interface {
 	Base
-	Recieve(proto.Message) (ReplierSocket, error)
+	Recieve(proto.Message, ...func(OptionSetter) error) (ReplierSocket, error)
 }
 
 type ReplierSocket interface {
-	Reply(proto.Message) error
+	Reply(proto.Message, ...func(OptionSetter) error) error
 }
 
-func NewReplier(host string, port int, dial bool) (Replier, error) {
+func NewReplier(host string, port int, dial bool, options ...func(OptionSetter) error) (Replier, error) {
 	rep, err := rep.NewSocket()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create replier socket: %v", err)
@@ -142,6 +177,11 @@ func NewReplier(host string, port int, dial bool) (Replier, error) {
 			}
 		}
 	}
+	for _, opt := range options {
+		if err := opt(rep); err != nil {
+			return nil, fmt.Errorf("failed to set option: %v", err)
+		}
+	}
 	return &replier{socket: rep, host: host, port: port}, nil
 }
 
@@ -160,15 +200,23 @@ func (r *replier) GetPort() int {
 }
 
 func (r *replier) Close() error {
-	return r.socket.Close()
+	if err := r.socket.Close(); err != nil {
+		return sockError(err)
+	}
+	return nil
 }
 
 type replierSocket struct {
 	socket mangos.Context
 }
 
-func (r *replierSocket) Reply(msg proto.Message) error {
+func (r *replierSocket) Reply(msg proto.Message, options ...func(OptionSetter) error) error {
 	defer r.socket.Close()
+	for _, opt := range options {
+		if err := opt(r.socket); err != nil {
+			return fmt.Errorf("failed to set option: %v", err)
+		}
+	}
 	bytes, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %v", err)
@@ -179,12 +227,16 @@ func (r *replierSocket) Reply(msg proto.Message) error {
 	return nil
 }
 
-func (r *replier) Recieve(msg proto.Message) (ReplierSocket, error) {
+func (r *replier) Recieve(msg proto.Message, options ...func(OptionSetter) error) (ReplierSocket, error) {
 	ctx, err := r.socket.OpenContext()
 	if err != nil {
 		return nil, sockError(err)
 	}
-
+	for _, opt := range options {
+		if err := opt(ctx); err != nil {
+			return nil, fmt.Errorf("failed to set option: %v", err)
+		}
+	}
 	bytes, err := ctx.Recv()
 	if err != nil {
 		return nil, sockError(err)
@@ -198,10 +250,10 @@ func (r *replier) Recieve(msg proto.Message) (ReplierSocket, error) {
 
 type Subscriber interface {
 	Base
-	Recieve(proto.Message) error
+	Recieve(proto.Message, ...func(OptionSetter) error) error
 }
 
-func NewSubscriber(host string, port int) (Subscriber, error) {
+func NewSubscriber(host string, port int, options ...func(OptionSetter) error) (Subscriber, error) {
 	sub, err := sub.NewSocket()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscriber socket: %v", err)
@@ -213,6 +265,11 @@ func NewSubscriber(host string, port int) (Subscriber, error) {
 	err = sub.SetOption(mangos.OptionSubscribe, []byte(""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe: %v", err)
+	}
+	for _, opt := range options {
+		if err := opt(sub); err != nil {
+			return nil, fmt.Errorf("failed to set option: %v", err)
+		}
 	}
 	return &subscriber{socket: sub}, nil
 }
@@ -232,10 +289,13 @@ func (s *subscriber) GetPort() int {
 }
 
 func (s *subscriber) Close() error {
-	return s.socket.Close()
+	if err := s.socket.Close(); err != nil {
+		return sockError(err)
+	}
+	return nil
 }
 
-func (s *subscriber) Recieve(msg proto.Message) error {
+func (s *subscriber) Recieve(msg proto.Message, options ...func(OptionSetter) error) error {
 	bytes, err := s.socket.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive message: %v", err)

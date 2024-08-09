@@ -91,8 +91,7 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, ingestion_name string) 
 }
 
 func (z *Zipline) ConfigureExecution(ctx context.Context, execution *entity.Execution) error {
-	configure_req := backtest_pb.ConfigureExecutionRequest{
-		Execution: execution.ID,
+	configure_req := backtest_pb.ConfigureRequest{
 		StartDate: pb.TimeToProtoTimestamp(execution.Start),
 		EndDate:   pb.TimeToProtoTimestamp(execution.End),
 		Symbols:   execution.Symbols,
@@ -112,7 +111,7 @@ func (z *Zipline) ConfigureExecution(ctx context.Context, execution *entity.Exec
 		return fmt.Errorf("error requesting configure: %w", err)
 	}
 	if response.Error != nil {
-		return fmt.Errorf("error configuring: %v", response.Error)
+		return fmt.Errorf("error configuring: %v", *response.Error)
 	}
 	configure_rsp := backtest_pb.ConfigureResponse{}
 	err = proto.Unmarshal(response.Data, &configure_rsp)
