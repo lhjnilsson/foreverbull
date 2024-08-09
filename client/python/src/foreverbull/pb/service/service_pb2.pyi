@@ -43,40 +43,32 @@ global___NamespaceRequestType = NamespaceRequestType
 class ServiceInfoResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
-    class Socket(google.protobuf.message.Message):
-        DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-        HOST_FIELD_NUMBER: builtins.int
-        PORT_FIELD_NUMBER: builtins.int
-        host: builtins.str
-        port: builtins.int
-        def __init__(
-            self,
-            *,
-            host: builtins.str = ...,
-            port: builtins.int = ...,
-        ) -> None: ...
-        def ClearField(self, field_name: typing.Literal["host", b"host", "port", b"port"]) -> None: ...
-
     SERVICETYPE_FIELD_NUMBER: builtins.int
     VERSION_FIELD_NUMBER: builtins.int
-    SOCKET_FIELD_NUMBER: builtins.int
+    ALGORITHM_FIELD_NUMBER: builtins.int
     serviceType: builtins.str
     version: builtins.str
     @property
-    def socket(self) -> global___ServiceInfoResponse.Socket: ...
+    def algorithm(self) -> global___Algorithm: ...
     def __init__(
         self,
         *,
         serviceType: builtins.str = ...,
         version: builtins.str = ...,
-        socket: global___ServiceInfoResponse.Socket | None = ...,
+        algorithm: global___Algorithm | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["socket", b"socket"]) -> builtins.bool: ...
+    def HasField(
+        self, field_name: typing.Literal["_algorithm", b"_algorithm", "algorithm", b"algorithm"]
+    ) -> builtins.bool: ...
     def ClearField(
-        self, field_name: typing.Literal["serviceType", b"serviceType", "socket", b"socket", "version", b"version"]
+        self,
+        field_name: typing.Literal[
+            "_algorithm", b"_algorithm", "algorithm", b"algorithm", "serviceType", b"serviceType", "version", b"version"
+        ],
     ) -> None: ...
+    def WhichOneof(
+        self, oneof_group: typing.Literal["_algorithm", b"_algorithm"]
+    ) -> typing.Literal["algorithm"] | None: ...
 
 global___ServiceInfoResponse = ServiceInfoResponse
 
@@ -136,42 +128,6 @@ global___Response = Response
 @typing.final
 class Algorithm(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    @typing.final
-    class NamespaceDefinition(google.protobuf.message.Message):
-        DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-        DATATYPE_FIELD_NUMBER: builtins.int
-        VALUETYPE_FIELD_NUMBER: builtins.int
-        dataType: builtins.str
-        valueType: builtins.str
-        def __init__(
-            self,
-            *,
-            dataType: builtins.str = ...,
-            valueType: builtins.str = ...,
-        ) -> None: ...
-        def ClearField(
-            self, field_name: typing.Literal["dataType", b"dataType", "valueType", b"valueType"]
-        ) -> None: ...
-
-    @typing.final
-    class Namespace(google.protobuf.message.Message):
-        DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-        KEY_FIELD_NUMBER: builtins.int
-        DEFINITION_FIELD_NUMBER: builtins.int
-        key: builtins.str
-        @property
-        def definition(self) -> global___Algorithm.NamespaceDefinition: ...
-        def __init__(
-            self,
-            *,
-            key: builtins.str = ...,
-            definition: global___Algorithm.NamespaceDefinition | None = ...,
-        ) -> None: ...
-        def HasField(self, field_name: typing.Literal["definition", b"definition"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["definition", b"definition", "key", b"key"]) -> None: ...
 
     @typing.final
     class FunctionParameter(google.protobuf.message.Message):
@@ -283,15 +239,13 @@ class Algorithm(google.protobuf.message.Message):
         self,
     ) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Algorithm.Function]: ...
     @property
-    def namespaces(
-        self,
-    ) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Algorithm.Namespace]: ...
+    def namespaces(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     def __init__(
         self,
         *,
         file_path: builtins.str = ...,
         functions: collections.abc.Iterable[global___Algorithm.Function] | None = ...,
-        namespaces: collections.abc.Iterable[global___Algorithm.Namespace] | None = ...,
+        namespaces: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def ClearField(
         self,

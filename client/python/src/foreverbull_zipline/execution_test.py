@@ -7,7 +7,7 @@ import pytest
 
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.backtest import engine_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.execution import Execution
 
@@ -57,8 +57,6 @@ def test_info(execution_socket: pynng.Rep0):
     service_info = service_pb2.ServiceInfoResponse()
     service_info.ParseFromString(rsp.data)
     assert service_info.serviceType == "backtest"
-    assert service_info.socket.host
-    assert service_info.socket.port
 
 
 def test_ingest(

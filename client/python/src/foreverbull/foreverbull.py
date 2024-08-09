@@ -62,13 +62,28 @@ class Session(threading.Thread):
 
     def new_backtest_execution(self) -> entity.backtest.Execution:
         sock = self._get_broker_session_socket()
-        functions = [service_pb2.Algorithm.Function() for function in self._algorithm.functions]
-        namespaces = [service_pb2.Algorithm.Namespace() for ns in self._algorithm.namespace]
         algorithm = service_pb2.Algorithm(
             file_path=self._algorithm.file_path,
-            functions=functions,
-            namespaces=namespaces,
+            namespaces=self._algorithm.namespaces,
         )
+        for function in self._algorithm.functions:
+            parameters = [
+                service_pb2.Algorithm.FunctionParameter(
+                    key=p.key,
+                    defaultValue=p.default,
+                    valueType=p.type,
+                )
+                for p in function.parameters
+            ]
+            algorithm.functions.append(
+                service_pb2.Algorithm.Function(
+                    name=function.name,
+                    parameters=parameters,
+                    runFirst=function.run_first,
+                    runLast=function.run_last,
+                )
+            )
+
         exc_request = backtest_pb2.NewExecutionRequest(algorithm=algorithm)
         request = service_pb2.Request(task="new_execution", data=exc_request.SerializeToString())
         sock.send(request.SerializeToString())
@@ -181,18 +196,14 @@ class Session(threading.Thread):
                                 )
                                 for function in self._algorithm.functions
                             ],
-                            namespaces=[
-                                service_pb2.Algorithm.Namespace(
-                                    key=key,
-                                    definition=service_pb2.Algorithm.NamespaceDefinition(
-                                        dataType=ns.type,
-                                        valueType=ns.value_type,
-                                    ),
-                                )
-                                for key, ns in self._algorithm.namespace.items()
-                            ],
+                            namespaces=self._algorithm.namespaces,
                         )
-                        response.data = algorithm.SerializeToString()
+                        service_info = service_pb2.ServiceInfoResponse(
+                            serviceType="worker",
+                            version="0.0.0",
+                            algorithm=algorithm,
+                        )
+                        response.data = service_info.SerializeToString()
                         ctx.send(response.SerializeToString())
                     case "configure_execution":
                         self._configure_execution(req.data)

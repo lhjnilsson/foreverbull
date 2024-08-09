@@ -9,7 +9,7 @@ import pytest
 from foreverbull import Foreverbull
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.service import service_pb2
 
 
@@ -91,7 +91,7 @@ def test_foreverbull_manual(execution: backtest.Execution, algo, request):
                 elif req.task == "run_execution":
                     pass
                 elif req.task == "current_period":
-                    rsp.data = backtest_pb2.Period(
+                    rsp.data = engine_pb2.Period(
                         timestamp=pb_utils.to_proto_timestamp(datetime.now())
                     ).SerializeToString()
                 else:

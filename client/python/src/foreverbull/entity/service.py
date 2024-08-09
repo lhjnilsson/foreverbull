@@ -23,10 +23,6 @@ class SocketConfig(pydantic.BaseModel):
 
 class Service(pydantic.BaseModel):
     class Algorithm(pydantic.BaseModel):
-        class Namespace(pydantic.BaseModel):
-            type: str
-            value_type: str
-
         class Function(pydantic.BaseModel):
             class Parameter(pydantic.BaseModel):
                 key: str
@@ -41,7 +37,7 @@ class Service(pydantic.BaseModel):
 
         file_path: str
         functions: list[Function]
-        namespace: dict[str, Namespace] = {}
+        namespaces: list[str]
 
     class Status(pydantic.BaseModel):
         class Type(str, enum.Enum):

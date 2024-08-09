@@ -25,7 +25,7 @@ from zipline.utils.paths import data_path, data_root
 from foreverbull.broker.storage import Storage
 from foreverbull.entity.service import SocketConfig
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.backtest import engine_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 
@@ -259,10 +259,6 @@ class Execution(threading.Thread):
                         rsp = service_pb2.ServiceInfoResponse(
                             serviceType=_type,
                             version=version,
-                            socket=service_pb2.ServiceInfoResponse.Socket(
-                                host=socket.host,
-                                port=socket.port,
-                            ),
                         )
                         response = service_pb2.Response(task=request.task, data=rsp.SerializeToString())
                         context_socket.send(response.SerializeToString())

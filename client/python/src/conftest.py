@@ -488,7 +488,7 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order, Namespace
+from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order
 
 
 def measure_assets(asset: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> None:
@@ -506,7 +506,7 @@ Algorithm(
         Function(callable=create_orders, run_last=True),
         Function(callable=filter_assets, run_first=True),
     ],
-    namespace={"qualified_symbols": list[str], "asset_metrics": dict[str, float]}
+    namespaces=["qualified_symbols", "asset_metrics"]
 )
 """
         )

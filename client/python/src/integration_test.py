@@ -15,7 +15,7 @@ from zipline.utils.run_algo import BenchmarkSpec, _run
 
 from foreverbull import Foreverbull, entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.backtest import engine_pb2
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
