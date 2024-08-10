@@ -54,8 +54,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5", "int")
-        self._algo.configure("handle_data", "high", "10", "int")
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestParallel:
@@ -108,8 +108,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5", "int")
-        self._algo.configure("handle_data", "high", "10", "int")
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestWithNamespace:
@@ -163,8 +163,8 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5", "int")
-        self._algo.configure("handle_data", "high", "10", "int")
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestMultiStepWithNamespace:
@@ -241,5 +241,5 @@ Algorithm(
         )
 
     def test_configure(self, algo):
-        self._algo.configure("measure_assets", "low", "5", "int")
-        self._algo.configure("measure_assets", "high", "10", "int")
+        self._algo.configure("measure_assets", "low", "5")
+        self._algo.configure("measure_assets", "high", "10")

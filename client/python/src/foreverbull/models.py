@@ -113,7 +113,7 @@ class Algorithm:
             raise Exception("No algo found in {}".format(file_path))
         return Algorithm._algo
 
-    def configure(self, function_name: str, param_key: str, param_value: str, param_type: str) -> None:
+    def configure(self, function_name: str, param_key: str, param_value: str) -> None:
         def _eval_param(type: str, val: str):
             if type == "int":
                 return int(val)
@@ -125,6 +125,18 @@ class Algorithm:
                 return str(val)
             else:
                 raise TypeError(f"Unknown parameter type: {type}")
+
+        param_type: str = ""
+        for f in Algorithm._functions.values():
+            if f["entity"].name == function_name:
+                function_name = f["entity"].name
+                for p in f["entity"].parameters:
+                    if p.key == param_key:
+                        param_type = p.type
+                        break
+                else:
+                    raise TypeError(f"Unknown parameter: {param_key}")
+                break
 
         value = _eval_param(param_type, param_value)
         function = Algorithm._functions[function_name]

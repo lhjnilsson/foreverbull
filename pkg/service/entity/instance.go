@@ -108,9 +108,8 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		}
 		for k, v := range value.Parameters {
 			param := service_pb.ConfigureExecutionRequest_FunctionParameter{
-				Key:       k,
-				Value:     v,
-				ValueType: "int", // TODO: Dont hardcode
+				Key:   k,
+				Value: v,
 			}
 			f.Parameters = append(f.Parameters, &param)
 		}

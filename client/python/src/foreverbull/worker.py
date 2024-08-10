@@ -44,7 +44,7 @@ class Worker:
 
         for function in req.functions:
             for parameter in function.parameters:
-                self._algo.configure(function.name, parameter.key, parameter.value, parameter.valueType)
+                self._algo.configure(function.name, parameter.key, parameter.value)
 
         try:
             engine = get_engine(req.databaseURL)

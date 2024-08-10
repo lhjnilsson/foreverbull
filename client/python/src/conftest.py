@@ -285,8 +285,8 @@ def parallel_algo_file_with_parameters(spawn_process, execution, database):
             service_pb2.ConfigureExecutionRequest.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -367,8 +367,8 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
             service_pb2.ConfigureExecutionRequest.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -465,8 +465,8 @@ def multistep_algo_with_namespace(spawn_process, execution, database, namespace_
             service_pb2.ConfigureExecutionRequest.Function(
                 name="measure_assets",
                 parameters=[
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5", valueType="int"),
-                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10", valueType="int"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="low", value="5"),
+                    service_pb2.ConfigureExecutionRequest.FunctionParameter(key="high", value="10"),
                 ],
             ),
             service_pb2.ConfigureExecutionRequest.Function(

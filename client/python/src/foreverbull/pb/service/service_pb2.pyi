@@ -264,20 +264,15 @@ class ConfigureExecutionRequest(google.protobuf.message.Message):
 
         KEY_FIELD_NUMBER: builtins.int
         VALUE_FIELD_NUMBER: builtins.int
-        VALUETYPE_FIELD_NUMBER: builtins.int
         key: builtins.str
         value: builtins.str
-        valueType: builtins.str
         def __init__(
             self,
             *,
             key: builtins.str = ...,
             value: builtins.str = ...,
-            valueType: builtins.str = ...,
         ) -> None: ...
-        def ClearField(
-            self, field_name: typing.Literal["key", b"key", "value", b"value", "valueType", b"valueType"]
-        ) -> None: ...
+        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     @typing.final
     class Function(google.protobuf.message.Message):

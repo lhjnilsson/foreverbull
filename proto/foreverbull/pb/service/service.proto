@@ -51,7 +51,6 @@ message ConfigureExecutionRequest {
     message FunctionParameter {
         string key = 1;
         string value = 2;
-        string valueType = 3;
     }
     message Function {
         string name = 1;
