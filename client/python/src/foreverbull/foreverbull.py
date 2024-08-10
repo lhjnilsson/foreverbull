@@ -155,6 +155,12 @@ class Session(threading.Thread):
             period = engine_pb2.GetPortfolioResponse()
             period.ParseFromString(response.data)
             self.logger.info("current period: %s", period.timestamp.ToDatetime())
+        request = service_pb2.Request(task="stop")
+        sock.send(request.SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(sock.recv())
+        if response.HasField("error"):
+            raise Exception(response.error)
 
     def run(self):
         local_port = os.environ.get("LOCAL_PORT", 5555)

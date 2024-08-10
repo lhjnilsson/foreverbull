@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/pb"
@@ -15,7 +16,6 @@ import (
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
-	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -44,11 +44,10 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 		}
 	}()
 	for {
-
 		request := service_pb.Request{}
-		msg, err := ms.Socket.Recieve(&request)
+		msg, err := ms.Socket.Recieve(&request, socket.WithReadTimeout(time.Second), socket.WithSendTimeout(time.Second))
 		if err != nil {
-			if err == mangos.ErrRecvTimeout {
+			if err == socket.ReadTimeout {
 				select {
 				case <-stop:
 					return fmt.Errorf("received stop signal")
@@ -195,6 +194,7 @@ func (ms *manualSession) Run(activity chan<- bool, stop <-chan bool) error {
 				rsp.Data = data
 			}
 		case "stop":
+			log.Info().Str("session", ms.session.session.ID).Msg("stopping session")
 			err = msg.Reply(&rsp)
 			if err != nil {
 				return fmt.Errorf("failed to reply: %w", err)

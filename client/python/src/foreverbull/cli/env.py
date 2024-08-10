@@ -308,7 +308,7 @@ def start(
                         "ALPACA_MARKETS_API_KEY": alpaca_key,
                         "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
-                        "LOG_LEVEL": "INFO",
+                        "LOG_LEVEL": "info",
                     },
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
                 )

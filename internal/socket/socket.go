@@ -19,13 +19,19 @@ import (
 )
 
 var (
-	Closed = errors.New("socket closed")
+	Closed      = errors.New("socket closed")
+	ReadTimeout = errors.New("read timeout")
+	SendTimeout = errors.New("send timeout")
 )
 
 func sockError(err error) error {
 	switch err {
 	case mangos.ErrClosed:
 		return Closed
+	case mangos.ErrRecvTimeout:
+		return ReadTimeout
+	case mangos.ErrSendTimeout:
+		return SendTimeout
 	default:
 		return fmt.Errorf("socket error: %v", err)
 	}
