@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package foreverbull.pb.finance;
+
+option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/finance";
+
+import "google/protobuf/timestamp.proto";
+
+message Position {
+    string symbol  = 1;
+    string exchange = 2;
+
+    double amount = 3;
+    double cost = 4;
+}
+
+message Portfolio {
+    double cash = 1;
+    double value = 2;
+    repeated Position positions = 3;
+}
+
+enum OrderStatus {
+    OPEN = 0;
+    FILLED = 1;
+    CANCELED = 2;
+    REJECTED = 3;
+    HELD = 4;
+}
+
+message Order {
+    string id = 1;
+    string symbol = 2;
+    int32 amount = 3;
+    int32 filled = 4;
+    double commission = 5;
+    double limit_price = 6;
+    double stop_price = 7;
+    google.protobuf.Timestamp created_at = 8;
+    OrderStatus status = 9;
+}

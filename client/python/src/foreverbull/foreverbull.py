@@ -1,11 +1,15 @@
 import logging
 import os
 import threading
+import time
 from multiprocessing import Event, Queue, synchronize
 
 import pynng
 
-from foreverbull import Algorithm, entity, socket, worker
+from foreverbull import Algorithm, entity, worker
+from foreverbull.pb import pb_utils
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.service import service_pb2
 
 from .exceptions import ConfigurationError
 
@@ -27,14 +31,16 @@ class Session(threading.Thread):
         self.logger = logging.getLogger(__name__)
         threading.Thread.__init__(self)
 
-    def _configure_execution(self, instance: entity.service.Instance):
+    def _configure_execution(self, data: bytes):
         self.logger.info("configuring workers")
-        self._surveyor.send(socket.Request(task="configure_execution", data=instance.model_dump()).serialize())
+        request = service_pb2.Request(task="configure_execution", data=data)
+        self._surveyor.send(request.SerializeToString())
         responders = 0
         while True:
             try:
-                rsp = socket.Response.deserialize(self._surveyor.recv())
-                if rsp.error:
+                rsp = service_pb2.Response()
+                rsp.ParseFromString(self._surveyor.recv())
+                if rsp.HasField("error"):
                     raise ConfigurationError(rsp.error)
                 responders += 1
                 self.logger.info("worker %s configured", responders)
@@ -56,14 +62,48 @@ class Session(threading.Thread):
 
     def new_backtest_execution(self) -> entity.backtest.Execution:
         sock = self._get_broker_session_socket()
-        sock.send(socket.Request(task="new_execution", data=self._algorithm).serialize())
-        rsp = socket.Response.deserialize(sock.recv())
-        if rsp.error:
+        algorithm = service_pb2.Algorithm(
+            file_path=self._algorithm.file_path,
+            namespaces=self._algorithm.namespaces,
+        )
+        for function in self._algorithm.functions:
+            parameters = [
+                service_pb2.Algorithm.FunctionParameter(
+                    key=p.key,
+                    defaultValue=p.default,
+                    valueType=p.type,
+                )
+                for p in function.parameters
+            ]
+            algorithm.functions.append(
+                service_pb2.Algorithm.Function(
+                    name=function.name,
+                    parameters=parameters,
+                    runFirst=function.run_first,
+                    runLast=function.run_last,
+                )
+            )
+
+        exc_request = backtest_pb2.NewExecutionRequest(algorithm=algorithm)
+        request = service_pb2.Request(task="new_execution", data=exc_request.SerializeToString())
+        sock.send(request.SerializeToString())
+        rsp = service_pb2.Response()
+        rsp.ParseFromString(sock.recv())
+        if rsp.HasField("error"):
             raise Exception(rsp.error)
-        return entity.backtest.Execution(**rsp.data)
+        exc = backtest_pb2.NewExecutionResponse()
+        exc.ParseFromString(rsp.data)
+        return entity.backtest.Execution(
+            id=exc.id,
+            start=exc.start_date.ToDatetime(),
+            end=exc.end_date.ToDatetime(),
+            benchmark=None,
+            symbols=[s for s in exc.symbols],
+        )
 
     def _run_execution(self):
-        self._surveyor.send(socket.Request(task="run_execution").serialize())
+        req = service_pb2.Request(task="run_execution")
+        self._surveyor.send(req.SerializeToString())
         responders = 0
         while True:
             try:
@@ -78,26 +118,49 @@ class Session(threading.Thread):
 
     def run_backtest_execution(self, execution: entity.backtest.Execution):
         sock = self._get_broker_session_socket()
-        sock.send(socket.Request(task="configure_execution", data=execution).serialize())
-        rsp = socket.Response.deserialize(sock.recv())
-        if rsp.error:
-            raise Exception(rsp.error)
-        instance = entity.service.Instance(**rsp.data)
-        self._configure_execution(instance)
+        if execution.id is None:
+            raise Exception("Execution ID not set")
+        config = backtest_pb2.ConfigureExecutionRequest(
+            execution=execution.id,
+            start_date=pb_utils.to_proto_timestamp(execution.start),
+            end_date=pb_utils.to_proto_timestamp(execution.end),
+            symbols=execution.symbols,
+            benchmark=execution.benchmark,
+        )
+        request = service_pb2.Request(task="configure_execution", data=config.SerializeToString())
+        sock.send(request.SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(sock.recv())
+        if response.HasField("error"):
+            raise Exception(response.error)
+        self._configure_execution(response.data)
         self._run_execution()
-        sock.send(socket.Request(task="run_execution").serialize())
-        rsp = socket.Response.deserialize(sock.recv())
-        if rsp.error:
-            raise Exception(rsp.error)
-        import time
-
+        run_request = backtest_pb2.RunExecutionRequest(execution=execution.id)
+        request = service_pb2.Request(task="run_execution", data=run_request.SerializeToString())
+        sock.send(request.SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(sock.recv())
+        if response.HasField("error"):
+            raise Exception(response.error)
         time.sleep(2)
         while True:
-            sock.send(socket.Request(task="current_period").serialize())
-            rsp = socket.Response.deserialize(sock.recv())
-            if not rsp.data:
+            request = service_pb2.Request(task="current_portfolio")
+            sock.send(request.SerializeToString())
+            response = service_pb2.Response()
+            response.ParseFromString(sock.recv())
+            if response.HasField("error"):
+                raise Exception(response.error)
+            if not response.HasField("data"):
                 break
-            self.logger.info("current period: %s", rsp.data["timestamp"])
+            period = engine_pb2.GetPortfolioResponse()
+            period.ParseFromString(response.data)
+            self.logger.info("current period: %s", period.timestamp.ToDatetime())
+        request = service_pb2.Request(task="stop")
+        sock.send(request.SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(sock.recv())
+        if response.HasField("error"):
+            raise Exception(response.error)
 
     def run(self):
         local_port = os.environ.get("LOCAL_PORT", 5555)
@@ -111,25 +174,59 @@ class Session(threading.Thread):
                 except Exception:
                     continue
                 try:
-                    req = socket.Request.deserialize(b)
+                    req = service_pb2.Request()
+                    req.ParseFromString(b)
                 except Exception as e:
                     self.logger.warning("Error deserializing request: %s", repr(e))
                     continue
                 self.logger.info("received request: %s", req)
-                match req.task:
-                    case "info":
-                        ctx.send(socket.Response(task="info", data=self._algorithm).serialize())
-                    case "configure_execution":
-                        data = self._configure_execution(entity.service.Instance(**req.data))
-                        ctx.send(socket.Response(task="configure_execution", data=data).serialize())
-                    case "run_execution":
-                        data = self._run_execution()
-                        ctx.send(socket.Response(task="run_execution", data=data).serialize())
-                    case "stop":
-                        ctx.send(socket.Response(task="stop").serialize())
-                        break
-                    case _:
-                        ctx.send(socket.Response(task=req.task, error="Unknown task").serialize())
+                response = service_pb2.Response(task=req.task)
+                try:
+                    match req.task:
+                        case "info":
+                            algorithm = service_pb2.Algorithm(
+                                file_path=self._algorithm.file_path,
+                                functions=[
+                                    service_pb2.Algorithm.Function(
+                                        name=function.name,
+                                        parameters=[
+                                            service_pb2.Algorithm.FunctionParameter(
+                                                key=param.key,
+                                                defaultValue=param.default,
+                                                valueType=param.type,
+                                            )
+                                            for param in function.parameters
+                                        ],
+                                        parallelExecution=function.parallel_execution,
+                                        runFirst=function.run_first,
+                                        runLast=function.run_last,
+                                    )
+                                    for function in self._algorithm.functions
+                                ],
+                                namespaces=self._algorithm.namespaces,
+                            )
+                            service_info = service_pb2.ServiceInfoResponse(
+                                serviceType="worker",
+                                version="0.0.0",
+                                algorithm=algorithm,
+                            )
+                            response.data = service_info.SerializeToString()
+                            ctx.send(response.SerializeToString())
+                        case "configure_execution":
+                            self._configure_execution(req.data)
+                            ctx.send(response.SerializeToString())
+                        case "run_execution":
+                            self._run_execution()
+                            ctx.send(response.SerializeToString())
+                        case "stop":
+                            ctx.send(response.SerializeToString())
+                            break
+                        case _:
+                            response.error = "Unknown task"
+                            ctx.send(response.SerializeToString())
+                except Exception as e:
+                    response.error = repr(e)
+                    ctx.send(response.SerializeToString())
             except pynng.exceptions.Timeout:
                 pass
             except Exception as e:

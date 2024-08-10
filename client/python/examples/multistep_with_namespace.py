@@ -23,5 +23,5 @@ Algorithm(
         Function(callable=measure_assets),
         Function(callable=create_orders, run_last=True),
     ],
-    namespace={"short_mean": dict[str, float], "long_mean": dict[str, float]},
+    namespaces=["short_mean", "long_mean"],
 )

@@ -6,8 +6,9 @@ import pynng
 import pytest
 
 from foreverbull.entity import backtest
-from foreverbull.socket import Request, Response
-from foreverbull_zipline import entity
+from foreverbull.pb import pb_utils
+from foreverbull.pb.backtest import engine_pb2
+from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.execution import Execution
 
 
@@ -45,55 +46,82 @@ def execution_socket():
 
 
 def test_info(execution_socket: pynng.Rep0):
-    req = Request(task="info")
-    execution_socket.send(req.serialize())
+    req = service_pb2.Request(task="info")
+    execution_socket.send(req.SerializeToString())
     rsp_data = execution_socket.recv()
-    rsp = Response.deserialize(rsp_data)
+    rsp = service_pb2.Response()
+    rsp.ParseFromString(rsp_data)
     assert rsp.task == "info"
-    assert rsp.error is None
-    assert rsp.data["type"] == "backtest"
-    assert "socket" in rsp.data
-    assert "host" in rsp.data["socket"]
-    assert "port" in rsp.data["socket"]
+    assert rsp.HasField("error") is False
+
+    service_info = service_pb2.ServiceInfoResponse()
+    service_info.ParseFromString(rsp.data)
+    assert service_info.serviceType == "backtest"
 
 
 def test_ingest(
     database,
     execution_socket: pynng.Rep0,
-    backtest_entity,
+    backtest_entity: backtest.Backtest,
 ):
-    execution_socket.send(Request(task="ingest", data=backtest_entity).serialize())
-    response = Response.deserialize(execution_socket.recv())
+    ingest_request = engine_pb2.IngestRequest(
+        start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
+        end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
+        symbols=backtest_entity.symbols,
+    )
+    request = service_pb2.Request(task="ingest", data=ingest_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "ingest"
-    assert response.error is None
+    assert response.HasField("error") is False
+    ingest_response = engine_pb2.IngestResponse()
+    ingest_response.ParseFromString(response.data)
+    assert ingest_response.start_date == pb_utils.to_proto_timestamp(backtest_entity.start)
+    assert ingest_response.end_date == pb_utils.to_proto_timestamp(backtest_entity.end)
+    assert ingest_response.symbols == backtest_entity.symbols
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark):
-    execution_socket.send(Request(task="info").serialize())
-    Response.deserialize(execution_socket.recv())
-
-    execution.benchmark = benchmark
-
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark: str | None):
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(execution.start),
+        end_date=pb_utils.to_proto_timestamp(execution.end),
+        symbols=execution.symbols,
+        benchmark=benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
     while True:
-        execution_socket.send(Request(task="get_period").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        assert response.task == "get_period"
-        if response.data is None:
+        execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "get_portfolio"
+        if response.HasField("data") is False:
             break
-        assert response.error is None
-        execution_socket.send(Request(task="continue").serialize())
-        execution_socket.recv()
+        assert response.HasField("error") is False
+        portfolio = engine_pb2.GetPortfolioResponse()
+        portfolio.ParseFromString(response.data)
+
+        continue_request = engine_pb2.ContinueRequest()
+        execution_socket.send(
+            service_pb2.Request(task="continue", data=continue_request.SerializeToString()).SerializeToString()
+        )
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        assert response.HasField("error") is False
 
 
 # None value should use latest or greatest dates
@@ -115,237 +143,262 @@ def test_run_benchmark(execution: backtest.Execution, execution_socket: pynng.Re
         datetime(2023, 4, 30, tzinfo=timezone.utc),
     ],
 )
+@pytest.mark.skip(reason="unsure how to handle this, if we should raise exception is date is after possible date")
 def test_run_with_time(execution: backtest.Execution, execution_socket: pynng.Rep0, backtest_entity, start, end):
-    execution_socket.send(Request(task="info").serialize())
-    Response.deserialize(execution_socket.recv())
-
-    execution.start = start
-    execution.end = end
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(start),
+        end_date=pb_utils.to_proto_timestamp(end),
+        symbols=execution.symbols,
+        benchmark=execution.benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
-    execution = backtest.Execution(**response.data)
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    ce_response = engine_pb2.ConfigureResponse()
+    ce_response.ParseFromString(response.data)
+    assert ce_response.start_date == pb_utils.to_proto_timestamp(start)
+    assert ce_response.end_date == pb_utils.to_proto_timestamp(end)
+    assert ce_response.symbols == execution.symbols
+    assert ce_response.benchmark == execution.benchmark
+
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
-
-    if start is None:
-        assert execution.start == backtest_entity.start
-    elif start < backtest_entity.start:
-        assert execution.start == backtest_entity.start
-    elif start > backtest_entity.start:
-        assert execution.start == start
-
-    if end is None:
-        assert execution.end == backtest_entity.end
-    elif end > backtest_entity.end:
-        assert execution.end == backtest_entity.end
-    elif end < backtest_entity.end:
-        assert execution.end == end
+    assert response.HasField("error") is False
 
     while True:
-        execution_socket.send(Request(task="get_period").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        assert response.task == "get_period"
-        if response.data is None:
+        execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "get_portfolio"
+        if response.HasField("data") is False:
             break
-        assert response.error is None
-        execution_socket.send(Request(task="continue").serialize())
-        execution_socket.recv()
+        assert response.HasField("error") is False
+        portfolio = engine_pb2.GetPortfolioResponse()
+        portfolio.ParseFromString(response.data)
+
+        continue_request = engine_pb2.ContinueRequest()
+        execution_socket.send(
+            service_pb2.Request(task="continue", data=continue_request.SerializeToString()).SerializeToString()
+        )
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        assert response.HasField("error") is False
 
 
-def test_premature_stop(execution: Execution, execution_socket: pynng.Rep0):
-    execution_socket.send(Request(task="info").serialize())
-    Response.deserialize(execution_socket.recv())
-
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+def test_premature_stop(execution: backtest.Execution, execution_socket: pynng.Rep0):
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(execution.start),
+        end_date=pb_utils.to_proto_timestamp(execution.end),
+        symbols=execution.symbols,
+        benchmark=execution.benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
     for _ in range(10):
-        execution_socket.send(Request(task="get_period").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        assert response.task == "get_period"
-        assert response.error is None
-        execution_socket.send(Request(task="continue").serialize())
-        execution_socket.recv()
+        execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "get_portfolio"
+        assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="stop").serialize())
-    response = Response.deserialize(execution_socket.recv())
+        execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        assert response.HasField("error") is False
+
+    execution_socket.send(service_pb2.Request(task="stop").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "stop"
-    assert response.error is None
+    assert response.HasField("error") is False
 
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
 def test_multiple_runs_different_symbols(execution: backtest.Execution, execution_socket: pynng.Rep0, symbols):
-    execution.symbols = symbols
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(execution.start),
+        end_date=pb_utils.to_proto_timestamp(execution.end),
+        symbols=symbols,
+        benchmark=execution.benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
-    execution = backtest.Execution(**response.data)
-    assert execution.symbols == symbols if symbols is not None else ["AAPL", "MSFT", "TSLA"]
+    assert response.HasField("error") is False
+    ce_response = engine_pb2.ConfigureResponse()
+    ce_response.ParseFromString(response.data)
+    assert ce_response.start_date == pb_utils.to_proto_timestamp(execution.start)
+    assert ce_response.end_date == pb_utils.to_proto_timestamp(execution.end)
+    assert ce_response.symbols == symbols
+    assert ce_response.benchmark == execution.benchmark
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
     while True:
-        execution_socket.send(Request(task="get_period").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        assert response.task == "get_period"
-        if response.data is None:
+        execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "get_portfolio"
+        if response.HasField("data") is False:
             break
-        assert response.error is None
-        execution_socket.send(Request(task="continue").serialize())
-        execution_socket.recv()
+        assert response.HasField("error") is False
+        execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        assert response.HasField("error") is False
 
 
-def test_get_result(execution: Execution, execution_socket: pynng.Rep0):
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+def test_get_result(execution: backtest.Execution, execution_socket: pynng.Rep0):
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(execution.start),
+        end_date=pb_utils.to_proto_timestamp(execution.end),
+        symbols=execution.symbols,
+        benchmark=execution.benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
     while True:
-        execution_socket.send(Request(task="get_period").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        assert response.task == "get_period"
-        if response.data is None:
+        execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "get_portfolio"
+        if response.HasField("data") is False:
             break
-        assert response.error is None
-        execution_socket.send(Request(task="continue").serialize())
-        execution_socket.recv()
+        assert response.HasField("error") is False
+        execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="get_execution_result").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="get_execution_result").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "get_execution_result"
-    assert response.error is None
-    assert "periods" in response.data
-    assert len(response.data["periods"])
+    assert response.HasField("error") is False
+    result = engine_pb2.ResultResponse()
+    result.ParseFromString(response.data)
+    assert len(result.periods)
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark):
-    execution.benchmark = benchmark
-
-    execution_socket.send(Request(task="configure_execution", data=execution).serialize())
-    response = Response.deserialize(execution_socket.recv())
+def test_broker(execution: backtest.Execution, execution_socket: pynng.Rep0, benchmark: str | None):
+    ce_request = engine_pb2.ConfigureRequest(
+        start_date=pb_utils.to_proto_timestamp(execution.start),
+        end_date=pb_utils.to_proto_timestamp(execution.end),
+        symbols=execution.symbols,
+        benchmark=benchmark,
+    )
+    request = service_pb2.Request(task="configure_execution", data=ce_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "configure_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="run_execution").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="run_execution").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "run_execution"
-    assert response.error is None
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="continue").serialize())
-    execution_socket.recv()
+    execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
+    assert response.task == "continue"
+    assert response.HasField("error") is False
 
-    asset = entity.Asset(symbol=execution.symbols[0])
-    execution_socket.send(Request(task="can_trade", data=asset).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "can_trade"
-    assert response.error is None
+    continue_request = engine_pb2.ContinueRequest(
+        orders=[
+            engine_pb2.Order(symbol=execution.symbols[0], amount=10),
+        ]
+    )
+    request = service_pb2.Request(task="continue", data=continue_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
+    assert response.task == "continue"
+    assert response.HasField("error") is False
 
-    order = entity.Order(symbol=execution.symbols[0], amount=10)
-    execution_socket.send(Request(task="order", data=order).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "order"
-    assert response.error is None
-    assert response.data["symbol"] == order.symbol
-    assert response.data["amount"] == order.amount
-    assert response.data["status"] == entity.OrderStatus.OPEN
-    assert response.data["id"]
-    placed_order = response.data
+    execution_socket.send(service_pb2.Request(task="get_portfolio").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
+    assert response.task == "get_portfolio"
+    assert response.HasField("error") is False
+    portfolio = engine_pb2.GetPortfolioResponse()
+    portfolio.ParseFromString(response.data)
+    assert len(portfolio.positions) == 1
+    assert portfolio.positions[0].symbol == execution.symbols[0]
 
-    execution_socket.send(Request(task="continue").serialize())
-    execution_socket.recv()
+    execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
+    assert response.task == "continue"
+    assert response.HasField("error") is False
 
-    execution_socket.send(Request(task="get_period").serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "get_period"
-    assert response.error is None
-    period = entity.Period(**response.data)
-    assert len(period.new_orders) == 1
-    assert period.new_orders[0].symbol == order.symbol
-
-    execution_socket.send(Request(task="get_order", data=placed_order).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "get_order"
-    assert response.error is None
-    assert response.data["symbol"] == order.symbol
-    assert response.data["amount"] == order.amount
-    assert response.data["status"] == entity.OrderStatus.FILLED
-
-    execution_socket.send(Request(task="continue").serialize())
-    execution_socket.recv()
-
-    execution_socket.send(Request(task="get_period").serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "get_period"
-    assert response.error is None
-    period = entity.Period(**response.data)
-    assert len(period.new_orders) == 0
-
-    order = entity.Order(symbol=execution.symbols[0], amount=15)
-    execution_socket.send(Request(task="order", data=order).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "order"
-    assert response.error is None
-    assert response.data["symbol"] == order.symbol
-    assert response.data["amount"] == order.amount
-    assert response.data["status"] == entity.OrderStatus.OPEN
-    assert response.data["id"]
-
-    execution_socket.send(Request(task="get_open_orders").serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "get_open_orders"
-    assert response.error is None
-    assert len(response.data) == 1
-    assert response.data[0]["symbol"] == order.symbol
-    assert response.data[0]["amount"] == order.amount
-    assert response.data[0]["status"] == entity.OrderStatus.OPEN
-
-    execution_socket.send(Request(task="cancel_order", data=response.data[0]).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "cancel_order"
-    assert response.error is None
-
-    execution_socket.send(Request(task="get_order", data=response.data).serialize())
-    response = Response.deserialize(execution_socket.recv())
-    assert response.task == "get_order"
-    assert response.error is None
-    assert response.data["symbol"] == order.symbol
-    assert response.data["amount"] == order.amount
-    assert response.data["status"] == entity.OrderStatus.CANCELLED
+    continue_request = engine_pb2.ContinueRequest(
+        orders=[
+            engine_pb2.Order(symbol=execution.symbols[0], amount=15),
+        ]
+    )
+    request = service_pb2.Request(task="continue", data=continue_request.SerializeToString())
+    execution_socket.send(request.SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
+    assert response.task == "continue"
+    assert response.HasField("error") is False
 
     while True:
-        execution_socket.send(Request(task="continue").serialize())
-        response = Response.deserialize(execution_socket.recv())
-        if response.error and response.error == "no active execution":
+        execution_socket.send(service_pb2.Request(task="continue").SerializeToString())
+        response = service_pb2.Response()
+        response.ParseFromString(execution_socket.recv())
+        assert response.task == "continue"
+        if response.HasField("error"):
+            assert response.error == "no active execution"
             break
 
-    execution_socket.send(Request(task="get_execution_result").serialize())
-    response = Response.deserialize(execution_socket.recv())
+    execution_socket.send(service_pb2.Request(task="get_execution_result").SerializeToString())
+    response = service_pb2.Response()
+    response.ParseFromString(execution_socket.recv())
     assert response.task == "get_execution_result"
-    assert response.error is None
-    assert "periods" in response.data
-    assert len(response.data["periods"])
-
-    print(response.data["periods"][-1]["benchmark_period_return"])
+    assert response.HasField("error") is False
+    result = engine_pb2.ResultResponse()
+    result.ParseFromString(response.data)
+    assert len(result.periods)

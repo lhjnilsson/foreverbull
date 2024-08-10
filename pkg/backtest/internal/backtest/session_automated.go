@@ -7,6 +7,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
+	"github.com/rs/zerolog/log"
 )
 
 type automatedSession struct {
@@ -33,19 +34,23 @@ func (as *automatedSession) Run(chan<- bool, <-chan bool) error {
 
 		err = exec.Run(context.TODO(), &execution)
 		if err != nil {
+			log.Error().Err(err).Msg("failed to run execution")
 			return fmt.Errorf("failed to run execution: %w", err)
 		}
 
 		periods, err := exec.StoreDataFrameAndGetPeriods(context.Background(), execution.ID)
 		if err != nil {
+			log.Error().Err(err).Msg("failed to store data frame and get periods")
 			return fmt.Errorf("failed to store data frame and get periods: %w", err)
 		}
 		for _, period := range *periods {
 			err = as.session.periods.Store(context.Background(), execution.ID, &period)
 			if err != nil {
+				log.Error().Err(err).Msg("failed to store period")
 				return fmt.Errorf("failed to store period: %w", err)
 			}
 		}
+		log.Info().Str("execution_id", execution.ID).Msg("execution completed")
 	}
 	return nil
 }

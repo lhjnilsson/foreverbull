@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package foreverbull.pb.service;
+
+option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/service";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "foreverbull/pb/finance/finance.proto";
+
+
+message ServiceInfoResponse {
+    string serviceType = 1;
+    string version = 2;
+    optional Algorithm algorithm = 3;
+}
+
+
+message Request {
+    string task = 1;
+    optional bytes data = 2;
+}
+
+
+message Response {
+    string task = 1;
+    optional bytes data = 2;
+    optional string error = 3;
+}
+
+message Algorithm {
+    message FunctionParameter {
+        string key = 1;
+        optional string defaultValue = 2;
+        optional string value = 3;
+        string valueType = 4;
+    }
+    message Function {
+        string name = 1;
+        repeated FunctionParameter parameters = 2;
+        bool parallelExecution = 3;
+        bool runFirst = 4;
+        bool runLast = 5;
+    }
+    string file_path = 1;
+    repeated Function functions = 2;
+    repeated string namespaces = 3;
+}
+
+message ConfigureExecutionRequest {
+    message FunctionParameter {
+        string key = 1;
+        string value = 2;
+    }
+    message Function {
+        string name = 1;
+        repeated FunctionParameter parameters = 2;
+    }
+    int32 brokerPort = 1;
+    int32 namespacePort = 2;
+    string databaseURL = 3;
+    repeated Function functions = 4;
+}
+
+message ConfigureExecutionResponse {
+}
+
+message WorkerRequest {
+    string task = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    repeated string symbols = 3;
+    foreverbull.pb.finance.Portfolio portfolio = 4;
+}
+
+message WorkerResponse {
+    string task = 1;
+    repeated foreverbull.pb.finance.Order orders = 2;
+    optional string error = 3;
+}
+
+enum NamespaceRequestType {
+    GET = 0;
+    SET = 1;
+}
+
+message NamespaceRequest {
+    string key = 1;
+    NamespaceRequestType type = 2;
+    optional google.protobuf.Struct value = 3;
+}
+
+message NamespaceResponse {
+    optional google.protobuf.Struct value = 1;
+    optional string error = 2;
+}

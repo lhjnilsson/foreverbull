@@ -47,7 +47,7 @@ algo_volatility numeric,
 sharpe numeric,
 sortino numeric,
 
-benchmark_period_returns numeric,
+benchmark_period_return numeric,
 benchmark_volatility numeric,
 alpha numeric,
 beta numeric);
@@ -140,13 +140,13 @@ Adds a new entry to the result of a backtest
 func (db *Period) Store(ctx context.Context, execution string, period *entity.Period) error {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO backtest_period(
-			backtest_execution, timestamp, pnl, returns, portfolio_value, 
-			longs_count, shorts_count, long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, 
-			capital_used, gross_leverage, net_leverage, 
-			starting_value, ending_value, starting_cash, ending_cash, 
-			max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return, 
-			algo_volatility, sharpe, sortino, 
-			benchmark_period_returns, benchmark_volatility, alpha, beta)
+			backtest_execution, timestamp, pnl, returns, portfolio_value,
+			longs_count, shorts_count, long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+			capital_used, gross_leverage, net_leverage,
+			starting_value, ending_value, starting_cash, ending_cash,
+			max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			algo_volatility, sharpe, sortino,
+			benchmark_period_return, benchmark_volatility, alpha, beta)
 		VALUES($1, $2, $3, $4, $5,
 			$6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16,
@@ -158,9 +158,9 @@ func (db *Period) Store(ctx context.Context, execution string, period *entity.Pe
 		period.LongsCount, period.ShortsCount, period.LongValue, period.ShortValue, period.StartingExposure, period.EndingExposure, period.LongExposure, period.ShortExposure,
 		period.CapitalUsed, period.GrossLeverage, period.NetLeverage,
 		period.StartingValue, period.EndingValue, period.StartingCash, period.EndingCash,
-		period.MaxDrawdown, period.MaxLeverage, period.ExcessReturns, period.TreasuryPeriodReturn, period.AlgorithmPeriodReturns,
+		period.MaxDrawdown, period.MaxLeverage, period.ExcessReturns, period.TreasuryPeriodReturn, period.AlgorithmPeriodReturn,
 		period.AlgoVolatility, period.Sharpe, period.Sortino,
-		period.BenchmarkPeriodReturns, period.BenchmarkVolatility, period.Alpha, period.Beta,
+		period.BenchmarkPeriodReturn, period.BenchmarkVolatility, period.Alpha, period.Beta,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating period result: %w", err)

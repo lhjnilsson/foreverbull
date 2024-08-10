@@ -33,13 +33,15 @@ func InstanceInterview(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting instance: %w", err)
 	}
-	algorithm, err := i.GetAlgorithm()
+	_, algorithm, err := i.GetInfo()
 	if err != nil {
 		return fmt.Errorf("error reading instance info: %w", err)
 	}
-	err = services.SetAlgorithm(ctx, *i.Image, algorithm)
-	if err != nil {
-		return fmt.Errorf("error setting algorithm: %w", err)
+	if algorithm != nil {
+		err = services.SetAlgorithm(ctx, *i.Image, algorithm)
+		if err != nil {
+			return fmt.Errorf("error setting algorithm: %w", err)
+		}
 	}
 	return nil
 }
@@ -80,7 +82,7 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 					time.Sleep(time.Second / 5)
 					continue
 				}
-				_, err = i.GetAlgorithm()
+				_, _, err = i.GetInfo()
 				if err != nil {
 					return fmt.Errorf("error reading instance info: %w", err)
 				}

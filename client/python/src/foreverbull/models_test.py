@@ -3,15 +3,7 @@ import tempfile
 import pytest
 
 from foreverbull import entity
-from foreverbull.models import Algorithm, Namespace
-
-
-def test_namespace():
-    n = Namespace(key1=dict[str, int], key2=list[float])
-    assert n.contains("key1", dict[str, int])
-    assert n.contains("key2", list[float])
-    with pytest.raises(KeyError):
-        n.contains("key3", dict[str, int])
+from foreverbull.models import Algorithm
 
 
 class TestNonParallel:
@@ -58,19 +50,12 @@ Algorithm(
                     run_last=False,
                 ),
             ],
+            namespaces=[],
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestParallel:
@@ -119,23 +104,17 @@ Algorithm(
                     run_last=False,
                 ),
             ],
+            namespaces=[],
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestWithNamespace:
     example = b"""
-from foreverbull import Algorithm, Function, Asset, Portfolio, Order, Namespace
+from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
@@ -144,7 +123,7 @@ Algorithm(
     functions=[
         Function(callable=handle_data)
     ],
-    namespace={"qualified_symbols": list[str], "rsi": dict[str, float]}
+    namespaces=["qualified_symbols", "rsi"]
 )
 """
 
@@ -180,33 +159,17 @@ Algorithm(
                     run_last=False,
                 ),
             ],
-            namespace={
-                "qualified_symbols": entity.service.Service.Algorithm.Namespace(
-                    type="array",
-                    value_type="string",
-                ),
-                "rsi": entity.service.Service.Algorithm.Namespace(
-                    type="object",
-                    value_type="float",
-                ),
-            },
+            namespaces=["qualified_symbols", "rsi"],
         )
 
     def test_configure(self, algo):
-        parameters = {
-            "handle_data": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            )
-        }
-        self._algo.configure(parameters)
+        self._algo.configure("handle_data", "low", "5")
+        self._algo.configure("handle_data", "high", "10")
 
 
 class TestMultiStepWithNamespace:
     example = b"""
-from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order, Namespace
+from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order
 
 
 def measure_assets(asset: Asset, low: int = 5, high: int = 10) -> None:
@@ -224,7 +187,7 @@ Algorithm(
         Function(callable=create_orders, run_last=True),
         Function(callable=filter_assets, run_first=True),
     ],
-    namespace={"qualified_symbols": list[str], "asset_metrics": dict[str, float]}
+    namespaces=["qualified_symbols", "asset_metrics"]
 )
 """
 
@@ -274,32 +237,9 @@ Algorithm(
                     run_last=False,
                 ),
             ],
-            namespace={
-                "qualified_symbols": entity.service.Service.Algorithm.Namespace(
-                    type="array",
-                    value_type="string",
-                ),
-                "asset_metrics": entity.service.Service.Algorithm.Namespace(
-                    type="object",
-                    value_type="float",
-                ),
-            },
+            namespaces=["qualified_symbols", "asset_metrics"],
         )
 
     def test_configure(self, algo):
-        configuration = {
-            "filter_assets": entity.service.Instance.Parameter(
-                parameters={},
-            ),
-            "measure_assets": entity.service.Instance.Parameter(
-                parameters={
-                    "low": "5",
-                    "high": "10",
-                },
-            ),
-            "create_orders": entity.service.Instance.Parameter(
-                parameters={},
-            ),
-        }
-
-        self._algo.configure(configuration)
+        self._algo.configure("measure_assets", "low", "5")
+        self._algo.configure("measure_assets", "high", "10")

@@ -6,10 +6,14 @@ from datetime import datetime
 from typing import Any, Iterator
 
 import pynng
+from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
 
-from foreverbull import entity, socket
+from foreverbull import entity
+from foreverbull.pb import pb_utils
+from foreverbull.pb.finance import finance_pb2  # noqa
+from foreverbull.pb.service import service_pb2
 
 
 # Hacky way to get the database URL, TODO: find a better way
@@ -23,7 +27,7 @@ def get_engine(url: str):
         engine = create_engine(url)
         engine.connect()
         return engine
-    except Exception as e:
+    except Exception:
         log.warning(f"Could not connect to {url}")
 
     database_host = re.search(r"@([^/]+):", url)
@@ -46,7 +50,7 @@ def get_engine(url: str):
                 engine.connect()
                 log.info(f"Connected to {new_url}")
                 return engine
-            except Exception as e:
+            except Exception:
                 log.warning(f"Could not connect to {new_url}")
     raise Exception("Could not connect to database")
 
@@ -72,22 +76,31 @@ class Asset:
 
     def __getattr__(self, name: str) -> Any:
         with namespace_socket() as s:
-            request = socket.Request(task=f"get:{name}")
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.GET,
+            )
+            s.send(request.SerializeToString())
+            response = service_pb2.NamespaceResponse()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
-            return response.data[self._symbol]
+            return response.value[self._symbol]
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__[T: (int, float, bool, str)](self, name: str, value: T) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = socket.Request(task=f"set:{name}", data={self._symbol: value})
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.SET,
+            )
+            request.value.update({self._symbol: value})
+            s.send(request.SerializeToString())
+            response = service_pb2.NamespaceResponse()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return None
 
@@ -110,24 +123,36 @@ class Assets:
         self._db = db
         self._symbols = symbols
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__[T: (int, float, bool, str)](self, name: str) -> dict:
         with namespace_socket() as s:
-            request = socket.Request(task=f"get:{name}")
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.GET,
+            )
+            s.send(request.SerializeToString())
+            response = service_pb2.NamespaceResponse()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
-            return response.data
+            return pb_utils.protobuf_struct_to_dict(response.value)
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__[T: (int, float, bool, str)](self, name: str, value: dict[str, T]) -> None:
         if name.startswith("_"):
             super().__setattr__(name, value)
             return
         with namespace_socket() as s:
-            request = socket.Request(task=f"set:{name}", data=value)
-            s.send(request.serialize())
-            response = socket.Response.deserialize(s.recv())
-            if response.error:
+            struct = Struct()
+            for k, v in value.items():
+                struct.update({k: v})
+            request = service_pb2.NamespaceRequest(
+                key=name,
+                type=service_pb2.NamespaceRequestType.SET,
+                value=struct,
+            )
+            s.send(request.SerializeToString())
+            response = service_pb2.NamespaceResponse()
+            response.ParseFromString(s.recv())
+            if response.HasField("error"):
                 raise Exception(response.error)
             return None
 

@@ -13,6 +13,7 @@ import (
 	serviceAPI "github.com/lhjnilsson/foreverbull/pkg/service/api"
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -64,6 +65,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 			g.Go(func() error {
 				_, err = sAPI.ConfigureInstance(gctx, i, &configure)
 				if err != nil {
+					log.Error().Err(err).Msg("error configuring instance")
 					return err
 				}
 				return nil
@@ -108,7 +110,7 @@ func GetBacktestSession(ctx context.Context, message stream.Message) (interface{
 		return nil, fmt.Errorf("error creating session: %w", err)
 	}
 	if socket != nil {
-		err = sessionStorage.UpdatePort(ctx, storedSession.ID, socket.Port)
+		err = sessionStorage.UpdatePort(ctx, storedSession.ID, socket.GetPort())
 		if err != nil {
 			return nil, err
 		}

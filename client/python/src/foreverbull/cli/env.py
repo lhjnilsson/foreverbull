@@ -308,7 +308,7 @@ def start(
                         "ALPACA_MARKETS_API_KEY": alpaca_key,
                         "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
-                        "LOG_LEVEL": "INFO",
+                        "LOG_LEVEL": "info",
                     },
                     volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
                 )
@@ -322,7 +322,7 @@ def start(
                 with open(ingestion_config, "r") as f:
                     ingestion_config = json.load(f)
 
-                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.parse_obj(ingestion_config))
+                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.model_validate(ingestion_config))
                 while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
                     time.sleep(0.5)
                     ingestion = broker.backtest.get_ingestion()

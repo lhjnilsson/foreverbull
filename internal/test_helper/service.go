@@ -2,27 +2,24 @@ package test_helper
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
+	"google.golang.org/protobuf/proto"
 )
 
 type ServiceInstance struct {
 	socket mangos.Socket
 	Host   string
 	Port   int
-}
-
-type InstanceRequest struct {
-	Task string `json:"task"`
 }
 
 func NewServiceInstance(t *testing.T) *ServiceInstance {
@@ -75,17 +72,24 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 					panic(err)
 				}
 			}
-			req := InstanceRequest{}
-			err = json.Unmarshal(msg, &req)
+			request := service_pb.Request{}
+			err = proto.Unmarshal(msg, &request)
 			if err != nil {
 				panic(err)
 			}
-			rsp, ok := responses[req.Task]
+			rsp, ok := responses[request.Task]
 			if !ok {
-				panic(fmt.Sprintf("no response for task %v", req.Task))
+				panic(fmt.Sprintf("no response for task %v", request.Task))
 			}
-
-			err = s.socket.Send(rsp)
+			response := service_pb.Response{
+				Task: request.Task,
+				Data: rsp,
+			}
+			msg, err = proto.Marshal(&response)
+			if err != nil {
+				panic(err)
+			}
+			err = s.socket.Send(msg)
 			if err != nil {
 				panic(err)
 			}

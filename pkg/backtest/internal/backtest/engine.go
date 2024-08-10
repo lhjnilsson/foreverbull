@@ -4,12 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/lhjnilsson/foreverbull/internal/pb"
+	backtest_pb "github.com/lhjnilsson/foreverbull/internal/pb/backtest"
+	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	service "github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/message"
-	"github.com/lhjnilsson/foreverbull/pkg/service/socket"
+	"google.golang.org/protobuf/proto"
+)
+
+var (
+	NoActiveExecution error = fmt.Errorf("no active execution")
 )
 
 /*
@@ -17,103 +25,104 @@ NewZiplineEngine
 Returns a Zipline backtest engine
 */
 func NewZiplineEngine(ctx context.Context, service *service.Instance) (engine.Engine, error) {
-	z := Zipline{}
-	s, err := service.GetSocket()
+	requester, err := socket.NewRequester(*service.Host, *service.Port, true)
 	if err != nil {
-		return nil, fmt.Errorf("error getting socket for instance: %w", err)
+		return nil, fmt.Errorf("error getting requester: %w", err)
 	}
-	z.socket, err = socket.GetContextSocket(ctx, s)
-	if err != nil {
-		return nil, fmt.Errorf("error getting context socket: %w", err)
-	}
-	return &z, err
-}
-
-/*
-Configuration
-Returned by backtest- configuration to get the hosted sockets for feed, broker etc
-*/
-type Configuration struct {
-	Socket socket.NanomsgSocket `mapstructure:"socket"`
+	z := Zipline{socket: requester}
+	return &z, nil
 }
 
 type Zipline struct {
-	socket              socket.ContextSocket
-	SocketConfiguration socket.NanomsgSocket `json:"main" mapstructure:"socket"`
-	Running             bool                 `json:"running"`
+	socket  socket.Requester
+	Running bool `json:"running"`
 }
 
 func (z *Zipline) Ingest(ctx context.Context, ingestion *entity.Ingestion) error {
-	sock, err := z.socket.Get()
+	ingest_request := backtest_pb.IngestRequest{
+		StartDate: pb.TimeToProtoTimestamp(ingestion.Start),
+		EndDate:   pb.TimeToProtoTimestamp(ingestion.End),
+		Symbols:   ingestion.Symbols,
+	}
+	data, err := proto.Marshal(&ingest_request)
 	if err != nil {
-		return fmt.Errorf("error opening context: %w", err)
+		return fmt.Errorf("error marshalling ingest request: %w", err)
 	}
-	defer sock.Close()
-
-	req := message.Request{Task: "ingest", Data: ingestion}
-	rsp, err := req.Process(sock)
+	request := service_pb.Request{
+		Task: "ingest",
+		Data: data,
+	}
+	response := service_pb.Response{}
+	err = z.socket.Request(&request, &response)
 	if err != nil {
-		return fmt.Errorf("error ingesting: %w", err)
+		return fmt.Errorf("error requesting ingest: %w", err)
 	}
-	if len(rsp.Error) > 0 {
-		return errors.New(rsp.Error)
-	}
-	if err := rsp.DecodeData(ingestion); err != nil {
-		return fmt.Errorf("error decoding data: %w", err)
+	if response.Error != nil {
+		return fmt.Errorf("error ingesting: %v", response.Error)
 	}
 	return nil
 }
 
 func (z *Zipline) UploadIngestion(ctx context.Context, ingestion_name string) error {
-	sock, err := z.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error opening context: %w", err)
+	request := service_pb.Request{
+		Task: "upload_ingestion",
 	}
-	defer sock.Close()
-
-	req := message.Request{Task: "upload_ingestion", Data: map[string]string{"name": ingestion_name}}
-	rsp, err := req.Process(sock)
+	response := service_pb.Response{}
+	err := z.socket.Request(&request, &response)
 	if err != nil {
-		return fmt.Errorf("error uploading ingestion: %w", err)
+		return fmt.Errorf("error requesting upload: %w", err)
 	}
-	if len(rsp.Error) > 0 {
-		return errors.New(rsp.Error)
+	if response.Error != nil {
+		return fmt.Errorf("error uploading: %v", response.Error)
 	}
 	return nil
 }
 
 func (z *Zipline) DownloadIngestion(ctx context.Context, ingestion_name string) error {
-	sock, err := z.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error opening context: %w", err)
+	request := service_pb.Request{
+		Task: "download_ingestion",
 	}
-	defer sock.Close()
-
-	req := message.Request{Task: "download_ingestion", Data: map[string]string{"name": ingestion_name}}
-	rsp, err := req.Process(sock)
+	response := service_pb.Response{}
+	err := z.socket.Request(&request, &response)
 	if err != nil {
-		return fmt.Errorf("error downloading ingestion: %w", err)
-	}
-	if len(rsp.Error) > 0 {
-		return errors.New(rsp.Error)
+		return fmt.Errorf("error requesting download: %w", err)
 	}
 	return nil
 }
 
 func (z *Zipline) ConfigureExecution(ctx context.Context, execution *entity.Execution) error {
-	socket, err := z.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error getting socket for instance: %w", err)
+	configure_req := backtest_pb.ConfigureRequest{
+		StartDate: pb.TimeToProtoTimestamp(execution.Start),
+		EndDate:   pb.TimeToProtoTimestamp(execution.End),
+		Symbols:   execution.Symbols,
+		Benchmark: execution.Benchmark,
 	}
-	defer socket.Close()
-
-	var rsp *message.Response
-	req := message.Request{Task: "configure_execution", Data: execution}
-	rsp, err = req.Process(socket)
+	data, err := proto.Marshal(&configure_req)
 	if err != nil {
-		return fmt.Errorf("error configuring: %w", err)
+		return fmt.Errorf("error marshalling configure request: %w", err)
 	}
-	return rsp.DecodeData(execution)
+	request := service_pb.Request{
+		Task: "configure_execution",
+		Data: data,
+	}
+	response := service_pb.Response{}
+	err = z.socket.Request(&request, &response)
+	if err != nil {
+		return fmt.Errorf("error requesting configure: %w", err)
+	}
+	if response.Error != nil {
+		return fmt.Errorf("error configuring: %v", *response.Error)
+	}
+	configure_rsp := backtest_pb.ConfigureResponse{}
+	err = proto.Unmarshal(response.Data, &configure_rsp)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling configure response: %w", err)
+	}
+	execution.Start = configure_rsp.StartDate.AsTime()
+	execution.End = configure_rsp.EndDate.AsTime()
+	execution.Symbols = configure_rsp.Symbols
+	execution.Benchmark = configure_rsp.Benchmark
+	return nil
 }
 
 /*
@@ -121,15 +130,13 @@ Run
 Runs the execution
 */
 func (z *Zipline) RunExecution(ctx context.Context) error {
-	socket, err := z.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error getting socket for instance: %w", err)
+	request := service_pb.Request{
+		Task: "run_execution",
 	}
-	defer socket.Close()
-
-	req := message.Request{Task: "run_execution"}
-	if _, err := req.Process(socket); err != nil {
-		return fmt.Errorf("error running: %w", err)
+	response := service_pb.Response{}
+	err := z.socket.Request(&request, &response)
+	if err != nil {
+		return fmt.Errorf("error requesting run: %w", err)
 	}
 	z.Running = true
 	return nil
@@ -139,45 +146,84 @@ func (z *Zipline) RunExecution(ctx context.Context) error {
 GetMessage
 Returns feed message from a running execution
 */
-func (z *Zipline) GetMessage() (*engine.Period, error) {
+func (z *Zipline) GetPortfolio() (*backtest_pb.GetPortfolioResponse, error) {
 	if !z.Running {
 		return nil, errors.New("backtest engine is not running")
 	}
-	var err error
-	socket, err := z.socket.Get()
+	request := service_pb.Request{
+		Task: "get_portfolio",
+	}
+	response := service_pb.Response{}
+	err := z.socket.Request(&request, &response)
 	if err != nil {
-		return nil, fmt.Errorf("error getting socket for instance: %w", err)
+		return nil, fmt.Errorf("error requesting period: %w", err)
 	}
-
-	req := message.Request{Task: "get_period"}
-	rsp, err := req.Process(socket)
+	if response.Error != nil {
+		if strings.Contains(*response.Error, NoActiveExecution.Error()) {
+			return nil, NoActiveExecution
+		}
+		return nil, fmt.Errorf("error getting period: %v", response.Error)
+	}
+	portfolio_pb := backtest_pb.GetPortfolioResponse{}
+	err = proto.Unmarshal(response.Data, &portfolio_pb)
 	if err != nil {
-		return nil, fmt.Errorf("error getting period: %w", err)
+		return nil, fmt.Errorf("error unmarshalling period: %w", err)
 	}
-	if rsp.Data == nil {
-		return nil, nil
-	}
-	period := engine.Period{}
-	if err = rsp.DecodeData(&period); err != nil {
-		return nil, fmt.Errorf("error decoding period- data: %w", err)
-	}
-	return &period, nil
+	return &portfolio_pb, nil
+	/*
+		portfolio := engine.Portfolio{
+			Timestamp:         portfolio_pb.Timestamp.AsTime(),
+			CashFlow:          portfolio_pb.CashFlow,
+			StartingCash:      portfolio_pb.StartingCash,
+			PortfolioValue:    portfolio_pb.PortfolioValue,
+			PNL:               portfolio_pb.Pnl,
+			Returns:           portfolio_pb.Returns,
+			Cash:              portfolio_pb.Cash,
+			PositionsValue:    portfolio_pb.PositionsValue,
+			PositionsExposure: portfolio_pb.PositionsExposure,
+		}
+		for _, position := range portfolio_pb.Positions {
+			portfolio.Positions = append(portfolio.Positions, engine.Position{
+				Symbol:        position.Symbol,
+				Amount:        position.Amount,
+				CostBasis:     position.CostBasis,
+				LastSalePrice: position.LastSalePrice,
+				LastSaleDate:  position.LastSaleDate.AsTime(),
+			})
+		}
+		return &portfolio, nil
+	*/
 }
 
 /*
 Continue
 Continue after day completed to trigger a new Day
 */
-func (z *Zipline) Continue() error {
-	socket, err := z.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error getting socket for instance: %w", err)
+func (z *Zipline) Continue(orders *[]engine.Order) error {
+	continue_req := backtest_pb.ContinueRequest{
+		Orders: make([]*backtest_pb.Order, 0),
 	}
-	defer socket.Close()
-
-	req := message.Request{Task: "continue"}
-	if _, err := req.Process(socket); err != nil {
-		return fmt.Errorf("error continuing: %w", err)
+	for _, order := range *orders {
+		continue_req.Orders = append(continue_req.Orders, &backtest_pb.Order{
+			Symbol: order.Symbol,
+			Amount: order.Amount,
+		})
+	}
+	data, err := proto.Marshal(&continue_req)
+	if err != nil {
+		return fmt.Errorf("error marshalling continue request: %w", err)
+	}
+	request := service_pb.Request{
+		Task: "continue",
+		Data: data,
+	}
+	response := service_pb.Response{}
+	err = z.socket.Request(&request, &response)
+	if err != nil {
+		return fmt.Errorf("error requesting continue: %w", err)
+	}
+	if response.Error != nil {
+		return fmt.Errorf("error continuing: %v", response.Error)
 	}
 	return nil
 }
@@ -189,135 +235,74 @@ Gets the result of the execution
 TODO: How to use bigger buffer in req.Process fashion? or how to send result in batches
 */
 func (z *Zipline) GetExecutionResult(executionID string) (*engine.Result, error) {
-	var err error
-	var data []byte
-	var rspData []byte
-	execution := map[string]string{
-		"execution": executionID,
+	upload_req := backtest_pb.UploadResultRequest{
+		Execution: executionID,
 	}
-
-	rsp := message.Response{}
-	req := message.Request{Task: "upload_result", Data: execution}
-	data, err = req.Encode()
+	data, err := proto.Marshal(&upload_req)
 	if err != nil {
-		return nil, fmt.Errorf("UploadResult encoding config: %v", err)
+		return nil, fmt.Errorf("error marshalling upload result request: %w", err)
 	}
-	socket, err := z.socket.Get()
+	request := service_pb.Request{
+		Task: "upload_result",
+		Data: data,
+	}
+	response := service_pb.Response{}
+	err = z.socket.Request(&request, &response)
 	if err != nil {
-		return nil, fmt.Errorf("error getting socket for instance: %w", err)
-	}
-	defer socket.Close()
-
-	if err = socket.Write(data); err != nil {
-		return nil, fmt.Errorf("UploadResult writing to socket: %v", err)
-	}
-	if rspData, err = socket.Read(); err != nil {
-		return nil, fmt.Errorf("UploadResult reading from socket: %v", err)
-	}
-	if err = rsp.Decode(rspData); err != nil {
-		return nil, fmt.Errorf("GetResult decoding response: %v", err)
-	}
-	if rsp.HasError() {
-		return nil, fmt.Errorf("UploadResult from zipline backtest: %v", rsp.Error)
+		return nil, fmt.Errorf("error requesting upload result: %w", err)
 	}
 
-	rsp = message.Response{}
-	req = message.Request{Task: "get_execution_result"}
-	data, err = req.Encode()
+	request = service_pb.Request{
+		Task: "get_execution_result",
+	}
+	response = service_pb.Response{}
+	err = z.socket.Request(&request, &response)
 	if err != nil {
-		return nil, fmt.Errorf("GetResult encoding config: %v", err)
+		return nil, fmt.Errorf("error requesting result: %w", err)
 	}
 
-	socket, err = z.socket.Get()
+	result_rsp := backtest_pb.ResultResponse{}
+	err = proto.Unmarshal(response.Data, &result_rsp)
 	if err != nil {
-		return nil, fmt.Errorf("error getting socket for instance: %w", err)
+		return nil, fmt.Errorf("error unmarshalling result: %w", err)
 	}
-	defer socket.Close()
-
-	if err = socket.Write(data); err != nil {
-		return nil, fmt.Errorf("GetResult writing to socket: %v", err)
+	periods := make([]engine.Period, 0)
+	for _, period := range result_rsp.Periods {
+		periods = append(periods, engine.Period{
+			Timestamp:             period.Timestamp.AsTime(),
+			PNL:                   period.PNL,
+			Returns:               period.Returns,
+			PortfolioValue:        period.PortfolioValue,
+			LongsCount:            period.LongsCount,
+			ShortsCount:           period.ShortsCount,
+			LongValue:             period.LongValue,
+			ShortValue:            period.ShortValue,
+			StartingExposure:      period.StartingExposure,
+			EndingExposure:        period.EndingExposure,
+			LongExposure:          period.LongExposure,
+			ShortExposure:         period.ShortExposure,
+			CapitalUsed:           period.CapitalUsed,
+			GrossLeverage:         period.GrossLeverage,
+			NetLeverage:           period.NetLeverage,
+			StartingValue:         period.StartingValue,
+			EndingValue:           period.EndingValue,
+			StartingCash:          period.StartingCash,
+			EndingCash:            period.EndingCash,
+			MaxDrawdown:           period.MaxDrawdown,
+			MaxLeverage:           period.MaxLeverage,
+			ExcessReturn:          period.ExcessReturn,
+			TreasuryPeriodReturn:  period.TreasuryPeriodReturn,
+			AlgorithmPeriodReturn: period.AlgorithmPeriodReturn,
+			AlgoVolatility:        period.AlgoVolatility,
+			Sharpe:                period.Sharpe,
+			Sortino:               period.Sortino,
+			BenchmarkPeriodReturn: period.BenchmarkPeriodReturn,
+			BenchmarkVolatility:   period.BenchmarkVolatility,
+			Alpha:                 period.Alpha,
+			Beta:                  period.Beta,
+		})
 	}
-	if rspData, err = socket.Read(); err != nil {
-		return nil, fmt.Errorf("GetResult reading from socket: %v", err)
-	}
-	if err = rsp.Decode(rspData); err != nil {
-		return nil, fmt.Errorf("GetResult decoding response: %v", err)
-	}
-	if rsp.HasError() {
-		return nil, fmt.Errorf("GetResult from zipline backtest: %v", rsp.Error)
-	}
-	var result engine.Result
-	if err = rsp.DecodeData(&result); err != nil {
-		return nil, fmt.Errorf("GetResult decoding data: %v", err)
-	}
-	return &result, nil
-}
-
-/*
-Order
-places a new order, can be positive or negative value for long or short
-*/
-func (b *Zipline) Order(order *engine.Order) (*engine.Order, error) {
-	ctxSock, err := b.socket.Get()
-	if err != nil {
-		return nil, fmt.Errorf("error opening context socket: %w", err)
-	}
-	defer ctxSock.Close()
-	req := message.Request{Task: "order", Data: order}
-
-	rsp, err := req.Process(ctxSock)
-	if err != nil {
-		return nil, fmt.Errorf("error processing order: %w", err)
-	}
-	if err = rsp.DecodeData(order); err != nil {
-		return nil, fmt.Errorf("error decoding order- data: %w", err)
-	}
-	return order, nil
-}
-
-/*
-GetOrder
-Get information about an order, if its filled or not
-*/
-func (b *Zipline) GetOrder(order *engine.Order) (*engine.Order, error) {
-	ctxSock, err := b.socket.Get()
-	if err != nil {
-		return nil, fmt.Errorf("error opening context socket: %w", err)
-	}
-	defer ctxSock.Close()
-	req := message.Request{Task: "get_order", Data: order}
-
-	rsp, err := req.Process(ctxSock)
-	if err != nil {
-		return nil, fmt.Errorf("error processing order: %w", err)
-	}
-	newOrder := engine.Order{}
-	if err = rsp.DecodeData(&newOrder); err != nil {
-		return nil, fmt.Errorf("error decoding order- data: %w", err)
-	}
-	return &newOrder, nil
-}
-
-/*
-CancelOrder
-Cancels an order being placed
-*/
-func (b *Zipline) CancelOrder(order *engine.Order) error {
-	ctxSock, err := b.socket.Get()
-	if err != nil {
-		return fmt.Errorf("error opening context socket: %w", err)
-	}
-	defer ctxSock.Close()
-
-	req := message.Request{Task: "cancel_order", Data: order}
-	rsp, err := req.Process(ctxSock)
-	if err != nil {
-		return fmt.Errorf("error processing order: %w", err)
-	}
-	if err = rsp.DecodeData(order); err != nil {
-		return fmt.Errorf("error decoding order- data: %w", err)
-	}
-	return nil
+	return &engine.Result{Periods: periods}, nil
 }
 
 /*
@@ -325,16 +310,13 @@ Stop
 Stops the running execution
 */
 func (z *Zipline) Stop(ctx context.Context) error {
-	socket, err := z.socket.Get()
+	request := service_pb.Request{
+		Task: "stop",
+	}
+	response := service_pb.Response{}
+	err := z.socket.Request(&request, &response)
 	if err != nil {
-		return fmt.Errorf("error getting socket for instance: %w", err)
+		return fmt.Errorf("error requesting stop: %w", err)
 	}
-	defer socket.Close()
-
-	req := message.Request{Task: "stop"}
-	if _, err := req.Process(socket); err != nil {
-		return fmt.Errorf("error stopping: %w", err)
-	}
-	z.Running = false
 	return nil
 }

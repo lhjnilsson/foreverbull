@@ -32,7 +32,6 @@ type Stream interface {
 }
 
 func New() (*nats.Conn, nats.JetStreamContext, error) {
-	fmt.Println("BUILDING NATS STREAM-----")
 	nc, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
 		return nil, nil, fmt.Errorf("error connecting to nats: %w", err)

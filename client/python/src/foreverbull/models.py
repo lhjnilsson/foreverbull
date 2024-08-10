@@ -2,6 +2,7 @@ import builtins
 import importlib.util
 import types
 import typing
+from datetime import datetime
 from functools import partial
 from inspect import getabsfile, signature
 from typing import Any, Callable
@@ -10,6 +11,7 @@ from sqlalchemy import Connection
 
 from foreverbull import entity
 from foreverbull.data import Asset, Assets, Portfolio
+from foreverbull.pb.finance import finance_pb2
 
 
 def type_to_str[T: (int, float, bool, str)](t: T) -> str:
@@ -26,40 +28,6 @@ def type_to_str[T: (int, float, bool, str)](t: T) -> str:
             raise TypeError("Unsupported type: ", type(t))
 
 
-class Namespace(typing.Dict):
-    def __init__(self, **kwargs):
-        super().__init__()
-        for key, value in kwargs.items():
-            if not isinstance(value, types.GenericAlias):
-                raise TypeError("Namespace values must be type annotations")
-            if value.__origin__ == dict:
-                self[key] = {"type": "object"}
-                self[key]["value_type"] = type_to_str(value.__args__[1])
-            elif value.__origin__ == list:
-                self[key] = {"type": "array"}
-                self[key]["value_type"] = type_to_str(value.__args__[0])
-            else:
-                raise TypeError("Unsupported namespace type")
-        return
-
-    def contains(self, key: str, type: Any) -> bool:
-        if key not in self:
-            raise KeyError("Key {} not found in namespace".format(key))
-        if type.__origin__ == dict:
-            if self[key]["type"] != "object":
-                raise TypeError("Key {} is not of type object".format(key))
-            if self[key]["value_type"] != type_to_str(type.__args__[1]):
-                raise TypeError("Key {} is not of type {}".format(key, type))
-        elif type.__origin__ == list:
-            if self[key]["type"] != "array":
-                raise TypeError("Key {} is not of type array".format(key))
-            if self[key]["value_type"] != type_to_str(type.__args__[0]):
-                raise TypeError("Key {} is not of type {}".format(key, type))
-        else:
-            raise TypeError("Unsupported namespace type")
-        return True
-
-
 class Function:
     def __init__(self, callable: Callable, run_first: bool = False, run_last: bool = False):
         self.callable = callable
@@ -71,13 +39,13 @@ class Algorithm:
     _algo: "Algorithm | None"
     _file_path: str
     _functions: dict
-    _namespace: Namespace
+    _namespaces: list[str]
 
-    def __init__(self, functions: list[Function], namespace: Namespace | dict = {}):
+    def __init__(self, functions: list[Function], namespaces: list[str] = []):
         Algorithm._algo = None
         Algorithm._file_path = getabsfile(functions[0].callable)
         Algorithm._functions = {}
-        Algorithm._namespace = Namespace(**namespace)
+        Algorithm._namespaces = namespaces
 
         for f in functions:
             parameters = []
@@ -123,12 +91,11 @@ class Algorithm:
         Algorithm._algo = self
 
     def get_entity(self):
-        e = entity.service.Service.Algorithm(
+        return entity.service.Service.Algorithm(
             file_path=Algorithm._file_path,
             functions=[function["entity"] for function in Algorithm._functions.values()],
-            namespace=Algorithm._namespace,
+            namespaces=self._namespaces,
         )
-        return e
 
     @classmethod
     def from_file_path(cls, file_path: str) -> "Algorithm":
@@ -146,7 +113,7 @@ class Algorithm:
             raise Exception("No algo found in {}".format(file_path))
         return Algorithm._algo
 
-    def configure(self, parameters: dict[str, entity.service.Instance.Parameter]) -> None:
+    def configure(self, function_name: str, param_key: str, param_value: str) -> None:
         def _eval_param(type: str, val: str):
             if type == "int":
                 return int(val)
@@ -157,33 +124,47 @@ class Algorithm:
             elif type == "str":
                 return str(val)
             else:
-                raise TypeError("Unknown parameter type")
+                raise TypeError(f"Unknown parameter type: {type}")
 
-        for function_name, function in Algorithm._functions.items():
-            configuration = parameters.get(function_name)
-            if configuration is None:
-                continue
-            for parameter in function["entity"].parameters:
-                param = configuration.parameters.get(parameter.key)
-                if param is None:
-                    continue
-                value = _eval_param("int", param)
-                Algorithm._functions[function_name]["callable"] = partial(
-                    function["callable"],
-                    **{parameter.key: value},
-                )
+        param_type: str = ""
+        for f in Algorithm._functions.values():
+            if f["entity"].name == function_name:
+                function_name = f["entity"].name
+                for p in f["entity"].parameters:
+                    if p.key == param_key:
+                        param_type = p.type
+                        break
+                else:
+                    raise TypeError(f"Unknown parameter: {param_key}")
+                break
+
+        value = _eval_param(param_type, param_value)
+        function = Algorithm._functions[function_name]
+        Algorithm._functions[function_name]["callable"] = partial(
+            function["callable"],
+            **{param_key: value},
+        )
 
     def process(
         self,
         function_name: str,
         db: Connection,
-        request: entity.service.Request,
+        portfolio: finance_pb2.Portfolio,
+        timestamp: datetime,
+        symbols: list[str],
     ) -> list[entity.finance.Order]:
-        p = Portfolio(**request.portfolio.dict())
+        p = Portfolio(
+            cash=portfolio.cash,
+            value=portfolio.value,
+            positions=[
+                entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost)
+                for p in portfolio.positions
+            ],
+        )
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
-            for symbol in request.symbols:
-                a = Asset(request.timestamp, db, symbol)
+            for symbol in symbols:
+                a = Asset(timestamp, db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
                     asset=a,
                     portfolio=p,
@@ -191,7 +172,7 @@ class Algorithm:
                 if order:
                     orders.append(order)
         else:
-            assets = Assets(request.timestamp, db, request.symbols)
+            assets = Assets(timestamp, db, symbols)
             orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
             if not orders:
                 orders = []

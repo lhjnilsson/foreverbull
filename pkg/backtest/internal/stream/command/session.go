@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/rs/zerolog/log"
 )
 
 func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
@@ -61,6 +62,7 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 
 		err = session.Run(activity, stop)
 		if err != nil {
+			log.Error().Err(err).Msg("error running session")
 			return err
 		}
 		close(stop)
@@ -69,11 +71,14 @@ func SessionRun(ctx context.Context, message stream.Message) error {
 	}
 	err = runSession(s)
 	if err != nil {
+		log.Error().Err(err).Msg("error running session")
 		return fmt.Errorf("error running session: %w", err)
 	}
 	err = s.Stop(ctx)
 	if err != nil {
+		log.Error().Err(err).Msg("error stopping session")
 		return fmt.Errorf("error stopping session: %w", err)
 	}
+	log.Info().Msg("session stopped")
 	return nil
 }
