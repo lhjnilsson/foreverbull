@@ -7,11 +7,10 @@ RUN pip install pip --upgrade
 RUN pip install setuptools --upgrade
 
 WORKDIR /app
-COPY . .
 
-RUN pip install -e .
-
-RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
+ARG FB_WHEEL
+COPY ${FB_WHEEL} .
+RUN pip install ${FB_WHEEL}
 
 ARG ALGO_FILE
 RUN mkdir /algos
