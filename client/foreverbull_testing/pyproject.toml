@@ -1,0 +1,30 @@
+[project]
+name = "foreverbull_testing"
+version = "0.0.1"
+description = "foreverbull"
+authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
+
+[project.scripts]
+foreverbull = "foreverbull.cli:cli"
+
+[project.entry-points.pytest11]
+foreverbull = "foreverbull_testing.plugin"
+
+[tool.rye]
+dev-dependencies = [
+  "yfinance>=0.1.87,<1.0.0",
+  "pytest>=6.2.4,<7.0.0",
+  "pytest-mock>=3.6.1,<4.0.0",
+  "requests_mock>=1.9.3,<2.0.0",
+  "ruff<1.0.0",
+  "black>=21.7b0,<30",
+  "isort>=5.9.3,<6.0.0",
+  "pytest-cov>=3.0.0,<4.0.0",
+  "zipline-reloaded>=3.0.0,<4.0.0",
+  "ta-lib>=0.4.26,<0.5.0",
+  "testcontainers[postgres]",
+  "requests<2.32.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foreverbull"]
