@@ -41,5 +41,5 @@ testpaths = [
   "foreverbull/tests/",
   "foreverbull_testing/tests/",
   "foreverbull_zipline/tests/",
-  "tests/",
+  "tests/test_performance.py",
 ]

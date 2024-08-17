@@ -166,7 +166,6 @@ def test_backtest_list_executions(argument, return_value, expected_model):
             "test_service",
             {
                 "id": "test_service",
-                "calendar": "demo",
                 "name": "test_service",
                 "start": "2021-01-01T00:00:00",
                 "end": "2021-01-01T00:00:00",
@@ -175,7 +174,6 @@ def test_backtest_list_executions(argument, return_value, expected_model):
             },
             Execution(
                 id="test_service",
-                calendar="demo",
                 start=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 end=datetime.strptime("2021-01-01", "%Y-%m-%d"),
                 symbols=["AAPL", "MSFT"],
