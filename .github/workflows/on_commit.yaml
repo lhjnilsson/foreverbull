@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./client/python
+        working-directory: ./client
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -55,7 +55,7 @@ jobs:
           rye lint
       - name: Unittest
         run: |
-          rye test -- src
+          rye test
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
@@ -87,8 +87,7 @@ jobs:
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
-          context: client/python
-          file: ./client/python/zipline.Dockerfile
+          context: client/foreverbull_zipline
           tags: lhjnilsson/zipline:on_commit
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload zipline
@@ -108,25 +107,25 @@ jobs:
       - name: Build Parallel Example
         uses: docker/build-push-action@v2
         with:
-          context: client/python
-          file: ./client/python/Dockerfile
-          build-args: ALGO_FILE=examples/parallel.py
+          context: client
+          file: ./client/Dockerfile
+          build-args: ALGO_FILE=tests/end_to_end/parallel.py
           tags: lhjnilsson/parallel-example:on_commit
           outputs: type=docker,dest=/tmp/parallel_example.tar
       - name: Build Non-Parallel Example
         uses: docker/build-push-action@v2
         with:
-          context: client/python
-          file: ./client/python/Dockerfile
-          build-args: ALGO_FILE=examples/non_parallel.py
+          context: client
+          file: ./client/Dockerfile
+          build-args: ALGO_FILE=tests/end_to_end/non_parallel.py
           tags: lhjnilsson/non-parallel-example:on_commit
           outputs: type=docker,dest=/tmp/non_parallel_example.tar
       - name: Build Multistep with Namespace
         uses: docker/build-push-action@v2
         with:
-          context: client/python
-          file: ./client/python/Dockerfile
-          build-args: ALGO_FILE=examples/multistep_with_namespace.py
+          context: client
+          file: ./client/Dockerfile
+          build-args: ALGO_FILE=tests/end_to_end/multistep_with_namespace.py
           tags: lhjnilsson/multistep-with-namespace-example:on_commit
           outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
       - name: Upload parallel_example
@@ -222,7 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./client/python
+        working-directory: ./client
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -285,7 +284,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./client/python
+        working-directory: ./client
     timeout-minutes: 20
     strategy:
       fail-fast: false

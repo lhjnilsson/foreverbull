@@ -7,21 +7,12 @@ from threading import Thread
 
 import pynng
 import pytest
-import yfinance
 from foreverbull import Order, entity
 from foreverbull.entity.finance import OrderStatus
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, engine, text
-from sqlalchemy.orm import declarative_base
-from testcontainers.core.container import DockerContainer
-from testcontainers.core.network import Network
-from testcontainers.core.waiting_utils import wait_for_logs
-from testcontainers.minio import MinioContainer
-from testcontainers.nats import NatsContainer
-from testcontainers.postgres import PostgresContainer
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +23,7 @@ def spawn_process():
 
 
 @pytest.fixture(scope="function")
-def execution(database):
+def execution(fb_database):
     return entity.backtest.Execution(
         id="test",
         start=datetime(2023, 1, 3, 0, 0, 0, 0, tzinfo=timezone.utc),
@@ -82,7 +73,7 @@ def namespace_server():
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(spawn_process, execution, database):
+def parallel_algo_file(spawn_process, execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -158,7 +149,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, execution, database):
+def non_parallel_algo_file(spawn_process, execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -235,7 +226,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, execution, database):
+def parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -318,7 +309,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, execution, database):
+def non_parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -403,7 +394,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, execution, database, namespace_server):
+def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -514,31 +505,6 @@ Algorithm(
         process_socket.close()
 
 
-Base = declarative_base()
-
-
-class Asset(Base):
-    __tablename__ = "asset"
-    symbol = Column("symbol", String(), primary_key=True)
-    name = Column("name", String())
-    title = Column("title", String())
-    asset_type = Column("asset_type", String())
-
-
-class OHLC(Base):
-    __tablename__ = "ohlc"
-    id = Column(Integer, primary_key=True)
-    symbol = Column(String())
-    open = Column(Integer())
-    high = Column(Integer())
-    low = Column(Integer())
-    close = Column(Integer())
-    volume = Column(Integer())
-    time = Column(DateTime())
-
-    __table_args__ = (UniqueConstraint("symbol", "time", name="symbol_time_uc"),)
-
-
 @pytest.fixture(scope="session")
 def backtest_entity():
     return entity.backtest.Backtest(
@@ -573,121 +539,3 @@ def backtest_entity():
             "WMT",
         ],
     )
-
-
-@pytest.fixture(scope="session")
-def verify_database():
-    def _(database: engine.Engine, backtest: entity.backtest.Backtest):
-        with database.connect() as conn:
-            for symbol in backtest.symbols:
-                result = conn.execute(
-                    text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
-                    {"symbol": symbol},
-                )
-                res = result.fetchone()
-                if res is None:
-                    print("FAIL TO FETCH MIN MAX")
-                    return False
-                start, end = res
-                if start is None or end is None:
-                    print("START TIME AND TIME IS NONE")
-                    return False
-                if start.date() != backtest.start.date() or end.date() != backtest.end.date():
-                    print("START TIME AND TIME IS NOT EQUAL")
-                    print(start.date(), backtest.start.date(), end.date(), backtest.end.date())
-                    return False
-            return True
-
-    return _
-
-
-@pytest.fixture(scope="session")
-def populate_database():
-    def _(database: engine.Engine, backtest: entity.backtest.Backtest):
-        with database.connect() as conn:
-            for symbol in backtest.symbols:
-                feed = yfinance.Ticker(symbol)
-                info = feed.info
-                asset = entity.finance.Asset(
-                    symbol=info["symbol"],
-                    name=info["longName"],
-                    title=info["shortName"],
-                    asset_type=info["quoteType"],
-                )
-                conn.execute(
-                    text(
-                        """INSERT INTO asset (symbol, name, title, asset_type)
-                        VALUES (:symbol, :name, :title, :asset_type) ON CONFLICT DO NOTHING"""
-                    ),
-                    {"symbol": asset.symbol, "name": asset.name, "title": asset.title, "asset_type": asset.asset_type},
-                )
-                data = feed.history(start=backtest.start, end=backtest.end + timedelta(days=1))
-                for idx, row in data.iterrows():
-                    time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)
-                    ohlc = entity.finance.OHLC(
-                        symbol=symbol,
-                        open=row.Open,
-                        high=row.High,
-                        low=row.Low,
-                        close=row.Close,
-                        volume=row.Volume,
-                        time=time,
-                    )
-                    conn.execute(
-                        text(
-                            """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)
-                            VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
-                        ),
-                        {
-                            "symbol": ohlc.symbol,
-                            "open": ohlc.open,
-                            "high": ohlc.high,
-                            "low": ohlc.low,
-                            "close": ohlc.close,
-                            "volume": ohlc.volume,
-                            "time": ohlc.time,
-                        },
-                    )
-            conn.commit()
-
-    return _
-
-
-@pytest.fixture(scope="session")
-def database(backtest_entity: entity.backtest.Backtest, verify_database, populate_database):
-    postgres = PostgresContainer("postgres:alpine")
-    postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
-    with postgres as postgres:
-        engine = create_engine(postgres.get_connection_url())
-        Base.metadata.create_all(engine)
-        os.environ["DATABASE_URL"] = postgres.get_connection_url()
-        if not verify_database(engine, backtest_entity):
-            populate_database(engine, backtest_entity)
-        yield engine
-
-
-@pytest.fixture(scope="session")
-def local_environment(network, minio, nats, postgres):
-    with Network() as network:
-        postgres = PostgresContainer(
-            "postgres:13.3-alpine",
-            network=network.name,
-            hostname="postgres",
-            username="postgres",
-            password="postgres",
-            dbname="postgres",
-        )
-        minio = MinioContainer("minio/minio:latest", network=network.name, hostname="minio")
-        nats = NatsContainer("nats:2.10-alpine", network=network.name, hostname="nats")
-        nats = nats.with_command("-js")
-        with postgres as postgres, minio as minio, nats as nats:
-            foreverbull = DockerContainer(os.environ.get("BROKER_IMAGE", ""))
-            foreverbull.with_network(network)
-            foreverbull.with_env("POSTGRES_URL", "postgres://postgres:postgres@postgres:5432/postgres")
-            foreverbull.with_env("NATS_URL", "nats://nats:4222")
-            foreverbull.with_env("MINIO_URL", "minio:9000")
-            foreverbull.with_env("BACKTEST_IMAGE", os.environ.get("BACKTEST_IMAGE", "lhjnilsson/zipline:latest"))
-            foreverbull.with_volume_mapping("/var/run/docker.sock", "/var/run/docker.sock", mode="rw")
-            with foreverbull as foreverbull:
-                wait_for_logs(foreverbull, "RUNNING", 10)
-                yield foreverbull

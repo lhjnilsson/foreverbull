@@ -2,6 +2,7 @@ import os
 import time
 from datetime import datetime, timezone
 from functools import partial
+from multiprocessing import get_start_method, set_start_method
 
 import pandas as pd
 import pynng
@@ -19,6 +20,13 @@ from zipline.data.bundles import register
 from zipline.errors import SymbolNotFound
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.run_algo import BenchmarkSpec, _run
+
+
+@pytest.fixture(scope="session")
+def spawn_process():
+    method = get_start_method()
+    if method != "spawn":
+        set_start_method("spawn", force=True)
 
 
 @pytest.fixture(scope="session")
@@ -59,7 +67,7 @@ def execution(spawn_process) -> entity.backtest.Execution:
 
 
 @pytest.fixture(scope="session")
-def foreverbull_bundle(execution: entity.backtest.Execution, database):
+def foreverbull_bundle(execution: entity.backtest.Execution, fb_database):
     backtest_entity = entity.backtest.Backtest(
         name="test_backtest",
         start=execution.start,

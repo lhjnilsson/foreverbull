@@ -3,12 +3,6 @@ import logging
 from foreverbull import Algorithm, Asset, Function, Order, Portfolio
 
 logger = logging.getLogger("parallel")
-logger.level = logging.INFO
-logger.propagate = False
-file_handler = logging.FileHandler("parallel.log")
-for handler in logger.handlers:
-    logger.removeHandler(handler)
-logger.addHandler(file_handler)
 
 
 def handle_data(asset: Asset, portfolio: Portfolio) -> Order | None:

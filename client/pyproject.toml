@@ -35,3 +35,11 @@ skips = ["*_test.py", '*/test_*.py']
 profile = "black"
 src_paths = ["src"]
 line_length = 120
+
+[tool.pytest.ini_options]
+testpaths = [
+  "foreverbull/tests/",
+  "foreverbull_testing/tests/",
+  "foreverbull_zipline/tests/",
+  "tests/",
+]

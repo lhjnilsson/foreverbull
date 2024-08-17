@@ -1,11 +1,7 @@
-import os
 from datetime import datetime, timezone
 
-import foreverbull_zipline
-import pandas as pd
 import pytest
 from foreverbull import entity
-from zipline.data import bundles
 
 
 @pytest.fixture(scope="session")

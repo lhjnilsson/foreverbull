@@ -48,7 +48,8 @@ def namespace_server():
     thread.join()
 
 
-def test_asset_getattr_setattr(database, namespace_server):
+def test_asset_getattr_setattr(fb_database, namespace_server):
+    database, _ = fb_database
     with database.connect() as conn:
         asset = Asset(datetime.now(), conn, "AAPL")
         assert asset is not None
@@ -61,7 +62,8 @@ def test_asset_getattr_setattr(database, namespace_server):
         assert asset.pe == 12.3
 
 
-def test_assets(database, backtest_entity):
+def test_assets(fb_database, backtest_entity):
+    database, _ = fb_database
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, backtest_entity.symbols)
         for asset in assets:
@@ -78,7 +80,8 @@ def test_assets(database, backtest_entity):
             assert "volume" in stock_data.columns
 
 
-def test_assets_getattr_setattr(database, namespace_server):
+def test_assets_getattr_setattr(fb_database, namespace_server):
+    database, _ = fb_database
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, [])
         assert assets is not None

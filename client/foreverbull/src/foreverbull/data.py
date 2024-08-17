@@ -42,7 +42,6 @@ def get_engine(url: str):
     for hostname in ["localhost", "postgres", "127.0.0.1"]:
         for port in [database_port, "5432"]:
             try:
-
                 new_url = url.replace(f"@{database_host}:", f"@{hostname}:", 1)
                 new_url = new_url.replace(f":{database_port}", ":5432", 1)
                 engine = create_engine(new_url)
