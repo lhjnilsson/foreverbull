@@ -14,7 +14,7 @@ RUN pip install /foreverbull-0.0.1-py3-none-any.whl
 
 ARG ALGO_FILE
 RUN mkdir /algos
-RUN cp ${ALGO_FILE} /algos/algo.py
+COPY ${ALGO_FILE} /algos/algo.py
 RUN cp foreverbull/src/foreverbull/_run_instance.py /algos/_run_instance.py
 
 WORKDIR /algos
