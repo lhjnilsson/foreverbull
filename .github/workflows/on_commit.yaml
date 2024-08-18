@@ -213,26 +213,26 @@ jobs:
       - name: Setup rye
         uses: eifinger/setup-rye@v4
       - name: build foreverbull
-        run: cd foreverbull && rye build && cd ..
+        run: rye build --pyproject foreverbull/pyproject.toml
       - name: build foreverbull_testing
-        run: cd foreverbull_testing && rye build && cd ..
+        run: rye build --pyproject foreverbull_testing/pyproject.toml
       - name: Upload foreverbull
         uses: actions/upload-artifact@v2
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
-          path: dist/foreverbull-0.0.1-py3-none-any.whl
+          path: client/dist/foreverbull-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload foreverbull_testing
         uses: actions/upload-artifact@v2
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
-          path: dist/foreverbull_testing-0.0.1-py3-none-any.whl
+          path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload end_to_end tests
         uses: actions/upload-artifact@v2
         with:
           name: end_to_end_tests
-          path: tests/end_to_end
+          path: client/tests/end_to_end
 
   build-docker-zipline:
     needs: [build-python-packages]
