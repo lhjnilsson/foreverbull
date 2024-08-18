@@ -248,7 +248,6 @@ jobs:
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: client
-      - uses: actions/checkout@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       - name: PWD
