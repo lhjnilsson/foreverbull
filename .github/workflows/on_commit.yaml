@@ -114,6 +114,7 @@ jobs:
       - name: Build Parallel Example
         uses: docker/build-push-action@v6
         with:
+          context: client
           build-args: |
             ALGO_FILE=tests/end_to_end/parallel.py
             FB_WHEEL=dist/foreverbull-0.1.0-py3-none-any.whl
