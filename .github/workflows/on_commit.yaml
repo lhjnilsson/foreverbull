@@ -117,7 +117,7 @@ jobs:
           context: client
           build-args: |
             ALGO_FILE=tests/end_to_end/parallel.py
-            FB_WHEEL=dist/foreverbull-0.1.0-py3-none-any.whl
+            FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
           tags: lhjnilsson/parallel-example:on_commit
           outputs: type=docker,dest=/tmp/parallel_example.tar
       - name: Build Non-Parallel Example

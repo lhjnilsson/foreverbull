@@ -9,8 +9,8 @@ RUN pip install setuptools --upgrade
 WORKDIR /app
 
 ARG FB_WHEEL
-COPY ${FB_WHEEL} .
-RUN pip install ${FB_WHEEL}
+COPY ${FB_WHEEL} /foreverbull-0.0.1-py3-none-any.whl
+RUN pip install /foreverbull-0.0.1-py3-none-any.whl
 
 ARG ALGO_FILE
 RUN mkdir /algos
