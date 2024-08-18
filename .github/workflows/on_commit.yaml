@@ -254,7 +254,6 @@ jobs:
       - name: Build Zipline
         uses: docker/build-push-action@v2
         with:
-          context: client
           file: foreverbull_zipline/Dockerfile
           tags: lhjnilsson/zipline:on_commit
           build-args: |
