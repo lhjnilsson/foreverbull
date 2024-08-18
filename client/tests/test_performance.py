@@ -212,7 +212,7 @@ def zipline_socket():
     execution.join()
 
 
-@pytest.mark.parametrize("file_path", ["examples/parallel.py"])
+@pytest.mark.parametrize("file_path", ["tests/end_to_end/parallel.py"])
 def test_integration(zipline_socket, execution, foreverbull_bundle, baseline_performance, file_path):
     broker_socket = pynng.Req0(listen="tcp://0.0.0.0:8888")
     broker_socket.recv_timeout = 10000

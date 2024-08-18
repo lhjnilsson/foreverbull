@@ -63,7 +63,8 @@ def test_asset_getattr_setattr(fb_database, namespace_server):
 
 
 def test_assets(fb_database, backtest_entity):
-    database, _ = fb_database
+    database, ensure_data = fb_database
+    ensure_data(backtest_entity)
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, backtest_entity.symbols)
         for asset in assets:
