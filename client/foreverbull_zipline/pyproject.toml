@@ -1,6 +1,7 @@
 [project]
 name = "foreverbull_zipline"
 version = "0.0.0"
+dependencies = []
 
 [tool.rye]
 managed = true

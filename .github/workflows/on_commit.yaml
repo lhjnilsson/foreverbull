@@ -219,15 +219,40 @@ jobs:
         run: sleep 20s
         shell: bash
 
+  build-python-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
+      - name: Setup rye
+        uses: eifinger/setup-rye@v4
+      - name: build foreverbull
+        run: cd foreverbull && rye build && cd ..
+      - name: build foreverbull_testing
+        run: cd foreverbull_testing && rye build && cd ..
+      - name: Upload foreverbull
+        uses: actions/upload-artifact@v2
+        with:
+          name: foreverbull-0.0.1-py3-none-any.whl
+          path: dist/foreverbull-0.0.1-py3-none-any.whl
+          retention-days: 1
+      - name: Upload foreverbull_testing
+        uses: actions/upload-artifact@v2
+        with:
+          name: foreverbull_testing-0.0.1-py3-none-any.whl
+          path: dist/foreverbull_testing-0.0.1-py3-none-any.whl
+          retention-days: 1
+      - name: Upload end_to_end tests
+        uses: actions/upload-artifact@v2
+        with:
+          name: end_to_end_tests
+          path: tests/end_to_end
+
   end-to-end-tests:
     needs:
-      [
-        lint-unit-tests,
-        python-lint-unit-tests,
-        build-docker-foreverbull,
-        build-docker-zipline,
-        build-docker-python,
-      ]
+      [build-docker-foreverbull, build-docker-zipline, build-python-packages]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -238,14 +263,8 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      - name: Download Foreverbull
-        uses: actions/download-artifact@v2
-        with:
-          name: foreverbull
-          path: /tmp
       - name: Download foreverbull
         uses: actions/download-artifact@v2
         with:
@@ -260,14 +279,26 @@ jobs:
         run: docker load -i /tmp/zipline.tar
       - name: load foreverbull
         run: docker load -i /tmp/foreverbull.tar
+      - name: Download foreverbull pypi package
+        uses: actions/download-artifact@v2
+        with:
+          name: foreverbull-0.0.1-py3-none-any.whl
+      - name: Download foreverbull_testing pypi package
+        uses: actions/download-artifact@v2
+        with:
+          name: foreverbull_testing-0.0.1-py3-none-any.whl
+      - name: Download end_to_end tests
+        uses: actions/download-artifact@v2
+        with:
+          name: end_to_end_tests
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install library and pytest
+      - name: Install foreverbull and foreverbull_testing
         run: |
-          python -m pip install -e .
-          python -m pip install pytest
+          pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
+          pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
           foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config examples/ingestion.json
