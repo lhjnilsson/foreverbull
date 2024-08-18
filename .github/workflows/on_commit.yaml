@@ -257,7 +257,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: client
-          file: ./foreverbull_zipline/Dockerfile
+          file: ./client/foreverbull_zipline/Dockerfile
           tags: lhjnilsson/zipline:on_commit
           build-args: |
             FB_WHEEL=foreverbull-0.0.1-py3-none-any.whl
