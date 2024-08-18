@@ -123,6 +123,7 @@ jobs:
       - name: Build Non-Parallel Example
         uses: docker/build-push-action@v2
         with:
+          context: client
           build-args: |
             ALGO_FILE=tests/end_to_end/non_parallel.py
             FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
@@ -131,6 +132,7 @@ jobs:
       - name: Build Multistep with Namespace
         uses: docker/build-push-action@v2
         with:
+          context: client
           build-args: |
             ALGO_FILE=tests/end_to_end/multistep_with_namespace.py
             FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
