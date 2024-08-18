@@ -247,7 +247,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
-          path: /tmp
+          path: client
       - uses: actions/checkout@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -257,7 +257,7 @@ jobs:
           context: client/foreverbull_zipline
           tags: lhjnilsson/zipline:on_commit
           build-args: |
-            FB_WHEEL=/tmp/foreverbull-0.0.1-py3-none-any.whl
+            FB_WHEEL=foreverbull-0.0.1-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload zipline
         uses: actions/upload-artifact@v2
