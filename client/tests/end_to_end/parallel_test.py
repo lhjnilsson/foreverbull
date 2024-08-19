@@ -8,7 +8,7 @@ except RuntimeError:
     pass
 
 
-def test_positive_returns(foreverbull):
-    with foreverbull(handle_data, []) as foreverbull:
+def test_positive_returns(fb_backtest):
+    with fb_backtest(parallel, []) as foreverbull:
         execution = foreverbull.new_backtest_execution()
         foreverbull.run_backtest_execution(execution)
