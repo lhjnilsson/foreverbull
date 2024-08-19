@@ -1,6 +1,6 @@
 from multiprocessing import set_start_method
 
-from . import multistep_with_namespace
+import multistep_with_namespace
 
 try:
     set_start_method("spawn")

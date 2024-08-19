@@ -1,6 +1,6 @@
 from multiprocessing import set_start_method
 
-from .parallel import handle_data
+import parallel
 
 try:
     set_start_method("spawn")
