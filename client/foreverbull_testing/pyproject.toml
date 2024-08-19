@@ -3,9 +3,7 @@ name = "foreverbull_testing"
 version = "0.0.1"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
-
-[project.scripts]
-foreverbull = "foreverbull.cli:cli"
+dependencies = ["pytest"]
 
 [project.entry-points.pytest11]
 foreverbull = "foreverbull_testing.plugin"
