@@ -321,6 +321,10 @@ jobs:
         run: |
           pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
+      - name: run ls
+        run: ls -la /tmp
+      - name: run ls2
+        run: ls -la /tmp/end_to_end_tests
       - name: Create environment
         run: |
           foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/end_to_end_tests/ingestion.json
