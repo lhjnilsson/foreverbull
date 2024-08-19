@@ -312,7 +312,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: end_to_end_tests
-          path: /tmp
+          path: /tmp/end_to_end_tests
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
@@ -340,7 +340,8 @@ jobs:
         run: foreverbull env stop
 
   end-to-end-tests-with-alpaca:
-    needs: [build-docker-foreverbull, build-docker-zipline, build-docker-python]
+    needs:
+      [build-docker-foreverbull, build-docker-zipline, build-python-packages]
     runs-on: ubuntu-latest
     defaults:
       run:
