@@ -327,8 +327,9 @@ jobs:
       - name: create backtest
         run: foreverbull backtest create github_action_test
       - name: Run backtest as pytest
+        working-directory: /tmp/end_to_end_tests
         run: |
-          python -m pytest /tmp/end_to_end_tests/ --backtest=github_action_test
+          python -m pytest --backtest=github_action_test
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
@@ -394,8 +395,9 @@ jobs:
       - name: create backtest
         run: foreverbull backtest create github_action_test
       - name: Run backtest as pytest
+        working-directory: /tmp/end_to_end_tests
         run: |
-          python -m pytest /tmp/end_to_end_tests/ --backtest=github_action_test
+          python -m pytest --backtest=github_action_test
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
