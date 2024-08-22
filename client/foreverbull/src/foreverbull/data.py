@@ -73,7 +73,7 @@ class Asset(interfaces.Asset):
         self._db = db
         self._symbol = symbol
 
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
+    def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
         with namespace_socket() as s:
             request = service_pb2.NamespaceRequest(
                 key=key,
@@ -86,8 +86,7 @@ class Asset(interfaces.Asset):
                 raise Exception(response.error)
             value = pb_utils.protobuf_struct_to_dict(response.value)
             if self._symbol not in value:
-                raise Exception(f"Key {self._symbol} not found")
-
+                return None
             return value[self._symbol]
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:

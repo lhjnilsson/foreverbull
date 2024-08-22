@@ -6,7 +6,7 @@ from pandas import DataFrame
 
 class Asset(ABC):
     @abstractmethod
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
+    def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
         raise NotImplementedError()
 
     @abstractmethod
