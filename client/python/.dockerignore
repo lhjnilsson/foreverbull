@@ -1,5 +1,0 @@
-**/*
-
-!src/**/*
-!examples/**/*
-!pyproject.toml

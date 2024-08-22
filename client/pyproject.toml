@@ -1,0 +1,45 @@
+[project]
+name = "foreverbull"
+version = "0.0.0"
+
+[tool.rye]
+managed = true
+virtual = true
+dev-dependencies = []
+
+[tool.rye.workspace]
+packages = ["foreverbull", "foreverbull_testing", "foreverbull_zipline"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.ruff]
+fix = true
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint.isort]
+force-single-line = true
+lines-between-types = 1
+lines-after-imports = 2
+known-first-party = ["foreverbull"]
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+
+[tool.bandit.assert_used]
+skips = ["*_test.py", '*/test_*.py']
+
+[tool.isort]
+profile = "black"
+src_paths = ["src"]
+line_length = 120
+
+[tool.pytest.ini_options]
+testpaths = [
+  "foreverbull/tests/",
+  "foreverbull_testing/tests/",
+  "foreverbull_zipline/tests/",
+  "tests/test_performance.py",
+]
