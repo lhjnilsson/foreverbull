@@ -6,10 +6,11 @@ from datetime import datetime
 from typing import Any, Iterator
 
 import pynng
-from foreverbull import entity
+from foreverbull import entity, interfaces
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2  # noqa
 from foreverbull.pb.service import service_pb2
+from google.protobuf import json_format  # type: ignore
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
@@ -66,16 +67,16 @@ def namespace_socket() -> Iterator[pynng.Socket]:
     socket.close()
 
 
-class Asset:
+class Asset(interfaces.Asset):
     def __init__(self, as_of: datetime, db: engine.Connection, symbol: str):
         self._as_of = as_of
         self._db = db
         self._symbol = symbol
 
-    def __getattr__(self, name: str) -> Any:
+    def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
         with namespace_socket() as s:
             request = service_pb2.NamespaceRequest(
-                key=name,
+                key=key,
                 type=service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
@@ -83,15 +84,17 @@ class Asset:
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return response.value[self._symbol]
+            value = response.value[self._symbol]
+            if value is None:
+                raise Exception(f"Key {key} not found")
 
-    def __setattr__[T: (int, float, bool, str)](self, name: str, value: T) -> None:
-        if name.startswith("_"):
-            super().__setattr__(name, value)
-            return
+            value = json_format.MessageToDict(value)
+            return {k: v for k, v in value.items()}[key]
+
+    def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
         with namespace_socket() as s:
             request = service_pb2.NamespaceRequest(
-                key=name,
+                key=key,
                 type=service_pb2.NamespaceRequestType.SET,
             )
             request.value.update({self._symbol: value})
@@ -115,16 +118,16 @@ class Asset:
         )
 
 
-class Assets:
+class Assets(interfaces.Assets):
     def __init__(self, as_of: datetime, db: engine.Connection, symbols: list[str]):
         self._as_of = as_of
         self._db = db
         self._symbols = symbols
 
-    def __getattr__[T: (int, float, bool, str)](self, name: str) -> dict:
+    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
         with namespace_socket() as s:
             request = service_pb2.NamespaceRequest(
-                key=name,
+                key=key,
                 type=service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
@@ -134,16 +137,13 @@ class Assets:
                 raise Exception(response.error)
             return pb_utils.protobuf_struct_to_dict(response.value)
 
-    def __setattr__[T: (int, float, bool, str)](self, name: str, value: dict[str, T]) -> None:
-        if name.startswith("_"):
-            super().__setattr__(name, value)
-            return
+    def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
         with namespace_socket() as s:
             struct = Struct()
             for k, v in value.items():
                 struct.update({k: v})
             request = service_pb2.NamespaceRequest(
-                key=name,
+                key=key,
                 type=service_pb2.NamespaceRequestType.SET,
                 value=struct,
             )
