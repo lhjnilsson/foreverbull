@@ -84,12 +84,11 @@ class Asset(interfaces.Asset):
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            value = response.value[self._symbol]
-            if value is None:
-                raise Exception(f"Key {key} not found")
+            value = pb_utils.protobuf_struct_to_dict(response.value)
+            if self._symbol not in value:
+                raise Exception(f"Key {self._symbol} not found")
 
-            value = json_format.MessageToDict(value)
-            return {k: v for k, v in value.items()}[key]
+            return value[self._symbol]
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
         with namespace_socket() as s:
@@ -162,6 +161,9 @@ class Assets(interfaces.Assets):
         for symbol in self.symbols:
             yield Asset(self._as_of, self._db, symbol)
 
+    @property
+    def stock_data(self) -> DataFrame:
+        return DataFrame() # TODO: Implement
 
 class Portfolio(entity.finance.Portfolio):
     def __contains__(self, asset: Asset) -> bool:

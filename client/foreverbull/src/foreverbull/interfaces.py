@@ -36,14 +36,6 @@ class Assets(ABC):
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
         raise NotImplementedError()
 
-    @abstractmethod
-    def __len__(self) -> int:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def __contains__(self, symbol: str) -> bool:
-        raise NotImplementedError()
-
     @property
     @abstractmethod
     def symbols(self) -> list[str]:

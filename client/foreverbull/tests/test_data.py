@@ -53,13 +53,13 @@ def test_asset_getattr_setattr(fb_database, namespace_server):
     with database.connect() as conn:
         asset = Asset(datetime.now(), conn, "AAPL")
         assert asset is not None
-        asset.rsi = 56.4
+        asset.set_metric("rsi", 56.4)
 
         assert "rsi" in namespace_server
         assert namespace_server["rsi"] == {"AAPL": 56.4}
 
         namespace_server["pe"] = {"AAPL": 12.3}
-        assert asset.pe == 12.3
+        assert asset.get_metric("pe") == 12.3
 
 
 def test_assets(fb_database, backtest_entity):
@@ -86,10 +86,10 @@ def test_assets_getattr_setattr(fb_database, namespace_server):
     with database.connect() as conn:
         assets = Assets(datetime.now(), conn, [])
         assert assets is not None
-        assets.holdings = {"AAPL": True, "MSFT": False}
+        assets.set_metrics("holdings", {"AAPL": True, "MSFT": False})
 
         assert "holdings" in namespace_server
         assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
 
         namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
-        assert assets.pe == {"AAPL": 12.3, "MSFT": 23.4}
+        assert assets.get_metrics("pe") == {"AAPL": 12.3, "MSFT": 23.4}
