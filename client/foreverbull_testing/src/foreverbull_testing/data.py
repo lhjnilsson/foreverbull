@@ -15,13 +15,18 @@ class Asset(interfaces.Asset):
         t = ticker.history(start=start, end=end, interval="1d")
         t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
         t.rename(columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True)
+        t.index.name = "date"
         self._stock_data = t
+        self.metrics = {}
 
     def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
-        raise NotImplementedError()
+        try:
+            return self.metrics[key]
+        except KeyError:
+            return None
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
-        raise NotImplementedError()
+        self.metrics[key] = value
 
     @property
     def symbol(self) -> str:
@@ -36,12 +41,16 @@ class Assets(interfaces.Assets):
         self._start = start
         self._end = end
         self._symbols = symbols
+        self.metrics = {}
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
-            raise NotImplementedError()
+        try:
+            return self.metrics[key]
+        except KeyError:
+            return {}
 
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
-            raise NotImplementedError()
+        self.metrics[key] = value
 
     @property
     def symbols(self) -> list[str]:
@@ -50,3 +59,11 @@ class Assets(interfaces.Assets):
     def __iter__(self):
         for symbol in self._symbols:
             yield Asset(self._start, self._end, symbol)
+
+    @property
+    def stock_data(self) -> DataFrame:
+        data = {"symbols": [], "stock_data": []}
+        for asset in self:
+            data["symbols"].append(asset.symbol)
+            data["stock_data"].append(asset.stock_data)
+        return data
