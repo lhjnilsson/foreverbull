@@ -127,7 +127,7 @@ jobs:
           rye publish -y --token ${{ secrets.PYPI_TOKEN }}
 
   create_release:
-    needs: [version_tag, build_python_packages]
+    needs: [version_tag, publish_python_client]
     runs-on: ubuntu-latest
     permissions:
       deployments: write
