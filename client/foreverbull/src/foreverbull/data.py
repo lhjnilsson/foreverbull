@@ -168,11 +168,11 @@ class Portfolio(entity.finance.Portfolio):
     def __contains__(self, asset: Asset) -> bool:
         return asset.symbol in [position.symbol for position in self.positions]
 
-    def __getitem__(self, asset: Asset) -> entity.finance.Position | None:
+    def __getitem__(self, asset: interfaces.Asset) -> entity.finance.Position | None:
         return next(
             (position for position in self.positions if position.symbol == asset.symbol),
             None,
         )
 
-    def get_position(self, asset: Asset) -> entity.finance.Position | None:
+    def get_position(self, asset: interfaces.Asset) -> entity.finance.Position | None:
         return self[asset]

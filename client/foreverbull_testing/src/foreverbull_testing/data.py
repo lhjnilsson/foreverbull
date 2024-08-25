@@ -1,9 +1,35 @@
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
+from typing import Any, Generator
 
 import yfinance as yf
+from foreverbull import Portfolio  # noqa
 from foreverbull import interfaces
 from pandas import DataFrame
+
+
+class DateLimitedAsset(interfaces.Asset):
+    def __init__(self, symbol: str, df: DataFrame):
+        self._symbol = symbol
+        self._stock_data = df
+        self.metrics = {}
+
+    def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
+        try:
+            return self.metrics[key]
+        except KeyError:
+            return None
+
+    def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
+        self.metrics[key] = value
+
+    @property
+    def symbol(self) -> str:
+        return self._symbol
+
+    @property
+    def stock_data(self) -> DataFrame:
+        return self._stock_data
 
 
 class Asset(interfaces.Asset):
@@ -18,6 +44,11 @@ class Asset(interfaces.Asset):
         t.index.name = "date"
         self._stock_data = t
         self.metrics = {}
+
+    @contextmanager
+    def with_end_date(self, end: str | datetime) -> Generator[DateLimitedAsset, Any, Any]:
+        a = DateLimitedAsset(self._symbol, self._stock_data.loc[:end])
+        yield a
 
     def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
         try:
@@ -36,8 +67,8 @@ class Asset(interfaces.Asset):
     def stock_data(self) -> DataFrame:
         return self._stock_data
 
-class Assets(interfaces.Assets):
-    def __init__(self, start: str, end: str, symbols: list[str]):
+class DateLimitedAssets(interfaces.Assets):
+    def __init__(self, start: str | datetime, end: str | datetime, symbols: list[str]):
         self._start = start
         self._end = end
         self._symbols = symbols
@@ -62,8 +93,37 @@ class Assets(interfaces.Assets):
 
     @property
     def stock_data(self) -> DataFrame:
-        data = {"symbols": [], "stock_data": []}
-        for asset in self:
-            data["symbols"].append(asset.symbol)
-            data["stock_data"].append(asset.stock_data)
-        return data
+        return DataFrame()
+
+class Assets(interfaces.Assets):
+    def __init__(self, start: str, end: str, symbols: list[str]):
+        self._start = start
+        self._end = end
+        self._symbols = symbols
+        self.metrics = {}
+
+    @contextmanager
+    def with_end_date(self, end: str | datetime) -> Generator[DateLimitedAssets, Any, Any]:
+        a = DateLimitedAssets(self._start, end, self._symbols)
+        yield a
+
+    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
+        try:
+            return self.metrics[key]
+        except KeyError:
+            return {}
+
+    def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
+        self.metrics[key] = value
+
+    @property
+    def symbols(self) -> list[str]:
+        return self._symbols
+
+    def __iter__(self):
+        for symbol in self._symbols:
+            yield Asset(self._start, self._end, symbol)
+
+    @property
+    def stock_data(self) -> DataFrame:
+        return DataFrame()
