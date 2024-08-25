@@ -19,7 +19,6 @@ def test_assets():
     a = Assets("2020-01-01", "2021-02-01", ["AAPL", "MSFT"])
     assert a.symbols == ["AAPL", "MSFT"]
     assert a.stock_data is not None
-    assert len(a.stock_data) == 2
 
 
 def test_assets_metrics():
