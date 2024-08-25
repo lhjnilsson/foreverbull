@@ -16,7 +16,7 @@ class TestParallel:
             positions=[],
         )
         with asset.with_end_date("2020-01-10") as a:
-            orders = parallel.handle_data(a, portfolio)
+            parallel.handle_data(a, portfolio)
 
     """ Demo to implement later.
     def test_algo(self, asset, fb_environment):
@@ -37,7 +37,7 @@ class TestNonParallel:
             positions=[],
         )
         with assets.with_end_date("2020-01-10") as a:
-            orders = non_parallel.handle_data(a, portfolio)
+            non_parallel.handle_data(a, portfolio)
 
 
 class TestMultistepNamespace:
