@@ -5,7 +5,7 @@ from functools import partial
 from inspect import getabsfile, signature
 from typing import Callable
 
-from foreverbull import entity
+from foreverbull import entity, interfaces
 from foreverbull.data import Asset, Assets, Portfolio
 from foreverbull.pb.finance import finance_pb2
 from sqlalchemy import Connection
@@ -54,10 +54,10 @@ class Algorithm:
                 if value.annotation == Portfolio:
                     portfolio_key = key
                     continue
-                if value.annotation == Assets:
+                if issubclass(value.annotation, interfaces.Assets):
                     parallel_execution = False
                     asset_key = key
-                elif value.annotation == Asset:
+                elif issubclass(value.annotation, interfaces.Asset):
                     parallel_execution = True
                     asset_key = key
                 else:

@@ -17,10 +17,10 @@ def measure_assets(asset: Asset, portfolio: Portfolio, low: int = 10, high: int 
 def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
     orders = []
     for asset in assets:
-        if len(asset.stock_data) < 30:
-            return []
         short_mean = asset.get_metric("short_mean")
         long_mean = asset.get_metric("long_mean")
+        if short_mean is None or long_mean is None:
+            continue
         if short_mean > long_mean and portfolio.get_position(asset) is None:
             orders.append(Order(symbol=asset.symbol, amount=10))
         elif short_mean < long_mean and portfolio.get_position(asset) is not None:

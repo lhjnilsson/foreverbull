@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator
 
+from foreverbull import entity
 from pandas import DataFrame
 
 
