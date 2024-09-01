@@ -1,6 +1,7 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
+dependencies = ["grpcio-tools>=1.66.1"]
 
 [tool.rye]
 managed = true

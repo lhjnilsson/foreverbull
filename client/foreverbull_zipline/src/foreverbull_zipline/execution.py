@@ -1,10 +1,13 @@
+import functools
 import logging
+import logging.handlers
 import os
 import socket
 import tarfile
 import threading
 import time
 from datetime import datetime, timezone
+from multiprocessing import Event
 
 import pandas as pd
 import pynng
@@ -13,7 +16,7 @@ import six
 from foreverbull.broker.storage import Storage
 from foreverbull.entity.service import SocketConfig
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import engine_pb2
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 from zipline import TradingAlgorithm
@@ -39,43 +42,141 @@ class StopExcecution(Exception):
     pass
 
 
-class Execution(threading.Thread):
-    def __init__(self, host=os.getenv("LOCAL_HOST", socket.gethostbyname(socket.gethostname())), port=5555):
-        self._socket: pynng.Socket | None = None
-        self.socket_config = SocketConfig(
-            host=host,
-            port=port,
-        )
-        self._broker: Broker = Broker()
-        self._trading_algorithm: TradingAlgorithm | None = None
-        self._new_orders = []
-        self.logger = logging.getLogger(__name__)
-        super(Execution, self).__init__()
+from abc import ABC, abstractmethod
 
-    def run(self):
-        for _ in range(10):
-            try:
-                self._socket = pynng.Rep0(listen=f"tcp://{self.socket_config.host}:{self.socket_config.port}")
-                break
-            except pynng.exceptions.AddressInUse:
-                time.sleep(0.1)
-        else:
-            raise RuntimeError("Could not bind to socket")
-        self._socket.recv_timeout = 500
-        self._process_request()
-        self._socket.close()
+
+class Execution(ABC):
+    @abstractmethod
+    def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
+        pass
+
+    @abstractmethod
+    def run_backtest(self, backtest: backtest_pb2.RunRequest) -> backtest_pb2.RunResponse:
+        pass
+
+    @abstractmethod
+    def continue_backtest(self, req: backtest_pb2.ContinueRequest) -> backtest_pb2.ContinueResponse:
+        pass
+
+    @abstractmethod
+    def get_backtest_result(self, req: backtest_pb2.GetResultRequest) -> backtest_pb2.GetResultResponse:
+        pass
+
+    @abstractmethod
+    def stop(self):
+        pass
+
+
+import multiprocessing
+import multiprocessing.queues
+
+
+class ExecutionProcess(multiprocessing.Process, Execution):
+    def __init__(
+        self,
+        socket_file_path: str = "/tmp/foreverbull_zipline.sock",
+        logging_queue: multiprocessing.queues.Queue | None = None,
+        download_ingestion: bool = False,
+    ):
+        self._socket_file_path = socket_file_path
+        self._logging_queue = logging_queue
+        self._download_ingestion = download_ingestion
+        self.is_ready = multiprocessing.Event()
+        super(ExecutionProcess, self).__init__()
+
+    def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+        ) as socket:
+            bytes = ingestion.SerializeToString()
+            request = service_pb2.Request(task="ingest", data=bytes)
+            socket.send(request.SerializeToString())
+            response = service_pb2.Response()
+            response.ParseFromString(socket.recv())
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            ing = backtest_pb2.IngestResponse()
+            ing.ParseFromString(response.data)
+            return ing
+
+    def run_backtest(self, backtest: backtest_pb2.RunRequest) -> backtest_pb2.RunResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+        ) as socket:
+            data = backtest.SerializeToString()
+            request = service_pb2.Request(task="run", data=data)
+            socket.send(request.SerializeToString())
+            response = service_pb2.Response()
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            response.ParseFromString(socket.recv())
+            b = backtest_pb2.RunResponse()
+            b.ParseFromString(response.data)
+            return b
+
+    def continue_backtest(self, req: backtest_pb2.ContinueRequest) -> backtest_pb2.ContinueResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+        ) as socket:
+            data = req.SerializeToString()
+            request = service_pb2.Request(task="continue", data=data)
+            socket.send(request.SerializeToString())
+            response = service_pb2.Response()
+            response.ParseFromString(socket.recv())
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            p = backtest_pb2.ContinueResponse()
+            p.ParseFromString(response.data)
+            return p
+
+    def get_backtest_result(self, req: backtest_pb2.GetResultRequest) -> backtest_pb2.GetResultResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+        ) as socket:
+            request = service_pb2.Request(task="get_result")
+            socket.send(request.SerializeToString())
+            response = service_pb2.Response()
+            response.ParseFromString(socket.recv())
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            result = backtest_pb2.GetResultResponse()
+            result.ParseFromString(response.data)
+            return result
 
     def stop(self):
-        socket = pynng.Req0(dial=f"tcp://{self.socket_config.host}:{self.socket_config.port}", block_on_dial=True)
-        request = service_pb2.Request(task="stop")
-        socket.send(request.SerializeToString())
-        socket.recv()
-        self.join()
-        socket.close()
-        return
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=1_000, send_timeout=1_000
+        ) as socket:
+            request = service_pb2.Request(task="stop")
+            socket.send(request.SerializeToString())
+            socket.recv()
 
-    def info(self) -> tuple[str, str, SocketConfig]:
-        return "backtest", "0.0.0", self.socket_config
+    def run(self):
+        if self._download_ingestion:
+            storage = Storage.from_environment()
+            storage.backtest.download_backtest_ingestion("foreverbull", "/tmp/ingestion.tar.gz")
+            with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
+                tar.extractall(data_root())
+            bundles.register("foreverbull", SQLIngester())
+        if self._logging_queue is not None:
+            handler = logging.handlers.QueueHandler(self._logging_queue)
+            logging.basicConfig(handlers=[handler], level=logging.DEBUG)
+        self.log = logging.getLogger(__name__)
+        self.log.info("Starting Execution Process")
+        self._broker: Broker = Broker()
+        self._trading_algorithm: TradingAlgorithm | None = None
+        self.logger = logging.getLogger(__name__)
+        import os
+
+        if os.path.exists(self._socket_file_path):
+            os.remove(self._socket_file_path)
+        with pynng.Rep0(listen=f"ipc://{self._socket_file_path}", block_on_dial=True, send_timeout=1_000) as socket:
+            self.is_ready.set()
+            while True:
+                try:
+                    self._process_request(None, None, socket)
+                except StopExcecution:
+                    break
 
     @property
     def ingestion(self) -> tuple[list[str], pd.Timestamp, pd.Timestamp]:
@@ -86,36 +187,36 @@ class Execution(threading.Thread):
         end = assets[0].end_date.tz_localize("UTC")
         return [a.symbol for a in assets], start, end
 
-    def _ingest(self, from_dt: datetime, to_dt: datetime, symbols: list[str]) -> tuple[datetime, datetime, list[str]]:
-        self.logger.debug("ingestion started")
+    def analyze(self, _, result):
+        self.result = result
+
+    def _ingest(self, data: bytes) -> bytes:
+        req = backtest_pb2.IngestRequest()
+        req.ParseFromString(data)
         bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
         SQLIngester.engine = DatabaseEngine()
-        SQLIngester.from_date = from_dt
-        SQLIngester.to_date = to_dt
-        SQLIngester.symbols = symbols
+        SQLIngester.from_date = req.ingestion.start_date.ToDatetime()
+        SQLIngester.to_date = req.ingestion.end_date.ToDatetime()
+        SQLIngester.symbols = [s for s in req.ingestion.symbols]
         bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
         self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
         self.logger.debug("ingestion completed")
         symbols, start, end = self.ingestion
-        return start, end, symbols
-
-    def _download_ingestion(self, name: str):
-        storage = Storage.from_environment()
-        storage.backtest.download_backtest_ingestion(name, "/tmp/ingestion.tar.gz")
-        with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
-            tar.extractall(data_root())
-        bundles.register("foreverbull", SQLIngester())
-
-    def _upload_ingestion(self, name: str):
         with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
             tar.add(data_path(["foreverbull"]), arcname="foreverbull")
         storage = Storage.from_environment()
         storage.backtest.upload_backtest_ingestion("/tmp/ingestion.tar.gz", name)
+        return backtest_pb2.IngestResponse(
+            ingestion=backtest_pb2.Ingestion(
+                start_date=pb_utils.to_proto_timestamp(start),
+                end_date=pb_utils.to_proto_timestamp(end),
+                symbols=symbols,
+            )
+        ).SerializeToString()
 
-    def _get_algorithm(
-        self, start_dt: datetime, end_dt: datetime, symbols: list[str], benchmark: str | None = None
-    ) -> TradingAlgorithm:
-        # reload, we are in other process
+    def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
+        req = backtest_pb2.RunRequest()
+        req.ParseFromString(data)
         bundle = bundles.load("foreverbull", os.environ, None)
 
         def find_last_traded_dt(bundle: BundleData, *symbols):
@@ -142,41 +243,41 @@ class Execution(threading.Thread):
                     first_traded = min(first_traded, asset.start_date)
             return first_traded
 
-        if not symbols:
+        if not req.backtest.symbols:
             symbols = [asset.symbol for asset in bundle.asset_finder.retrieve_all(bundle.asset_finder.sids)]
         else:
-            for symbol in symbols:
+            for symbol in req.backtest.symbols:
                 asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
                 if asset is None:
                     raise ConfigError(f"Unknown symbol: {symbol}")
         try:
-            if start_dt:
-                start = pd.Timestamp(start_dt)
+            if req.backtest.start_date:
+                start = pd.Timestamp(req.backtest.start_date.ToDatetime())
                 if type(start) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid start date: {start_dt}")
+                    raise ConfigError(f"Invalid start date: {req.backtest.start_date.ToDatetime()}")
                 start_date = start.normalize().tz_localize(None)
-                first_traded_date = find_first_traded_dt(bundle, *symbols)
+                first_traded_date = find_first_traded_dt(bundle, *req.backtest.symbols)
                 if first_traded_date is None:
                     raise ConfigError("unable to determine first traded date")
                 if start_date < first_traded_date:
                     start_date = first_traded_date
             else:
-                start_date = find_first_traded_dt(bundle, *symbols)
+                start_date = find_first_traded_dt(bundle, *req.backtest.symbols)
             if not isinstance(start_date, pd.Timestamp):
                 raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
 
-            if end_dt:
-                end = pd.Timestamp(end_dt)
+            if req.backtest.end_date:
+                end = pd.Timestamp(req.backtest.end_date.ToDatetime())
                 if type(end) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid end date: {end_dt}")
+                    raise ConfigError(f"Invalid end date: {pd.Timestamp(req.backtest.end_date.ToDatetime())}")
                 end_date = end.normalize().tz_localize(None)
-                last_traded_date = find_last_traded_dt(bundle, *symbols)
+                last_traded_date = find_last_traded_dt(bundle, *req.backtest.symbols)
                 if last_traded_date is None:
                     raise ConfigError("unable to determine last traded date")
                 if end_date > last_traded_date:
                     end_date = last_traded_date
             else:
-                end_date = find_last_traded_dt(bundle, *symbols)
+                end_date = find_last_traded_dt(bundle, *req.backtest.symbols)
             if not isinstance(end_date, pd.Timestamp):
                 raise ConfigError(f"expected end_date to be a pd.Timestamp, is: {type(end_date)}")
 
@@ -184,9 +285,9 @@ class Execution(threading.Thread):
             self.logger.error("Unknown time zone: %s", repr(e))
             raise ConfigError(repr(e))
 
-        if benchmark:
+        if req.backtest.benchmark:
             benchmark_returns = None
-            benchmark_sid = bundle.asset_finder.lookup_symbol(benchmark, as_of_date=None)
+            benchmark_sid = bundle.asset_finder.lookup_symbol(req.backtest.benchmark, as_of_date=None)
         else:
             benchmark_returns = pd.Series(index=pd.date_range(start_date, end_date, tz="utc"), data=0.0)
             benchmark_sid = None
@@ -222,8 +323,9 @@ class Execution(threading.Thread):
                 self.logger.error("Error configuring blotter: %s", repr(e))
                 raise ConfigError(repr(e))
 
+        handle_data = functools.partial(self._process_request, socket=socket)
         trading_algorithm = TradingAlgorithm(
-            namespace={"symbols": symbols},
+            namespace={},
             data_portal=data_portal,
             trading_calendar=trading_calendar,
             sim_params=sim_params,
@@ -231,206 +333,150 @@ class Execution(threading.Thread):
             blotter=blotter,
             benchmark_returns=benchmark_returns,
             benchmark_sid=benchmark_sid,
-            handle_data=self._process_request,
+            handle_data=handle_data,
             analyze=self.analyze,
         )
-        return trading_algorithm
+        return (
+            trading_algorithm,
+            backtest_pb2.RunResponse(
+                backtest=backtest_pb2.Backtest(
+                    start_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.start_session),
+                    end_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.end_session),
+                    symbols=req.backtest.symbols,
+                    benchmark=req.backtest.benchmark,
+                )
+            ).SerializeToString(),
+        )
 
-    def analyze(self, _, result):
-        self.result = result
+    def _continue_execution(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+        req = backtest_pb2.ContinueRequest()
+        req.ParseFromString(data)
+        for order in req.orders:
+            self._broker.order(order.symbol, order.amount, trading_algorithm)
+        p: Portfolio = trading_algorithm.portfolio
+        return backtest_pb2.ContinueResponse(
+            is_running=True,
+            portfolio=backtest_pb2.Portfolio(
+                timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
+                cash_flow=p.cash_flow,  # type: ignore
+                starting_cash=p.starting_cash,  # type: ignore
+                portfolio_value=p.portfolio_value,  # type: ignore
+                pnl=p.pnl,  # type: ignore
+                returns=p.returns,  # type: ignore
+                cash=p.cash,  # type: ignore
+                positions_value=p.positions_value,  # type: ignore
+                positions_exposure=p.positions_exposure,  # type: ignore
+                positions=[
+                    backtest_pb2.Position(
+                        symbol=p.sid.symbol,
+                        amount=p.amount,
+                        cost_basis=p.cost_basis,
+                        last_sale_price=p.last_sale_price,
+                        last_sale_date=pb_utils.to_proto_timestamp(p.last_sale_date),
+                    )
+                    for _, p in p.positions.items()  # type: ignore
+                ],
+            ),
+        ).SerializeToString()
 
-    def _upload_result(self, execution: str):
-        storage = Storage.from_environment()
-        storage.backtest.upload_backtest_result(execution, self.result)
+    def _get_execution_result(self, data: bytes) -> bytes:
+        req = backtest_pb2.GetResultRequest()
+        req.ParseFromString(data)
+        rsp = backtest_pb2.GetResultResponse()
+        for row in self.result.index:
+            period = self.result.loc[row]
+            rsp.periods.append(
+                backtest_pb2.Period(
+                    timestamp=pb_utils.to_proto_timestamp(
+                        period["period_close"].to_pydatetime().replace(tzinfo=timezone.utc)
+                    ),
+                    PNL=period["pnl"],
+                    returns=period["returns"],
+                    portfolio_value=period["portfolio_value"],
+                    longs_count=period["longs_count"],
+                    shorts_count=period["shorts_count"],
+                    long_value=period["long_value"],
+                    short_value=period["short_value"],
+                    starting_exposure=period["starting_exposure"],
+                    ending_exposure=period["ending_exposure"],
+                    long_exposure=period["long_exposure"],
+                    short_exposure=period["short_exposure"],
+                    capital_used=period["capital_used"],
+                    gross_leverage=period["gross_leverage"],
+                    net_leverage=period["net_leverage"],
+                    starting_value=period["starting_value"],
+                    ending_value=period["ending_value"],
+                    starting_cash=period["starting_cash"],
+                    ending_cash=period["ending_cash"],
+                    max_drawdown=period["max_drawdown"],
+                    max_leverage=period["max_leverage"],
+                    excess_return=period["excess_return"],
+                    treasury_period_return=period["treasury_period_return"],
+                    algorithm_period_return=period["algorithm_period_return"],
+                    algo_volatility=(None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"]),
+                    sharpe=None if pd.isnull(period["sharpe"]) else period["sharpe"],
+                    sortino=None if pd.isnull(period["sortino"]) else period["sortino"],
+                    benchmark_period_return=(
+                        None if pd.isnull(period["benchmark_period_return"]) else period["benchmark_period_return"]
+                    ),
+                    benchmark_volatility=(
+                        None if pd.isnull(period["benchmark_volatility"]) else period["benchmark_volatility"]
+                    ),
+                    alpha=(None if period["alpha"] is None or pd.isnull(period["alpha"]) else period["alpha"]),
+                    beta=(None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]),
+                )
+            )
+        if req.upload:
+            storage = Storage.from_environment()
+            storage.backtest.upload_backtest_result(req.execution, self.result)
+        return rsp.SerializeToString()
 
-    def _process_request(self, trading_algorithm: TradingAlgorithm | None = None, data: BarData = None):
-        while True:
-            if self._socket is None:
-                return
-            context_socket = self._socket.new_context()
+    def _process_request(
+        self, trading_algorithm: TradingAlgorithm | None, bar_data: BarData | None, socket: pynng.Socket
+    ):
+        with socket.new_context() as context_socket:
+            req = service_pb2.Request()
+            req.ParseFromString(context_socket.recv())
+            self.log.debug(f"Received request {req.task}")
+            error: str | None = None
+            rsp = service_pb2.Response(task=req.task)
+            data: bytes | None = None
             try:
-                request = service_pb2.Request()
-                request.ParseFromString(context_socket.recv())
-                self.logger.info(f"received task: {request.task}")
-                try:
-                    if request.task == "info":
-                        _type, version, socket = self.info()
-                        rsp = service_pb2.ServiceInfoResponse(
-                            serviceType=_type,
-                            version=version,
-                        )
-                        response = service_pb2.Response(task=request.task, data=rsp.SerializeToString())
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "ingest":
-                        req = engine_pb2.IngestRequest()
-                        req.ParseFromString(request.data)
-                        start, end, symbols = self._ingest(
-                            req.start_date.ToDatetime(), req.end_date.ToDatetime(), [s for s in req.symbols]
-                        )
-                        rsp = engine_pb2.IngestResponse(
-                            start_date=pb_utils.to_proto_timestamp(start),
-                            end_date=pb_utils.to_proto_timestamp(end),
-                            symbols=symbols,
-                        )
-                        response = service_pb2.Response(task=request.task, data=rsp.SerializeToString())
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "download_ingestion":
-                        self._download_ingestion("foreverbull")
-                        response = service_pb2.Response(task=request.task)
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "upload_ingestion":
-                        self._upload_ingestion("foreverbull")
-                        response = service_pb2.Response(task=request.task)
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "configure_execution":
-                        exc = engine_pb2.ConfigureRequest()
-                        exc.ParseFromString(request.data)
-                        self._trading_algorithm = self._get_algorithm(
-                            exc.start_date.ToDatetime(),
-                            exc.end_date.ToDatetime(),
-                            [s for s in exc.symbols],
-                        )
-                        ce_response = engine_pb2.ConfigureResponse(
-                            start_date=pb_utils.to_proto_timestamp(self._trading_algorithm.sim_params.start_session),
-                            end_date=pb_utils.to_proto_timestamp(self._trading_algorithm.sim_params.end_session),
-                            symbols=[s for s in self._trading_algorithm.namespace["symbols"]],
-                            benchmark=exc.benchmark,
-                        )
-                        response = service_pb2.Response(task=request.task, data=ce_response.SerializeToString())
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "run_execution" and not trading_algorithm:
-                        if self._trading_algorithm is None:
-                            raise Exception("No execution configured")
-                        response = service_pb2.Response(task=request.task)
-                        context_socket.send(response.SerializeToString())
-                        try:
-                            self._trading_algorithm.run()
-                        except StopExcecution:
+                if trading_algorithm:
+                    match req.task:
+                        case "continue":
+                            data = self._continue_execution(req.data, trading_algorithm)
+                        case "stop":
+                            context_socket.send(rsp.SerializeToString())
+                            raise StopExcecution()
+                        case _:
+                            raise Exception(f"Unknown task {req.task}")
+                else:
+                    match req.task:
+                        case "ingest":
+                            data = self._ingest(req.data)
+                        case "run":
+                            ta, data = self._run(req.data, socket)
+                            response = service_pb2.Response(task=req.task, data=data)
+                            context_socket.send(response.SerializeToString())
+                            ta.run()
+                            return
+                        case "get_result":
+                            data = self._get_execution_result(req.data)
+                        case "continue":
+                            data = backtest_pb2.ContinueResponse(is_running=False).SerializeToString()
+                        case "stop":
                             pass
-                    elif trading_algorithm and data and request.task == "get_portfolio":
-                        p: Portfolio = trading_algorithm.portfolio
-                        portfolio = engine_pb2.GetPortfolioResponse(
-                            timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
-                            cash_flow=p.cash_flow,  # type: ignore
-                            starting_cash=p.starting_cash,  # type: ignore
-                            portfolio_value=p.portfolio_value,  # type: ignore
-                            pnl=p.pnl,  # type: ignore
-                            returns=p.returns,  # type: ignore
-                            cash=p.cash,  # type: ignore
-                            positions_value=p.positions_value,  # type: ignore
-                            positions_exposure=p.positions_exposure,  # type: ignore
-                            positions=[
-                                engine_pb2.Position(
-                                    symbol=p.sid.symbol,
-                                    amount=p.amount,
-                                    cost_basis=p.cost_basis,
-                                    last_sale_price=p.last_sale_price,
-                                    last_sale_date=pb_utils.to_proto_timestamp(p.last_sale_date),
-                                )
-                                for _, p in p.positions.items()  # type: ignore
-                            ],
-                        )
-                        response = service_pb2.Response(task=request.task, data=portfolio.SerializeToString())
-                        context_socket.send(response.SerializeToString())
-                    elif not trading_algorithm and request.task == "get_portfolio":
-                        response = service_pb2.Response(task=request.task, error="no active execution")
-                        context_socket.send(response.SerializeToString())
-                    elif trading_algorithm and request.task == "continue":
-                        req = engine_pb2.ContinueRequest()
-                        req.ParseFromString(request.data)
-                        for order in req.orders:
-                            self._broker.order(order.symbol, order.amount, trading_algorithm)
-                        self._new_orders = []
-                        response = service_pb2.Response(task=request.task)
-                        context_socket.send(response.SerializeToString())
-                        if trading_algorithm:
-                            self._new_orders = trading_algorithm.blotter.new_orders
-                        return
-                    elif not trading_algorithm and request.task == "continue":
-                        response = service_pb2.Response(task=request.task, error="no active execution")
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "get_execution_result":
-                        rsp = engine_pb2.ResultResponse()
-                        for row in self.result.index:
-                            period = self.result.loc[row]
-                            rsp.periods.append(
-                                engine_pb2.Period(
-                                    timestamp=pb_utils.to_proto_timestamp(
-                                        period["period_close"].to_pydatetime().replace(tzinfo=timezone.utc)
-                                    ),
-                                    PNL=period["pnl"],
-                                    returns=period["returns"],
-                                    portfolio_value=period["portfolio_value"],
-                                    longs_count=period["longs_count"],
-                                    shorts_count=period["shorts_count"],
-                                    long_value=period["long_value"],
-                                    short_value=period["short_value"],
-                                    starting_exposure=period["starting_exposure"],
-                                    ending_exposure=period["ending_exposure"],
-                                    long_exposure=period["long_exposure"],
-                                    short_exposure=period["short_exposure"],
-                                    capital_used=period["capital_used"],
-                                    gross_leverage=period["gross_leverage"],
-                                    net_leverage=period["net_leverage"],
-                                    starting_value=period["starting_value"],
-                                    ending_value=period["ending_value"],
-                                    starting_cash=period["starting_cash"],
-                                    ending_cash=period["ending_cash"],
-                                    max_drawdown=period["max_drawdown"],
-                                    max_leverage=period["max_leverage"],
-                                    excess_return=period["excess_return"],
-                                    treasury_period_return=period["treasury_period_return"],
-                                    algorithm_period_return=period["algorithm_period_return"],
-                                    algo_volatility=(
-                                        None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"]
-                                    ),
-                                    sharpe=None if pd.isnull(period["sharpe"]) else period["sharpe"],
-                                    sortino=None if pd.isnull(period["sortino"]) else period["sortino"],
-                                    benchmark_period_return=(
-                                        None
-                                        if pd.isnull(period["benchmark_period_return"])
-                                        else period["benchmark_period_return"]
-                                    ),
-                                    benchmark_volatility=(
-                                        None
-                                        if pd.isnull(period["benchmark_volatility"])
-                                        else period["benchmark_volatility"]
-                                    ),
-                                    alpha=(
-                                        None
-                                        if period["alpha"] is None or pd.isnull(period["alpha"])
-                                        else period["alpha"]
-                                    ),
-                                    beta=(
-                                        None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]
-                                    ),
-                                )
-                            )
-                        response = service_pb2.Response(task=request.task, data=rsp.SerializeToString())
-                        context_socket.send(response.SerializeToString())
-                    elif request.task == "upload_result":
-                        req = engine_pb2.UploadResultRequest()
-                        req.ParseFromString(request.data)
-                        self._upload_result(req.execution)
-                        response = service_pb2.Response(task=request.task)
-                        context_socket.send(response.SerializeToString())
-                except Exception as e:
-                    self.logger.exception(e)
-                    self.logger.error(f"error processing request: {e}")
-                    response = service_pb2.Response(task=request.task, error=str(e))
-                    context_socket.send(response.SerializeToString())
-                    context_socket.close()
-                if request.task == "stop" and trading_algorithm:
-                    ## Raise to force Zipline TradingAlgorithm to stop, not good way to do this
-                    response = service_pb2.Response(task=request.task)
-                    context_socket.send(response.SerializeToString())
-                    context_socket.close()
-                    raise StopExcecution()
-                elif request.task == "stop":
-                    response = service_pb2.Response(task=request.task)
-                    context_socket.send(response.SerializeToString())
-                    return
-                context_socket.close()
-            except pynng.Timeout:
-                self.logger.debug("timeout")
-                context_socket.close()
+                        case _:
+                            raise Exception(f"Unknown task {req.task}")
+            except StopExcecution as e:
+                raise e
+            except Exception as e:
+                self.log.error(f"Error processing request {req.task}: {e}")
+                rsp.error = str(e)
+            rsp.task = req.task
+            if data:
+                rsp.data = data
+            context_socket.send(rsp.SerializeToString())
+            if req.task == "stop":
+                raise StopExcecution()
