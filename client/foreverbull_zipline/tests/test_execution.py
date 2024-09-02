@@ -73,11 +73,19 @@ def test_run_benchmark(execution: backtest.Execution, execution_process: Executi
         )
     )
     response = execution_process.run_backtest(request)
+    assert response.backtest.start_date == pb_utils.to_proto_timestamp(execution.start)
+    assert response.backtest.end_date == pb_utils.to_proto_timestamp(execution.end)
+    assert response.backtest.symbols == execution.symbols
+    if benchmark:
+        assert response.backtest.benchmark == benchmark
+    else:
+        assert response.backtest.benchmark == ""
 
     while True:
         response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
         if response.is_running is False:
             break
+        assert response.portfolio
 
 
 def test_premature_stop(execution: backtest.Execution, execution_process: Execution):
@@ -90,9 +98,11 @@ def test_premature_stop(execution: backtest.Execution, execution_process: Execut
         )
     )
     response = execution_process.run_backtest(request)
+    assert response.backtest
 
-    for _ in range(10):
+    for _ in range(5):
         response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
+        assert response.is_running
 
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
@@ -106,11 +116,14 @@ def test_multiple_runs_different_symbols(execution: backtest.Execution, executio
         )
     )
     response = execution_process.run_backtest(request)
+    assert response.backtest
+    assert response.backtest.symbols == symbols
 
     while True:
         response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
         if response.is_running is False:
             break
+        assert response.portfolio
 
 
 def test_get_result(execution: backtest.Execution, execution_process: Execution):
@@ -123,11 +136,13 @@ def test_get_result(execution: backtest.Execution, execution_process: Execution)
         )
     )
     response = execution_process.run_backtest(request)
+    assert response.backtest
 
     while True:
         response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
         if response.is_running is False:
             break
+        assert response.portfolio
 
     response = execution_process.get_backtest_result(backtest_pb2.GetResultRequest())
     assert len(response.periods)
@@ -144,8 +159,10 @@ def test_broker(execution: backtest.Execution, execution_process: Execution, ben
         )
     )
     response = execution_process.run_backtest(request)
+    assert response.backtest
 
     response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
+    assert response.portfolio
 
     response = execution_process.place_orders(
         backtest_pb2.PlaceOrdersRequest(
@@ -160,11 +177,29 @@ def test_broker(execution: backtest.Execution, execution_process: Execution, ben
     assert response.portfolio.positions[0].amount == 10
 
     response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
-
-    response = execution_process.get_next_period(continue_request)
     assert response.portfolio.positions[0].amount == 10
 
+    response = execution_process.place_orders(
+        backtest_pb2.PlaceOrdersRequest(
+            orders=[
+                backtest_pb2.Order(symbol=execution.symbols[0], amount=-5),
+            ]
+        )
+    )
+
+    response = execution_process.get_next_period(continue_request)
+    assert response.portfolio.positions[0].amount == 5
+
+    response = execution_process.place_orders(
+        backtest_pb2.PlaceOrdersRequest(
+            orders=[
+                backtest_pb2.Order(symbol=execution.symbols[0], amount=-5),
+            ]
+        )
+    )
+
     response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())
+    assert response.portfolio.positions == []
 
     while True:
         response = execution_process.get_next_period(backtest_pb2.GetNextPeriodRequest())

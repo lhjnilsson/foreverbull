@@ -358,7 +358,7 @@ class ExecutionProcess(multiprocessing.Process, Execution):
                     start_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.start_session),
                     end_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.end_session),
                     symbols=req.backtest.symbols,
-                    benchmark=req.backtest.benchmark,
+                    benchmark=req.backtest.benchmark if req.backtest.benchmark else None,
                 )
             ).SerializeToString(),
         )
