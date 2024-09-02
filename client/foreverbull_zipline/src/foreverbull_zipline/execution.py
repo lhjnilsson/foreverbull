@@ -1,8 +1,11 @@
 import functools
 import logging
 import logging.handlers
+import multiprocessing
+import multiprocessing.queues
 import os
 import tarfile
+from abc import ABC, abstractmethod
 from datetime import timezone
 
 import pandas as pd
@@ -37,9 +40,6 @@ class StopExcecution(Exception):
     pass
 
 
-from abc import ABC, abstractmethod
-
-
 class Execution(ABC):
     @abstractmethod
     def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
@@ -64,10 +64,6 @@ class Execution(ABC):
     @abstractmethod
     def stop(self):
         pass
-
-
-import multiprocessing
-import multiprocessing.queues
 
 
 class ExecutionProcess(multiprocessing.Process, Execution):
@@ -258,13 +254,10 @@ class ExecutionProcess(multiprocessing.Process, Execution):
                     first_traded = min(first_traded, asset.start_date)
             return first_traded
 
-        if not req.backtest.symbols:
-            symbols = [asset.symbol for asset in bundle.asset_finder.retrieve_all(bundle.asset_finder.sids)]
-        else:
-            for symbol in req.backtest.symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
-                if asset is None:
-                    raise ConfigError(f"Unknown symbol: {symbol}")
+        for symbol in req.backtest.symbols:
+            asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
+            if asset is None:
+                raise ConfigError(f"Unknown symbol: {symbol}")
         try:
             if req.backtest.start_date:
                 start = pd.Timestamp(req.backtest.start_date.ToDatetime())
@@ -458,7 +451,6 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             req = service_pb2.Request()
             req.ParseFromString(context_socket.recv())
             self.log.debug(f"Received request {req.task}")
-            error: str | None = None
             rsp = service_pb2.Response(task=req.task)
             data: bytes | None = None
             try:

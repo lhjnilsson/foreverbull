@@ -1,3 +1,6 @@
+from concurrent import futures
+
+import grpc
 from foreverbull.pb.backtest import backtest_pb2, engine_pb2_grpc
 
 
@@ -26,11 +29,6 @@ class BacktestService(engine_pb2_grpc.BacktestEngineServicer):
             orders=self.orders,
             error="",
         )
-
-
-from concurrent import futures
-
-import grpc
 
 
 def serve():
