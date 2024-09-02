@@ -283,13 +283,25 @@ class RunResponse(_message.Message):
     backtest: Backtest
     def __init__(self, backtest: _Optional[_Union[Backtest, _Mapping]] = ...) -> None: ...
 
-class ContinueRequest(_message.Message):
+class PlaceOrdersRequest(_message.Message):
     __slots__ = ("orders",)
     ORDERS_FIELD_NUMBER: _ClassVar[int]
     orders: _containers.RepeatedCompositeFieldContainer[Order]
     def __init__(self, orders: _Optional[_Iterable[_Union[Order, _Mapping]]] = ...) -> None: ...
 
-class ContinueResponse(_message.Message):
+class PlaceOrdersResponse(_message.Message):
+    __slots__ = ("is_running", "portfolio")
+    IS_RUNNING_FIELD_NUMBER: _ClassVar[int]
+    PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
+    is_running: bool
+    portfolio: Portfolio
+    def __init__(self, is_running: bool = ..., portfolio: _Optional[_Union[Portfolio, _Mapping]] = ...) -> None: ...
+
+class GetNextPeriodRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetNextPeriodResponse(_message.Message):
     __slots__ = ("is_running", "portfolio")
     IS_RUNNING_FIELD_NUMBER: _ClassVar[int]
     PORTFOLIO_FIELD_NUMBER: _ClassVar[int]

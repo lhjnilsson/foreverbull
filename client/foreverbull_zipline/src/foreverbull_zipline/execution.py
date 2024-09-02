@@ -55,7 +55,11 @@ class Execution(ABC):
         pass
 
     @abstractmethod
-    def continue_backtest(self, req: backtest_pb2.ContinueRequest) -> backtest_pb2.ContinueResponse:
+    def place_orders(self, req: backtest_pb2.PlaceOrdersRequest) -> backtest_pb2.PlaceOrdersResponse:
+        pass
+
+    @abstractmethod
+    def get_next_period(self, req: backtest_pb2.GetNextPeriodRequest) -> backtest_pb2.GetNextPeriodResponse:
         pass
 
     @abstractmethod
@@ -114,18 +118,33 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             b.ParseFromString(response.data)
             return b
 
-    def continue_backtest(self, req: backtest_pb2.ContinueRequest) -> backtest_pb2.ContinueResponse:
+    def place_orders(self, req: backtest_pb2.PlaceOrdersRequest) -> backtest_pb2.PlaceOrdersResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
             data = req.SerializeToString()
-            request = service_pb2.Request(task="continue", data=data)
+            request = service_pb2.Request(task="place_orders", data=data)
             socket.send(request.SerializeToString())
             response = service_pb2.Response()
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            p = backtest_pb2.ContinueResponse()
+            p = backtest_pb2.PlaceOrdersResponse()
+            p.ParseFromString(response.data)
+            return p
+
+    def get_next_period(self, req: backtest_pb2.GetNextPeriodRequest) -> backtest_pb2.GetNextPeriodResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+        ) as socket:
+            data = req.SerializeToString()
+            request = service_pb2.Request(task="get_next_period", data=data)
+            socket.send(request.SerializeToString())
+            response = service_pb2.Response()
+            response.ParseFromString(socket.recv())
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            p = backtest_pb2.GetNextPeriodResponse()
             p.ParseFromString(response.data)
             return p
 
@@ -202,10 +221,11 @@ class ExecutionProcess(multiprocessing.Process, Execution):
         self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
         self.logger.debug("ingestion completed")
         symbols, start, end = self.ingestion
-        with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
-            tar.add(data_path(["foreverbull"]), arcname="foreverbull")
-        storage = Storage.from_environment()
-        storage.backtest.upload_backtest_ingestion("/tmp/ingestion.tar.gz", name)
+        if req.upload:
+            with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
+                tar.add(data_path(["foreverbull"]), arcname="foreverbull")
+            storage = Storage.from_environment()
+            storage.backtest.upload_backtest_ingestion("/tmp/ingestion.tar.gz", "foreverbull")
         return backtest_pb2.IngestResponse(
             ingestion=backtest_pb2.Ingestion(
                 start_date=pb_utils.to_proto_timestamp(start),
@@ -348,13 +368,18 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             ).SerializeToString(),
         )
 
-    def _continue_execution(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = backtest_pb2.ContinueRequest()
+    def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+        req = backtest_pb2.PlaceOrdersRequest()
         req.ParseFromString(data)
         for order in req.orders:
             self._broker.order(order.symbol, order.amount, trading_algorithm)
+        return backtest_pb2.PlaceOrdersResponse().SerializeToString()
+
+    def _get_next_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+        req = backtest_pb2.GetNextPeriodRequest()
+        req.ParseFromString(data)
         p: Portfolio = trading_algorithm.portfolio
-        return backtest_pb2.ContinueResponse(
+        return backtest_pb2.GetNextPeriodResponse(
             is_running=True,
             portfolio=backtest_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
@@ -444,8 +469,10 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             try:
                 if trading_algorithm:
                     match req.task:
-                        case "continue":
-                            data = self._continue_execution(req.data, trading_algorithm)
+                        case "place_orders":
+                            data = self._place_orders(req.data, trading_algorithm)
+                        case "get_next_period":
+                            data = self._get_next_period(req.data, trading_algorithm)
                         case "stop":
                             context_socket.send(rsp.SerializeToString())
                             raise StopExcecution()
@@ -463,8 +490,8 @@ class ExecutionProcess(multiprocessing.Process, Execution):
                             return
                         case "get_result":
                             data = self._get_execution_result(req.data)
-                        case "continue":
-                            data = backtest_pb2.ContinueResponse(is_running=False).SerializeToString()
+                        case "get_next_period":
+                            data = backtest_pb2.GetNextPeriodResponse(is_running=False).SerializeToString()
                         case "stop":
                             pass
                         case _:

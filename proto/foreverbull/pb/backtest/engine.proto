@@ -9,7 +9,8 @@ import "foreverbull/pb/backtest/backtest.proto";
 service Engine {
     rpc Ingest(IngestRequest) returns (IngestResponse) {}
     rpc Run(RunRequest) returns (RunResponse) {}
-    rpc Continue(ContinueRequest) returns (ContinueResponse) {}
+    rpc PlaceOrders(PlaceOrdersRequest) returns (PlaceOrdersResponse) {}
+    rpc GetNextPeriod(GetNextPeriodRequest) returns (GetNextPeriodResponse) {}
     rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
     rpc Stop(StopRequest) returns (StopResponse) {}
 }

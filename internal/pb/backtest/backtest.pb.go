@@ -900,7 +900,7 @@ func (x *RunResponse) GetBacktest() *Backtest {
 	return nil
 }
 
-type ContinueRequest struct {
+type PlaceOrdersRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -908,8 +908,8 @@ type ContinueRequest struct {
 	Orders []*Order `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
 }
 
-func (x *ContinueRequest) Reset() {
-	*x = ContinueRequest{}
+func (x *PlaceOrdersRequest) Reset() {
+	*x = PlaceOrdersRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -917,13 +917,13 @@ func (x *ContinueRequest) Reset() {
 	}
 }
 
-func (x *ContinueRequest) String() string {
+func (x *PlaceOrdersRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ContinueRequest) ProtoMessage() {}
+func (*PlaceOrdersRequest) ProtoMessage() {}
 
-func (x *ContinueRequest) ProtoReflect() protoreflect.Message {
+func (x *PlaceOrdersRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -935,19 +935,19 @@ func (x *ContinueRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ContinueRequest.ProtoReflect.Descriptor instead.
-func (*ContinueRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use PlaceOrdersRequest.ProtoReflect.Descriptor instead.
+func (*PlaceOrdersRequest) Descriptor() ([]byte, []int) {
 	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *ContinueRequest) GetOrders() []*Order {
+func (x *PlaceOrdersRequest) GetOrders() []*Order {
 	if x != nil {
 		return x.Orders
 	}
 	return nil
 }
 
-type ContinueResponse struct {
+type PlaceOrdersResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -956,8 +956,8 @@ type ContinueResponse struct {
 	Portfolio *Portfolio `protobuf:"bytes,2,opt,name=portfolio,proto3" json:"portfolio,omitempty"`
 }
 
-func (x *ContinueResponse) Reset() {
-	*x = ContinueResponse{}
+func (x *PlaceOrdersResponse) Reset() {
+	*x = PlaceOrdersResponse{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -965,13 +965,13 @@ func (x *ContinueResponse) Reset() {
 	}
 }
 
-func (x *ContinueResponse) String() string {
+func (x *PlaceOrdersResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ContinueResponse) ProtoMessage() {}
+func (*PlaceOrdersResponse) ProtoMessage() {}
 
-func (x *ContinueResponse) ProtoReflect() protoreflect.Message {
+func (x *PlaceOrdersResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -983,19 +983,112 @@ func (x *ContinueResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ContinueResponse.ProtoReflect.Descriptor instead.
-func (*ContinueResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use PlaceOrdersResponse.ProtoReflect.Descriptor instead.
+func (*PlaceOrdersResponse) Descriptor() ([]byte, []int) {
 	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *ContinueResponse) GetIsRunning() bool {
+func (x *PlaceOrdersResponse) GetIsRunning() bool {
 	if x != nil {
 		return x.IsRunning
 	}
 	return false
 }
 
-func (x *ContinueResponse) GetPortfolio() *Portfolio {
+func (x *PlaceOrdersResponse) GetPortfolio() *Portfolio {
+	if x != nil {
+		return x.Portfolio
+	}
+	return nil
+}
+
+type GetNextPeriodRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *GetNextPeriodRequest) Reset() {
+	*x = GetNextPeriodRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[12]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetNextPeriodRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNextPeriodRequest) ProtoMessage() {}
+
+func (x *GetNextPeriodRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[12]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNextPeriodRequest.ProtoReflect.Descriptor instead.
+func (*GetNextPeriodRequest) Descriptor() ([]byte, []int) {
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{12}
+}
+
+type GetNextPeriodResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	IsRunning bool       `protobuf:"varint,1,opt,name=is_running,json=isRunning,proto3" json:"is_running,omitempty"`
+	Portfolio *Portfolio `protobuf:"bytes,2,opt,name=portfolio,proto3" json:"portfolio,omitempty"`
+}
+
+func (x *GetNextPeriodResponse) Reset() {
+	*x = GetNextPeriodResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[13]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetNextPeriodResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNextPeriodResponse) ProtoMessage() {}
+
+func (x *GetNextPeriodResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[13]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNextPeriodResponse.ProtoReflect.Descriptor instead.
+func (*GetNextPeriodResponse) Descriptor() ([]byte, []int) {
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetNextPeriodResponse) GetIsRunning() bool {
+	if x != nil {
+		return x.IsRunning
+	}
+	return false
+}
+
+func (x *GetNextPeriodResponse) GetPortfolio() *Portfolio {
 	if x != nil {
 		return x.Portfolio
 	}
@@ -1014,7 +1107,7 @@ type GetResultRequest struct {
 func (x *GetResultRequest) Reset() {
 	*x = GetResultRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[12]
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1027,7 +1120,7 @@ func (x *GetResultRequest) String() string {
 func (*GetResultRequest) ProtoMessage() {}
 
 func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[12]
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1040,7 +1133,7 @@ func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultRequest.ProtoReflect.Descriptor instead.
 func (*GetResultRequest) Descriptor() ([]byte, []int) {
-	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{12}
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetResultRequest) GetExecution() string {
@@ -1068,7 +1161,7 @@ type GetResultResponse struct {
 func (x *GetResultResponse) Reset() {
 	*x = GetResultResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[13]
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[15]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1081,7 +1174,7 @@ func (x *GetResultResponse) String() string {
 func (*GetResultResponse) ProtoMessage() {}
 
 func (x *GetResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[13]
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[15]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1094,7 +1187,7 @@ func (x *GetResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultResponse.ProtoReflect.Descriptor instead.
 func (*GetResultResponse) Descriptor() ([]byte, []int) {
-	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{13}
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetResultResponse) GetPeriods() []*Period {
@@ -1113,7 +1206,7 @@ type StopRequest struct {
 func (x *StopRequest) Reset() {
 	*x = StopRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[14]
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[16]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1126,7 +1219,7 @@ func (x *StopRequest) String() string {
 func (*StopRequest) ProtoMessage() {}
 
 func (x *StopRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[14]
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[16]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1139,7 +1232,7 @@ func (x *StopRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopRequest.ProtoReflect.Descriptor instead.
 func (*StopRequest) Descriptor() ([]byte, []int) {
-	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{14}
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{16}
 }
 
 type StopResponse struct {
@@ -1151,7 +1244,7 @@ type StopResponse struct {
 func (x *StopResponse) Reset() {
 	*x = StopResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[15]
+		mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[17]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1164,7 +1257,7 @@ func (x *StopResponse) String() string {
 func (*StopResponse) ProtoMessage() {}
 
 func (x *StopResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[15]
+	mi := &file_foreverbull_pb_backtest_backtest_proto_msgTypes[17]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1177,7 +1270,7 @@ func (x *StopResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopResponse.ProtoReflect.Descriptor instead.
 func (*StopResponse) Descriptor() ([]byte, []int) {
-	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{15}
+	return file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP(), []int{17}
 }
 
 var File_foreverbull_pb_backtest_backtest_proto protoreflect.FileDescriptor
@@ -1361,35 +1454,44 @@ var file_foreverbull_pb_backtest_backtest_proto_rawDesc = []byte{
 	0x0a, 0x08, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b,
 	0x32, 0x21, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x70,
 	0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x42, 0x61, 0x63, 0x6b, 0x74,
-	0x65, 0x73, 0x74, 0x52, 0x08, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x22, 0x49, 0x0a,
-	0x0f, 0x43, 0x6f, 0x6e, 0x74, 0x69, 0x6e, 0x75, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x12, 0x36, 0x0a, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b,
-	0x32, 0x1e, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x70,
-	0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72,
-	0x52, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x22, 0x73, 0x0a, 0x10, 0x43, 0x6f, 0x6e, 0x74,
-	0x69, 0x6e, 0x75, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1d, 0x0a, 0x0a,
-	0x69, 0x73, 0x5f, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08,
-	0x52, 0x09, 0x69, 0x73, 0x52, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67, 0x12, 0x40, 0x0a, 0x09, 0x70,
-	0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22,
-	0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x70, 0x62, 0x2e,
-	0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x50, 0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c,
-	0x69, 0x6f, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x22, 0x48, 0x0a,
-	0x10, 0x47, 0x65, 0x74, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x12, 0x1c, 0x0a, 0x09, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x12,
-	0x16, 0x0a, 0x06, 0x75, 0x70, 0x6c, 0x6f, 0x61, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52,
-	0x06, 0x75, 0x70, 0x6c, 0x6f, 0x61, 0x64, 0x22, 0x4e, 0x0a, 0x11, 0x47, 0x65, 0x74, 0x52, 0x65,
-	0x73, 0x75, 0x6c, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x39, 0x0a, 0x07,
-	0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1f, 0x2e,
-	0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x70, 0x62, 0x2e, 0x62,
-	0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x52, 0x07,
-	0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x73, 0x22, 0x0d, 0x0a, 0x0b, 0x53, 0x74, 0x6f, 0x70, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x0e, 0x0a, 0x0c, 0x53, 0x74, 0x6f, 0x70, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x38, 0x5a, 0x36, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a, 0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f,
-	0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2f, 0x69, 0x6e, 0x74, 0x65,
-	0x72, 0x6e, 0x61, 0x6c, 0x2f, 0x70, 0x62, 0x2f, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x73, 0x74, 0x52, 0x08, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x22, 0x4c, 0x0a,
+	0x12, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x36, 0x0a, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20,
+	0x03, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c,
+	0x6c, 0x2e, 0x70, 0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x4f, 0x72,
+	0x64, 0x65, 0x72, 0x52, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x22, 0x76, 0x0a, 0x13, 0x50,
+	0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x69, 0x73, 0x5f, 0x72, 0x75, 0x6e, 0x6e, 0x69, 0x6e, 0x67,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x69, 0x73, 0x52, 0x75, 0x6e, 0x6e, 0x69, 0x6e,
+	0x67, 0x12, 0x40, 0x0a, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75,
+	0x6c, 0x6c, 0x2e, 0x70, 0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e, 0x50,
+	0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x66, 0x6f,
+	0x6c, 0x69, 0x6f, 0x22, 0x16, 0x0a, 0x14, 0x47, 0x65, 0x74, 0x4e, 0x65, 0x78, 0x74, 0x50, 0x65,
+	0x72, 0x69, 0x6f, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x78, 0x0a, 0x15, 0x47,
+	0x65, 0x74, 0x4e, 0x65, 0x78, 0x74, 0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x69, 0x73, 0x5f, 0x72, 0x75, 0x6e, 0x6e, 0x69,
+	0x6e, 0x67, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x69, 0x73, 0x52, 0x75, 0x6e, 0x6e,
+	0x69, 0x6e, 0x67, 0x12, 0x40, 0x0a, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72,
+	0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x70, 0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74,
+	0x2e, 0x50, 0x6f, 0x72, 0x74, 0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74,
+	0x66, 0x6f, 0x6c, 0x69, 0x6f, 0x22, 0x48, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x52, 0x65, 0x73, 0x75,
+	0x6c, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1c, 0x0a, 0x09, 0x65, 0x78, 0x65,
+	0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x65, 0x78,
+	0x65, 0x63, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x06, 0x75, 0x70, 0x6c, 0x6f, 0x61,
+	0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x75, 0x70, 0x6c, 0x6f, 0x61, 0x64, 0x22,
+	0x4e, 0x0a, 0x11, 0x47, 0x65, 0x74, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x39, 0x0a, 0x07, 0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x73, 0x18,
+	0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1f, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62,
+	0x75, 0x6c, 0x6c, 0x2e, 0x70, 0x62, 0x2e, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x2e,
+	0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x52, 0x07, 0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x73, 0x22,
+	0x0d, 0x0a, 0x0b, 0x53, 0x74, 0x6f, 0x70, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x0e,
+	0x0a, 0x0c, 0x53, 0x74, 0x6f, 0x70, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x38,
+	0x5a, 0x36, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a,
+	0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62,
+	0x75, 0x6c, 0x6c, 0x2f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2f, 0x70, 0x62, 0x2f,
+	0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1404,7 +1506,7 @@ func file_foreverbull_pb_backtest_backtest_proto_rawDescGZIP() []byte {
 	return file_foreverbull_pb_backtest_backtest_proto_rawDescData
 }
 
-var file_foreverbull_pb_backtest_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_foreverbull_pb_backtest_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_foreverbull_pb_backtest_backtest_proto_goTypes = []any{
 	(*Ingestion)(nil),             // 0: foreverbull.pb.backtest.Ingestion
 	(*Backtest)(nil),              // 1: foreverbull.pb.backtest.Backtest
@@ -1416,37 +1518,40 @@ var file_foreverbull_pb_backtest_backtest_proto_goTypes = []any{
 	(*IngestResponse)(nil),        // 7: foreverbull.pb.backtest.IngestResponse
 	(*RunRequest)(nil),            // 8: foreverbull.pb.backtest.RunRequest
 	(*RunResponse)(nil),           // 9: foreverbull.pb.backtest.RunResponse
-	(*ContinueRequest)(nil),       // 10: foreverbull.pb.backtest.ContinueRequest
-	(*ContinueResponse)(nil),      // 11: foreverbull.pb.backtest.ContinueResponse
-	(*GetResultRequest)(nil),      // 12: foreverbull.pb.backtest.GetResultRequest
-	(*GetResultResponse)(nil),     // 13: foreverbull.pb.backtest.GetResultResponse
-	(*StopRequest)(nil),           // 14: foreverbull.pb.backtest.StopRequest
-	(*StopResponse)(nil),          // 15: foreverbull.pb.backtest.StopResponse
-	(*timestamppb.Timestamp)(nil), // 16: google.protobuf.Timestamp
-	(*finance.Position)(nil),      // 17: foreverbull.pb.finance.Position
+	(*PlaceOrdersRequest)(nil),    // 10: foreverbull.pb.backtest.PlaceOrdersRequest
+	(*PlaceOrdersResponse)(nil),   // 11: foreverbull.pb.backtest.PlaceOrdersResponse
+	(*GetNextPeriodRequest)(nil),  // 12: foreverbull.pb.backtest.GetNextPeriodRequest
+	(*GetNextPeriodResponse)(nil), // 13: foreverbull.pb.backtest.GetNextPeriodResponse
+	(*GetResultRequest)(nil),      // 14: foreverbull.pb.backtest.GetResultRequest
+	(*GetResultResponse)(nil),     // 15: foreverbull.pb.backtest.GetResultResponse
+	(*StopRequest)(nil),           // 16: foreverbull.pb.backtest.StopRequest
+	(*StopResponse)(nil),          // 17: foreverbull.pb.backtest.StopResponse
+	(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
+	(*finance.Position)(nil),      // 19: foreverbull.pb.finance.Position
 }
 var file_foreverbull_pb_backtest_backtest_proto_depIdxs = []int32{
-	16, // 0: foreverbull.pb.backtest.Ingestion.start_date:type_name -> google.protobuf.Timestamp
-	16, // 1: foreverbull.pb.backtest.Ingestion.end_date:type_name -> google.protobuf.Timestamp
-	16, // 2: foreverbull.pb.backtest.Backtest.start_date:type_name -> google.protobuf.Timestamp
-	16, // 3: foreverbull.pb.backtest.Backtest.end_date:type_name -> google.protobuf.Timestamp
-	16, // 4: foreverbull.pb.backtest.Position.last_sale_date:type_name -> google.protobuf.Timestamp
-	16, // 5: foreverbull.pb.backtest.Portfolio.timestamp:type_name -> google.protobuf.Timestamp
+	18, // 0: foreverbull.pb.backtest.Ingestion.start_date:type_name -> google.protobuf.Timestamp
+	18, // 1: foreverbull.pb.backtest.Ingestion.end_date:type_name -> google.protobuf.Timestamp
+	18, // 2: foreverbull.pb.backtest.Backtest.start_date:type_name -> google.protobuf.Timestamp
+	18, // 3: foreverbull.pb.backtest.Backtest.end_date:type_name -> google.protobuf.Timestamp
+	18, // 4: foreverbull.pb.backtest.Position.last_sale_date:type_name -> google.protobuf.Timestamp
+	18, // 5: foreverbull.pb.backtest.Portfolio.timestamp:type_name -> google.protobuf.Timestamp
 	2,  // 6: foreverbull.pb.backtest.Portfolio.positions:type_name -> foreverbull.pb.backtest.Position
-	16, // 7: foreverbull.pb.backtest.Period.timestamp:type_name -> google.protobuf.Timestamp
-	17, // 8: foreverbull.pb.backtest.Period.positions:type_name -> foreverbull.pb.finance.Position
+	18, // 7: foreverbull.pb.backtest.Period.timestamp:type_name -> google.protobuf.Timestamp
+	19, // 8: foreverbull.pb.backtest.Period.positions:type_name -> foreverbull.pb.finance.Position
 	0,  // 9: foreverbull.pb.backtest.IngestRequest.ingestion:type_name -> foreverbull.pb.backtest.Ingestion
 	0,  // 10: foreverbull.pb.backtest.IngestResponse.ingestion:type_name -> foreverbull.pb.backtest.Ingestion
 	1,  // 11: foreverbull.pb.backtest.RunRequest.backtest:type_name -> foreverbull.pb.backtest.Backtest
 	1,  // 12: foreverbull.pb.backtest.RunResponse.backtest:type_name -> foreverbull.pb.backtest.Backtest
-	4,  // 13: foreverbull.pb.backtest.ContinueRequest.orders:type_name -> foreverbull.pb.backtest.Order
-	3,  // 14: foreverbull.pb.backtest.ContinueResponse.portfolio:type_name -> foreverbull.pb.backtest.Portfolio
-	5,  // 15: foreverbull.pb.backtest.GetResultResponse.periods:type_name -> foreverbull.pb.backtest.Period
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	4,  // 13: foreverbull.pb.backtest.PlaceOrdersRequest.orders:type_name -> foreverbull.pb.backtest.Order
+	3,  // 14: foreverbull.pb.backtest.PlaceOrdersResponse.portfolio:type_name -> foreverbull.pb.backtest.Portfolio
+	3,  // 15: foreverbull.pb.backtest.GetNextPeriodResponse.portfolio:type_name -> foreverbull.pb.backtest.Portfolio
+	5,  // 16: foreverbull.pb.backtest.GetResultResponse.periods:type_name -> foreverbull.pb.backtest.Period
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_foreverbull_pb_backtest_backtest_proto_init() }
@@ -1576,7 +1681,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[10].Exporter = func(v any, i int) any {
-			switch v := v.(*ContinueRequest); i {
+			switch v := v.(*PlaceOrdersRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1588,7 +1693,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[11].Exporter = func(v any, i int) any {
-			switch v := v.(*ContinueResponse); i {
+			switch v := v.(*PlaceOrdersResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1600,7 +1705,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[12].Exporter = func(v any, i int) any {
-			switch v := v.(*GetResultRequest); i {
+			switch v := v.(*GetNextPeriodRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1612,7 +1717,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[13].Exporter = func(v any, i int) any {
-			switch v := v.(*GetResultResponse); i {
+			switch v := v.(*GetNextPeriodResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1624,7 +1729,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[14].Exporter = func(v any, i int) any {
-			switch v := v.(*StopRequest); i {
+			switch v := v.(*GetResultRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1636,6 +1741,30 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			}
 		}
 		file_foreverbull_pb_backtest_backtest_proto_msgTypes[15].Exporter = func(v any, i int) any {
+			switch v := v.(*GetResultResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_foreverbull_pb_backtest_backtest_proto_msgTypes[16].Exporter = func(v any, i int) any {
+			switch v := v.(*StopRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_foreverbull_pb_backtest_backtest_proto_msgTypes[17].Exporter = func(v any, i int) any {
 			switch v := v.(*StopResponse); i {
 			case 0:
 				return &v.state
@@ -1656,7 +1785,7 @@ func file_foreverbull_pb_backtest_backtest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_foreverbull_pb_backtest_backtest_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

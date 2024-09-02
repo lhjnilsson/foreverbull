@@ -101,11 +101,17 @@ message RunResponse {
     Backtest backtest = 1;
 }
 
-message ContinueRequest {
+message PlaceOrdersRequest {
     repeated Order orders = 1;
 }
 
-message ContinueResponse {
+message PlaceOrdersResponse {
+}
+
+message GetNextPeriodRequest {
+}
+
+message GetNextPeriodResponse {
     bool is_running = 1;
     Portfolio portfolio = 2;
 }

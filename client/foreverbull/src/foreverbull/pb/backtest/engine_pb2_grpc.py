@@ -47,10 +47,16 @@ class EngineStub(object):
             response_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.RunResponse.FromString,
             _registered_method=True,
         )
-        self.Continue = channel.unary_unary(
-            "/foreverbull.pb.backtest.Engine/Continue",
-            request_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueRequest.SerializeToString,
-            response_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueResponse.FromString,
+        self.PlaceOrders = channel.unary_unary(
+            "/foreverbull.pb.backtest.Engine/PlaceOrders",
+            request_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersResponse.FromString,
+            _registered_method=True,
+        )
+        self.GetNextPeriod = channel.unary_unary(
+            "/foreverbull.pb.backtest.Engine/GetNextPeriod",
+            request_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodResponse.FromString,
             _registered_method=True,
         )
         self.GetResult = channel.unary_unary(
@@ -82,7 +88,13 @@ class EngineServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
-    def Continue(self, request, context):
+    def PlaceOrders(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def GetNextPeriod(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
@@ -113,10 +125,15 @@ def add_EngineServicer_to_server(servicer, server):
             request_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.RunRequest.FromString,
             response_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.RunResponse.SerializeToString,
         ),
-        "Continue": grpc.unary_unary_rpc_method_handler(
-            servicer.Continue,
-            request_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueRequest.FromString,
-            response_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueResponse.SerializeToString,
+        "PlaceOrders": grpc.unary_unary_rpc_method_handler(
+            servicer.PlaceOrders,
+            request_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersResponse.SerializeToString,
+        ),
+        "GetNextPeriod": grpc.unary_unary_rpc_method_handler(
+            servicer.GetNextPeriod,
+            request_deserializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodResponse.SerializeToString,
         ),
         "GetResult": grpc.unary_unary_rpc_method_handler(
             servicer.GetResult,
@@ -199,7 +216,7 @@ class Engine(object):
         )
 
     @staticmethod
-    def Continue(
+    def PlaceOrders(
         request,
         target,
         options=(),
@@ -214,9 +231,39 @@ class Engine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/foreverbull.pb.backtest.Engine/Continue",
-            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueRequest.SerializeToString,
-            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.ContinueResponse.FromString,
+            "/foreverbull.pb.backtest.Engine/PlaceOrders",
+            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersRequest.SerializeToString,
+            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.PlaceOrdersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def GetNextPeriod(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/foreverbull.pb.backtest.Engine/GetNextPeriod",
+            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodRequest.SerializeToString,
+            foreverbull_dot_pb_dot_backtest_dot_backtest__pb2.GetNextPeriodResponse.FromString,
             options,
             channel_credentials,
             insecure,
