@@ -40,7 +40,9 @@ class Asset(interfaces.Asset):
         ticker = yf.Ticker(symbol)
         t = ticker.history(start=start, end=end, interval="1d")
         t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
-        t.rename(columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True)
+        t.rename(
+            columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True
+        )
         t.index.name = "date"
         self._stock_data = t
         self.metrics = {}
@@ -66,6 +68,7 @@ class Asset(interfaces.Asset):
     @property
     def stock_data(self) -> DataFrame:
         return self._stock_data
+
 
 class DateLimitedAssets(interfaces.Assets):
     def __init__(self, start: str | datetime, end: str | datetime, symbols: list[str]):
@@ -94,6 +97,7 @@ class DateLimitedAssets(interfaces.Assets):
     @property
     def stock_data(self) -> DataFrame:
         return DataFrame()
+
 
 class Assets(interfaces.Assets):
     def __init__(self, start: str, end: str, symbols: list[str]):

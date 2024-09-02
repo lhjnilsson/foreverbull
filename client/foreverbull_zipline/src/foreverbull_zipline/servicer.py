@@ -1,5 +1,3 @@
-import threading
-
 from foreverbull.pb.backtest import backtest_pb2, engine_pb2_grpc
 
 

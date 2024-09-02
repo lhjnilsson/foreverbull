@@ -4,6 +4,7 @@
 # source: foreverbull/pb/backtest/service.proto
 # Protobuf Python Version: 5.27.2
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
@@ -17,8 +18,6 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 
 _sym_db = _symbol_database.Default()
 
-
-from foreverbull.pb.backtest import backtest_pb2 as foreverbull_dot_pb_dot_backtest_dot_backtest__pb2
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
     b'\n%foreverbull/pb/backtest/service.proto\x12\x17\x66oreverbull.pb.backtest\x1a&foreverbull/pb/backtest/backtest.proto2\xb7\x05\n\x0f\x42\x61\x63ktestService\x12[\n\x06Ingest\x12&.foreverbull.pb.backtest.IngestRequest\x1a\'.foreverbull.pb.backtest.IngestResponse"\x00\x12\x64\n\tConfigure\x12).foreverbull.pb.backtest.ConfigureRequest\x1a*.foreverbull.pb.backtest.ConfigureResponse"\x00\x12R\n\x03Run\x12#.foreverbull.pb.backtest.RunRequest\x1a$.foreverbull.pb.backtest.RunResponse"\x00\x12\x61\n\x08\x43ontinue\x12(.foreverbull.pb.backtest.ContinueRequest\x1a).foreverbull.pb.backtest.ContinueResponse"\x00\x12\x64\n\tGetResult\x12).foreverbull.pb.backtest.GetResultRequest\x1a*.foreverbull.pb.backtest.GetResultResponse"\x00\x12m\n\x0cUploadResult\x12,.foreverbull.pb.backtest.UploadResultRequest\x1a-.foreverbull.pb.backtest.UploadResultResponse"\x00\x12U\n\x04Stop\x12$.foreverbull.pb.backtest.StopRequest\x1a%.foreverbull.pb.backtest.StopResponse"\x00\x42\x38Z6github.com/lhjnilsson/foreverbull/internal/pb/backtestb\x06proto3'

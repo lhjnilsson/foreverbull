@@ -3,14 +3,13 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Iterator
+from typing import Iterator
 
 import pynng
 from foreverbull import entity, interfaces
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2  # noqa
 from foreverbull.pb.service import service_pb2
-from google.protobuf import json_format  # type: ignore
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import create_engine, engine
@@ -162,7 +161,8 @@ class Assets(interfaces.Assets):
 
     @property
     def stock_data(self) -> DataFrame:
-        return DataFrame() # TODO: Implement
+        return DataFrame()  # TODO: Implement
+
 
 class Portfolio(entity.finance.Portfolio):
     def __contains__(self, asset: Asset) -> bool:

@@ -1,16 +1,12 @@
 import logging
 import multiprocessing
-import time
-from datetime import datetime, timezone
-from multiprocessing import get_start_method, set_start_method
 from multiprocessing.queues import Queue
+from threading import Thread
 
-import pynng
 import pytest
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2
-from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.execution import Execution, ExecutionProcess
 
 
@@ -29,10 +25,6 @@ def logging_thread(q: Queue):
             break
         logger = logging.getLogger(record.name)
         logger.handle(record)
-        print("RECORD: ", record)
-
-
-from threading import Thread
 
 
 @pytest.fixture

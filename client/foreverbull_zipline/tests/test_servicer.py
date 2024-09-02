@@ -1,6 +1,6 @@
 import grpc
 import pytest
-from foreverbull.pb.backtest import engine_pb2, engine_pb2_grpc
+from foreverbull.pb.backtest import engine_pb2_grpc
 
 
 @pytest.fixture

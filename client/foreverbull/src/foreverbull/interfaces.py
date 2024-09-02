@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator
+from typing import Iterator
 
-from foreverbull import entity
 from pandas import DataFrame
 
 
@@ -23,6 +22,7 @@ class Asset(ABC):
     @abstractmethod
     def stock_data(self) -> DataFrame:
         raise NotImplementedError()
+
 
 class Assets(ABC):
     @abstractmethod
