@@ -12,6 +12,7 @@ import pandas as pd
 import pynng
 import pytz
 import six
+import zipline.errors
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2
@@ -29,8 +30,6 @@ from zipline.protocol import BarData, Portfolio
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.paths import data_path, data_root
 
-from .broker import Broker
-
 
 class ConfigError(Exception):
     pass
@@ -40,7 +39,7 @@ class StopExcecution(Exception):
     pass
 
 
-class Execution(ABC):
+class Engine(ABC):
     @abstractmethod
     def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
         pass
@@ -66,7 +65,7 @@ class Execution(ABC):
         pass
 
 
-class ExecutionProcess(multiprocessing.Process, Execution):
+class EngineProcess(multiprocessing.Process, Engine):
     def __init__(
         self,
         socket_file_path: str = "/tmp/foreverbull_zipline.sock",
@@ -77,7 +76,7 @@ class ExecutionProcess(multiprocessing.Process, Execution):
         self._logging_queue = logging_queue
         self._download_ingestion = download_ingestion
         self.is_ready = multiprocessing.Event()
-        super(ExecutionProcess, self).__init__()
+        super(EngineProcess, self).__init__()
 
     def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
         with pynng.Req0(
@@ -154,12 +153,20 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             return result
 
     def stop(self):
-        with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=1_000, send_timeout=1_000
-        ) as socket:
-            request = service_pb2.Request(task="stop")
-            socket.send(request.SerializeToString())
-            socket.recv()
+        try:
+            with pynng.Req0(
+                dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=1_000, send_timeout=1_000
+            ) as socket:
+                request = service_pb2.Request(task="stop")
+                try:
+                    socket.send(request.SerializeToString())
+                    socket.recv()
+                except pynng.Timeout:
+                    print("TIMEOUT")
+                    pass
+        except pynng.exceptions.ConnectionRefused:
+            print("REFUESED")
+            pass
 
     def run(self):
         if self._download_ingestion:
@@ -173,7 +180,6 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             logging.basicConfig(handlers=[handler], level=logging.DEBUG)
         self.log = logging.getLogger(__name__)
         self.log.info("Starting Execution Process")
-        self._broker: Broker = Broker()
         self._trading_algorithm: TradingAlgorithm | None = None
         self.logger = logging.getLogger(__name__)
         import os
@@ -185,7 +191,7 @@ class ExecutionProcess(multiprocessing.Process, Execution):
             while True:
                 try:
                     self._process_request(None, None, socket)
-                except StopExcecution:
+                except (StopExcecution, KeyboardInterrupt):
                     break
 
     @property
@@ -360,7 +366,8 @@ class ExecutionProcess(multiprocessing.Process, Execution):
         req = backtest_pb2.PlaceOrdersRequest()
         req.ParseFromString(data)
         for order in req.orders:
-            self._broker.order(order.symbol, order.amount, trading_algorithm)
+            asset = trading_algorithm.symbol(order.symbol)
+            trading_algorithm.order(asset=asset, amount=order.amount)
         return backtest_pb2.PlaceOrdersResponse().SerializeToString()
 
     def _get_next_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
@@ -480,6 +487,7 @@ class ExecutionProcess(multiprocessing.Process, Execution):
                         case "get_next_period":
                             data = backtest_pb2.GetNextPeriodResponse(is_running=False).SerializeToString()
                         case "stop":
+                            print("STOP REQ", flush=True)
                             pass
                         case _:
                             raise Exception(f"Unknown task {req.task}")
@@ -493,4 +501,5 @@ class ExecutionProcess(multiprocessing.Process, Execution):
                 rsp.data = data
             context_socket.send(rsp.SerializeToString())
             if req.task == "stop":
+                print("RAISE STOP", flush=True)
                 raise StopExcecution()

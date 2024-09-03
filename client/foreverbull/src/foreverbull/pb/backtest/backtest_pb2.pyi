@@ -290,12 +290,8 @@ class PlaceOrdersRequest(_message.Message):
     def __init__(self, orders: _Optional[_Iterable[_Union[Order, _Mapping]]] = ...) -> None: ...
 
 class PlaceOrdersResponse(_message.Message):
-    __slots__ = ("is_running", "portfolio")
-    IS_RUNNING_FIELD_NUMBER: _ClassVar[int]
-    PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
-    is_running: bool
-    portfolio: Portfolio
-    def __init__(self, is_running: bool = ..., portfolio: _Optional[_Union[Portfolio, _Mapping]] = ...) -> None: ...
+    __slots__ = ()
+    def __init__(self) -> None: ...
 
 class GetNextPeriodRequest(_message.Message):
     __slots__ = ()
