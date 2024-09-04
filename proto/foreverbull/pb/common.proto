@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package foreverbull.pb;
+option go_package = "github.com/lhjnilsson/foreverbull/internal/pb";
+
+message Request {
+    string task = 1;
+    optional bytes data = 2;
+}
+
+
+message Response {
+    string task = 1;
+    optional bytes data = 2;
+    optional string error = 3;
+}

@@ -23,7 +23,11 @@ class NamespaceRequestType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
 GET: NamespaceRequestType
 SET: NamespaceRequestType
 
-class ServiceInfoResponse(_message.Message):
+class GetServiceInfoRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetServiceInfoResponse(_message.Message):
     __slots__ = ("serviceType", "version", "algorithm")
     SERVICETYPE_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -36,26 +40,6 @@ class ServiceInfoResponse(_message.Message):
         serviceType: _Optional[str] = ...,
         version: _Optional[str] = ...,
         algorithm: _Optional[_Union[Algorithm, _Mapping]] = ...,
-    ) -> None: ...
-
-class Request(_message.Message):
-    __slots__ = ("task", "data")
-    TASK_FIELD_NUMBER: _ClassVar[int]
-    DATA_FIELD_NUMBER: _ClassVar[int]
-    task: str
-    data: bytes
-    def __init__(self, task: _Optional[str] = ..., data: _Optional[bytes] = ...) -> None: ...
-
-class Response(_message.Message):
-    __slots__ = ("task", "data", "error")
-    TASK_FIELD_NUMBER: _ClassVar[int]
-    DATA_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    task: str
-    data: bytes
-    error: str
-    def __init__(
-        self, task: _Optional[str] = ..., data: _Optional[bytes] = ..., error: _Optional[str] = ...
     ) -> None: ...
 
 class Algorithm(_message.Message):
@@ -156,6 +140,14 @@ class ConfigureExecutionResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
+class RunExecutionRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class RunExecutionResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class WorkerRequest(_message.Message):
     __slots__ = ("task", "timestamp", "symbols", "portfolio")
     TASK_FIELD_NUMBER: _ClassVar[int]
@@ -188,6 +180,14 @@ class WorkerResponse(_message.Message):
         orders: _Optional[_Iterable[_Union[_finance_pb2.Order, _Mapping]]] = ...,
         error: _Optional[str] = ...,
     ) -> None: ...
+
+class StopRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StopResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
 
 class NamespaceRequest(_message.Message):
     __slots__ = ("key", "type", "value")

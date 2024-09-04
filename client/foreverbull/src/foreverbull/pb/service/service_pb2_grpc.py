@@ -3,6 +3,7 @@
 import warnings
 
 import grpc
+from foreverbull.pb.service import service_pb2 as foreverbull_dot_pb_dot_service_dot_service__pb2
 
 GRPC_GENERATED_VERSION = "1.66.1"
 GRPC_VERSION = grpc.__version__
@@ -23,3 +24,219 @@ if _version_not_supported:
         + f" Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}"
         + f" or downgrade your generated code using grpcio-tools<={GRPC_VERSION}."
     )
+
+
+class ServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetServiceInfo = channel.unary_unary(
+            "/foreverbull.pb.service.Service/GetServiceInfo",
+            request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoResponse.FromString,
+            _registered_method=True,
+        )
+        self.ConfigureExecution = channel.unary_unary(
+            "/foreverbull.pb.service.Service/ConfigureExecution",
+            request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionResponse.FromString,
+            _registered_method=True,
+        )
+        self.RunExecution = channel.unary_unary(
+            "/foreverbull.pb.service.Service/RunExecution",
+            request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionResponse.FromString,
+            _registered_method=True,
+        )
+        self.Stop = channel.unary_unary(
+            "/foreverbull.pb.service.Service/Stop",
+            request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.FromString,
+            _registered_method=True,
+        )
+
+
+class ServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def GetServiceInfo(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def ConfigureExecution(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def RunExecution(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def Stop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+
+def add_ServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+        "GetServiceInfo": grpc.unary_unary_rpc_method_handler(
+            servicer.GetServiceInfo,
+            request_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoResponse.SerializeToString,
+        ),
+        "ConfigureExecution": grpc.unary_unary_rpc_method_handler(
+            servicer.ConfigureExecution,
+            request_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionResponse.SerializeToString,
+        ),
+        "RunExecution": grpc.unary_unary_rpc_method_handler(
+            servicer.RunExecution,
+            request_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionResponse.SerializeToString,
+        ),
+        "Stop": grpc.unary_unary_rpc_method_handler(
+            servicer.Stop,
+            request_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.SerializeToString,
+        ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler("foreverbull.pb.service.Service", rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers("foreverbull.pb.service.Service", rpc_method_handlers)
+
+
+# This class is part of an EXPERIMENTAL API.
+class Service(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def GetServiceInfo(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/foreverbull.pb.service.Service/GetServiceInfo",
+            foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoRequest.SerializeToString,
+            foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def ConfigureExecution(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/foreverbull.pb.service.Service/ConfigureExecution",
+            foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionRequest.SerializeToString,
+            foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def RunExecution(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/foreverbull.pb.service.Service/RunExecution",
+            foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionRequest.SerializeToString,
+            foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def Stop(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/foreverbull.pb.service.Service/Stop",
+            foreverbull_dot_pb_dot_service_dot_service__pb2.StopRequest.SerializeToString,
+            foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )

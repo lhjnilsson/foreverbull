@@ -4,6 +4,7 @@ from multiprocessing import Event
 import pynng
 import pytest
 from foreverbull import exceptions, worker
+from foreverbull.pb import common_pb2
 from foreverbull.pb.service import service_pb2
 
 
@@ -52,6 +53,23 @@ def test_run_worker_unable_to_connect():
     assert exit_code == 1
 
 
+@pytest.mark.parametrize(
+    "algo",
+    [
+        "parallel_algo_file",
+        "non_parallel_algo_file",
+        "parallel_algo_file_with_parameters",
+        "non_parallel_algo_file_with_parameters",
+        "multistep_algo_with_namespace",
+    ],
+)
+def test_worker_pool(algo):
+    worker_pool = worker.WorkerPool(algo)
+    with worker_pool:
+        worker_pool.configure_execution()
+        worker_pool.run_execution()
+
+
 @pytest.mark.parametrize("workerclass", [worker.WorkerThread, worker.WorkerProcess])
 @pytest.mark.parametrize(
     "algo",
@@ -63,23 +81,22 @@ def test_run_worker_unable_to_connect():
         "multistep_algo_with_namespace",
     ],
 )
-def test_worker(workerclass: worker.Worker, execution, setup_worker, spawn_process, algo, request):
+def test_worker_instance(workerclass: worker.Worker, execution, setup_worker, spawn_process, algo, request):
     if type(workerclass) is worker.WorkerProcess and os.environ.get("THREADED_EXECUTION"):
         pytest.skip("WorkerProcess not supported with THREADED_EXECUTION")
 
     file_name, configure_response, process_symbols = request.getfixturevalue(algo)
     survey_socket = setup_worker(workerclass, file_name)
-
-    request = service_pb2.Request(task="configure_execution", data=configure_response.SerializeToString())
+    request = common_pb2.Request(task="configure_execution", data=configure_response.SerializeToString())
     survey_socket.send(request.SerializeToString())
-    response = service_pb2.Response()
+    response = common_pb2.Response()
     response.ParseFromString(survey_socket.recv())
     assert response.task == "configure_execution"
     assert response.HasField("error") is False
 
-    request = service_pb2.Request(task="run_execution")
+    request = common_pb2.Request(task="run_execution")
     survey_socket.send(request.SerializeToString())
-    response = service_pb2.Response()
+    response = common_pb2.Response()
     response.ParseFromString(survey_socket.recv())
     assert response.task == "run_execution"
     assert response.HasField("error") is False

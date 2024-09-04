@@ -8,24 +8,13 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 import "foreverbull/pb/finance/finance.proto";
 
+message GetServiceInfoRequest {
+}
 
-message ServiceInfoResponse {
+message GetServiceInfoResponse {
     string serviceType = 1;
     string version = 2;
     optional Algorithm algorithm = 3;
-}
-
-
-message Request {
-    string task = 1;
-    optional bytes data = 2;
-}
-
-
-message Response {
-    string task = 1;
-    optional bytes data = 2;
-    optional string error = 3;
 }
 
 message Algorithm {
@@ -65,6 +54,12 @@ message ConfigureExecutionRequest {
 message ConfigureExecutionResponse {
 }
 
+message RunExecutionRequest {
+}
+
+message RunExecutionResponse {
+}
+
 message WorkerRequest {
     string task = 1;
     google.protobuf.Timestamp timestamp = 2;
@@ -77,6 +72,13 @@ message WorkerResponse {
     repeated foreverbull.pb.finance.Order orders = 2;
     optional string error = 3;
 }
+
+message StopRequest {
+}
+
+message StopResponse {
+}
+
 
 enum NamespaceRequestType {
     GET = 0;
@@ -92,4 +94,12 @@ message NamespaceRequest {
 message NamespaceResponse {
     optional google.protobuf.Struct value = 1;
     optional string error = 2;
+}
+
+
+service Service {
+    rpc GetServiceInfo (GetServiceInfoRequest) returns (GetServiceInfoResponse) {}
+    rpc ConfigureExecution (ConfigureExecutionRequest) returns (ConfigureExecutionResponse) {}
+    rpc RunExecution (RunExecutionRequest) returns (RunExecutionResponse) {}
+    rpc Stop (StopRequest) returns (StopResponse) {}
 }

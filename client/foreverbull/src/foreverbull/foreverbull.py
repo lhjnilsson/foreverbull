@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import contextmanager
 from multiprocessing import Event, Queue, synchronize
 
 import pynng
@@ -9,6 +10,7 @@ from foreverbull import Algorithm, entity, worker
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.service import service_pb2
+from pandas import DataFrame
 
 from .exceptions import ConfigurationError
 
@@ -244,7 +246,45 @@ def logging_thread(q: Queue):
         logger.handle(record)
 
 
-class Foreverbull:
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+
+
+class BacktestExecution(ABC):
+    @abstractmethod
+    def get_default(self) -> entity.backtest.Execution:
+        pass
+
+    @abstractmethod
+    def run(self, execution: entity.backtest.Execution) -> DataFrame:
+        pass
+
+
+class Foreverbull(ABC):
+    @abstractmethod
+    def get_info(self, request: service_pb2.GetServiceInfoRequest) -> service_pb2.GetServiceInfoResponse:
+        pass
+
+    @abstractmethod
+    def configure_execution(
+        self, request: service_pb2.ConfigureExecutionRequest
+    ) -> service_pb2.ConfigureExecutionResponse:
+        pass
+
+    @abstractmethod
+    def run_execution(self, request: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
+        pass
+
+    @abstractmethod
+    def stop(self, request: service_pb2.StopRequest) -> service_pb2.StopResponse:
+        pass
+
+    @abstractmethod
+    def new_backtest_execution(self) -> BacktestExecution:
+        pass
+
+
+class _Foreverbull:
     def __init__(self, file_path: str | None = None, executors=2):
         self._session = None
         self._file_path = file_path

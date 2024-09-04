@@ -23,7 +23,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n$foreverbull/pb/service/service.proto\x12\x16\x66oreverbull.pb.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a$foreverbull/pb/finance/finance.proto"\x84\x01\n\x13ServiceInfoResponse\x12\x13\n\x0bserviceType\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x39\n\talgorithm\x18\x03 \x01(\x0b\x32!.foreverbull.pb.service.AlgorithmH\x00\x88\x01\x01\x42\x0c\n\n_algorithm"3\n\x07Request\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x42\x07\n\x05_data"R\n\x08Response\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x01\x88\x01\x01\x42\x07\n\x05_dataB\x08\n\x06_error"\x92\x03\n\tAlgorithm\x12\x11\n\tfile_path\x18\x01 \x01(\t\x12=\n\tfunctions\x18\x02 \x03(\x0b\x32*.foreverbull.pb.service.Algorithm.Function\x12\x12\n\nnamespaces\x18\x03 \x03(\t\x1a}\n\x11\x46unctionParameter\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x19\n\x0c\x64\x65\x66\x61ultValue\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x12\n\x05value\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x11\n\tvalueType\x18\x04 \x01(\tB\x0f\n\r_defaultValueB\x08\n\x06_value\x1a\x9f\x01\n\x08\x46unction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12G\n\nparameters\x18\x02 \x03(\x0b\x32\x33.foreverbull.pb.service.Algorithm.FunctionParameter\x12\x19\n\x11parallelExecution\x18\x03 \x01(\x08\x12\x10\n\x08runFirst\x18\x04 \x01(\x08\x12\x0f\n\x07runLast\x18\x05 \x01(\x08"\xce\x02\n\x19\x43onfigureExecutionRequest\x12\x12\n\nbrokerPort\x18\x01 \x01(\x05\x12\x15\n\rnamespacePort\x18\x02 \x01(\x05\x12\x13\n\x0b\x64\x61tabaseURL\x18\x03 \x01(\t\x12M\n\tfunctions\x18\x04 \x03(\x0b\x32:.foreverbull.pb.service.ConfigureExecutionRequest.Function\x1a/\n\x11\x46unctionParameter\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x1aq\n\x08\x46unction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12W\n\nparameters\x18\x02 \x03(\x0b\x32\x43.foreverbull.pb.service.ConfigureExecutionRequest.FunctionParameter"\x1c\n\x1a\x43onfigureExecutionResponse"\x93\x01\n\rWorkerRequest\x12\x0c\n\x04task\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07symbols\x18\x03 \x03(\t\x12\x34\n\tportfolio\x18\x04 \x01(\x0b\x32!.foreverbull.pb.finance.Portfolio"k\n\x0eWorkerResponse\x12\x0c\n\x04task\x18\x01 \x01(\t\x12-\n\x06orders\x18\x02 \x03(\x0b\x32\x1d.foreverbull.pb.finance.Order\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x08\n\x06_error"\x92\x01\n\x10NamespaceRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12:\n\x04type\x18\x02 \x01(\x0e\x32,.foreverbull.pb.service.NamespaceRequestType\x12+\n\x05value\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructH\x00\x88\x01\x01\x42\x08\n\x06_value"h\n\x11NamespaceResponse\x12+\n\x05value\x18\x01 \x01(\x0b\x32\x17.google.protobuf.StructH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x01\x88\x01\x01\x42\x08\n\x06_valueB\x08\n\x06_error*(\n\x14NamespaceRequestType\x12\x07\n\x03GET\x10\x00\x12\x07\n\x03SET\x10\x01\x42\x37Z5github.com/lhjnilsson/foreverbull/internal/pb/serviceb\x06proto3'
+    b'\n$foreverbull/pb/service/service.proto\x12\x16\x66oreverbull.pb.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a$foreverbull/pb/finance/finance.proto"\x17\n\x15GetServiceInfoRequest"\x87\x01\n\x16GetServiceInfoResponse\x12\x13\n\x0bserviceType\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x39\n\talgorithm\x18\x03 \x01(\x0b\x32!.foreverbull.pb.service.AlgorithmH\x00\x88\x01\x01\x42\x0c\n\n_algorithm"\x92\x03\n\tAlgorithm\x12\x11\n\tfile_path\x18\x01 \x01(\t\x12=\n\tfunctions\x18\x02 \x03(\x0b\x32*.foreverbull.pb.service.Algorithm.Function\x12\x12\n\nnamespaces\x18\x03 \x03(\t\x1a}\n\x11\x46unctionParameter\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x19\n\x0c\x64\x65\x66\x61ultValue\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x12\n\x05value\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x11\n\tvalueType\x18\x04 \x01(\tB\x0f\n\r_defaultValueB\x08\n\x06_value\x1a\x9f\x01\n\x08\x46unction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12G\n\nparameters\x18\x02 \x03(\x0b\x32\x33.foreverbull.pb.service.Algorithm.FunctionParameter\x12\x19\n\x11parallelExecution\x18\x03 \x01(\x08\x12\x10\n\x08runFirst\x18\x04 \x01(\x08\x12\x0f\n\x07runLast\x18\x05 \x01(\x08"\xce\x02\n\x19\x43onfigureExecutionRequest\x12\x12\n\nbrokerPort\x18\x01 \x01(\x05\x12\x15\n\rnamespacePort\x18\x02 \x01(\x05\x12\x13\n\x0b\x64\x61tabaseURL\x18\x03 \x01(\t\x12M\n\tfunctions\x18\x04 \x03(\x0b\x32:.foreverbull.pb.service.ConfigureExecutionRequest.Function\x1a/\n\x11\x46unctionParameter\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x1aq\n\x08\x46unction\x12\x0c\n\x04name\x18\x01 \x01(\t\x12W\n\nparameters\x18\x02 \x03(\x0b\x32\x43.foreverbull.pb.service.ConfigureExecutionRequest.FunctionParameter"\x1c\n\x1a\x43onfigureExecutionResponse"\x15\n\x13RunExecutionRequest"\x16\n\x14RunExecutionResponse"\x93\x01\n\rWorkerRequest\x12\x0c\n\x04task\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07symbols\x18\x03 \x03(\t\x12\x34\n\tportfolio\x18\x04 \x01(\x0b\x32!.foreverbull.pb.finance.Portfolio"k\n\x0eWorkerResponse\x12\x0c\n\x04task\x18\x01 \x01(\t\x12-\n\x06orders\x18\x02 \x03(\x0b\x32\x1d.foreverbull.pb.finance.Order\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x08\n\x06_error"\r\n\x0bStopRequest"\x0e\n\x0cStopResponse"\x92\x01\n\x10NamespaceRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12:\n\x04type\x18\x02 \x01(\x0e\x32,.foreverbull.pb.service.NamespaceRequestType\x12+\n\x05value\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructH\x00\x88\x01\x01\x42\x08\n\x06_value"h\n\x11NamespaceResponse\x12+\n\x05value\x18\x01 \x01(\x0b\x32\x17.google.protobuf.StructH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x01\x88\x01\x01\x42\x08\n\x06_valueB\x08\n\x06_error*(\n\x14NamespaceRequestType\x12\x07\n\x03GET\x10\x00\x12\x07\n\x03SET\x10\x01\x32\xbd\x03\n\x07Service\x12q\n\x0eGetServiceInfo\x12-.foreverbull.pb.service.GetServiceInfoRequest\x1a..foreverbull.pb.service.GetServiceInfoResponse"\x00\x12}\n\x12\x43onfigureExecution\x12\x31.foreverbull.pb.service.ConfigureExecutionRequest\x1a\x32.foreverbull.pb.service.ConfigureExecutionResponse"\x00\x12k\n\x0cRunExecution\x12+.foreverbull.pb.service.RunExecutionRequest\x1a,.foreverbull.pb.service.RunExecutionResponse"\x00\x12S\n\x04Stop\x12#.foreverbull.pb.service.StopRequest\x1a$.foreverbull.pb.service.StopResponse"\x00\x42\x37Z5github.com/lhjnilsson/foreverbull/internal/pb/serviceb\x06proto3'
 )
 
 _globals = globals()
@@ -32,34 +32,42 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "foreverbull.pb.service.serv
 if not _descriptor._USE_C_DESCRIPTORS:
     _globals["DESCRIPTOR"]._loaded_options = None
     _globals["DESCRIPTOR"]._serialized_options = b"Z5github.com/lhjnilsson/foreverbull/internal/pb/service"
-    _globals["_NAMESPACEREQUESTTYPE"]._serialized_start = 1723
-    _globals["_NAMESPACEREQUESTTYPE"]._serialized_end = 1763
-    _globals["_SERVICEINFORESPONSE"]._serialized_start = 166
-    _globals["_SERVICEINFORESPONSE"]._serialized_end = 298
-    _globals["_REQUEST"]._serialized_start = 300
-    _globals["_REQUEST"]._serialized_end = 351
-    _globals["_RESPONSE"]._serialized_start = 353
-    _globals["_RESPONSE"]._serialized_end = 435
-    _globals["_ALGORITHM"]._serialized_start = 438
-    _globals["_ALGORITHM"]._serialized_end = 840
-    _globals["_ALGORITHM_FUNCTIONPARAMETER"]._serialized_start = 553
-    _globals["_ALGORITHM_FUNCTIONPARAMETER"]._serialized_end = 678
-    _globals["_ALGORITHM_FUNCTION"]._serialized_start = 681
-    _globals["_ALGORITHM_FUNCTION"]._serialized_end = 840
-    _globals["_CONFIGUREEXECUTIONREQUEST"]._serialized_start = 843
-    _globals["_CONFIGUREEXECUTIONREQUEST"]._serialized_end = 1177
-    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTIONPARAMETER"]._serialized_start = 1015
-    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTIONPARAMETER"]._serialized_end = 1062
-    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTION"]._serialized_start = 1064
-    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTION"]._serialized_end = 1177
-    _globals["_CONFIGUREEXECUTIONRESPONSE"]._serialized_start = 1179
-    _globals["_CONFIGUREEXECUTIONRESPONSE"]._serialized_end = 1207
-    _globals["_WORKERREQUEST"]._serialized_start = 1210
-    _globals["_WORKERREQUEST"]._serialized_end = 1357
-    _globals["_WORKERRESPONSE"]._serialized_start = 1359
-    _globals["_WORKERRESPONSE"]._serialized_end = 1466
-    _globals["_NAMESPACEREQUEST"]._serialized_start = 1469
-    _globals["_NAMESPACEREQUEST"]._serialized_end = 1615
-    _globals["_NAMESPACERESPONSE"]._serialized_start = 1617
-    _globals["_NAMESPACERESPONSE"]._serialized_end = 1721
+    _globals["_NAMESPACEREQUESTTYPE"]._serialized_start = 1692
+    _globals["_NAMESPACEREQUESTTYPE"]._serialized_end = 1732
+    _globals["_GETSERVICEINFOREQUEST"]._serialized_start = 165
+    _globals["_GETSERVICEINFOREQUEST"]._serialized_end = 188
+    _globals["_GETSERVICEINFORESPONSE"]._serialized_start = 191
+    _globals["_GETSERVICEINFORESPONSE"]._serialized_end = 326
+    _globals["_ALGORITHM"]._serialized_start = 329
+    _globals["_ALGORITHM"]._serialized_end = 731
+    _globals["_ALGORITHM_FUNCTIONPARAMETER"]._serialized_start = 444
+    _globals["_ALGORITHM_FUNCTIONPARAMETER"]._serialized_end = 569
+    _globals["_ALGORITHM_FUNCTION"]._serialized_start = 572
+    _globals["_ALGORITHM_FUNCTION"]._serialized_end = 731
+    _globals["_CONFIGUREEXECUTIONREQUEST"]._serialized_start = 734
+    _globals["_CONFIGUREEXECUTIONREQUEST"]._serialized_end = 1068
+    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTIONPARAMETER"]._serialized_start = 906
+    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTIONPARAMETER"]._serialized_end = 953
+    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTION"]._serialized_start = 955
+    _globals["_CONFIGUREEXECUTIONREQUEST_FUNCTION"]._serialized_end = 1068
+    _globals["_CONFIGUREEXECUTIONRESPONSE"]._serialized_start = 1070
+    _globals["_CONFIGUREEXECUTIONRESPONSE"]._serialized_end = 1098
+    _globals["_RUNEXECUTIONREQUEST"]._serialized_start = 1100
+    _globals["_RUNEXECUTIONREQUEST"]._serialized_end = 1121
+    _globals["_RUNEXECUTIONRESPONSE"]._serialized_start = 1123
+    _globals["_RUNEXECUTIONRESPONSE"]._serialized_end = 1145
+    _globals["_WORKERREQUEST"]._serialized_start = 1148
+    _globals["_WORKERREQUEST"]._serialized_end = 1295
+    _globals["_WORKERRESPONSE"]._serialized_start = 1297
+    _globals["_WORKERRESPONSE"]._serialized_end = 1404
+    _globals["_STOPREQUEST"]._serialized_start = 1406
+    _globals["_STOPREQUEST"]._serialized_end = 1419
+    _globals["_STOPRESPONSE"]._serialized_start = 1421
+    _globals["_STOPRESPONSE"]._serialized_end = 1435
+    _globals["_NAMESPACEREQUEST"]._serialized_start = 1438
+    _globals["_NAMESPACEREQUEST"]._serialized_end = 1584
+    _globals["_NAMESPACERESPONSE"]._serialized_start = 1586
+    _globals["_NAMESPACERESPONSE"]._serialized_end = 1690
+    _globals["_SERVICE"]._serialized_start = 1735
+    _globals["_SERVICE"]._serialized_end = 2180
 # @@protoc_insertion_point(module_scope)
