@@ -28,7 +28,7 @@ class BacktestService(engine_pb2_grpc.EngineServicer):
         return self.engine.stop()
 
 
-def serve(engine: Engine):
+def serve(engine: Engine) -> grpc.Server:
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
     engine_pb2_grpc.add_EngineServicer_to_server(BacktestService(engine), server)
     server.add_insecure_port("[::]:50055")

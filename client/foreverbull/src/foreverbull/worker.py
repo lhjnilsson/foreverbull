@@ -10,12 +10,12 @@ from multiprocessing import Process, Queue
 from multiprocessing.synchronize import Event
 
 import pynng
+import sqlalchemy
 from foreverbull import Algorithm, exceptions
-from foreverbull.data import get_engine
+from foreverbull.data import get_engine, namespace_socket
 from foreverbull.pb import common_pb2
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
-from sqlalchemy import text
 
 
 class Worker(ABC):
@@ -24,199 +24,73 @@ class Worker(ABC):
         pass
 
     @abstractmethod
-    def run_execution(self, req: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
+    def run_execution(
+        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
+    ) -> service_pb2.RunExecutionResponse:
         pass
 
 
-class WorkerPool(Worker):
-    def __init__(self, file_path: str, executors: int = 2):
-        self._file_path = file_path
-        self._executors = executors
-
-        self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
-        self._worker_surveyor_socket: pynng.Surveyor0
-        self._workers: list[WorkerThread | WorkerProcess] = []
-        self.logger = logging.getLogger(__name__)
-        self._log_queue = Queue()
-        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
-
-    def __enter__(
-        self,
-    ):
-        algo = Algorithm.from_file_path(self._file_path)
-        self._worker_surveyor_socket = pynng.Surveyor0(
-            listen=self._worker_surveyor_address, send_timeout=30000, recv_timeout=30000
-        )
-        if os.getenv("THREADED_EXECUTION"):
-            stop_event = threading.Event()
-            for _ in range(self._executors):
-                w = WorkerThread(
-                    survey_address=self._worker_surveyor_address,
-                    logging_queue=self._log_queue,
-                    stop_event=stop_event,
-                    file_path=self._file_path,
-                )
-                w.is_ready.wait(1.0)
-                w.start()
-                self._workers.append(w)
-            self._stop_event = stop_event
-        else:
-            stop_event = multiprocessing.Event()
-            for _ in range(self._executors):
-                w = WorkerProcess(
-                    survey_address=self._worker_surveyor_address,
-                    logging_queue=self._log_queue,
-                    stop_event=stop_event,
-                    file_path=self._file_path,
-                )
-                w.is_ready.wait(1.0)
-                w.start()
-                self._workers.append(w)
-            self._stop_event = stop_event
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self._stop_event is None:
-            return
-        self._stop_event.set()
-        self._log_queue.put_nowait(None)
-        for w in self._workers:
-            w.join()
-        self._worker_surveyor_socket.close()
-
-    @staticmethod
-    def _is_running(func):
-        @wraps(func)
-        def wrapper(w: WorkerPool, *args, **kwargs):
-            if w._stop_event is None or w._stop_event.is_set():
-                raise Exception("WorkerPool is not running")
-            return func(w, *args, **kwargs)
-
-        return wrapper
-
-    @_is_running
-    def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
-        data = common_pb2.Request(task="configure", data=req.SerializeToString())
-        self._worker_surveyor_socket.send(data.SerializeToString())
-        responders = 0
-        while True:
-            try:
-                msg = self._worker_surveyor_socket.recv()
-                response = common_pb2.Response()
-                response.ParseFromString(msg)
-                responders += 1
-                if responders == len(self._workers):
-                    break
-            except pynng.exceptions.Timeout:
-                pass
-        if responders != len(self._workers):
-            raise Exception("Not all workers responded to configure request")
-        return service_pb2.ConfigureExecutionResponse()
-
-    @_is_running
-    def run_execution(self, req: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
-        data = common_pb2.Request(task="run", data=req.SerializeToString())
-        self._worker_surveyor_socket.send(data.SerializeToString())
-        responders = 0
-        while True:
-            try:
-                msg = self._worker_surveyor_socket.recv()
-                response = common_pb2.Response()
-                response.ParseFromString(msg)
-                responders += 1
-                if responders == len(self._workers):
-                    break
-            except pynng.exceptions.Timeout:
-                pass
-        if responders != len(self._workers):
-            raise Exception("Not all workers responded to run request")
-        return service_pb2.RunExecutionResponse()
-
-
 class WorkerInstance(Worker):
-    def __init__(self, survey_address: str, logging_queue: Queue, stop_event: Event | threading.Event, file_path: str):
-        self._survey_address = survey_address
-        self._logging_queue = logging_queue
-        self._stop_event = stop_event
-        self._database = None
+    def __init__(self, file_path: str):
+        self.logger = logging.getLogger(__name__)
         self._file_path = file_path
-        self._parallel = False
-        self.is_ready: threading.Event | multiprocessing.synchronize.Event
-        super(WorkerInstance, self).__init__()
+
+        self._broker_socket: pynng.Socket | None = None
+        self._namespace_socket: pynng.Socket | None = None
+        self._database_engine: sqlalchemy.Engine | None = None
 
     def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
         self.logger.info("configuring worker")
-        self._algo = Algorithm.from_file_path(self._file_path)
         try:
-            self.socket = pynng.Rep0(
-                dial=f"tcp://{os.getenv('BROKER_HOSTNAME', '127.0.0.1')}:{req.brokerPort}", block_on_dial=True
+            self._algo = Algorithm.from_file_path(self._file_path)
+        except Exception as e:
+            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
+
+        _hostname = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
+        try:
+            self._broker_socket = pynng.Rep0(
+                dial=f"tcp://{_hostname}:{req.brokerPort}", block_on_dial=True, recv_timeout=500, send_timeout=500
             )
-            self.socket.recv_timeout = 5000
-            self.socket.send_timeout = 5000
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
+        try:
+            self._namespace_socket = pynng.Req0(
+                dial=f"tcp://{_hostname}:{req.namespacePort}", block_on_dial=True, recv_timeout=500, send_timeout=500
+            )
+        except Exception as e:
+            raise exceptions.ConfigurationError(f"Unable to connect to namespace: {e}")
+
+        try:
+            engine = get_engine(req.databaseURL)
+            with engine.connect() as connection:
+                connection.execute(sqlalchemy.text("SELECT 1 from asset;"))
+            self._database_engine = engine
+        except Exception as e:
+            raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
 
         for function in req.functions:
             for parameter in function.parameters:
                 self._algo.configure(function.name, parameter.key, parameter.value)
 
-        try:
-            engine = get_engine(req.databaseURL)
-            with engine.connect() as connection:
-                connection.execute(text("SELECT 1 from asset;"))
-            self._database_engine = engine
-        except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
-
-        os.environ["NAMESPACE_PORT"] = str(req.namespacePort)
         self.logger.info("worker configured correctly")
         return service_pb2.ConfigureExecutionResponse()
 
-    def run(self):
-        if self._logging_queue:
-            handler = logging.handlers.QueueHandler(self._logging_queue)
-            logging.basicConfig(level=logging.DEBUG, handlers=[handler])
-        self.logger = logging.getLogger(__name__)
-        try:
-            responder = pynng.Respondent0(
-                dial=self._survey_address, block_on_dial=True, send_timeout=500, recv_timeout=500
-            )
-        except Exception as e:
-            self.logger.error(f"Unable to connect to surveyor: {e}")
-            return
+    @property
+    def is_configured(self) -> bool:
+        return (
+            self._database_engine is not None and self._broker_socket is not None and self._namespace_socket is not None
+        )
 
-        self.is_ready.set()
-        self.logger.info("starting worker")
-        while not self._stop_event.is_set():
-            request = common_pb2.Request()
-            try:
-                request.ParseFromString(responder.recv())
-                self.logger.info(f"Received request: {request.task}")
-                if request.task == "configure":
-                    req = service_pb2.ConfigureExecutionRequest()
-                    req.ParseFromString(request.data)
-                    self.configure_execution(req)
-                    response = common_pb2.Response(task=request.task, error=None)
-                    responder.send(response.SerializeToString())
-                elif request.task == "run":
-                    response = common_pb2.Response(task=request.task, error=None)
-                    responder.send(response.SerializeToString())
-                    self.run_execution(service_pb2.RunExecutionRequest())
-            except pynng.exceptions.Timeout:
-                continue
-            except Exception as e:
-                self.logger.error("Error processing request")
-                self.logger.exception(repr(e))
-                response = common_pb2.Response(task=request.task, error=repr(e))
-                responder.send(response.SerializeToString())
-            self.logger.info(f"Request processed: {request.task}")
-        responder.close()
+    def run_execution(
+        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
+    ) -> service_pb2.RunExecutionResponse:
+        if not self._database_engine or not self._broker_socket or not self._namespace_socket:
+            raise exceptions.ConfigurationError("Worker not configured")
 
-    def run_execution(self, req: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
-        while True:
+        while not stop_event.is_set():
             request = None
             self.logger.debug("Getting context socket")
-            context_socket = self.socket.new_context()
+            context_socket = self._broker_socket.new_context()
             try:
                 request = service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
@@ -245,31 +119,196 @@ class WorkerInstance(Worker):
                     context_socket.send(response.SerializeToString())
                 if context_socket:
                     context_socket.close()
-            if self._stop_event.is_set():
-                break
-        self.socket.close()
+        self._broker_socket.close()
+        self._namespace_socket.close()
         return service_pb2.RunExecutionResponse()
 
 
-class WorkerThread(WorkerInstance, threading.Thread):  # type: ignore
-    def __init__(self, survey_address: str, logging_queue: Queue, stop_event: threading.Event, file_path: str):
-        self.is_ready = threading.Event()
-        WorkerInstance.__init__(self, survey_address, logging_queue, stop_event, file_path)
+class WorkerDaemon(WorkerInstance):
+    def __init__(
+        self,
+        survey_address: str,
+        logging_queue: Queue,
+        running_event: Event | threading.Event,
+        stop_event: Event | threading.Event,
+        file_path: str,
+    ):
+        self._survey_address = survey_address
+        self._logging_queue = logging_queue
+        self._running_event = running_event
+        self._stop_event = stop_event
+        super().__init__(file_path)
 
+    def run(self):
+        if self._logging_queue:
+            handler = logging.handlers.QueueHandler(self._logging_queue)
+            logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+        self.logger = logging.getLogger(__name__)
+        try:
+            responder = pynng.Respondent0(
+                dial=self._survey_address, block_on_dial=True, send_timeout=500, recv_timeout=500
+            )
+        except Exception as e:
+            self.logger.error(f"Unable to connect to surveyor: {e}")
+            return
+
+        self._running_event.set()
+        self.logger.info("starting worker")
+        while not self._stop_event.is_set():
+            request = common_pb2.Request()
+            try:
+                request.ParseFromString(responder.recv())
+                self.logger.info(f"Received request: {request.task}")
+                if request.task == "configure":
+                    req = service_pb2.ConfigureExecutionRequest()
+                    req.ParseFromString(request.data)
+                    self.configure_execution(req)
+                    response = common_pb2.Response(task=request.task, error=None)
+                    responder.send(response.SerializeToString())
+                elif request.task == "run":
+                    if not self.is_configured:
+                        raise exceptions.ConfigurationError("Worker not configured")
+                    response = common_pb2.Response(task=request.task, error=None)
+                    responder.send(response.SerializeToString())
+                    self.run_execution(service_pb2.RunExecutionRequest(), self._stop_event)
+            except pynng.exceptions.Timeout:
+                continue
+            except Exception as e:
+                self.logger.error("Error processing request")
+                self.logger.exception(repr(e))
+                response = common_pb2.Response(task=request.task, error=repr(e))
+                responder.send(response.SerializeToString())
+            self.logger.info(f"Request processed: {request.task}")
+        responder.close()
+        return
+
+
+class WorkerPool(Worker):
+    def __init__(self, file_path: str, executors: int = 2):
+        self._file_path = file_path
+        self._executors = executors
+
+        self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
+        self._worker_surveyor_socket: pynng.Surveyor0
+        self._workers: list[threading.Thread | Process] = []
+        self.logger = logging.getLogger(__name__)
+        self._log_queue = Queue()
+        self._log_thread = threading.Thread(target=self.logger_thread, args=(self._log_queue,), daemon=True)
+        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
+
+    @staticmethod
+    def logger_thread(queue: Queue):
+        handler = logging.handlers.QueueHandler(queue)
+        logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+        logger = logging.getLogger(__name__)
+        while True:
+            try:
+                record = queue.get()
+                if record is None:
+                    break
+                logger.handle(record)
+            except Exception as e:
+                logger.error(f"Error in logger thread: {e}")
+
+    def __enter__(
+        self,
+    ):
+        try:
+            algo = Algorithm.from_file_path(self._file_path)
+        except Exception as e:
+            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
+        self._worker_surveyor_socket = pynng.Surveyor0(
+            listen=self._worker_surveyor_address, send_timeout=30000, recv_timeout=30000
+        )
+        if os.getenv("THREADED_EXECUTION"):
+            stop_event = threading.Event()
+            for _ in range(self._executors):
+                is_ready = threading.Event()
+                daemon = WorkerDaemon(
+                    self._worker_surveyor_address, self._log_queue, is_ready, stop_event, self._file_path
+                )
+                t = threading.Thread(target=daemon.run, args=())
+                t.start()
+                if not is_ready.wait(5.0):
+                    raise exceptions.ConfigurationError("Worker failed to start")
+                self._workers.append(t)
+            self._stop_event = stop_event
+        else:
+            stop_event = multiprocessing.Event()
+            for _ in range(self._executors):
+                is_ready = multiprocessing.Event()
+                daemon = WorkerDaemon(
+                    self._worker_surveyor_address, self._log_queue, is_ready, stop_event, self._file_path
+                )
+                p = Process(target=daemon.run, args=())
+                p.start()
+                if not is_ready.wait(5.0):
+                    raise exceptions.ConfigurationError("Worker failed to start")
+                self._workers.append(p)
+            self._stop_event = stop_event
+        self._log_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._stop_event is None:
+            return
+        self._stop_event.set()
+        self._log_queue.put_nowait(None)
+        self._log_thread.join()
+        for w in self._workers:
+            w.join()
+        self._worker_surveyor_socket.close()
+
+    @staticmethod
+    def _is_running(func):
+        @wraps(func)
+        def wrapper(w, *args, **kwargs):
+            if w._stop_event is None or w._stop_event.is_set():
+                raise RuntimeError("WorkerPool is not running")
+            return func(w, *args, **kwargs)
+
+        return wrapper
+
+    @_is_running
     def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
-        return super().configure_execution(req)
+        data = common_pb2.Request(task="configure", data=req.SerializeToString())
+        self._worker_surveyor_socket.send(data.SerializeToString())
+        responders = 0
+        while True:
+            try:
+                msg = self._worker_surveyor_socket.recv()
+                response = common_pb2.Response()
+                response.ParseFromString(msg)
+                if response.HasField("error"):
+                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
+                responders += 1
+                if responders == len(self._workers):
+                    break
+            except pynng.exceptions.Timeout:
+                pass
+        if responders != len(self._workers):
+            raise RuntimeError("Not all workers responded to configure request")
+        return service_pb2.ConfigureExecutionResponse()
 
-    def run_execution(self, req: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
-        return super().run_execution(req)
-
-
-class WorkerProcess(WorkerInstance, Process):  # type: ignore
-    def __init__(self, survey_address: str, logging_queue: Queue, stop_event: Event, file_path: str):
-        self.is_ready = multiprocessing.Event()
-        WorkerInstance.__init__(self, survey_address, logging_queue, stop_event, file_path)
-
-    def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
-        return super().configure_execution(req)
-
-    def run_execution(self, req: service_pb2.RunExecutionRequest) -> service_pb2.RunExecutionResponse:
-        return super().run_execution(req)
+    @_is_running
+    def run_execution(
+        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
+    ) -> service_pb2.RunExecutionResponse:
+        data = common_pb2.Request(task="run", data=req.SerializeToString())
+        self._worker_surveyor_socket.send(data.SerializeToString())
+        responders = 0
+        while True:
+            try:
+                msg = self._worker_surveyor_socket.recv()
+                response = common_pb2.Response()
+                response.ParseFromString(msg)
+                if response.HasField("error"):
+                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
+                responders += 1
+                if responders == len(self._workers):
+                    break
+            except pynng.exceptions.Timeout:
+                pass
+        if responders != len(self._workers):
+            raise Exception("Not all workers responded to run request")
+        return service_pb2.RunExecutionResponse()

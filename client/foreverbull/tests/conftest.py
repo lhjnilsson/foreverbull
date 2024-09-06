@@ -18,8 +18,8 @@ from google.protobuf.timestamp_pb2 import Timestamp
 @pytest.fixture(scope="session")
 def spawn_process():
     method = get_start_method()
-    if method != "spawn":
-        set_start_method("spawn", force=True)
+    # if method != "spawn":
+    #    set_start_method("spawn", force=True)
 
 
 @pytest.fixture(scope="function")

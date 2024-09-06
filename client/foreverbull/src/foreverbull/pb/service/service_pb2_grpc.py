@@ -26,7 +26,7 @@ if _version_not_supported:
     )
 
 
-class ServiceStub(object):
+class WorkerStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -36,32 +36,32 @@ class ServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GetServiceInfo = channel.unary_unary(
-            "/foreverbull.pb.service.Service/GetServiceInfo",
+            "/foreverbull.pb.service.Worker/GetServiceInfo",
             request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoRequest.SerializeToString,
             response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoResponse.FromString,
             _registered_method=True,
         )
         self.ConfigureExecution = channel.unary_unary(
-            "/foreverbull.pb.service.Service/ConfigureExecution",
+            "/foreverbull.pb.service.Worker/ConfigureExecution",
             request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionRequest.SerializeToString,
             response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionResponse.FromString,
             _registered_method=True,
         )
         self.RunExecution = channel.unary_unary(
-            "/foreverbull.pb.service.Service/RunExecution",
+            "/foreverbull.pb.service.Worker/RunExecution",
             request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionRequest.SerializeToString,
             response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionResponse.FromString,
             _registered_method=True,
         )
         self.Stop = channel.unary_unary(
-            "/foreverbull.pb.service.Service/Stop",
+            "/foreverbull.pb.service.Worker/Stop",
             request_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopRequest.SerializeToString,
             response_deserializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.FromString,
             _registered_method=True,
         )
 
 
-class ServiceServicer(object):
+class WorkerServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def GetServiceInfo(self, request, context):
@@ -89,7 +89,7 @@ class ServiceServicer(object):
         raise NotImplementedError("Method not implemented!")
 
 
-def add_ServiceServicer_to_server(servicer, server):
+def add_WorkerServicer_to_server(servicer, server):
     rpc_method_handlers = {
         "GetServiceInfo": grpc.unary_unary_rpc_method_handler(
             servicer.GetServiceInfo,
@@ -112,13 +112,13 @@ def add_ServiceServicer_to_server(servicer, server):
             response_serializer=foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.SerializeToString,
         ),
     }
-    generic_handler = grpc.method_handlers_generic_handler("foreverbull.pb.service.Service", rpc_method_handlers)
+    generic_handler = grpc.method_handlers_generic_handler("foreverbull.pb.service.Worker", rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers("foreverbull.pb.service.Service", rpc_method_handlers)
+    server.add_registered_method_handlers("foreverbull.pb.service.Worker", rpc_method_handlers)
 
 
 # This class is part of an EXPERIMENTAL API.
-class Service(object):
+class Worker(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -137,7 +137,7 @@ class Service(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/foreverbull.pb.service.Service/GetServiceInfo",
+            "/foreverbull.pb.service.Worker/GetServiceInfo",
             foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoRequest.SerializeToString,
             foreverbull_dot_pb_dot_service_dot_service__pb2.GetServiceInfoResponse.FromString,
             options,
@@ -167,7 +167,7 @@ class Service(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/foreverbull.pb.service.Service/ConfigureExecution",
+            "/foreverbull.pb.service.Worker/ConfigureExecution",
             foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionRequest.SerializeToString,
             foreverbull_dot_pb_dot_service_dot_service__pb2.ConfigureExecutionResponse.FromString,
             options,
@@ -197,7 +197,7 @@ class Service(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/foreverbull.pb.service.Service/RunExecution",
+            "/foreverbull.pb.service.Worker/RunExecution",
             foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionRequest.SerializeToString,
             foreverbull_dot_pb_dot_service_dot_service__pb2.RunExecutionResponse.FromString,
             options,
@@ -227,7 +227,7 @@ class Service(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/foreverbull.pb.service.Service/Stop",
+            "/foreverbull.pb.service.Worker/Stop",
             foreverbull_dot_pb_dot_service_dot_service__pb2.StopRequest.SerializeToString,
             foreverbull_dot_pb_dot_service_dot_service__pb2.StopResponse.FromString,
             options,

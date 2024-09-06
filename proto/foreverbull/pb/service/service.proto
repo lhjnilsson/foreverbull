@@ -97,7 +97,7 @@ message NamespaceResponse {
 }
 
 
-service Service {
+service Worker {
     rpc GetServiceInfo (GetServiceInfoRequest) returns (GetServiceInfoResponse) {}
     rpc ConfigureExecution (ConfigureExecutionRequest) returns (ConfigureExecutionResponse) {}
     rpc RunExecution (RunExecutionRequest) returns (RunExecutionResponse) {}
