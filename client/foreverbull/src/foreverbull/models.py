@@ -1,5 +1,6 @@
 import builtins
 import importlib.util
+from contextlib import contextmanager
 from datetime import datetime
 from functools import partial
 from inspect import getabsfile, signature
@@ -109,6 +110,7 @@ class Algorithm:
         if Algorithm._algo is None:
             raise Exception("No algo found in {}".format(file_path))
         return Algorithm._algo
+
 
     def configure(self, function_name: str, param_key: str, param_value: str) -> None:
         def _eval_param(type: str, val: str):

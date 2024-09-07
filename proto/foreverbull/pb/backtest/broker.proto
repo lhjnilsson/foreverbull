@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package foreverbull.pb.backtest;
+
+option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/backtest";
+
+import "foreverbull/pb/backtest/backtest.proto";
+
+
+message GetBacktestRequest {
+    string name = 1;
+}
+
+message GetBacktestResponse {
+    Backtest backtest = 1;
+}
+
+message CreateSessionRequest {
+    string backtest_name = 1;
+}
+
+message CreateSessionResponse {
+    Session session = 1;
+}
+
+message GetSessionRequest {
+    string session_id = 1;
+}
+
+message GetSessionResponse {
+    Session session = 1;
+}
+
+message CreateExecutionRequest {
+    string session_id = 1;
+    Backtest backtest = 2;
+}
+
+message CreateExecutionResponse {
+    Execution execution = 1;
+}
+
+message RunExecutionRequest {
+    string execution_id = 1;
+}
+
+message RunExecutionResponse {
+    Execution execution = 1;
+    Portfolio portfolio = 2;
+}
+
+message GetExecutionRequest {
+    string execution_id = 1;
+}
+
+message GetExecutionResponse {
+    Execution execution = 1;
+}
+
+service Broker {
+    rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
+    rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
+    rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
+    rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
+    rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
+    rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
+}

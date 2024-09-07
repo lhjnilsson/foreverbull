@@ -8,12 +8,29 @@ from foreverbull.pb.service import service_pb2, service_pb2_grpc
 
 
 class WorkerService(service_pb2_grpc.WorkerServicer):
-    def __init__(self, worker_pool: WorkerPool):
+    def __init__(self, worker_pool: WorkerPool, algorithm: Algorithm):
         self._worker_pool = worker_pool
+        self._algorithm = algorithm
 
     def GetServiceInfo(self, request, context):
+        entity = self._algorithm.get_entity()
         return service_pb2.GetServiceInfoResponse(
             serviceType="worker",
+            version="0.0.0",
+            algorithm=service_pb2.Algorithm(
+                file_path=self._worker_pool._file_path,
+                functions=[
+                    service_pb2.Algorithm.Function(
+                        name=function.name,
+                        parameters=[service_pb2.Algorithm.FunctionParameter() for param in function.parameters],
+                        parallelExecution=function.parallel_execution,
+                        runFirst=function.run_first,
+                        runLast=function.run_last,
+                    )
+                    for function in entity.functions
+                ],
+                namespaces=entity.namespaces,
+            ),
         )
 
     def ConfigureExecution(self, request, context):

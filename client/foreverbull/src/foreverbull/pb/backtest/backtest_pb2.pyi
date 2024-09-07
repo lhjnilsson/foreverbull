@@ -46,6 +46,89 @@ class Backtest(_message.Message):
         benchmark: _Optional[str] = ...,
     ) -> None: ...
 
+class Session(_message.Message):
+    __slots__ = ("id", "manual", "backtest", "statuses", "executions", "port")
+
+    class Status(_message.Message):
+        __slots__ = ("status", "error", "occurred_at")
+        STATUS_FIELD_NUMBER: _ClassVar[int]
+        ERROR_FIELD_NUMBER: _ClassVar[int]
+        OCCURRED_AT_FIELD_NUMBER: _ClassVar[int]
+        status: str
+        error: str
+        occurred_at: _timestamp_pb2.Timestamp
+        def __init__(
+            self,
+            status: _Optional[str] = ...,
+            error: _Optional[str] = ...,
+            occurred_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        ) -> None: ...
+
+    ID_FIELD_NUMBER: _ClassVar[int]
+    MANUAL_FIELD_NUMBER: _ClassVar[int]
+    BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    STATUSES_FIELD_NUMBER: _ClassVar[int]
+    EXECUTIONS_FIELD_NUMBER: _ClassVar[int]
+    PORT_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    manual: bool
+    backtest: str
+    statuses: _containers.RepeatedCompositeFieldContainer[Session.Status]
+    executions: int
+    port: int
+    def __init__(
+        self,
+        id: _Optional[str] = ...,
+        manual: bool = ...,
+        backtest: _Optional[str] = ...,
+        statuses: _Optional[_Iterable[_Union[Session.Status, _Mapping]]] = ...,
+        executions: _Optional[int] = ...,
+        port: _Optional[int] = ...,
+    ) -> None: ...
+
+class Execution(_message.Message):
+    __slots__ = ("id", "session", "start_date", "end_date", "benchmark", "symbols", "statuses")
+
+    class Status(_message.Message):
+        __slots__ = ("status", "error", "occurred_at")
+        STATUS_FIELD_NUMBER: _ClassVar[int]
+        ERROR_FIELD_NUMBER: _ClassVar[int]
+        OCCURRED_AT_FIELD_NUMBER: _ClassVar[int]
+        status: str
+        error: str
+        occurred_at: _timestamp_pb2.Timestamp
+        def __init__(
+            self,
+            status: _Optional[str] = ...,
+            error: _Optional[str] = ...,
+            occurred_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        ) -> None: ...
+
+    ID_FIELD_NUMBER: _ClassVar[int]
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    START_DATE_FIELD_NUMBER: _ClassVar[int]
+    END_DATE_FIELD_NUMBER: _ClassVar[int]
+    BENCHMARK_FIELD_NUMBER: _ClassVar[int]
+    SYMBOLS_FIELD_NUMBER: _ClassVar[int]
+    STATUSES_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    session: str
+    start_date: _timestamp_pb2.Timestamp
+    end_date: _timestamp_pb2.Timestamp
+    benchmark: str
+    symbols: _containers.RepeatedScalarFieldContainer[str]
+    statuses: _containers.RepeatedCompositeFieldContainer[Execution.Status]
+    def __init__(
+        self,
+        id: _Optional[str] = ...,
+        session: _Optional[str] = ...,
+        start_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        end_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        benchmark: _Optional[str] = ...,
+        symbols: _Optional[_Iterable[str]] = ...,
+        statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ...,
+    ) -> None: ...
+
 class Position(_message.Message):
     __slots__ = ("symbol", "amount", "cost_basis", "last_sale_price", "last_sale_date")
     SYMBOL_FIELD_NUMBER: _ClassVar[int]
@@ -256,73 +339,3 @@ class Period(_message.Message):
         beta: _Optional[float] = ...,
         positions: _Optional[_Iterable[_Union[_finance_pb2.Position, _Mapping]]] = ...,
     ) -> None: ...
-
-class IngestRequest(_message.Message):
-    __slots__ = ("ingestion", "upload")
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
-    UPLOAD_FIELD_NUMBER: _ClassVar[int]
-    ingestion: Ingestion
-    upload: bool
-    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ..., upload: bool = ...) -> None: ...
-
-class IngestResponse(_message.Message):
-    __slots__ = ("ingestion",)
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
-    ingestion: Ingestion
-    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ...) -> None: ...
-
-class RunRequest(_message.Message):
-    __slots__ = ("backtest",)
-    BACKTEST_FIELD_NUMBER: _ClassVar[int]
-    backtest: Backtest
-    def __init__(self, backtest: _Optional[_Union[Backtest, _Mapping]] = ...) -> None: ...
-
-class RunResponse(_message.Message):
-    __slots__ = ("backtest",)
-    BACKTEST_FIELD_NUMBER: _ClassVar[int]
-    backtest: Backtest
-    def __init__(self, backtest: _Optional[_Union[Backtest, _Mapping]] = ...) -> None: ...
-
-class PlaceOrdersRequest(_message.Message):
-    __slots__ = ("orders",)
-    ORDERS_FIELD_NUMBER: _ClassVar[int]
-    orders: _containers.RepeatedCompositeFieldContainer[Order]
-    def __init__(self, orders: _Optional[_Iterable[_Union[Order, _Mapping]]] = ...) -> None: ...
-
-class PlaceOrdersResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetNextPeriodRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetNextPeriodResponse(_message.Message):
-    __slots__ = ("is_running", "portfolio")
-    IS_RUNNING_FIELD_NUMBER: _ClassVar[int]
-    PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
-    is_running: bool
-    portfolio: Portfolio
-    def __init__(self, is_running: bool = ..., portfolio: _Optional[_Union[Portfolio, _Mapping]] = ...) -> None: ...
-
-class GetResultRequest(_message.Message):
-    __slots__ = ("execution", "upload")
-    EXECUTION_FIELD_NUMBER: _ClassVar[int]
-    UPLOAD_FIELD_NUMBER: _ClassVar[int]
-    execution: str
-    upload: bool
-    def __init__(self, execution: _Optional[str] = ..., upload: bool = ...) -> None: ...
-
-class GetResultResponse(_message.Message):
-    __slots__ = ("periods",)
-    PERIODS_FIELD_NUMBER: _ClassVar[int]
-    periods: _containers.RepeatedCompositeFieldContainer[Period]
-    def __init__(self, periods: _Optional[_Iterable[_Union[Period, _Mapping]]] = ...) -> None: ...
-
-class StopRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class StopResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...

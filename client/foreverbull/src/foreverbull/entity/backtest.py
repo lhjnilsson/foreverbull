@@ -146,3 +146,7 @@ class Execution(pydantic.BaseModel):
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         return end.isoformat()
+
+
+class Portfolio(pydantic.BaseModel):
+    pass

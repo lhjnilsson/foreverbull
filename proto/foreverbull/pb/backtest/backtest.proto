@@ -21,6 +21,35 @@ message Backtest {
     optional string benchmark = 4;
 }
 
+message Session {
+    message Status {
+        string status = 1;
+        optional string error = 2;
+        google.protobuf.Timestamp occurred_at = 3;
+    }
+    string id = 1;
+    bool manual = 2;
+    string backtest = 3;
+    repeated Status statuses = 4;
+    int32 executions = 5;
+    optional int32 port = 6;
+}
+
+message Execution {
+    message Status {
+        string status = 1;
+        optional string error = 2;
+        google.protobuf.Timestamp occurred_at = 3;
+    }
+    string id = 1;
+    string session = 2;
+    google.protobuf.Timestamp start_date = 3;
+    google.protobuf.Timestamp end_date = 4;
+    optional string benchmark = 5;
+    repeated string symbols = 6;
+    repeated Status statuses = 7;
+}
+
 message Position {
     string symbol = 1;
     int32 amount = 2;
@@ -82,51 +111,4 @@ message Period {
     optional double beta = 31;
 
     repeated foreverbull.pb.finance.Position positions = 32;
-}
-
-message IngestRequest {
-    Ingestion ingestion = 1;
-    bool upload = 2;
-}
-
-message IngestResponse {
-    Ingestion ingestion = 1;
-}
-
-message RunRequest {
-    Backtest backtest = 1;
-}
-
-message RunResponse {
-    Backtest backtest = 1;
-}
-
-message PlaceOrdersRequest {
-    repeated Order orders = 1;
-}
-
-message PlaceOrdersResponse {
-}
-
-message GetNextPeriodRequest {
-}
-
-message GetNextPeriodResponse {
-    bool is_running = 1;
-    Portfolio portfolio = 2;
-}
-
-message GetResultRequest {
-    string execution = 1;
-    bool upload = 2;
-}
-
-message GetResultResponse {
-    repeated Period periods = 1;
-}
-
-message StopRequest {
-}
-
-message StopResponse {
 }

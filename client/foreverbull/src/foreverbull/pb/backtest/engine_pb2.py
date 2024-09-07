@@ -21,7 +21,7 @@ _sym_db = _symbol_database.Default()
 from foreverbull.pb.backtest import backtest_pb2 as foreverbull_dot_pb_dot_backtest_dot_backtest__pb2
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n$foreverbull/pb/backtest/engine.proto\x12\x17\x66oreverbull.pb.backtest\x1a&foreverbull/pb/backtest/backtest.proto2\xdc\x04\n\x06\x45ngine\x12[\n\x06Ingest\x12&.foreverbull.pb.backtest.IngestRequest\x1a\'.foreverbull.pb.backtest.IngestResponse"\x00\x12Z\n\x0bRunBacktest\x12#.foreverbull.pb.backtest.RunRequest\x1a$.foreverbull.pb.backtest.RunResponse"\x00\x12j\n\x0bPlaceOrders\x12+.foreverbull.pb.backtest.PlaceOrdersRequest\x1a,.foreverbull.pb.backtest.PlaceOrdersResponse"\x00\x12p\n\rGetNextPeriod\x12-.foreverbull.pb.backtest.GetNextPeriodRequest\x1a..foreverbull.pb.backtest.GetNextPeriodResponse"\x00\x12\x64\n\tGetResult\x12).foreverbull.pb.backtest.GetResultRequest\x1a*.foreverbull.pb.backtest.GetResultResponse"\x00\x12U\n\x04Stop\x12$.foreverbull.pb.backtest.StopRequest\x1a%.foreverbull.pb.backtest.StopResponse"\x00\x42\x38Z6github.com/lhjnilsson/foreverbull/internal/pb/backtestb\x06proto3'
+    b'\n$foreverbull/pb/backtest/engine.proto\x12\x17\x66oreverbull.pb.backtest\x1a&foreverbull/pb/backtest/backtest.proto"V\n\rIngestRequest\x12\x35\n\tingestion\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Ingestion\x12\x0e\n\x06upload\x18\x02 \x01(\x08"G\n\x0eIngestResponse\x12\x35\n\tingestion\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Ingestion"A\n\nRunRequest\x12\x33\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest"B\n\x0bRunResponse\x12\x33\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest"D\n\x12PlaceOrdersRequest\x12.\n\x06orders\x18\x01 \x03(\x0b\x32\x1e.foreverbull.pb.backtest.Order"\x15\n\x13PlaceOrdersResponse"\x16\n\x14GetNextPeriodRequest"b\n\x15GetNextPeriodResponse\x12\x12\n\nis_running\x18\x01 \x01(\x08\x12\x35\n\tportfolio\x18\x02 \x01(\x0b\x32".foreverbull.pb.backtest.Portfolio"5\n\x10GetResultRequest\x12\x11\n\texecution\x18\x01 \x01(\t\x12\x0e\n\x06upload\x18\x02 \x01(\x08"E\n\x11GetResultResponse\x12\x30\n\x07periods\x18\x01 \x03(\x0b\x32\x1f.foreverbull.pb.backtest.Period"\r\n\x0bStopRequest"\x0e\n\x0cStopResponse2\xdc\x04\n\x06\x45ngine\x12[\n\x06Ingest\x12&.foreverbull.pb.backtest.IngestRequest\x1a\'.foreverbull.pb.backtest.IngestResponse"\x00\x12Z\n\x0bRunBacktest\x12#.foreverbull.pb.backtest.RunRequest\x1a$.foreverbull.pb.backtest.RunResponse"\x00\x12j\n\x0bPlaceOrders\x12+.foreverbull.pb.backtest.PlaceOrdersRequest\x1a,.foreverbull.pb.backtest.PlaceOrdersResponse"\x00\x12p\n\rGetNextPeriod\x12-.foreverbull.pb.backtest.GetNextPeriodRequest\x1a..foreverbull.pb.backtest.GetNextPeriodResponse"\x00\x12\x64\n\tGetResult\x12).foreverbull.pb.backtest.GetResultRequest\x1a*.foreverbull.pb.backtest.GetResultResponse"\x00\x12U\n\x04Stop\x12$.foreverbull.pb.backtest.StopRequest\x1a%.foreverbull.pb.backtest.StopResponse"\x00\x42\x38Z6github.com/lhjnilsson/foreverbull/internal/pb/backtestb\x06proto3'
 )
 
 _globals = globals()
@@ -30,6 +30,30 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "foreverbull.pb.backtest.eng
 if not _descriptor._USE_C_DESCRIPTORS:
     _globals["DESCRIPTOR"]._loaded_options = None
     _globals["DESCRIPTOR"]._serialized_options = b"Z6github.com/lhjnilsson/foreverbull/internal/pb/backtest"
-    _globals["_ENGINE"]._serialized_start = 106
-    _globals["_ENGINE"]._serialized_end = 710
+    _globals["_INGESTREQUEST"]._serialized_start = 105
+    _globals["_INGESTREQUEST"]._serialized_end = 191
+    _globals["_INGESTRESPONSE"]._serialized_start = 193
+    _globals["_INGESTRESPONSE"]._serialized_end = 264
+    _globals["_RUNREQUEST"]._serialized_start = 266
+    _globals["_RUNREQUEST"]._serialized_end = 331
+    _globals["_RUNRESPONSE"]._serialized_start = 333
+    _globals["_RUNRESPONSE"]._serialized_end = 399
+    _globals["_PLACEORDERSREQUEST"]._serialized_start = 401
+    _globals["_PLACEORDERSREQUEST"]._serialized_end = 469
+    _globals["_PLACEORDERSRESPONSE"]._serialized_start = 471
+    _globals["_PLACEORDERSRESPONSE"]._serialized_end = 492
+    _globals["_GETNEXTPERIODREQUEST"]._serialized_start = 494
+    _globals["_GETNEXTPERIODREQUEST"]._serialized_end = 516
+    _globals["_GETNEXTPERIODRESPONSE"]._serialized_start = 518
+    _globals["_GETNEXTPERIODRESPONSE"]._serialized_end = 616
+    _globals["_GETRESULTREQUEST"]._serialized_start = 618
+    _globals["_GETRESULTREQUEST"]._serialized_end = 671
+    _globals["_GETRESULTRESPONSE"]._serialized_start = 673
+    _globals["_GETRESULTRESPONSE"]._serialized_end = 742
+    _globals["_STOPREQUEST"]._serialized_start = 744
+    _globals["_STOPREQUEST"]._serialized_end = 757
+    _globals["_STOPRESPONSE"]._serialized_start = 759
+    _globals["_STOPRESPONSE"]._serialized_end = 773
+    _globals["_ENGINE"]._serialized_start = 776
+    _globals["_ENGINE"]._serialized_end = 1380
 # @@protoc_insertion_point(module_scope)
