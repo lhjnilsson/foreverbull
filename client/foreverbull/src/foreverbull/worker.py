@@ -11,8 +11,7 @@ from multiprocessing.synchronize import Event
 
 import pynng
 import sqlalchemy
-from foreverbull import Algorithm, exceptions
-from foreverbull.data import get_engine, namespace_socket
+from foreverbull import exceptions, models
 from foreverbull.pb import common_pb2
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
@@ -42,7 +41,7 @@ class WorkerInstance(Worker):
     def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
         self.logger.info("configuring worker")
         try:
-            self._algo = Algorithm.from_file_path(self._file_path)
+            self._algo = models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
 
@@ -214,7 +213,7 @@ class WorkerPool(Worker):
         self,
     ):
         try:
-            algo = Algorithm.from_file_path(self._file_path)
+            algo = models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
         self._worker_surveyor_socket = pynng.Surveyor0(

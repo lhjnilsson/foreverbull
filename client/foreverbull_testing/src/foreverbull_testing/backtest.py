@@ -1,8 +1,7 @@
 import inspect
-from typing import Any
 
-from foreverbull import Foreverbull
-from foreverbull.foreverbull import BacktestExecution
+# from foreverbull import Foreverbull
+# from foreverbull.foreverbull import BacktestExecution
 
 
 class TestingSession:
@@ -10,5 +9,5 @@ class TestingSession:
         self.session = session
         self._fb = None
 
-    def __call__(self, module, parameters: list = []) -> BacktestExecution:
+    def __call__(self, module, parameters: list = []) -> None:
         return Foreverbull(file_path=inspect.getfile(module))

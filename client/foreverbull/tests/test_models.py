@@ -1,12 +1,113 @@
+import importlib.util
+import os
 import tempfile
+from datetime import datetime
+from threading import Thread
 
+import pandas
+import pynng
 import pytest
-from foreverbull import entity
-from foreverbull.models import Algorithm
+from foreverbull import Function, entity, models
+from foreverbull.algorithm import Algorithm
+from foreverbull.models import Algorithm, Asset, Assets, Portfolio
+from foreverbull.pb.service import service_pb2
+
+
+@pytest.fixture
+def namespace_server():
+    namespace = dict()
+
+    s = pynng.Rep0(listen="tcp://0.0.0.0:7878")
+    s.recv_timeout = 500
+    s.send_timeout = 500
+    os.environ["NAMESPACE_PORT"] = "7878"
+
+    def runner(s, namespace):
+        while True:
+            request = service_pb2.NamespaceRequest()
+            try:
+                data = s.recv()
+            except pynng.exceptions.Timeout:
+                continue
+            except pynng.exceptions.Closed:
+                break
+            request.ParseFromString(data)
+            if request.type == service_pb2.NamespaceRequestType.GET:
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
+            elif request.type == service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = service_pb2.NamespaceResponse()
+                response.value.update(namespace[request.key])
+            else:
+                response = service_pb2.NamespaceResponse(error="Invalid request type")
+            s.send(response.SerializeToString())
+
+    thread = Thread(target=runner, args=(s, namespace))
+    thread.start()
+
+    yield namespace
+
+    s.close()
+    thread.join()
+
+
+class TestAsset:
+    def test_asset_getattr_setattr(self, fb_database, namespace_server):
+        database, _ = fb_database
+        with database.connect() as conn:
+            asset = Asset(datetime.now(), conn, "AAPL")
+            assert asset is not None
+            asset.set_metric("rsi", 56.4)
+
+            assert "rsi" in namespace_server
+            assert namespace_server["rsi"] == {"AAPL": 56.4}
+
+            namespace_server["pe"] = {"AAPL": 12.3}
+            assert asset.get_metric("pe") == 12.3
+
+    def test_assets(self, fb_database, backtest_entity):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        with database.connect() as conn:
+            assets = Assets(datetime.now(), conn, backtest_entity.symbols)
+            for asset in assets:
+                assert asset is not None
+                assert asset.symbol is not None
+                stock_data = asset.stock_data
+                assert stock_data is not None
+                assert isinstance(stock_data, pandas.DataFrame)
+                assert len(stock_data) > 0
+                assert "open" in stock_data.columns
+                assert "high" in stock_data.columns
+                assert "low" in stock_data.columns
+                assert "close" in stock_data.columns
+                assert "volume" in stock_data.columns
+
+
+class TestAssets:
+    def test_assets_getattr_setattr(self, fb_database, namespace_server):
+        database, _ = fb_database
+        with database.connect() as conn:
+            assets = Assets(datetime.now(), conn, [])
+            assert assets is not None
+            assets.set_metrics("holdings", {"AAPL": True, "MSFT": False})
+
+            assert "holdings" in namespace_server
+            assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
+
+            namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
+            assert assets.get_metrics("pe") == {"AAPL": 12.3, "MSFT": 23.4}
+
+
+class TestPortfolio:
+    pass
 
 
 class TestNonParallel:
-    example = b"""
+    @pytest.fixture
+    def non_parallel_algo(self):
+        example = b"""
 from foreverbull import Algorithm, Function, Assets, Portfolio, Order
 
 def handle_data(low: int, high: int, assets: Assets, portfolio: Portfolio) -> list[Order]:
@@ -17,20 +118,15 @@ Algorithm(
         Function(callable=handle_data)
     ]
 )
-"""
-
-    @pytest.fixture
-    def algo(self):
+    """
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(self.example)
+            f.write(example)
             f.flush()
-            self._algo = Algorithm.from_file_path(f.name)
-            self.file_path = f.name
-            yield self.algo
+            yield Algorithm.from_file_path(f.name)
 
-    def test_entity(self, algo):
-        assert self._algo.get_entity() == entity.service.Service.Algorithm(
-            file_path=self.file_path,
+    def test_non_parallel(self, non_parallel_algo: Algorithm):
+        assert non_parallel_algo.get_entity() == entity.service.Service.Algorithm(
+            file_path=non_parallel_algo._file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
                     name="handle_data",
@@ -51,14 +147,12 @@ Algorithm(
             ],
             namespaces=[],
         )
+        non_parallel_algo.configure("handle_data", "low", "5")
+        non_parallel_algo.configure("handle_data", "high", "10")
 
-    def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5")
-        self._algo.configure("handle_data", "high", "10")
-
-
-class TestParallel:
-    example = b"""
+    @pytest.fixture
+    def parallel_algo(self):
+        example = b"""
 from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
@@ -70,19 +164,14 @@ Algorithm(
     ]
 )
 """
-
-    @pytest.fixture
-    def algo(self):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(self.example)
+            f.write(example)
             f.flush()
-            self._algo = Algorithm.from_file_path(f.name)
-            self.file_path = f.name
-            yield
+            yield Algorithm.from_file_path(f.name)
 
-    def test_entity(self, algo):
-        assert self._algo.get_entity() == entity.service.Service.Algorithm(
-            file_path=self.file_path,
+    def test_parallel_algo(self, parallel_algo: Algorithm):
+        assert parallel_algo.get_entity() == entity.service.Service.Algorithm(
+            file_path=parallel_algo._file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
                     name="handle_data",
@@ -105,14 +194,12 @@ Algorithm(
             ],
             namespaces=[],
         )
+        parallel_algo.configure("handle_data", "low", "5")
+        parallel_algo.configure("handle_data", "high", "10")
 
-    def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5")
-        self._algo.configure("handle_data", "high", "10")
-
-
-class TestWithNamespace:
-    example = b"""
+    @pytest.fixture
+    def algo_with_namespace(self):
+        example = b"""
 from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 
 def handle_data(asses: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
@@ -126,18 +213,14 @@ Algorithm(
 )
 """
 
-    @pytest.fixture
-    def algo(self):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(self.example)
+            f.write(example)
             f.flush()
-            self._algo = Algorithm.from_file_path(f.name)
-            self.file_path = f.name
-            yield
+            yield Algorithm.from_file_path(f.name)
 
-    def test_entity(self, algo):
-        assert self._algo.get_entity() == entity.service.Service.Algorithm(
-            file_path=self.file_path,
+    def test_entity(self, algo_with_namespace: Algorithm):
+        assert algo_with_namespace.get_entity() == entity.service.Service.Algorithm(
+            file_path=algo_with_namespace._file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
                     name="handle_data",
@@ -160,14 +243,15 @@ Algorithm(
             ],
             namespaces=["qualified_symbols", "rsi"],
         )
-
-    def test_configure(self, algo):
-        self._algo.configure("handle_data", "low", "5")
-        self._algo.configure("handle_data", "high", "10")
+        algo_with_namespace.configure("handle_data", "low", "5")
+        algo_with_namespace.configure("handle_data", "high", "10")
 
 
 class TestMultiStepWithNamespace:
-    example = b"""
+
+    @pytest.fixture
+    def multistep_algo_with_namespace(self):
+        example = b"""
 from foreverbull import Algorithm, Function, Asset, Assets, Portfolio, Order
 
 
@@ -190,18 +274,14 @@ Algorithm(
 )
 """
 
-    @pytest.fixture
-    def algo(self):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(self.example)
+            f.write(example)
             f.flush()
-            self._algo = Algorithm.from_file_path(f.name)
-            self.file_path = f.name
-            yield
+            yield Algorithm.from_file_path(f.name)
 
-    def test_entity(self, algo):
-        assert self._algo.get_entity() == entity.service.Service.Algorithm(
-            file_path=self.file_path,
+    def test_entity(self, multistep_algo_with_namespace: Algorithm):
+        assert multistep_algo_with_namespace.get_entity() == entity.service.Service.Algorithm(
+            file_path=multistep_algo_with_namespace._file_path,
             functions=[
                 entity.service.Service.Algorithm.Function(
                     name="measure_assets",
@@ -238,7 +318,5 @@ Algorithm(
             ],
             namespaces=["qualified_symbols", "asset_metrics"],
         )
-
-    def test_configure(self, algo):
-        self._algo.configure("measure_assets", "low", "5")
-        self._algo.configure("measure_assets", "high", "10")
+        multistep_algo_with_namespace.configure("measure_assets", "low", "5")
+        multistep_algo_with_namespace.configure("measure_assets", "high", "10")

@@ -1,12 +1,8 @@
-import os
 from multiprocessing import Event
 from threading import Thread
-from typing import Generator
 
-import pynng
 import pytest
 from foreverbull import exceptions, worker
-from foreverbull.pb import common_pb2
 from foreverbull.pb.service import service_pb2
 
 

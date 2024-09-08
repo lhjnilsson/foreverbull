@@ -12,7 +12,6 @@ import pandas as pd
 import pynng
 import pytz
 import six
-import zipline.errors
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2

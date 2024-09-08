@@ -52,6 +52,18 @@ class CreateExecutionRequest(_message.Message):
     ) -> None: ...
 
 class CreateExecutionResponse(_message.Message):
+    __slots__ = ("execution",)
+    EXECUTION_FIELD_NUMBER: _ClassVar[int]
+    execution: _backtest_pb2.Execution
+    def __init__(self, execution: _Optional[_Union[_backtest_pb2.Execution, _Mapping]] = ...) -> None: ...
+
+class RunExecutionRequest(_message.Message):
+    __slots__ = ("execution_id",)
+    EXECUTION_ID_FIELD_NUMBER: _ClassVar[int]
+    execution_id: str
+    def __init__(self, execution_id: _Optional[str] = ...) -> None: ...
+
+class RunExecutionResponse(_message.Message):
     __slots__ = ("execution", "portfolio")
     EXECUTION_FIELD_NUMBER: _ClassVar[int]
     PORTFOLIO_FIELD_NUMBER: _ClassVar[int]

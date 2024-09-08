@@ -53,10 +53,16 @@ class BrokerStub(object):
             response_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.GetSessionResponse.FromString,
             _registered_method=True,
         )
-        self.CreateExecution = channel.unary_stream(
+        self.CreateExecution = channel.unary_unary(
             "/foreverbull.pb.backtest.Broker/CreateExecution",
             request_serializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionRequest.SerializeToString,
             response_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionResponse.FromString,
+            _registered_method=True,
+        )
+        self.RunExecution = channel.unary_stream(
+            "/foreverbull.pb.backtest.Broker/RunExecution",
+            request_serializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionRequest.SerializeToString,
+            response_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionResponse.FromString,
             _registered_method=True,
         )
         self.GetExecution = channel.unary_unary(
@@ -94,6 +100,12 @@ class BrokerServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    def RunExecution(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
     def GetExecution(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -118,10 +130,15 @@ def add_BrokerServicer_to_server(servicer, server):
             request_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.GetSessionRequest.FromString,
             response_serializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.GetSessionResponse.SerializeToString,
         ),
-        "CreateExecution": grpc.unary_stream_rpc_method_handler(
+        "CreateExecution": grpc.unary_unary_rpc_method_handler(
             servicer.CreateExecution,
             request_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionRequest.FromString,
             response_serializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionResponse.SerializeToString,
+        ),
+        "RunExecution": grpc.unary_stream_rpc_method_handler(
+            servicer.RunExecution,
+            request_deserializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionRequest.FromString,
+            response_serializer=foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionResponse.SerializeToString,
         ),
         "GetExecution": grpc.unary_unary_rpc_method_handler(
             servicer.GetExecution,
@@ -241,12 +258,42 @@ class Broker(object):
         timeout=None,
         metadata=None,
     ):
-        return grpc.experimental.unary_stream(
+        return grpc.experimental.unary_unary(
             request,
             target,
             "/foreverbull.pb.backtest.Broker/CreateExecution",
             foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionRequest.SerializeToString,
             foreverbull_dot_pb_dot_backtest_dot_broker__pb2.CreateExecutionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True,
+        )
+
+    @staticmethod
+    def RunExecution(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            "/foreverbull.pb.backtest.Broker/RunExecution",
+            foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionRequest.SerializeToString,
+            foreverbull_dot_pb_dot_backtest_dot_broker__pb2.RunExecutionResponse.FromString,
             options,
             channel_credentials,
             insecure,

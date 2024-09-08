@@ -1,5 +1,4 @@
 from concurrent import futures
-from typing import Generator
 
 import grpc
 from foreverbull.algorithm import WorkerPool
@@ -49,3 +48,21 @@ def serre(worker_pool: WorkerPool) -> grpc.Server:
     service_pb2_grpc.add_WorkerServicer_to_server(service, server)
     server.add_insecure_port("[::]:50055")
     return server
+
+
+def main():
+    foreverbull = Foreverbull(file_path=sys.argv[1])
+    with foreverbull as fb:
+        broker.service.update_instance(socket.gethostname(), True)
+        signal.signal(signal.SIGINT, lambda x, y: fb._stop_event.set())
+        signal.signal(signal.SIGTERM, lambda x, y: fb._stop_event.set())
+        fb.join()
+        broker.service.update_instance(socket.gethostname(), False)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python3 foreverbull/_run_instance.py <file_path>")
+        exit(1)
+    set_start_method("spawn")
+    main()

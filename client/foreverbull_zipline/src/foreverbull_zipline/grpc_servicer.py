@@ -1,7 +1,7 @@
 from concurrent import futures
 
 import grpc
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2_grpc
+from foreverbull.pb.backtest import engine_pb2_grpc
 from foreverbull_zipline.engine import Engine
 
 

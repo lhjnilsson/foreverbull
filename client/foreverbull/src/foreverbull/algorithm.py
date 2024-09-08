@@ -1,28 +1,41 @@
-import datetime
+import builtins
+import importlib.util
+import logging
 import os
+import re
 import time
 from contextlib import contextmanager
-from functools import wraps
-from typing import Generator
+from datetime import datetime
+from functools import partial, wraps
+from inspect import getabsfile, signature
+from multiprocessing import Event
+from typing import Callable, Generator, Iterator
 
 import grpc
+import pynng
 from foreverbull import entity, models
-from foreverbull.data import pb_utils
+from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2, broker_pb2, broker_pb2_grpc
+from foreverbull.pb.finance import finance_pb2  # noqa
+from foreverbull.pb.service import service_pb2
 from foreverbull.worker import WorkerPool
+from google.protobuf.struct_pb2 import Struct
+from pandas import DataFrame, read_sql_query
+from sqlalchemy import Connection, create_engine, engine
 
 
 class Algorithm(models.Algorithm):
     def __init__(self, functions: list[models.Function], namespaces: list[str] = []):
-        self._broker_hostname = os.getenv("BROKER_HOSTNAME", "localhost")
-        self._broker_port = os.getenv("BROKER_PORT", 50051)
-        self._channel = grpc.insecure_channel(f"{self._broker_hostname}:{self._broker_port}")
-        self._broker = broker_pb2_grpc.BrokerStub(self._channel)
-        self._backtest_session: backtest_pb2.Session | None = None
+        self._broker = None
+        self._backtest_session = None
         super().__init__(functions, namespaces)
 
     @contextmanager
-    def backtest_session(self, backtest_name: str):
+    def backtest_session(self, backtest_name: str, broker_hostname: str = "localhost", broker_port: int = 50051):
+        channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
+        self._broker = broker_pb2_grpc.BrokerStub(channel)
+        self._backtest_session: backtest_pb2.Session | None = None
+
         session = self._broker.CreateSession(broker_pb2.CreateSessionRequest(backtest_name=backtest_name))
         while session.port is None:
             session = self._broker.GetSession(broker_pb2.GetSessionRequest(session_id=session.id))
@@ -31,18 +44,19 @@ class Algorithm(models.Algorithm):
             time.sleep(0.5)
         self._backtest_session = session.session
         yield self
+        channel.close()
 
     @staticmethod
-    def has_session(func):
+    def _has_session(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             if self._backtest_session is None:
-                raise Exception("No backtest session")
+                raise RuntimeError("No backtest session")
             return func(self, *args, **kwargs)
 
         return wrapper
 
-    @has_session
+    @_has_session
     def get_default(self) -> entity.backtest.Backtest:
         backtest: broker_pb2.GetBacktestResponse = self._broker.GetBacktest(
             broker_pb2.GetBacktestRequest(name=self._backtest_session.backtest)
@@ -55,9 +69,9 @@ class Algorithm(models.Algorithm):
             symbols=backtest.symbols,
         )
 
-    @has_session
+    @_has_session
     def run_execution(
-        self, start: datetime.datetime, end: datetime.datetime, symbols: list[str], benchmark=None
+        self, start: datetime, end: datetime, symbols: list[str], benchmark=None
     ) -> Generator[entity.backtest.Portfolio, None, None]:
         with WorkerPool(self._file_path) as wp:
             req = broker_pb2.CreateExecutionRequest(
@@ -70,18 +84,13 @@ class Algorithm(models.Algorithm):
                 ),
             )
             rsp = self._broker.CreateExecution(req)
-            wp.configure_execution(rsp)
-            wp.run_execution()
-            rsp = self._broker.RunExecution(broker_pb2.RunExecutionRequest(session_id=self._backtest_session.id))
+            configure_req = service_pb2.ConfigureExecutionRequest()
+            wp.configure_execution(configure_req)
+            wp.run_execution(service_pb2.RunExecutionRequest(), Event())
+            rsp = self._broker.RunExecution(broker_pb2.RunExecutionRequest(execution_id=self._backtest_session.id))
             for message in rsp:
                 yield message.portfolio
 
         response = self._broker.CreateExecution(broker_pb2.CreateExecutionRequest(session_id=self._backtest_session.id))
         for message in response:
             yield message.portfolio
-
-
-def main():
-    pool = WorkerPool("bad_file")
-    with pool:
-        pass
