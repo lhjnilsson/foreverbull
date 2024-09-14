@@ -50,33 +50,6 @@ message Execution {
     repeated Status statuses = 7;
 }
 
-message Position {
-    string symbol = 1;
-    int32 amount = 2;
-    double cost_basis = 3;
-    double last_sale_price = 4;
-    google.protobuf.Timestamp last_sale_date = 5;
-}
-
-message Portfolio {
-    google.protobuf.Timestamp timestamp = 1;
-    double cash_flow = 2;
-    double starting_cash = 3;
-    double portfolio_value = 4;
-    double pnl = 5;
-    double returns = 6;
-    double cash = 7;
-    double positions_value = 8;
-    double positions_exposure = 9;
-
-    repeated Position positions = 10;
-}
-
-message Order {
-    string symbol = 1;
-    int32 amount = 2;
-}
-
 message Period {
     google.protobuf.Timestamp timestamp = 1;
     double PNL = 2;

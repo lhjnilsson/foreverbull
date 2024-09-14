@@ -14,7 +14,7 @@ import pynng
 from foreverbull import entity
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2  # noqa
-from foreverbull.pb.service import service_pb2
+from foreverbull.pb.service import service_pb2, worker_pb2
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import Connection, create_engine, engine
@@ -79,12 +79,12 @@ class Asset:
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
         with namespace_socket() as s:
-            request = service_pb2.NamespaceRequest(
+            request = worker_pb2.NamespaceRequest(
                 key=key,
-                type=service_pb2.NamespaceRequestType.GET,
+                type=worker_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = service_pb2.NamespaceResponse()
+            response = worker_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -95,13 +95,13 @@ class Asset:
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
         with namespace_socket() as s:
-            request = service_pb2.NamespaceRequest(
+            request = worker_pb2.NamespaceRequest(
                 key=key,
-                type=service_pb2.NamespaceRequestType.SET,
+                type=worker_pb2.NamespaceRequestType.SET,
             )
             request.value.update({self._symbol: value})
             s.send(request.SerializeToString())
-            response = service_pb2.NamespaceResponse()
+            response = worker_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -128,12 +128,12 @@ class Assets:
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
         with namespace_socket() as s:
-            request = service_pb2.NamespaceRequest(
+            request = worker_pb2.NamespaceRequest(
                 key=key,
-                type=service_pb2.NamespaceRequestType.GET,
+                type=worker_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = service_pb2.NamespaceResponse()
+            response = worker_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -144,13 +144,13 @@ class Assets:
             struct = Struct()
             for k, v in value.items():
                 struct.update({k: v})
-            request = service_pb2.NamespaceRequest(
+            request = worker_pb2.NamespaceRequest(
                 key=key,
-                type=service_pb2.NamespaceRequestType.SET,
+                type=worker_pb2.NamespaceRequestType.SET,
                 value=struct,
             )
             s.send(request.SerializeToString())
-            response = service_pb2.NamespaceResponse()
+            response = worker_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -319,21 +319,20 @@ class Algorithm:
         function_name: str,
         db: Connection,
         portfolio: finance_pb2.Portfolio,
-        timestamp: datetime,
         symbols: list[str],
     ) -> list[entity.finance.Order]:
         p = Portfolio(
             cash=portfolio.cash,
-            value=portfolio.value,
+            portfolio_value=portfolio.portfolio_value,
             positions=[
-                entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost)
+                entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost_basis)
                 for p in portfolio.positions
             ],
         )
         if Algorithm._functions[function_name]["entity"].parallel_execution:
             orders = []
             for symbol in symbols:
-                a = Asset(timestamp, db, symbol)
+                a = Asset(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
                     asset=a,
                     portfolio=p,
@@ -341,7 +340,7 @@ class Algorithm:
                 if order:
                     orders.append(order)
         else:
-            assets = Assets(timestamp, db, symbols)
+            assets = Assets(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbols)
             orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
             if not orders:
                 orders = []

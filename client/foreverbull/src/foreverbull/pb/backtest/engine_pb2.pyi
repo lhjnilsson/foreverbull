@@ -1,13 +1,16 @@
-from typing import ClassVar as _ClassVar
-from typing import Iterable as _Iterable
-from typing import Mapping as _Mapping
-from typing import Optional as _Optional
-from typing import Union as _Union
-
 from foreverbull.pb.backtest import backtest_pb2 as _backtest_pb2
+from foreverbull.pb.finance import finance_pb2 as _finance_pb2
+from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from google.protobuf.internal import containers as _containers
+from typing import (
+    ClassVar as _ClassVar,
+    Iterable as _Iterable,
+    Mapping as _Mapping,
+    Optional as _Optional,
+    Union as _Union,
+)
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -27,6 +30,16 @@ class IngestResponse(_message.Message):
     ingestion: _backtest_pb2.Ingestion
     def __init__(self, ingestion: _Optional[_Union[_backtest_pb2.Ingestion, _Mapping]] = ...) -> None: ...
 
+class GetIngestionRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetIngestionResponse(_message.Message):
+    __slots__ = ("ingestion",)
+    INGESTION_FIELD_NUMBER: _ClassVar[int]
+    ingestion: _backtest_pb2.Ingestion
+    def __init__(self, ingestion: _Optional[_Union[_backtest_pb2.Ingestion, _Mapping]] = ...) -> None: ...
+
 class RunRequest(_message.Message):
     __slots__ = ("backtest",)
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
@@ -39,29 +52,29 @@ class RunResponse(_message.Message):
     backtest: _backtest_pb2.Backtest
     def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
-class PlaceOrdersRequest(_message.Message):
-    __slots__ = ("orders",)
-    ORDERS_FIELD_NUMBER: _ClassVar[int]
-    orders: _containers.RepeatedCompositeFieldContainer[_backtest_pb2.Order]
-    def __init__(self, orders: _Optional[_Iterable[_Union[_backtest_pb2.Order, _Mapping]]] = ...) -> None: ...
-
-class PlaceOrdersResponse(_message.Message):
+class GetCurrentPeriodRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class GetNextPeriodRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetNextPeriodResponse(_message.Message):
+class GetCurrentPeriodResponse(_message.Message):
     __slots__ = ("is_running", "portfolio")
     IS_RUNNING_FIELD_NUMBER: _ClassVar[int]
     PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
     is_running: bool
-    portfolio: _backtest_pb2.Portfolio
+    portfolio: _finance_pb2.Portfolio
     def __init__(
-        self, is_running: bool = ..., portfolio: _Optional[_Union[_backtest_pb2.Portfolio, _Mapping]] = ...
+        self, is_running: bool = ..., portfolio: _Optional[_Union[_finance_pb2.Portfolio, _Mapping]] = ...
     ) -> None: ...
+
+class PlaceOrdersAndContinueRequest(_message.Message):
+    __slots__ = ("orders",)
+    ORDERS_FIELD_NUMBER: _ClassVar[int]
+    orders: _containers.RepeatedCompositeFieldContainer[_finance_pb2.Order]
+    def __init__(self, orders: _Optional[_Iterable[_Union[_finance_pb2.Order, _Mapping]]] = ...) -> None: ...
+
+class PlaceOrdersAndContinueResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
 
 class GetResultRequest(_message.Message):
     __slots__ = ("execution", "upload")

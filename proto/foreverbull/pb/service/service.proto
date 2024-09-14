@@ -4,19 +4,6 @@ package foreverbull.pb.service;
 
 option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/service";
 
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/struct.proto";
-import "foreverbull/pb/finance/finance.proto";
-
-message GetServiceInfoRequest {
-}
-
-message GetServiceInfoResponse {
-    string serviceType = 1;
-    string version = 2;
-    optional Algorithm algorithm = 3;
-}
-
 message Algorithm {
     message FunctionParameter {
         string key = 1;
@@ -36,7 +23,7 @@ message Algorithm {
     repeated string namespaces = 3;
 }
 
-message ConfigureExecutionRequest {
+message ExecutionConfiguration {
     message FunctionParameter {
         string key = 1;
         string value = 2;
@@ -49,57 +36,4 @@ message ConfigureExecutionRequest {
     int32 namespacePort = 2;
     string databaseURL = 3;
     repeated Function functions = 4;
-}
-
-message ConfigureExecutionResponse {
-}
-
-message RunExecutionRequest {
-}
-
-message RunExecutionResponse {
-}
-
-message WorkerRequest {
-    string task = 1;
-    google.protobuf.Timestamp timestamp = 2;
-    repeated string symbols = 3;
-    foreverbull.pb.finance.Portfolio portfolio = 4;
-}
-
-message WorkerResponse {
-    string task = 1;
-    repeated foreverbull.pb.finance.Order orders = 2;
-    optional string error = 3;
-}
-
-message StopRequest {
-}
-
-message StopResponse {
-}
-
-
-enum NamespaceRequestType {
-    GET = 0;
-    SET = 1;
-}
-
-message NamespaceRequest {
-    string key = 1;
-    NamespaceRequestType type = 2;
-    optional google.protobuf.Struct value = 3;
-}
-
-message NamespaceResponse {
-    optional google.protobuf.Struct value = 1;
-    optional string error = 2;
-}
-
-
-service Worker {
-    rpc GetServiceInfo (GetServiceInfoRequest) returns (GetServiceInfoResponse) {}
-    rpc ConfigureExecution (ConfigureExecutionRequest) returns (ConfigureExecutionResponse) {}
-    rpc RunExecution (RunExecutionRequest) returns (RunExecutionResponse) {}
-    rpc Stop (StopRequest) returns (StopResponse) {}
 }

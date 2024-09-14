@@ -43,7 +43,9 @@ frozendict==2.4.4
 greenlet==3.0.3
     # via sqlalchemy
 grpcio==1.66.1
+    # via grpcio-testing
     # via grpcio-tools
+grpcio-testing==1.66.1
 grpcio-tools==1.66.1
 html5lib==1.1
     # via yfinance
@@ -93,6 +95,7 @@ pluggy==1.5.0
     # via pytest
 protobuf==5.27.2
     # via foreverbull
+    # via grpcio-testing
     # via grpcio-tools
 psycopg2-binary==2.9.9
     # via foreverbull

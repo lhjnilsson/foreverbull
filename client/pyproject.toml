@@ -1,12 +1,12 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
-dependencies = ["grpcio-tools>=1.66.1"]
+dependencies = ["grpcio-tools>=1.66.1", "grpcio-testing>=1.66.1"]
 
 [tool.rye]
 managed = true
 virtual = true
-dev-dependencies = []
+dev-dependencies = ["pytest-count>=0.1.0", "pytest-repeat>=0.9.3"]
 
 [tool.rye.workspace]
 packages = ["foreverbull", "foreverbull_testing", "foreverbull_zipline"]
@@ -44,3 +44,4 @@ testpaths = [
   "foreverbull_zipline/tests/",
   "tests/test_performance.py",
 ]
+filterwarnings = "ignore::DeprecationWarning"

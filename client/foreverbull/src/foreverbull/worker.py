@@ -12,20 +12,19 @@ from multiprocessing.synchronize import Event
 import pynng
 import sqlalchemy
 from foreverbull import exceptions, models
+from foreverbull.models import get_engine
 from foreverbull.pb import common_pb2
 from foreverbull.pb.finance import finance_pb2
-from foreverbull.pb.service import service_pb2
+from foreverbull.pb.service import service_pb2, worker_pb2
 
 
 class Worker(ABC):
     @abstractmethod
-    def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
+    def configure_execution(self, req: service_pb2.ExecutionConfiguration) -> None:
         pass
 
     @abstractmethod
-    def run_execution(
-        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
-    ) -> service_pb2.RunExecutionResponse:
+    def run_execution(self, stop_event: Event | threading.Event) -> None:
         pass
 
 
@@ -38,7 +37,7 @@ class WorkerInstance(Worker):
         self._namespace_socket: pynng.Socket | None = None
         self._database_engine: sqlalchemy.Engine | None = None
 
-    def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
+    def configure_execution(self, req: service_pb2.ExecutionConfiguration) -> None:
         self.logger.info("configuring worker")
         try:
             self._algo = models.Algorithm.from_file_path(self._file_path)
@@ -72,7 +71,6 @@ class WorkerInstance(Worker):
                 self._algo.configure(function.name, parameter.key, parameter.value)
 
         self.logger.info("worker configured correctly")
-        return service_pb2.ConfigureExecutionResponse()
 
     @property
     def is_configured(self) -> bool:
@@ -80,9 +78,7 @@ class WorkerInstance(Worker):
             self._database_engine is not None and self._broker_socket is not None and self._namespace_socket is not None
         )
 
-    def run_execution(
-        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
-    ) -> service_pb2.RunExecutionResponse:
+    def run_execution(self, stop_event: Event | threading.Event) -> None:
         if not self._database_engine or not self._broker_socket or not self._namespace_socket:
             raise exceptions.ConfigurationError("Worker not configured")
 
@@ -91,21 +87,20 @@ class WorkerInstance(Worker):
             self.logger.debug("Getting context socket")
             context_socket = self._broker_socket.new_context()
             try:
-                request = service_pb2.WorkerRequest()
+                request = worker_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
-                response = service_pb2.WorkerResponse(task=request.task, error=None)
+                response = worker_pb2.WorkerResponse(task=request.task, error=None)
                 self.logger.info("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
                         request.task,
                         db,
                         request.portfolio,
-                        request.timestamp.ToDatetime(),
                         [symbol for symbol in request.symbols],
                     )
                 self.logger.info("Sending orders to broker: %s", orders)
                 for order in orders:
-                    response.orders.append(finance_pb2.Order(**order.model_dump()))
+                    response.orders.append(finance_pb2.Order(symbol=order.symbol, amount=order.amount))
                 context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
@@ -113,14 +108,14 @@ class WorkerInstance(Worker):
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    response = service_pb2.WorkerResponse()
+                    response = worker_pb2.WorkerResponse()
                     response.error = repr(e)
                     context_socket.send(response.SerializeToString())
                 if context_socket:
                     context_socket.close()
         self._broker_socket.close()
         self._namespace_socket.close()
-        return service_pb2.RunExecutionResponse()
+        return None
 
 
 class WorkerDaemon(WorkerInstance):
@@ -159,7 +154,7 @@ class WorkerDaemon(WorkerInstance):
                 request.ParseFromString(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure":
-                    req = service_pb2.ConfigureExecutionRequest()
+                    req = service_pb2.ExecutionConfiguration()
                     req.ParseFromString(request.data)
                     self.configure_execution(req)
                     response = common_pb2.Response(task=request.task, error=None)
@@ -169,7 +164,7 @@ class WorkerDaemon(WorkerInstance):
                         raise exceptions.ConfigurationError("Worker not configured")
                     response = common_pb2.Response(task=request.task, error=None)
                     responder.send(response.SerializeToString())
-                    self.run_execution(service_pb2.RunExecutionRequest(), self._stop_event)
+                    self.run_execution(self._stop_event)
             except pynng.exceptions.Timeout:
                 continue
             except Exception as e:
@@ -269,7 +264,7 @@ class WorkerPool(Worker):
         return wrapper
 
     @_is_running
-    def configure_execution(self, req: service_pb2.ConfigureExecutionRequest) -> service_pb2.ConfigureExecutionResponse:
+    def configure_execution(self, req: service_pb2.ExecutionConfiguration):
         data = common_pb2.Request(task="configure", data=req.SerializeToString())
         self._worker_surveyor_socket.send(data.SerializeToString())
         responders = 0
@@ -287,13 +282,10 @@ class WorkerPool(Worker):
                 pass
         if responders != len(self._workers):
             raise RuntimeError("Not all workers responded to configure request")
-        return service_pb2.ConfigureExecutionResponse()
 
     @_is_running
-    def run_execution(
-        self, req: service_pb2.RunExecutionRequest, stop_event: Event | threading.Event
-    ) -> service_pb2.RunExecutionResponse:
-        data = common_pb2.Request(task="run", data=req.SerializeToString())
+    def run_execution(self, stop_event: Event | threading.Event):
+        data = common_pb2.Request(task="run")
         self._worker_surveyor_socket.send(data.SerializeToString())
         responders = 0
         while True:
@@ -310,4 +302,3 @@ class WorkerPool(Worker):
                 pass
         if responders != len(self._workers):
             raise Exception("Not all workers responded to run request")
-        return service_pb2.RunExecutionResponse()

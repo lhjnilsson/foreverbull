@@ -1,8 +1,9 @@
 from concurrent import futures
+from contextlib import contextmanager
 
 import grpc
 from foreverbull.pb.backtest import engine_pb2_grpc
-from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.engine import Engine, EngineProcess
 
 
 class BacktestService(engine_pb2_grpc.EngineServicer):
@@ -15,11 +16,11 @@ class BacktestService(engine_pb2_grpc.EngineServicer):
     def RunBacktest(self, request, context):
         return self.engine.run_backtest(request)
 
-    def PlaceOrders(self, request, context):
-        return self.engine.place_orders(request)
+    def GetCurrentPeriod(self, request, context):
+        return self.engine.get_current_period(request)
 
-    def GetNextPeriod(self, request, context):
-        return self.engine.get_next_period(request)
+    def PlaceOrdersAndContinue(self, request, context):
+        return self.engine.place_orders_and_continue(request)
 
     def GetResult(self, request, context):
         return self.engine.get_backtest_result(request)
@@ -28,11 +29,11 @@ class BacktestService(engine_pb2_grpc.EngineServicer):
         return self.engine.stop()
 
 
-def serve(engine: Engine) -> grpc.Server:
-    server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
+@contextmanager
+def grpc_server(engine: Engine, port=50055):
+    server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
     engine_pb2_grpc.add_EngineServicer_to_server(BacktestService(engine), server)
-    server.add_insecure_port("[::]:50055")
-    return server
-    # server.start()
-    # server.wait_for_termination()
-    # server.stop(None)
+    server.add_insecure_port(f"[::]:{port}")
+    server.start()
+    yield server
+    server.stop(None)

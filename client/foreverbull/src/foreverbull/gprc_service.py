@@ -3,19 +3,17 @@ from concurrent import futures
 import grpc
 from foreverbull.algorithm import WorkerPool
 from foreverbull.models import Algorithm
-from foreverbull.pb.service import service_pb2, service_pb2_grpc
+from foreverbull.pb.service import service_pb2, service_pb2_grpc, worker_pb2, worker_pb2_grpc
 
 
-class WorkerService(service_pb2_grpc.WorkerServicer):
+class WorkerService(worker_pb2_grpc.WorkerServicer):
     def __init__(self, worker_pool: WorkerPool, algorithm: Algorithm):
         self._worker_pool = worker_pool
         self._algorithm = algorithm
 
     def GetServiceInfo(self, request, context):
         entity = self._algorithm.get_entity()
-        return service_pb2.GetServiceInfoResponse(
-            serviceType="worker",
-            version="0.0.0",
+        return worker_pb2.GetServiceInfoResponse(
             algorithm=service_pb2.Algorithm(
                 file_path=self._worker_pool._file_path,
                 functions=[
@@ -32,25 +30,24 @@ class WorkerService(service_pb2_grpc.WorkerServicer):
             ),
         )
 
-    def ConfigureExecution(self, request, context):
-        return self._worker_pool.configure_execution(request)
+    def ConfigureExecution(self, request: worker_pb2.ConfigureExecutionRequest, context):
+        self._worker_pool.configure_execution(request.configuration)
+        return worker_pb2.ConfigureExecutionResponse()
 
     def RunExecution(self, request, context):
-        return self._worker_pool.run_execution(request, None)
-
-    def Stop(self, request, context):
-        return service_pb2.StopResponse()
+        self._worker_pool.run_execution(None)
+        return worker_pb2.RunExecutionResponse()
 
 
-def serre(worker_pool: WorkerPool) -> grpc.Server:
+def new_grpc_server(worker_pool: WorkerPool, algorithm: Algorithm, port=50055) -> grpc.Server:
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
-    service = WorkerService(worker_pool)
-    service_pb2_grpc.add_WorkerServicer_to_server(service, server)
-    server.add_insecure_port("[::]:50055")
+    service = WorkerService(worker_pool, algorithm)
+    worker_pb2_grpc.add_WorkerServicer_to_server(service, server)
+    server.add_insecure_port(f"[::]:{port}")
     return server
 
 
-def main():
+if __name__ == "__main__":
     foreverbull = Foreverbull(file_path=sys.argv[1])
     with foreverbull as fb:
         broker.service.update_instance(socket.gethostname(), True)
@@ -58,11 +55,3 @@ def main():
         signal.signal(signal.SIGTERM, lambda x, y: fb._stop_event.set())
         fb.join()
         broker.service.update_instance(socket.gethostname(), False)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python3 foreverbull/_run_instance.py <file_path>")
-        exit(1)
-    set_start_method("spawn")
-    main()

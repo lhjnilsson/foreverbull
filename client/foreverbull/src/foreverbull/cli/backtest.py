@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 
 import typer
-from foreverbull import Foreverbull, broker, entity
+from foreverbull import Algorithm, broker, entity
 from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
@@ -117,6 +117,7 @@ def get(
     std.print(table)
 
 
+"""
 @backtest.command()
 def run(
     file_path: Annotated[str, typer.Argument(help="name of the file to use")],
@@ -156,19 +157,16 @@ def run(
         )
         std.print(table)
 
-    session = broker.backtest.run(backtest_name, manual=True)
-    while session.port is None:
-        time.sleep(0.5)
-        session = broker.backtest.get_session(session.id)
-        if session.statuses[-1].status == entity.backtest.SessionStatusType.FAILED:
-            raise Exception(f"Session failed: {session.statuses[-1].error}")
-    os.environ["BROKER_SESSION_PORT"] = str(session.port)
-    foreverbull = Foreverbull(file_path=file_path)
-    with foreverbull as fb:
-        execution = fb.new_backtest_execution()
-        fb.run_backtest_execution(execution)
-        show_progress(session)
-    return
+    algorithm = Algorithm.from_file_path(file_path)
+    with algorithm.backtest_session(backtest_name) as session:
+        default = session.get_default()
+        session.run_execution(
+            start=default.start,
+            end=default.end,
+            symbols=default.symbols,
+            benchmark=default.benchmark,
+        )
+"""
 
 
 @backtest.command()

@@ -9,46 +9,7 @@ import pytest
 from foreverbull import entity
 from foreverbull.algorithm import Algorithm
 from foreverbull.models import Algorithm, Asset, Assets
-from foreverbull.pb.service import service_pb2
-
-
-@pytest.fixture
-def namespace_server():
-    namespace = dict()
-
-    s = pynng.Rep0(listen="tcp://0.0.0.0:7878")
-    s.recv_timeout = 500
-    s.send_timeout = 500
-    os.environ["NAMESPACE_PORT"] = "7878"
-
-    def runner(s, namespace):
-        while True:
-            request = service_pb2.NamespaceRequest()
-            try:
-                data = s.recv()
-            except pynng.exceptions.Timeout:
-                continue
-            except pynng.exceptions.Closed:
-                break
-            request.ParseFromString(data)
-            if request.type == service_pb2.NamespaceRequestType.GET:
-                response = service_pb2.NamespaceResponse()
-                response.value.update(namespace.get(request.key, {}))
-            elif request.type == service_pb2.NamespaceRequestType.SET:
-                namespace[request.key] = {k: v for k, v in request.value.items()}
-                response = service_pb2.NamespaceResponse()
-                response.value.update(namespace[request.key])
-            else:
-                response = service_pb2.NamespaceResponse(error="Invalid request type")
-            s.send(response.SerializeToString())
-
-    thread = Thread(target=runner, args=(s, namespace))
-    thread.start()
-
-    yield namespace
-
-    s.close()
-    thread.join()
+from foreverbull.pb.service import service_pb2, worker_pb2
 
 
 class TestAsset:

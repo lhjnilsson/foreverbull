@@ -5,6 +5,8 @@ package foreverbull.pb.backtest;
 option go_package = "github.com/lhjnilsson/foreverbull/internal/pb/backtest";
 
 import "foreverbull/pb/backtest/backtest.proto";
+import "foreverbull/pb/service/service.proto";
+import "foreverbull/pb/finance/finance.proto";
 
 
 message GetBacktestRequest {
@@ -12,7 +14,8 @@ message GetBacktestRequest {
 }
 
 message GetBacktestResponse {
-    Backtest backtest = 1;
+    string name = 1;
+    Backtest backtest = 2;
 }
 
 message CreateSessionRequest {
@@ -34,10 +37,11 @@ message GetSessionResponse {
 message CreateExecutionRequest {
     string session_id = 1;
     Backtest backtest = 2;
+    optional string benchmark = 3;
 }
 
 message CreateExecutionResponse {
-    Execution execution = 1;
+    foreverbull.pb.service.ExecutionConfiguration configuration = 1;
 }
 
 message RunExecutionRequest {
@@ -46,7 +50,7 @@ message RunExecutionRequest {
 
 message RunExecutionResponse {
     Execution execution = 1;
-    Portfolio portfolio = 2;
+    foreverbull.pb.finance.Portfolio portfolio = 2;
 }
 
 message GetExecutionRequest {
@@ -55,12 +59,16 @@ message GetExecutionRequest {
 
 message GetExecutionResponse {
     Execution execution = 1;
+    repeated Period periods = 2;
 }
 
 service Broker {
     rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
     rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
+}
+
+service BrokerSession {
     rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
     rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
     rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}

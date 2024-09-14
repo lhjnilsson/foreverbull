@@ -42,12 +42,6 @@ def list_sessions(session: Session, backtest: str | None = None) -> List[entity.
 
 
 @inject_session
-def run(session: Session, backtest: str, manual: bool = False) -> entity.backtest.Session:
-    rsp = session.request("POST", "/backtest/api/sessions", json={"backtest": backtest, "manual": manual})
-    return entity.backtest.Session.model_validate(rsp.json())
-
-
-@inject_session
 def get_session(session: Session, session_id: str) -> entity.backtest.Session:
     rsp = session.request("GET", f"/backtest/api/sessions/{session_id}")
     return entity.backtest.Session.model_validate(rsp.json())

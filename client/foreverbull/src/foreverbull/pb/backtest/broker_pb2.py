@@ -4,7 +4,6 @@
 # source: foreverbull/pb/backtest/broker.proto
 # Protobuf Python Version: 5.27.2
 """Generated protocol buffer code."""
-
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
@@ -19,8 +18,12 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from foreverbull.pb.backtest import backtest_pb2 as foreverbull_dot_pb_dot_backtest_dot_backtest__pb2
+from foreverbull.pb.finance import finance_pb2 as foreverbull_dot_pb_dot_finance_dot_finance__pb2
+from foreverbull.pb.service import service_pb2 as foreverbull_dot_pb_dot_service_dot_service__pb2
+
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n$foreverbull/pb/backtest/broker.proto\x12\x17\x66oreverbull.pb.backtest\x1a&foreverbull/pb/backtest/backtest.proto""\n\x12GetBacktestRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"J\n\x13GetBacktestResponse\x12\x33\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest"-\n\x14\x43reateSessionRequest\x12\x15\n\rbacktest_name\x18\x01 \x01(\t"J\n\x15\x43reateSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.pb.backtest.Session"\'\n\x11GetSessionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t"G\n\x12GetSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.pb.backtest.Session"a\n\x16\x43reateExecutionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x33\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest"P\n\x17\x43reateExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Execution"+\n\x13RunExecutionRequest\x12\x14\n\x0c\x65xecution_id\x18\x01 \x01(\t"\x84\x01\n\x14RunExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Execution\x12\x35\n\tportfolio\x18\x02 \x01(\x0b\x32".foreverbull.pb.backtest.Portfolio"+\n\x13GetExecutionRequest\x12\x14\n\x0c\x65xecution_id\x18\x01 \x01(\t"M\n\x14GetExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Execution2\xa7\x05\n\x06\x42roker\x12j\n\x0bGetBacktest\x12+.foreverbull.pb.backtest.GetBacktestRequest\x1a,.foreverbull.pb.backtest.GetBacktestResponse"\x00\x12p\n\rCreateSession\x12-.foreverbull.pb.backtest.CreateSessionRequest\x1a..foreverbull.pb.backtest.CreateSessionResponse"\x00\x12g\n\nGetSession\x12*.foreverbull.pb.backtest.GetSessionRequest\x1a+.foreverbull.pb.backtest.GetSessionResponse"\x00\x12v\n\x0f\x43reateExecution\x12/.foreverbull.pb.backtest.CreateExecutionRequest\x1a\x30.foreverbull.pb.backtest.CreateExecutionResponse"\x00\x12o\n\x0cRunExecution\x12,.foreverbull.pb.backtest.RunExecutionRequest\x1a-.foreverbull.pb.backtest.RunExecutionResponse"\x00\x30\x01\x12m\n\x0cGetExecution\x12,.foreverbull.pb.backtest.GetExecutionRequest\x1a-.foreverbull.pb.backtest.GetExecutionResponse"\x00\x42\x38Z6github.com/lhjnilsson/foreverbull/internal/pb/backtestb\x06proto3'
+    b'\n$foreverbull/pb/backtest/broker.proto\x12\x17\x66oreverbull.pb.backtest\x1a&foreverbull/pb/backtest/backtest.proto\x1a$foreverbull/pb/service/service.proto\x1a$foreverbull/pb/finance/finance.proto""\n\x12GetBacktestRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"X\n\x13GetBacktestResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x33\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest"-\n\x14\x43reateSessionRequest\x12\x15\n\rbacktest_name\x18\x01 \x01(\t"J\n\x15\x43reateSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.pb.backtest.Session"\'\n\x11GetSessionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t"G\n\x12GetSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.pb.backtest.Session"\x87\x01\n\x16\x43reateExecutionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x33\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32!.foreverbull.pb.backtest.Backtest\x12\x16\n\tbenchmark\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x0c\n\n_benchmark"`\n\x17\x43reateExecutionResponse\x12\x45\n\rconfiguration\x18\x01 \x01(\x0b\x32..foreverbull.pb.service.ExecutionConfiguration"+\n\x13RunExecutionRequest\x12\x14\n\x0c\x65xecution_id\x18\x01 \x01(\t"\x83\x01\n\x14RunExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Execution\x12\x34\n\tportfolio\x18\x02 \x01(\x0b\x32!.foreverbull.pb.finance.Portfolio"+\n\x13GetExecutionRequest\x12\x14\n\x0c\x65xecution_id\x18\x01 \x01(\t"\x7f\n\x14GetExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32".foreverbull.pb.backtest.Execution\x12\x30\n\x07periods\x18\x02 \x03(\x0b\x32\x1f.foreverbull.pb.backtest.Period2\xcf\x02\n\x06\x42roker\x12j\n\x0bGetBacktest\x12+.foreverbull.pb.backtest.GetBacktestRequest\x1a,.foreverbull.pb.backtest.GetBacktestResponse"\x00\x12p\n\rCreateSession\x12-.foreverbull.pb.backtest.CreateSessionRequest\x1a..foreverbull.pb.backtest.CreateSessionResponse"\x00\x12g\n\nGetSession\x12*.foreverbull.pb.backtest.GetSessionRequest\x1a+.foreverbull.pb.backtest.GetSessionResponse"\x00\x32\xe7\x02\n\rBrokerSession\x12v\n\x0f\x43reateExecution\x12/.foreverbull.pb.backtest.CreateExecutionRequest\x1a\x30.foreverbull.pb.backtest.CreateExecutionResponse"\x00\x12o\n\x0cRunExecution\x12,.foreverbull.pb.backtest.RunExecutionRequest\x1a-.foreverbull.pb.backtest.RunExecutionResponse"\x00\x30\x01\x12m\n\x0cGetExecution\x12,.foreverbull.pb.backtest.GetExecutionRequest\x1a-.foreverbull.pb.backtest.GetExecutionResponse"\x00\x42\x38Z6github.com/lhjnilsson/foreverbull/internal/pb/backtestb\x06proto3'
 )
 
 _globals = globals()
@@ -29,30 +32,32 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "foreverbull.pb.backtest.bro
 if not _descriptor._USE_C_DESCRIPTORS:
     _globals["DESCRIPTOR"]._loaded_options = None
     _globals["DESCRIPTOR"]._serialized_options = b"Z6github.com/lhjnilsson/foreverbull/internal/pb/backtest"
-    _globals["_GETBACKTESTREQUEST"]._serialized_start = 105
-    _globals["_GETBACKTESTREQUEST"]._serialized_end = 139
-    _globals["_GETBACKTESTRESPONSE"]._serialized_start = 141
-    _globals["_GETBACKTESTRESPONSE"]._serialized_end = 215
-    _globals["_CREATESESSIONREQUEST"]._serialized_start = 217
-    _globals["_CREATESESSIONREQUEST"]._serialized_end = 262
-    _globals["_CREATESESSIONRESPONSE"]._serialized_start = 264
-    _globals["_CREATESESSIONRESPONSE"]._serialized_end = 338
-    _globals["_GETSESSIONREQUEST"]._serialized_start = 340
-    _globals["_GETSESSIONREQUEST"]._serialized_end = 379
-    _globals["_GETSESSIONRESPONSE"]._serialized_start = 381
-    _globals["_GETSESSIONRESPONSE"]._serialized_end = 452
-    _globals["_CREATEEXECUTIONREQUEST"]._serialized_start = 454
-    _globals["_CREATEEXECUTIONREQUEST"]._serialized_end = 551
-    _globals["_CREATEEXECUTIONRESPONSE"]._serialized_start = 553
-    _globals["_CREATEEXECUTIONRESPONSE"]._serialized_end = 633
-    _globals["_RUNEXECUTIONREQUEST"]._serialized_start = 635
-    _globals["_RUNEXECUTIONREQUEST"]._serialized_end = 678
-    _globals["_RUNEXECUTIONRESPONSE"]._serialized_start = 681
-    _globals["_RUNEXECUTIONRESPONSE"]._serialized_end = 813
-    _globals["_GETEXECUTIONREQUEST"]._serialized_start = 815
-    _globals["_GETEXECUTIONREQUEST"]._serialized_end = 858
-    _globals["_GETEXECUTIONRESPONSE"]._serialized_start = 860
-    _globals["_GETEXECUTIONRESPONSE"]._serialized_end = 937
-    _globals["_BROKER"]._serialized_start = 940
-    _globals["_BROKER"]._serialized_end = 1619
+    _globals["_GETBACKTESTREQUEST"]._serialized_start = 181
+    _globals["_GETBACKTESTREQUEST"]._serialized_end = 215
+    _globals["_GETBACKTESTRESPONSE"]._serialized_start = 217
+    _globals["_GETBACKTESTRESPONSE"]._serialized_end = 305
+    _globals["_CREATESESSIONREQUEST"]._serialized_start = 307
+    _globals["_CREATESESSIONREQUEST"]._serialized_end = 352
+    _globals["_CREATESESSIONRESPONSE"]._serialized_start = 354
+    _globals["_CREATESESSIONRESPONSE"]._serialized_end = 428
+    _globals["_GETSESSIONREQUEST"]._serialized_start = 430
+    _globals["_GETSESSIONREQUEST"]._serialized_end = 469
+    _globals["_GETSESSIONRESPONSE"]._serialized_start = 471
+    _globals["_GETSESSIONRESPONSE"]._serialized_end = 542
+    _globals["_CREATEEXECUTIONREQUEST"]._serialized_start = 545
+    _globals["_CREATEEXECUTIONREQUEST"]._serialized_end = 680
+    _globals["_CREATEEXECUTIONRESPONSE"]._serialized_start = 682
+    _globals["_CREATEEXECUTIONRESPONSE"]._serialized_end = 778
+    _globals["_RUNEXECUTIONREQUEST"]._serialized_start = 780
+    _globals["_RUNEXECUTIONREQUEST"]._serialized_end = 823
+    _globals["_RUNEXECUTIONRESPONSE"]._serialized_start = 826
+    _globals["_RUNEXECUTIONRESPONSE"]._serialized_end = 957
+    _globals["_GETEXECUTIONREQUEST"]._serialized_start = 959
+    _globals["_GETEXECUTIONREQUEST"]._serialized_end = 1002
+    _globals["_GETEXECUTIONRESPONSE"]._serialized_start = 1004
+    _globals["_GETEXECUTIONRESPONSE"]._serialized_end = 1131
+    _globals["_BROKER"]._serialized_start = 1134
+    _globals["_BROKER"]._serialized_end = 1469
+    _globals["_BROKERSESSION"]._serialized_start = 1472
+    _globals["_BROKERSESSION"]._serialized_end = 1831
 # @@protoc_insertion_point(module_scope)

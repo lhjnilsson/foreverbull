@@ -95,6 +95,7 @@ def test_backtest_list_sessions(argument, return_value, expected_model):
         mock_send.assert_called_once()
 
 
+@pytest.mark.skip(reason="Not implemented")
 @pytest.mark.parametrize(
     "argument, return_value, expected_model",
     [

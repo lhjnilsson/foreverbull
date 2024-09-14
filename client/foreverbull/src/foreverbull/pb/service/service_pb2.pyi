@@ -1,45 +1,15 @@
-from typing import ClassVar as _ClassVar
-from typing import Iterable as _Iterable
-from typing import Mapping as _Mapping
-from typing import Optional as _Optional
-from typing import Union as _Union
-
-from foreverbull.pb.finance import finance_pb2 as _finance_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from google.protobuf import struct_pb2 as _struct_pb2
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
+from typing import (
+    ClassVar as _ClassVar,
+    Iterable as _Iterable,
+    Mapping as _Mapping,
+    Optional as _Optional,
+    Union as _Union,
+)
 
 DESCRIPTOR: _descriptor.FileDescriptor
-
-class NamespaceRequestType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    GET: _ClassVar[NamespaceRequestType]
-    SET: _ClassVar[NamespaceRequestType]
-
-GET: NamespaceRequestType
-SET: NamespaceRequestType
-
-class GetServiceInfoRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetServiceInfoResponse(_message.Message):
-    __slots__ = ("serviceType", "version", "algorithm")
-    SERVICETYPE_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    ALGORITHM_FIELD_NUMBER: _ClassVar[int]
-    serviceType: str
-    version: str
-    algorithm: Algorithm
-    def __init__(
-        self,
-        serviceType: _Optional[str] = ...,
-        version: _Optional[str] = ...,
-        algorithm: _Optional[_Union[Algorithm, _Mapping]] = ...,
-    ) -> None: ...
 
 class Algorithm(_message.Message):
     __slots__ = ("file_path", "functions", "namespaces")
@@ -96,7 +66,7 @@ class Algorithm(_message.Message):
         namespaces: _Optional[_Iterable[str]] = ...,
     ) -> None: ...
 
-class ConfigureExecutionRequest(_message.Message):
+class ExecutionConfiguration(_message.Message):
     __slots__ = ("brokerPort", "namespacePort", "databaseURL", "functions")
 
     class FunctionParameter(_message.Message):
@@ -112,11 +82,11 @@ class ConfigureExecutionRequest(_message.Message):
         NAME_FIELD_NUMBER: _ClassVar[int]
         PARAMETERS_FIELD_NUMBER: _ClassVar[int]
         name: str
-        parameters: _containers.RepeatedCompositeFieldContainer[ConfigureExecutionRequest.FunctionParameter]
+        parameters: _containers.RepeatedCompositeFieldContainer[ExecutionConfiguration.FunctionParameter]
         def __init__(
             self,
             name: _Optional[str] = ...,
-            parameters: _Optional[_Iterable[_Union[ConfigureExecutionRequest.FunctionParameter, _Mapping]]] = ...,
+            parameters: _Optional[_Iterable[_Union[ExecutionConfiguration.FunctionParameter, _Mapping]]] = ...,
         ) -> None: ...
 
     BROKERPORT_FIELD_NUMBER: _ClassVar[int]
@@ -126,89 +96,11 @@ class ConfigureExecutionRequest(_message.Message):
     brokerPort: int
     namespacePort: int
     databaseURL: str
-    functions: _containers.RepeatedCompositeFieldContainer[ConfigureExecutionRequest.Function]
+    functions: _containers.RepeatedCompositeFieldContainer[ExecutionConfiguration.Function]
     def __init__(
         self,
         brokerPort: _Optional[int] = ...,
         namespacePort: _Optional[int] = ...,
         databaseURL: _Optional[str] = ...,
-        functions: _Optional[_Iterable[_Union[ConfigureExecutionRequest.Function, _Mapping]]] = ...,
-    ) -> None: ...
-
-class ConfigureExecutionResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class RunExecutionRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class RunExecutionResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class WorkerRequest(_message.Message):
-    __slots__ = ("task", "timestamp", "symbols", "portfolio")
-    TASK_FIELD_NUMBER: _ClassVar[int]
-    TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
-    SYMBOLS_FIELD_NUMBER: _ClassVar[int]
-    PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
-    task: str
-    timestamp: _timestamp_pb2.Timestamp
-    symbols: _containers.RepeatedScalarFieldContainer[str]
-    portfolio: _finance_pb2.Portfolio
-    def __init__(
-        self,
-        task: _Optional[str] = ...,
-        timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        symbols: _Optional[_Iterable[str]] = ...,
-        portfolio: _Optional[_Union[_finance_pb2.Portfolio, _Mapping]] = ...,
-    ) -> None: ...
-
-class WorkerResponse(_message.Message):
-    __slots__ = ("task", "orders", "error")
-    TASK_FIELD_NUMBER: _ClassVar[int]
-    ORDERS_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    task: str
-    orders: _containers.RepeatedCompositeFieldContainer[_finance_pb2.Order]
-    error: str
-    def __init__(
-        self,
-        task: _Optional[str] = ...,
-        orders: _Optional[_Iterable[_Union[_finance_pb2.Order, _Mapping]]] = ...,
-        error: _Optional[str] = ...,
-    ) -> None: ...
-
-class StopRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class StopResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class NamespaceRequest(_message.Message):
-    __slots__ = ("key", "type", "value")
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    TYPE_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    key: str
-    type: NamespaceRequestType
-    value: _struct_pb2.Struct
-    def __init__(
-        self,
-        key: _Optional[str] = ...,
-        type: _Optional[_Union[NamespaceRequestType, str]] = ...,
-        value: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...,
-    ) -> None: ...
-
-class NamespaceResponse(_message.Message):
-    __slots__ = ("value", "error")
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    value: _struct_pb2.Struct
-    error: str
-    def __init__(
-        self, value: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., error: _Optional[str] = ...
+        functions: _Optional[_Iterable[_Union[ExecutionConfiguration.Function, _Mapping]]] = ...,
     ) -> None: ...

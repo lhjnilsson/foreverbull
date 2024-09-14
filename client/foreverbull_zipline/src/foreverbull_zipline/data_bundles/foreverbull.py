@@ -5,7 +5,7 @@ from typing import Iterable, Tuple
 
 import numpy as np
 import pandas as pd
-from foreverbull.data import get_engine
+from foreverbull.models import get_engine
 from pandas import read_sql_query
 from zipline.data.bundles import register
 from zipline.utils.cli import maybe_show_progress

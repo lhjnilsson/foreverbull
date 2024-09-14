@@ -13,8 +13,9 @@ import pynng
 import pytz
 import six
 from foreverbull.broker.storage import Storage
-from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2
+from foreverbull.pb import common_pb2, pb_utils
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 from zipline import TradingAlgorithm
@@ -40,23 +41,25 @@ class StopExcecution(Exception):
 
 class Engine(ABC):
     @abstractmethod
-    def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
+    def ingest(self, ingestion: engine_pb2.IngestRequest) -> engine_pb2.IngestResponse:
         pass
 
     @abstractmethod
-    def run_backtest(self, backtest: backtest_pb2.RunRequest) -> backtest_pb2.RunResponse:
+    def run_backtest(self, backtest: engine_pb2.RunRequest) -> engine_pb2.RunResponse:
         pass
 
     @abstractmethod
-    def place_orders(self, req: backtest_pb2.PlaceOrdersRequest) -> backtest_pb2.PlaceOrdersResponse:
+    def get_current_period(self, req: engine_pb2.GetCurrentPeriodRequest) -> engine_pb2.GetCurrentPeriodResponse:
         pass
 
     @abstractmethod
-    def get_next_period(self, req: backtest_pb2.GetNextPeriodRequest) -> backtest_pb2.GetNextPeriodResponse:
+    def place_orders_and_continue(
+        self, req: engine_pb2.PlaceOrdersAndContinueRequest
+    ) -> engine_pb2.PlaceOrdersAndContinueResponse:
         pass
 
     @abstractmethod
-    def get_backtest_result(self, req: backtest_pb2.GetResultRequest) -> backtest_pb2.GetResultResponse:
+    def get_backtest_result(self, req: engine_pb2.GetResultRequest) -> engine_pb2.GetResultResponse:
         pass
 
     @abstractmethod
@@ -77,94 +80,94 @@ class EngineProcess(multiprocessing.Process, Engine):
         self.is_ready = multiprocessing.Event()
         super(EngineProcess, self).__init__()
 
-    def ingest(self, ingestion: backtest_pb2.IngestRequest) -> backtest_pb2.IngestResponse:
+    def ingest(self, ingestion: engine_pb2.IngestRequest) -> engine_pb2.IngestResponse:
         with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
             bytes = ingestion.SerializeToString()
-            request = service_pb2.Request(task="ingest", data=bytes)
+            request = common_pb2.Request(task="ingest", data=bytes)
             socket.send(request.SerializeToString())
-            response = service_pb2.Response()
+            response = common_pb2.Response()
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            ing = backtest_pb2.IngestResponse()
+            ing = engine_pb2.IngestResponse()
             ing.ParseFromString(response.data)
             return ing
 
-    def run_backtest(self, backtest: backtest_pb2.RunRequest) -> backtest_pb2.RunResponse:
+    def run_backtest(self, backtest: engine_pb2.RunRequest) -> engine_pb2.RunResponse:
         with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
             data = backtest.SerializeToString()
-            request = service_pb2.Request(task="run", data=data)
+            request = common_pb2.Request(task="run", data=data)
             socket.send(request.SerializeToString())
-            response = service_pb2.Response()
+            response = common_pb2.Response()
             if response.HasField("error"):
                 raise SystemError(response.error)
             response.ParseFromString(socket.recv())
-            b = backtest_pb2.RunResponse()
+            b = engine_pb2.RunResponse()
             b.ParseFromString(response.data)
             return b
 
-    def place_orders(self, req: backtest_pb2.PlaceOrdersRequest) -> backtest_pb2.PlaceOrdersResponse:
+    def get_current_period(self, req: engine_pb2.GetCurrentPeriodRequest) -> engine_pb2.GetCurrentPeriodResponse:
         with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
             data = req.SerializeToString()
-            request = service_pb2.Request(task="place_orders", data=data)
+            request = common_pb2.Request(task="get_current_period", data=data)
             socket.send(request.SerializeToString())
-            response = service_pb2.Response()
+            response = common_pb2.Response()
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            p = backtest_pb2.PlaceOrdersResponse()
+            p = engine_pb2.GetCurrentPeriodResponse()
             p.ParseFromString(response.data)
             return p
 
-    def get_next_period(self, req: backtest_pb2.GetNextPeriodRequest) -> backtest_pb2.GetNextPeriodResponse:
+    def place_orders_and_continue(
+        self, req: engine_pb2.PlaceOrdersAndContinueRequest
+    ) -> engine_pb2.PlaceOrdersAndContinueResponse:
         with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
             data = req.SerializeToString()
-            request = service_pb2.Request(task="get_next_period", data=data)
+            request = common_pb2.Request(task="place_orders_and_continue", data=data)
             socket.send(request.SerializeToString())
-            response = service_pb2.Response()
+            response = common_pb2.Response()
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            p = backtest_pb2.GetNextPeriodResponse()
+            p = engine_pb2.PlaceOrdersAndContinueResponse()
             p.ParseFromString(response.data)
             return p
 
-    def get_backtest_result(self, req: backtest_pb2.GetResultRequest) -> backtest_pb2.GetResultResponse:
+    def get_backtest_result(self, req: engine_pb2.GetResultRequest) -> engine_pb2.GetResultResponse:
         with pynng.Req0(
-            dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=10_000, send_timeout=10_000
+            dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=10_000, send_timeout=10_000
         ) as socket:
-            request = service_pb2.Request(task="get_result")
+            request = common_pb2.Request(task="get_result")
             socket.send(request.SerializeToString())
-            response = service_pb2.Response()
+            response = common_pb2.Response()
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            result = backtest_pb2.GetResultResponse()
+            result = engine_pb2.GetResultResponse()
             result.ParseFromString(response.data)
             return result
 
     def stop(self):
         try:
             with pynng.Req0(
-                dial=f"ipc://{self._socket_file_path}", block_on_dial=True, recv_timeout=1_000, send_timeout=1_000
+                dial=f"ipc://{self._socket_file_path}", block_on_dial=False, recv_timeout=1_000, send_timeout=1_000
             ) as socket:
-                request = service_pb2.Request(task="stop")
+                request = common_pb2.Request(task="stop")
                 try:
                     socket.send(request.SerializeToString())
                     socket.recv()
                 except pynng.Timeout:
-                    print("TIMEOUT")
                     pass
         except pynng.exceptions.ConnectionRefused:
-            print("REFUESED")
             pass
 
     def run(self):
@@ -181,11 +184,10 @@ class EngineProcess(multiprocessing.Process, Engine):
         self.log.info("Starting Execution Process")
         self._trading_algorithm: TradingAlgorithm | None = None
         self.logger = logging.getLogger(__name__)
-        import os
 
         if os.path.exists(self._socket_file_path):
             os.remove(self._socket_file_path)
-        with pynng.Rep0(listen=f"ipc://{self._socket_file_path}", block_on_dial=True, send_timeout=1_000) as socket:
+        with pynng.Rep0(listen=f"ipc://{self._socket_file_path}", block_on_dial=False, send_timeout=1_000) as socket:
             self.is_ready.set()
             while True:
                 try:
@@ -206,7 +208,7 @@ class EngineProcess(multiprocessing.Process, Engine):
         self.result = result
 
     def _ingest(self, data: bytes) -> bytes:
-        req = backtest_pb2.IngestRequest()
+        req = engine_pb2.IngestRequest()
         req.ParseFromString(data)
         bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
         SQLIngester.engine = DatabaseEngine()
@@ -222,7 +224,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                 tar.add(data_path(["foreverbull"]), arcname="foreverbull")
             storage = Storage.from_environment()
             storage.backtest.upload_backtest_ingestion("/tmp/ingestion.tar.gz", "foreverbull")
-        return backtest_pb2.IngestResponse(
+        return engine_pb2.IngestResponse(
             ingestion=backtest_pb2.Ingestion(
                 start_date=pb_utils.to_proto_timestamp(start),
                 end_date=pb_utils.to_proto_timestamp(end),
@@ -231,7 +233,7 @@ class EngineProcess(multiprocessing.Process, Engine):
         ).SerializeToString()
 
     def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
-        req = backtest_pb2.RunRequest()
+        req = engine_pb2.RunRequest()
         req.ParseFromString(data)
         bundle = bundles.load("foreverbull", os.environ, None)
 
@@ -351,7 +353,7 @@ class EngineProcess(multiprocessing.Process, Engine):
         )
         return (
             trading_algorithm,
-            backtest_pb2.RunResponse(
+            engine_pb2.RunResponse(
                 backtest=backtest_pb2.Backtest(
                     start_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.start_session),
                     end_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.end_session),
@@ -362,20 +364,20 @@ class EngineProcess(multiprocessing.Process, Engine):
         )
 
     def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = backtest_pb2.PlaceOrdersRequest()
+        req = engine_pb2.PlaceOrdersAndContinueRequest()
         req.ParseFromString(data)
         for order in req.orders:
             asset = trading_algorithm.symbol(order.symbol)
             trading_algorithm.order(asset=asset, amount=order.amount)
-        return backtest_pb2.PlaceOrdersResponse().SerializeToString()
+        return engine_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
-    def _get_next_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = backtest_pb2.GetNextPeriodRequest()
+    def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+        req = engine_pb2.GetCurrentPeriodRequest()
         req.ParseFromString(data)
         p: Portfolio = trading_algorithm.portfolio
-        return backtest_pb2.GetNextPeriodResponse(
+        return engine_pb2.GetCurrentPeriodResponse(
             is_running=True,
-            portfolio=backtest_pb2.Portfolio(
+            portfolio=finance_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
                 cash_flow=p.cash_flow,  # type: ignore
                 starting_cash=p.starting_cash,  # type: ignore
@@ -386,7 +388,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                 positions_value=p.positions_value,  # type: ignore
                 positions_exposure=p.positions_exposure,  # type: ignore
                 positions=[
-                    backtest_pb2.Position(
+                    finance_pb2.Position(
                         symbol=p.sid.symbol,
                         amount=p.amount,
                         cost_basis=p.cost_basis,
@@ -399,9 +401,9 @@ class EngineProcess(multiprocessing.Process, Engine):
         ).SerializeToString()
 
     def _get_execution_result(self, data: bytes) -> bytes:
-        req = backtest_pb2.GetResultRequest()
+        req = engine_pb2.GetResultRequest()
         req.ParseFromString(data)
-        rsp = backtest_pb2.GetResultResponse()
+        rsp = engine_pb2.GetResultResponse()
         for row in self.result.index:
             period = self.result.loc[row]
             rsp.periods.append(
@@ -453,43 +455,58 @@ class EngineProcess(multiprocessing.Process, Engine):
     def _process_request(
         self, trading_algorithm: TradingAlgorithm | None, bar_data: BarData | None, socket: pynng.Socket
     ):
+        if trading_algorithm:
+            while True:
+                with socket.new_context() as context_socket:
+                    req = common_pb2.Request()
+                    req.ParseFromString(context_socket.recv())
+                    self.log.debug(f"Received request {req.task}")
+                    rsp = common_pb2.Response(task=req.task)
+                    data: bytes | None = None
+                    try:
+                        match req.task:
+                            case "get_current_period":
+                                rsp.data = self._get_current_period(req.data, trading_algorithm)
+                                context_socket.send(rsp.SerializeToString())
+                            case "place_orders_and_continue":
+                                rsp.data = self._place_orders(req.data, trading_algorithm)
+                                context_socket.send(rsp.SerializeToString())
+                                return
+                            case "stop":
+                                context_socket.send(rsp.SerializeToString())
+                                raise StopExcecution()
+                            case _:
+                                raise Exception(f"Unknown task {req.task}")
+                    except Exception as e:
+                        self.log.error(f"Error processing request {req.task}: {e}")
+                        rsp.error = str(e)
+
         with socket.new_context() as context_socket:
-            req = service_pb2.Request()
+            req = common_pb2.Request()
             req.ParseFromString(context_socket.recv())
             self.log.debug(f"Received request {req.task}")
-            rsp = service_pb2.Response(task=req.task)
+            rsp = common_pb2.Response(task=req.task)
             data: bytes | None = None
             try:
-                if trading_algorithm:
-                    match req.task:
-                        case "place_orders":
-                            data = self._place_orders(req.data, trading_algorithm)
-                        case "get_next_period":
-                            data = self._get_next_period(req.data, trading_algorithm)
-                        case "stop":
-                            context_socket.send(rsp.SerializeToString())
-                            raise StopExcecution()
-                        case _:
-                            raise Exception(f"Unknown task {req.task}")
-                else:
-                    match req.task:
-                        case "ingest":
-                            data = self._ingest(req.data)
-                        case "run":
-                            ta, data = self._run(req.data, socket)
-                            response = service_pb2.Response(task=req.task, data=data)
-                            context_socket.send(response.SerializeToString())
-                            ta.run()
-                            return
-                        case "get_result":
-                            data = self._get_execution_result(req.data)
-                        case "get_next_period":
-                            data = backtest_pb2.GetNextPeriodResponse(is_running=False).SerializeToString()
-                        case "stop":
-                            print("STOP REQ", flush=True)
-                            pass
-                        case _:
-                            raise Exception(f"Unknown task {req.task}")
+                match req.task:
+                    case "ingest":
+                        data = self._ingest(req.data)
+                    case "run":
+                        ta, data = self._run(req.data, socket)
+                        response = common_pb2.Response(task=req.task, data=data)
+                        context_socket.send(response.SerializeToString())
+                        ta.run()
+                        return
+                    case "get_result":
+                        data = self._get_execution_result(req.data)
+                    case "get_current_period":
+                        data = engine_pb2.GetCurrentPeriodResponse(is_running=False).SerializeToString()
+                    case "stop":
+                        pass
+                    case "place_orders_and_continue":
+                        raise Exception("Cannot place orders without a running algorithm")
+                    case _:
+                        raise Exception(f"Unknown task {req.task}")
             except StopExcecution as e:
                 raise e
             except Exception as e:
@@ -500,5 +517,4 @@ class EngineProcess(multiprocessing.Process, Engine):
                 rsp.data = data
             context_socket.send(rsp.SerializeToString())
             if req.task == "stop":
-                print("RAISE STOP", flush=True)
                 raise StopExcecution()

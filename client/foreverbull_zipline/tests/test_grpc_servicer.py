@@ -4,9 +4,10 @@ import grpc
 import pytest
 from foreverbull.entity import backtest
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2_grpc
+from foreverbull.pb.backtest import backtest_pb2, engine_pb2, engine_pb2_grpc
+from foreverbull.pb.finance import finance_pb2
+from foreverbull_zipline import grpc_servicer
 from foreverbull_zipline.engine import EngineProcess
-from foreverbull_zipline.grpc_servicer import serve
 
 
 @pytest.fixture
@@ -21,26 +22,22 @@ def engine(fb_database):
 
 @pytest.fixture
 def servicer(engine):
-    service = serve(engine)
-    service.start()
-    time.sleep(1)
-    yield
-    service.stop(None)
+    with grpc_servicer.grpc_server(engine) as server:
+        time.sleep(1)  # wait for server to start, abit hacky
+        yield server
 
 
 @pytest.fixture
-def stub():
+def stub(servicer):
     return engine_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:50055"))
 
 
 def test_ingest(
     stub: engine_pb2_grpc.EngineStub,
-    servicer,
-    engine,
     backtest_entity: backtest.Backtest,
 ):
     response = stub.Ingest(
-        backtest_pb2.IngestRequest(
+        engine_pb2.IngestRequest(
             ingestion=backtest_pb2.Ingestion(
                 start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
                 end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
@@ -55,12 +52,10 @@ def test_ingest(
 
 def test_run_and_get_result(
     stub: engine_pb2_grpc.EngineStub,
-    servicer,
-    engine,
     execution: backtest.Execution,
 ):
     response = stub.RunBacktest(
-        backtest_pb2.RunRequest(
+        engine_pb2.RunRequest(
             backtest=backtest_pb2.Backtest(
                 start_date=pb_utils.to_proto_timestamp(execution.start),
                 end_date=pb_utils.to_proto_timestamp(execution.end),
@@ -72,13 +67,13 @@ def test_run_and_get_result(
     assert response.backtest.end_date == pb_utils.to_proto_timestamp(execution.end)
     assert response.backtest.symbols == execution.symbols
 
-    period = stub.GetNextPeriod(backtest_pb2.GetNextPeriodRequest())
+    period = stub.GetCurrentPeriod(engine_pb2.GetCurrentPeriodRequest())
     assert period.is_running is True
 
-    stub.PlaceOrders(
-        backtest_pb2.PlaceOrdersRequest(
+    stub.PlaceOrdersAndContinue(
+        engine_pb2.PlaceOrdersAndContinueRequest(
             orders=[
-                backtest_pb2.Order(
+                finance_pb2.Order(
                     symbol="AAPL",
                     amount=1,
                 )
@@ -86,15 +81,16 @@ def test_run_and_get_result(
         )
     )
 
-    period = stub.GetNextPeriod(backtest_pb2.GetNextPeriodRequest())
+    period = stub.GetCurrentPeriod(engine_pb2.GetCurrentPeriodRequest())
     assert period.is_running is True
     assert period.portfolio.positions[0].symbol == "AAPL"
     assert period.portfolio.positions[0].amount == 1
 
     while True:
-        period = stub.GetNextPeriod(backtest_pb2.GetNextPeriodRequest())
+        period = stub.GetCurrentPeriod(engine_pb2.GetCurrentPeriodRequest())
         if period.is_running is False:
             break
+        stub.PlaceOrdersAndContinue(engine_pb2.PlaceOrdersAndContinueRequest())
 
-    result = stub.GetResult(backtest_pb2.GetResultRequest())
+    result = stub.GetResult(engine_pb2.GetResultRequest())
     assert result.periods

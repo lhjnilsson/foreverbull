@@ -64,5 +64,5 @@ class Position(pydantic.BaseModel):
 
 class Portfolio(pydantic.BaseModel):
     cash: float
-    value: float
+    portfolio_value: float
     positions: list[Position]
