@@ -9,6 +9,7 @@
 #   generate-hashes: false
 #   universal: false
 
+-e file:example_algorithms
 -e file:foreverbull
 -e file:foreverbull_testing
 -e file:foreverbull_zipline

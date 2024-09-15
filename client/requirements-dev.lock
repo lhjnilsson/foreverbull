@@ -9,6 +9,7 @@
 #   generate-hashes: false
 #   universal: false
 
+-e file:example_algorithms
 -e file:foreverbull
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
@@ -185,11 +186,9 @@ pynng==0.8.0
     # via foreverbull
 pytest==6.2.5
     # via foreverbull-testing
-    # via pytest-count
     # via pytest-cov
     # via pytest-mock
     # via pytest-repeat
-pytest-count==0.1.0
 pytest-cov==3.0.0
 pytest-mock==3.14.0
 pytest-repeat==0.9.3

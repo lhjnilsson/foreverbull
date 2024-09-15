@@ -4,7 +4,13 @@ from typing import Generator
 import pynng
 from foreverbull import entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, broker_pb2, broker_pb2_grpc, engine_pb2, engine_pb2_grpc
+from foreverbull.pb.backtest import (
+    backtest_pb2,
+    broker_pb2,
+    broker_pb2_grpc,
+    engine_pb2,
+    engine_pb2_grpc,
+)
 from foreverbull.pb.service import service_pb2, worker_pb2
 
 
@@ -17,11 +23,14 @@ class Broker(broker_pb2_grpc.BrokerServicer):
         self._namespace_socket: pynng.Socket | None = None
         self._execution: entity.backtest.Execution | None = None
 
-    def GetBacktest(self, request: broker_pb2.GetBacktestRequest, context) -> broker_pb2.GetBacktestResponse:
+    def GetBacktest(
+        self, request: broker_pb2.GetBacktestRequest, context
+    ) -> broker_pb2.GetBacktestResponse:
         return broker_pb2.GetBacktestResponse()
 
-    def CreateSession(self, request: broker_pb2.CreateSessionRequest, context) -> broker_pb2.CreateSessionResponse:
-        print("SESSION CREATED", flush=True)
+    def CreateSession(
+        self, request: broker_pb2.CreateSessionRequest, context
+    ) -> broker_pb2.CreateSessionResponse:
         return broker_pb2.CreateSessionResponse(
             session=backtest_pb2.Session(
                 id="abc123",
@@ -87,13 +96,19 @@ class Broker(broker_pb2_grpc.BrokerServicer):
                 worker_response = worker_pb2.WorkerResponse()
                 worker_response.ParseFromString(self._worker_socket.recv())
                 orders.extend(worker_response.orders)
-            self.engine.PlaceOrdersAndContinue(engine_pb2.PlaceOrdersAndContinueRequest(orders=orders))
+            self.engine.PlaceOrdersAndContinue(
+                engine_pb2.PlaceOrdersAndContinueRequest(orders=orders)
+            )
             yield broker_pb2.RunExecutionResponse(
                 portfolio=rsp.portfolio,
             )
 
-    def GetExecution(self, request: broker_pb2.GetExecutionRequest, context) -> broker_pb2.GetExecutionResponse:
-        rsp: engine_pb2.GetResultResponse = self.engine.GetResult(engine_pb2.GetResultRequest())
+    def GetExecution(
+        self, request: broker_pb2.GetExecutionRequest, context
+    ) -> broker_pb2.GetExecutionResponse:
+        rsp: engine_pb2.GetResultResponse = self.engine.GetResult(
+            engine_pb2.GetResultRequest()
+        )
         return broker_pb2.GetExecutionResponse(
             periods=rsp.periods,
         )

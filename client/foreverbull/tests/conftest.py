@@ -11,7 +11,6 @@ from foreverbull import Algorithm, Function, Order, entity, models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2, worker_pb2
-from google.protobuf.timestamp_pb2 import Timestamp
 
 
 @pytest.fixture(scope="session")
@@ -95,10 +94,12 @@ def parallel_algo_file(spawn_process, execution, fb_database):
         orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
-                pb = finance_pb2.Portfolio(**portfolio.model_dump())
+                pb = finance_pb2.Portfolio(
+                    **portfolio.model_dump(),
+                    timestamp=pb_utils.to_proto_timestamp(start),
+                )
                 request = worker_pb2.WorkerRequest(
                     task="parallel_algo",
-                    timestamp=pb_utils.to_proto_timestamp(start),
                     symbols=[symbol],
                     portfolio=pb,
                 )
@@ -163,10 +164,11 @@ def non_parallel_algo_file(spawn_process, execution, fb_database):
         )
         orders: list[Order] = []
         while start < execution.end:
-            pb = finance_pb2.Portfolio(**portfolio.model_dump())
+            pb = finance_pb2.Portfolio(
+                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
+            )
             request = worker_pb2.WorkerRequest(
                 task="non_parallel_algo",
-                timestamp=pb_utils.to_proto_timestamp(start),
                 symbols=execution.symbols,
                 portfolio=pb,
             )
@@ -234,10 +236,12 @@ def parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
         orders: list[Order] = []
         while start < execution.end:
             for symbol in execution.symbols:
-                pb = finance_pb2.Portfolio(**portfolio.model_dump())
+                pb = finance_pb2.Portfolio(
+                    **portfolio.model_dump(),
+                    timestamp=pb_utils.to_proto_timestamp(start),
+                )
                 request = worker_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
-                    timestamp=pb_utils.to_proto_timestamp(start),
                     symbols=[symbol],
                     portfolio=pb,
                 )
@@ -265,8 +269,12 @@ def parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
             service_pb2.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             )
         ],
@@ -309,10 +317,11 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, fb_database
         )
         orders: list[Order] = []
         while start < execution.end:
-            pb = finance_pb2.Portfolio(**portfolio.model_dump())
+            pb = finance_pb2.Portfolio(
+                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
+            )
             request = worker_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
-                timestamp=pb_utils.to_proto_timestamp(start),
                 symbols=execution.symbols,
                 portfolio=pb,
             )
@@ -340,8 +349,12 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution, fb_database
             service_pb2.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             )
         ],
@@ -377,7 +390,9 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespace_server):
+def multistep_algo_with_namespace(
+    spawn_process, execution, fb_database, namespace_server
+):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start
         portfolio = entity.finance.Portfolio(
@@ -385,15 +400,17 @@ def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespa
             portfolio_value=0,
             positions=[],
         )
-        portfolio = finance_pb2.Portfolio(**portfolio.model_dump())
         orders: list[Order] = []
         while start < execution.end:
             # filter assets
+            #
+            p = finance_pb2.Portfolio(
+                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
+            )
             req = worker_pb2.WorkerRequest(
                 task="filter_assets",
-                timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
-                portfolio=portfolio,
+                portfolio=p,
             )
             server_socket.send(req.SerializeToString())
             response = worker_pb2.WorkerResponse()
@@ -405,9 +422,8 @@ def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespa
             for symbol in execution.symbols:
                 req = worker_pb2.WorkerRequest(
                     task="measure_assets",
-                    timestamp=Timestamp().FromDatetime(start),
                     symbols=[symbol],
-                    portfolio=portfolio,
+                    portfolio=p,
                 )
                 server_socket.send(req.SerializeToString())
                 response = worker_pb2.WorkerResponse()
@@ -418,9 +434,8 @@ def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespa
             # create orders
             req = worker_pb2.WorkerRequest(
                 task="create_orders",
-                timestamp=Timestamp().FromDatetime(start),
                 symbols=execution.symbols,
-                portfolio=portfolio,
+                portfolio=p,
             )
             server_socket.send(req.SerializeToString())
             response = worker_pb2.WorkerResponse()
@@ -438,8 +453,12 @@ def multistep_algo_with_namespace(spawn_process, execution, fb_database, namespa
             service_pb2.ExecutionConfiguration.Function(
                 name="measure_assets",
                 parameters=[
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    service_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    service_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             ),
             service_pb2.ExecutionConfiguration.Function(

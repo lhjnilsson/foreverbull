@@ -1,7 +1,7 @@
 import pytest
+from example_algorithms import multistep_with_namespace, non_parallel, parallel
 from foreverbull import Portfolio
 from foreverbull_testing.data import Asset, Assets
-from tests.end_to_end import multistep_with_namespace, non_parallel, parallel
 
 
 class TestParallel:
@@ -12,7 +12,7 @@ class TestParallel:
     def test_handle_data(self, asset: Asset):
         portfolio = Portfolio(
             cash=1000,
-            value=1000,
+            portfolio_value=1000,
             positions=[],
         )
         with asset.with_end_date("2020-01-10") as a:
@@ -33,7 +33,7 @@ class TestNonParallel:
     def test_handle_data(self, assets: Assets):
         portfolio = Portfolio(
             cash=1000,
-            value=1000,
+            portfolio_value=1000,
             positions=[],
         )
         with assets.with_end_date("2020-01-10") as a:
@@ -52,7 +52,7 @@ class TestMultistepNamespace:
     def test_measure_assets(self, asset: Asset):
         portfolio = Portfolio(
             cash=1000,
-            value=1000,
+            portfolio_value=1000,
             positions=[],
         )
         with asset.with_end_date("2020-01-10") as a:
@@ -61,7 +61,7 @@ class TestMultistepNamespace:
     def test_create_orders(self, assets: Assets):
         portfolio = Portfolio(
             cash=1000,
-            value=1000,
+            portfolio_value=1000,
             positions=[],
         )
         with assets.with_end_date("2020-01-10") as a:

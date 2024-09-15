@@ -3,12 +3,11 @@ from datetime import datetime
 from typing import Any, Generator
 
 import yfinance as yf
-from foreverbull import Portfolio  # noqa
-from foreverbull import interfaces
+from foreverbull import Asset, Assets
 from pandas import DataFrame
 
 
-class DateLimitedAsset(interfaces.Asset):
+class DateLimitedAsset(Asset):
     def __init__(self, symbol: str, df: DataFrame):
         self._symbol = symbol
         self._stock_data = df
@@ -32,7 +31,7 @@ class DateLimitedAsset(interfaces.Asset):
         return self._stock_data
 
 
-class Asset(interfaces.Asset):
+class Asset(Asset):
     def __init__(self, start: str | datetime, end: str | datetime, symbol: str):
         self._start = start
         self._end = end
@@ -70,7 +69,7 @@ class Asset(interfaces.Asset):
         return self._stock_data
 
 
-class DateLimitedAssets(interfaces.Assets):
+class DateLimitedAssets(Assets):
     def __init__(self, start: str | datetime, end: str | datetime, symbols: list[str]):
         self._start = start
         self._end = end
@@ -99,7 +98,7 @@ class DateLimitedAssets(interfaces.Assets):
         return DataFrame()
 
 
-class Assets(interfaces.Assets):
+class Assets(Assets):
     def __init__(self, start: str, end: str, symbols: list[str]):
         self._start = start
         self._end = end

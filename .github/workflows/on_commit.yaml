@@ -96,7 +96,7 @@ jobs:
         with:
           context: client
           build-args: |
-            ALGO_FILE=tests/end_to_end/parallel.py
+            ALGO_FILE=example_algorithms/src/example_algorithms/parallel.py
             FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
           tags: lhjnilsson/parallel-example:on_commit
           outputs: type=docker,dest=/tmp/parallel_example.tar
@@ -105,7 +105,7 @@ jobs:
         with:
           context: client
           build-args: |
-            ALGO_FILE=tests/end_to_end/non_parallel.py
+            ALGO_FILE=example_algorithms/src/example_algorithms/non_parallel.py
             FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
           tags: lhjnilsson/non-parallel-example:on_commit
           outputs: type=docker,dest=/tmp/non_parallel_example.tar
@@ -114,7 +114,7 @@ jobs:
         with:
           context: client
           build-args: |
-            ALGO_FILE=tests/end_to_end/multistep_with_namespace.py
+            ALGO_FILE=example_algorithms/src/example_algorithms/multistep_with_namespace.py
             FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
           tags: lhjnilsson/multistep-with-namespace-example:on_commit
           outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
