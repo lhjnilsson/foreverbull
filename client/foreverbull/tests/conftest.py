@@ -1,14 +1,13 @@
+import importlib.util
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from functools import partial
-from multiprocessing import get_start_method
 from threading import Thread
 
 import pynng
 import pytest
-from foreverbull import Algorithm, Order, entity
-from foreverbull.entity.finance import OrderStatus
+from foreverbull import Algorithm, Function, Order, entity, models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2
 from foreverbull.pb.service import service_pb2, worker_pb2
@@ -17,9 +16,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 @pytest.fixture(scope="session")
 def spawn_process():
-    method = get_start_method()
-    # if method != "spawn":
-    #    set_start_method("spawn", force=True)
+    pass
 
 
 @pytest.fixture(scope="function")
@@ -69,11 +66,6 @@ def namespace_server():
 
     s.close()
     thread.join()
-
-
-import importlib.util
-
-from foreverbull import Function, models
 
 
 def get_algo(file_path: str) -> Algorithm:

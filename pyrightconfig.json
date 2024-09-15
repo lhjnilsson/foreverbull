@@ -2,7 +2,7 @@
   "venvPath": "client/",
   "venv": ".venv",
   "include": ["client/python"],
-  "exclude": ["client/.venv", "**/*_test.py", "**/conftest.py"],
+  "exclude": ["client/.venv", "client/python/foreverbull/src/foreverbull/pb"],
   "executionEnvironments": [
     {
       "root": ".",

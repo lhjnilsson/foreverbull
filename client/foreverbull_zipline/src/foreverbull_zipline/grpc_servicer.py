@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import grpc
 from foreverbull.pb.backtest import engine_pb2_grpc
-from foreverbull_zipline.engine import Engine, EngineProcess
+from foreverbull_zipline.engine import Engine
 
 
 class BacktestService(engine_pb2_grpc.EngineServicer):

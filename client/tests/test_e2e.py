@@ -2,11 +2,8 @@ from concurrent import futures
 
 import grpc
 import pytest
-from foreverbull import entity
 from foreverbull.algorithm import Algorithm
-from foreverbull.gprc_service import new_grpc_server
 from foreverbull.pb.backtest import broker_pb2_grpc, engine_pb2_grpc
-from foreverbull.pb.service import worker_pb2_grpc
 from foreverbull_zipline import grpc_servicer
 from foreverbull_zipline.engine import EngineProcess
 from tests.broker import Broker
@@ -18,7 +15,7 @@ def engine_stub():
     ep.start()
     if not ep.is_ready.wait(3.0):
         raise Exception("Engine not ready")
-    with grpc_servicer.grpc_server(ep, port=6066) as server:
+    with grpc_servicer.grpc_server(ep, port=6066):
         yield engine_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:6066"))
     ep.stop()
     ep.join(3.0)
@@ -34,9 +31,6 @@ def broker_session_stub(engine_stub):
     server.start()
     yield broker_pb2_grpc.BrokerSessionStub(grpc.insecure_channel("localhost:6067"))
     server.stop(None)
-
-
-from datetime import datetime, timezone
 
 
 @pytest.mark.parametrize("file_path", ["tests/example_algorithms/parallel.py"])

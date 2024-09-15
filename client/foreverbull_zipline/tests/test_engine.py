@@ -52,14 +52,14 @@ def test_ingest(
     ingest(backtest_entity)
     ingest_request = engine_pb2.IngestRequest(
         ingestion=backtest_pb2.Ingestion(
-            start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
-            end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
+            start_date=pb_utils.to_proto_timestamp(backtest_entity.start),  # type: ignore
+            end_date=pb_utils.to_proto_timestamp(backtest_entity.end),  # type: ignore
             symbols=backtest_entity.symbols,
         )
     )
     response = engine.ingest(ingest_request)
-    assert response.ingestion.start_date == pb_utils.to_proto_timestamp(backtest_entity.start)
-    assert response.ingestion.end_date == pb_utils.to_proto_timestamp(backtest_entity.end)
+    assert response.ingestion.start_date == pb_utils.to_proto_timestamp(backtest_entity.start)  # type: ignore
+    assert response.ingestion.end_date == pb_utils.to_proto_timestamp(backtest_entity.end)  # type: ignore
     assert response.ingestion.symbols == backtest_entity.symbols
 
 

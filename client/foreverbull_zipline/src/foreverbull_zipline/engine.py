@@ -16,7 +16,6 @@ from foreverbull.broker.storage import Storage
 from foreverbull.pb import common_pb2, pb_utils
 from foreverbull.pb.backtest import backtest_pb2, engine_pb2
 from foreverbull.pb.finance import finance_pb2
-from foreverbull.pb.service import service_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 from zipline import TradingAlgorithm
 from zipline.data import bundles

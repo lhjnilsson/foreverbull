@@ -8,6 +8,12 @@ managed = true
 virtual = true
 dev-dependencies = ["pytest-count>=0.1.0", "pytest-repeat>=0.9.3"]
 
+[tool.ruff.lint]
+exclude = ["foreverbull/src/foreverbull/pb/*"]
+
+[tool.ruff.format]
+exclude = ["foreverbull/src/foreverbull/pb/*"]
+
 [tool.rye.workspace]
 packages = ["foreverbull", "foreverbull_testing", "foreverbull_zipline"]
 

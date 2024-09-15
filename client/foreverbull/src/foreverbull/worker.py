@@ -208,7 +208,7 @@ class WorkerPool(Worker):
         self,
     ):
         try:
-            algo = models.Algorithm.from_file_path(self._file_path)
+            models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
         self._worker_surveyor_socket = pynng.Surveyor0(

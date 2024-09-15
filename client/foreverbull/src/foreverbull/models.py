@@ -1,5 +1,4 @@
 import builtins
-import datetime
 import importlib.util
 import logging
 import os
@@ -14,7 +13,7 @@ import pynng
 from foreverbull import entity
 from foreverbull.pb import pb_utils
 from foreverbull.pb.finance import finance_pb2  # noqa
-from foreverbull.pb.service import service_pb2, worker_pb2
+from foreverbull.pb.service import worker_pb2
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import Connection, create_engine, engine

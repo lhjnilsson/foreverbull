@@ -11,7 +11,6 @@ from foreverbull import entity, models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.backtest import backtest_pb2, broker_pb2, broker_pb2_grpc
 from foreverbull.pb.finance import finance_pb2  # noqa
-from foreverbull.pb.service import service_pb2
 from foreverbull.worker import WorkerPool
 
 
@@ -95,13 +94,6 @@ class Algorithm(models.Algorithm):
     @_has_session
     def get_execution(self, execution_id: str) -> tuple[entity.backtest.Execution, pandas.DataFrame]:
         rsp = self._broker_session_stub.GetExecution(broker_pb2.GetExecutionRequest(execution_id=execution_id))
-        execution = entity.backtest.Execution(
-            id=rsp.execution.id,
-            start=pb_utils.from_proto_timestamp(rsp.execution.start_date),
-            end=pb_utils.from_proto_timestamp(rsp.execution.end_date),
-            symbols=[s for s in rsp.execution.symbols],
-            benchmark=rsp.execution.benchmark,
-        )
         periods = []
         for period in rsp.periods:
             periods.append(

@@ -57,7 +57,7 @@ class Broker(broker_pb2_grpc.BrokerServicer):
     def RunExecution(
         self, request: broker_pb2.RunExecutionRequest, context
     ) -> Generator[broker_pb2.RunExecutionResponse, None, None]:
-        if self._worker_socket is None:
+        if self._worker_socket is None or self._execution is None:
             raise Exception("Session not created")
 
         rsp = self.engine.RunBacktest(

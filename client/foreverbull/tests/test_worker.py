@@ -3,7 +3,7 @@ from threading import Thread
 
 import pytest
 from foreverbull import exceptions, worker
-from foreverbull.pb.service import service_pb2, worker_pb2
+from foreverbull.pb.service import service_pb2
 
 
 class TestWorkerInstance:
@@ -123,3 +123,4 @@ class TestWorkerPool:
             pool.run_execution(stop_event)
             orders = process_symbols()
             stop_event.set()
+            assert orders
