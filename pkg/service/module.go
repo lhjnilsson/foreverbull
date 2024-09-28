@@ -4,21 +4,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	internalHTTP "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	apiDef "github.com/lhjnilsson/foreverbull/pkg/service/api"
 	"github.com/lhjnilsson/foreverbull/pkg/service/container"
-	"github.com/lhjnilsson/foreverbull/pkg/service/internal/api"
 	containerImpl "github.com/lhjnilsson/foreverbull/pkg/service/internal/container"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	"github.com/nats-io/nats.go"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 )
 
@@ -51,35 +46,37 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container, image container.Image) error {
-			serviceAPI.Use(
-				logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
-					return log.Logger
-				}),
-				),
-				internalHTTP.OrchestrationMiddleware(api.OrchestrationDependency, stream),
-				internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
-				func(ctx *gin.Context) {
-					ctx.Set(api.ContainerDependency, container)
-					ctx.Set(api.ImageDependency, image)
-					ctx.Next()
-				},
-			)
-			serviceAPI.GET("/services", api.ListServices)
-			serviceAPI.POST("/services", api.CreateService)
-			serviceAPI.GET("/services/*image", api.GetService)
-			serviceAPI.DELETE("/services/*image", api.DeleteService)
+		/*
+			func(serviceAPI *ServiceAPI, pgxpool *pgxpool.Pool, stream ServiceStream, container container.Container, image container.Image) error {
+				serviceAPI.Use(
+					logger.SetLogger(logger.WithLogger(func(ctx *gin.Context, l zerolog.Logger) zerolog.Logger {
+						return log.Logger
+					}),
+					),
+					internalHTTP.OrchestrationMiddleware(api.OrchestrationDependency, stream),
+					internalHTTP.TransactionMiddleware(api.TXDependency, pgxpool),
+					func(ctx *gin.Context) {
+						ctx.Set(api.ContainerDependency, container)
+						ctx.Set(api.ImageDependency, image)
+						ctx.Next()
+					},
+				)
+				serviceAPI.GET("/services", api.ListServices)
+				serviceAPI.POST("/services", api.CreateService)
+				serviceAPI.GET("/services/*image", api.GetService)
+				serviceAPI.DELETE("/services/*image", api.DeleteService)
 
-			serviceAPI.GET("/instances", api.ListInstances)
-			serviceAPI.GET("/instances/:instanceID", api.GetInstance)
-			serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
-			serviceAPI.POST("/instances/:instanceID/configure", api.ConfigureInstance)
-			serviceAPI.POST("/instances/:instanceID/stop", api.StopInstance)
+				serviceAPI.GET("/instances", api.ListInstances)
+				serviceAPI.GET("/instances/:instanceID", api.GetInstance)
+				serviceAPI.PATCH("/instances/:instanceID", api.PatchInstance)
+				serviceAPI.POST("/instances/:instanceID/configure", api.ConfigureInstance)
+				serviceAPI.POST("/instances/:instanceID/stop", api.StopInstance)
 
-			serviceAPI.GET("/images/*name", api.GetImage)
-			serviceAPI.POST("/images/*name", api.PullImage)
-			return nil
-		},
+				serviceAPI.GET("/images/*name", api.GetImage)
+				serviceAPI.POST("/images/*name", api.PullImage)
+				return nil
+			},
+		*/
 		func(lc fx.Lifecycle, s ServiceStream, container container.Container, conn *pgxpool.Pool) error {
 			lc.Append(
 				fx.Hook{

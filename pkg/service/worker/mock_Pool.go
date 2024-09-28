@@ -5,10 +5,10 @@ package worker
 import (
 	context "context"
 
-	entity "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	entity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	mock "github.com/stretchr/testify/mock"
 
-	serviceentity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 
 	time "time"
 )
@@ -27,6 +27,22 @@ func (_m *MockPool) Close() error {
 		r0 = rf()
 	} else {
 		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// GetAlgorithm provides a mock function with given fields:
+func (_m *MockPool) GetAlgorithm() *entity.Algorithm {
+	ret := _m.Called()
+
+	var r0 *entity.Algorithm
+	if rf, ok := ret.Get(0).(func() *entity.Algorithm); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entity.Algorithm)
+		}
 	}
 
 	return r0
@@ -61,20 +77,20 @@ func (_m *MockPool) GetPort() int {
 }
 
 // Process provides a mock function with given fields: ctx, timestamp, symbols, portfolio
-func (_m *MockPool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *entity.Portfolio) (*[]entity.Order, error) {
+func (_m *MockPool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *pb.Portfolio) ([]*pb.Order, error) {
 	ret := _m.Called(ctx, timestamp, symbols, portfolio)
 
-	var r0 *[]entity.Order
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *entity.Portfolio) *[]entity.Order); ok {
+	var r0 []*pb.Order
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *pb.Portfolio) []*pb.Order); ok {
 		r0 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*[]entity.Order)
+			r0 = ret.Get(0).([]*pb.Order)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *entity.Portfolio) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *pb.Portfolio) error); ok {
 		r1 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		r1 = ret.Error(1)
@@ -84,11 +100,11 @@ func (_m *MockPool) Process(ctx context.Context, timestamp time.Time, symbols []
 }
 
 // SetAlgorithm provides a mock function with given fields: algo
-func (_m *MockPool) SetAlgorithm(algo *serviceentity.Algorithm) error {
+func (_m *MockPool) SetAlgorithm(algo *entity.Algorithm) error {
 	ret := _m.Called(algo)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*serviceentity.Algorithm) error); ok {
+	if rf, ok := ret.Get(0).(func(*entity.Algorithm) error); ok {
 		r0 = rf(algo)
 	} else {
 		r0 = ret.Error(0)

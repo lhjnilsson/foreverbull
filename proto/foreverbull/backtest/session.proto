@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package foreverbull.backtest;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+
+message Session {
+    message Status {
+        enum Status {
+            CREATED = 0;
+            RUNNING = 1;
+            COMPLETED = 2;
+            FAILED = 3;
+        }
+        Status status = 1;
+        optional string error = 2;
+        google.protobuf.Timestamp occurred_at = 3;
+    }
+    string id = 1;
+    string backtest = 2;
+    repeated Status statuses = 3;
+    int64 executions = 4;
+    optional int64 port = 5;
+}

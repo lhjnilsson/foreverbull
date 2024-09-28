@@ -13,6 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/service/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -23,7 +24,7 @@ type ServiceTest struct {
 
 	db *pgxpool.Pool
 
-	testService *entity.Service
+	testService *pb.Service
 }
 
 func TestServiceCommands(t *testing.T) {

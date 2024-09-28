@@ -32,14 +32,10 @@ type SessionRunCommand struct {
 	WorkerInstanceIDs  []string `json:"worker_instance_ids"`
 }
 
-func NewSessionRunCommand(backtest, sessionid string, manual bool,
-	backtestInstanceID string, workerinstanceIDS []string) (stream.Message, error) {
+func NewSessionRunCommand(backtest, sessionid string) (stream.Message, error) {
 	entity := &SessionRunCommand{
-		Backtest:           backtest,
-		SessionID:          sessionid,
-		Manual:             manual,
-		BacktestInstanceID: backtestInstanceID,
-		WorkerInstanceIDs:  workerinstanceIDS,
+		Backtest:  backtest,
+		SessionID: sessionid,
 	}
 	return stream.NewMessage("backtest", "session", "run", entity)
 }
@@ -92,11 +88,13 @@ func NewSessionRunOrchestration(backtest *entity.Backtest, session *entity.Sessi
 		workerInstanceIDs = append(workerInstanceIDs, workerInstanceID)
 	}
 
-	msg, err := NewSessionRunCommand(backtest.Name, session.ID, session.Manual, backtestInstanceID, workerInstanceIDs)
-	if err != nil {
-		return nil, err
-	}
-	orchestration.AddStep("run session", []stream.Message{msg})
+	/*
+		msg, err := NewSessionRunCommand(backtest.Name, session.ID, session.Manual, backtestInstanceID, workerInstanceIDs)
+		if err != nil {
+			return nil, err
+		}
+		orchestration.AddStep("run session", []stream.Message{msg})
+	*/
 
 	statusMsg, err = NewUpdateSessionStatusCommand(session.ID, entity.SessionStatusCompleted, nil)
 	if err != nil {

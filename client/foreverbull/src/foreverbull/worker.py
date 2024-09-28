@@ -13,14 +13,18 @@ import pynng
 import sqlalchemy
 from foreverbull import exceptions, models
 from foreverbull.models import get_engine
-from foreverbull.pb import common_pb2
-from foreverbull.pb.finance import finance_pb2
-from foreverbull.pb.service import service_pb2, worker_pb2
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.service import (
+    service_pb2,
+    worker_pb2,
+    worker_service_pb2,
+)
 
 
 class Worker(ABC):
     @abstractmethod
-    def configure_execution(self, req: service_pb2.ExecutionConfiguration) -> None:
+    def configure_execution(self, req: worker_pb2.ExecutionConfiguration) -> None:
         pass
 
     @abstractmethod
@@ -37,7 +41,7 @@ class WorkerInstance(Worker):
         self._namespace_socket: pynng.Socket | None = None
         self._database_engine: sqlalchemy.Engine | None = None
 
-    def configure_execution(self, req: service_pb2.ExecutionConfiguration) -> None:
+    def configure_execution(self, req: worker_pb2.ExecutionConfiguration) -> None:
         self.logger.info("configuring worker")
         try:
             self._algo = models.Algorithm.from_file_path(self._file_path)
@@ -47,13 +51,19 @@ class WorkerInstance(Worker):
         _hostname = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
         try:
             self._broker_socket = pynng.Rep0(
-                dial=f"tcp://{_hostname}:{req.brokerPort}", block_on_dial=True, recv_timeout=500, send_timeout=500
+                dial=f"tcp://{_hostname}:{req.brokerPort}",
+                block_on_dial=True,
+                recv_timeout=500,
+                send_timeout=500,
             )
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
         try:
             self._namespace_socket = pynng.Req0(
-                dial=f"tcp://{_hostname}:{req.namespacePort}", block_on_dial=True, recv_timeout=500, send_timeout=500
+                dial=f"tcp://{_hostname}:{req.namespacePort}",
+                block_on_dial=True,
+                recv_timeout=500,
+                send_timeout=500,
             )
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to namespace: {e}")
@@ -75,11 +85,17 @@ class WorkerInstance(Worker):
     @property
     def is_configured(self) -> bool:
         return (
-            self._database_engine is not None and self._broker_socket is not None and self._namespace_socket is not None
+            self._database_engine is not None
+            and self._broker_socket is not None
+            and self._namespace_socket is not None
         )
 
     def run_execution(self, stop_event: Event | threading.Event) -> None:
-        if not self._database_engine or not self._broker_socket or not self._namespace_socket:
+        if (
+            not self._database_engine
+            or not self._broker_socket
+            or not self._namespace_socket
+        ):
             raise exceptions.ConfigurationError("Worker not configured")
 
         while not stop_event.is_set():
@@ -87,9 +103,11 @@ class WorkerInstance(Worker):
             self.logger.debug("Getting context socket")
             context_socket = self._broker_socket.new_context()
             try:
-                request = worker_pb2.WorkerRequest()
+                request = worker_service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
-                response = worker_pb2.WorkerResponse(task=request.task, error=None)
+                response = worker_service_pb2.WorkerResponse(
+                    task=request.task, error=None
+                )
                 self.logger.info("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
@@ -100,7 +118,9 @@ class WorkerInstance(Worker):
                     )
                 self.logger.info("Sending orders to broker: %s", orders)
                 for order in orders:
-                    response.orders.append(finance_pb2.Order(symbol=order.symbol, amount=order.amount))
+                    response.orders.append(
+                        finance_pb2.Order(symbol=order.symbol, amount=order.amount)
+                    )
                 context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
@@ -108,7 +128,7 @@ class WorkerInstance(Worker):
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
-                    response = worker_pb2.WorkerResponse()
+                    response = worker_service_pb2.WorkerResponse()
                     response.error = repr(e)
                     context_socket.send(response.SerializeToString())
                 if context_socket:
@@ -140,7 +160,10 @@ class WorkerDaemon(WorkerInstance):
         self.logger = logging.getLogger(__name__)
         try:
             responder = pynng.Respondent0(
-                dial=self._survey_address, block_on_dial=True, send_timeout=500, recv_timeout=500
+                dial=self._survey_address,
+                block_on_dial=True,
+                send_timeout=500,
+                recv_timeout=500,
             )
         except Exception as e:
             self.logger.error(f"Unable to connect to surveyor: {e}")
@@ -154,7 +177,7 @@ class WorkerDaemon(WorkerInstance):
                 request.ParseFromString(responder.recv())
                 self.logger.info(f"Received request: {request.task}")
                 if request.task == "configure":
-                    req = service_pb2.ExecutionConfiguration()
+                    req = worker_pb2.ExecutionConfiguration()
                     req.ParseFromString(request.data)
                     self.configure_execution(req)
                     response = common_pb2.Response(task=request.task, error=None)
@@ -187,8 +210,12 @@ class WorkerPool(Worker):
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger(__name__)
         self._log_queue = Queue()
-        self._log_thread = threading.Thread(target=self.logger_thread, args=(self._log_queue,), daemon=True)
-        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
+        self._log_thread = threading.Thread(
+            target=self.logger_thread, args=(self._log_queue,), daemon=True
+        )
+        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = (
+            None
+        )
 
     @staticmethod
     def logger_thread(queue: Queue):
@@ -219,7 +246,11 @@ class WorkerPool(Worker):
             for _ in range(self._executors):
                 is_ready = threading.Event()
                 daemon = WorkerDaemon(
-                    self._worker_surveyor_address, self._log_queue, is_ready, stop_event, self._file_path
+                    self._worker_surveyor_address,
+                    self._log_queue,
+                    is_ready,
+                    stop_event,
+                    self._file_path,
                 )
                 t = threading.Thread(target=daemon.run, args=())
                 t.start()
@@ -232,7 +263,11 @@ class WorkerPool(Worker):
             for _ in range(self._executors):
                 is_ready = multiprocessing.Event()
                 daemon = WorkerDaemon(
-                    self._worker_surveyor_address, self._log_queue, is_ready, stop_event, self._file_path
+                    self._worker_surveyor_address,
+                    self._log_queue,
+                    is_ready,
+                    stop_event,
+                    self._file_path,
                 )
                 p = Process(target=daemon.run, args=())
                 p.start()
@@ -264,7 +299,7 @@ class WorkerPool(Worker):
         return wrapper
 
     @_is_running
-    def configure_execution(self, req: service_pb2.ExecutionConfiguration):
+    def configure_execution(self, req: worker_pb2.ExecutionConfiguration):
         data = common_pb2.Request(task="configure", data=req.SerializeToString())
         self._worker_surveyor_socket.send(data.SerializeToString())
         responders = 0
@@ -274,7 +309,9 @@ class WorkerPool(Worker):
                 response = common_pb2.Response()
                 response.ParseFromString(msg)
                 if response.HasField("error"):
-                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
+                    raise exceptions.ConfigurationError(
+                        f"Worker error: {response.error}"
+                    )
                 responders += 1
                 if responders == len(self._workers):
                     break
@@ -294,7 +331,9 @@ class WorkerPool(Worker):
                 response = common_pb2.Response()
                 response.ParseFromString(msg)
                 if response.HasField("error"):
-                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
+                    raise exceptions.ConfigurationError(
+                        f"Worker error: {response.error}"
+                    )
                 responders += 1
                 if responders == len(self._workers):
                     break

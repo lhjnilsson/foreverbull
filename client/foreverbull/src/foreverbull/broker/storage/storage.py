@@ -8,7 +8,9 @@ from .backtest import Backtest
 
 class Storage:
     def __init__(self, address, access_key, secret_key, secure=False):
-        self.client = minio.Minio(address, access_key=access_key, secret_key=secret_key, secure=secure)
+        self.client = minio.Minio(
+            address, access_key=access_key, secret_key=secret_key, secure=secure
+        )
         self.client.bucket_exists("backtest-results")
         self.client.bucket_exists("backtest-ingestions")
         self.backtest: Backtest = Backtest(self.client)
@@ -28,5 +30,8 @@ class Storage:
             secure=bool(env.get("STORAGE_SECURE", False)),
         )
 
-    def create_bucket(self, bucket_name):
-        self.client.make_bucket(bucket_name)
+    def upload_object(self, bucket: str, remote_name: str, local_name: str) -> None:
+        self.client.fput_object(bucket, remote_name, local_name)
+
+    def download_object(self, bucket: str, remote_name: str, local_name: str) -> None:
+        self.client.fget_object(bucket, remote_name, local_name)

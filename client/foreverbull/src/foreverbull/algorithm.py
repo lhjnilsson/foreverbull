@@ -9,8 +9,15 @@ import grpc
 import pandas
 from foreverbull import entity, models
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, broker_pb2, broker_pb2_grpc
-from foreverbull.pb.finance import finance_pb2  # noqa
+from foreverbull.pb.foreverbull.backtest import (
+    backtest_pb2,
+    backtest_service_pb2,
+    backtest_service_pb2_grpc,
+    session_pb2,
+    session_service_pb2,
+    session_service_pb2_grpc,
+)
+from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
 from foreverbull.worker import WorkerPool
 
 
@@ -30,18 +37,31 @@ class Algorithm(models.Algorithm):
         return cls(functions, models.Algorithm._namespaces)
 
     @contextmanager
-    def backtest_session(self, backtest_name: str, broker_hostname: str = "localhost", broker_port: int = 50052):
+    def backtest_session(
+        self,
+        backtest_name: str,
+        broker_hostname: str = "localhost",
+        broker_port: int = 50052,
+    ):
         channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
-        self._broker_stub = broker_pb2_grpc.BrokerStub(channel)
-        self._backtest_session: backtest_pb2.Session | None = None
-        rsp = self._broker_stub.CreateSession(broker_pb2.CreateSessionRequest(backtest_name=backtest_name))
+        self._broker_stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
+        self._backtest_session: session_pb2.Session | None = None
+        rsp = self._broker_stub.CreateSession(
+            backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name)
+        )
         while not rsp.session.HasField("port"):
-            rsp = self._broker_stub.GetSession(broker_pb2.GetSessionRequest(session_id=rsp.session.id))
-            if rsp.session.statuses and rsp.session.statuses[0].status == entity.backtest.SessionStatusType.FAILED:
+            rsp = self._broker_stub.GetSession(
+                backtest_service_pb2.GetSessionRequest(session_id=rsp.session.id)
+            )
+            if (
+                rsp.session.statuses
+                and rsp.session.statuses[0].status
+                == entity.backtest.SessionStatusType.FAILED
+            ):
                 raise Exception(f"Session failed: {rsp.session.statuses[-1].error}")
             time.sleep(0.5)
         self._backtest_session = rsp.session
-        self._broker_session_stub = broker_pb2_grpc.BrokerSessionStub(
+        self._broker_session_stub = session_service_pb2_grpc.SessionServicerStub(
             grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
         )
         yield self
@@ -59,8 +79,10 @@ class Algorithm(models.Algorithm):
 
     @_has_session
     def get_default(self) -> entity.backtest.Backtest:
-        rsp: broker_pb2.GetBacktestResponse = self._broker_stub.GetBacktest(
-            broker_pb2.GetBacktestRequest(name=self._backtest_session.backtest)
+        rsp: backtest_service_pb2.GetBacktestResponse = self._broker_stub.GetBacktest(
+            backtest_service_pb2.GetBacktestRequest(
+                name=self._backtest_session.backtest
+            )
         )
         return entity.backtest.Backtest(
             name=rsp.name,
@@ -75,8 +97,7 @@ class Algorithm(models.Algorithm):
         self, start: datetime, end: datetime, symbols: list[str], benchmark=None
     ) -> Generator[entity.finance.Portfolio, None, None]:
         with WorkerPool(self._file_path) as wp:
-            req = broker_pb2.CreateExecutionRequest(
-                session_id=self._backtest_session.id,
+            req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
                     start_date=pb_utils.to_proto_timestamp(start),
                     end_date=pb_utils.to_proto_timestamp(end),
@@ -87,13 +108,19 @@ class Algorithm(models.Algorithm):
             rsp = self._broker_session_stub.CreateExecution(req)
             wp.configure_execution(rsp.configuration)
             wp.run_execution(Event())
-            rsp = self._broker_session_stub.RunExecution(broker_pb2.RunExecutionRequest(execution_id="123"))
+            rsp = self._broker_session_stub.RunExecution(
+                broker_pb2.RunExecutionRequest(execution_id="123")
+            )
             for message in rsp:
                 yield message.portfolio
 
     @_has_session
-    def get_execution(self, execution_id: str) -> tuple[entity.backtest.Execution, pandas.DataFrame]:
-        rsp = self._broker_session_stub.GetExecution(broker_pb2.GetExecutionRequest(execution_id=execution_id))
+    def get_execution(
+        self, execution_id: str
+    ) -> tuple[entity.backtest.Execution, pandas.DataFrame]:
+        rsp = self._broker_session_stub.GetExecution(
+            broker_pb2.GetExecutionRequest(execution_id=execution_id)
+        )
         periods = []
         for period in rsp.periods:
             periods.append(

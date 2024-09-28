@@ -16,8 +16,10 @@ import (
 type Dependency string
 
 const (
-	DBDep     Dependency = "db"
-	StreamDep Dependency = "stream"
+	DBDep              Dependency = "db"
+	StreamDep          Dependency = "stream"
+	ContainerEngineDep Dependency = "container_engine"
+	StorageDep         Dependency = "storage"
 )
 
 type Handler interface {

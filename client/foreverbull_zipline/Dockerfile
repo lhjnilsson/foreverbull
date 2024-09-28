@@ -8,4 +8,9 @@ RUN pip install /foreverbull-0.0.1-py3-none-any.whl
 
 RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
 WORKDIR /app
+
+RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.34/grpc_health_probe-linux-amd64
+RUN chmod +x /bin/grpc_health_probe
+HEALTHCHECK --interval=5s --timeout=3s CMD grpc_health_probe -addr=:50055
+
 CMD ["python", "-m", "foreverbull_zipline"]

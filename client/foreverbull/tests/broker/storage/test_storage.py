@@ -25,10 +25,11 @@ from foreverbull.broker.storage.storage import Storage
 )
 def test_storage(env):
     # TODO: more proper test
-    with patch("minio.Minio.make_bucket"), patch("minio.Minio.bucket_exists") as mock_bucket_exists:
+    with patch("minio.Minio.make_bucket"), patch(
+        "minio.Minio.bucket_exists"
+    ) as mock_bucket_exists:
         mock_bucket_exists.return_value = True
         storage = Storage.from_environment(env)
         assert storage
         assert storage.client
         assert storage.backtest
-        storage.create_bucket("test")

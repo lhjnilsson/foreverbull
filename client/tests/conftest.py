@@ -6,7 +6,11 @@ import pandas as pd
 import pytest
 from foreverbull import entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2
+from foreverbull.pb.foreverbull.backtest import (
+    backtest_pb2,
+    engine_service_pb2,
+    ingestion_pb2,
+)
 from foreverbull_zipline import engine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from zipline.api import order_target, symbol
@@ -68,12 +72,18 @@ def foreverbull_bundle(execution: entity.backtest.Execution, fb_database):
                 stored_asset = bundle.asset_finder.lookup_symbol(s, as_of_date=None)
             except SymbolNotFound:
                 raise LookupError(f"Asset {s} not found in bundle")
-            backtest_start = pd.Timestamp(backtest_entity.start).normalize().tz_localize(None)
+            backtest_start = (
+                pd.Timestamp(backtest_entity.start).normalize().tz_localize(None)
+            )
             if backtest_start < stored_asset.start_date:
-                print("Start date is not correct", backtest_start, stored_asset.start_date)
+                print(
+                    "Start date is not correct", backtest_start, stored_asset.start_date
+                )
                 raise ValueError("Start date is not correct")
 
-            backtest_end = pd.Timestamp(backtest_entity.end).normalize().tz_localize(None)
+            backtest_end = (
+                pd.Timestamp(backtest_entity.end).normalize().tz_localize(None)
+            )
             if backtest_end > stored_asset.end_date:
                 print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
@@ -85,8 +95,8 @@ def foreverbull_bundle(execution: entity.backtest.Execution, fb_database):
     except (ValueError, LookupError) as exc:
         print("Creating bundle", exc)
         e = engine.EngineProcess()
-        req = engine_pb2.IngestRequest(
-            ingestion=backtest_pb2.Ingestion(
+        req = engine_service_pb2.IngestRequest(
+            ingestion=ingestion_pb2.Ingestion(
                 start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
                 end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
                 symbols=backtest_entity.symbols,
@@ -100,14 +110,20 @@ def baseline_performance_initialize(context):
     context.held_positions = []
 
 
-def baseline_performance_handle_data(context, data, execution: entity.backtest.Execution):
+def baseline_performance_handle_data(
+    context, data, execution: entity.backtest.Execution
+):
     context.i += 1
     if context.i < 30:
         return
 
     for s in execution.symbols:
-        short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
-        long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
+        short_mean = data.history(
+            symbol(s), "close", bar_count=10, frequency="1d"
+        ).mean()
+        long_mean = data.history(
+            symbol(s), "close", bar_count=30, frequency="1d"
+        ).mean()
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
             context.held_positions.append(s)

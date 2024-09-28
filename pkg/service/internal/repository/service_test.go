@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -43,25 +43,25 @@ func (test *ServiceTest) TestCreate() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	service, err := db.Create(ctx, "image")
+	service, err := db.Create(ctx, "test_image")
 	test.NoError(err)
-	test.Equal("image", service.Image)
+	test.Equal("test_image", service.Image)
 	test.Len(service.Statuses, 1)
-	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
+	test.Equal(pb.Service_Status_CREATED.String(), service.Statuses[0].Status.String())
 }
 
 func (test *ServiceTest) TestGet() {
 	ctx := context.Background()
 
 	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "image")
+	_, err := db.Create(ctx, "test_image")
 	test.NoError(err)
 
-	service, err := db.Get(ctx, "image")
+	service, err := db.Get(ctx, "test_image")
 	test.NoError(err)
-	test.Equal("image", service.Image)
+	test.Equal("test_image", service.Image)
 	test.Len(service.Statuses, 1)
-	test.Equal(entity.ServiceStatusCreated, service.Statuses[0].Status)
+	test.Equal(pb.Service_Status_CREATED.String(), service.Statuses[0].Status.String())
 }
 
 func (test *ServiceTest) TestSetAlgorithm() {
@@ -71,7 +71,7 @@ func (test *ServiceTest) TestSetAlgorithm() {
 	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	algorithm := &entity.Algorithm{
+	algorithm := &pb.Algorithm{
 		FilePath: "/file.py",
 	}
 	err = db.SetAlgorithm(ctx, "image", algorithm)
@@ -91,15 +91,15 @@ func (test *ServiceTest) TestUpdateStatus() {
 	_, err := db.Create(ctx, "image")
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "image", entity.ServiceStatusReady, nil)
+	err = db.UpdateStatus(ctx, "image", pb.Service_Status_READY, nil)
 	test.NoError(err)
 
 	service, err := db.Get(ctx, "image")
 	test.NoError(err)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 2)
-	test.Equal(entity.ServiceStatusReady, service.Statuses[0].Status)
-	test.Equal(entity.ServiceStatusCreated, service.Statuses[1].Status)
+	test.Equal(pb.Service_Status_READY.String(), service.Statuses[0].Status.String())
+	test.Equal(pb.Service_Status_CREATED.String(), service.Statuses[1].Status.String())
 }
 
 func (test *ServiceTest) TestList() {
@@ -113,7 +113,7 @@ func (test *ServiceTest) TestList() {
 
 	services, err := db.List(ctx)
 	test.NoError(err)
-	test.Len(*services, 2)
+	test.Len(services, 2)
 }
 
 func (test *ServiceTest) TestDelete() {

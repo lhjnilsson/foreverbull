@@ -17,7 +17,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
-	"github.com/lhjnilsson/foreverbull/pkg/strategy"
 
 	"go.uber.org/fx"
 )
@@ -53,7 +52,6 @@ func app() *fx.App {
 		backtest.Module,
 		finance.Module,
 		service.Module,
-		strategy.Module,
 		stream.OrchestrationLifecycle,
 	)
 }

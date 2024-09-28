@@ -5,15 +5,12 @@ import (
 	"errors"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 )
 
 const AssetTable = `CREATE TABLE IF NOT EXISTS asset (
 symbol text primary key,
-name text,
-title text,
-asset_type text
-);
+name text);
 `
 
 type Asset struct {
@@ -24,51 +21,50 @@ type Asset struct {
 List
 List all assets stored
 */
-func (db *Asset) List(ctx context.Context) (*[]entity.Asset, error) {
+func (db *Asset) List(ctx context.Context) ([]*pb.Asset, error) {
 	rows, err := db.Conn.Query(
 		ctx,
-		`SELECT asset.symbol, name, title, asset_type, min(ohlc.time), max(ohlc.time) FROM asset
-		LEFT JOIN ohlc ON ohlc.symbol = asset.symbol GROUP BY asset.symbol`,
+		`SELECT symbol, name FROM asset`,
 	)
 	if err != nil {
 		return nil, err
 	}
-	assets := make([]entity.Asset, 0)
+	assets := make([]*pb.Asset, 0)
 	for rows.Next() {
-		i := entity.Asset{}
-		err := rows.Scan(&i.Symbol, &i.Name, &i.Title, &i.Type, &i.StartOHLC, &i.EndOHLC)
+		a := pb.Asset{}
+		err := rows.Scan(&a.Symbol, &a.Name)
 		if err != nil {
 			return nil, err
 		}
-		assets = append(assets, i)
+		assets = append(assets, &a)
 	}
 	if rows.Err() != nil {
 		return nil, err
 	}
-	return &assets, nil
+	return assets, nil
 }
 
 /*
 ListBySymbols
 List all assets stored based on list of symbols
 */
-func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) (*[]entity.Asset, error) {
+func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) ([]*pb.Asset, error) {
 	rows, err := db.Conn.Query(
 		ctx,
-		"SELECT symbol, name, title, asset_type FROM asset WHERE symbol = ANY($1)",
+		"SELECT symbol, name  FROM asset WHERE symbol = ANY($1)",
 		symbols,
 	)
 	if err != nil {
 		return nil, err
 	}
-	assets := make([]entity.Asset, 0)
+	assets := make([]*pb.Asset, 0)
 	for rows.Next() {
-		i := entity.Asset{}
-		err := rows.Scan(&i.Symbol, &i.Name, &i.Title, &i.Type)
+		a := pb.Asset{}
+		err := rows.Scan(&a.Symbol, &a.Name)
 		if err != nil {
 			return nil, err
 		}
-		assets = append(assets, i)
+		assets = append(assets, &a)
 	}
 	if rows.Err() != nil {
 		return nil, err
@@ -76,17 +72,17 @@ func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) (*[]entity
 	if len(assets) != len(symbols) {
 		return nil, errors.New("not all symbols found")
 	}
-	return &assets, nil
+	return assets, nil
 }
 
 /*
 Create
 Create a new asset
 */
-func (db *Asset) Store(ctx context.Context, i *entity.Asset) error {
+func (db *Asset) Store(ctx context.Context, symbol, name string) error {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO asset(symbol, name, title, asset_type) values($1, $2, $3, $4)
-		ON CONFLICT DO NOTHING`, i.Symbol, i.Name, i.Title, i.Type)
+		`INSERT INTO asset(symbol, name) values($1, $2)
+		ON CONFLICT DO NOTHING`, symbol, name)
 	return err
 }
 
@@ -94,11 +90,11 @@ func (db *Asset) Store(ctx context.Context, i *entity.Asset) error {
 Get
 Get a asset based on asset symbol
 */
-func (db *Asset) Get(ctx context.Context, symbol string) (*entity.Asset, error) {
-	a := entity.Asset{Symbol: symbol}
+func (db *Asset) Get(ctx context.Context, symbol string) (*pb.Asset, error) {
+	a := pb.Asset{Symbol: symbol}
 	err := db.Conn.QueryRow(ctx,
-		"SELECT name, title, asset_type FROM asset WHERE symbol=$1", symbol).Scan(
-		&a.Name, &a.Title, &a.Type)
+		"SELECT name FROM asset WHERE symbol=$1", symbol).Scan(
+		&a.Name)
 	if err != nil {
 		return nil, err
 	}

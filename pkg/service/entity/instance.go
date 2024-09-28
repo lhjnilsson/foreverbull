@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
+	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 type InstanceStatusType string
@@ -48,48 +49,27 @@ func (i *Instance) GetSocket() (socket.Requester, error) {
 	return socket.NewRequester(*i.Host, *i.Port, true)
 }
 
-func (i *Instance) GetInfo() (string, *Algorithm, error) {
-	request := service_pb.Request{
+func (i *Instance) GetInfo() (*Algorithm, error) {
+	request := common_pb.Request{
 		Task: "info",
 	}
-	response := service_pb.Response{}
+	response := common_pb.Response{}
 	socket, err := i.GetSocket()
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to get socket: %v", err)
+		return nil, fmt.Errorf("failed to get socket: %v", err)
 	}
 	if err := socket.Request(&request, &response); err != nil {
-		return "", nil, fmt.Errorf("failed to send request: %v", err)
+		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
 	if response.Error != nil {
-		return "", nil, fmt.Errorf("error in response: %s", *response.Error)
+		return nil, fmt.Errorf("error in response: %s", *response.Error)
 	}
-	service_info_rsp := service_pb.ServiceInfoResponse{}
+	service_info_rsp := service_pb.GetServiceInfoResponse{}
 	if err := proto.Unmarshal(response.Data, &service_info_rsp); err != nil {
-		return "", nil, fmt.Errorf("failed to unmarshal response: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
 	}
-	var a *Algorithm
-	if service_info_rsp.Algorithm != nil {
-		algorithm := service_info_rsp.Algorithm
-		a = &Algorithm{
-			FilePath:   algorithm.FilePath,
-			Namespaces: service_info_rsp.Algorithm.Namespaces,
-		}
-		for _, function := range algorithm.Functions {
-			f := AlgorithmFunction{
-				Name: function.Name,
-			}
-			for _, parameter := range function.Parameters {
-				p := FunctionParameter{
-					Key:     parameter.Key,
-					Type:    parameter.ValueType,
-					Default: parameter.DefaultValue,
-				}
-				f.Parameters = append(f.Parameters, p)
-			}
-			a.Functions = append(a.Functions, f)
-		}
-	}
-	return service_info_rsp.ServiceType, a, nil
+
+	return nil, nil
 }
 
 func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
@@ -98,32 +78,34 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		return fmt.Errorf("failed to get socket: %v", err)
 	}
 	configure_req := service_pb.ConfigureExecutionRequest{
-		BrokerPort:    int32(*i.BrokerPort),
-		NamespacePort: int32(*i.NamespacePort),
-		DatabaseURL:   *i.DatabaseURL,
+		Configuration: &service_pb.ExecutionConfiguration{
+			BrokerPort:    int32(*i.BrokerPort),
+			NamespacePort: int32(*i.NamespacePort),
+			DatabaseURL:   *i.DatabaseURL,
+		},
 	}
 	for key, value := range *configuration {
-		f := service_pb.ConfigureExecutionRequest_Function{
+		f := service_pb.ExecutionConfiguration_Function{
 			Name: key,
 		}
 		for k, v := range value.Parameters {
-			param := service_pb.ConfigureExecutionRequest_FunctionParameter{
+			param := service_pb.ExecutionConfiguration_FunctionParameter{
 				Key:   k,
 				Value: v,
 			}
 			f.Parameters = append(f.Parameters, &param)
 		}
-		configure_req.Functions = append(configure_req.Functions, &f)
+		configure_req.Configuration.Functions = append(configure_req.Configuration.Functions, &f)
 	}
 	data, err := proto.Marshal(&configure_req)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %v", err)
 	}
-	request := service_pb.Request{
+	request := common_pb.Request{
 		Task: "configure_execution",
 		Data: data,
 	}
-	response := service_pb.Response{}
+	response := common_pb.Response{}
 	if err := s.Request(&request, &response, socket.WithReadTimeout(time.Second), socket.WithSendTimeout(time.Second)); err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
@@ -131,10 +113,10 @@ func (i *Instance) Configure(configuration *map[string]InstanceFunction) error {
 		return fmt.Errorf("error in response: %s", *response.Error)
 	}
 
-	request = service_pb.Request{
+	request = common_pb.Request{
 		Task: "run_execution",
 	}
-	response = service_pb.Response{}
+	response = common_pb.Response{}
 	if err := s.Request(&request, &response, socket.WithReadTimeout(time.Second), socket.WithSendTimeout(time.Second)); err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
@@ -149,10 +131,10 @@ func (i *Instance) Stop() error {
 	if err != nil {
 		return fmt.Errorf("failed to get socket: %v", err)
 	}
-	request := service_pb.Request{
+	request := common_pb.Request{
 		Task: "stop",
 	}
-	response := service_pb.Response{}
+	response := common_pb.Response{}
 	if err := socket.Request(&request, &response); err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package foreverbull.backtest;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+
+import "foreverbull/backtest/backtest.proto";
+import "foreverbull/service/worker.proto";
+import "foreverbull/finance/finance.proto";
+import "foreverbull/backtest/execution.proto";
+
+
+message CreateExecutionRequest {
+    foreverbull.backtest.Backtest backtest = 1;
+    foreverbull.service.Algorithm algorithm = 2;
+}
+
+message CreateExecutionResponse {
+    foreverbull.backtest.Execution execution = 1;
+    foreverbull.service.ExecutionConfiguration configuration = 2;
+}
+
+message RunExecutionRequest {
+    string execution_id = 1;
+}
+
+message RunExecutionResponse {
+    foreverbull.backtest.Execution execution = 1;
+    foreverbull.finance.Portfolio portfolio = 2;
+}
+
+message GetExecutionRequest {
+    string execution_id = 1;
+}
+
+message GetExecutionResponse {
+    foreverbull.backtest.Execution execution = 1;
+    repeated Period periods = 2;
+}
+
+message StopServerRequest {
+}
+
+message StopServerResponse {
+}
+
+service SessionServicer {
+    rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
+    rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
+    rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
+    rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
+}

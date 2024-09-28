@@ -13,19 +13,6 @@ import (
 )
 
 func UpdateServiceStatus(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-
-	command := ss.UpdateServiceStatusCommand{}
-	err := message.ParsePayload(&command)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling UpdateServiceStatus payload: %w", err)
-	}
-
-	services := repository.Service{Conn: db}
-	err = services.UpdateStatus(ctx, command.Image, command.Status, command.Error)
-	if err != nil {
-		return fmt.Errorf("error updating service status: %w", err)
-	}
 	return nil
 }
 

@@ -2,19 +2,21 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
 
 const ExecutionTable = `CREATE TABLE IF NOT EXISTS execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
-status text NOT NULL DEFAULT 'CREATED',
+status int NOT NULL DEFAULT 0,
 error TEXT,
-calendar text,
 start_at TIMESTAMPTZ,
 end_at TIMESTAMPTZ,
 benchmark text,
@@ -22,7 +24,7 @@ symbols text[]);
 
 CREATE TABLE IF NOT EXISTS execution_status (
 	id text REFERENCES execution(id) ON DELETE CASCADE,
-	status text NOT NULL,
+	status int NOT NULL,
 	error text,
 	occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -48,18 +50,73 @@ EXCEPTION
 	WHEN duplicate_object THEN
 		NULL;
 END$$;
+
+CREATE TABLE IF NOT EXISTS backtest_period (
+	id serial primary key,
+	backtest_execution text not null,
+
+	timestamp timestamp not null,
+	pnl numeric  not null,
+	returns numeric  not null,
+	portfolio_value numeric  not null,
+
+	longs_count integer,
+	shorts_count integer,
+	long_value numeric  not null,
+	short_value numeric  not null,
+	starting_exposure numeric  not null,
+	ending_exposure numeric  not null,
+	long_exposure numeric  not null,
+	short_exposure numeric  not null,
+
+	capital_used numeric  not null,
+	gross_leverage numeric  not null,
+	net_leverage numeric  not null,
+
+	starting_value numeric  not null,
+	ending_value numeric  not null,
+	starting_cash numeric  not null,
+	ending_cash numeric  not null,
+
+	max_drawdown numeric  not null,
+	max_leverage numeric  not null,
+	excess_returns numeric  not null,
+	treasury_period_return numeric  not null,
+	algorithm_period_return numeric  not null,
+
+	algo_volatility numeric,
+	sharpe numeric,
+	sortino numeric,
+
+	benchmark_period_return numeric,
+	benchmark_volatility numeric,
+	alpha numeric,
+	beta numeric
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'unique_backtest_period'
+        AND conrelid = 'backtest_period'::regclass
+    ) THEN
+        ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(backtest_execution, timestamp);
+    END IF;
+END $$;
 `
 
 type Execution struct {
 	Conn postgres.Query
 }
 
-func (db *Execution) Create(ctx context.Context, session, calendar string, start, end time.Time,
-	symbols []string, benchmark *string) (*entity.Execution, error) {
+func (db *Execution) Create(ctx context.Context, session string, start, end time.Time,
+	symbols []string, benchmark *string) (*pb.Execution, error) {
 	var id string
 	err := db.Conn.QueryRow(ctx,
-		`INSERT INTO execution (session, calendar, start_at, end_at, benchmark, symbols)
-		VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, session, calendar, start, end, benchmark, symbols).
+		`INSERT INTO execution (session, start_at, end_at, benchmark, symbols)
+		VALUES($1,$2,$3,$4,$5) RETURNING id`, session, start, end, benchmark, symbols).
 		Scan(&id)
 	if err != nil {
 		return nil, err
@@ -67,12 +124,45 @@ func (db *Execution) Create(ctx context.Context, session, calendar string, start
 	return db.Get(ctx, id)
 }
 
-func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, error) {
-	e := entity.Execution{}
+func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
+	for _, period := range periods {
+		_, err := db.Conn.Exec(ctx,
+			`INSERT INTO backtest_period(
+				backtest_execution, timestamp, pnl, returns, portfolio_value,
+				longs_count, shorts_count, long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+				capital_used, gross_leverage, net_leverage,
+				starting_value, ending_value, starting_cash, ending_cash,
+				max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+				algo_volatility, sharpe, sortino,
+				benchmark_period_return, benchmark_volatility, alpha, beta)
+			VALUES($1, $2, $3, $4, $5,
+				$6, $7, $8, $9, $10, $11, $12, $13,
+				$14, $15, $16,
+				$17, $18, $19, $20,
+				$21, $22, $23, $24, $25,
+				$26, $27, $28,
+				$29, $30, $31, $32)`,
+			execution, period.Timestamp, period.PNL, period.Returns, period.PortfolioValue,
+			period.LongsCount, period.ShortsCount, period.LongValue, period.ShortValue, period.StartingExposure, period.EndingExposure, period.LongExposure, period.ShortExposure,
+			period.CapitalUsed, period.GrossLeverage, period.NetLeverage,
+			period.StartingValue, period.EndingValue, period.StartingCash, period.EndingCash,
+			period.MaxDrawdown, period.MaxLeverage, period.ExcessReturn, period.TreasuryPeriodReturn, period.AlgorithmPeriodReturn,
+			period.AlgoVolatility, period.Sharpe, period.Sortino,
+			period.BenchmarkPeriodReturn, period.BenchmarkVolatility, period.Alpha, period.Beta,
+		)
+		if err != nil {
+			return fmt.Errorf("error creating period result: %w", err)
+		}
+	}
+	return nil
+}
+
+func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) {
+	e := pb.Execution{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
+		`SELECT execution.id, session, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
-		FROM execution 
+		FROM execution
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
@@ -82,28 +172,34 @@ func (db *Execution) Get(ctx context.Context, id string) (*entity.Execution, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		status := entity.ExecutionStatus{}
-		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &status.OccurredAt)
+		status := pb.Execution_Status{}
+		start_at := time.Time{}
+		end_at := time.Time{}
+		occured_at := time.Time{}
+		err = rows.Scan(&e.Id, &e.Session, &start_at, &end_at, &e.Benchmark, &e.Symbols,
+			&status.Status, &status.Error, &occured_at)
 		if err != nil {
 			return nil, err
 		}
-		e.Statuses = append(e.Statuses, status)
+		e.StartDate = internal_pb.TimeToProtoTimestamp(start_at)
+		e.EndDate = internal_pb.TimeToProtoTimestamp(end_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
+		e.Statuses = append(e.Statuses, &status)
 	}
-	if e.ID == "" {
+	if e.Id == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
 	return &e, nil
 }
 
-func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *entity.Execution) error {
+func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE execution SET calendar=$1, start_at=$2, end_at=$3, benchmark=$4, 
-		symbols=$5 WHERE id=$6`, e.Calendar, e.Start, e.End, e.Benchmark, e.Symbols, e.ID)
+		`UPDATE execution SET start_at=$1, end_at=$2, benchmark=$3,
+		symbols=$4 WHERE id=$5`, e.StartDate.AsTime(), e.EndDate.AsTime(), e.Benchmark, e.Symbols, e.Id)
 	return err
 }
 
-func (db *Execution) UpdateStatus(ctx context.Context, id string, status entity.ExecutionStatusType, err error) error {
+func (db *Execution) UpdateStatus(ctx context.Context, id string, status pb.Execution_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", id, status, err.Error())
 	} else {
@@ -112,9 +208,44 @@ func (db *Execution) UpdateStatus(ctx context.Context, id string, status entity.
 	return err
 }
 
-func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
+func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
+	executions := make([]*pb.Execution, 0)
+	var err error
+	var inReturnSlice bool
+	for rows.Next() {
+		status := pb.Execution_Status{}
+		e := pb.Execution{}
+		start_at := time.Time{}
+		end_at := time.Time{}
+		occurred_at := time.Time{}
+		err = rows.Scan(&e.Id, &e.Session, &start_at, &end_at, &e.Benchmark, &e.Symbols,
+			&status.Status, &status.Error, &occurred_at)
+		if err != nil {
+			return nil, err
+		}
+		e.StartDate = internal_pb.TimeToProtoTimestamp(start_at)
+		e.EndDate = internal_pb.TimeToProtoTimestamp(end_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+
+		inReturnSlice = false
+		for i := range executions {
+			if executions[i].Id == e.Id {
+				executions[i].Statuses = append(executions[i].Statuses, &status)
+				inReturnSlice = true
+				break
+			}
+		}
+		if !inReturnSlice {
+			e.Statuses = append(e.Statuses, &status)
+			executions = append(executions, &e)
+		}
+	}
+	return executions, nil
+}
+
+func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
+		`SELECT execution.id, session, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
 		FROM execution
 		INNER JOIN (
@@ -125,36 +256,12 @@ func (db *Execution) List(ctx context.Context) (*[]entity.Execution, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
-	executions := make([]entity.Execution, 0)
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.ExecutionStatus{}
-		e := entity.Execution{}
-		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &status.OccurredAt)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for i := range executions {
-			if executions[i].ID == e.ID {
-				executions[i].Statuses = append(executions[i].Statuses, status)
-				inReturnSlice = true
-				break
-			}
-		}
-		if !inReturnSlice {
-			e.Statuses = append(e.Statuses, status)
-			executions = append(executions, e)
-		}
-	}
-	return &executions, nil
+	return db.parseRows(rows)
 }
 
-func (db *Execution) ListBySession(ctx context.Context, session string) (*[]entity.Execution, error) {
+func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT execution.id, session, calendar, start_at, end_at, benchmark, symbols,
+		`SELECT execution.id, session, start_at, end_at, benchmark, symbols,
 		es.status, es.error, es.occurred_at
 		FROM execution
 		INNER JOIN (
@@ -166,28 +273,5 @@ func (db *Execution) ListBySession(ctx context.Context, session string) (*[]enti
 		return nil, err
 	}
 	defer rows.Close()
-
-	executions := make([]entity.Execution, 0)
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.ExecutionStatus{}
-		e := entity.Execution{}
-		err = rows.Scan(&e.ID, &e.Session, &e.Calendar, &e.Start, &e.End, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &status.OccurredAt)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for i := range executions {
-			if executions[i].ID == e.ID {
-				executions[i].Statuses = append(executions[i].Statuses, status)
-				inReturnSlice = true
-			}
-		}
-		if !inReturnSlice {
-			e.Statuses = append(e.Statuses, status)
-			executions = append(executions, e)
-		}
-	}
-	return &executions, nil
+	return db.parseRows(rows)
 }

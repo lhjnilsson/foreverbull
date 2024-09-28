@@ -11,11 +11,17 @@ from datetime import timezone
 import pandas as pd
 import pynng
 import pytz
+import requests
 import six
 from foreverbull.broker.storage import Storage
-from foreverbull.pb import common_pb2, pb_utils
-from foreverbull.pb.backtest import backtest_pb2, engine_pb2
-from foreverbull.pb.finance import finance_pb2
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.backtest import (
+    backtest_pb2,
+    engine_service_pb2,
+    execution_pb2,
+)
+from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
 from zipline import TradingAlgorithm
 from zipline.data import bundles
@@ -40,29 +46,39 @@ class StopExcecution(Exception):
 
 class Engine(ABC):
     @abstractmethod
-    def ingest(self, ingestion: engine_pb2.IngestRequest) -> engine_pb2.IngestResponse:
+    def download_ingestion(
+        self, req: engine_service_pb2.DownloadIngestionRequest
+    ) -> engine_service_pb2.DownloadIngestionResponse:
         pass
 
     @abstractmethod
-    def run_backtest(self, backtest: engine_pb2.RunRequest) -> engine_pb2.RunResponse:
+    def ingest(
+        self, ingestion: engine_service_pb2.IngestRequest
+    ) -> engine_service_pb2.IngestResponse:
+        pass
+
+    @abstractmethod
+    def run_backtest(
+        self, backtest: engine_service_pb2.RunRequest
+    ) -> engine_service_pb2.RunResponse:
         pass
 
     @abstractmethod
     def get_current_period(
-        self, req: engine_pb2.GetCurrentPeriodRequest
-    ) -> engine_pb2.GetCurrentPeriodResponse:
+        self, req: engine_service_pb2.GetCurrentPeriodRequest
+    ) -> engine_service_pb2.GetCurrentPeriodResponse:
         pass
 
     @abstractmethod
     def place_orders_and_continue(
-        self, req: engine_pb2.PlaceOrdersAndContinueRequest
-    ) -> engine_pb2.PlaceOrdersAndContinueResponse:
+        self, req: engine_service_pb2.PlaceOrdersAndContinueRequest
+    ) -> engine_service_pb2.PlaceOrdersAndContinueResponse:
         pass
 
     @abstractmethod
     def get_backtest_result(
-        self, req: engine_pb2.GetResultRequest
-    ) -> engine_pb2.GetResultResponse:
+        self, req: engine_service_pb2.GetResultRequest
+    ) -> engine_service_pb2.GetResultResponse:
         pass
 
     @abstractmethod
@@ -75,15 +91,35 @@ class EngineProcess(multiprocessing.Process, Engine):
         self,
         socket_file_path: str = "/tmp/foreverbull_zipline.sock",
         logging_queue: multiprocessing.queues.Queue | None = None,
-        download_ingestion: bool = False,
     ):
         self._socket_file_path = socket_file_path
         self._logging_queue = logging_queue
-        self._download_ingestion = download_ingestion
         self.is_ready = multiprocessing.Event()
         super(EngineProcess, self).__init__()
 
-    def ingest(self, ingestion: engine_pb2.IngestRequest) -> engine_pb2.IngestResponse:
+    def download_ingestion(
+        self, req: engine_service_pb2.DownloadIngestionRequest
+    ) -> engine_service_pb2.DownloadIngestionResponse:
+        with pynng.Req0(
+            dial=f"ipc://{self._socket_file_path}",
+            block_on_dial=False,
+            recv_timeout=10_000,
+            send_timeout=10_000,
+        ) as socket:
+            bytes = req.SerializeToString()
+            request = common_pb2.Request(task="download_ingestion", data=bytes)
+            socket.send(request.SerializeToString())
+            response = common_pb2.Response()
+            response.ParseFromString(socket.recv())
+            if response.HasField("error"):
+                raise SystemError(response.error)
+            rsp = engine_service_pb2.DownloadIngestionResponse()
+            rsp.ParseFromString(response.data)
+            return rsp
+
+    def ingest(
+        self, ingestion: engine_service_pb2.IngestRequest
+    ) -> engine_service_pb2.IngestResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -97,11 +133,13 @@ class EngineProcess(multiprocessing.Process, Engine):
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            ing = engine_pb2.IngestResponse()
+            ing = engine_service_pb2.IngestResponse()
             ing.ParseFromString(response.data)
             return ing
 
-    def run_backtest(self, backtest: engine_pb2.RunRequest) -> engine_pb2.RunResponse:
+    def run_backtest(
+        self, backtest: engine_service_pb2.RunRequest
+    ) -> engine_service_pb2.RunResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -115,13 +153,13 @@ class EngineProcess(multiprocessing.Process, Engine):
             if response.HasField("error"):
                 raise SystemError(response.error)
             response.ParseFromString(socket.recv())
-            b = engine_pb2.RunResponse()
+            b = engine_service_pb2.RunResponse()
             b.ParseFromString(response.data)
             return b
 
     def get_current_period(
-        self, req: engine_pb2.GetCurrentPeriodRequest
-    ) -> engine_pb2.GetCurrentPeriodResponse:
+        self, req: engine_service_pb2.GetCurrentPeriodRequest
+    ) -> engine_service_pb2.GetCurrentPeriodResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -135,13 +173,13 @@ class EngineProcess(multiprocessing.Process, Engine):
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            p = engine_pb2.GetCurrentPeriodResponse()
+            p = engine_service_pb2.GetCurrentPeriodResponse()
             p.ParseFromString(response.data)
             return p
 
     def place_orders_and_continue(
-        self, req: engine_pb2.PlaceOrdersAndContinueRequest
-    ) -> engine_pb2.PlaceOrdersAndContinueResponse:
+        self, req: engine_service_pb2.PlaceOrdersAndContinueRequest
+    ) -> engine_service_pb2.PlaceOrdersAndContinueResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -155,13 +193,13 @@ class EngineProcess(multiprocessing.Process, Engine):
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            p = engine_pb2.PlaceOrdersAndContinueResponse()
+            p = engine_service_pb2.PlaceOrdersAndContinueResponse()
             p.ParseFromString(response.data)
             return p
 
     def get_backtest_result(
-        self, req: engine_pb2.GetResultRequest
-    ) -> engine_pb2.GetResultResponse:
+        self, req: engine_service_pb2.GetResultRequest
+    ) -> engine_service_pb2.GetResultResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -174,7 +212,7 @@ class EngineProcess(multiprocessing.Process, Engine):
             response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            result = engine_pb2.GetResultResponse()
+            result = engine_service_pb2.GetResultResponse()
             result.ParseFromString(response.data)
             return result
 
@@ -196,14 +234,6 @@ class EngineProcess(multiprocessing.Process, Engine):
             pass
 
     def run(self):
-        if self._download_ingestion:
-            storage = Storage.from_environment()
-            storage.backtest.download_backtest_ingestion(
-                "foreverbull", "/tmp/ingestion.tar.gz"
-            )
-            with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
-                tar.extractall(data_root())
-            bundles.register("foreverbull", SQLIngester())
         if self._logging_queue is not None:
             handler = logging.handlers.QueueHandler(self._logging_queue)
             logging.basicConfig(handlers=[handler], level=logging.DEBUG)
@@ -238,8 +268,18 @@ class EngineProcess(multiprocessing.Process, Engine):
     def analyze(self, _, result):
         self.result = result
 
+    def _download_ingestion(self, data: bytes) -> bytes:
+        req = engine_service_pb2.DownloadIngestionRequest()
+        req.ParseFromString(data)
+        storage = Storage.from_environment()
+        storage.download_object(req.bucket, req.object, "/tmp/ingestion.tar.gz")
+        with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
+            tar.extractall(data_root())
+        bundles.register("foreverbull", SQLIngester())
+        return engine_service_pb2.DownloadIngestionResponse().SerializeToString()
+
     def _ingest(self, data: bytes) -> bytes:
-        req = engine_pb2.IngestRequest()
+        req = engine_service_pb2.IngestRequest()
         req.ParseFromString(data)
         bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
         SQLIngester.engine = DatabaseEngine()
@@ -250,23 +290,17 @@ class EngineProcess(multiprocessing.Process, Engine):
         self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
         self.logger.debug("ingestion completed")
         symbols, start, end = self.ingestion
-        if req.upload:
+        if req.HasField("bucket") and req.HasField("object"):
+            self.logger.debug("Uploading ingestion to: %s/%s", req.bucket, req.object)
             with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
                 tar.add(data_path(["foreverbull"]), arcname="foreverbull")
             storage = Storage.from_environment()
-            storage.backtest.upload_backtest_ingestion(
-                "/tmp/ingestion.tar.gz", "foreverbull"
-            )
-        return engine_pb2.IngestResponse(
-            ingestion=backtest_pb2.Ingestion(
-                start_date=pb_utils.to_proto_timestamp(start),
-                end_date=pb_utils.to_proto_timestamp(end),
-                symbols=symbols,
-            )
-        ).SerializeToString()
+            storage.upload_object(req.bucket, req.object, "/tmp/ingestion.tar.gz")
+            self.logger.debug("Ingestion uploaded")
+        return engine_service_pb2.IngestResponse().SerializeToString()
 
     def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
-        req = engine_pb2.RunRequest()
+        req = engine_service_pb2.RunRequest()
         req.ParseFromString(data)
         bundle = bundles.load("foreverbull", os.environ, None)
 
@@ -398,7 +432,7 @@ class EngineProcess(multiprocessing.Process, Engine):
         )
         return (
             trading_algorithm,
-            engine_pb2.RunResponse(
+            engine_service_pb2.RunResponse(
                 backtest=backtest_pb2.Backtest(
                     start_date=pb_utils.to_proto_timestamp(
                         trading_algorithm.sim_params.start_session
@@ -415,20 +449,20 @@ class EngineProcess(multiprocessing.Process, Engine):
         )
 
     def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = engine_pb2.PlaceOrdersAndContinueRequest()
+        req = engine_service_pb2.PlaceOrdersAndContinueRequest()
         req.ParseFromString(data)
         for order in req.orders:
             asset = trading_algorithm.symbol(order.symbol)
             trading_algorithm.order(asset=asset, amount=order.amount)
-        return engine_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
+        return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
     def _get_current_period(
         self, data: bytes, trading_algorithm: TradingAlgorithm
     ) -> bytes:
-        req = engine_pb2.GetCurrentPeriodRequest()
+        req = engine_service_pb2.GetCurrentPeriodRequest()
         req.ParseFromString(data)
         p: Portfolio = trading_algorithm.portfolio
-        return engine_pb2.GetCurrentPeriodResponse(
+        return engine_service_pb2.GetCurrentPeriodResponse(
             is_running=True,
             portfolio=finance_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
@@ -454,13 +488,13 @@ class EngineProcess(multiprocessing.Process, Engine):
         ).SerializeToString()
 
     def _get_execution_result(self, data: bytes) -> bytes:
-        req = engine_pb2.GetResultRequest()
+        req = engine_service_pb2.GetResultRequest()
         req.ParseFromString(data)
-        rsp = engine_pb2.GetResultResponse()
+        rsp = engine_service_pb2.GetResultResponse()
         for row in self.result.index:
             period = self.result.loc[row]
             rsp.periods.append(
-                backtest_pb2.Period(
+                execution_pb2.Period(
                     timestamp=pb_utils.to_proto_timestamp(
                         period["period_close"]
                         .to_pydatetime()
@@ -571,6 +605,8 @@ class EngineProcess(multiprocessing.Process, Engine):
                 match req.task:
                     case "ingest":
                         data = self._ingest(req.data)
+                    case "download_ingestion":
+                        data = self._download_ingestion(req.data)
                     case "run":
                         ta, data = self._run(req.data, socket)
                         response = common_pb2.Response(task=req.task, data=data)
@@ -580,7 +616,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                     case "get_result":
                         data = self._get_execution_result(req.data)
                     case "get_current_period":
-                        data = engine_pb2.GetCurrentPeriodResponse(
+                        data = engine_service_pb2.GetCurrentPeriodResponse(
                             is_running=False
                         ).SerializeToString()
                     case "stop":

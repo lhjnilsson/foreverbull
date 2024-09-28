@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -98,20 +97,14 @@ func (test *PoolTest) TestProcessNonParallel() {
 	}
 	test.NoError(test.pool.SetAlgorithm(algo))
 
-	cash, err := decimal.NewFromString("100000")
-	test.Require().NoError(err)
-	value, err := decimal.NewFromString("1000")
-	test.Require().NoError(err)
 	symbols := []string{"aaple", "tsla", "msft"}
 	timestamp := time.Now().UTC()
-	portfolio := &finance.Portfolio{
-		Cash:      cash,
-		Value:     value,
-		Positions: []finance.Position{},
+	portfolio := finance_pb.Portfolio{
+		CashFlow: 123.0,
 	}
 
 	go func() {
-		_, err := test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
+		_, err := test.pool.Process(context.TODO(), timestamp, symbols, &portfolio)
 		test.Require().NoError(err)
 	}()
 
@@ -121,11 +114,8 @@ func (test *PoolTest) TestProcessNonParallel() {
 	test.NoError(proto.Unmarshal(bytes, request))
 
 	test.Equal("handle_data", request.Task)
-	test.Equal(timestamp, request.Timestamp.AsTime())
 	test.Equal(symbols, request.Symbols)
 	test.Require().NotNil(request.Portfolio)
-	test.Equal(portfolio.Cash.InexactFloat64(), request.Portfolio.Cash)
-	test.Equal(portfolio.Value.InexactFloat64(), request.Portfolio.Value)
 	//test.Equal(portfolio.Positions, request.Portfolio.Positions)
 
 	response := &service_pb.WorkerResponse{
@@ -148,17 +138,9 @@ func (test *PoolTest) TestProcessParallel() {
 	}
 	test.NoError(test.pool.SetAlgorithm(algo))
 
-	cash, err := decimal.NewFromString("100000")
-	test.Require().NoError(err)
-	value, err := decimal.NewFromString("1000")
-	test.Require().NoError(err)
 	symbols := []string{"aaple", "msft", "tsla"}
 	timestamp := time.Now().UTC()
-	portfolio := &finance.Portfolio{
-		Cash:      cash,
-		Value:     value,
-		Positions: []finance.Position{},
-	}
+	portfolio := &finance_pb.Portfolio{}
 
 	go func() {
 		_, err := test.pool.Process(context.TODO(), timestamp, symbols, portfolio)
@@ -166,16 +148,13 @@ func (test *PoolTest) TestProcessParallel() {
 	}()
 
 	recievedSymbols := []string{}
-	for _, _ = range symbols {
+	for _ = range symbols {
 		bytes, err := test.socket.Recv()
 		test.Require().NoError(err)
 		request := &service_pb.WorkerRequest{}
 		test.NoError(proto.Unmarshal(bytes, request))
 
 		test.Equal("handle_data", request.Task)
-		test.Equal(timestamp, request.Timestamp.AsTime())
-		test.Equal(portfolio.Cash.InexactFloat64(), request.Portfolio.Cash)
-		test.Equal(portfolio.Value.InexactFloat64(), request.Portfolio.Value)
 		//test.Equal(portfolio.Positions, request.Portfolio.Positions)
 
 		response := &service_pb.WorkerResponse{

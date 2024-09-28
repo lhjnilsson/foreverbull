@@ -44,10 +44,8 @@ func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
 	for _, position := range pos {
 		positions = append(positions, entity.Position{
 			Symbol:    position.Symbol,
-			Exchange:  position.Exchange,
 			Amount:    position.Qty,
 			CostBasis: position.CostBasis,
-			Side:      position.Side,
 		})
 	}
 	return &entity.Portfolio{
@@ -58,25 +56,10 @@ func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
 }
 
 func (c *AlpacaClient) GetOrders() ([]*entity.Order, error) {
-	orders, err := c.client.GetOrders(alpaca.GetOrdersRequest{})
+	_, err := c.client.GetOrders(alpaca.GetOrdersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
 	var entityOrders []*entity.Order
-	for _, order := range orders {
-		entityOrders = append(entityOrders, &entity.Order{
-			ID:          order.ID,
-			CreatedAt:   order.CreatedAt,
-			UpdatedAt:   order.UpdatedAt,
-			SubmittedAt: order.SubmittedAt,
-			FilledAt:    order.FilledAt,
-			ExpiredAt:   order.ExpiredAt,
-			CanceledAt:  order.CanceledAt,
-			FailedAt:    order.FailedAt,
-			ReplacedAt:  order.ReplacedAt,
-			Symbol:      order.Symbol,
-			Side:        string(order.Side),
-		})
-	}
 	return entityOrders, nil
 }

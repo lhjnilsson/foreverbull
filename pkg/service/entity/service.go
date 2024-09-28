@@ -47,7 +47,6 @@ func (a *Algorithm) Configure() (map[string]InstanceFunction, error) {
 		functions[function.Name] = InstanceFunction{Parameters: parameters}
 	}
 	return functions, nil
-
 }
 
 type ServiceStatus struct {

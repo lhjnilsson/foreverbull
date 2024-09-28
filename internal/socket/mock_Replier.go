@@ -54,13 +54,20 @@ func (_m *MockReplier) GetPort() int {
 	return r0
 }
 
-// Recieve provides a mock function with given fields: _a0
-func (_m *MockReplier) Recieve(_a0 protoreflect.ProtoMessage) (ReplierSocket, error) {
-	ret := _m.Called(_a0)
+// Recieve provides a mock function with given fields: _a0, _a1
+func (_m *MockReplier) Recieve(_a0 protoreflect.ProtoMessage, _a1 ...func(OptionSetter) error) (ReplierSocket, error) {
+	_va := make([]interface{}, len(_a1))
+	for _i := range _a1 {
+		_va[_i] = _a1[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
 
 	var r0 ReplierSocket
-	if rf, ok := ret.Get(0).(func(protoreflect.ProtoMessage) ReplierSocket); ok {
-		r0 = rf(_a0)
+	if rf, ok := ret.Get(0).(func(protoreflect.ProtoMessage, ...func(OptionSetter) error) ReplierSocket); ok {
+		r0 = rf(_a0, _a1...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(ReplierSocket)
@@ -68,8 +75,8 @@ func (_m *MockReplier) Recieve(_a0 protoreflect.ProtoMessage) (ReplierSocket, er
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(protoreflect.ProtoMessage) error); ok {
-		r1 = rf(_a0)
+	if rf, ok := ret.Get(1).(func(protoreflect.ProtoMessage, ...func(OptionSetter) error) error); ok {
+		r1 = rf(_a0, _a1...)
 	} else {
 		r1 = ret.Error(1)
 	}

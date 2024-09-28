@@ -2,83 +2,114 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"syscall"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/rs/zerolog/log"
 )
 
-func UpdateSessionStatus(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-
-	command := ss.UpdateSessionStatusCommand{}
-	err := message.ParsePayload(&command)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling UpdateSessionStatus payload: %w", err)
-	}
-	sessions := repository.Session{Conn: db}
-	err = sessions.UpdateStatus(ctx, command.SessionID, command.Status, command.Error)
-	if err != nil {
-		return fmt.Errorf("error updating session status: %w", err)
-	}
-	return nil
-}
-
-func SessionRun(ctx context.Context, message stream.Message) error {
+func SessionRun(ctx context.Context, msg stream.Message) error {
 	command := ss.SessionRunCommand{}
-	err := message.ParsePayload(&command)
+	err := msg.ParsePayload(&command)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling SessionRun payload: %w", err)
 	}
-
-	sess, err := message.Call(ctx, dependency.GetBacktestSessionKey)
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	s := msg.MustGet(stream.StorageDep).(storage.Storage)
+	sessions := repository.Session{Conn: db}
+	session, err := sessions.Get(ctx, command.SessionID)
 	if err != nil {
-		return fmt.Errorf("error getting backtest session: %w", err)
+		return fmt.Errorf("error getting session: %v", err)
 	}
-	s := sess.(backtest.Session)
-
-	runSession := func(session backtest.Session) error {
-		activity := make(chan bool)
-		stop := make(chan bool)
-		// If there is no activity in the session for X seconds, we tell it to stop
-		go func() {
-			for {
-				select {
-				case <-activity:
-				case <-time.After(time.Second * 30):
-					stop <- true
-					return
-				case <-stop: // stop is closed, exit
-					return
-				}
-			}
-		}()
-
-		err = session.Run(activity, stop)
-		if err != nil {
-			log.Error().Err(err).Msg("error running session")
-			return err
+	ze, err := msg.Call(ctx, dependency.GetEngineKey)
+	if err != nil {
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		return fmt.Errorf("error getting zipline engine: %w", err)
+	}
+	engine := ze.(engine.Engine)
+	ingestions, err := s.ListObjects(ctx, storage.IngestionsBucket)
+	if len(*ingestions) == 0 {
+		return fmt.Errorf("no ingestions found")
+	}
+	var ingestion *storage.Object
+	for _, i := range *ingestions {
+		i.Refresh()
+		if ingestion == nil && i.Metadata["Status"] == pb.IngestionStatus_READY.String() {
+			ingestion = &i
+		} else if ingestion != nil && i.LastModified.After(ingestion.LastModified) && i.Metadata["Status"] == pb.IngestionStatus_READY.String() {
+			ingestion = &i
 		}
-		close(stop)
-		close(activity)
-		return nil
 	}
-	err = runSession(s)
+	if ingestion == nil {
+		err = errors.New("no completed ingestions found, create one before running a session")
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		return err
+	}
+	err = engine.DownloadIngestion(ctx, ingestion)
 	if err != nil {
-		log.Error().Err(err).Msg("error running session")
-		return fmt.Errorf("error running session: %w", err)
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
-	err = s.Stop(ctx)
+
+	server, a, err := backtest.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
-		log.Error().Err(err).Msg("error stopping session")
-		return fmt.Errorf("error stopping session: %w", err)
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		return fmt.Errorf("error creating grpc session server: %v", err)
 	}
-	log.Info().Msg("session stopped")
+
+	var listener net.Listener
+	var port int
+	for port = environment.GetBacktestPortRangeStart(); port < environment.GetBacktestPortRangeEnd(); port++ {
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			break
+		}
+		syscallErr, ok := err.(*net.OpError)
+		if ok && errors.Unwrap(syscallErr.Unwrap()) == syscall.EADDRINUSE {
+			continue
+		}
+		return fmt.Errorf("error creating listener: %w", err)
+	}
+	go func() {
+		err := server.Serve(listener)
+		if err != nil {
+			log.Error().Err(err).Msg("error serving session server")
+		}
+	}()
+	go func() {
+		defer func() {
+			log.Info().Msg("closing session server")
+			server.Stop()
+			listener.Close()
+		}()
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
+		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
+		for {
+			select {
+			case _, active := <-a:
+				if !active {
+					time.Sleep(time.Second / 4) // Make sure reply is sent
+					return
+				} else {
+				}
+			case <-time.After(time.Minute * 30):
+				return
+			}
+		}
+	}()
+	sessions.UpdatePort(ctx, command.SessionID, port)
 	return nil
 }

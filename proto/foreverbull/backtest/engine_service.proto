@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package foreverbull.backtest;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+
+import "foreverbull/backtest/backtest.proto";
+import "foreverbull/finance/finance.proto";
+import "foreverbull/backtest/execution.proto";
+import "foreverbull/backtest/ingestion.proto";
+
+
+message DownloadIngestionRequest {
+    string bucket = 1;
+    string object = 2;
+}
+
+message DownloadIngestionResponse {
+    Ingestion ingestion = 1;
+}
+
+message IngestRequest {
+    Ingestion ingestion = 1;
+    optional string bucket = 2;
+    optional string object = 3;
+}
+
+message IngestResponse {
+}
+
+message RunRequest {
+    Backtest backtest = 1;
+}
+
+message RunResponse {
+    Backtest backtest = 1;
+}
+
+message GetCurrentPeriodRequest {
+}
+
+message GetCurrentPeriodResponse {
+    bool is_running = 1;
+    optional foreverbull.finance.Portfolio portfolio = 2;
+}
+
+message PlaceOrdersAndContinueRequest {
+    repeated foreverbull.finance.Order orders = 1;
+}
+
+message PlaceOrdersAndContinueResponse {
+}
+
+message GetResultRequest {
+    string execution = 1;
+    bool upload = 2;
+}
+
+message GetResultResponse {
+    repeated foreverbull.backtest.Period periods = 1;
+}
+
+message StopRequest {
+}
+
+message StopResponse {
+}
+
+service Engine {
+    rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
+    rpc Ingest(IngestRequest) returns (IngestResponse) {}
+    rpc RunBacktest(RunRequest) returns (RunResponse) {}
+    rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {}
+    rpc PlaceOrdersAndContinue(PlaceOrdersAndContinueRequest) returns (PlaceOrdersAndContinueResponse) {}
+    rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
+    rpc Stop(StopRequest) returns (StopResponse) {}
+}

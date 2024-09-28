@@ -8,37 +8,41 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/stretchr/testify/suite"
 )
 
 type OHLCTests struct {
 	suite.Suite
 	conn        *pgxpool.Pool
-	asset       entity.Asset
-	ohlcStorage *OHLC
+	asset       pb.Asset
+	ohlcStorage OHLC
 }
 
-func (test *OHLCTests) SetupTest() {
-	var err error
+func (test *OHLCTests) SetupSuite() {
 
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
+
+}
+
+func (test *OHLCTests) SetupTest() {
+	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
 	assetStorage := Asset{Conn: test.conn}
-	test.asset = entity.Asset{Symbol: "ABC", Name: "Comany ABC"}
-	err = assetStorage.Store(context.TODO(), &test.asset)
+	test.asset = pb.Asset{Symbol: "ABC", Name: "Comany ABC"}
+	err = assetStorage.Store(context.TODO(), test.asset.Symbol, test.asset.Name)
 	test.Require().NoError(err)
 
 	_, err = test.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(context.TODO(), OHLCTable)
 	test.Require().NoError(err)
-	test.ohlcStorage = &OHLC{Conn: test.conn}
+	test.ohlcStorage = OHLC{Conn: test.conn}
 }
 
 func (test *OHLCTests) TearDownTest() {
@@ -54,8 +58,7 @@ func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
 	ohlcStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i <= count; i++ {
-		ohlc := entity.OHLC{Time: ohlcTime}
-		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, &ohlc)
+		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
 		test.Nil(err)
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
@@ -65,8 +68,7 @@ func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
 }
 
 func (test *OHLCTests) TestStore() {
-	ohlc := entity.OHLC{Time: time.Now()}
-	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, &ohlc)
+	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
 	test.Nil(err)
 }
 

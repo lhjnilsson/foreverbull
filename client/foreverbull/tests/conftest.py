@@ -9,8 +9,8 @@ import pynng
 import pytest
 from foreverbull import Algorithm, Function, Order, entity, models
 from foreverbull.pb import pb_utils
-from foreverbull.pb.finance import finance_pb2
-from foreverbull.pb.service import service_pb2, worker_pb2
+from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.service import service_pb2, worker_pb2
 
 
 @pytest.fixture(scope="session")

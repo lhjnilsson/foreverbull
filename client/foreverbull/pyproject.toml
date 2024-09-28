@@ -23,6 +23,7 @@ dependencies = [
   "setuptools>=70.2.0,<71.0.0",
   "protobuf>=5.27.2",
   "types-protobuf>=5.27.0.20240626",
+  "grpcio>=1.66.1",
 ]
 
 [project.scripts]

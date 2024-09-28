@@ -1,90 +1,41 @@
 package stream
 
 import (
-	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"time"
+
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	serviceStream "github.com/lhjnilsson/foreverbull/pkg/service/stream"
 )
 
-type UpdateIngestStatusCommand struct {
-	Name   string                     `json:"name"`
-	Status entity.IngestionStatusType `json:"status"`
-	Error  error                      `json:"error"`
-}
-
-func NewUpdateIngestStatusCommand(name string, status entity.IngestionStatusType, err error) (stream.Message, error) {
-	entity := &UpdateIngestStatusCommand{
-		Name:   name,
-		Status: status,
-		Error:  err,
-	}
-	return stream.NewMessage("backtest", "ingest", "status", entity)
-}
-
 type IngestCommand struct {
-	Name              string `json:"backtest_name"`
-	ServiceInstanceID string `json:"service_instance_id"`
+	Name    string    `json:"name"`
+	Symbols []string  `json:"symbols"`
+	Start   time.Time `json:"start"`
+	End     time.Time `json:"end"`
 }
 
-func NewBacktestIngestCommand(name, serviceInstanceID string) (stream.Message, error) {
-	entity := &IngestCommand{
-		Name:              name,
-		ServiceInstanceID: serviceInstanceID,
+func NewBacktestIngestCommand(name string, symbols []string, start, end time.Time) (stream.Message, error) {
+	cmd := &IngestCommand{
+		Name:    name,
+		Symbols: symbols,
+		Start:   start,
+		End:     end,
 	}
-	return stream.NewMessage("backtest", "ingest", "ingest", entity)
+	return stream.NewMessage("backtest", "ingest", "ingest", cmd)
 }
 
-func NewIngestOrchestration(ingest *entity.Ingestion) (*stream.MessageOrchestration, error) {
+func NewIngestOrchestration(name string, symbols []string, start, end time.Time) (*stream.MessageOrchestration, error) {
 	orchestration := stream.NewMessageOrchestration("ingest backtest")
-
-	backtestInstanceID := serviceStream.NewInstanceID()
-	msg, err := serviceStream.NewServiceStartCommand(environment.GetBacktestImage(), backtestInstanceID)
+	msg, err := financeStream.NewIngestCommand(symbols, start, end)
 	if err != nil {
 		return nil, err
 	}
-	msg2, err := NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusIngesting, nil)
+	orchestration.AddStep("ingest financial data", []stream.Message{msg})
+	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
 		return nil, err
 	}
-	orchestration.AddStep("start service", []stream.Message{msg, msg2})
-
-	msg, err = serviceStream.NewInstanceSanityCheckCommand([]string{backtestInstanceID})
-	if err != nil {
-		return nil, err
-	}
-	msg2, err = financeStream.NewIngestCommand(ingest.Symbols, ingest.Start, ingest.End)
-	if err != nil {
-		return nil, err
-	}
-	orchestration.AddStep("sanity check", []stream.Message{msg, msg2})
-
-	msg, err = NewBacktestIngestCommand(ingest.Name, backtestInstanceID)
-	if err != nil {
-		return nil, err
-	}
-	orchestration.AddStep("ingest backtest", []stream.Message{msg})
-
-	msg, err = serviceStream.NewInstanceStopCommand(backtestInstanceID)
-	if err != nil {
-		return nil, err
-	}
-	msg2, err = NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusCompleted, nil)
-	if err != nil {
-		return nil, err
-	}
-	orchestration.AddStep("stop service", []stream.Message{msg, msg2})
-
-	msg, err = serviceStream.NewInstanceStopCommand(backtestInstanceID)
-	if err != nil {
-		return nil, err
-	}
-	msg2, err = NewUpdateIngestStatusCommand(ingest.Name, entity.IngestionStatusError, nil)
-	if err != nil {
-		return nil, err
-	}
-	orchestration.SettFallback([]stream.Message{msg, msg2})
-
+	orchestration.AddStep("ingest into backtest", []stream.Message{msg})
+	orchestration.SettFallback([]stream.Message{})
 	return orchestration, nil
 }

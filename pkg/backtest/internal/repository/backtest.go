@@ -5,16 +5,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
 
 const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (
 name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-status text NOT NULL DEFAULT 'CREATED',
+status int NOT NULL DEFAULT 0,
 error text,
-service text,
-calendar text NOT NULL DEFAULT 'XNYS',
 start_at TIMESTAMPTZ NOT NULL,
 end_at TIMESTAMPTZ NOT NULL,
 benchmark text,
@@ -22,7 +21,7 @@ symbols text[]);
 
 CREATE TABLE IF NOT EXISTS backtest_status (
 	name text REFERENCES backtest(name) ON DELETE CASCADE,
-	status text NOT NULL,
+	status int NOT NULL,
 	error text,
 	occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -53,24 +52,22 @@ type Backtest struct {
 	Conn postgres.Query
 }
 
-func (db *Backtest) Create(ctx context.Context, name string, service *string,
-	start, end time.Time, calendar string, symbols []string, benchmark *string) (*entity.Backtest, error) {
+func (db *Backtest) Create(ctx context.Context, name string,
+	start, end time.Time, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, service, start_at, end_at, calendar, symbols, benchmark) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		name, service, start, end, calendar, symbols, benchmark)
+		`INSERT INTO backtest (name, start_at, end_at, symbols, benchmark)
+		VALUES ($1, $2, $3, $4, $5)`,
+		name, start, end, symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
 	return db.Get(ctx, name)
 }
 
-func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, error) {
-	b := entity.Backtest{}
+func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) {
+	b := pb.Backtest{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, service,
-		calendar, start_at, end_at, benchmark, symbols,
-		(SELECT count(*) FROM session WHERE backtest=backtest.name),
+		`SELECT backtest.name, start_at, end_at, benchmark, symbols,
 		bs.status, bs.error, bs.occurred_at
 		FROM backtest
 		INNER JOIN (
@@ -82,17 +79,21 @@ func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		status := entity.BacktestStatus{}
+		status := pb.Backtest_Status{}
+		t := time.Time{}
+		start := time.Time{}
+		end := time.Time{}
 		err = rows.Scan(
-			&b.Name, &b.Service,
-			&b.Calendar, &b.Start, &b.End, &b.Benchmark, &b.Symbols,
-			&b.Sessions,
-			&status.Status, &status.Error, &status.OccurredAt,
+			&b.Name, &start, &end, &b.Benchmark, &b.Symbols,
+			&status.Status, &status.Error, &t,
 		)
 		if err != nil {
 			return nil, err
 		}
-		b.Statuses = append(b.Statuses, status)
+		b.StartDate = pb_internal.TimeToProtoTimestamp(start)
+		b.EndDate = pb_internal.TimeToProtoTimestamp(end)
+		status.OccurredAt = pb_internal.TimeToProtoTimestamp(t)
+		b.Statuses = append(b.Statuses, &status)
 	}
 	if b.Name == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
@@ -100,20 +101,20 @@ func (db *Backtest) Get(ctx context.Context, name string) (*entity.Backtest, err
 	return &b, nil
 }
 
-func (db *Backtest) Update(ctx context.Context, name string, service *string,
-	start, end time.Time, calendar string, symbols []string, benchmark *string) (*entity.Backtest, error) {
+func (db *Backtest) Update(ctx context.Context, name string,
+	start, end time.Time, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE backtest SET service=$2, start_at=$3, end_at=$4, 
-		calendar=$5, symbols=$6, benchmark=$7, status='UPDATED'
+		`UPDATE backtest SET start_at=$2, end_at=$3,
+		symbols=$4, benchmark=$5
 		WHERE name=$1`,
-		name, service, start, end, calendar, symbols, benchmark)
+		name, start, end, symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
 	return db.Get(ctx, name)
 }
 
-func (db *Backtest) UpdateStatus(ctx context.Context, name string, status entity.BacktestStatusType, err error) error {
+func (db *Backtest) UpdateStatus(ctx context.Context, name string, status pb.Backtest_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx, `UPDATE backtest SET status=$2, error=$3 WHERE name=$1`, name, status, err.Error())
 	} else {
@@ -122,11 +123,9 @@ func (db *Backtest) UpdateStatus(ctx context.Context, name string, status entity
 	return err
 }
 
-func (db *Backtest) List(ctx context.Context) (*[]entity.Backtest, error) {
+func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, service,
-		calendar, start_at, end_at, benchmark, symbols,
-		(SELECT count(*) FROM session WHERE backtest=backtest.name),
+		`SELECT backtest.name, start_at, end_at, benchmark, symbols,
 		bs.status, bs.error, bs.occurred_at
 		FROM backtest
 		INNER JOIN (
@@ -138,33 +137,38 @@ func (db *Backtest) List(ctx context.Context) (*[]entity.Backtest, error) {
 	}
 	defer rows.Close()
 
-	backtests := []entity.Backtest{}
+	backtests := make([]*pb.Backtest, 0)
 	var inReturnSlice bool
 	for rows.Next() {
-		status := entity.BacktestStatus{}
-		b := entity.Backtest{}
+		status := pb.Backtest_Status{}
+		b := pb.Backtest{}
+		start := time.Time{}
+		end := time.Time{}
+		occurred_at := time.Time{}
 		err = rows.Scan(
-			&b.Name, &b.Service,
-			&b.Calendar, &b.Start, &b.End, &b.Benchmark, &b.Symbols,
-			&b.Sessions,
-			&status.Status, &status.Error, &status.OccurredAt,
+			&b.Name, &start, &end, &b.Benchmark,
+			&b.Symbols,
+			&status.Status, &status.Error, &occurred_at,
 		)
 		if err != nil {
 			return nil, err
 		}
+		b.StartDate = pb_internal.TimeToProtoTimestamp(start)
+		b.EndDate = pb_internal.TimeToProtoTimestamp(end)
+		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurred_at)
 		inReturnSlice = false
 		for i := range backtests {
 			if backtests[i].Name == b.Name {
-				backtests[i].Statuses = append(backtests[i].Statuses, status)
+				backtests[i].Statuses = append(backtests[i].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
 		if !inReturnSlice {
-			b.Statuses = append(b.Statuses, status)
-			backtests = append(backtests, b)
+			b.Statuses = append(b.Statuses, &status)
+			backtests = append(backtests, &b)
 		}
 	}
-	return &backtests, nil
+	return backtests, nil
 }
 
 func (db *Backtest) Delete(ctx context.Context, name string) error {

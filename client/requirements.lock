@@ -44,6 +44,7 @@ frozendict==2.4.4
 greenlet==3.0.3
     # via sqlalchemy
 grpcio==1.66.1
+    # via foreverbull
     # via grpcio-testing
     # via grpcio-tools
 grpcio-testing==1.66.1

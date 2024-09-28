@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -72,7 +72,7 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 					panic(err)
 				}
 			}
-			request := service_pb.Request{}
+			request := common_pb.Request{}
 			err = proto.Unmarshal(msg, &request)
 			if err != nil {
 				panic(err)
@@ -81,7 +81,7 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 			if !ok {
 				panic(fmt.Sprintf("no response for task %v", request.Task))
 			}
-			response := service_pb.Response{
+			response := common_pb.Response{
 				Task: request.Task,
 				Data: rsp,
 			}
