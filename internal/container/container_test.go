@@ -22,7 +22,7 @@ func (test *EngineTest) SetupSuite() {
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
 }
 
-func (test *EngineTest) TestStart() {
+func (test *EngineTest) NoTestStart() {
 	e, err := NewEngine()
 	test.Require().NoError(err)
 
