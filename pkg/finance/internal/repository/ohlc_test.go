@@ -58,7 +58,7 @@ func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
 	ohlcStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i <= count; i++ {
-		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
+		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
 		test.Nil(err)
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
