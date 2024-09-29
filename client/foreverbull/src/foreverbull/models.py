@@ -13,7 +13,7 @@ import pynng
 from foreverbull import entity
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import Connection, create_engine, engine
@@ -78,12 +78,12 @@ class Asset:
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
         with namespace_socket() as s:
-            request = worker_pb2.NamespaceRequest(
+            request = worker_service_pb2.NamespaceRequest(
                 key=key,
-                type=worker_pb2.NamespaceRequestType.GET,
+                type=worker_service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = worker_pb2.NamespaceResponse()
+            response = worker_service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -94,13 +94,13 @@ class Asset:
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
         with namespace_socket() as s:
-            request = worker_pb2.NamespaceRequest(
+            request = worker_service_pb2.NamespaceRequest(
                 key=key,
-                type=worker_pb2.NamespaceRequestType.SET,
+                type=worker_service_pb2.NamespaceRequestType.SET,
             )
             request.value.update({self._symbol: value})
             s.send(request.SerializeToString())
-            response = worker_pb2.NamespaceResponse()
+            response = worker_service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -127,12 +127,12 @@ class Assets:
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
         with namespace_socket() as s:
-            request = worker_pb2.NamespaceRequest(
+            request = worker_service_pb2.NamespaceRequest(
                 key=key,
-                type=worker_pb2.NamespaceRequestType.GET,
+                type=worker_service_pb2.NamespaceRequestType.GET,
             )
             s.send(request.SerializeToString())
-            response = worker_pb2.NamespaceResponse()
+            response = worker_service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
@@ -143,13 +143,13 @@ class Assets:
             struct = Struct()
             for k, v in value.items():
                 struct.update({k: v})
-            request = worker_pb2.NamespaceRequest(
+            request = worker_service_pb2.NamespaceRequest(
                 key=key,
-                type=worker_pb2.NamespaceRequestType.SET,
+                type=worker_service_pb2.NamespaceRequestType.SET,
                 value=struct,
             )
             s.send(request.SerializeToString())
-            response = worker_pb2.NamespaceResponse()
+            response = worker_service_pb2.NamespaceResponse()
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)

@@ -3,14 +3,14 @@ from threading import Thread
 
 import pytest
 from foreverbull import exceptions, worker
-from foreverbull.pb.service import service_pb2
+from foreverbull.pb.foreverbull.service import worker_pb2
 
 
 class TestWorkerInstance:
     def test_configure_bad_file(self):
         w = worker.WorkerInstance("bad_file")
         with pytest.raises(exceptions.ConfigurationError):
-            w.configure_execution(service_pb2.ExecutionConfiguration())
+            w.configure_execution(worker_pb2.ExecutionConfiguration())
 
     def test_configure_bad_broker_port(self, parallel_algo_file):
         algorithm, request, _ = parallel_algo_file
@@ -63,7 +63,7 @@ class TestWorkerPool:
         algorithm, _, _ = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pytest.raises(RuntimeError):
-            pool.configure_execution(service_pb2.ExecutionConfiguration())
+            pool.configure_execution(worker_pb2.ExecutionConfiguration())
 
     @pytest.mark.parametrize(
         "broker_port,namespace_port,database_url,expected_exception",
@@ -75,7 +75,13 @@ class TestWorkerPool:
         ],
     )
     def test_configure(
-        self, namespace_server, parallel_algo_file, broker_port, namespace_port, database_url, expected_exception
+        self,
+        namespace_server,
+        parallel_algo_file,
+        broker_port,
+        namespace_port,
+        database_url,
+        expected_exception,
     ):
         algorithm, request, process_symbols = parallel_algo_file
         if broker_port:

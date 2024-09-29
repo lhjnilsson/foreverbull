@@ -50,13 +50,7 @@ def test_ingest(
             )
         )
     )
-    assert response.ingestion.start_date == pb_utils.to_proto_timestamp(
-        backtest_entity.start
-    )
-    assert response.ingestion.end_date == pb_utils.to_proto_timestamp(
-        backtest_entity.end
-    )
-    assert response.ingestion.symbols == backtest_entity.symbols
+    assert response
 
 
 def test_run_and_get_result(

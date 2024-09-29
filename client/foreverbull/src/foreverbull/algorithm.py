@@ -68,7 +68,7 @@ class Algorithm(models.Algorithm):
 
     def get_default(self) -> entity.backtest.Backtest:
         if self._broker_stub is None or self._backtest_session is None:
-            raise RuntimeError("No backtest")
+            raise RuntimeError("No backtest session")
         rsp: backtest_service_pb2.GetBacktestResponse = self._broker_stub.GetBacktest(
             backtest_service_pb2.GetBacktestRequest(
                 name=self._backtest_session.backtest
@@ -85,7 +85,7 @@ class Algorithm(models.Algorithm):
     def run_execution(
         self, start: datetime, end: datetime, symbols: list[str], benchmark=None
     ) -> Generator[entity.finance.Portfolio, None, None]:
-        if self._broker_session_stub is None:
+        if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(

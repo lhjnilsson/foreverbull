@@ -1,7 +1,10 @@
 import grpc
 import pytest
 from foreverbull.gprc_service import new_grpc_server
-from foreverbull.pb.service import worker_pb2, worker_pb2_grpc
+from foreverbull.pb.foreverbull.service import (
+    worker_service_pb2,
+    worker_service_pb2_grpc,
+)
 from foreverbull.worker import WorkerPool
 
 
@@ -17,23 +20,21 @@ def grpc_service(parallel_algo_file):
 
 @pytest.fixture
 def stub():
-    return worker_pb2_grpc.WorkerStub(grpc.insecure_channel("localhost:50055"))
-
-
-def test_get_service_info(grpc_service, stub, parallel_algo_file):
-    stub.GetServiceInfo(worker_pb2.GetServiceInfoRequest())
+    return worker_service_pb2_grpc.WorkerStub(grpc.insecure_channel("localhost:50055"))
 
 
 def test_configure_execution(grpc_service, stub, namespace_server, parallel_algo_file):
     file_name, configuration, _ = parallel_algo_file
-    request = worker_pb2.ConfigureExecutionRequest(configuration=configuration)
+    request = worker_service_pb2.ConfigureExecutionRequest(configuration=configuration)
     stub.ConfigureExecution(request)
 
 
-def test_configure_and_run_execution(grpc_service, stub, namespace_server, parallel_algo_file):
+def test_configure_and_run_execution(
+    grpc_service, stub, namespace_server, parallel_algo_file
+):
     _, configuration, process = parallel_algo_file
-    request = worker_pb2.ConfigureExecutionRequest(configuration=configuration)
+    request = worker_service_pb2.ConfigureExecutionRequest(configuration=configuration)
     stub.ConfigureExecution(request)
-    stub.RunExecution(worker_pb2.RunExecutionRequest())
+    stub.RunExecution(worker_service_pb2.RunExecutionRequest())
     orders = process()
     assert orders
