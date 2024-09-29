@@ -11,7 +11,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
@@ -39,10 +38,6 @@ var CoreModules = fx.Options(
 		},
 		storage.NewMinioStorage,
 		stream.New,
-		http.NewEngine,
-	),
-	fx.Invoke(
-		http.NewLifeCycleRouter,
 	),
 )
 

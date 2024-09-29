@@ -9,11 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -71,9 +69,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 			func() (storage.Storage, error) {
 				return storage.NewMinioStorage(context.Background())
 			},
-			func() *gin.Engine {
-				return gin.Default()
-			},
 			func() *grpc.Server {
 				return grpc.NewServer()
 			},
@@ -82,7 +77,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 			},
 		),
 		fx.Invoke(
-			h.NewLifeCycleRouter,
 			func(lc fx.Lifecycle, g *grpc.Server) error {
 				lc.Append(fx.Hook{
 					OnStart: func(context.Context) error {
