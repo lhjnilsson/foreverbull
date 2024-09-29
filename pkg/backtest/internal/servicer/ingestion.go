@@ -80,9 +80,11 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context, req *pb.GetC
 		}
 	}
 
-	err = ingestion.Refresh() // Objects from list does not include metadata, refresh to obtain
-	if err != nil {
-		return nil, fmt.Errorf("error refreshing ingestion: %w", err)
+	if len(ingestion.Metadata) == 0 {
+		err = ingestion.Refresh() // Objects from list does not include metadata, refresh to obtain
+		if err != nil {
+			return nil, fmt.Errorf("error refreshing ingestion: %w", err)
+		}
 	}
 
 	startDate, err := time.Parse("2006-01-02", ingestion.Metadata["Start_date"])

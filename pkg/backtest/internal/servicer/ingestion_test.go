@@ -129,8 +129,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 					LastModified: time.Now(),
 					Metadata: map[string]string{
 						"Symbols":    "AAPL,MSFT",
-						"Start_date": "2021-01-01T00:00:00Z",
-						"End_date":   "2021-01-02T00:00:00Z",
+						"Start_date": "2021-01-01",
+						"End_date":   "2021-01-02",
 						"Status":     pb.IngestionStatus_READY.String(),
 					},
 				},
@@ -147,8 +147,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 					LastModified: time.Now().Add(-time.Hour),
 					Metadata: map[string]string{
 						"Symbols":    "TSLA,MMM",
-						"Start_date": "2021-01-01T00:00:00Z",
-						"End_date":   "2021-01-02T00:00:00Z",
+						"Start_date": "2021-01-01",
+						"End_date":   "2021-01-02",
 						"Status":     pb.IngestionStatus_INGESTING.String(),
 					},
 				},
@@ -156,8 +156,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 					LastModified: time.Now(),
 					Metadata: map[string]string{
 						"Symbols":    "AAPL,MSFT",
-						"Start_date": "2021-01-01T00:00:00Z",
-						"End_date":   "2021-01-02T00:00:00Z",
+						"Start_date": "2021-01-01",
+						"End_date":   "2021-01-02",
 						"Status":     pb.IngestionStatus_READY.String(),
 					},
 				},
@@ -165,8 +165,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 					LastModified: time.Now().Add(-24 * time.Hour),
 					Metadata: map[string]string{
 						"Symbols":    "X,Y,Z",
-						"Start_date": "2021-01-01T00:00:00Z",
-						"End_date":   "2021-01-02T00:00:00Z",
+						"Start_date": "2021-01-01",
+						"End_date":   "2021-01-02",
 						"Status":     pb.IngestionStatus_INGESTING.String(),
 					},
 				},

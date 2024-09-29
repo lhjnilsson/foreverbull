@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"io"
 	"log"
 	"net"
 	"testing"
@@ -15,8 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
-
+	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-type SessionManualTest struct {
+type SessionTest struct {
 	suite.Suite
 
 	conn *pgxpool.Pool
@@ -33,33 +33,30 @@ type SessionManualTest struct {
 	baseServer *grpc.Server
 	activity   <-chan bool
 
-	mockEngine     *engine.MockEngine
-	mockWorkerPool *worker.MockPool
-	client         backtest_pb.SessionServicerClient
+	mockEngine *engine.MockEngine
+	client     backtest_pb.SessionServicerClient
 
 	backtest *backtest_pb.Backtest
 	session  *backtest_pb.Session
 }
 
 func TestSessionManual(t *testing.T) {
-	suite.Run(t, new(SessionManualTest))
+	suite.Run(t, new(SessionTest))
 }
 
-func (test *SessionManualTest) SetupSuite() {
+func (test *SessionTest) SetupSuite() {
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
-
-	test.mockWorkerPool = new(worker.MockPool)
 }
 
-func (s *SessionManualTest) TearDownSuite() {
+func (s *SessionTest) TearDownSuite() {
 }
 
-func (s *SessionManualTest) SetupTest() {
+func (s *SessionTest) SetupTest() {
 	err := repository.Recreate(context.Background(), s.conn)
 	s.Require().NoError(err)
 
@@ -92,7 +89,7 @@ func (s *SessionManualTest) SetupTest() {
 
 }
 
-func (s *SessionManualTest) TearDownTest() {
+func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
 		s.Assert().Fail("error closing listener: %v", err)
@@ -100,13 +97,14 @@ func (s *SessionManualTest) TearDownTest() {
 	s.baseServer.Stop()
 }
 
-func (s *SessionManualTest) TestCreateExecution() {
+func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
 			StartDate: pb.TimeToProtoTimestamp(time.Now()),
 			EndDate:   pb.TimeToProtoTimestamp(time.Now()),
 			Symbols:   []string{"AAPL"},
 		},
+		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(rsp)
@@ -117,7 +115,28 @@ func (s *SessionManualTest) TestCreateExecution() {
 	}
 }
 
-func (s *SessionManualTest) TestRunExecution() {
+func (s *SessionTest) TestRunExecution() {
+	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
+		Backtest: &backtest_pb.Backtest{
+			StartDate: pb.TimeToProtoTimestamp(time.Now()),
+			EndDate:   pb.TimeToProtoTimestamp(time.Now()),
+			Symbols:   []string{"AAPL"},
+		},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(rsp)
+	select {
+	case <-s.activity:
+	case <-time.After(5 * time.Second):
+		s.Require().Fail("timeout waiting for activity")
+	}
+
+	executions := repository.Execution{Conn: s.conn}
+	execution, err := executions.Create(context.Background(), s.session.Id,
+		s.backtest.StartDate.AsTime(), s.backtest.EndDate.AsTime(), []string{"AAPL"}, nil)
+	s.Require().NoError(err)
+
 	ch := make(chan *finance_pb.Portfolio, 5)
 	ch <- &finance_pb.Portfolio{}
 	ch <- &finance_pb.Portfolio{}
@@ -127,21 +146,24 @@ func (s *SessionManualTest) TestRunExecution() {
 	close(ch)
 	s.mockEngine.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(ch, nil)
 
-	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{})
+	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{
+		ExecutionId: execution.Id,
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(stream)
 	entries := 0
 	for {
 		_, err := stream.Recv()
-		if err != nil {
+		if err == io.EOF {
 			break
 		}
+		s.Require().NoError(err)
 		entries++
 	}
 	s.Require().Equal(5, entries)
 }
 
-func (s *SessionManualTest) TestGetExecution() {
+func (s *SessionTest) TestGetExecution() {
 	executions := repository.Execution{Conn: s.conn}
 	execution, err := executions.Create(context.TODO(), s.session.Id,
 		s.backtest.StartDate.AsTime(), s.backtest.EndDate.AsTime(),
@@ -162,7 +184,7 @@ func (s *SessionManualTest) TestGetExecution() {
 	}
 }
 
-func (s *SessionManualTest) TestStopServer() {
+func (s *SessionTest) TestStopServer() {
 	rsp, err := s.client.StopServer(context.Background(), &backtest_pb.StopServerRequest{})
 	s.Require().NoError(err)
 	s.Require().NotNil(rsp)
