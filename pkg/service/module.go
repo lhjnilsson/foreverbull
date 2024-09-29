@@ -6,11 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/container"
-	containerImpl "github.com/lhjnilsson/foreverbull/pkg/service/internal/container"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/command"
-	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 )
@@ -21,12 +18,9 @@ type ServiceStream stream.Stream
 
 var Module = fx.Options(
 	fx.Provide(
-		containerImpl.NewImageRegistry,
-		containerImpl.NewContainerRegistry,
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, container container.Container) (ServiceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (ServiceStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
-			dc.AddSingleton(dependency.ContainerDep, container)
 			return stream.NewNATSStream(jt, Stream, dc, conn)
 		},
 	),
@@ -34,7 +28,7 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, s ServiceStream, container container.Container, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s ServiceStream, conn *pgxpool.Pool) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -64,10 +58,6 @@ var Module = fx.Options(
 						err := s.Unsubscribe()
 						if err != nil {
 							return fmt.Errorf("error unsubscribing: %w", err)
-						}
-						err = container.StopAll(ctx, true)
-						if err != nil {
-							return fmt.Errorf("error stopping all containers: %w", err)
 						}
 						return nil
 					},

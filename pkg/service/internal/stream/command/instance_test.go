@@ -2,23 +2,14 @@ package command
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/service/container"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
-	st "github.com/lhjnilsson/foreverbull/pkg/service/stream"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"google.golang.org/protobuf/proto"
 )
 
 type InstanceTest struct {
@@ -132,7 +123,6 @@ func (test *InstanceTest) TestInstanceInterview() {
 		})
 	}
 }
-*/
 
 func (test *InstanceTest) TestInstanceSanityCheckSuccessful() {
 	b := new(stream.MockMessage)
@@ -232,3 +222,4 @@ func (test *InstanceTest) TestInstanceStop() {
 		test.NoError(err)
 	})
 }
+*/

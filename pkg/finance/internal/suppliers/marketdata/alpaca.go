@@ -6,7 +6,8 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AlpacaClient struct {
@@ -27,23 +28,20 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 	return &AlpacaClient{client: client, mdclient: mdclient}, nil
 }
 
-func (a *AlpacaClient) GetAsset(symbol string) (*entity.Asset, error) {
+func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	asset, err := a.client.GetAsset(symbol)
 	if err != nil {
 		return nil, err
 	}
-	storeAsset := entity.Asset{
-		Symbol:      asset.Symbol,
-		Name:        asset.Name,
-		Title:       asset.Name,
-		Type:        string(asset.Class),
-		LastUpdated: time.Now(),
+	storeAsset := pb.Asset{
+		Symbol: asset.Symbol,
+		Name:   asset.Name,
 	}
 	return &storeAsset, nil
 }
 
-func (a *AlpacaClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OHLC, error) {
-	var ohlcs []entity.OHLC
+func (a *AlpacaClient) GetOHLC(symbol string, start, end time.Time) ([]*pb.OHLC, error) {
+	var ohlcs []*pb.OHLC
 	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 		Start: start,
 		End:   end,
@@ -64,16 +62,16 @@ func (a *AlpacaClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.O
 		}
 	}
 	for _, bar := range ohlc {
-		o := entity.OHLC{
-			Open:   bar.Open,
-			High:   bar.High,
-			Low:    bar.Low,
-			Close:  bar.Close,
-			Volume: int(bar.Volume),
-			Time:   time.Date(bar.Timestamp.Year(), bar.Timestamp.Month(), bar.Timestamp.Day(), 0, 0, 0, 0, time.UTC),
+		o := pb.OHLC{
+			Open:      bar.Open,
+			High:      bar.High,
+			Low:       bar.Low,
+			Close:     bar.Close,
+			Volume:    int32(bar.Volume),
+			Timestamp: timestamppb.New(bar.Timestamp),
 		}
 
-		ohlcs = append(ohlcs, o)
+		ohlcs = append(ohlcs, &o)
 	}
-	return &ohlcs, nil
+	return ohlcs, nil
 }

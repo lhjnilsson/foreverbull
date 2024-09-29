@@ -3,12 +3,12 @@ package stream
 import (
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 )
 
 type UpdateServiceStatusCommand struct {
 	Image  string                   `json:"image"`
-	Status entity.ServiceStatusType `json:"status"`
+	Status pb.Service_Status_Status `json:"status"`
 	Error  error                    `json:"error"`
 }
 
@@ -17,7 +17,7 @@ type ServiceStartCommand struct {
 	InstanceID string `json:"instance_id"`
 }
 
-func NewUpdateServiceStatusCommand(image string, status entity.ServiceStatusType, err error) (stream.Message, error) {
+func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status, err error) (stream.Message, error) {
 	entity := &UpdateServiceStatusCommand{
 		Image:  image,
 		Status: status,
@@ -46,7 +46,7 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 	if err != nil {
 		return nil, err
 	}
-	msg2, err := NewUpdateServiceStatusCommand(image, entity.ServiceStatusInterview, nil)
+	msg2, err := NewUpdateServiceStatusCommand(image, pb.Service_Status_INTERVIEW, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateServiceStatusCommand(image, entity.ServiceStatusReady, nil)
+	msg2, err = NewUpdateServiceStatusCommand(image, pb.Service_Status_READY, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 	if err != nil {
 		return nil, err
 	}
-	msg2, err = NewUpdateServiceStatusCommand(image, entity.ServiceStatusError, nil)
+	msg2, err = NewUpdateServiceStatusCommand(image, pb.Service_Status_ERROR, nil)
 	if err != nil {
 		return nil, err
 	}

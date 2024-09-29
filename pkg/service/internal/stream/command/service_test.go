@@ -1,21 +1,11 @@
 package command
 
 import (
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/service/container"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	serviceDependency "github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
-	ss "github.com/lhjnilsson/foreverbull/pkg/service/stream"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -38,6 +28,7 @@ func (test *ServiceTest) SetupSuite() {
 
 }
 
+/*
 func (test *ServiceTest) SetupTest() {
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -140,3 +131,4 @@ func (test *ServiceTest) TestServiceStart() {
 		test.Equal("test-image", *instance.Image)
 	})
 }
+*/

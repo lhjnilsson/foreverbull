@@ -15,7 +15,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	serviceEntity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 
 	"github.com/stretchr/testify/mock"
@@ -102,10 +101,6 @@ func (s *SessionManualTest) TearDownTest() {
 }
 
 func (s *SessionManualTest) TestCreateExecution() {
-	s.mockWorkerPool.On("GetAlgorithm").Return(&serviceEntity.Algorithm{})
-	s.mockWorkerPool.On("GetPort").Return(0)
-	s.mockWorkerPool.On("GetNamespacePort").Return(1)
-
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
 			StartDate: pb.TimeToProtoTimestamp(time.Now()),

@@ -6,7 +6,6 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -25,8 +24,6 @@ type grpcSessionServer struct {
 	server   *grpc.Server
 
 	activity chan bool
-
-	currentExecution *entity.Execution
 }
 
 func NewGRPCSessionServer(session *backtest_pb.Session, db postgres.Query,

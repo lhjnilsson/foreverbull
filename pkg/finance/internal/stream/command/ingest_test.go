@@ -9,13 +9,14 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type IngestCommandTest struct {
@@ -25,7 +26,7 @@ type IngestCommandTest struct {
 	assets *repository.Asset
 	ohlc   *repository.OHLC
 
-	storedAsset     entity.Asset
+	storedAsset     *pb.Asset
 	storedOHLCStart time.Time
 	storedOHLCEnd   time.Time
 
@@ -49,7 +50,7 @@ func (test *IngestCommandTest) SetupTest() {
 	test.Require().NoError(err)
 	test.assets = &repository.Asset{Conn: test.db}
 	test.ohlc = &repository.OHLC{Conn: test.db}
-	test.storedAsset = entity.Asset{
+	test.storedAsset = &pb.Asset{
 		Symbol: "Stored123",
 		Name:   "Stored Asset",
 	}
@@ -86,9 +87,9 @@ func (test *IngestCommandTest) TestIngestCommandIngestNewOHLC() {
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
 	test.marketdata.On("GetOHLC", test.storedAsset.Symbol, test.storedOHLCStart, test.storedOHLCEnd.Add(time.Hour*24)).Return(
-		&[]entity.OHLC{
+		&[]pb.OHLC{
 			{
-				Time: time.Date(2020, 1, 4, 0, 0, 0, 0, time.UTC),
+				Timestamp: timestamppb.New(time.Now()),
 			},
 		},
 		nil,
@@ -115,21 +116,21 @@ func (test *IngestCommandTest) TestIngestCommandIngestAll() {
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
-	newAsset := entity.Asset{
+	newAsset := pb.Asset{
 		Symbol: "NEW123",
 		Name:   "New Asset",
 	}
 	test.marketdata.On("GetAsset", newAsset.Symbol).Return(&newAsset, nil)
 	test.marketdata.On("GetOHLC", "NEW123", test.storedOHLCStart, test.storedOHLCEnd).Return(
-		&[]entity.OHLC{
+		&[]pb.OHLC{
 			{
-				Time: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				Timestamp: timestamppb.New(time.Now()),
 			},
 			{
-				Time: time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
+				Timestamp: timestamppb.New(time.Now()),
 			},
 			{
-				Time: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+				Timestamp: timestamppb.New(time.Now()),
 			},
 		},
 		nil,

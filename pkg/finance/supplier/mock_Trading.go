@@ -3,7 +3,7 @@
 package supplier
 
 import (
-	entity "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,15 +13,15 @@ type MockTrading struct {
 }
 
 // GetOrders provides a mock function with given fields:
-func (_m *MockTrading) GetOrders() ([]*entity.Order, error) {
+func (_m *MockTrading) GetOrders() ([]*pb.Order, error) {
 	ret := _m.Called()
 
-	var r0 []*entity.Order
-	if rf, ok := ret.Get(0).(func() []*entity.Order); ok {
+	var r0 []*pb.Order
+	if rf, ok := ret.Get(0).(func() []*pb.Order); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*entity.Order)
+			r0 = ret.Get(0).([]*pb.Order)
 		}
 	}
 
@@ -36,15 +36,15 @@ func (_m *MockTrading) GetOrders() ([]*entity.Order, error) {
 }
 
 // GetPortfolio provides a mock function with given fields:
-func (_m *MockTrading) GetPortfolio() (*entity.Portfolio, error) {
+func (_m *MockTrading) GetPortfolio() (*pb.Portfolio, error) {
 	ret := _m.Called()
 
-	var r0 *entity.Portfolio
-	if rf, ok := ret.Get(0).(func() *entity.Portfolio); ok {
+	var r0 *pb.Portfolio
+	if rf, ok := ret.Get(0).(func() *pb.Portfolio); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.Portfolio)
+			r0 = ret.Get(0).(*pb.Portfolio)
 		}
 	}
 

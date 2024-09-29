@@ -5,7 +5,7 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 )
 
 type AlpacaClient struct {
@@ -31,7 +31,7 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 	return &AlpacaClient{client: client}, nil
 }
 
-func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
+func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 	acc, err := c.client.GetAccount()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
@@ -40,26 +40,26 @@ func (c *AlpacaClient) GetPortfolio() (*entity.Portfolio, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get positions: %w", err)
 	}
-	var positions []entity.Position
+	var positions []*pb.Position
 	for _, position := range pos {
-		positions = append(positions, entity.Position{
+		positions = append(positions, &pb.Position{
 			Symbol:    position.Symbol,
-			Amount:    position.Qty,
-			CostBasis: position.CostBasis,
+			Amount:    int32((position.Qty.InexactFloat64())),
+			CostBasis: position.CostBasis.InexactFloat64(),
 		})
 	}
-	return &entity.Portfolio{
-		Cash:      acc.Cash,
-		Value:     acc.PortfolioValue,
-		Positions: positions,
+	return &pb.Portfolio{
+		Cash:           acc.Cash.InexactFloat64(),
+		PortfolioValue: acc.PortfolioValue.InexactFloat64(),
+		Positions:      positions,
 	}, nil
 }
 
-func (c *AlpacaClient) GetOrders() ([]*entity.Order, error) {
+func (c *AlpacaClient) GetOrders() ([]*pb.Order, error) {
 	_, err := c.client.GetOrders(alpaca.GetOrdersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
-	var entityOrders []*entity.Order
+	var entityOrders []*pb.Order
 	return entityOrders, nil
 }

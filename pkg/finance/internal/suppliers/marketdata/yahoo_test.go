@@ -79,7 +79,7 @@ func (test *YahooTest) TestGetOHLC() {
 		} else {
 			test.NoError(err)
 			test.NotNil(ohlc)
-			test.Equal(tc.ExpectedLength, len(*ohlc))
+			test.Equal(tc.ExpectedLength, len(ohlc))
 		}
 	}
 

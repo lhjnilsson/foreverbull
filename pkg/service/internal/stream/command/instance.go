@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/container"
-	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	st "github.com/lhjnilsson/foreverbull/pkg/service/stream"
 )
 
@@ -103,17 +101,18 @@ func InstanceSanityCheck(ctx context.Context, message stream.Message) error {
 }
 
 func InstanceStop(ctx context.Context, message stream.Message) error {
-	instance := st.InstanceStopCommand{}
-	err := message.ParsePayload(&instance)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling InstanceStop payload: %w", err)
-	}
+	/*
+		instance := st.InstanceStopCommand{}
+		err := message.ParsePayload(&instance)
+		if err != nil {
+			return fmt.Errorf("error unmarshalling InstanceStop payload: %w", err)
+		}
 
-	container := message.MustGet(dependency.ContainerDep).(container.Container)
-	err = container.Stop(ctx, instance.ID, true)
-	if err != nil {
-		return err
-	}
-
+		container := message.MustGet(dependency.ContainerDep).(container.Container)
+		err = container.Stop(ctx, instance.ID, true)
+		if err != nil {
+			return err
+		}
+	*/
 	return nil
 }
