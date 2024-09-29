@@ -22,7 +22,7 @@ type WorkerFunction struct {
 	RunLast  bool
 }
 
-func WorkerSimulator(t *testing.T, socket mangos.Socket, functions ...*WorkerFunction) (*pb.Algorithm, func(socket mangos.Socket)) {
+func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm, func(socket mangos.Socket)) {
 	t.Helper()
 	algo := &pb.Algorithm{
 		FilePath: "worker_simulator",

@@ -195,9 +195,21 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	gCleint, err := grpc.NewClient(fmt.Sprintf("localhost:%d", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	sessionClient := pb.NewSessionServicerClient(gCleint)
 
+	cb := func(req *service_pb.WorkerRequest) *service_pb.WorkerResponse {
+		return &service_pb.WorkerResponse{}
+	}
+	functions := []*test_helper.WorkerFunction{
+		{
+			CB:       cb,
+			Name:     "test",
+			Parallel: true,
+		},
+	}
+	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
+
 	excRep, err := sessionClient.CreateExecution(context.TODO(), &pb.CreateExecutionRequest{
 		Backtest:  rsp2.Backtest,
-		Algorithm: &service_pb.Algorithm{},
+		Algorithm: algo,
 	})
 	test.Require().NoError(err, "failed to create execution")
 
@@ -205,10 +217,9 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.NoError(err)
 	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", excRep.Configuration.GetBrokerPort()))
 	test.Require().NoError(err, fmt.Sprintf("Failed to connect to broker port %d", excRep.Configuration.GetBrokerPort()))
-	worker := func(req *service_pb.WorkerRequest) *service_pb.WorkerResponse {
-		return &service_pb.WorkerResponse{}
-	}
-	go test_helper.WorkerSimulator(test.T(), workerSocket, worker)
+
+	go runner(workerSocket)
+	defer workerSocket.Close()
 
 	stream, err := sessionClient.RunExecution(context.TODO(), &pb.RunExecutionRequest{
 		ExecutionId: excRep.Execution.Id,

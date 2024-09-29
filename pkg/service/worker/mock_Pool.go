@@ -5,10 +5,10 @@ package worker
 import (
 	context "context"
 
-	entity "github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	financepb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	mock "github.com/stretchr/testify/mock"
 
-	pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 
 	time "time"
 )
@@ -32,85 +32,43 @@ func (_m *MockPool) Close() error {
 	return r0
 }
 
-// GetAlgorithm provides a mock function with given fields:
-func (_m *MockPool) GetAlgorithm() *entity.Algorithm {
+// Configure provides a mock function with given fields:
+func (_m *MockPool) Configure() *pb.ExecutionConfiguration {
 	ret := _m.Called()
 
-	var r0 *entity.Algorithm
-	if rf, ok := ret.Get(0).(func() *entity.Algorithm); ok {
+	var r0 *pb.ExecutionConfiguration
+	if rf, ok := ret.Get(0).(func() *pb.ExecutionConfiguration); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entity.Algorithm)
+			r0 = ret.Get(0).(*pb.ExecutionConfiguration)
 		}
-	}
-
-	return r0
-}
-
-// GetNamespacePort provides a mock function with given fields:
-func (_m *MockPool) GetNamespacePort() int {
-	ret := _m.Called()
-
-	var r0 int
-	if rf, ok := ret.Get(0).(func() int); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-
-	return r0
-}
-
-// GetPort provides a mock function with given fields:
-func (_m *MockPool) GetPort() int {
-	ret := _m.Called()
-
-	var r0 int
-	if rf, ok := ret.Get(0).(func() int); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(int)
 	}
 
 	return r0
 }
 
 // Process provides a mock function with given fields: ctx, timestamp, symbols, portfolio
-func (_m *MockPool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *pb.Portfolio) ([]*pb.Order, error) {
+func (_m *MockPool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *financepb.Portfolio) ([]*financepb.Order, error) {
 	ret := _m.Called(ctx, timestamp, symbols, portfolio)
 
-	var r0 []*pb.Order
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *pb.Portfolio) []*pb.Order); ok {
+	var r0 []*financepb.Order
+	if rf, ok := ret.Get(0).(func(context.Context, time.Time, []string, *financepb.Portfolio) []*financepb.Order); ok {
 		r0 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*pb.Order)
+			r0 = ret.Get(0).([]*financepb.Order)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *pb.Portfolio) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, time.Time, []string, *financepb.Portfolio) error); ok {
 		r1 = rf(ctx, timestamp, symbols, portfolio)
 	} else {
 		r1 = ret.Error(1)
 	}
 
 	return r0, r1
-}
-
-// SetAlgorithm provides a mock function with given fields: algo
-func (_m *MockPool) SetAlgorithm(algo *entity.Algorithm) error {
-	ret := _m.Called(algo)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(*entity.Algorithm) error); ok {
-		r0 = rf(algo)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
 }
 
 type mockConstructorTestingTNewMockPool interface {

@@ -44,7 +44,7 @@ func (test *PoolTest) TestSimple() {
 			Parallel: true,
 		},
 	}
-	algo, runner := test_helper.WorkerSimulator(test.T(), test.socket, functions...)
+	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
 	pool, err := NewPool(context.TODO(), algo)
 
 	configuration := pool.Configure()

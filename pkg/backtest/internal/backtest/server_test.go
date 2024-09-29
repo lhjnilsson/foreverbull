@@ -73,7 +73,7 @@ func (s *SessionManualTest) SetupTest() {
 	s.listener = bufconn.Listen(1024 * 1024)
 
 	s.mockEngine = new(engine.MockEngine)
-	s.baseServer, s.activity, err = NewGRPCSessionServer(s.session, s.conn, s.mockEngine, s.mockWorkerPool)
+	s.baseServer, s.activity, err = NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
 	s.Require().NoError(err)
 	go func() {
 		if err := s.baseServer.Serve(s.listener); err != nil {
