@@ -15,11 +15,7 @@ from foreverbull import exceptions, models
 from foreverbull.models import get_engine
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import (
-    service_pb2,
-    worker_pb2,
-    worker_service_pb2,
-)
+from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
 
 
 class Worker(ABC):

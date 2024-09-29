@@ -6,11 +6,7 @@ import pandas as pd
 import pytest
 from foreverbull import entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    engine_service_pb2,
-    ingestion_pb2,
-)
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2, ingestion_pb2
 from foreverbull_zipline import engine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from zipline.api import order_target, symbol

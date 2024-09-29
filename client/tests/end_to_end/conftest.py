@@ -3,10 +3,9 @@ import time
 
 import grpc
 import pytest
-import testcontainers
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
 from testcontainers.core.container import DockerContainer
-from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for
+from testcontainers.core.waiting_utils import wait_container_is_ready
 from testcontainers.minio import MinioContainer
 
 

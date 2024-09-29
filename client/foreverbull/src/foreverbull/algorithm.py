@@ -1,7 +1,6 @@
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from functools import wraps
 from multiprocessing import Event
 from typing import Generator
 
@@ -67,18 +66,9 @@ class Algorithm(models.Algorithm):
         yield self
         channel.close()
 
-    @staticmethod
-    def _has_session(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if self._backtest_session is None or self._broker_session_stub is None:
-                raise RuntimeError("No backtest session")
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    @_has_session
     def get_default(self) -> entity.backtest.Backtest:
+        if self._broker_stub is None or self._backtest_session is None:
+            raise RuntimeError("No backtest")
         rsp: backtest_service_pb2.GetBacktestResponse = self._broker_stub.GetBacktest(
             backtest_service_pb2.GetBacktestRequest(
                 name=self._backtest_session.backtest
@@ -92,10 +82,11 @@ class Algorithm(models.Algorithm):
             symbols=[s for s in rsp.backtest.symbols],
         )
 
-    @_has_session
     def run_execution(
         self, start: datetime, end: datetime, symbols: list[str], benchmark=None
     ) -> Generator[entity.finance.Portfolio, None, None]:
+        if self._broker_session_stub is None:
+            raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
@@ -109,17 +100,18 @@ class Algorithm(models.Algorithm):
             wp.configure_execution(rsp.configuration)
             wp.run_execution(Event())
             rsp = self._broker_session_stub.RunExecution(
-                broker_pb2.RunExecutionRequest(execution_id="123")
+                session_service_pb2.RunExecutionRequest(execution_id="123")
             )
             for message in rsp:
                 yield message.portfolio
 
-    @_has_session
     def get_execution(
         self, execution_id: str
     ) -> tuple[entity.backtest.Execution, pandas.DataFrame]:
+        if self._broker_session_stub is None:
+            raise RuntimeError("No backtest session")
         rsp = self._broker_session_stub.GetExecution(
-            broker_pb2.GetExecutionRequest(execution_id=execution_id)
+            session_service_pb2.GetExecutionRequest(execution_id=execution_id)
         )
         periods = []
         for period in rsp.periods:

@@ -11,7 +11,6 @@ from datetime import timezone
 import pandas as pd
 import pynng
 import pytz
-import requests
 import six
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils

@@ -1,5 +1,4 @@
 import time
-from datetime import timedelta
 
 import grpc
 import pytest

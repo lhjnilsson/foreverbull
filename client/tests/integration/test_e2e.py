@@ -5,7 +5,6 @@ import pytest
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull.backtest import (
     backtest_service_pb2_grpc,
-    engine_service_pb2,
     engine_service_pb2_grpc,
     session_service_pb2_grpc,
 )
