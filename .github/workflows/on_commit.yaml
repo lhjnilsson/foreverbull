@@ -238,11 +238,11 @@ jobs:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
           retention-days: 1
-      - name: Upload end_to_end tests
+      - name: Upload example algorithms
         uses: actions/upload-artifact@v4
         with:
-          name: end_to_end_tests
-          path: client/tests/end_to_end
+          name: example_algorithms
+          path: client/example_algorithms
 
   build-docker-zipline:
     needs: [build-python-packages]
@@ -321,8 +321,8 @@ jobs:
       - name: Download end_to_end tests
         uses: actions/download-artifact@v4
         with:
-          name: end_to_end_tests
-          path: /tmp/end_to_end_tests
+          name: example_algorithms
+          path: /tmp/example_algorithms
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
@@ -337,7 +337,7 @@ jobs:
       - name: create backtest
         run: foreverbull backtest create github_action_test
       - name: Run backtest as pytest
-        working-directory: /tmp/end_to_end_tests
+        working-directory: /tmp/example_algorithms
         run: |
           python -m pytest --backtest=github_action_test
       - name: Sleep for 20 seconds to make all containers stop
@@ -389,8 +389,8 @@ jobs:
       - name: Download end_to_end tests
         uses: actions/download-artifact@v4
         with:
-          name: end_to_end_tests
-          path: /tmp/end_to_end_tests
+          name: example_algorithms
+          path: /tmp/example_algorithms
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
@@ -405,7 +405,7 @@ jobs:
       - name: create backtest
         run: foreverbull backtest create github_action_test
       - name: Run backtest as pytest
-        working-directory: /tmp/end_to_end_tests
+        working-directory: /tmp/example_algorithms
         run: |
           python -m pytest --backtest=github_action_test
       - name: Sleep for 20 seconds to make all containers stop
