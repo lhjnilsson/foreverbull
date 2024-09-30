@@ -3,6 +3,7 @@ import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from multiprocessing import get_start_method, set_start_method
 from threading import Thread
 
 import pynng
@@ -15,7 +16,9 @@ from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
 
 @pytest.fixture(scope="session")
 def spawn_process():
-    pass
+    method = get_start_method()
+    if method != "spawn":
+        set_start_method("spawn", force=True)
 
 
 @pytest.fixture(scope="function")
