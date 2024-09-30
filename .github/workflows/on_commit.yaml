@@ -53,9 +53,18 @@ jobs:
       - name: Lint
         run: |
           rye lint
-      - name: Unittest
+      - name: Unittest foreverbull
         run: |
-          rye test
+          rye test -- foreverbull/
+      - name: Unittest foreverbull_zipline
+        run: |
+          rye test -- foreverbull_zipline/
+      - name: Unittest foreverbull_testing
+        run: |
+          rye test -- foreverbull_testing/
+      - name: Integration Tests foreverbull
+        run: |
+          rye test -- foreverbull/tests/integration/
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
