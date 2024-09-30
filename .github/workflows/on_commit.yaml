@@ -80,7 +80,7 @@ jobs:
           tags: lhjnilsson/foreverbull:on_commit
           outputs: type=docker,dest=/tmp/foreverbull.tar
       - name: Upload foreverbull
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull
           path: /tmp/foreverbull.tar
@@ -128,19 +128,19 @@ jobs:
           tags: lhjnilsson/multistep-with-namespace-example:on_commit
           outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
       - name: Upload parallel_example
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: parallel_example
           path: /tmp/parallel_example.tar
           retention-days: 1
       - name: Upload non_parallel_example
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: non_parallel_example
           path: /tmp/non_parallel_example.tar
           retention-days: 1
       - name: Upload multistep with namespace
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: multistep_with_namespace
           path: /tmp/multistep_with_namespace.tar
@@ -226,19 +226,19 @@ jobs:
       - name: build foreverbull_testing
         run: rye build --pyproject foreverbull_testing/pyproject.toml
       - name: Upload foreverbull
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload foreverbull_testing
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload end_to_end tests
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: end_to_end_tests
           path: client/tests/end_to_end
@@ -271,7 +271,7 @@ jobs:
             FB_WHEEL=foreverbull-0.0.1-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload zipline
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zipline
           path: /tmp/zipline.tar
