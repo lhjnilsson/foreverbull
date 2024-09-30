@@ -64,7 +64,7 @@ jobs:
           rye test -- foreverbull_testing/
       - name: Integration Tests foreverbull
         run: |
-          rye test -- foreverbull/tests/integration/
+          rye test -- tests/integration/
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
