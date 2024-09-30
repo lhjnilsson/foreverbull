@@ -15,7 +15,7 @@ from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.engine import Engine, EngineProcess
 
 
-def test_start_stop():
+def test_start_stop(spawn_process):
     execution = EngineProcess()
     execution.start()
     execution.is_ready.wait(3.0)

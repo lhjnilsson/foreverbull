@@ -1,7 +1,15 @@
 from datetime import datetime, timezone
+from multiprocessing import get_start_method, set_start_method
 
 import pytest
 from foreverbull import entity
+
+
+@pytest.fixture(scope="session")
+def spawn_process():
+    method = get_start_method()
+    if method != "spawn":
+        set_start_method("spawn", force=True)
 
 
 @pytest.fixture(scope="session")

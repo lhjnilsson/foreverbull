@@ -16,7 +16,7 @@ from foreverbull_zipline.engine import EngineProcess
 
 
 @pytest.fixture
-def engine(fb_database):
+def engine(fb_database, spawn_process):
     e = EngineProcess()
     e.start()
     e.is_ready.wait(3.0)
