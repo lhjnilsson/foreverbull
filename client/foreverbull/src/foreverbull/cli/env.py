@@ -4,7 +4,6 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
-import docker
 import docker.errors
 import typer
 from foreverbull import broker, entity
@@ -12,6 +11,8 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
+
+import docker
 
 version = "0.1.0"
 
@@ -115,10 +116,16 @@ def status():
 
 
 ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
-ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
+ALPACA_SECRET_OPT = (
+    Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
+)
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
-BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
-INGESTION_CONFIG_OPT = Annotated[str, typer.Option(help="Path to ingestion config file")]
+BACKTEST_IMAGE_OPT = Annotated[
+    str, typer.Option(help="Docker image name of backtest service")
+]
+INGESTION_CONFIG_OPT = Annotated[
+    str, typer.Option(help="Path to ingestion config file")
+]
 
 
 @env.command()
@@ -160,21 +167,34 @@ def start(
 
         with ThreadPoolExecutor() as executor:
             futures = []
-            for image in [POSTGRES_IMAGE, NATS_IMAGE, MINIO_IMAGE, broker_image, backtest_image]:
+            for image in [
+                POSTGRES_IMAGE,
+                NATS_IMAGE,
+                MINIO_IMAGE,
+                broker_image,
+                backtest_image,
+            ]:
                 futures.append(executor.submit(get_or_pull_image, image))
                 wait(futures)
             for future in futures:
                 if future.result():
-                    progress.update(download_images, description=f"[red]Failed to download images: {future.result()}")
+                    progress.update(
+                        download_images,
+                        description=f"[red]Failed to download images: {future.result()}",
+                    )
                     exit(1)
 
-        progress.update(download_images, description="[blue]Images downloaded", completed=True)
+        progress.update(
+            download_images, description="[blue]Images downloaded", completed=True
+        )
 
         try:
             d.networks.get(NETWORK_NAME)
         except docker.errors.NotFound:
             d.networks.create(NETWORK_NAME, driver="bridge")
-        progress.update(net_task_id, description="[blue]Network created", completed=True)
+        progress.update(
+            net_task_id, description="[blue]Network created", completed=True
+        )
 
         try:
             postgres_container = d.containers.get("foreverbull_postgres")
@@ -205,12 +225,23 @@ def start(
                         "timeout": 5000000000,
                         "retries": 5,
                     },
-                    volumes={init_db_file.name: {"bind": "/docker-entrypoint-initdb.d/init.sh", "mode": "ro"}},
+                    volumes={
+                        init_db_file.name: {
+                            "bind": "/docker-entrypoint-initdb.d/init.sh",
+                            "mode": "ro",
+                        }
+                    },
                 )
             except Exception as e:
-                progress.update(postgres_task_id, description=f"[red]Failed to start postgres: {e}", completed=True)
+                progress.update(
+                    postgres_task_id,
+                    description=f"[red]Failed to start postgres: {e}",
+                    completed=True,
+                )
                 exit(1)
-        progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
+        progress.update(
+            postgres_task_id, description="[blue]Postgres started", completed=True
+        )
 
         try:
             nats_container = d.containers.get("foreverbull_nats")
@@ -236,7 +267,11 @@ def start(
                     command="-js -sd /var/lib/nats/data",
                 )
             except Exception as e:
-                progress.update(nats_task_id, description=f"[red]Failed to start nats: {e}", completed=True)
+                progress.update(
+                    nats_task_id,
+                    description=f"[red]Failed to start nats: {e}",
+                    completed=True,
+                )
                 exit(1)
         progress.update(nats_task_id, description="[blue]NATS started", completed=True)
 
@@ -254,9 +289,15 @@ def start(
                     command='server --console-address ":9001" /data',
                 )
             except Exception as e:
-                progress.update(minio_task_id, description=f"[red]Failed to start minio: {e}", completed=True)
+                progress.update(
+                    minio_task_id,
+                    description=f"[red]Failed to start minio: {e}",
+                    completed=True,
+                )
                 exit(1)
-        progress.update(minio_task_id, description="[blue]Minio started", completed=True)
+        progress.update(
+            minio_task_id, description="[blue]Minio started", completed=True
+        )
 
         for _ in range(100):
             time.sleep(0.2)
@@ -266,10 +307,16 @@ def start(
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.health != "healthy":
                 continue
-            progress.update(health_task_id, description="[blue]All services healthy", completed=True)
+            progress.update(
+                health_task_id, description="[blue]All services healthy", completed=True
+            )
             break
         else:
-            progress.update(health_task_id, description="[red]Failed to start services, timeout", completed=True)
+            progress.update(
+                health_task_id,
+                description="[red]Failed to start services, timeout",
+                completed=True,
+            )
             exit(1)
 
         try:
@@ -285,7 +332,7 @@ def start(
                     network=NETWORK_NAME,
                     hostname="foreverbull",
                     ports={
-                        "8080/tcp": 8080,
+                        "50055/tcp": 50055,
                         "27000/tcp": 27000,
                         "27001/tcp": 27001,
                         "27002/tcp": 27002,
@@ -309,34 +356,74 @@ def start(
                         "BACKTEST_IMAGE": backtest_image,
                         "LOG_LEVEL": "info",
                     },
-                    volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
+                    volumes={
+                        "/var/run/docker.sock": {
+                            "bind": "/var/run/docker.sock",
+                            "mode": "rw",
+                        }
+                    },
                 )
             except Exception as e:
                 progress.update(
-                    foreverbull_task_id, description=f"[red]Failed to start foreverbull: {e}", completed=True
+                    foreverbull_task_id,
+                    description=f"[red]Failed to start foreverbull: {e}",
+                    completed=True,
                 )
                 exit(1)
             time.sleep(2)
             try:
                 with open(ingestion_config, "r") as f:
-                    ingestion_config = json.load(f)
+                    config = entity.backtest.Ingestion.model_validate(json.load(f))
+                import grpc
+                from foreverbull.pb import pb_utils
+                from foreverbull.pb.foreverbull.backtest import (
+                    ingestion_pb2,
+                    ingestion_pb2_grpc,
+                    ingestion_service_pb2,
+                    ingestion_service_pb2_grpc,
+                )
 
-                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.model_validate(ingestion_config))
-                while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
-                    time.sleep(0.5)
-                    ingestion = broker.backtest.get_ingestion()
-                    if ingestion.statuses[0].status == entity.backtest.IngestionStatusType.ERROR:
-                        progress.update(
-                            ingestion_task_id,
-                            description=f"[red]Failed to ingest: {ingestion.statuses[0].error}",
-                            completed=True,
+                service = ingestion_service_pb2_grpc.IngestionServicerStub(
+                    grpc.insecure_channel("localhost:50055")
+                )
+                rsp = service.CreateIngestion(
+                    ingestion_service_pb2.CreateIngestionRequest(
+                        ingestion=ingestion_pb2.Ingestion(
+                            start_date=pb_utils.to_proto_timestamp(config.start),
+                            end_date=pb_utils.to_proto_timestamp(config.end),
+                            symbols=config.symbols,
                         )
-                        exit(1)
-                progress.update(ingestion_task_id, description="[blue]Ingestion completed", completed=True)
+                    )
+                )
+                for _ in range(60):
+                    rsp = service.GetCurrentIngestion(
+                        ingestion_service_pb2.GetCurrentIngestionRequest()
+                    )
+                    if rsp.status == ingestion_pb2.IngestionStatus.READY:
+                        break
+                    time.sleep(1)
+                else:
+                    progress.update(
+                        ingestion_task_id,
+                        description="[red]Failed to ingest",
+                        completed=True,
+                    )
+                    exit(1)
+                progress.update(
+                    ingestion_task_id,
+                    description="[blue]Ingestion completed",
+                    completed=True,
+                )
             except Exception as e:
-                progress.update(ingestion_task_id, description=f"[red]Failed to ingest: {e}", completed=True)
+                progress.update(
+                    ingestion_task_id,
+                    description=f"[red]Failed to ingest: {e}",
+                    completed=True,
+                )
                 exit(1)
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
+        progress.update(
+            foreverbull_task_id, description="[blue]Foreverbull started", completed=True
+        )
     std.print("Environment started")
 
 
@@ -359,14 +446,18 @@ def stop():
             d.containers.get("foreverbull_foreverbull").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull removed", completed=True)
+        progress.update(
+            foreverbull_task_id, description="[blue]Foreverbull removed", completed=True
+        )
 
         try:
             d.containers.get("foreverbull_minio").stop()
             d.containers.get("foreverbull_minio").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(minio_task_id, description="[blue]Minio removed", completed=True)
+        progress.update(
+            minio_task_id, description="[blue]Minio removed", completed=True
+        )
 
         try:
             d.containers.get("foreverbull_nats").stop()
@@ -380,11 +471,15 @@ def stop():
             d.containers.get("foreverbull_postgres").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(postgres_task_id, description="[blue]Postgres removed", completed=True)
+        progress.update(
+            postgres_task_id, description="[blue]Postgres removed", completed=True
+        )
 
         try:
             d.networks.get(NETWORK_NAME).remove()
         except docker.errors.NotFound:
             pass
-        progress.update(net_task_id, description="[blue]Network removed", completed=True)
+        progress.update(
+            net_task_id, description="[blue]Network removed", completed=True
+        )
     std.print("Environment stopped")

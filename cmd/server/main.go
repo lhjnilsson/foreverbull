@@ -10,7 +10,9 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
@@ -36,7 +38,14 @@ var CoreModules = fx.Options(
 				time.Sleep(time.Second * time.Duration(3))
 			}
 		},
-		storage.NewMinioStorage,
+		container.NewEngine,
+		func() (storage.Storage, error) {
+			client, err := storage.NewMinioStorage(context.TODO())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create minio client: %w", err)
+			}
+			return client, nil
+		},
 		stream.New,
 	),
 )
@@ -44,6 +53,7 @@ var CoreModules = fx.Options(
 func app() *fx.App {
 	return fx.New(
 		CoreModules,
+		grpc.Module,
 		backtest.Module,
 		finance.Module,
 		service.Module,

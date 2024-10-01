@@ -39,12 +39,12 @@ func (is *IngestionServer) CreateIngestion(ctx context.Context, req *pb.CreateIn
 	}
 
 	metadata := map[string]string{
-		"Start_date": sd.AsTime().Format(time.RFC3339),
-		"End_date":   ed.AsTime().Format(time.RFC3339),
+		"Start_date": sd.AsTime().Format("2006-01-02"),
+		"End_date":   ed.AsTime().Format("2006-01-02"),
 		"Symbols":    strings.Join(req.Ingestion.Symbols, ","),
 		"Status":     pb.IngestionStatus_CREATED.String(),
 	}
-	name := fmt.Sprintf("%s-%s", sd.AsTime().Format(time.RFC3339), ed.AsTime().Format(time.RFC3339))
+	name := fmt.Sprintf("%s-%s", sd.AsTime().Format("2006-01-02"), ed.AsTime().Format("2006-01-02"))
 	_, err := is.storage.CreateObject(ctx, storage.IngestionsBucket, name, storage.WithMetadata(metadata))
 	if err != nil {
 		return nil, fmt.Errorf("error creating ingestion: %w", err)
