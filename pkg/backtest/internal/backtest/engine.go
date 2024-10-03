@@ -43,12 +43,13 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 			return nil, fmt.Errorf("error downloading ingestion: %w", err)
 		}
 	}
-	z := Zipline{client: client}
+	z := Zipline{client: client, container: container}
 	return &z, nil
 }
 
 type Zipline struct {
-	client backtest_pb.EngineClient
+	client    backtest_pb.EngineClient
+	container container.Container
 }
 
 func (z *Zipline) Ingest(ctx context.Context, ingestion *backtest_pb.Ingestion, object *storage.Object) error {
@@ -140,5 +141,5 @@ func (z *Zipline) Stop(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error stopping: %w", err)
 	}
-	return nil
+	return z.container.Stop()
 }

@@ -105,7 +105,7 @@ func (c *engine) PullImage() error {
 
 func (c *engine) Start(ctx context.Context, image string, name string) (Container, error) {
 	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
-	env = append(env, fmt.Sprintf("BROKER_HTTP_PORT=%s", environment.GetHTTPPort()))
+	env = append(env, fmt.Sprintf("BROKER_PORT=%s", environment.GetHTTPPort()))
 	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", environment.GetMinioURL()))
 	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", environment.GetMinioAccessKey()))
 	env = append(env, fmt.Sprintf("STORAGE_SECRET_KEY=%s", environment.GetMinioSecretKey()))

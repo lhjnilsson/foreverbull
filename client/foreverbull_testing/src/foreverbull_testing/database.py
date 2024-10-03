@@ -62,7 +62,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
             )
             conn.execute(
                 text(
-                    """INSERT INTO asset (symbol, name, title, asset_type)
+                    """INSERT INTO asset (symbol, name)
                     VALUES (:symbol, :name) ON CONFLICT DO NOTHING"""
                 ),
                 {"symbol": asset.symbol, "name": asset.name},

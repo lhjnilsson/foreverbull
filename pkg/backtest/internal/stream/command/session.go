@@ -111,5 +111,5 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		}
 	}()
 	sessions.UpdatePort(ctx, command.SessionID, port)
-	return nil
+	return engine.Stop(context.Background())
 }

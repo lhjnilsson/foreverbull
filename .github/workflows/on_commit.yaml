@@ -318,7 +318,7 @@ jobs:
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: /tmp
-      - name: Download end_to_end tests
+      - name: Download example_algorithms
         uses: actions/download-artifact@v4
         with:
           name: example_algorithms
@@ -333,7 +333,7 @@ jobs:
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/end_to_end_tests/ingestion.json
+          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
       - name: create backtest
         run: foreverbull backtest create github_action_test
       - name: Run backtest as pytest
