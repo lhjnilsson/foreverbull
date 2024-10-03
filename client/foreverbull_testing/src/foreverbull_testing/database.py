@@ -82,7 +82,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                     high=row.High,
                     low=row.Low,
                     close=row.Close,
-                    volume=row.Volume,
+                    volume=int(row.Volume),
                 )
                 conn.execute(
                     text(
