@@ -6,12 +6,13 @@ from typing import Generator
 
 import grpc
 import pandas
-from foreverbull import entity, models
+from foreverbull import models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import (
     backtest_pb2,
     backtest_service_pb2,
     backtest_service_pb2_grpc,
+    execution_pb2,
     session_pb2,
     session_service_pb2,
     session_service_pb2_grpc,
@@ -55,7 +56,7 @@ class Algorithm(models.Algorithm):
             if (
                 rsp.session.statuses
                 and rsp.session.statuses[0].status
-                == entity.backtest.SessionStatusType.FAILED
+                == session_pb2.Session.Status.Status.FAILED
             ):
                 raise Exception(f"Session failed: {rsp.session.statuses[-1].error}")
             time.sleep(0.5)
@@ -66,7 +67,7 @@ class Algorithm(models.Algorithm):
         yield self
         channel.close()
 
-    def get_default(self) -> entity.backtest.Backtest:
+    def get_default(self) -> backtest_pb2.Backtest:
         if self._broker_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         rsp: backtest_service_pb2.GetBacktestResponse = self._broker_stub.GetBacktest(
@@ -74,17 +75,11 @@ class Algorithm(models.Algorithm):
                 name=self._backtest_session.backtest
             )
         )
-        return entity.backtest.Backtest(
-            name=rsp.name,
-            start=pb_utils.from_proto_timestamp(rsp.backtest.start_date),
-            end=pb_utils.from_proto_timestamp(rsp.backtest.end_date),
-            benchmark=rsp.backtest.benchmark,
-            symbols=[s for s in rsp.backtest.symbols],
-        )
+        return rsp.backtest
 
     def run_execution(
         self, start: datetime, end: datetime, symbols: list[str], benchmark=None
-    ) -> Generator[entity.finance.Portfolio, None, None]:
+    ) -> Generator[finance_pb2.Portfolio, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
@@ -107,7 +102,7 @@ class Algorithm(models.Algorithm):
 
     def get_execution(
         self, execution_id: str
-    ) -> tuple[entity.backtest.Execution, pandas.DataFrame]:
+    ) -> tuple[execution_pb2.Execution, pandas.DataFrame]:
         if self._broker_session_stub is None:
             raise RuntimeError("No backtest session")
         rsp = self._broker_session_stub.GetExecution(
@@ -124,10 +119,4 @@ class Algorithm(models.Algorithm):
                     "sharpe": period.sharpe if period.HasField("sharpe") else None,
                 }
             )
-        return entity.backtest.Execution(
-            id=rsp.execution.id,
-            start=pb_utils.from_proto_timestamp(rsp.execution.start_date),
-            end=pb_utils.from_proto_timestamp(rsp.execution.end_date),
-            symbols=[s for s in rsp.execution.symbols],
-            benchmark=rsp.execution.benchmark,
-        ), pandas.DataFrame(periods).reset_index(drop=True)
+        return rsp.execution, pandas.DataFrame(periods).reset_index(drop=True)

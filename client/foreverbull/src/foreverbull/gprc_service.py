@@ -25,13 +25,10 @@ class WorkerService(worker_service_pb2_grpc.WorkerServicer):
         return worker_service_pb2.RunExecutionResponse()
 
 
-def new_grpc_server(
-    worker_pool: WorkerPool, algorithm: Algorithm, port=50055
-) -> grpc.Server:
+def new_grpc_server(worker_pool: WorkerPool, algorithm: Algorithm) -> grpc.Server:
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
     service = WorkerService(worker_pool, algorithm)
     worker_service_pb2_grpc.add_WorkerServicer_to_server(service, server)
-    server.add_insecure_port(f"[::]:{port}")
     return server
 
 

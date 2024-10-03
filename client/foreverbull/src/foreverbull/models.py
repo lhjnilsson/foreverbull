@@ -10,10 +10,9 @@ from inspect import getabsfile, signature
 from typing import Callable, Iterator
 
 import pynng
-from foreverbull import entity
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame, read_sql_query
 from sqlalchemy import Connection, create_engine, engine
@@ -89,7 +88,7 @@ class Asset:
                 raise Exception(response.error)
             value = pb_utils.protobuf_struct_to_dict(response.value)
             if self._symbol not in value:
-                return None
+                return None  # type: ignore
             return value[self._symbol]
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
@@ -168,20 +167,6 @@ class Assets:
         return DataFrame()  # TODO: Implement
 
 
-class Portfolio(entity.finance.Portfolio):
-    def __contains__(self, asset: Asset) -> bool:
-        return asset.symbol in [position.symbol for position in self.positions]
-
-    def __getitem__(self, asset: Asset) -> entity.finance.Position | None:
-        return next(
-            (position for position in self.positions if position.symbol == asset.symbol),
-            None,
-        )
-
-    def get_position(self, asset: Asset) -> entity.finance.Position | None:
-        return self[asset]
-
-
 class Function:
     def __init__(self, callable: Callable, run_first: bool = False, run_last: bool = False):
         self.callable = callable
@@ -208,7 +193,7 @@ class Algorithm:
             parallel_execution: bool | None = None
 
             for key, value in signature(f.callable).parameters.items():
-                if value.annotation == Portfolio:
+                if value.annotation == finance_pb2.Portfolio:
                     portfolio_key = key
                     continue
                 if issubclass(value.annotation, Assets):
@@ -219,25 +204,24 @@ class Algorithm:
                     asset_key = key
                 else:
                     default = None if value.default == value.empty else str(value.default)
-                    parameter = entity.service.Service.Algorithm.Function.Parameter(
+                    parameter = worker_pb2.Algorithm.FunctionParameter(
                         key=key,
-                        default=default,
-                        type=self.type_to_str(value.annotation),
+                        defaultValue=default,
+                        valueType=self.type_to_str(value.annotation),
                     )
                     parameters.append(parameter)
             if parallel_execution is None:
                 raise TypeError("Function {} must have a parameter of type Asset or Assets".format(f.callable.__name__))
-
             function = {
                 "callable": f.callable,
                 "asset_key": asset_key,
                 "portfolio_key": portfolio_key,
-                "entity": entity.service.Service.Algorithm.Function(
+                "definition": worker_pb2.Algorithm.Function(
                     name=f.callable.__name__,
                     parameters=parameters,
-                    parallel_execution=parallel_execution,
-                    run_first=f.run_first,
-                    run_last=f.run_last,
+                    parallelExecution=parallel_execution,
+                    runFirst=f.run_first,
+                    runLast=f.run_last,
                 ),
             }
 
@@ -257,13 +241,6 @@ class Algorithm:
                 return "string"
             case _:
                 raise TypeError("Unsupported type: ", type(t))
-
-    def get_entity(self):
-        return entity.service.Service.Algorithm(
-            file_path=Algorithm._file_path,
-            functions=[function["entity"] for function in Algorithm._functions.values()],
-            namespaces=self._namespaces,
-        )
 
     @classmethod
     def from_file_path(cls, file_path: str) -> "Algorithm":
@@ -296,11 +273,13 @@ class Algorithm:
 
         param_type: str = ""
         for f in Algorithm._functions.values():
-            if f["entity"].name == function_name:
-                function_name = f["entity"].name
-                for p in f["entity"].parameters:
+            if f["definition"].name == function_name:
+                function_name = f["definition"].name
+                for p in f["definition"].parameters:
                     if p.key == param_key:
-                        param_type = p.type
+                        if not p.valueType:
+                            raise TypeError("unable to determine parameter type")
+                        param_type = p.valueType
                         break
                 else:
                     raise TypeError(f"Unknown parameter: {param_key}")
@@ -319,28 +298,20 @@ class Algorithm:
         db: Connection,
         portfolio: finance_pb2.Portfolio,
         symbols: list[str],
-    ) -> list[entity.finance.Order]:
-        p = Portfolio(
-            cash=portfolio.cash,
-            portfolio_value=portfolio.portfolio_value,
-            positions=[
-                entity.finance.Position(symbol=p.symbol, amount=p.amount, cost_basis=p.cost_basis)
-                for p in portfolio.positions
-            ],
-        )
-        if Algorithm._functions[function_name]["entity"].parallel_execution:
+    ) -> list[finance_pb2.Order]:
+        if Algorithm._functions[function_name]["definition"].parallelExecution:
             orders = []
             for symbol in symbols:
-                a = Asset(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbol)
+                asset = Asset(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbol)
                 order = Algorithm._functions[function_name]["callable"](
-                    asset=a,
-                    portfolio=p,
+                    asset=asset,
+                    portfolio=portfolio,
                 )
                 if order:
                     orders.append(order)
         else:
             assets = Assets(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbols)
-            orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
+            orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=portfolio)
             if not orders:
                 orders = []
         return orders

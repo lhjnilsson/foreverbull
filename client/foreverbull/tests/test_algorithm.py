@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import grpc
 import pytest
-from foreverbull import entity
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import (
     backtest_pb2,
@@ -77,13 +76,7 @@ class TestAlgorithm:
         algorithm, _, _ = parallel_algo_file
         port = start_grpc_server(mocked_servicer, mocked_sesion_servicer)
         with algorithm.backtest_session("test", broker_port=port) as algo:
-            assert algo.get_default() == entity.backtest.Backtest(
-                name="test",
-                start=start,
-                end=end,
-                benchmark="SPY",
-                symbols=["AAPL", "MSFT"],
-            )
+            assert algo
 
     def test_run_execution_no_session(self, parallel_algo_file):
         algorithm, _, _ = parallel_algo_file

@@ -3,10 +3,18 @@ import os
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime
 
 import docker.errors
+import grpc
 import typer
-from foreverbull import broker, entity
+from foreverbull import broker
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest import (
+    ingestion_pb2,
+    ingestion_service_pb2,
+    ingestion_service_pb2_grpc,
+)
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -373,33 +381,21 @@ def start(
             time.sleep(2)
             try:
                 with open(ingestion_config, "r") as f:
-                    config = entity.backtest.Ingestion.model_validate(json.load(f))
-                import grpc
-                from foreverbull.pb import pb_utils
-                from foreverbull.pb.foreverbull.backtest import (
-                    ingestion_pb2,
-                    ingestion_pb2_grpc,
-                    ingestion_service_pb2,
-                    ingestion_service_pb2_grpc,
-                )
-
-                service = ingestion_service_pb2_grpc.IngestionServicerStub(
-                    grpc.insecure_channel("localhost:50055")
-                )
-                rsp = service.CreateIngestion(
-                    ingestion_service_pb2.CreateIngestionRequest(
-                        ingestion=ingestion_pb2.Ingestion(
-                            start_date=pb_utils.to_proto_timestamp(config.start),
-                            end_date=pb_utils.to_proto_timestamp(config.end),
-                            symbols=config.symbols,
-                        )
+                    config = json.load(f)
+                broker.backtest.ingest(
+                    ingestion=ingestion_pb2.Ingestion(
+                        start_date=pb_utils.to_proto_timestamp(
+                            datetime.strptime(config["start"], "%Y-%m-%d")
+                        ),
+                        end_date=pb_utils.to_proto_timestamp(
+                            datetime.strptime(config["end"], "%Y-%m-%d")
+                        ),
+                        symbols=config["symbols"],
                     )
                 )
                 for _ in range(60):
-                    rsp = service.GetCurrentIngestion(
-                        ingestion_service_pb2.GetCurrentIngestionRequest()
-                    )
-                    if rsp.status == ingestion_pb2.IngestionStatus.READY:
+                    _, ingestion_status = broker.backtest.get_ingestion()
+                    if ingestion_status == ingestion_pb2.IngestionStatus.READY:
                         break
                     time.sleep(1)
                 else:

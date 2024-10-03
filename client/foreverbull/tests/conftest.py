@@ -8,8 +8,9 @@ from threading import Thread
 
 import pynng
 import pytest
-from foreverbull import Algorithm, Function, Order, entity, models
+from foreverbull import Algorithm, Function, Order, models
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest import backtest_pb2, execution_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
 
@@ -21,12 +22,56 @@ def spawn_process():
         set_start_method("spawn", force=True)
 
 
+@pytest.fixture(scope="session")
+def backtest_entity():
+    return backtest_pb2.Backtest(
+        name="testing_backtest",
+        start_date=pb_utils.to_proto_timestamp(
+            datetime(2022, 1, 3, tzinfo=timezone.utc)
+        ),
+        end_date=pb_utils.to_proto_timestamp(
+            datetime(2023, 12, 29, tzinfo=timezone.utc)
+        ),
+        symbols=[
+            "AAPL",
+            "AMZN",
+            "BAC",
+            "BRK-B",
+            "CMCSA",
+            "CSCO",
+            "DIS",
+            "GOOG",
+            "GOOGL",
+            "HD",
+            "INTC",
+            "JNJ",
+            "JPM",
+            "KO",
+            "MA",
+            "META",
+            "MRK",
+            "MSFT",
+            "PEP",
+            "PG",
+            "TSLA",
+            "UNH",
+            "V",
+            "VZ",
+            "WMT",
+        ],
+    )
+
+
 @pytest.fixture(scope="function")
 def execution(fb_database):
-    return entity.backtest.Execution(
+    return execution_pb2.Execution(
         id="test",
-        start=datetime(2023, 1, 3, 0, 0, 0, 0, tzinfo=timezone.utc),
-        end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
+        start_date=pb_utils.to_proto_timestamp(
+            datetime(2022, 1, 3, tzinfo=timezone.utc)
+        ),
+        end_date=pb_utils.to_proto_timestamp(
+            datetime(2023, 12, 29, tzinfo=timezone.utc)
+        ),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
     )
@@ -86,25 +131,21 @@ def get_algo(file_path: str) -> Algorithm:
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(spawn_process, execution, fb_database):
+def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = execution.start
-        portfolio = entity.finance.Portfolio(
+        start = execution.start_date.ToDatetime()
+        portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end:
+        while start < execution.end_date.ToDatetime():
             for symbol in execution.symbols:
-                pb = finance_pb2.Portfolio(
-                    **portfolio.model_dump(),
-                    timestamp=pb_utils.to_proto_timestamp(start),
-                )
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo",
                     symbols=[symbol],
-                    portfolio=pb,
+                    portfolio=portfolio,
                 )
 
                 server_socket.send(request.SerializeToString())
@@ -157,23 +198,22 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, execution, fb_database):
+def non_parallel_algo_file(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = execution.start
-        portfolio = entity.finance.Portfolio(
+        start = execution.start_date.ToDatetime()
+        portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end:
-            pb = finance_pb2.Portfolio(
-                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
-            )
+        while start < execution.end_date.ToDatetime():
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo",
                 symbols=execution.symbols,
-                portfolio=pb,
+                portfolio=portfolio,
             )
 
             server_socket.send(request.SerializeToString())
@@ -228,25 +268,23 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
+def parallel_algo_file_with_parameters(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start
-        portfolio = entity.finance.Portfolio(
+        start = execution.start_date.ToDatetime()
+        portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end:
+        while start < execution.end_date.ToDatetime():
             for symbol in execution.symbols:
-                pb = finance_pb2.Portfolio(
-                    **portfolio.model_dump(),
-                    timestamp=pb_utils.to_proto_timestamp(start),
-                )
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
                     symbols=[symbol],
-                    portfolio=pb,
+                    portfolio=portfolio,
                 )
                 server_socket.send(request.SerializeToString())
                 response = worker_service_pb2.WorkerResponse()
@@ -310,23 +348,22 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, execution, fb_database):
+def non_parallel_algo_file_with_parameters(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start
-        portfolio = entity.finance.Portfolio(
+        start = execution.start_date.ToDatetime()
+        portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end:
-            pb = finance_pb2.Portfolio(
-                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
-            )
+        while start < execution.end_date.ToDatetime():
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
                 symbols=execution.symbols,
-                portfolio=pb,
+                portfolio=portfolio,
             )
 
             server_socket.send(request.SerializeToString())
@@ -394,26 +431,21 @@ Algorithm(
 
 @pytest.fixture(scope="function")
 def multistep_algo_with_namespace(
-    spawn_process, execution, fb_database, namespace_server
+    spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server
 ):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start
-        portfolio = entity.finance.Portfolio(
+        start = execution.start_date.ToDatetime()
+        portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end:
-            # filter assets
-            #
-            p = finance_pb2.Portfolio(
-                **portfolio.model_dump(), timestamp=pb_utils.to_proto_timestamp(start)
-            )
+        while start < execution.end_date.ToDatetime():
             req = worker_service_pb2.WorkerRequest(
                 task="filter_assets",
                 symbols=execution.symbols,
-                portfolio=p,
+                portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
             response = worker_service_pb2.WorkerResponse()
@@ -426,7 +458,7 @@ def multistep_algo_with_namespace(
                 req = worker_service_pb2.WorkerRequest(
                     task="measure_assets",
                     symbols=[symbol],
-                    portfolio=p,
+                    portfolio=portfolio,
                 )
                 server_socket.send(req.SerializeToString())
                 response = worker_service_pb2.WorkerResponse()
@@ -438,7 +470,7 @@ def multistep_algo_with_namespace(
             req = worker_service_pb2.WorkerRequest(
                 task="create_orders",
                 symbols=execution.symbols,
-                portfolio=p,
+                portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
             response = worker_service_pb2.WorkerResponse()
@@ -508,39 +540,3 @@ Algorithm(
         f.flush()
         yield get_algo(f.name), request, _process_symbols
         process_socket.close()
-
-
-@pytest.fixture(scope="session")
-def backtest_entity():
-    return entity.backtest.Backtest(
-        name="testing_backtest",
-        start=datetime(2022, 1, 3, tzinfo=timezone.utc),
-        end=datetime(2023, 12, 29, tzinfo=timezone.utc),
-        symbols=[
-            "AAPL",
-            "AMZN",
-            "BAC",
-            "BRK-B",
-            "CMCSA",
-            "CSCO",
-            "DIS",
-            "GOOG",
-            "GOOGL",
-            "HD",
-            "INTC",
-            "JNJ",
-            "JPM",
-            "KO",
-            "MA",
-            "META",
-            "MRK",
-            "MSFT",
-            "PEP",
-            "PG",
-            "TSLA",
-            "UNH",
-            "V",
-            "VZ",
-            "WMT",
-        ],
-    )
