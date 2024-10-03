@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from multiprocessing import get_start_method, set_start_method
 
 import pytest
-from foreverbull import entity
+from foreverbull.pb.foreverbull.backtest import backtest_pb2, execution_pb2
+from foreverbull.pb.pb_utils import to_proto_timestamp
 
 
 @pytest.fixture(scope="session")
@@ -14,10 +15,10 @@ def spawn_process():
 
 @pytest.fixture(scope="session")
 def backtest_entity():
-    return entity.backtest.Backtest(
+    return backtest_pb2.Backtest(
         name="testing_backtest",
-        start=datetime(2022, 1, 3, tzinfo=timezone.utc),
-        end=datetime(2023, 12, 29, tzinfo=timezone.utc),
+        start_date=to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
+        end_date=to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
         symbols=[
             "AAPL",
             "AMZN",
@@ -50,10 +51,10 @@ def backtest_entity():
 
 @pytest.fixture(scope="function")
 def execution():
-    return entity.backtest.Execution(
+    return execution_pb2.Execution(
         id="test",
-        start=datetime(2023, 1, 3, 0, 0, 0, 0, tzinfo=timezone.utc),
-        end=datetime(2023, 3, 31, 0, 0, 0, 0, tzinfo=timezone.utc),
+        start_date=to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
+        end_date=to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
     )

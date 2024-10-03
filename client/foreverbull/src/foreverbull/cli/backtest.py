@@ -3,7 +3,7 @@ from datetime import datetime
 import typer
 from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.pb_utils import from_proto_timestamp, to_proto_timestamp
+from foreverbull.pb.pb_utils import to_proto_timestamp
 from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated

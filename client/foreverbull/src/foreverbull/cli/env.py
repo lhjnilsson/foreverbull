@@ -6,15 +6,10 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 
 import docker.errors
-import grpc
 import typer
 from foreverbull import broker
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import (
-    ingestion_pb2,
-    ingestion_service_pb2,
-    ingestion_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
