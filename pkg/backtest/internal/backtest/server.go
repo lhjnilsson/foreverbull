@@ -99,6 +99,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	executions := repository.Execution{Conn: s.db}
 	execution, err := executions.Get(context.Background(), req.ExecutionId)
 	if err != nil {
+		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error getting execution")
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 	backtest := backtest_pb.Backtest{
@@ -109,6 +110,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	}
 	ch, err := s.backtest.RunBacktest(context.Background(), &backtest, s.wp)
 	if err != nil {
+		log.Error().Err(err).Msg("error running backtest")
 		return err
 	}
 	for p := range ch {

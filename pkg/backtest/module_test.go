@@ -225,8 +225,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		if err == io.EOF {
 			break
 		}
-		test.NoError(err, "failed to receive message")
-		test.NotNil(msg, "message is nil")
+		test.Require().NoError(err, "failed to receive message")
+		test.Require().NotNil(msg, "message is nil")
 	}
 
 	rsp5, err := sessionClient.StopServer(context.TODO(), &pb.StopServerRequest{})

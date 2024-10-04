@@ -32,16 +32,21 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	sessions := repository.Session{Conn: db}
 	session, err := sessions.Get(ctx, command.SessionID)
 	if err != nil {
+		log.Err(err).Msg("error getting session")
 		return fmt.Errorf("error getting session: %v", err)
 	}
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
+		log.Err(err).Msg("error getting zipline engine")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
 		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
 	engine := ze.(engine.Engine)
 	ingestions, err := s.ListObjects(ctx, storage.IngestionsBucket)
 	if len(*ingestions) == 0 {
+		err = errors.New("no ingestions found")
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		log.Err(err).Msg("no ingestions found")
 		return fmt.Errorf("no ingestions found")
 	}
 	var ingestion *storage.Object
@@ -60,12 +65,14 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	}
 	err = engine.DownloadIngestion(ctx, ingestion)
 	if err != nil {
+		log.Err(err).Msg("error downloading ingestion")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
 	server, a, err := backtest.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
+		log.Err(err).Msg("error creating grpc session server")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
 		return fmt.Errorf("error creating grpc session server: %v", err)
 	}
@@ -97,6 +104,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		}()
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
+		defer engine.Stop(context.Background())
 		for {
 			select {
 			case _, active := <-a:
@@ -111,5 +119,5 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		}
 	}()
 	sessions.UpdatePort(ctx, command.SessionID, port)
-	return engine.Stop(context.Background())
+	return nil
 }

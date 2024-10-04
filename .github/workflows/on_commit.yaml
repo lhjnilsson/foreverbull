@@ -335,11 +335,11 @@ jobs:
         run: |
           foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
       - name: create backtest
-        run: foreverbull backtest create github_action_test
+        run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
         working-directory: /tmp/example_algorithms
         run: |
-          python -m pytest --backtest=github_action_test
+          python -m pytest
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash

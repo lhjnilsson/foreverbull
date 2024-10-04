@@ -50,11 +50,15 @@ class Engine(ABC):
         pass
 
     @abstractmethod
-    def ingest(self, ingestion: engine_service_pb2.IngestRequest) -> engine_service_pb2.IngestResponse:
+    def ingest(
+        self, ingestion: engine_service_pb2.IngestRequest
+    ) -> engine_service_pb2.IngestResponse:
         pass
 
     @abstractmethod
-    def run_backtest(self, backtest: engine_service_pb2.RunRequest) -> engine_service_pb2.RunResponse:
+    def run_backtest(
+        self, backtest: engine_service_pb2.RunRequest
+    ) -> engine_service_pb2.RunResponse:
         pass
 
     @abstractmethod
@@ -70,11 +74,15 @@ class Engine(ABC):
         pass
 
     @abstractmethod
-    def get_backtest_result(self, req: engine_service_pb2.GetResultRequest) -> engine_service_pb2.GetResultResponse:
+    def get_backtest_result(
+        self, req: engine_service_pb2.GetResultRequest
+    ) -> engine_service_pb2.GetResultResponse:
         pass
 
     @abstractmethod
-    def stop(self):
+    def stop(
+        self, req: engine_service_pb2.StopRequest | None = None
+    ) -> engine_service_pb2.StopResponse:
         pass
 
 
@@ -110,7 +118,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             rsp.ParseFromString(response.data)
             return rsp
 
-    def ingest(self, ingestion: engine_service_pb2.IngestRequest) -> engine_service_pb2.IngestResponse:
+    def ingest(
+        self, ingestion: engine_service_pb2.IngestRequest
+    ) -> engine_service_pb2.IngestResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -128,7 +138,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             ing.ParseFromString(response.data)
             return ing
 
-    def run_backtest(self, backtest: engine_service_pb2.RunRequest) -> engine_service_pb2.RunResponse:
+    def run_backtest(
+        self, backtest: engine_service_pb2.RunRequest
+    ) -> engine_service_pb2.RunResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -186,7 +198,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             p.ParseFromString(response.data)
             return p
 
-    def get_backtest_result(self, req: engine_service_pb2.GetResultRequest) -> engine_service_pb2.GetResultResponse:
+    def get_backtest_result(
+        self, req: engine_service_pb2.GetResultRequest
+    ) -> engine_service_pb2.GetResultResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
@@ -203,7 +217,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             result.ParseFromString(response.data)
             return result
 
-    def stop(self):
+    def stop(
+        self, req: engine_service_pb2.StopRequest | None = None
+    ) -> engine_service_pb2.StopResponse:
         try:
             with pynng.Req0(
                 dial=f"ipc://{self._socket_file_path}",
@@ -219,6 +235,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                     pass
         except pynng.exceptions.ConnectionRefused:
             pass
+        return engine_service_pb2.StopResponse()
 
     def run(self):
         if self._logging_queue is not None:
@@ -323,7 +340,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             if req.backtest.start_date:
                 start = pd.Timestamp(req.backtest.start_date.ToDatetime())
                 if type(start) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid start date: {req.backtest.start_date.ToDatetime()}")
+                    raise ConfigError(
+                        f"Invalid start date: {req.backtest.start_date.ToDatetime()}"
+                    )
                 start_date = start.normalize().tz_localize(None)
                 first_traded_date = find_first_traded_dt(bundle, *req.backtest.symbols)
                 if first_traded_date is None:
@@ -333,12 +352,16 @@ class EngineProcess(multiprocessing.Process, Engine):
             else:
                 start_date = find_first_traded_dt(bundle, *req.backtest.symbols)
             if not isinstance(start_date, pd.Timestamp):
-                raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
+                raise ConfigError(
+                    f"expected start_date to be a pd.Timestamp, is: {type(start_date)}"
+                )
 
             if req.backtest.end_date:
                 end = pd.Timestamp(req.backtest.end_date.ToDatetime())
                 if type(end) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid end date: {pd.Timestamp(req.backtest.end_date.ToDatetime())}")
+                    raise ConfigError(
+                        f"Invalid end date: {pd.Timestamp(req.backtest.end_date.ToDatetime())}"
+                    )
                 end_date = end.normalize().tz_localize(None)
                 last_traded_date = find_last_traded_dt(bundle, *req.backtest.symbols)
                 if last_traded_date is None:
@@ -348,7 +371,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             else:
                 end_date = find_last_traded_dt(bundle, *req.backtest.symbols)
             if not isinstance(end_date, pd.Timestamp):
-                raise ConfigError(f"expected end_date to be a pd.Timestamp, is: {type(end_date)}")
+                raise ConfigError(
+                    f"expected end_date to be a pd.Timestamp, is: {type(end_date)}"
+                )
 
         except pytz.exceptions.UnknownTimeZoneError as e:
             self.logger.error("Unknown time zone: %s", repr(e))
@@ -356,9 +381,13 @@ class EngineProcess(multiprocessing.Process, Engine):
 
         if req.backtest.benchmark:
             benchmark_returns = None
-            benchmark_sid = bundle.asset_finder.lookup_symbol(req.backtest.benchmark, as_of_date=None)
+            benchmark_sid = bundle.asset_finder.lookup_symbol(
+                req.backtest.benchmark, as_of_date=None
+            )
         else:
-            benchmark_returns = pd.Series(index=pd.date_range(start_date, end_date, tz="utc"), data=0.0)
+            benchmark_returns = pd.Series(
+                index=pd.date_range(start_date, end_date, tz="utc"), data=0.0
+            )
             benchmark_sid = None
 
         trading_calendar = get_calendar("XNYS")
@@ -409,10 +438,16 @@ class EngineProcess(multiprocessing.Process, Engine):
             trading_algorithm,
             engine_service_pb2.RunResponse(
                 backtest=backtest_pb2.Backtest(
-                    start_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.start_session),
-                    end_date=pb_utils.to_proto_timestamp(trading_algorithm.sim_params.end_session),
+                    start_date=pb_utils.to_proto_timestamp(
+                        trading_algorithm.sim_params.start_session
+                    ),
+                    end_date=pb_utils.to_proto_timestamp(
+                        trading_algorithm.sim_params.end_session
+                    ),
                     symbols=req.backtest.symbols,
-                    benchmark=(req.backtest.benchmark if req.backtest.benchmark else None),
+                    benchmark=(
+                        req.backtest.benchmark if req.backtest.benchmark else None
+                    ),
                 )
             ).SerializeToString(),
         )
@@ -425,7 +460,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             trading_algorithm.order(asset=asset, amount=order.amount)
         return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
-    def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+    def _get_current_period(
+        self, data: bytes, trading_algorithm: TradingAlgorithm
+    ) -> bytes:
         req = engine_service_pb2.GetCurrentPeriodRequest()
         req.ParseFromString(data)
         p: Portfolio = trading_algorithm.portfolio
@@ -462,7 +499,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             period = self.result.loc[row]
             rsp.periods.append(
                 execution_pb2.Period(
-                    timestamp=pb_utils.to_proto_timestamp(period["period_close"].to_pydatetime().replace()),
+                    timestamp=pb_utils.to_proto_timestamp(
+                        period["period_close"].to_pydatetime().replace()
+                    ),
                     PNL=period["pnl"],
                     returns=period["returns"],
                     portfolio_value=period["portfolio_value"],
@@ -486,17 +525,33 @@ class EngineProcess(multiprocessing.Process, Engine):
                     excess_return=period["excess_return"],
                     treasury_period_return=period["treasury_period_return"],
                     algorithm_period_return=period["algorithm_period_return"],
-                    algo_volatility=(None if pd.isnull(period["algo_volatility"]) else period["algo_volatility"]),
+                    algo_volatility=(
+                        None
+                        if pd.isnull(period["algo_volatility"])
+                        else period["algo_volatility"]
+                    ),
                     sharpe=None if pd.isnull(period["sharpe"]) else period["sharpe"],
                     sortino=None if pd.isnull(period["sortino"]) else period["sortino"],
                     benchmark_period_return=(
-                        None if pd.isnull(period["benchmark_period_return"]) else period["benchmark_period_return"]
+                        None
+                        if pd.isnull(period["benchmark_period_return"])
+                        else period["benchmark_period_return"]
                     ),
                     benchmark_volatility=(
-                        None if pd.isnull(period["benchmark_volatility"]) else period["benchmark_volatility"]
+                        None
+                        if pd.isnull(period["benchmark_volatility"])
+                        else period["benchmark_volatility"]
                     ),
-                    alpha=(None if period["alpha"] is None or pd.isnull(period["alpha"]) else period["alpha"]),
-                    beta=(None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]),
+                    alpha=(
+                        None
+                        if period["alpha"] is None or pd.isnull(period["alpha"])
+                        else period["alpha"]
+                    ),
+                    beta=(
+                        None
+                        if period["beta"] is None or pd.isnull(period["beta"])
+                        else period["beta"]
+                    ),
                 )
             )
         if req.upload:
@@ -521,10 +576,14 @@ class EngineProcess(multiprocessing.Process, Engine):
                     try:
                         match req.task:
                             case "get_current_period":
-                                rsp.data = self._get_current_period(req.data, trading_algorithm)
+                                rsp.data = self._get_current_period(
+                                    req.data, trading_algorithm
+                                )
                                 context_socket.send(rsp.SerializeToString())
                             case "place_orders_and_continue":
-                                rsp.data = self._place_orders(req.data, trading_algorithm)
+                                rsp.data = self._place_orders(
+                                    req.data, trading_algorithm
+                                )
                                 context_socket.send(rsp.SerializeToString())
                                 return
                             case "stop":
@@ -559,11 +618,15 @@ class EngineProcess(multiprocessing.Process, Engine):
                     case "get_result":
                         data = self._get_execution_result(req.data)
                     case "get_current_period":
-                        data = engine_service_pb2.GetCurrentPeriodResponse(is_running=False).SerializeToString()
+                        data = engine_service_pb2.GetCurrentPeriodResponse(
+                            is_running=False
+                        ).SerializeToString()
                     case "stop":
                         pass
                     case "place_orders_and_continue":
-                        raise Exception("Cannot place orders without a running algorithm")
+                        raise Exception(
+                            "Cannot place orders without a running algorithm"
+                        )
                     case _:
                         raise Exception(f"Unknown task {req.task}")
             except StopExcecution as e:

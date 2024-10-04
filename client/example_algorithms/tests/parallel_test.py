@@ -1,6 +1,6 @@
 from multiprocessing import set_start_method
 
-import parallel
+from example_algorithms.parallel import algo
 
 try:
     set_start_method("spawn")
@@ -8,7 +8,12 @@ except RuntimeError:
     pass
 
 
-def test_positive_returns(fb_backtest):
-    with fb_backtest(parallel, []) as foreverbull:
-        execution = foreverbull.new_backtest_execution()
-        foreverbull.run_backtest_execution(execution)
+def test_positive_returns():
+    with algo.backtest_session("github_action_test") as session:
+        backtest = session.get_default()
+        for period in session.run_execution(
+            backtest.start_date.ToDatetime(),
+            backtest.end_date.ToDatetime(),
+            [s for s in backtest.symbols],
+        ):
+            assert period

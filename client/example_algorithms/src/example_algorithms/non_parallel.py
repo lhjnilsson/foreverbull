@@ -27,4 +27,4 @@ def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order] | None:
     return orders
 
 
-Algorithm(functions=[Function(callable=handle_data)])
+algo = Algorithm(functions=[Function(callable=handle_data)])

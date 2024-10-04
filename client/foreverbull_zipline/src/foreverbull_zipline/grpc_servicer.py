@@ -30,12 +30,14 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer):
         return self.engine.get_backtest_result(request)
 
     def Stop(self, request, context):
-        return self.engine.stop()
+        return self.engine.stop(request)
 
 
 class BacktestServiceWithHealthCheck(BacktestService, health_pb2_grpc.HealthServicer):
     def Check(self, request, context):
-        return health_pb2.HealthCheckResponse(status=health_pb2.HealthCheckResponse.SERVING)
+        return health_pb2.HealthCheckResponse(
+            status=health_pb2.HealthCheckResponse.SERVING
+        )
 
 
 @contextmanager
