@@ -21,9 +21,7 @@ def pytest_addoption(parser: Parser):
 
 @pytest.fixture(scope="function")
 def fb_backtest(request):
-    session = broker.backtest.create_session(
-        request.config.getoption("--backtest", skip=True)
-    )
+    session = broker.backtest.create_session(request.config.getoption("--backtest", skip=True))
     while session.port is None:
         time.sleep(0.5)
         session = broker.backtest.get_session(session.id)
@@ -36,9 +34,7 @@ def fb_backtest(request):
 @pytest.fixture(scope="session")
 def fb_database():
     postgres = PostgresContainer("postgres:alpine")
-    postgres = postgres.with_volume_mapping(
-        "postgres_data", "/var/lib/postgresql/data", mode="rw"
-    )
+    postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     with postgres as postgres:
         engine = create_engine(postgres.get_connection_url())
         database.Base.metadata.create_all(engine)

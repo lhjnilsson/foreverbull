@@ -14,9 +14,7 @@ class WorkerService(worker_service_pb2_grpc.WorkerServicer):
         self._worker_pool = worker_pool
         self._algorithm = algorithm
 
-    def ConfigureExecution(
-        self, request: worker_service_pb2.ConfigureExecutionRequest, context
-    ):
+    def ConfigureExecution(self, request: worker_service_pb2.ConfigureExecutionRequest, context):
         self._worker_pool.configure_execution(request.configuration)
         return worker_service_pb2.ConfigureExecutionResponse()
 

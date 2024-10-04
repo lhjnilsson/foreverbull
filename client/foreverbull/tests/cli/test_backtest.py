@@ -72,7 +72,9 @@ def test_backtest_create():
 
 
 def test_backtest_get():
-    with (patch("foreverbull.broker.backtest.get") as mock_get,):
+    with (
+        patch("foreverbull.broker.backtest.get") as mock_get,
+    ):
         mock_get.return_value = backtest_pb2.Backtest(
             name="test_name",
             start_date=to_proto_timestamp(datetime.now()),

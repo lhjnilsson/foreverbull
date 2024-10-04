@@ -1,12 +1,11 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import partial
 
 import pandas as pd
 import pytest
-from foreverbull import entity
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2, ingestion_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2, ingestion_pb2, execution_pb2, backtest_pb2
 from foreverbull_zipline import engine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from zipline.api import order_target, symbol
@@ -18,10 +17,10 @@ from zipline.utils.run_algo import BenchmarkSpec, _run
 
 
 @pytest.fixture(scope="session")
-def execution() -> entity.backtest.Execution:
-    return entity.backtest.Execution(
-        start=datetime(2022, 1, 3, tzinfo=timezone.utc),
-        end=datetime(2023, 12, 29, tzinfo=timezone.utc),
+def execution() -> execution_pb2.Execution:
+    return execution_pb2.Execution(
+        start_date=pb_utils.to_proto_timestamp(datetime(2022, 1, 3)),
+        end_date=pb_utils.to_proto_timestamp(datetime(2023, 12, 29)),
         benchmark=None,
         symbols=[
             "AAPL",
@@ -54,13 +53,16 @@ def execution() -> entity.backtest.Execution:
 
 
 @pytest.fixture(scope="session")
-def foreverbull_bundle(execution: entity.backtest.Execution, fb_database):
-    backtest_entity = entity.backtest.Backtest(
+def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
+    _, verify_or_populate = fb_database
+
+    backtest_entity = backtest_pb2.Backtest(
         name="test_backtest",
-        start=execution.start,
-        end=execution.end,
+        start_date=execution.start_date,
+        end_date=execution.end_date,
         symbols=execution.symbols,
     )
+    verify_or_populate(execution)
 
     def sanity_check(bundle):
         for s in backtest_entity.symbols:
@@ -68,33 +70,25 @@ def foreverbull_bundle(execution: entity.backtest.Execution, fb_database):
                 stored_asset = bundle.asset_finder.lookup_symbol(s, as_of_date=None)
             except SymbolNotFound:
                 raise LookupError(f"Asset {s} not found in bundle")
-            backtest_start = (
-                pd.Timestamp(backtest_entity.start).normalize().tz_localize(None)
-            )
+            backtest_start = pd.Timestamp(backtest_entity.start_date.ToDatetime()).normalize().tz_localize(None)
             if backtest_start < stored_asset.start_date:
-                print(
-                    "Start date is not correct", backtest_start, stored_asset.start_date
-                )
+                print("Start date is not correct", backtest_start, stored_asset.start_date)
                 raise ValueError("Start date is not correct")
 
-            backtest_end = (
-                pd.Timestamp(backtest_entity.end).normalize().tz_localize(None)
-            )
+            backtest_end = pd.Timestamp(backtest_entity.end_date.ToDatetime()).normalize().tz_localize(None)
             if backtest_end > stored_asset.end_date:
                 print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
 
     bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
     try:
-        print("Loading bundle")
         sanity_check(bundles.load("foreverbull", os.environ, None))
-    except (ValueError, LookupError) as exc:
-        print("Creating bundle", exc)
+    except (ValueError, LookupError):
         e = engine.EngineProcess()
         req = engine_service_pb2.IngestRequest(
             ingestion=ingestion_pb2.Ingestion(
-                start_date=pb_utils.to_proto_timestamp(backtest_entity.start),
-                end_date=pb_utils.to_proto_timestamp(backtest_entity.end),
+                start_date=backtest_entity.start_date,
+                end_date=backtest_entity.end_date,
                 symbols=backtest_entity.symbols,
             )
         )
@@ -106,20 +100,14 @@ def baseline_performance_initialize(context):
     context.held_positions = []
 
 
-def baseline_performance_handle_data(
-    context, data, execution: entity.backtest.Execution
-):
+def baseline_performance_handle_data(context, data, execution: execution_pb2.Execution):
     context.i += 1
     if context.i < 30:
         return
 
     for s in execution.symbols:
-        short_mean = data.history(
-            symbol(s), "close", bar_count=10, frequency="1d"
-        ).mean()
-        long_mean = data.history(
-            symbol(s), "close", bar_count=30, frequency="1d"
-        ).mean()
+        short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
+        long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
             context.held_positions.append(s)
@@ -129,7 +117,7 @@ def baseline_performance_handle_data(
 
 
 @pytest.fixture(scope="session")
-def baseline_performance(foreverbull_bundle, execution):
+def baseline_performance(foreverbull_bundle, execution: execution_pb2.Execution):
     register("foreverbull", SQLIngester(), calendar_name="XNYS")
     benchmark_spec = BenchmarkSpec.from_cli_params(
         no_benchmark=True,
@@ -140,7 +128,6 @@ def baseline_performance(foreverbull_bundle, execution):
     if os.path.exists("baseline_performance.pickle"):
         os.remove("baseline_performance.pickle")
 
-    trading_calendar = get_calendar("XNYS")
     _run(
         initialize=baseline_performance_initialize,
         handle_data=partial(baseline_performance_handle_data, execution=execution),
@@ -153,10 +140,10 @@ def baseline_performance(foreverbull_bundle, execution):
         capital_base=100000,
         bundle="foreverbull",
         bundle_timestamp=pd.Timestamp.utcnow(),
-        start=pd.Timestamp(execution.start).normalize().tz_localize(None),
-        end=pd.Timestamp(execution.end).normalize().tz_localize(None),
+        start=pd.Timestamp(execution.start_date.ToDatetime()).normalize(),
+        end=pd.Timestamp(execution.end_date.ToDatetime()).normalize(),
         output="baseline_performance.pickle",
-        trading_calendar=trading_calendar,
+        trading_calendar=get_calendar("XNYS"),
         print_algo=False,
         metrics_set="default",
         local_namespace=None,

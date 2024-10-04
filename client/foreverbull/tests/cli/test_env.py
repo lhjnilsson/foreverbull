@@ -17,9 +17,7 @@ image = namedtuple("image", ["id", "short_id", "tags", "created"])
 
 
 class MockedDockerProperty:
-    def __init__(
-        self, resources: dict, on_not_found: Exception = docker.errors.NotFound("")
-    ):
+    def __init__(self, resources: dict, on_not_found: Exception = docker.errors.NotFound("")):
         self.resources = resources
         self.on_not_found = on_not_found
 
@@ -111,17 +109,11 @@ class MockedDockerProperty:
 )
 def test_env_status(containers, images):
     with (
-        patch(
-            "docker.client.DockerClient.containers", new_callable=PropertyMock
-        ) as mock_containers,
-        patch(
-            "docker.client.DockerClient.images", new_callable=PropertyMock
-        ) as mock_images,
+        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
+        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
     ):
         mock_containers.return_value = MockedDockerProperty(containers)
-        mock_images.return_value = MockedDockerProperty(
-            images, on_not_found=docker.errors.ImageNotFound("")
-        )
+        mock_images.return_value = MockedDockerProperty(images, on_not_found=docker.errors.ImageNotFound(""))
         result = runner.invoke(env, ["status"])
 
         if result.exception and result.exc_info:
@@ -131,15 +123,9 @@ def test_env_status(containers, images):
 
 def test_env_start():
     with (
-        patch(
-            "docker.client.DockerClient.containers", new_callable=PropertyMock
-        ) as mock_containers,
-        patch(
-            "docker.client.DockerClient.images", new_callable=PropertyMock
-        ) as mock_images,
-        patch(
-            "docker.client.DockerClient.networks", new_callable=PropertyMock
-        ) as mock_network,
+        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
+        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
+        patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
         tempfile.NamedTemporaryFile() as ingest_file,
         patch("foreverbull.broker.backtest.ingest") as mock_ingest,
         patch("foreverbull.broker.backtest.get_ingestion") as mock_get_ingestion,
@@ -149,9 +135,7 @@ def test_env_start():
         )
         ingest_file.flush()
         mock_containers.return_value = MockedDockerProperty({})
-        mock_images.return_value = MockedDockerProperty(
-            {}, on_not_found=docker.errors.ImageNotFound("")
-        )
+        mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
         mock_ingest.return_value = None
         mock_get_ingestion.return_value = (None, ingestion_pb2.IngestionStatus.READY)
@@ -164,20 +148,12 @@ def test_env_start():
 
 def test_env_stop():
     with (
-        patch(
-            "docker.client.DockerClient.containers", new_callable=PropertyMock
-        ) as mock_containers,
-        patch(
-            "docker.client.DockerClient.images", new_callable=PropertyMock
-        ) as mock_images,
-        patch(
-            "docker.client.DockerClient.networks", new_callable=PropertyMock
-        ) as mock_network,
+        patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
+        patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
+        patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
     ):
         mock_containers.return_value = MockedDockerProperty({})
-        mock_images.return_value = MockedDockerProperty(
-            {}, on_not_found=docker.errors.ImageNotFound("")
-        )
+        mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
         result = runner.invoke(env, ["stop"])
 

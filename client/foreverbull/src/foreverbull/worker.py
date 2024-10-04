@@ -81,17 +81,11 @@ class WorkerInstance(Worker):
     @property
     def is_configured(self) -> bool:
         return (
-            self._database_engine is not None
-            and self._broker_socket is not None
-            and self._namespace_socket is not None
+            self._database_engine is not None and self._broker_socket is not None and self._namespace_socket is not None
         )
 
     def run_execution(self, stop_event: Event | threading.Event) -> None:
-        if (
-            not self._database_engine
-            or not self._broker_socket
-            or not self._namespace_socket
-        ):
+        if not self._database_engine or not self._broker_socket or not self._namespace_socket:
             raise exceptions.ConfigurationError("Worker not configured")
 
         while not stop_event.is_set():
@@ -101,9 +95,7 @@ class WorkerInstance(Worker):
             try:
                 request = worker_service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
-                response = worker_service_pb2.WorkerResponse(
-                    task=request.task, error=None
-                )
+                response = worker_service_pb2.WorkerResponse(task=request.task, error=None)
                 self.logger.info("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
@@ -114,9 +106,7 @@ class WorkerInstance(Worker):
                     )
                 self.logger.info("Sending orders to broker: %s", orders)
                 for order in orders:
-                    response.orders.append(
-                        finance_pb2.Order(symbol=order.symbol, amount=order.amount)
-                    )
+                    response.orders.append(finance_pb2.Order(symbol=order.symbol, amount=order.amount))
                 context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
@@ -206,12 +196,8 @@ class WorkerPool(Worker):
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger(__name__)
         self._log_queue = Queue()
-        self._log_thread = threading.Thread(
-            target=self.logger_thread, args=(self._log_queue,), daemon=True
-        )
-        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = (
-            None
-        )
+        self._log_thread = threading.Thread(target=self.logger_thread, args=(self._log_queue,), daemon=True)
+        self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
 
     @staticmethod
     def logger_thread(queue: Queue):
@@ -305,9 +291,7 @@ class WorkerPool(Worker):
                 response = common_pb2.Response()
                 response.ParseFromString(msg)
                 if response.HasField("error"):
-                    raise exceptions.ConfigurationError(
-                        f"Worker error: {response.error}"
-                    )
+                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
                 responders += 1
                 if responders == len(self._workers):
                     break
@@ -327,9 +311,7 @@ class WorkerPool(Worker):
                 response = common_pb2.Response()
                 response.ParseFromString(msg)
                 if response.HasField("error"):
-                    raise exceptions.ConfigurationError(
-                        f"Worker error: {response.error}"
-                    )
+                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
                 responders += 1
                 if responders == len(self._workers):
                     break

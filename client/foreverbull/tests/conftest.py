@@ -26,12 +26,8 @@ def spawn_process():
 def backtest_entity():
     return backtest_pb2.Backtest(
         name="testing_backtest",
-        start_date=pb_utils.to_proto_timestamp(
-            datetime(2022, 1, 3, tzinfo=timezone.utc)
-        ),
-        end_date=pb_utils.to_proto_timestamp(
-            datetime(2023, 12, 29, tzinfo=timezone.utc)
-        ),
+        start_date=pb_utils.to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
+        end_date=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
         symbols=[
             "AAPL",
             "AMZN",
@@ -66,12 +62,8 @@ def backtest_entity():
 def execution(fb_database):
     return execution_pb2.Execution(
         id="test",
-        start_date=pb_utils.to_proto_timestamp(
-            datetime(2022, 1, 3, tzinfo=timezone.utc)
-        ),
-        end_date=pb_utils.to_proto_timestamp(
-            datetime(2023, 12, 29, tzinfo=timezone.utc)
-        ),
+        start_date=pb_utils.to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
+        end_date=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
     )
@@ -198,9 +190,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = execution.start_date.ToDatetime()
         portfolio = finance_pb2.Portfolio(
@@ -268,9 +258,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start_date.ToDatetime()
         portfolio = finance_pb2.Portfolio(
@@ -310,12 +298,8 @@ def parallel_algo_file_with_parameters(
             worker_pb2.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -348,9 +332,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start_date.ToDatetime()
         portfolio = finance_pb2.Portfolio(
@@ -389,12 +371,8 @@ def non_parallel_algo_file_with_parameters(
             worker_pb2.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -430,9 +408,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(
-    spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server
-):
+def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         start = execution.start_date.ToDatetime()
         portfolio = finance_pb2.Portfolio(
@@ -488,12 +464,8 @@ def multistep_algo_with_namespace(
             worker_pb2.ExecutionConfiguration.Function(
                 name="measure_assets",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             ),
             worker_pb2.ExecutionConfiguration.Function(

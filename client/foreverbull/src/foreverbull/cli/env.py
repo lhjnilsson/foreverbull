@@ -119,16 +119,10 @@ def status():
 
 
 ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
-ALPACA_SECRET_OPT = (
-    Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
-)
+ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
-BACKTEST_IMAGE_OPT = Annotated[
-    str, typer.Option(help="Docker image name of backtest service")
-]
-INGESTION_CONFIG_OPT = Annotated[
-    str, typer.Option(help="Path to ingestion config file")
-]
+BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
+INGESTION_CONFIG_OPT = Annotated[str, typer.Option(help="Path to ingestion config file")]
 
 
 @env.command()
@@ -187,17 +181,13 @@ def start(
                     )
                     exit(1)
 
-        progress.update(
-            download_images, description="[blue]Images downloaded", completed=True
-        )
+        progress.update(download_images, description="[blue]Images downloaded", completed=True)
 
         try:
             d.networks.get(NETWORK_NAME)
         except docker.errors.NotFound:
             d.networks.create(NETWORK_NAME, driver="bridge")
-        progress.update(
-            net_task_id, description="[blue]Network created", completed=True
-        )
+        progress.update(net_task_id, description="[blue]Network created", completed=True)
 
         try:
             postgres_container = d.containers.get("foreverbull_postgres")
@@ -242,9 +232,7 @@ def start(
                     completed=True,
                 )
                 exit(1)
-        progress.update(
-            postgres_task_id, description="[blue]Postgres started", completed=True
-        )
+        progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
 
         try:
             nats_container = d.containers.get("foreverbull_nats")
@@ -298,9 +286,7 @@ def start(
                     completed=True,
                 )
                 exit(1)
-        progress.update(
-            minio_task_id, description="[blue]Minio started", completed=True
-        )
+        progress.update(minio_task_id, description="[blue]Minio started", completed=True)
 
         for _ in range(100):
             time.sleep(0.2)
@@ -310,9 +296,7 @@ def start(
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.health != "healthy":
                 continue
-            progress.update(
-                health_task_id, description="[blue]All services healthy", completed=True
-            )
+            progress.update(health_task_id, description="[blue]All services healthy", completed=True)
             break
         else:
             progress.update(
@@ -379,12 +363,8 @@ def start(
                     config = json.load(f)
                 broker.backtest.ingest(
                     ingestion=ingestion_pb2.Ingestion(
-                        start_date=pb_utils.to_proto_timestamp(
-                            datetime.strptime(config["start"], "%Y-%m-%d")
-                        ),
-                        end_date=pb_utils.to_proto_timestamp(
-                            datetime.strptime(config["end"], "%Y-%m-%d")
-                        ),
+                        start_date=pb_utils.to_proto_timestamp(datetime.strptime(config["start"], "%Y-%m-%d")),
+                        end_date=pb_utils.to_proto_timestamp(datetime.strptime(config["end"], "%Y-%m-%d")),
                         symbols=config["symbols"],
                     )
                 )
@@ -412,9 +392,7 @@ def start(
                     completed=True,
                 )
                 exit(1)
-        progress.update(
-            foreverbull_task_id, description="[blue]Foreverbull started", completed=True
-        )
+        progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
     std.print("Environment started")
 
 
@@ -437,18 +415,14 @@ def stop():
             d.containers.get("foreverbull_foreverbull").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(
-            foreverbull_task_id, description="[blue]Foreverbull removed", completed=True
-        )
+        progress.update(foreverbull_task_id, description="[blue]Foreverbull removed", completed=True)
 
         try:
             d.containers.get("foreverbull_minio").stop()
             d.containers.get("foreverbull_minio").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(
-            minio_task_id, description="[blue]Minio removed", completed=True
-        )
+        progress.update(minio_task_id, description="[blue]Minio removed", completed=True)
 
         try:
             d.containers.get("foreverbull_nats").stop()
@@ -462,15 +436,11 @@ def stop():
             d.containers.get("foreverbull_postgres").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(
-            postgres_task_id, description="[blue]Postgres removed", completed=True
-        )
+        progress.update(postgres_task_id, description="[blue]Postgres removed", completed=True)
 
         try:
             d.networks.get(NETWORK_NAME).remove()
         except docker.errors.NotFound:
             pass
-        progress.update(
-            net_task_id, description="[blue]Network removed", completed=True
-        )
+        progress.update(net_task_id, description="[blue]Network removed", completed=True)
     std.print("Environment stopped")

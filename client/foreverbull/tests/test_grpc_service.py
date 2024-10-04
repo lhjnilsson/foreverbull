@@ -21,9 +21,7 @@ def grpc_service(parallel_algo_file):
 
 @pytest.fixture
 def stub(grpc_service):
-    return worker_service_pb2_grpc.WorkerStub(
-        grpc.insecure_channel(f"localhost:{grpc_service}")
-    )
+    return worker_service_pb2_grpc.WorkerStub(grpc.insecure_channel(f"localhost:{grpc_service}"))
 
 
 def test_configure_execution(stub, namespace_server, parallel_algo_file):

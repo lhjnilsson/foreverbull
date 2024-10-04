@@ -65,9 +65,7 @@ def test_ingest(
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_run_benchmark(
-    execution: execution_pb2.Execution, engine: Engine, benchmark: str | None
-):
+def test_run_benchmark(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
     request = engine_service_pb2.RunRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
@@ -86,15 +84,11 @@ def test_run_benchmark(
         assert response.backtest.benchmark == ""
 
     while True:
-        response = engine.get_current_period(
-            engine_service_pb2.GetCurrentPeriodRequest()
-        )
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
         assert response.portfolio
-        engine.place_orders_and_continue(
-            engine_service_pb2.PlaceOrdersAndContinueRequest()
-        )
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
 def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
@@ -110,21 +104,15 @@ def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
     assert response.backtest
 
     for _ in range(5):
-        response = engine.get_current_period(
-            engine_service_pb2.GetCurrentPeriodRequest()
-        )
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
         assert response.portfolio
-        engine.place_orders_and_continue(
-            engine_service_pb2.PlaceOrdersAndContinueRequest()
-        )
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
-def test_multiple_runs_different_symbols(
-    execution: execution_pb2.Execution, engine: Engine, symbols
-):
+def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, engine: Engine, symbols):
     request = engine_service_pb2.RunRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
@@ -138,15 +126,11 @@ def test_multiple_runs_different_symbols(
     assert response.backtest.symbols == symbols
 
     while True:
-        response = engine.get_current_period(
-            engine_service_pb2.GetCurrentPeriodRequest()
-        )
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
         assert response.portfolio
-        engine.place_orders_and_continue(
-            engine_service_pb2.PlaceOrdersAndContinueRequest()
-        )
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
 def test_get_result(execution: execution_pb2.Execution, engine: Engine):
@@ -162,24 +146,18 @@ def test_get_result(execution: execution_pb2.Execution, engine: Engine):
     assert response.backtest
 
     while True:
-        response = engine.get_current_period(
-            engine_service_pb2.GetCurrentPeriodRequest()
-        )
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
         assert response.portfolio
-        engine.place_orders_and_continue(
-            engine_service_pb2.PlaceOrdersAndContinueRequest()
-        )
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
     response = engine.get_backtest_result(engine_service_pb2.GetResultRequest())
     assert len(response.periods)
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_broker(
-    execution: execution_pb2.Execution, engine: Engine, benchmark: str | None
-):
+def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
     request = engine_service_pb2.RunRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
@@ -233,15 +211,11 @@ def test_broker(
     assert response.portfolio.positions == []
 
     while True:
-        response = engine.get_current_period(
-            engine_service_pb2.GetCurrentPeriodRequest()
-        )
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
         assert response.portfolio
-        engine.place_orders_and_continue(
-            engine_service_pb2.PlaceOrdersAndContinueRequest()
-        )
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
     response = engine.get_backtest_result(engine_service_pb2.GetResultRequest())
     assert len(response.periods)

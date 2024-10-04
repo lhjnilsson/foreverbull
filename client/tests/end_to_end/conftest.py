@@ -30,9 +30,7 @@ def zipline():
 
 @pytest.fixture(scope="function")
 def engine_stub(zipline):
-    return engine_service_pb2_grpc.EngineStub(
-        grpc.insecure_channel(f"localhost:{zipline.get_exposed_port(50055)}")
-    )
+    return engine_service_pb2_grpc.EngineStub(grpc.insecure_channel(f"localhost:{zipline.get_exposed_port(50055)}"))
 
 
 @pytest.fixture(scope="function")

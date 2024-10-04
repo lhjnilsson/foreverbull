@@ -32,11 +32,7 @@ def list():
     for backtest in backtests:
         table.add_row(
             backtest.name,
-            (
-                backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-                if backtest.statuses
-                else "Unknown"
-            ),
+            (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
             backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
             backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
             ",".join(backtest.symbols),
@@ -50,20 +46,14 @@ def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     start: Annotated[datetime, typer.Option(help="start time of the backtest")],
     end: Annotated[datetime, typer.Option(help="end time of the backtest")],
-    symbols: Annotated[
-        str, typer.Option(help="comma separated list of symbols to use")
-    ],
-    benchmark: (
-        Annotated[str, typer.Option(help="symbol of benchmark to use")] | None
-    ) = None,
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    benchmark: (Annotated[str, typer.Option(help="symbol of benchmark to use")] | None) = None,
 ):
     backtest = backtest_pb2.Backtest(
         name=name,
         start_date=to_proto_timestamp(start),
         end_date=to_proto_timestamp(end),
-        symbols=(
-            [symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []
-        ),
+        symbols=([symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []),
         benchmark=benchmark,
     )
     backtest = broker.backtest.create(backtest)
@@ -77,11 +67,7 @@ def create(
 
     table.add_row(
         backtest.name,
-        (
-            backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-            if backtest.statuses
-            else "Unknown"
-        ),
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
         backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
         ",".join(backtest.symbols),
@@ -104,11 +90,7 @@ def get(
     table.add_column("Benchmark")
     table.add_row(
         backtest.name,
-        (
-            backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-            if backtest.statuses
-            else "Unknown"
-        ),
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
         backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
         ",".join(backtest.symbols),
