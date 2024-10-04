@@ -1,4 +1,5 @@
 from concurrent import futures
+from multiprocessing import get_start_method, set_start_method
 
 import grpc
 import pytest
@@ -12,6 +13,13 @@ from foreverbull.pb.foreverbull.backtest import (
 from foreverbull_zipline import grpc_servicer
 from foreverbull_zipline.engine import EngineProcess
 from tests.broker import Broker
+
+
+@pytest.fixture(scope="session")
+def spawn_process():
+    method = get_start_method()
+    if method != "spawn":
+        set_start_method("spawn", force=True)
 
 
 @pytest.fixture
@@ -46,6 +54,7 @@ def broker_session_stub(engine_stub):
     "file_path", ["example_algorithms/src/example_algorithms/parallel.py"]
 )
 def test_baseline_performance(
+    spawn_process,
     broker_session_stub: backtest_service_pb2_grpc.BacktestServicerStub,
     file_path,
     execution: execution_pb2.Execution,

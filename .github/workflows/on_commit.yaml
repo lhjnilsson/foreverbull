@@ -347,6 +347,7 @@ jobs:
         shell: bash
       - name: Stop Environment
         run: foreverbull env stop
+        continue-on-error: true
 
   # end-to-end-tests-with-alpaca:
   #   needs:
