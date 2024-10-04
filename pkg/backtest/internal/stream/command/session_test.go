@@ -121,6 +121,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		m := new(stream.MockMessage)
 		engine := new(engine.MockEngine)
 		engine.On("DownloadIngestion", mock.Anything, mock.Anything).Return(nil)
+		engine.On("Stop", mock.Anything).Return(nil)
 		m.On("MustGet", stream.DBDep).Return(test.db)
 		m.On("MustGet", stream.StorageDep).Return(test.storage)
 		ingestions := []storage.Object{
