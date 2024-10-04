@@ -3,68 +3,62 @@ package command
 import (
 	"context"
 	"fmt"
+	"strings"
 
-	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+
+	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
 )
 
-func UpdateIngestStatus(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-
-	command := bs.UpdateIngestStatusCommand{}
-	err := message.ParsePayload(&command)
+func Ingest(ctx context.Context, msg stream.Message) error {
+	command := ss.IngestCommand{}
+	err := msg.ParsePayload(&command)
 	if err != nil {
-		return fmt.Errorf("error unmarshalling UpdateIngestStatus payload: %w", err)
+		return fmt.Errorf("error unmarshalling Ingest payload: %w", err)
 	}
-
-	ingestions := repository.Ingestion{Conn: db}
-	err = ingestions.UpdateStatus(ctx, command.Name, command.Status, command.Error)
+	s := msg.MustGet(stream.StorageDep).(storage.Storage)
+	object, err := s.GetObject(ctx, storage.IngestionsBucket, command.Name)
 	if err != nil {
-		return fmt.Errorf("error updating ingestion status: %w", err)
+		return fmt.Errorf("error getting object from storage: %w", err)
 	}
-	return nil
-}
-
-func Ingest(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-
-	command := bs.IngestCommand{}
-	err := message.ParsePayload(&command)
+	object.Metadata["Status"] = pb.IngestionStatus_INGESTING.String()
+	err = object.SetMetadata(ctx, object.Metadata)
 	if err != nil {
-		return fmt.Errorf("error unmarshalling MarketdataDownloaded payload: %w", err)
+		return fmt.Errorf("error setting object metadata: %w", err)
 	}
-
-	ingestions := repository.Ingestion{Conn: db}
-	i, err := ingestions.Get(ctx, command.Name)
+	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
-		return fmt.Errorf("error getting ingestion: %w", err)
+		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
-
-	ingest := func(e engine.Engine) error {
-		err = e.Ingest(ctx, i)
-		if err != nil {
-			return fmt.Errorf("error ingesting: %w", err)
-		}
-
-		err = e.UploadIngestion(ctx, i.Name)
-		if err != nil {
-			return fmt.Errorf("error uploading ingestion: %w", err)
-		}
-		return nil
+	engine := ze.(engine.Engine)
+	ingestion := pb.Ingestion{
+		StartDate: pb_internal.TimeToProtoTimestamp(command.Start),
+		EndDate:   pb_internal.TimeToProtoTimestamp(command.End),
+		Symbols:   command.Symbols,
 	}
-
-	engineInstance, err := message.Call(ctx, dependency.GetIngestEngineKey)
+	err = engine.Ingest(ctx, &ingestion, object)
 	if err != nil {
-		return fmt.Errorf("error getting backtest engine: %w", err)
+		return fmt.Errorf("error ingesting data: %w", err)
 	}
-	e := engineInstance.(engine.Engine)
-	err = ingest(e)
+	err = object.Refresh()
 	if err != nil {
-		return fmt.Errorf("error ingesting: %w", err)
+		return fmt.Errorf("error refreshing object: %w", err)
 	}
-	return nil
+	metadata := map[string]string{
+		"Start_date": command.Start.Format("2006-01-02"),
+		"End_date":   command.End.Format("2006-01-02"),
+		"Symbols":    strings.Join(command.Symbols, ","),
+		"Status":     pb.IngestionStatus_READY.String(),
+	}
+	err = object.SetMetadata(ctx, metadata)
+	if err != nil {
+		return fmt.Errorf("error setting object metadata: %w", err)
+	}
+
+	return engine.Stop(ctx)
 }

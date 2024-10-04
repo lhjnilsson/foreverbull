@@ -1,65 +1,107 @@
-from typing import List
+import os
+from functools import wraps
+from typing import Callable, Concatenate
 
-from foreverbull import entity
-
-from .http import Session, inject_session
-
-
-@inject_session
-def ingest(session: Session, ingestion: entity.backtest.Ingestion) -> entity.backtest.Ingestion:
-    rsp = session.request("POST", "/backtest/api/ingestion", json=ingestion.model_dump())
-    return entity.backtest.Ingestion.model_validate(rsp.json())
-
-
-@inject_session
-def get_ingestion(session: Session) -> entity.backtest.Ingestion:
-    rsp = session.request("GET", "/backtest/api/ingestion")
-    return entity.backtest.Ingestion.model_validate(rsp.json())
+import grpc
+from foreverbull.pb.foreverbull.backtest import (
+    backtest_pb2,
+    backtest_service_pb2,
+    backtest_service_pb2_grpc,
+    ingestion_pb2,
+    ingestion_service_pb2,
+    ingestion_service_pb2_grpc,
+    session_pb2,
+)
 
 
-@inject_session
-def list(session: Session) -> List[entity.backtest.Backtest]:
-    rsp = session.request("GET", "/backtest/api/backtests")
-    return [entity.backtest.Backtest.model_validate(b) for b in rsp.json()]
+def backtest_ingestion_servicer[R, **P](
+    f: Callable[Concatenate[ingestion_service_pb2_grpc.IngestionServicerStub, P], R],
+) -> Callable[P, R]:
+    port = os.getenv("BROKER_PORT", "50055")
+    servicer = ingestion_service_pb2_grpc.IngestionServicerStub(grpc.insecure_channel(f"localhost:{port}"))
+
+    @wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return f(servicer, *args, **kwargs)
+
+    return wrapper
 
 
-@inject_session
-def create(session: Session, backtest: entity.backtest.Backtest) -> entity.backtest.Backtest:
-    rsp = session.request("POST", "/backtest/api/backtests", json=backtest.model_dump())
-    return entity.backtest.Backtest.model_validate(rsp.json())
+def backtest_servicer[R, **P](
+    f: Callable[Concatenate[backtest_service_pb2_grpc.BacktestServicerStub, P], R],
+) -> Callable[P, R]:
+    servicer = backtest_service_pb2_grpc.BacktestServicerStub(grpc.insecure_channel("localhost:50055"))
+
+    @wraps(f)
+    def wrapper(*args: P.args, **kwargs: P.kwargs):
+        return f(servicer, *args, **kwargs)
+
+    return wrapper
 
 
-@inject_session
-def get(session: Session, name: str) -> entity.backtest.Backtest:
-    rsp = session.request("GET", f"/backtest/api/backtests/{name}")
-    return entity.backtest.Backtest.model_validate(rsp.json())
+@backtest_ingestion_servicer
+def ingest(servicer: ingestion_service_pb2_grpc.IngestionServicerStub, ingestion: ingestion_pb2.Ingestion):
+    req = ingestion_service_pb2.CreateIngestionRequest(
+        ingestion=ingestion,
+    )
+    servicer.CreateIngestion(req)
 
 
-@inject_session
-def list_sessions(session: Session, backtest: str | None = None) -> List[entity.backtest.Session]:
-    rsp = session.request("GET", "/backtest/api/sessions", params={"backtest": backtest})
-    return [entity.backtest.Session.model_validate(s) for s in rsp.json()]
+@backtest_ingestion_servicer
+def get_ingestion(
+    servicer: ingestion_service_pb2_grpc.IngestionServicerStub,
+) -> tuple[ingestion_pb2.Ingestion, ingestion_pb2.IngestionStatus]:
+    rsp = servicer.GetCurrentIngestion(ingestion_service_pb2.GetCurrentIngestionRequest())
+    return rsp.ingestion, rsp.status
 
 
-@inject_session
-def run(session: Session, backtest: str, manual: bool = False) -> entity.backtest.Session:
-    rsp = session.request("POST", "/backtest/api/sessions", json={"backtest": backtest, "manual": manual})
-    return entity.backtest.Session.model_validate(rsp.json())
+@backtest_servicer
+def list(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> list[backtest_pb2.Backtest]:
+    rsp: backtest_service_pb2.ListBacktestsResponse = servicer.ListBacktests(
+        backtest_service_pb2.ListBacktestsRequest()
+    )
+    return [b for b in rsp.backtests]
 
 
-@inject_session
-def get_session(session: Session, session_id: str) -> entity.backtest.Session:
-    rsp = session.request("GET", f"/backtest/api/sessions/{session_id}")
-    return entity.backtest.Session.model_validate(rsp.json())
+@backtest_servicer
+def create(
+    servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest: backtest_pb2.Backtest
+) -> backtest_pb2.Backtest:
+    req = backtest_service_pb2.CreateBacktestRequest(
+        backtest=backtest,
+    )
+    rsp = servicer.CreateBacktest(req)
+    return rsp.backtest
 
 
-@inject_session
-def list_executions(s: Session, session: str | None = None) -> List[entity.backtest.Execution]:
-    rsp = s.request("GET", "/backtest/api/executions", params={"session": session})
-    return [entity.backtest.Execution.model_validate(e) for e in rsp.json()]
+@backtest_servicer
+def get(servicer: backtest_service_pb2_grpc.BacktestServicerStub, name: str) -> backtest_pb2.Backtest:
+    req = backtest_service_pb2.GetBacktestRequest(
+        name=name,
+    )
+    rsp = servicer.GetBacktest(req)
+    return rsp.backtest
 
 
-@inject_session
-def get_execution(session: Session, execution_id: str) -> entity.backtest.Execution:
-    rsp = session.request("GET", f"/backtest/api/executions/{execution_id}")
-    return entity.backtest.Execution.model_validate(rsp.json())
+# @inject_session
+# def list_sessions(session: Session, backtest: str | None = None) -> List[entity.backtest.Session]:
+#     rsp = session.request("GET", "/backtest/api/sessions", params={"backtest": backtest})
+#     return [entity.backtest.Session.model_validate(s) for s in rsp.json()]
+
+
+@backtest_servicer
+def create_session(servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest_name: str) -> session_pb2.Session:
+    req = backtest_service_pb2.CreateSessionRequest(
+        backtest_name=backtest_name,
+    )
+    rsp: backtest_service_pb2.CreateSessionResponse = servicer.CreateSession(req)
+    return rsp.session
+
+
+@backtest_servicer
+def get_session(servicer: backtest_service_pb2_grpc.BacktestServicerStub, session_id: str) -> session_pb2.Session:
+    req = backtest_service_pb2.GetSessionRequest(
+        session_id=session_id,
+    )
+    rsp: backtest_service_pb2.GetSessionResponse = servicer.GetSession(req)
+    return rsp.session

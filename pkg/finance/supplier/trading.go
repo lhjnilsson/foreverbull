@@ -1,8 +1,8 @@
 package supplier
 
-import "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+import "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 
 type Trading interface {
-	GetPortfolio() (*entity.Portfolio, error)
-	GetOrders() ([]*entity.Order, error)
+	GetPortfolio() (*pb.Portfolio, error)
+	GetOrders() ([]*pb.Order, error)
 }

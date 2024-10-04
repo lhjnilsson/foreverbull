@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
 )
 
 const OHLCTable = `CREATE TABLE IF NOT EXISTS ohlc (
@@ -27,11 +26,11 @@ type OHLC struct {
 Create
 Create new End-of-day entry, based on instrument and session
 */
-func (db *OHLC) Store(ctx context.Context, symbol string, ohlc *entity.OHLC) error {
+func (db *OHLC) Store(ctx context.Context, symbol string, t time.Time, o, h, l, c float64, v int) error {
 	_, err := db.Conn.Exec(
 		ctx,
-		`INSERT into ohlc(symbol, time, open, high, low, close, volume) 
-		values ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`, symbol, ohlc.Time, ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, ohlc.Volume)
+		`INSERT into ohlc(symbol, time, open, high, low, close, volume)
+		values ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`, symbol, t, o, h, l, c, v)
 	return err
 }
 

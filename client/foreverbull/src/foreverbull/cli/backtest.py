@@ -1,11 +1,10 @@
-import os
-import time
 from datetime import datetime
 
 import typer
-from foreverbull import Foreverbull, broker, entity
+from foreverbull import broker
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.pb_utils import to_proto_timestamp
 from rich.console import Console
-from rich.progress import Progress
 from rich.table import Table
 from typing_extensions import Annotated
 
@@ -33,9 +32,9 @@ def list():
     for backtest in backtests:
         table.add_row(
             backtest.name,
-            backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-            backtest.start.isoformat() if backtest.start else "",
-            backtest.end.isoformat() if backtest.end else "",
+            (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+            backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
+            backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
@@ -45,18 +44,16 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Option(help="start time of the backtest")] | None = None,
-    end: Annotated[datetime, typer.Option(help="end time of the backtest")] | None = None,
-    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")] | None = None,
-    service: Annotated[str, typer.Option(help="worker service to use")] | None = None,
-    benchmark: Annotated[str, typer.Option(help="symbol of benchmark to use")] | None = None,
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    benchmark: (Annotated[str, typer.Option(help="symbol of benchmark to use")] | None) = None,
 ):
-    backtest = entity.backtest.Backtest(
+    backtest = backtest_pb2.Backtest(
         name=name,
-        service=service,
-        start=start,
-        end=end,
-        symbols=[symbol.strip().upper() for symbol in symbols.split(",")] if symbols else [],
+        start_date=to_proto_timestamp(start),
+        end_date=to_proto_timestamp(end),
+        symbols=([symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []),
         benchmark=benchmark,
     )
     backtest = broker.backtest.create(backtest)
@@ -70,9 +67,9 @@ def create(
 
     table.add_row(
         backtest.name,
-        backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-        backtest.start.isoformat() if backtest.start else "",
-        backtest.end.isoformat() if backtest.end else "",
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+        backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
+        backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
@@ -84,7 +81,6 @@ def get(
     backtest_name: Annotated[str, typer.Argument(help="name of the backtest")],
 ):
     backtest = broker.backtest.get(backtest_name)
-    sessions = broker.backtest.list_sessions(backtest_name)
     table = Table(title="Backtest")
     table.add_column("Name")
     table.add_column("Status")
@@ -94,29 +90,16 @@ def get(
     table.add_column("Benchmark")
     table.add_row(
         backtest.name,
-        backtest.statuses[0].status.value if backtest.statuses else "Unknown",
-        backtest.start.isoformat() if backtest.start else "",
-        backtest.end.isoformat() if backtest.end else "",
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+        backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
+        backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
     std.print(table)
 
-    table = Table(title="Sessions")
-    table.add_column("Id")
-    table.add_column("Status")
-    table.add_column("Date")
-    table.add_column("Executions")
-    for session in sessions:
-        table.add_row(
-            session.id,
-            session.statuses[0].status.value if session.statuses else "Unknown",
-            session.statuses[0].occurred_at.isoformat() if session.statuses else "Unknown",
-            str(session.executions),
-        )
-    std.print(table)
 
-
+"""
 @backtest.command()
 def run(
     file_path: Annotated[str, typer.Argument(help="name of the file to use")],
@@ -156,35 +139,13 @@ def run(
         )
         std.print(table)
 
-    session = broker.backtest.run(backtest_name, manual=True)
-    while session.port is None:
-        time.sleep(0.5)
-        session = broker.backtest.get_session(session.id)
-        if session.statuses[-1].status == entity.backtest.SessionStatusType.FAILED:
-            raise Exception(f"Session failed: {session.statuses[-1].error}")
-    os.environ["BROKER_SESSION_PORT"] = str(session.port)
-    foreverbull = Foreverbull(file_path=file_path)
-    with foreverbull as fb:
-        execution = fb.new_backtest_execution()
-        fb.run_backtest_execution(execution)
-        show_progress(session)
-    return
-
-
-@backtest.command()
-def executions(session_id: session_argument):
-    executions = broker.backtest.list_executions(session_id)
-    table = Table(title="Executions")
-    table.add_column("Id")
-    table.add_column("Start")
-    table.add_column("End")
-    table.add_column("Status")
-
-    for execution in executions:
-        table.add_row(
-            execution.id,
-            execution.start.isoformat(),
-            execution.end.isoformat(),
-            execution.statuses[0].status.value if execution.statuses else "Unknown",
+    algorithm = Algorithm.from_file_path(file_path)
+    with algorithm.backtest_session(backtest_name) as session:
+        default = session.get_default()
+        session.run_execution(
+            start=default.start,
+            end=default.end,
+            symbols=default.symbols,
+            benchmark=default.benchmark,
         )
-    std.print(table)
+"""

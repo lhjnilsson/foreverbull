@@ -2,10 +2,7 @@ package stream
 
 import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
 )
-
-type InstanceMessage entity.Instance
 
 type InstanceInterviewCommand struct {
 	ID string `json:"id"`

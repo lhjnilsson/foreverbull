@@ -36,7 +36,8 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
-			err = assets.Store(ctx, a)
+
+			err = assets.Store(ctx, a.Symbol, a.Name)
 			if err != nil {
 				return fmt.Errorf("error storing asset: %w", err)
 			}
@@ -50,8 +51,8 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			if err != nil {
 				return fmt.Errorf("error getting OHLC: %w", err)
 			}
-			for _, o := range *ohlcs {
-				err = ohlc.Store(ctx, symbol, &o)
+			for _, o := range ohlcs {
+				err = ohlc.Store(ctx, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 				if err != nil {
 					return fmt.Errorf("error creating OHLC: %w", err)
 				}

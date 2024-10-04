@@ -3,15 +3,19 @@ import os
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime
 
-import docker
 import docker.errors
 import typer
-from foreverbull import broker, entity
+from foreverbull import broker
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
+
+import docker
 
 version = "0.1.0"
 
@@ -160,12 +164,21 @@ def start(
 
         with ThreadPoolExecutor() as executor:
             futures = []
-            for image in [POSTGRES_IMAGE, NATS_IMAGE, MINIO_IMAGE, broker_image, backtest_image]:
+            for image in [
+                POSTGRES_IMAGE,
+                NATS_IMAGE,
+                MINIO_IMAGE,
+                broker_image,
+                backtest_image,
+            ]:
                 futures.append(executor.submit(get_or_pull_image, image))
                 wait(futures)
             for future in futures:
                 if future.result():
-                    progress.update(download_images, description=f"[red]Failed to download images: {future.result()}")
+                    progress.update(
+                        download_images,
+                        description=f"[red]Failed to download images: {future.result()}",
+                    )
                     exit(1)
 
         progress.update(download_images, description="[blue]Images downloaded", completed=True)
@@ -205,10 +218,19 @@ def start(
                         "timeout": 5000000000,
                         "retries": 5,
                     },
-                    volumes={init_db_file.name: {"bind": "/docker-entrypoint-initdb.d/init.sh", "mode": "ro"}},
+                    volumes={
+                        init_db_file.name: {
+                            "bind": "/docker-entrypoint-initdb.d/init.sh",
+                            "mode": "ro",
+                        }
+                    },
                 )
             except Exception as e:
-                progress.update(postgres_task_id, description=f"[red]Failed to start postgres: {e}", completed=True)
+                progress.update(
+                    postgres_task_id,
+                    description=f"[red]Failed to start postgres: {e}",
+                    completed=True,
+                )
                 exit(1)
         progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
 
@@ -236,7 +258,11 @@ def start(
                     command="-js -sd /var/lib/nats/data",
                 )
             except Exception as e:
-                progress.update(nats_task_id, description=f"[red]Failed to start nats: {e}", completed=True)
+                progress.update(
+                    nats_task_id,
+                    description=f"[red]Failed to start nats: {e}",
+                    completed=True,
+                )
                 exit(1)
         progress.update(nats_task_id, description="[blue]NATS started", completed=True)
 
@@ -254,7 +280,11 @@ def start(
                     command='server --console-address ":9001" /data',
                 )
             except Exception as e:
-                progress.update(minio_task_id, description=f"[red]Failed to start minio: {e}", completed=True)
+                progress.update(
+                    minio_task_id,
+                    description=f"[red]Failed to start minio: {e}",
+                    completed=True,
+                )
                 exit(1)
         progress.update(minio_task_id, description="[blue]Minio started", completed=True)
 
@@ -269,7 +299,11 @@ def start(
             progress.update(health_task_id, description="[blue]All services healthy", completed=True)
             break
         else:
-            progress.update(health_task_id, description="[red]Failed to start services, timeout", completed=True)
+            progress.update(
+                health_task_id,
+                description="[red]Failed to start services, timeout",
+                completed=True,
+            )
             exit(1)
 
         try:
@@ -285,7 +319,7 @@ def start(
                     network=NETWORK_NAME,
                     hostname="foreverbull",
                     ports={
-                        "8080/tcp": 8080,
+                        "50055/tcp": 50055,
                         "27000/tcp": 27000,
                         "27001/tcp": 27001,
                         "27002/tcp": 27002,
@@ -309,32 +343,54 @@ def start(
                         "BACKTEST_IMAGE": backtest_image,
                         "LOG_LEVEL": "info",
                     },
-                    volumes={"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}},
+                    volumes={
+                        "/var/run/docker.sock": {
+                            "bind": "/var/run/docker.sock",
+                            "mode": "rw",
+                        }
+                    },
                 )
             except Exception as e:
                 progress.update(
-                    foreverbull_task_id, description=f"[red]Failed to start foreverbull: {e}", completed=True
+                    foreverbull_task_id,
+                    description=f"[red]Failed to start foreverbull: {e}",
+                    completed=True,
                 )
                 exit(1)
             time.sleep(2)
             try:
                 with open(ingestion_config, "r") as f:
-                    ingestion_config = json.load(f)
-
-                ingestion = broker.backtest.ingest(entity.backtest.Ingestion.model_validate(ingestion_config))
-                while not ingestion.statuses[0].status == entity.backtest.IngestionStatusType.COMPLETED:
-                    time.sleep(0.5)
-                    ingestion = broker.backtest.get_ingestion()
-                    if ingestion.statuses[0].status == entity.backtest.IngestionStatusType.ERROR:
-                        progress.update(
-                            ingestion_task_id,
-                            description=f"[red]Failed to ingest: {ingestion.statuses[0].error}",
-                            completed=True,
-                        )
-                        exit(1)
-                progress.update(ingestion_task_id, description="[blue]Ingestion completed", completed=True)
+                    config = json.load(f)
+                broker.backtest.ingest(
+                    ingestion=ingestion_pb2.Ingestion(
+                        start_date=pb_utils.to_proto_timestamp(datetime.strptime(config["start"], "%Y-%m-%d")),
+                        end_date=pb_utils.to_proto_timestamp(datetime.strptime(config["end"], "%Y-%m-%d")),
+                        symbols=config["symbols"],
+                    )
+                )
+                for _ in range(60):
+                    _, ingestion_status = broker.backtest.get_ingestion()
+                    if ingestion_status == ingestion_pb2.IngestionStatus.READY:
+                        break
+                    time.sleep(1)
+                else:
+                    progress.update(
+                        ingestion_task_id,
+                        description="[red]Failed to ingest",
+                        completed=True,
+                    )
+                    exit(1)
+                progress.update(
+                    ingestion_task_id,
+                    description="[blue]Ingestion completed",
+                    completed=True,
+                )
             except Exception as e:
-                progress.update(ingestion_task_id, description=f"[red]Failed to ingest: {e}", completed=True)
+                progress.update(
+                    ingestion_task_id,
+                    description=f"[red]Failed to ingest: {e}",
+                    completed=True,
+                )
                 exit(1)
         progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
     std.print("Environment started")

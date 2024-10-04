@@ -8,13 +8,13 @@ ZIPLINE_NAME=lhjnilsson/zipline:$(TAG)
 	cd foreverbull && rye build && cd ..
 
 .build-docker-parallel: .build-py-foreverbull
-	docker build -t $(PARALLEL_NAME) --build-arg ALGO_FILE=tests/end_to_end/parallel.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
+	docker build -t $(PARALLEL_NAME) --build-arg ALGO_FILE=example_algorithms/src/example_algorithms/parallel.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
 
 .build-docker-non-parallel: .build-py-foreverbull
-	docker build -t $(NON_PARALLEL_NAME) --build-arg ALGO_FILE=tests/end_to_end/non_parallel.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
+	docker build -t $(NON_PARALLEL_NAME) --build-arg ALGO_FILE=example_algorithms/src/example_algorithms/non_parallel.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
 
 .build-docker-namespace: .build-py-foreverbull
-	docker build -t $(NAMESPACE_NAME) --build-arg ALGO_FILE=tests/end_to_end/multistep_with_namespace.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
+	docker build -t $(NAMESPACE_NAME) --build-arg ALGO_FILE=example_algorithms/src/example_algorithms/multistep_with_namespace.py --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl .
 
 .build-docker-clients: .build-docker-parallel .build-docker-non-parallel .build-docker-namespace
 

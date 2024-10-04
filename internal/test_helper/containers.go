@@ -111,10 +111,17 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 			}
 		}),
 	)
-	require.NoError(t, err)
+	require.NoError(t, err, "Failed to start NATS container")
 
-	ConnectionString, err = container.ConnectionString(context.TODO())
-	require.NoError(t, err)
+	for attempt := 0; attempt < 12; attempt++ {
+		ConnectionString, err = container.ConnectionString(context.TODO())
+		if err == nil {
+			break
+		} else {
+			time.Sleep(time.Second / 4)
+		}
+		require.NoError(t, err, "Failed to get NATS connection string")
+	}
 
 	t.Cleanup(func() {
 		if err := container.Terminate(context.TODO()); err != nil {

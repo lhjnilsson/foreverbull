@@ -39,7 +39,7 @@ func TestRepository(t *testing.T) {
 }
 
 func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
-	createMessage := func(t *testing.T) *message {
+	createMessage := func(_ *testing.T) *message {
 		orchestrationName := "test_orchestration"
 		orchestrationID := "test_orchestration_id"
 		OrchestrationStep := "test_step"
@@ -96,7 +96,7 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 }
 
 func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
-	createBaseOrchestration := func(t *testing.T) *MessageOrchestration {
+	createBaseOrchestration := func(_ *testing.T) *MessageOrchestration {
 		baseOrchestration := NewMessageOrchestration("repository_test")
 
 		m1, err := NewMessage("service", "service", "start", nil)

@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package foreverbull.backtest;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+
+import "foreverbull/backtest/ingestion.proto";
+import "google/protobuf/timestamp.proto";
+
+message GetCurrentIngestionRequest {
+}
+
+message GetCurrentIngestionResponse {
+    Ingestion ingestion = 1;
+    IngestionStatus status = 2;
+    int64 size = 3;
+}
+
+message CreateIngestionRequest {
+    Ingestion ingestion = 1;
+}
+
+message CreateIngestionResponse {
+    Ingestion ingestion = 1;
+    IngestionStatus status = 2;
+}
+
+service IngestionServicer {
+    rpc GetCurrentIngestion(GetCurrentIngestionRequest) returns (GetCurrentIngestionResponse);
+    rpc CreateIngestion(CreateIngestionRequest) returns (CreateIngestionResponse);
+}

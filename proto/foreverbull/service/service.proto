@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package foreverbull.service;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/service/pb";
+import "google/protobuf/timestamp.proto";
+import "foreverbull/service/worker.proto";
+
+
+message Service {
+    message Status {
+        enum Status {
+            CREATED = 0;
+            INTERVIEW = 1;
+            READY = 2;
+            ERROR = 3;
+        }
+        Status status = 1;
+        optional string error = 2;
+        google.protobuf.Timestamp OccurredAt = 3;
+    }
+    string Image = 1;
+    Algorithm algorithm = 2;
+    repeated Status statuses = 3;
+}

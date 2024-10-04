@@ -3,10 +3,13 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 )
 
 const InstanceTable = `CREATE TABLE IF NOT EXISTS service_instance (
@@ -15,16 +18,13 @@ image text,
 
 host text,
 port integer,
-broker_port integer,
-namespace_port integer,
-database_url text,
 
-status text NOT NULL DEFAULT 'CREATED',
+status int NOT NULL DEFAULT 0,
 error TEXT);
 
 CREATE TABLE IF NOT EXISTS service_instance_status (
 	id text REFERENCES service_instance(id) ON DELETE CASCADE,
-	status text NOT NULL,
+	status int NOT NULL,
 	error text,
 	occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -55,7 +55,7 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, id string, image *string) (*entity.Instance, error) {
+func (db *Instance) Create(ctx context.Context, id string, image *string) (*pb.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
 		id, image,
@@ -66,11 +66,10 @@ func (db *Instance) Create(ctx context.Context, id string, image *string) (*enti
 	return db.Get(ctx, id)
 }
 
-func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error) {
-	i := entity.Instance{}
+func (db *Instance) Get(ctx context.Context, id string) (*pb.Instance, error) {
+	i := pb.Instance{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url,
-		sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
@@ -82,13 +81,14 @@ func (db *Instance) Get(ctx context.Context, id string) (*entity.Instance, error
 	defer rows.Close()
 
 	for rows.Next() {
-		status := entity.InstanceStatus{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL,
-			&status.Status, &status.Error, &status.OccurredAt)
+		status := pb.Instance_Status{}
+		t := time.Time{}
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &status.Status, &status.Error, &t)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
-		i.Statuses = append(i.Statuses, status)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		i.Statuses = append(i.Statuses, &status)
 	}
 	if i.ID == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
@@ -107,31 +107,7 @@ func (db *Instance) UpdateHostPort(ctx context.Context, id, host string, port in
 	return nil
 }
 
-func (db *Instance) UpdateBrokerPort(ctx context.Context, id string, brokerPort int) error {
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE service_instance SET broker_port=$2 WHERE id=$1`,
-		id, brokerPort,
-	)
-	return err
-}
-
-func (db *Instance) UpdateNamespacePort(ctx context.Context, id string, namespacePort int) error {
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE service_instance SET namespace_port=$2 WHERE id=$1`,
-		id, namespacePort,
-	)
-	return err
-}
-
-func (db *Instance) UpdateDatabaseURL(ctx context.Context, id, databaseURL string) error {
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE service_instance SET database_url=$2 WHERE id=$1`,
-		id, databaseURL,
-	)
-	return err
-}
-
-func (db *Instance) UpdateStatus(ctx context.Context, id string, status entity.InstanceStatusType, err error) error {
+func (db *Instance) UpdateStatus(ctx context.Context, id string, status pb.Instance_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2, error=$3 WHERE id=$1`,
@@ -146,10 +122,38 @@ func (db *Instance) UpdateStatus(ctx context.Context, id string, status entity.I
 	return err
 }
 
-func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
+func (db *Instance) parseRows(rows pgx.Rows) ([]*pb.Instance, error) {
+	instances := make([]*pb.Instance, 0)
+	var inReturnSlice bool
+	for rows.Next() {
+		status := pb.Instance_Status{}
+		t := time.Time{}
+		i := pb.Instance{}
+		err := rows.Scan(
+			&i.ID, &i.Image, &i.Host, &i.Port,
+			&status.Status, &status.Error, &t)
+		if err != nil {
+			return nil, err
+		}
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		inReturnSlice = false
+		for index := range instances {
+			if instances[index].ID == i.ID {
+				instances[index].Statuses = append(instances[index].Statuses, &status)
+				inReturnSlice = true
+			}
+		}
+		if !inReturnSlice {
+			i.Statuses = append(i.Statuses, &status)
+			instances = append(instances, &i)
+		}
+	}
+	return instances, nil
+}
+
+func (db *Instance) List(ctx context.Context) ([]*pb.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url,
-		sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
@@ -159,36 +163,12 @@ func (db *Instance) List(ctx context.Context) (*[]entity.Instance, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
-	instances := make([]entity.Instance, 0)
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.InstanceStatus{}
-		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL,
-			&status.Status, &status.Error, &status.OccurredAt)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for index := range instances {
-			if instances[index].ID == i.ID {
-				instances[index].Statuses = append(instances[index].Statuses, status)
-				inReturnSlice = true
-			}
-		}
-		if !inReturnSlice {
-			i.Statuses = append(i.Statuses, status)
-			instances = append(instances, i)
-		}
-	}
-	return &instances, nil
+	return db.parseRows(rows)
 }
 
-func (db *Instance) ListByImage(ctx context.Context, image string) (*[]entity.Instance, error) {
+func (db *Instance) ListByImage(ctx context.Context, image string) ([]*pb.Instance, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT service_instance.id, image, host, port, broker_port, namespace_port, database_url,
-		sis.status, sis.error, sis.occurred_at
+		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
@@ -199,28 +179,5 @@ func (db *Instance) ListByImage(ctx context.Context, image string) (*[]entity.In
 		return nil, err
 	}
 	defer rows.Close()
-
-	instances := make([]entity.Instance, 0)
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.InstanceStatus{}
-		i := entity.Instance{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &i.BrokerPort, &i.NamespacePort, &i.DatabaseURL,
-			&status.Status, &status.Error, &status.OccurredAt)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for index := range instances {
-			if instances[index].ID == i.ID {
-				instances[index].Statuses = append(instances[index].Statuses, status)
-				inReturnSlice = true
-			}
-		}
-		if !inReturnSlice {
-			i.Statuses = append(i.Statuses, status)
-			instances = append(instances, i)
-		}
-	}
-	return &instances, nil
+	return db.parseRows(rows)
 }

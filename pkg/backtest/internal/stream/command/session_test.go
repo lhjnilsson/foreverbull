@@ -3,19 +3,23 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
-	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
+	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -23,97 +27,144 @@ import (
 type CommandSessionTest struct {
 	suite.Suite
 
-	db *pgxpool.Pool
+	db       *pgxpool.Pool
+	backtest *pb.Backtest
+	session  *pb.Session
+	storage  *storage.MockStorage
 }
 
 func TestCommandSession(t *testing.T) {
 	suite.Run(t, new(CommandSessionTest))
 }
 
-func (test *CommandSessionTest) SetupTest() {
+func (test *CommandSessionTest) SetupSuite() {
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
+}
 
+func (test *CommandSessionTest) SetupSubTest() {
 	var err error
 	test.db, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 
+	test.storage = new(storage.MockStorage)
+
 	err = repository.Recreate(context.TODO(), test.db)
 	test.Require().NoError(err)
-}
-
-func (test *CommandSessionTest) TearDownTest() {
-}
-
-func (test *CommandSessionTest) TestUpdateSessionCommand() {
-
 	backtests := repository.Backtest{Conn: test.db}
-	backtest, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
-		"test-calendar", []string{"test-symbol"}, nil)
-	test.NoError(err)
-
+	test.backtest, err = backtests.Create(context.TODO(), "test-backtest", time.Now(), time.Now(), []string{"AAPL"}, nil)
+	test.Require().NoError(err)
 	sessions := repository.Session{Conn: test.db}
-	session, err := sessions.Create(context.Background(), backtest.Name, false)
-	test.NoError(err)
+	test.session, err = sessions.Create(context.TODO(), "test-backtest")
+}
 
-	type TestCase struct {
-		Status entity.SessionStatusType
-		Error  error
-	}
-	testCases := []TestCase{
-		{Status: entity.SessionStatusRunning, Error: nil},
-		{Status: entity.SessionStatusCompleted, Error: nil},
-		{Status: entity.SessionStatusFailed, Error: errors.New("test error")},
-	}
+func (test *CommandSessionTest) TearDownSubTest() {
+}
 
-	for _, tc := range testCases {
+func (test *CommandSessionTest) TestSessionRun() {
+	test.Run("Fail to unmarshal", func() {
+		m := new(stream.MockMessage)
+		parse := m.On("ParsePayload", &ss.SessionRunCommand{}).Return(errors.New("not working"))
+		err := SessionRun(context.TODO(), m)
+		test.Require().Error(err)
+		test.Require().Len(parse.Parent.Calls, 1)
+	})
+	test.Run("Session not stored", func() {
 		m := new(stream.MockMessage)
 		m.On("MustGet", stream.DBDep).Return(test.db)
-		m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			command := args.Get(0).(*ss.UpdateSessionStatusCommand)
-			command.SessionID = session.ID
-			command.Status = tc.Status
-			command.Error = tc.Error
+		m.On("MustGet", stream.StorageDep).Return(test.storage)
+		m.On("ParsePayload", &ss.SessionRunCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*ss.SessionRunCommand)
+			payload.Backtest = test.backtest.Name
+			payload.SessionID = "not stored"
 		})
-
-		err := UpdateSessionStatus(context.Background(), m)
-		test.NoError(err)
-
-		session, err := sessions.Get(context.Background(), session.ID)
-		test.NoError(err)
-		test.Equal(tc.Status, session.Statuses[0].Status)
-		if tc.Error != nil {
-			test.Require().NotNil(session.Statuses[0].Error)
-			test.Equal(tc.Error.Error(), *session.Statuses[0].Error)
-		} else {
-			test.Nil(session.Statuses[0].Error)
-		}
-	}
-}
-
-func (test *CommandSessionTest) TestSessionRunCommand() {
-	backtests := repository.Backtest{Conn: test.db}
-	sessions := repository.Session{Conn: test.db}
-	_, err := backtests.Create(context.Background(), "test-backtest", nil, time.Now(), time.Now(),
-		"test-calendar", []string{"test-symbol"}, nil)
-	test.NoError(err)
-	s, err := sessions.Create(context.Background(), "test-backtest", false)
-	test.NoError(err)
-
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-
-	session := new(backtest.MockSession)
-	session.On("Run", mock.Anything, mock.Anything).Return(nil)
-	session.On("Stop", mock.Anything).Return(nil)
-
-	m.On("Call", mock.Anything, dependency.GetBacktestSessionKey).Return(session, nil)
-	m.On("ParsePayload", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		command := args.Get(0).(*ss.SessionRunCommand)
-		command.SessionID = s.ID
+		err := SessionRun(context.TODO(), m)
+		test.Require().Error(err)
+		m.AssertCalled(test.T(), "ParsePayload", mock.Anything)
+		m.AssertCalled(test.T(), "MustGet", stream.DBDep)
 	})
+	test.Run("Fail to get engine", func() {
+		m := new(stream.MockMessage)
+		m.On("MustGet", stream.DBDep).Return(test.db)
+		m.On("MustGet", stream.StorageDep).Return(test.storage)
+		m.On("ParsePayload", &ss.SessionRunCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*ss.SessionRunCommand)
+			payload.Backtest = test.backtest.Name
+			payload.SessionID = test.session.Id
+		})
+		m.On("Call", mock.Anything, dependency.GetEngineKey).Return(nil, errors.New("not working"))
+		err := SessionRun(context.TODO(), m)
+		test.Require().Error(err)
+		m.AssertCalled(test.T(), "ParsePayload", mock.Anything)
+		m.AssertCalled(test.T(), "MustGet", stream.DBDep)
+		m.AssertCalled(test.T(), "Call", mock.Anything, dependency.GetEngineKey)
+	})
+	test.Run("no ingestions", func() {
+		m := new(stream.MockMessage)
+		engine := new(engine.MockEngine)
+		m.On("MustGet", stream.DBDep).Return(test.db)
+		m.On("MustGet", stream.StorageDep).Return(test.storage)
+		ingestions := []storage.Object{}
+		test.storage.On("ListObjects", mock.Anything, storage.IngestionsBucket).Return(&ingestions, nil)
+		m.On("ParsePayload", &ss.SessionRunCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*ss.SessionRunCommand)
+			payload.Backtest = test.backtest.Name
+			payload.SessionID = test.session.Id
 
-	err = SessionRun(context.Background(), m)
-	test.NoError(err)
+		})
+		m.On("Call", mock.Anything, dependency.GetEngineKey).Return(engine, nil)
+		err := SessionRun(context.TODO(), m)
+		test.Require().ErrorContains(err, "no ingestions found")
+	})
+	test.Run("successful", func() {
+		m := new(stream.MockMessage)
+		engine := new(engine.MockEngine)
+		engine.On("DownloadIngestion", mock.Anything, mock.Anything).Return(nil)
+		engine.On("Stop", mock.Anything).Return(nil)
+		m.On("MustGet", stream.DBDep).Return(test.db)
+		m.On("MustGet", stream.StorageDep).Return(test.storage)
+		ingestions := []storage.Object{
+			{
+				LastModified: time.Now(),
+				Metadata:     map[string]string{"Status": pb.IngestionStatus_READY.String()},
+			},
+		}
+		test.storage.On("ListObjects", mock.Anything, storage.IngestionsBucket).Return(&ingestions, nil)
+		m.On("ParsePayload", &ss.SessionRunCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*ss.SessionRunCommand)
+			payload.Backtest = test.backtest.Name
+			payload.SessionID = test.session.Id
+		})
+		m.On("Call", mock.Anything, dependency.GetEngineKey).Return(engine, nil)
+		err := SessionRun(context.TODO(), m)
+		test.Require().NoError(err)
+		m.AssertCalled(test.T(), "ParsePayload", mock.Anything)
+		m.AssertCalled(test.T(), "MustGet", stream.DBDep)
+		m.AssertCalled(test.T(), "Call", mock.Anything, dependency.GetEngineKey)
+		time.Sleep(time.Second / 2) // Wait for the session to start
+
+		sessions := repository.Session{Conn: test.db}
+		session, err := sessions.Get(context.TODO(), test.session.Id)
+		test.Require().NoError(err)
+		test.Require().NotNil(session.Port)
+		test.Equal(pb.Session_Status_RUNNING, session.Statuses[0].Status)
+
+		conn, err := grpc.NewClient(
+			fmt.Sprintf("localhost:%d", *session.Port),
+			grpc.WithTransportCredentials(
+				insecure.NewCredentials(),
+			),
+		)
+		test.Require().NoError(err)
+		client := pb.NewSessionServicerClient(conn)
+		rsp, err := client.StopServer(context.TODO(), &pb.StopServerRequest{})
+		test.Require().NoError(err)
+		test.NotNil(rsp)
+
+		time.Sleep(time.Second) // Wait for the session to stop
+		session, err = sessions.Get(context.TODO(), test.session.Id)
+		test.Require().NoError(err)
+		test.Equal(pb.Session_Status_COMPLETED, session.Statuses[0].Status)
+	})
 }

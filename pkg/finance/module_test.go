@@ -6,10 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	h "github.com/lhjnilsson/foreverbull/internal/http"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -52,12 +50,6 @@ func (test *FinanceModuleTest) SetupTest() {
 			func() *pgxpool.Pool {
 				return pool
 			},
-			func() *gin.Engine {
-				return h.NewEngine()
-			},
-		),
-		fx.Invoke(
-			h.NewLifeCycleRouter,
 		),
 		stream.OrchestrationLifecycle,
 		Module,

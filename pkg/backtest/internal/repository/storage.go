@@ -37,17 +37,8 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest;`); err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS ingestion_status;`); err != nil {
-		return err
-	}
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS ingestion;`); err != nil {
-		return err
-	}
 
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
-		return err
-	}
-	if _, err := conn.Exec(ctx, IngestionTable); err != nil {
 		return err
 	}
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
@@ -59,10 +50,6 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, ExecutionTable); err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, PeriodTable); err != nil {
-		return err
-	}
-	CreateConstraint(ctx, conn)
 	return nil
 }
 
@@ -70,9 +57,7 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, IngestionTable); err != nil {
-		return err
-	}
+
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
 		return err
 	}
@@ -82,9 +67,5 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, ExecutionTable); err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, PeriodTable); err != nil {
-		return err
-	}
-	CreateConstraint(ctx, conn)
 	return nil
 }

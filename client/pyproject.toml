@@ -1,17 +1,31 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
+dependencies = [
+  "grpcio-tools>=1.66.1",
+  "grpcio-testing>=1.66.1",
+  "grpcio>=1.66.1",
+]
 
 [tool.rye]
 managed = true
 virtual = true
-dev-dependencies = []
+dev-dependencies = ["pytest-repeat>=0.9.3"]
+
 
 [tool.rye.workspace]
-packages = ["foreverbull", "foreverbull_testing", "foreverbull_zipline"]
+packages = [
+  "foreverbull",
+  "foreverbull_testing",
+  "foreverbull_zipline",
+  "example_algorithms",
+]
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.ruff.lint]
+exclude = ["foreverbull/src/foreverbull/pb/*"]
+
+[tool.ruff.format]
+exclude = ["foreverbull/src/foreverbull/pb/*"]
 
 [tool.ruff]
 fix = true
@@ -24,22 +38,11 @@ lines-between-types = 1
 lines-after-imports = 2
 known-first-party = ["foreverbull"]
 
-[tool.black]
-line-length = 120
-target-version = ['py311']
-
-[tool.bandit.assert_used]
-skips = ["*_test.py", '*/test_*.py']
-
-[tool.isort]
-profile = "black"
-src_paths = ["src"]
-line_length = 120
-
 [tool.pytest.ini_options]
 testpaths = [
   "foreverbull/tests/",
   "foreverbull_testing/tests/",
   "foreverbull_zipline/tests/",
-  "tests/test_performance.py",
+  "tests/",
 ]
+filterwarnings = "ignore::DeprecationWarning"

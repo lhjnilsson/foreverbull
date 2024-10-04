@@ -6,32 +6,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/internal/pb"
-	finance_pb "github.com/lhjnilsson/foreverbull/internal/pb/finance"
-	service_pb "github.com/lhjnilsson/foreverbull/internal/pb/service"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
-	finance "github.com/lhjnilsson/foreverbull/pkg/finance/entity"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	worker_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/rs/zerolog/log"
-	"github.com/shopspring/decimal"
 	"golang.org/x/sync/errgroup"
 )
 
-type Request struct {
-	Timestamp time.Time          `json:"timestamp" mapstructure:"timestamp"`
-	Symbols   []string           `json:"symbols" mapstructure:"symbols"`
-	Portfolio *finance.Portfolio `json:"portfolio" mapstructure:"portfolio"`
-}
-
 type Pool interface {
-	GetPort() int
-	GetNamespacePort() int
-	SetAlgorithm(algo *entity.Algorithm) error
-	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error)
+	Configure() *worker_pb.ExecutionConfiguration
+	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error)
 	Close() error
 }
 
-func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
+func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
 	s, err := socket.NewRequester("0.0.0.0", 0, false)
 	if err != nil {
 		return nil, fmt.Errorf("error creating requester: %w", err)
@@ -40,13 +29,11 @@ func NewPool(ctx context.Context, algo *entity.Algorithm) (Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating replier: %w", err)
 	}
-
-	var n *namespace
-	if algo != nil {
-		n = CreateNamespace(algo.Namespaces)
+	if algo == nil {
+		return nil, fmt.Errorf("algorithm is not set")
 	}
-
-	p := &pool{Socket: s, NamespaceSocket: namespaceSocket, algo: algo, namespace: n}
+	namespace := CreateNamespace(algo.Namespaces)
+	p := &pool{Socket: s, NamespaceSocket: namespaceSocket, algo: algo, namespace: namespace}
 	go p.startNamespaceListener()
 	return p, nil
 }
@@ -55,29 +42,14 @@ type pool struct {
 	Socket          socket.Requester `json:"socket"`
 	NamespaceSocket socket.Replier   `json:"namespace_socket"`
 
-	algo      *entity.Algorithm
+	algo      *worker_pb.Algorithm
 	namespace *namespace
-}
-
-func (p *pool) SetAlgorithm(algo *entity.Algorithm) error {
-	n := CreateNamespace(algo.Namespaces)
-	p.algo = algo
-	p.namespace = n
-	return nil
-}
-
-func (p *pool) GetPort() int {
-	return p.Socket.GetPort()
-}
-
-func (p *pool) GetNamespacePort() int {
-	return p.NamespaceSocket.GetPort()
 }
 
 func (p *pool) startNamespaceListener() {
 	for {
-		request := service_pb.NamespaceRequest{}
-		response := service_pb.NamespaceResponse{}
+		request := worker_pb.NamespaceRequest{}
+		response := worker_pb.NamespaceResponse{}
 		sock, err := p.NamespaceSocket.Recieve(&request)
 		if err != nil {
 			if err == socket.Closed {
@@ -88,10 +60,10 @@ func (p *pool) startNamespaceListener() {
 			continue
 		}
 		switch request.Type {
-		case service_pb.NamespaceRequestType_GET:
+		case worker_pb.NamespaceRequestType_GET:
 			value := p.namespace.Get(request.Key)
 			response.Value = value
-		case service_pb.NamespaceRequestType_SET:
+		case worker_pb.NamespaceRequestType_SET:
 			err := p.namespace.Set(request.Key, request.Value)
 			if err != nil {
 				error := err.Error()
@@ -104,8 +76,8 @@ func (p *pool) startNamespaceListener() {
 		}
 	}
 }
-func (p *pool) orderedFunctions() <-chan entity.AlgorithmFunction {
-	ch := make(chan entity.AlgorithmFunction)
+func (p *pool) orderedFunctions() <-chan *worker_pb.Algorithm_Function {
+	ch := make(chan *worker_pb.Algorithm_Function)
 	go func() {
 		for _, function := range p.algo.Functions {
 			if function.RunFirst && !function.RunLast {
@@ -127,25 +99,23 @@ func (p *pool) orderedFunctions() <-chan entity.AlgorithmFunction {
 	return ch
 }
 
-func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance.Portfolio) (*[]finance.Order, error) {
+func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
+	functions := make([]*worker_pb.ExecutionConfiguration_Function, 0)
+	return &worker_pb.ExecutionConfiguration{
+		BrokerPort:    int32(p.Socket.GetPort()),
+		NamespacePort: int32(p.NamespaceSocket.GetPort()),
+		DatabaseURL:   environment.GetPostgresURL(),
+		Functions:     functions,
+	}
+}
+
+func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error) {
 	if p.algo == nil {
 		return nil, fmt.Errorf("algorithm not set")
 	}
 	p.namespace.Flush()
 
-	portfolio_pb := finance_pb.Portfolio{
-		Cash:  portfolio.Cash.InexactFloat64(),
-		Value: portfolio.Value.InexactFloat64(),
-	}
-	for _, pos := range portfolio.Positions {
-		portfolio_pb.Positions = append(portfolio_pb.Positions, &finance_pb.Position{
-			Symbol: pos.Symbol,
-			Amount: pos.Amount.InexactFloat64(),
-			Cost:   pos.CostBasis.InexactFloat64(),
-		})
-	}
-
-	var orders []finance.Order
+	var orders []*finance_pb.Order
 	functions := p.orderedFunctions()
 	for function := range functions {
 		if function.ParallelExecution {
@@ -154,13 +124,12 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 			for _, symbol := range symbols {
 				s := symbol
 				g.Go(func() error {
-					request := service_pb.WorkerRequest{
+					request := worker_pb.WorkerRequest{
 						Task:      function.Name,
-						Timestamp: pb.TimeToProtoTimestamp(timestamp),
 						Symbols:   []string{s},
-						Portfolio: &portfolio_pb,
+						Portfolio: portfolio,
 					}
-					response := service_pb.WorkerResponse{}
+					response := worker_pb.WorkerResponse{}
 					err := p.Socket.Request(&request, &response)
 					if err != nil {
 						return fmt.Errorf("error processing request: %w", err)
@@ -168,13 +137,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 
 					orderWriteMutex.Lock()
 					defer orderWriteMutex.Unlock()
-					for _, order := range response.Orders {
-						amount := decimal.NewFromInt32(order.Amount)
-						orders = append(orders, finance.Order{
-							Symbol: order.Symbol,
-							Amount: &amount,
-						})
-					}
+					orders = append(orders, response.Orders...)
 					return nil
 				})
 			}
@@ -183,27 +146,20 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				return nil, err
 			}
 		} else {
-			request := service_pb.WorkerRequest{
+			request := worker_pb.WorkerRequest{
 				Task:      function.Name,
-				Timestamp: pb.TimeToProtoTimestamp(timestamp),
 				Symbols:   symbols,
-				Portfolio: &portfolio_pb,
+				Portfolio: portfolio,
 			}
-			response := service_pb.WorkerResponse{}
+			response := worker_pb.WorkerResponse{}
 			err := p.Socket.Request(&request, &response)
 			if err != nil {
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
-			for _, order := range response.Orders {
-				amount := decimal.NewFromInt32(order.Amount)
-				orders = append(orders, finance.Order{
-					Symbol: order.Symbol,
-					Amount: &amount,
-				})
-			}
+			orders = append(orders, response.Orders...)
 		}
 	}
-	return &orders, nil
+	return orders, nil
 }
 
 func (p *pool) Close() error {

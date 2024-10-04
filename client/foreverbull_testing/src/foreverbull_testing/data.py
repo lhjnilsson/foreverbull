@@ -3,12 +3,11 @@ from datetime import datetime
 from typing import Any, Generator
 
 import yfinance as yf
-from foreverbull import Portfolio  # noqa
-from foreverbull import interfaces
+from foreverbull import Asset, Assets
 from pandas import DataFrame
 
 
-class DateLimitedAsset(interfaces.Asset):
+class DateLimitedAsset(Asset):
     def __init__(self, symbol: str, df: DataFrame):
         self._symbol = symbol
         self._stock_data = df
@@ -32,7 +31,7 @@ class DateLimitedAsset(interfaces.Asset):
         return self._stock_data
 
 
-class Asset(interfaces.Asset):
+class Asset(Asset):
     def __init__(self, start: str | datetime, end: str | datetime, symbol: str):
         self._start = start
         self._end = end
@@ -40,7 +39,9 @@ class Asset(interfaces.Asset):
         ticker = yf.Ticker(symbol)
         t = ticker.history(start=start, end=end, interval="1d")
         t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
-        t.rename(columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True)
+        t.rename(
+            columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True
+        )
         t.index.name = "date"
         self._stock_data = t
         self.metrics = {}
@@ -67,7 +68,8 @@ class Asset(interfaces.Asset):
     def stock_data(self) -> DataFrame:
         return self._stock_data
 
-class DateLimitedAssets(interfaces.Assets):
+
+class DateLimitedAssets(Assets):
     def __init__(self, start: str | datetime, end: str | datetime, symbols: list[str]):
         self._start = start
         self._end = end
@@ -95,7 +97,8 @@ class DateLimitedAssets(interfaces.Assets):
     def stock_data(self) -> DataFrame:
         return DataFrame()
 
-class Assets(interfaces.Assets):
+
+class Assets(Assets):
     def __init__(self, start: str, end: str, symbols: list[str]):
         self._start = start
         self._end = end

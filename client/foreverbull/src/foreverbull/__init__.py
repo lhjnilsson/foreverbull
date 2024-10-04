@@ -1,7 +1,5 @@
 # isort: skip_file
-from foreverbull import entity  # noqa
-from foreverbull.data import Portfolio  # noqa
-from foreverbull.interfaces import Asset, Assets  # noqa
-from foreverbull.entity.finance import Order  # noqa
-from foreverbull.models import Algorithm, Function  # noqa
-from foreverbull.foreverbull import Foreverbull  # noqa
+from foreverbull.pb.foreverbull.finance.finance_pb2 import Order, Portfolio  # noqa
+from foreverbull.models import Function, Asset, Assets  # noqa
+from foreverbull.algorithm import Algorithm  # noqa
+from foreverbull.worker import Worker  # noqa

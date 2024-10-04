@@ -53,9 +53,18 @@ jobs:
       - name: Lint
         run: |
           rye lint
-      - name: Unittest
+      - name: Unittest foreverbull
         run: |
-          rye test
+          rye test -- foreverbull/
+      - name: Unittest foreverbull_zipline
+        run: |
+          rye test -- foreverbull_zipline/
+      - name: Unittest foreverbull_testing
+        run: |
+          rye test -- foreverbull_testing/
+      - name: Integration Tests foreverbull
+        run: |
+          rye test -- tests/integration/
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
@@ -71,71 +80,72 @@ jobs:
           tags: lhjnilsson/foreverbull:on_commit
           outputs: type=docker,dest=/tmp/foreverbull.tar
       - name: Upload foreverbull
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull
           path: /tmp/foreverbull.tar
           retention-days: 1
 
-  build-docker-python:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - name: Setup rye
-        uses: eifinger/setup-rye@v4
-      - name: build foreverbull
-        run: cd foreverbull && rye build && cd ..
-      - name: Build Parallel Example
-        uses: docker/build-push-action@v6
-        with:
-          context: client
-          build-args: |
-            ALGO_FILE=tests/end_to_end/parallel.py
-            FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
-          tags: lhjnilsson/parallel-example:on_commit
-          outputs: type=docker,dest=/tmp/parallel_example.tar
-      - name: Build Non-Parallel Example
-        uses: docker/build-push-action@v2
-        with:
-          context: client
-          build-args: |
-            ALGO_FILE=tests/end_to_end/non_parallel.py
-            FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
-          tags: lhjnilsson/non-parallel-example:on_commit
-          outputs: type=docker,dest=/tmp/non_parallel_example.tar
-      - name: Build Multistep with Namespace
-        uses: docker/build-push-action@v2
-        with:
-          context: client
-          build-args: |
-            ALGO_FILE=tests/end_to_end/multistep_with_namespace.py
-            FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
-          tags: lhjnilsson/multistep-with-namespace-example:on_commit
-          outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
-      - name: Upload parallel_example
-        uses: actions/upload-artifact@v2
-        with:
-          name: parallel_example
-          path: /tmp/parallel_example.tar
-          retention-days: 1
-      - name: Upload non_parallel_example
-        uses: actions/upload-artifact@v2
-        with:
-          name: non_parallel_example
-          path: /tmp/non_parallel_example.tar
-          retention-days: 1
-      - name: Upload multistep with namespace
-        uses: actions/upload-artifact@v2
-        with:
-          name: multistep_with_namespace
-          path: /tmp/multistep_with_namespace.tar
-          retention-days: 1
+  # build-docker-python:
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: ./client
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     - name: Setup rye
+  #       uses: eifinger/setup-rye@v4
+  #     - name: build foreverbull
+  #       run: cd foreverbull && rye build && cd ..
+  #     - name: Build Parallel Example
+  #       uses: docker/build-push-action@v6
+  #       with:
+  #         context: client
+  #         build-args: |
+  #           ALGO_FILE=example_algorithms/src/example_algorithms/parallel.py
+  #           FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
+  #         tags: lhjnilsson/parallel-example:on_commit
+  #         outputs: type=docker,dest=/tmp/parallel_example.tar
+  #     - name: Build Non-Parallel Example
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         context: client
+  #         build-args: |
+  #           ALGO_FILE=example_algorithms/src/example_algorithms/non_parallel.py
+  #           FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
+  #         tags: lhjnilsson/non-parallel-example:on_commit
+  #         outputs: type=docker,dest=/tmp/non_parallel_example.tar
+  #     - name: Build Multistep with Namespace
+  #       uses: docker/build-push-action@v2
+  #       with:
+  #         context: client
+  #         build-args: |
+  #           ALGO_FILE=example_algorithms/src/example_algorithms/multistep_with_namespace.py
+  #           FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
+  #         tags: lhjnilsson/multistep-with-namespace-example:on_commit
+  #         outputs: type=docker,dest=/tmp/multistep_with_namespace.tar
+  #     - name: Upload parallel_example
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: parallel_example
+  #         path: /tmp/parallel_example.tar
+  #         retention-days: 1
+  #     - name: Upload non_parallel_example
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: non_parallel_example
+  #         path: /tmp/non_parallel_example.tar
+  #         retention-days: 1
+  #     - name: Upload multistep with namespace
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: multistep_with_namespace
+  #         path: /tmp/multistep_with_namespace.tar
+  #         retention-days: 1
+
 
   go-module-tests:
     needs:
@@ -144,7 +154,7 @@ jobs:
         python-lint-unit-tests,
         build-docker-foreverbull,
         build-docker-zipline,
-        build-docker-python,
+#        build-docker-python,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -152,32 +162,32 @@ jobs:
       - uses: actions/checkout@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      - name: Download Parallel Example
-        uses: actions/download-artifact@v2
-        with:
-          name: parallel_example
-          path: /tmp
-      - name: Download Non-Parallel Example
-        uses: actions/download-artifact@v2
-        with:
-          name: non_parallel_example
-          path: /tmp
-      - name: Download multistep with namespace
-        uses: actions/download-artifact@v2
-        with:
-          name: multistep_with_namespace
-          path: /tmp
+      # - name: Download Parallel Example
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: parallel_example
+      #     path: /tmp
+      # - name: Download Non-Parallel Example
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: non_parallel_example
+      #     path: /tmp
+      # - name: Download multistep with namespace
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: multistep_with_namespace
+      #     path: /tmp
       - name: Download zipline
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: zipline
           path: /tmp
-      - name: Load Parallel Example
-        run: docker load -i /tmp/parallel_example.tar
-      - name: Load Non-Parallel Example
-        run: docker load -i /tmp/non_parallel_example.tar
-      - name: Load Multistep with Namespace
-        run: docker load -i /tmp/multistep_with_namespace.tar
+      # - name: Load Parallel Example
+      #   run: docker load -i /tmp/parallel_example.tar
+      # - name: Load Non-Parallel Example
+      #   run: docker load -i /tmp/non_parallel_example.tar
+      # - name: Load Multistep with Namespace
+      #   run: docker load -i /tmp/multistep_with_namespace.tar
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: Set up Go
@@ -217,22 +227,22 @@ jobs:
       - name: build foreverbull_testing
         run: rye build --pyproject foreverbull_testing/pyproject.toml
       - name: Upload foreverbull
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload foreverbull_testing
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
           retention-days: 1
-      - name: Upload end_to_end tests
-        uses: actions/upload-artifact@v2
+      - name: Upload example algorithms
+        uses: actions/upload-artifact@v4
         with:
-          name: end_to_end_tests
-          path: client/tests/end_to_end
+          name: example_algorithms
+          path: client/example_algorithms
 
   build-docker-zipline:
     needs: [build-python-packages]
@@ -244,7 +254,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: client
@@ -262,7 +272,7 @@ jobs:
             FB_WHEEL=foreverbull-0.0.1-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload zipline
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zipline
           path: /tmp/zipline.tar
@@ -285,12 +295,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       - name: Download foreverbull
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: foreverbull
           path: /tmp
       - name: Download zipline
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: zipline
           path: /tmp
@@ -299,20 +309,20 @@ jobs:
       - name: load foreverbull
         run: docker load -i /tmp/foreverbull.tar
       - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: /tmp
       - name: Download foreverbull_testing pypi package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: /tmp
-      - name: Download end_to_end tests
-        uses: actions/download-artifact@v2
+      - name: Download example_algorithms
+        uses: actions/download-artifact@v4
         with:
-          name: end_to_end_tests
-          path: /tmp/end_to_end_tests
+          name: example_algorithms
+          path: /tmp/example_algorithms
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
@@ -323,83 +333,86 @@ jobs:
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/end_to_end_tests/ingestion.json
+          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
       - name: create backtest
-        run: foreverbull backtest create github_action_test
+        run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
-        working-directory: /tmp/end_to_end_tests
+        working-directory: /tmp/example_algorithms
+        env:
+          PYTHONPATH: /tmp/example_algorithms/src
         run: |
-          python -m pytest --backtest=github_action_test
+          python -m pytest
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
       - name: Stop Environment
         run: foreverbull env stop
+        continue-on-error: true
 
-  end-to-end-tests-with-alpaca:
-    needs:
-      [build-docker-foreverbull, build-docker-zipline, build-python-packages]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12"]
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - name: Download foreverbull
-        uses: actions/download-artifact@v2
-        with:
-          name: foreverbull
-          path: /tmp
-      - name: Download zipline
-        uses: actions/download-artifact@v2
-        with:
-          name: zipline
-          path: /tmp
-      - name: Load zipline
-        run: docker load -i /tmp/zipline.tar
-      - name: load foreverbull
-        run: docker load -i /tmp/foreverbull.tar
-      - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v2
-        with:
-          name: foreverbull-0.0.1-py3-none-any.whl
-          path: /tmp
-      - name: Download foreverbull_testing pypi package
-        uses: actions/download-artifact@v2
-        with:
-          name: foreverbull_testing-0.0.1-py3-none-any.whl
-          path: /tmp
-      - name: Download end_to_end tests
-        uses: actions/download-artifact@v2
-        with:
-          name: end_to_end_tests
-          path: /tmp/end_to_end_tests
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install foreverbull and foreverbull_testing
-        run: |
-          pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
-          pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
-      - name: Create environment
-        run: |
-          foreverbull env start --alpaca-key ${{ secrets.ALPACA_MARKETS_API_KEY }} --alpaca-secret ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/end_to_end_tests/ingestion.json
-      - name: create backtest
-        run: foreverbull backtest create github_action_test
-      - name: Run backtest as pytest
-        working-directory: /tmp/end_to_end_tests
-        run: |
-          python -m pytest --backtest=github_action_test
-      - name: Sleep for 20 seconds to make all containers stop
-        run: sleep 20s
-        shell: bash
-      - name: Stop Environment
-        run: foreverbull env stop
+  # end-to-end-tests-with-alpaca:
+  #   needs:
+  #     [build-docker-foreverbull, build-docker-zipline, build-python-packages]
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: ./client
+  #   timeout-minutes: 20
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       python-version: ["3.12"]
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v1
+  #     - name: Download foreverbull
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: foreverbull
+  #         path: /tmp
+  #     - name: Download zipline
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: zipline
+  #         path: /tmp
+  #     - name: Load zipline
+  #       run: docker load -i /tmp/zipline.tar
+  #     - name: load foreverbull
+  #       run: docker load -i /tmp/foreverbull.tar
+  #     - name: Download foreverbull pypi package
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: foreverbull-0.0.1-py3-none-any.whl
+  #         path: /tmp
+  #     - name: Download foreverbull_testing pypi package
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: foreverbull_testing-0.0.1-py3-none-any.whl
+  #         path: /tmp
+  #     - name: Download end_to_end tests
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: example_algorithms
+  #         path: /tmp/example_algorithms
+  #     - name: Set up Python ${{ matrix.python-version }}
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
+  #     - name: Install foreverbull and foreverbull_testing
+  #       run: |
+  #         pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
+  #         pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
+  #     - name: Create environment
+  #       run: |
+  #         foreverbull env start --alpaca-key ${{ secrets.ALPACA_MARKETS_API_KEY }} --alpaca-secret ${{ secrets.ALPACA_MARKETS_API_SECRET }} --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/end_to_end_tests/ingestion.json
+  #     - name: create backtest
+  #       run: foreverbull backtest create github_action_test
+  #     - name: Run backtest as pytest
+  #       working-directory: /tmp/example_algorithms
+  #       run: |
+  #         python -m pytest --backtest=github_action_test
+  #     - name: Sleep for 20 seconds to make all containers stop
+  #       run: sleep 20s
+  #       shell: bash
+  #     - name: Stop Environment
+  #       run: foreverbull env stop

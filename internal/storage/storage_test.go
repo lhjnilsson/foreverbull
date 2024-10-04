@@ -1,13 +1,15 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -62,12 +64,9 @@ func (test *StorageTest) SetupTest() {
 		Minio: true,
 	})
 
-	s, err := NewMinioStorage()
+	s, err := NewMinioStorage(context.TODO())
 	test.Require().NoError(err)
 	test.storage = s.(*MinioStorage)
-
-	err = test.storage.VerifyBuckets(context.TODO())
-	test.NoError(err)
 }
 
 func (test *StorageTest) TearDownTest() {
@@ -77,57 +76,93 @@ func TestStorage(t *testing.T) {
 	suite.Run(t, new(StorageTest))
 }
 
-func (test *StorageTest) TestResults() {
-
-	// Upload sample files
-	for i, file := range test.backtestResultFiles {
-		_, err := test.storage.client.FPutObject(context.TODO(), "backtest-results", file, file, minio.PutObjectOptions{
-			UserMetadata: map[string]string{
-				"Backtest_id": fmt.Sprintf("%d", i),
-			},
-		})
-		test.NoError(err)
-	}
-	test.Run("ListResults", func() {
-		results, err := test.storage.ListResults(context.TODO())
-		test.NoError(err)
-		test.Len(*results, 3)
+func (test *StorageTest) TestStorage() {
+	test.Run("ListOBjects", func() {
+		objects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
+		test.Require().NoError(err)
+		test.Require().Len(*objects, 0)
 	})
-	test.Run("GetResultInfo", func() {
-		for i, file := range test.backtestResultFiles {
-			result, err := test.storage.GetResultInfo(context.TODO(), file)
-			test.NoError(err)
-			test.Equal(file, result.Name)
-			test.Equal(int64(1024), result.Size)
-			test.NotNil(result.LastModified)
-			test.Equal(fmt.Sprintf("%d", i), result.Metadata["Backtest_id"])
+	test.Run("Create and Get Object", func() {
+		metadata := map[string]string{
+			"Key":  "value",
+			"Key2": "value2",
 		}
+
+		_, err := test.storage.CreateObject(context.Background(), ResultsBucket, "123.pickle", WithMetadata(metadata))
+		test.Require().NoError(err)
+
+		object, err := test.storage.GetObject(context.Background(), ResultsBucket, "123.pickle")
+		test.Require().NoError(err)
+		test.Require().NotNil(object)
+		test.Require().Equal(metadata, object.Metadata)
+
+		objects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
+		test.Require().NoError(err)
+		test.NoError((*objects)[0].Refresh())
+		test.Require().Len(*objects, 1)
+		test.Require().Equal(metadata, (*objects)[0].Metadata)
 	})
 }
 
-func (test *StorageTest) TestIngestions() {
-	// Upload sample files
-	for i, file := range test.backtestIngestionFiles {
-		_, err := test.storage.client.FPutObject(context.TODO(), "backtest-ingestions", file, file, minio.PutObjectOptions{
-			UserMetadata: map[string]string{
-				"Ingestion_id": fmt.Sprintf("%d", i),
-			},
-		})
-		test.NoError(err)
-	}
-	test.Run("ListIngestions", func() {
-		results, err := test.storage.ListIngestions(context.TODO())
-		test.NoError(err)
-		test.Len(*results, 3)
+func (test *StorageTest) TestObject() {
+	object, err := test.storage.CreateObject(context.Background(), ResultsBucket, "123.pickle")
+	test.Require().NoError(err)
+
+	test.Run("PresignedGetURL", func() {
+		url, err := object.PresignedGetURL()
+		test.Require().NoError(err)
+		test.Require().NotEmpty(url)
 	})
-	test.Run("GetIngestionInfo", func() {
-		for i, file := range test.backtestIngestionFiles {
-			result, err := test.storage.GetIngestionInfo(context.TODO(), file)
-			test.NoError(err)
-			test.Equal(file, result.Name)
-			test.Equal(int64(1024), result.Size)
-			test.NotNil(result.LastModified)
-			test.Equal(fmt.Sprintf("%d", i), result.Metadata["Ingestion_id"])
+	test.Run("PresignedPutURL", func() {
+		url, err := object.PresignedPutURL()
+		test.Require().NoError(err)
+		test.Require().NotEmpty(url)
+	})
+	test.Run("Upload Example", func() {
+		metadata := map[string]string{
+			"Symbols": "AAPL,MSFT",
+			"Start":   "2020-01-01",
+			"End":     "2020-01-02",
+			"Status":  "created",
 		}
+
+		object, err := test.storage.CreateObject(context.Background(), IngestionsBucket, "yeah",
+			WithMetadata(metadata))
+		test.Require().NoError(err)
+		test.Require().NotNil(object)
+		test.Require().Equal(metadata, object.Metadata)
+
+		url, err := object.PresignedPutURL()
+		test.Require().NoError(err)
+		test.Require().NotEmpty(url)
+
+		// Upload 123.pibckle using the presigned URL    // Read the local file
+		fileData, err := os.ReadFile("123.pickle")
+		if err != nil {
+			return
+		}
+		req, err := http.NewRequest("PUT", url, bytes.NewReader(fileData))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/octet-stream")
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Println("Error uploading file:", err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Upload failed with status code:", resp.StatusCode)
+			return
+		}
+
+		test.Require().NoError(object.Refresh())
+		test.Empty(object.Metadata)
+		object.SetMetadata(context.TODO(), map[string]string{"Status": "uploaded"})
+		test.Require().NoError(object.Refresh())
+		test.Require().Equal(map[string]string{"Status": "uploaded"}, object.Metadata)
+		test.Greater(object.Size, int64(0))
 	})
 }

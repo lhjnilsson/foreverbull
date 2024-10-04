@@ -28,5 +28,8 @@ class Storage:
             secure=bool(env.get("STORAGE_SECURE", False)),
         )
 
-    def create_bucket(self, bucket_name):
-        self.client.make_bucket(bucket_name)
+    def upload_object(self, bucket: str, remote_name: str, local_name: str) -> None:
+        self.client.fput_object(bucket, remote_name, local_name)
+
+    def download_object(self, bucket: str, remote_name: str, local_name: str) -> None:
+        self.client.fget_object(bucket, remote_name, local_name)

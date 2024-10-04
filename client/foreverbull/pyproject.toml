@@ -21,8 +21,9 @@ dependencies = [
   # seems like 3.9.3 cant run on mac arm64
   "numpy<2.0.0",
   "setuptools>=70.2.0,<71.0.0",
-  "protobuf>=5.27.2",
+  "protobuf==5.27.2",
   "types-protobuf>=5.27.0.20240626",
+  "grpcio>=1.66.1",
 ]
 
 [project.scripts]

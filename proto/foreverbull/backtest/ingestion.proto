@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package foreverbull.backtest;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+
+import "google/protobuf/timestamp.proto";
+
+enum IngestionStatus {
+    CREATED = 0;
+    INGESTING = 1;
+    READY = 2;
+}
+
+message Ingestion {
+    google.protobuf.Timestamp start_date = 1;
+    google.protobuf.Timestamp end_date = 2;
+    repeated string symbols = 3;
+}

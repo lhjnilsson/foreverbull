@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/finance/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type YahooClient struct {
@@ -81,7 +82,7 @@ type AssetResponse struct {
 	} `json:"quoteSummary"`
 }
 
-func (y *YahooClient) GetAsset(symbol string) (*entity.Asset, error) {
+func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
 	resp, err := y.doRequest(url, "modules=quoteType")
 	if err != nil {
@@ -99,11 +100,9 @@ func (y *YahooClient) GetAsset(symbol string) (*entity.Asset, error) {
 		return nil, fmt.Errorf("%v", data.QuoteSummary.Error.Description)
 	}
 
-	asset := entity.Asset{
+	asset := pb.Asset{
 		Symbol: data.QuoteSummary.Result[0].QuoteType.Symbol,
 		Name:   data.QuoteSummary.Result[0].QuoteType.LongName,
-		Title:  data.QuoteSummary.Result[0].QuoteType.ShortName,
-		Type:   data.QuoteSummary.Result[0].QuoteType.QuoteType,
 	}
 	return &asset, nil
 }
@@ -132,7 +131,7 @@ type OHLCResponse struct {
 	}
 }
 
-func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OHLC, error) {
+func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) ([]*pb.OHLC, error) {
 	startUnix := start.Unix()
 	endUnix := end.Unix()
 
@@ -152,16 +151,15 @@ func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) (*[]entity.OH
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %v", symbol, data.Chart.Error.Description)
 	}
 
-	ohlcs := make([]entity.OHLC, 0)
+	ohlcs := make([]*pb.OHLC, 0)
 	for i, ts := range data.Chart.Result[0].Timestamp {
-		ohlcs = append(ohlcs, entity.OHLC{
-			Time:  time.Unix(ts, 0),
-			Open:  data.Chart.Result[0].Indicators.Quote[0].Open[i],
-			High:  data.Chart.Result[0].Indicators.Quote[0].High[i],
-			Low:   data.Chart.Result[0].Indicators.Quote[0].Low[i],
-			Close: data.Chart.Result[0].Indicators.Quote[0].Close[i],
+		ohlcs = append(ohlcs, &pb.OHLC{
+			Timestamp: timestamppb.New(time.Unix(ts, 0)),
+			Open:      data.Chart.Result[0].Indicators.Quote[0].Open[i],
+			High:      data.Chart.Result[0].Indicators.Quote[0].High[i],
+			Low:       data.Chart.Result[0].Indicators.Quote[0].Low[i],
+			Close:     data.Chart.Result[0].Indicators.Quote[0].Close[i],
 		})
 	}
-	return &ohlcs, nil
-
+	return ohlcs, nil
 }

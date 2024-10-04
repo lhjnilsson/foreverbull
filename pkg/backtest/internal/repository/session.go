@@ -2,23 +2,26 @@ package repository
 
 import (
 	"context"
+	"time"
 
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
+
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
 
 const SessionTable = `CREATE TABLE IF NOT EXISTS session (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 	backtest text REFERENCES backtest(name) ON DELETE CASCADE,
-	manual boolean NOT NULL DEFAULT false,
-	status text NOT NULL DEFAULT 'CREATED',
+	status int NOT NULL DEFAULT 0,
 	error text,
 	port integer);
 
 CREATE TABLE IF NOT EXISTS session_status (
 	id text REFERENCES session(id) ON DELETE CASCADE,
-	status text NOT NULL,
+	status int NOT NULL,
 	error text,
 	occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -49,20 +52,20 @@ type Session struct {
 	Conn postgres.Query
 }
 
-func (db *Session) Create(ctx context.Context, backtest string, manual bool) (*entity.Session, error) {
+func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, error) {
 	var id string
-	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest, manual) VALUES ($1, $2) RETURNING id`,
-		backtest, manual).Scan(&id)
+	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ($1) RETURNING id`,
+		backtest).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 	return db.Get(ctx, id)
 }
 
-func (db *Session) Get(ctx context.Context, id string) (*entity.Session, error) {
-	s := entity.Session{}
+func (db *Session) Get(ctx context.Context, id string) (*pb.Session, error) {
+	s := pb.Session{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT session.id, backtest, manual, port,
+		`SELECT session.id, backtest, port,
 		(SELECT COUNT(*) FROM execution WHERE session=id) AS executions,
 		ss.status, ss.error, ss.occurred_at
 		FROM session
@@ -75,23 +78,25 @@ func (db *Session) Get(ctx context.Context, id string) (*entity.Session, error) 
 	}
 	defer rows.Close()
 	for rows.Next() {
-		status := entity.SessionStatus{}
+		status := pb.Session_Status{}
+		occurred_at := time.Time{}
 		err = rows.Scan(
-			&s.ID, &s.Backtest, &s.Manual, &s.Port, &s.Executions,
-			&status.Status, &status.Error, &status.OccurredAt,
+			&s.Id, &s.Backtest, &s.Port, &s.Executions,
+			&status.Status, &status.Error, &occurred_at,
 		)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
 		if err != nil {
 			return nil, err
 		}
-		s.Statuses = append(s.Statuses, status)
+		s.Statuses = append(s.Statuses, &status)
 	}
-	if s.ID == "" {
+	if s.Id == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
 	return &s, nil
 }
 
-func (db *Session) UpdateStatus(ctx context.Context, id string, status entity.SessionStatusType, err error) error {
+func (db *Session) UpdateStatus(ctx context.Context, id string, status pb.Session_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx, `UPDATE session SET status=$1, error=$2 WHERE id=$3`, status, err.Error(), id)
 	} else {
@@ -105,9 +110,39 @@ func (db *Session) UpdatePort(ctx context.Context, id string, port int) error {
 	return err
 }
 
-func (db *Session) List(ctx context.Context) (*[]entity.Session, error) {
+func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
+	sessions := []*pb.Session{}
+	var inReturnSlice bool
+	for rows.Next() {
+		s := pb.Session{}
+		status := pb.Session_Status{}
+		occurred_at := time.Time{}
+		err := rows.Scan(
+			&s.Id, &s.Backtest, &s.Port, &s.Executions,
+			&status.Status, &status.Error, &occurred_at,
+		)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+		if err != nil {
+			return nil, err
+		}
+		inReturnSlice = false
+		for i := range sessions {
+			if sessions[i].Id == s.Id {
+				sessions[i].Statuses = append(sessions[i].Statuses, &status)
+				inReturnSlice = true
+			}
+		}
+		if !inReturnSlice {
+			s.Statuses = append(s.Statuses, &status)
+			sessions = append(sessions, &s)
+		}
+	}
+	return sessions, nil
+}
+
+func (db *Session) List(ctx context.Context) ([]*pb.Session, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT session.id, backtest, manual, port,
+		`SELECT session.id, backtest, port,
 		(SELECT COUNT(*) FROM execution WHERE session=id) AS executions,
 		ss.status, ss.error, ss.occurred_at
 		FROM session
@@ -118,37 +153,12 @@ func (db *Session) List(ctx context.Context) (*[]entity.Session, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
-	sessions := []entity.Session{}
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.SessionStatus{}
-		s := entity.Session{}
-		err = rows.Scan(
-			&s.ID, &s.Backtest, &s.Manual, &s.Port, &s.Executions,
-			&status.Status, &status.Error, &status.OccurredAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for i := range sessions {
-			if sessions[i].ID == s.ID {
-				sessions[i].Statuses = append(sessions[i].Statuses, status)
-				inReturnSlice = true
-			}
-		}
-		if !inReturnSlice {
-			s.Statuses = append(s.Statuses, status)
-			sessions = append(sessions, s)
-		}
-	}
-	return &sessions, nil
+	return db.parseRows(rows)
 }
 
-func (db *Session) ListByBacktest(ctx context.Context, backtest string) (*[]entity.Session, error) {
+func (db *Session) ListByBacktest(ctx context.Context, backtest string) ([]*pb.Session, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT session.id, backtest, manual, port,
+		`SELECT session.id, backtest, port,
 		(SELECT COUNT(*) FROM execution WHERE session=id) AS executions,
 		ss.status, ss.error, ss.occurred_at
 		FROM session
@@ -160,30 +170,5 @@ func (db *Session) ListByBacktest(ctx context.Context, backtest string) (*[]enti
 		return nil, err
 	}
 	defer rows.Close()
-
-	sessions := []entity.Session{}
-	var inReturnSlice bool
-	for rows.Next() {
-		status := entity.SessionStatus{}
-		s := entity.Session{}
-		err = rows.Scan(
-			&s.ID, &s.Backtest, &s.Manual, &s.Port, &s.Executions,
-			&status.Status, &status.Error, &status.OccurredAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		inReturnSlice = false
-		for i := range sessions {
-			if sessions[i].ID == s.ID {
-				sessions[i].Statuses = append(sessions[i].Statuses, status)
-				inReturnSlice = true
-			}
-		}
-		if !inReturnSlice {
-			s.Statuses = append(s.Statuses, status)
-			sessions = append(sessions, s)
-		}
-	}
-	return &sessions, nil
+	return db.parseRows(rows)
 }

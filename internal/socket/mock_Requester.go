@@ -54,13 +54,20 @@ func (_m *MockRequester) GetPort() int {
 	return r0
 }
 
-// Request provides a mock function with given fields: msg, reply
-func (_m *MockRequester) Request(msg protoreflect.ProtoMessage, reply protoreflect.ProtoMessage) error {
-	ret := _m.Called(msg, reply)
+// Request provides a mock function with given fields: msg, reply, opts
+func (_m *MockRequester) Request(msg protoreflect.ProtoMessage, reply protoreflect.ProtoMessage, opts ...func(OptionSetter) error) error {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, msg, reply)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(protoreflect.ProtoMessage, protoreflect.ProtoMessage) error); ok {
-		r0 = rf(msg, reply)
+	if rf, ok := ret.Get(0).(func(protoreflect.ProtoMessage, protoreflect.ProtoMessage, ...func(OptionSetter) error) error); ok {
+		r0 = rf(msg, reply, opts...)
 	} else {
 		r0 = ret.Error(0)
 	}

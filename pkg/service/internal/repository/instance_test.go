@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/service/entity"
+	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -34,7 +34,7 @@ func (test *InstanceTest) SetupTest() {
 	test.Require().NoError(err)
 
 	s_repository := &Service{Conn: test.conn}
-	_, err = s_repository.Create(ctx, "image")
+	_, err = s_repository.Create(ctx, "test_image")
 	test.Require().NoError(err)
 	test.Require().NoError(err)
 }
@@ -48,7 +48,6 @@ func TestInstances(t *testing.T) {
 
 func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
-
 	image := "test_image"
 	for id, image := range []*string{nil, &image} {
 		db := &Instance{Conn: test.conn}
@@ -90,55 +89,7 @@ func (test *InstanceTest) TestUpdateHostPort() {
 	test.Require().NotNil(instance.Host)
 	test.Equal("host", *instance.Host)
 	test.Require().NotNil(instance.Port)
-	test.Equal(1234, *instance.Port)
-}
-
-func (test *InstanceTest) TestUpdateBrokerPort() {
-	ctx := context.Background()
-
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
-
-	err = db.UpdateBrokerPort(ctx, "instance", 1234)
-	test.NoError(err)
-
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
-	test.Require().NotNil(instance.BrokerPort)
-	test.Equal(1234, *instance.BrokerPort)
-}
-
-func (test *InstanceTest) TestUpdateNamespacePort() {
-	ctx := context.Background()
-
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
-
-	err = db.UpdateNamespacePort(ctx, "instance", 1234)
-	test.NoError(err)
-
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
-	test.Require().NotNil(instance.NamespacePort)
-	test.Equal(1234, *instance.NamespacePort)
-}
-
-func (test *InstanceTest) TestUpdateDatabaseURL() {
-	ctx := context.Background()
-
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
-
-	err = db.UpdateDatabaseURL(ctx, "instance", "database_url")
-	test.NoError(err)
-
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
-	test.Require().NotNil(instance.DatabaseURL)
-	test.Equal("database_url", *instance.DatabaseURL)
+	test.Equal(int32(1234), *instance.Port)
 }
 
 func (test *InstanceTest) TestUpdateStatus() {
@@ -148,12 +99,12 @@ func (test *InstanceTest) TestUpdateStatus() {
 	_, err := db.Create(ctx, "instance", nil)
 	test.NoError(err)
 
-	err = db.UpdateStatus(ctx, "instance", entity.InstanceStatusRunning, nil)
+	err = db.UpdateStatus(ctx, "instance", pb.Instance_Status_RUNNING, nil)
 	test.NoError(err)
 
 	instance, err := db.Get(ctx, "instance")
 	test.NoError(err)
-	test.Equal(entity.InstanceStatusRunning, instance.Statuses[0].Status)
+	test.Equal(pb.Instance_Status_RUNNING.String(), instance.Statuses[0].Status.String())
 }
 
 func (test *InstanceTest) TestList() {
@@ -167,7 +118,7 @@ func (test *InstanceTest) TestList() {
 
 	instances, err := db.List(ctx)
 	test.NoError(err)
-	test.Len(*instances, 2)
+	test.Len(instances, 2)
 }
 
 func (test *InstanceTest) TestListByImage() {
@@ -183,5 +134,5 @@ func (test *InstanceTest) TestListByImage() {
 
 	instances, err := db.ListByImage(ctx, image)
 	test.NoError(err)
-	test.Len(*instances, 1)
+	test.Len(instances, 1)
 }
