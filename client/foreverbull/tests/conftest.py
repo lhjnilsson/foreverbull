@@ -191,9 +191,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
@@ -261,9 +259,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
@@ -303,12 +299,8 @@ def parallel_algo_file_with_parameters(
             worker_pb2.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -341,9 +333,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(
-    spawn_process, execution: execution_pb2.Execution, fb_database
-):
+def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
@@ -382,12 +372,8 @@ def non_parallel_algo_file_with_parameters(
             worker_pb2.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -423,9 +409,7 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(
-    spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server
-):
+def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
@@ -481,12 +465,8 @@ def multistep_algo_with_namespace(
             worker_pb2.ExecutionConfiguration.Function(
                 name="measure_assets",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="low", value="5"
-                    ),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(
-                        key="high", value="10"
-                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             ),
             worker_pb2.ExecutionConfiguration.Function(

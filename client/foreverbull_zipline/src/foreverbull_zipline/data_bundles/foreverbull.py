@@ -59,15 +59,11 @@ class SQLIngester:
         return data
 
     def writer(self, show_progress: bool) -> Iterable[Tuple[int, pd.DataFrame]]:
-        with maybe_show_progress(
-            self.symbols, show_progress, label="Ingesting from SQL"
-        ) as it:
+        with maybe_show_progress(self.symbols, show_progress, label="Ingesting from SQL") as it:
             for index, symbol in enumerate(it):  # type: ignore
                 data = self.get_stock_data(symbol)
                 if len(data) == 0:
-                    raise ValueError(
-                        f"No data found for {symbol} on {self.from_date} to {self.to_date}"
-                    )
+                    raise ValueError(f"No data found for {symbol} on {self.from_date} to {self.to_date}")
                 data.dropna(
                     inplace=True
                 )  # Yahoo can sometimes add duplicate rows on same date, one which is full or NaN

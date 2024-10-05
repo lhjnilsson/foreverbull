@@ -76,18 +76,12 @@ def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
             except SymbolNotFound:
                 raise LookupError(f"Asset {s} not found in bundle")
 
-            backtest_start = (
-                pb_utils.from_proto_date_to_pandas_timestamp(execution.start_date),
-            )
+            backtest_start = (pb_utils.from_proto_date_to_pandas_timestamp(execution.start_date),)
             if backtest_start < stored_asset.start_date:
-                print(
-                    "Start date is not correct", backtest_start, stored_asset.start_date
-                )
+                print("Start date is not correct", backtest_start, stored_asset.start_date)
                 raise ValueError("Start date is not correct")
 
-            backtest_end = pb_utils.from_proto_date_to_pandas_timestamp(
-                execution.end_date
-            )
+            backtest_end = pb_utils.from_proto_date_to_pandas_timestamp(execution.end_date)
             if backtest_end > stored_asset.end_date:
                 print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
@@ -118,12 +112,8 @@ def baseline_performance_handle_data(context, data, execution: execution_pb2.Exe
         return
 
     for s in execution.symbols:
-        short_mean = data.history(
-            symbol(s), "close", bar_count=10, frequency="1d"
-        ).mean()
-        long_mean = data.history(
-            symbol(s), "close", bar_count=30, frequency="1d"
-        ).mean()
+        short_mean = data.history(symbol(s), "close", bar_count=10, frequency="1d").mean()
+        long_mean = data.history(symbol(s), "close", bar_count=30, frequency="1d").mean()
         if short_mean > long_mean and s not in context.held_positions:
             order_target(symbol(s), 10)
             context.held_positions.append(s)

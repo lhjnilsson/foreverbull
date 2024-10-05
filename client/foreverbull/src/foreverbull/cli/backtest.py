@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 
 import typer
 from foreverbull import broker
@@ -32,21 +32,9 @@ def list():
     for backtest in backtests:
         table.add_row(
             backtest.name,
-            (
-                backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-                if backtest.statuses
-                else "Unknown"
-            ),
-            (
-                from_proto_date_to_pydate(backtest.start_date).isoformat()
-                if backtest.start_date
-                else ""
-            ),
-            (
-                from_proto_date_to_pydate(backtest.end_date).isoformat()
-                if backtest.end_date
-                else ""
-            ),
+            (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+            (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+            (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
@@ -58,20 +46,14 @@ def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     start: Annotated[datetime, typer.Option(help="start time of the backtest")],
     end: Annotated[datetime, typer.Option(help="end time of the backtest")],
-    symbols: Annotated[
-        str, typer.Option(help="comma separated list of symbols to use")
-    ],
-    benchmark: (
-        Annotated[str, typer.Option(help="symbol of benchmark to use")] | None
-    ) = None,
+    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
+    benchmark: (Annotated[str, typer.Option(help="symbol of benchmark to use")] | None) = None,
 ):
     backtest = backtest_pb2.Backtest(
         name=name,
         start_date=from_pydate_to_proto_date(start.date()),
         end_date=from_pydate_to_proto_date(end.date()),
-        symbols=(
-            [symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []
-        ),
+        symbols=([symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []),
         benchmark=benchmark,
     )
     backtest = broker.backtest.create(backtest)
@@ -85,21 +67,9 @@ def create(
 
     table.add_row(
         backtest.name,
-        (
-            backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-            if backtest.statuses
-            else "Unknown"
-        ),
-        (
-            from_proto_date_to_pydate(backtest.start_date).isoformat()
-            if backtest.start_date
-            else ""
-        ),
-        (
-            from_proto_date_to_pydate(backtest.end_date).isoformat()
-            if backtest.end_date
-            else ""
-        ),
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
@@ -120,21 +90,9 @@ def get(
     table.add_column("Benchmark")
     table.add_row(
         backtest.name,
-        (
-            backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status)
-            if backtest.statuses
-            else "Unknown"
-        ),
-        (
-            from_proto_date_to_pydate(backtest.start_date).isoformat()
-            if backtest.start_date
-            else ""
-        ),
-        (
-            from_proto_date_to_pydate(backtest.end_date).isoformat()
-            if backtest.end_date
-            else ""
-        ),
+        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
         backtest.benchmark,
     )

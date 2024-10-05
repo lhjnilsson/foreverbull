@@ -1,9 +1,7 @@
 from foreverbull import Algorithm, Asset, Assets, Function, Order, Portfolio
 
 
-def measure_assets(
-    asset: Asset, portfolio: Portfolio, low: int = 10, high: int = 30
-) -> None:
+def measure_assets(asset: Asset, portfolio: Portfolio, low: int = 10, high: int = 30) -> None:
     short_mean = asset.stock_data["close"].tail(low).mean()
     if type(short_mean) is not float or type(short_mean) is not int:
         return

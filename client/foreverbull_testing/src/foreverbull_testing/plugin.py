@@ -11,9 +11,7 @@ from . import database
 @pytest.fixture(scope="session")
 def fb_database():
     postgres = PostgresContainer("postgres:alpine")
-    postgres = postgres.with_volume_mapping(
-        "postgres_data", "/var/lib/postgresql/data", mode="rw"
-    )
+    postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     with postgres as postgres:
         engine = create_engine(postgres.get_connection_url())
         database.Base.metadata.create_all(engine)
