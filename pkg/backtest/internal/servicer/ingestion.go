@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
@@ -39,17 +38,17 @@ func (is *IngestionServer) CreateIngestion(ctx context.Context, req *pb.CreateIn
 	}
 
 	metadata := map[string]string{
-		"Start_date": sd.AsTime().Format("2006-01-02"),
-		"End_date":   ed.AsTime().Format("2006-01-02"),
+		"Start_date": pb_internal.DateToDateString(sd),
+		"End_date":   pb_internal.DateToDateString(ed),
 		"Symbols":    strings.Join(req.Ingestion.Symbols, ","),
 		"Status":     pb.IngestionStatus_CREATED.String(),
 	}
-	name := fmt.Sprintf("%s-%s", sd.AsTime().Format("2006-01-02"), ed.AsTime().Format("2006-01-02"))
+	name := fmt.Sprintf("%s-%s", pb_internal.DateToDateString(sd), pb_internal.DateToDateString(ed))
 	_, err := is.storage.CreateObject(ctx, storage.IngestionsBucket, name, storage.WithMetadata(metadata))
 	if err != nil {
 		return nil, fmt.Errorf("error creating ingestion: %w", err)
 	}
-	o, err := bs.NewIngestOrchestration(name, symbols, sd.AsTime(), ed.AsTime())
+	o, err := bs.NewIngestOrchestration(name, symbols, pb_internal.DateToDateString(sd), pb_internal.DateToDateString(ed))
 	if err != nil {
 		return nil, fmt.Errorf("error creating orchestration: %w", err)
 	}
@@ -86,15 +85,6 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context, req *pb.GetC
 			return nil, fmt.Errorf("error refreshing ingestion: %w", err)
 		}
 	}
-
-	startDate, err := time.Parse("2006-01-02", ingestion.Metadata["Start_date"])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing start date(%s): %w", ingestion.Metadata["Start_date"], err)
-	}
-	endDate, err := time.Parse("2006-01-02", ingestion.Metadata["End_date"])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing end date(%s): %w", ingestion.Metadata["End_date"], err)
-	}
 	symbols := strings.Split(ingestion.Metadata["Symbols"], ",")
 
 	var status pb.IngestionStatus
@@ -109,8 +99,8 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context, req *pb.GetC
 
 	return &pb.GetCurrentIngestionResponse{
 		Ingestion: &pb.Ingestion{
-			StartDate: pb_internal.TimeToProtoTimestamp(startDate),
-			EndDate:   pb_internal.TimeToProtoTimestamp(endDate),
+			StartDate: pb_internal.DateStringToDate(ingestion.Metadata["Start_date"]),
+			EndDate:   pb_internal.DateStringToDate(ingestion.Metadata["End_date"]),
 			Symbols:   symbols,
 		},
 		Status: status,

@@ -1,6 +1,6 @@
 import time
 from concurrent import futures
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
 import grpc
@@ -22,8 +22,12 @@ class TestAlgorithm:
         grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
         def _add_servicer(broker_servicer, broker_session_servicer):
-            backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(broker_servicer, grpc_server)
-            session_service_pb2_grpc.add_SessionServicerServicer_to_server(broker_session_servicer, grpc_server)
+            backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(
+                broker_servicer, grpc_server
+            )
+            session_service_pb2_grpc.add_SessionServicerServicer_to_server(
+                broker_session_servicer, grpc_server
+            )
             server_port = grpc_server.add_insecure_port("[::]:7877")
             grpc_server.start()
             time.sleep(1)
@@ -38,27 +42,33 @@ class TestAlgorithm:
             algorithm.get_default()
 
     def test_get_default(self, parallel_algo_file, start_grpc_server):
-        start = datetime.now(tz=timezone.utc)
-        end = datetime.now(tz=timezone.utc)
         mocked_servicer = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
-        mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
-        mocked_servicer.GetBacktest.return_value = backtest_service_pb2.GetBacktestResponse(
-            name="test",
-            backtest=backtest_pb2.Backtest(
-                start_date=pb_utils.to_proto_timestamp(start),
-                end_date=pb_utils.to_proto_timestamp(end),
-                benchmark="SPY",
-                symbols=["AAPL", "MSFT"],
-            ),
+        mocked_sesion_servicer = MagicMock(
+            spec=session_service_pb2_grpc.SessionServicerServicer
         )
-        mocked_servicer.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
-                port=None,
+        mocked_servicer.GetBacktest.return_value = (
+            backtest_service_pb2.GetBacktestResponse(
+                name="test",
+                backtest=backtest_pb2.Backtest(
+                    start_date=pb_utils.from_pydate_to_proto_date(date.today()),
+                    end_date=pb_utils.from_pydate_to_proto_date(date.today()),
+                    benchmark="SPY",
+                    symbols=["AAPL", "MSFT"],
+                ),
             )
         )
-        mocked_servicer.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
-            session=session_pb2.Session(
-                port=5050,
+        mocked_servicer.CreateSession.return_value = (
+            backtest_service_pb2.CreateSessionResponse(
+                session=session_pb2.Session(
+                    port=None,
+                )
+            )
+        )
+        mocked_servicer.GetSession.return_value = (
+            backtest_service_pb2.GetSessionResponse(
+                session=session_pb2.Session(
+                    port=5050,
+                )
             )
         )
         algorithm, _, _ = parallel_algo_file
@@ -72,14 +82,20 @@ class TestAlgorithm:
             for period in algorithm.run_execution(datetime.now(), datetime.now(), []):
                 assert period
 
-    def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
+    def test_run_execution(
+        self, parallel_algo_file, namespace_server, start_grpc_server
+    ):
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
-        mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
+        mocked_sesion_servicer = MagicMock(
+            spec=session_service_pb2_grpc.SessionServicerServicer
+        )
         algorithm, configuration, _ = parallel_algo_file
 
-        mock_server.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
-                port=None,
+        mock_server.CreateSession.return_value = (
+            backtest_service_pb2.CreateSessionResponse(
+                session=session_pb2.Session(
+                    port=None,
+                )
             )
         )
         mock_server.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
@@ -87,8 +103,10 @@ class TestAlgorithm:
                 port=7877,
             )
         )
-        mocked_sesion_servicer.CreateExecution.return_value = session_service_pb2.CreateExecutionResponse(
-            configuration=configuration,
+        mocked_sesion_servicer.CreateExecution.return_value = (
+            session_service_pb2.CreateExecutionResponse(
+                configuration=configuration,
+            )
         )
 
         def runner(req, ctx):

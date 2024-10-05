@@ -4,7 +4,7 @@ package foreverbull.backtest;
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
 
-import "google/protobuf/timestamp.proto";
+import "foreverbull/common.proto";
 
 enum IngestionStatus {
     CREATED = 0;
@@ -13,7 +13,7 @@ enum IngestionStatus {
 }
 
 message Ingestion {
-    google.protobuf.Timestamp start_date = 1;
-    google.protobuf.Timestamp end_date = 2;
+    foreverbull.common.Date start_date = 1;
+    foreverbull.common.Date end_date = 2;
     repeated string symbols = 3;
 }

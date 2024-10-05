@@ -1,10 +1,7 @@
 import os
-import time
 
 import pytest
-from _pytest.config.argparsing import Parser
-from foreverbull import broker
-from foreverbull.pb.foreverbull.backtest import backtest_pb2, session_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from sqlalchemy import create_engine
 from testcontainers.postgres import PostgresContainer
 

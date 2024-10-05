@@ -38,6 +38,10 @@ func DateStringToDate(date string) *Date {
 	}
 }
 
+func DateToTime(date *Date) time.Time {
+	return time.Date(int(date.Year), time.Month(date.Month), int(date.Day), 0, 0, 0, 0, time.UTC)
+}
+
 func GoTimeToDate(t time.Time) *Date {
 	return &Date{
 		Year:  int32(t.Year()),

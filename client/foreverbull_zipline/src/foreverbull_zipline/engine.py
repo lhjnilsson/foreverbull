@@ -287,8 +287,10 @@ class EngineProcess(multiprocessing.Process, Engine):
         req.ParseFromString(data)
         bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
         SQLIngester.engine = DatabaseEngine()
-        SQLIngester.from_date = req.ingestion.start_date.ToDatetime()
-        SQLIngester.to_date = req.ingestion.end_date.ToDatetime()
+        SQLIngester.from_date = pb_utils.from_proto_date_to_pydate(
+            req.ingestion.start_date
+        )
+        SQLIngester.to_date = pb_utils.from_proto_date_to_pydate(req.ingestion.end_date)
         SQLIngester.symbols = [s for s in req.ingestion.symbols]
         bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
         self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
@@ -338,11 +340,11 @@ class EngineProcess(multiprocessing.Process, Engine):
                 raise ConfigError(f"Unknown symbol: {symbol}")
         try:
             if req.backtest.start_date:
-                start = pd.Timestamp(req.backtest.start_date.ToDatetime())
+                start = pd.Timestamp(
+                    pb_utils.from_proto_date_to_pydate(req.backtest.start_date)
+                )
                 if type(start) is not pd.Timestamp:
-                    raise ConfigError(
-                        f"Invalid start date: {req.backtest.start_date.ToDatetime()}"
-                    )
+                    raise ConfigError(f"Invalid start date: {req.backtest.start_date}")
                 start_date = start.normalize().tz_localize(None)
                 first_traded_date = find_first_traded_dt(bundle, *req.backtest.symbols)
                 if first_traded_date is None:
@@ -357,11 +359,11 @@ class EngineProcess(multiprocessing.Process, Engine):
                 )
 
             if req.backtest.end_date:
-                end = pd.Timestamp(req.backtest.end_date.ToDatetime())
+                end = pd.Timestamp(
+                    pb_utils.from_proto_date_to_pydate(req.backtest.end_date)
+                )
                 if type(end) is not pd.Timestamp:
-                    raise ConfigError(
-                        f"Invalid end date: {pd.Timestamp(req.backtest.end_date.ToDatetime())}"
-                    )
+                    raise ConfigError(f"Invalid end date: {req.backtest.end_date}")
                 end_date = end.normalize().tz_localize(None)
                 last_traded_date = find_last_traded_dt(bundle, *req.backtest.symbols)
                 if last_traded_date is None:
@@ -438,10 +440,10 @@ class EngineProcess(multiprocessing.Process, Engine):
             trading_algorithm,
             engine_service_pb2.RunResponse(
                 backtest=backtest_pb2.Backtest(
-                    start_date=pb_utils.to_proto_timestamp(
+                    start_date=pb_utils.from_pydate_to_proto_date(
                         trading_algorithm.sim_params.start_session
                     ),
-                    end_date=pb_utils.to_proto_timestamp(
+                    end_date=pb_utils.from_pydate_to_proto_date(
                         trading_algorithm.sim_params.end_session
                     ),
                     symbols=req.backtest.symbols,
@@ -499,7 +501,7 @@ class EngineProcess(multiprocessing.Process, Engine):
             period = self.result.loc[row]
             rsp.periods.append(
                 execution_pb2.Period(
-                    timestamp=pb_utils.to_proto_timestamp(
+                    date=pb_utils.from_pydate_to_proto_date(
                         period["period_close"].to_pydatetime().replace()
                     ),
                     PNL=period["pnl"],

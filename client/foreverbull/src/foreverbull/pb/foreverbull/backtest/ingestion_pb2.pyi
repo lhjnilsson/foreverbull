@@ -1,4 +1,4 @@
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -28,12 +28,12 @@ class Ingestion(_message.Message):
     START_DATE_FIELD_NUMBER: _ClassVar[int]
     END_DATE_FIELD_NUMBER: _ClassVar[int]
     SYMBOLS_FIELD_NUMBER: _ClassVar[int]
-    start_date: _timestamp_pb2.Timestamp
-    end_date: _timestamp_pb2.Timestamp
+    start_date: _common_pb2.Date
+    end_date: _common_pb2.Date
     symbols: _containers.RepeatedScalarFieldContainer[str]
     def __init__(
         self,
-        start_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        end_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
+        end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
         symbols: _Optional[_Iterable[str]] = ...,
     ) -> None: ...

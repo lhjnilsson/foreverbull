@@ -37,8 +37,8 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	}
 	engine := ze.(engine.Engine)
 	ingestion := pb.Ingestion{
-		StartDate: pb_internal.TimeToProtoTimestamp(command.Start),
-		EndDate:   pb_internal.TimeToProtoTimestamp(command.End),
+		StartDate: pb_internal.DateStringToDate(command.Start),
+		EndDate:   pb_internal.DateStringToDate(command.End),
 		Symbols:   command.Symbols,
 	}
 	err = engine.Ingest(ctx, &ingestion, object)
@@ -50,8 +50,8 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error refreshing object: %w", err)
 	}
 	metadata := map[string]string{
-		"Start_date": command.Start.Format("2006-01-02"),
-		"End_date":   command.End.Format("2006-01-02"),
+		"Start_date": command.Start,
+		"End_date":   command.End,
 		"Symbols":    strings.Join(command.Symbols, ","),
 		"Status":     pb.IngestionStatus_READY.String(),
 	}

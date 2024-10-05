@@ -18,7 +18,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from foreverbull import common_pb2 as foreverbull_dot_common__pb2
+from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 from foreverbull.pb.foreverbull.finance import (
     finance_pb2 as foreverbull_dot_finance_dot_finance__pb2,
 )

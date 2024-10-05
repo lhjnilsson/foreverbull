@@ -72,22 +72,23 @@ func (suite *IngestionServerTest) TestCreateIngestion() {
 
 	testCases := []TestCase{
 		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
-			StartDate: pb_internal.TimeToProtoTimestamp(time.Now()),
-			EndDate:   pb_internal.TimeToProtoTimestamp(time.Now())},
+			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
+		},
 			expectedErr: nil},
 		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
-			StartDate: pb_internal.TimeToProtoTimestamp(time.Now()),
+			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
 			EndDate:   nil,
 		},
 			expectedErr: errors.New("start date and end date must be provided")},
 		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
 			StartDate: nil,
-			EndDate:   pb_internal.TimeToProtoTimestamp(time.Now()),
+			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
 		},
 			expectedErr: errors.New("start date and end date must be provided")},
 		{ingestion: &pb.Ingestion{Symbols: []string{},
-			StartDate: pb_internal.TimeToProtoTimestamp(time.Now()),
-			EndDate:   pb_internal.TimeToProtoTimestamp(time.Now()),
+			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
 		},
 			expectedErr: errors.New("at least one symbol must be provided")},
 	}
@@ -137,8 +138,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 			},
 			expected: &pb.Ingestion{
 				Symbols:   []string{"AAPL", "MSFT"},
-				StartDate: pb_internal.TimeToProtoTimestamp(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-				EndDate:   pb_internal.TimeToProtoTimestamp(time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC)),
+				StartDate: &pb_internal.Date{Year: 2021, Month: 01, Day: 01},
+				EndDate:   &pb_internal.Date{Year: 2021, Month: 01, Day: 02},
 			},
 		},
 		{
@@ -173,8 +174,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 			},
 			expected: &pb.Ingestion{
 				Symbols:   []string{"AAPL", "MSFT"},
-				StartDate: pb_internal.TimeToProtoTimestamp(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-				EndDate:   pb_internal.TimeToProtoTimestamp(time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC)),
+				StartDate: &pb_internal.Date{Year: 2021, Month: 01, Day: 01},
+				EndDate:   &pb_internal.Date{Year: 2021, Month: 01, Day: 02},
 			},
 		},
 	}

@@ -1,6 +1,6 @@
 import os
 import warnings
-from datetime import datetime
+from datetime import date, datetime
 from typing import Iterable, Tuple
 
 import numpy as np
@@ -31,8 +31,8 @@ class DatabaseEngine:
 class SQLIngester:
     engine: DatabaseEngine
     symbols: list[str]
-    from_date: datetime
-    to_date: datetime
+    from_date: date
+    to_date: date
 
     def __init__(self):
         pass
@@ -59,18 +59,28 @@ class SQLIngester:
         return data
 
     def writer(self, show_progress: bool) -> Iterable[Tuple[int, pd.DataFrame]]:
-        with maybe_show_progress(self.symbols, show_progress, label="Ingesting from SQL") as it:
+        with maybe_show_progress(
+            self.symbols, show_progress, label="Ingesting from SQL"
+        ) as it:
             for index, symbol in enumerate(it):  # type: ignore
                 data = self.get_stock_data(symbol)
                 if len(data) == 0:
-                    raise ValueError(f"No data found for {symbol} on {self.from_date} to {self.to_date}")
+                    raise ValueError(
+                        f"No data found for {symbol} on {self.from_date} to {self.to_date}"
+                    )
                 data.dropna(
                     inplace=True
                 )  # Yahoo can sometimes add duplicate rows on same date, one which is full or NaN
                 start_date = data.index[0]
                 end_date = data.index[-1]
                 autoclose_date = end_date + pd.Timedelta(days=1)
-                self._df_metadata.iloc[index] = start_date, end_date, autoclose_date, symbol, "NASDAQ"
+                self._df_metadata.iloc[index] = (
+                    start_date,
+                    end_date,
+                    autoclose_date,
+                    symbol,
+                    "NASDAQ",
+                )
                 yield index, data
 
     def __call__(

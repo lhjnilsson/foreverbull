@@ -10,6 +10,7 @@ import pynng
 import pytest
 from foreverbull import Algorithm, Function, Order, models
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2, execution_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
@@ -26,8 +27,8 @@ def spawn_process():
 def backtest_entity():
     return backtest_pb2.Backtest(
         name="testing_backtest",
-        start_date=pb_utils.to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
-        end_date=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
+        start_date=common_pb2.Date(year=2022, month=1, day=3),
+        end_date=common_pb2.Date(year=2023, month=12, day=29),
         symbols=[
             "AAPL",
             "AMZN",
@@ -62,8 +63,8 @@ def backtest_entity():
 def execution(fb_database):
     return execution_pb2.Execution(
         id="test",
-        start_date=pb_utils.to_proto_timestamp(datetime(2022, 1, 3, tzinfo=timezone.utc)),
-        end_date=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
+        start_date=common_pb2.Date(year=2022, month=1, day=3),
+        end_date=common_pb2.Date(year=2023, month=12, day=29),
         symbols=["AAPL", "MSFT", "TSLA"],
         benchmark="AAPL",
     )
@@ -125,14 +126,14 @@ def get_algo(file_path: str) -> Algorithm:
 @pytest.fixture(scope="function")
 def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = execution.start_date.ToDatetime()
+        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end_date.ToDatetime():
+        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
             for symbol in execution.symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo",
@@ -190,16 +191,18 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
+def non_parallel_algo_file(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = execution.start_date.ToDatetime()
+        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end_date.ToDatetime():
+        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo",
                 symbols=execution.symbols,
@@ -258,16 +261,18 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
+def parallel_algo_file_with_parameters(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start_date.ToDatetime()
+        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end_date.ToDatetime():
+        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
             for symbol in execution.symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
@@ -298,8 +303,12 @@ def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.E
             worker_pb2.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             )
         ],
@@ -332,16 +341,18 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
+def non_parallel_algo_file_with_parameters(
+    spawn_process, execution: execution_pb2.Execution, fb_database
+):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start_date.ToDatetime()
+        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end_date.ToDatetime():
+        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
                 symbols=execution.symbols,
@@ -371,8 +382,12 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_p
             worker_pb2.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             )
         ],
@@ -408,16 +423,18 @@ Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server):
+def multistep_algo_with_namespace(
+    spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server
+):
     def _process_symbols(server_socket) -> list[Order]:
-        start = execution.start_date.ToDatetime()
+        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = finance_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < execution.end_date.ToDatetime():
+        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
             req = worker_service_pb2.WorkerRequest(
                 task="filter_assets",
                 symbols=execution.symbols,
@@ -464,8 +481,12 @@ def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execut
             worker_pb2.ExecutionConfiguration.Function(
                 name="measure_assets",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="low", value="5"
+                    ),
+                    worker_pb2.ExecutionConfiguration.FunctionParameter(
+                        key="high", value="10"
+                    ),
                 ],
             ),
             worker_pb2.ExecutionConfiguration.Function(

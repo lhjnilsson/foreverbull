@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -67,13 +68,14 @@ func (test *FinanceModuleTest) TestIngestCommand() {
 	stream, err := stream.NewNATSStream(st, "finance_test", stream.NewDependencyContainer(), test.pool)
 	test.NoError(err)
 
-	command, err := fs.NewIngestCommand([]string{"AAPL", "MSFT"}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC))
+	command, err := fs.NewIngestCommand([]string{"AAPL"}, "2020-01-01", "2020-02-01")
 	test.NoError(err)
 	test.NoError(stream.Publish(context.Background(), command))
 
 	ohlcExists := func() (bool, error) {
 		ohlc := repository.OHLC{Conn: test.pool}
-		return ohlc.Exists(context.Background(), []string{"AAPL"}, time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 31, 0, 0, 0, 0, time.UTC))
+
+		return ohlc.Exists(context.Background(), []string{"AAPL"}, &internal_pb.Date{Year: 2020, Month: 1, Day: 1}, &internal_pb.Date{Year: 2020, Month: 2, Day: 1})
 	}
 	test.NoError(test_helper.WaitUntilCondition(test.T(), ohlcExists, 10*time.Second))
 }

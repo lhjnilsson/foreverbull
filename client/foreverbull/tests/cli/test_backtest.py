@@ -1,10 +1,10 @@
 import traceback
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 
 from foreverbull.cli.backtest import backtest
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.pb_utils import to_proto_timestamp
+from foreverbull.pb.pb_utils import from_pydate_to_proto_date, to_proto_timestamp
 from typer.testing import CliRunner
 
 runner = CliRunner(mix_stderr=False)
@@ -15,8 +15,8 @@ def test_backtest_list():
         mock_list.return_value = [
             backtest_pb2.Backtest(
                 name="test_name",
-                start_date=to_proto_timestamp(datetime.now()),
-                end_date=to_proto_timestamp(datetime.now()),
+                start_date=from_pydate_to_proto_date(date.today()),
+                end_date=from_pydate_to_proto_date(date.today()),
                 symbols=["AAPL", "MSFT"],
                 statuses=[
                     backtest_pb2.Backtest.Status(
@@ -40,8 +40,8 @@ def test_backtest_create():
     with patch("foreverbull.broker.backtest.create") as mock_create:
         mock_create.return_value = backtest_pb2.Backtest(
             name="test_name",
-            start_date=to_proto_timestamp(datetime.now()),
-            end_date=to_proto_timestamp(datetime.now()),
+            start_date=from_pydate_to_proto_date(date.today()),
+            end_date=from_pydate_to_proto_date(date.today()),
             symbols=["AAPL", "MSFT"],
             statuses=[
                 backtest_pb2.Backtest.Status(
@@ -66,19 +66,17 @@ def test_backtest_create():
         )
 
         if not result.exit_code == 0:
-            traceback.print_exception(*result.exc_info)
+            traceback.print_exception(*result.exc_info)  # type: ignore
         assert "test_name" in result.stdout
         assert "AAPL,MSFT" in result.stdout
 
 
 def test_backtest_get():
-    with (
-        patch("foreverbull.broker.backtest.get") as mock_get,
-    ):
+    with (patch("foreverbull.broker.backtest.get") as mock_get,):
         mock_get.return_value = backtest_pb2.Backtest(
             name="test_name",
-            start_date=to_proto_timestamp(datetime.now()),
-            end_date=to_proto_timestamp(datetime.now()),
+            start_date=from_pydate_to_proto_date(date.today()),
+            end_date=from_pydate_to_proto_date(date.today()),
             symbols=["AAPL", "MSFT"],
             statuses=[
                 backtest_pb2.Backtest.Status(

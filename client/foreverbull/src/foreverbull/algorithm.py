@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from multiprocessing import Event
 from typing import Generator
 
@@ -18,8 +18,8 @@ from foreverbull.pb.foreverbull.backtest import (
     session_service_pb2_grpc,
 )
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
+from foreverbull.pb.foreverbull.service import worker_pb2
 from foreverbull.worker import WorkerPool
-from foreverbull.pb.foreverbull.service import service_pb2, worker_pb2
 
 
 class Algorithm(models.Algorithm):
@@ -79,15 +79,15 @@ class Algorithm(models.Algorithm):
         return rsp.backtest
 
     def run_execution(
-        self, start: datetime, end: datetime, symbols: list[str], benchmark=None
+        self, start: date, end: date, symbols: list[str], benchmark=None
     ) -> Generator[finance_pb2.Portfolio, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
-                    start_date=pb_utils.to_proto_timestamp(start),
-                    end_date=pb_utils.to_proto_timestamp(end),
+                    start_date=pb_utils.from_pydate_to_proto_date(start),
+                    end_date=pb_utils.from_pydate_to_proto_date(end),
                     symbols=symbols,
                     benchmark=benchmark,
                 ),
