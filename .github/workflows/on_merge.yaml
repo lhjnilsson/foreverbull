@@ -43,7 +43,7 @@ jobs:
         run: |
           rye build -a
       - name: upload packages
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
@@ -112,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist

@@ -1,7 +1,8 @@
 import os
 
 import minio
-import requests
+import urllib3
+from urllib3.exceptions import MaxRetryError, NewConnectionError
 
 from .backtest import Backtest
 
@@ -16,9 +17,10 @@ class Storage:
     @classmethod
     def from_environment(cls, env=os.environ):
         address = env.get("STORAGE_ENDPOINT", "localhost:9000")
+        http = urllib3.PoolManager()
         try:
-            requests.get(f"http://{address}", timeout=0.3)
-        except requests.exceptions.ConnectionError:
+            http.request('GET', f"http://{address}", timeout=0.1)
+        except (MaxRetryError, NewConnectionError):
             address = "minio:9000"
 
         return cls(
