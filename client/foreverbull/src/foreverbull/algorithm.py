@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date
 from multiprocessing import Event
 from typing import Generator
 

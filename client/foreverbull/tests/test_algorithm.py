@@ -1,6 +1,6 @@
 import time
 from concurrent import futures
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from unittest.mock import MagicMock
 
 import grpc

@@ -1,6 +1,6 @@
 import os
 import warnings
-from datetime import date, datetime
+from datetime import date
 from typing import Iterable, Tuple
 
 import numpy as np

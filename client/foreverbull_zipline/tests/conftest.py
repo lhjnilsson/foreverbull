@@ -1,10 +1,8 @@
-from datetime import datetime, timezone
 from multiprocessing import get_start_method, set_start_method
 
 import pytest
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2, execution_pb2
-from foreverbull.pb.pb_utils import to_proto_timestamp
 
 
 @pytest.fixture(scope="session")
