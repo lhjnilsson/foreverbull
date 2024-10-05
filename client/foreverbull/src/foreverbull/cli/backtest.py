@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 import typer
 from foreverbull import broker
@@ -56,8 +56,8 @@ def list():
 @backtest.command()
 def create(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[date, typer.Option(help="start time of the backtest")],
-    end: Annotated[date, typer.Option(help="end time of the backtest")],
+    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
+    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
     symbols: Annotated[
         str, typer.Option(help="comma separated list of symbols to use")
     ],
@@ -67,8 +67,8 @@ def create(
 ):
     backtest = backtest_pb2.Backtest(
         name=name,
-        start_date=from_pydate_to_proto_date(start),
-        end_date=from_pydate_to_proto_date(end),
+        start_date=from_pydate_to_proto_date(start.date()),
+        end_date=from_pydate_to_proto_date(end.date()),
         symbols=(
             [symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []
         ),

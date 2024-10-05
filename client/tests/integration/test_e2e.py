@@ -66,8 +66,8 @@ def test_baseline_performance(
         periods = [
             p
             for p in backtest.run_execution(
-                start=execution.start_date.ToDatetime(),
-                end=execution.end_date.ToDatetime(),
+                start=execution.start_date,
+                end=execution.end_date,
                 symbols=[s for s in execution.symbols],
             )
         ]

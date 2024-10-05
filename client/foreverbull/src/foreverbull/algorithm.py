@@ -8,6 +8,7 @@ import grpc
 import pandas
 from foreverbull import models
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import (
     backtest_pb2,
     backtest_service_pb2,
@@ -79,15 +80,19 @@ class Algorithm(models.Algorithm):
         return rsp.backtest
 
     def run_execution(
-        self, start: date, end: date, symbols: list[str], benchmark=None
+        self,
+        start: common_pb2.Date,
+        end: common_pb2.Date,
+        symbols: list[str],
+        benchmark=None,
     ) -> Generator[finance_pb2.Portfolio, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
-                    start_date=pb_utils.from_pydate_to_proto_date(start),
-                    end_date=pb_utils.from_pydate_to_proto_date(end),
+                    start_date=start,
+                    end_date=end,
                     symbols=symbols,
                     benchmark=benchmark,
                 ),
