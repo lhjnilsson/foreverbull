@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package foreverbull.pb;
+package foreverbull.common;
 option go_package = "github.com/lhjnilsson/foreverbull/internal/pb";
 
 message Request {
@@ -13,4 +13,10 @@ message Response {
     string task = 1;
     optional bytes data = 2;
     optional string error = 3;
+}
+
+message Date {
+    int32 year = 1;
+    int32 month = 2;
+    int32 day = 3;
 }

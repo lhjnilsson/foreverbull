@@ -1,20 +1,18 @@
 package stream
 
 import (
-	"time"
-
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 )
 
 type IngestCommand struct {
-	Name    string    `json:"name"`
-	Symbols []string  `json:"symbols"`
-	Start   time.Time `json:"start"`
-	End     time.Time `json:"end"`
+	Name    string   `json:"name"`
+	Symbols []string `json:"symbols"`
+	Start   string   `json:"start"`
+	End     string   `json:"end"`
 }
 
-func NewBacktestIngestCommand(name string, symbols []string, start, end time.Time) (stream.Message, error) {
+func NewBacktestIngestCommand(name string, symbols []string, start, end string) (stream.Message, error) {
 	cmd := &IngestCommand{
 		Name:    name,
 		Symbols: symbols,
@@ -24,7 +22,7 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end time.Tim
 	return stream.NewMessage("backtest", "ingest", "ingest", cmd)
 }
 
-func NewIngestOrchestration(name string, symbols []string, start, end time.Time) (*stream.MessageOrchestration, error) {
+func NewIngestOrchestration(name string, symbols []string, start, end string) (*stream.MessageOrchestration, error) {
 	orchestration := stream.NewMessageOrchestration("ingest backtest")
 	msg, err := financeStream.NewIngestCommand(symbols, start, end)
 	if err != nil {

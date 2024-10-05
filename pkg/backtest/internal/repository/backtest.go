@@ -14,8 +14,8 @@ const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (
 name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 status int NOT NULL DEFAULT 0,
 error text,
-start_at TIMESTAMPTZ NOT NULL,
-end_at TIMESTAMPTZ NOT NULL,
+start_date date NOT NULL,
+end_date date NOT NULL,
 benchmark text,
 symbols text[]);
 
@@ -53,11 +53,11 @@ type Backtest struct {
 }
 
 func (db *Backtest) Create(ctx context.Context, name string,
-	start, end time.Time, symbols []string, benchmark *string) (*pb.Backtest, error) {
+	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, start_at, end_at, symbols, benchmark)
+		`INSERT INTO backtest (name, start_date, end_date, symbols, benchmark)
 		VALUES ($1, $2, $3, $4, $5)`,
-		name, start, end, symbols, benchmark)
+		name, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end), symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (db *Backtest) Create(ctx context.Context, name string,
 func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) {
 	b := pb.Backtest{}
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, start_at, end_at, benchmark, symbols,
+		`SELECT backtest.name, start_date, end_date, benchmark, symbols,
 		bs.status, bs.error, bs.occurred_at
 		FROM backtest
 		INNER JOIN (
@@ -90,8 +90,8 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 		if err != nil {
 			return nil, err
 		}
-		b.StartDate = pb_internal.TimeToProtoTimestamp(start)
-		b.EndDate = pb_internal.TimeToProtoTimestamp(end)
+		b.StartDate = pb_internal.GoTimeToDate(start)
+		b.EndDate = pb_internal.GoTimeToDate(end)
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(t)
 		b.Statuses = append(b.Statuses, &status)
 	}
@@ -102,12 +102,12 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 }
 
 func (db *Backtest) Update(ctx context.Context, name string,
-	start, end time.Time, symbols []string, benchmark *string) (*pb.Backtest, error) {
+	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`UPDATE backtest SET start_at=$2, end_at=$3,
+		`UPDATE backtest SET start_date=$2, end_date=$3,
 		symbols=$4, benchmark=$5
 		WHERE name=$1`,
-		name, start, end, symbols, benchmark)
+		name, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end), symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (db *Backtest) UpdateStatus(ctx context.Context, name string, status pb.Bac
 
 func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, start_at, end_at, benchmark, symbols,
+		`SELECT backtest.name, start_date, end_date, benchmark, symbols,
 		bs.status, bs.error, bs.occurred_at
 		FROM backtest
 		INNER JOIN (
@@ -153,8 +153,8 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 		if err != nil {
 			return nil, err
 		}
-		b.StartDate = pb_internal.TimeToProtoTimestamp(start)
-		b.EndDate = pb_internal.TimeToProtoTimestamp(end)
+		b.StartDate = pb_internal.GoTimeToDate(start)
+		b.EndDate = pb_internal.GoTimeToDate(end)
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurred_at)
 		inReturnSlice = false
 		for i := range backtests {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/suite"
@@ -45,7 +45,7 @@ func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	backtest, err := db.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	backtest, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 	test.Equal("backtest", backtest.Name)
 	test.Len(backtest.Statuses, 1)
@@ -56,7 +56,7 @@ func (test *BacktestTest) TestGet() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
 	backtest, err := db.Get(ctx, "backtest")
@@ -70,10 +70,10 @@ func (test *BacktestTest) TestUpdate() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
-	_, err = db.Update(ctx, "backtest", time.Now(), time.Now(), []string{"AAPL"}, nil)
+	_, err = db.Update(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
 	test.NoError(err)
 
 	backtest, err := db.Get(ctx, "backtest")
@@ -92,7 +92,7 @@ func (test *BacktestTest) TestUpdateStatus() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
 	err = db.UpdateStatus(ctx, "backtest", pb.Backtest_Status_ERROR, errors.New("test"))
@@ -113,10 +113,10 @@ func (test *BacktestTest) TestList() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest1", time.Now(), time.Now(), []string{}, nil)
+	_, err := db.Create(ctx, "backtest1", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
-	_, err = db.Create(ctx, "backtest2", time.Now(), time.Now(), []string{}, nil)
+	_, err = db.Create(ctx, "backtest2", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
 	backtests, err := db.List(ctx)
@@ -128,7 +128,7 @@ func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
 	db := &Backtest{Conn: test.conn}
-	_, err := db.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
 	err = db.Delete(ctx, "backtest")

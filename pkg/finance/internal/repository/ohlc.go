@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 )
 
@@ -38,21 +39,22 @@ func (db *OHLC) Store(ctx context.Context, symbol string, t time.Time, o, h, l, 
 Exists
 Check if OHLC entry exists for instrument
 */
-func (db *OHLC) Exists(ctx context.Context, symbols []string, Start time.Time, End time.Time) (bool, error) {
+func (db *OHLC) Exists(ctx context.Context, symbols []string, start, end *pb.Date) (bool, error) {
 	var startExists bool
 	var endExists bool
+	pb.DateToDateString(start)
 	for _, symbol := range symbols {
 		err := db.Conn.QueryRow(
 			ctx,
-			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time = $2::date)",
-			symbol, Start).Scan(&startExists)
+			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time::date = $2)",
+			symbol, pb.DateToDateString(start)).Scan(&startExists)
 		if err != nil {
 			return false, err
 		}
 		err = db.Conn.QueryRow(
 			ctx,
-			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time = $2::date)",
-			symbol, End).Scan(&endExists)
+			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time::date = $2)",
+			symbol, pb.DateToDateString(end)).Scan(&endExists)
 		if err != nil {
 			return false, err
 		}
@@ -63,7 +65,7 @@ func (db *OHLC) Exists(ctx context.Context, symbols []string, Start time.Time, E
 	return true, nil
 }
 
-func (db *OHLC) MinMax(ctx context.Context) (*time.Time, *time.Time, error) {
+func (db *OHLC) MinMax(ctx context.Context) (*pb.Date, *pb.Date, error) {
 	var minTime *time.Time
 	var maxTime *time.Time
 	err := db.Conn.QueryRow(
@@ -72,5 +74,8 @@ func (db *OHLC) MinMax(ctx context.Context) (*time.Time, *time.Time, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return minTime, maxTime, nil
+	if minTime == nil || maxTime == nil {
+		return nil, nil, nil
+	}
+	return pb.GoTimeToDate(*minTime), pb.GoTimeToDate(*maxTime), nil
 }

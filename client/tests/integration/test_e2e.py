@@ -29,9 +29,7 @@ def engine_stub():
     if not ep.is_ready.wait(5.0):
         raise Exception("Engine not ready")
     with grpc_servicer.grpc_server(ep, port=6066):
-        yield engine_service_pb2_grpc.EngineStub(
-            grpc.insecure_channel("localhost:6066")
-        )
+        yield engine_service_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:6066"))
     ep.stop()
     ep.join(3.0)
 
@@ -44,15 +42,11 @@ def broker_session_stub(engine_stub):
     session_service_pb2_grpc.add_SessionServicerServicer_to_server(bs, server)
     server.add_insecure_port("[::]:6067")
     server.start()
-    yield backtest_service_pb2_grpc.BacktestServicerStub(
-        grpc.insecure_channel("localhost:6067")
-    )
+    yield backtest_service_pb2_grpc.BacktestServicerStub(grpc.insecure_channel("localhost:6067"))
     server.stop(None)
 
 
-@pytest.mark.parametrize(
-    "file_path", ["example_algorithms/src/example_algorithms/parallel.py"]
-)
+@pytest.mark.parametrize("file_path", ["example_algorithms/src/example_algorithms/parallel.py"])
 def test_baseline_performance(
     spawn_process,
     broker_session_stub: backtest_service_pb2_grpc.BacktestServicerStub,
@@ -66,8 +60,8 @@ def test_baseline_performance(
         periods = [
             p
             for p in backtest.run_execution(
-                start=execution.start_date.ToDatetime(),
-                end=execution.end_date.ToDatetime(),
+                start=execution.start_date,
+                end=execution.end_date,
                 symbols=[s for s in execution.symbols],
             )
         ]

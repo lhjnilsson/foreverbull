@@ -1,5 +1,6 @@
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2 as _finance_pb2
+from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -61,8 +62,8 @@ class Execution(_message.Message):
     STATUSES_FIELD_NUMBER: _ClassVar[int]
     id: str
     session: str
-    start_date: _timestamp_pb2.Timestamp
-    end_date: _timestamp_pb2.Timestamp
+    start_date: _common_pb2.Date
+    end_date: _common_pb2.Date
     benchmark: str
     symbols: _containers.RepeatedScalarFieldContainer[str]
     statuses: _containers.RepeatedCompositeFieldContainer[Execution.Status]
@@ -70,8 +71,8 @@ class Execution(_message.Message):
         self,
         id: _Optional[str] = ...,
         session: _Optional[str] = ...,
-        start_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        end_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
+        end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
         benchmark: _Optional[str] = ...,
         symbols: _Optional[_Iterable[str]] = ...,
         statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ...,
@@ -79,7 +80,7 @@ class Execution(_message.Message):
 
 class Period(_message.Message):
     __slots__ = (
-        "timestamp",
+        "date",
         "PNL",
         "returns",
         "portfolio_value",
@@ -112,7 +113,7 @@ class Period(_message.Message):
         "beta",
         "positions",
     )
-    TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    DATE_FIELD_NUMBER: _ClassVar[int]
     PNL_FIELD_NUMBER: _ClassVar[int]
     RETURNS_FIELD_NUMBER: _ClassVar[int]
     PORTFOLIO_VALUE_FIELD_NUMBER: _ClassVar[int]
@@ -144,7 +145,7 @@ class Period(_message.Message):
     ALPHA_FIELD_NUMBER: _ClassVar[int]
     BETA_FIELD_NUMBER: _ClassVar[int]
     POSITIONS_FIELD_NUMBER: _ClassVar[int]
-    timestamp: _timestamp_pb2.Timestamp
+    date: _common_pb2.Date
     PNL: float
     returns: float
     portfolio_value: float
@@ -178,7 +179,7 @@ class Period(_message.Message):
     positions: _containers.RepeatedCompositeFieldContainer[_finance_pb2.Position]
     def __init__(
         self,
-        timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
         PNL: _Optional[float] = ...,
         returns: _Optional[float] = ...,
         portfolio_value: _Optional[float] = ...,

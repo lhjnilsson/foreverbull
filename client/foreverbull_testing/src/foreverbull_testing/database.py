@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import yfinance
+from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, engine, text
@@ -42,10 +43,9 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
             start, end = res
             if start is None or end is None:
                 return False
-            if (
-                start.date() != backtest.start_date.ToDatetime().date()
-                or end.date() != backtest.end_date.ToDatetime().date()
-            ):
+            if start.date() != pb_utils.from_proto_date_to_pydate(
+                backtest.start_date
+            ) or end.date() != pb_utils.from_proto_date_to_pydate(backtest.end_date):
                 return False
         return True
 
@@ -67,8 +67,8 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                 {"symbol": asset.symbol, "name": asset.name},
             )
             data = feed.history(
-                start=backtest.start_date.ToDatetime(),
-                end=backtest.end_date.ToDatetime() + timedelta(days=1),
+                start=pb_utils.from_proto_date_to_pydate(backtest.start_date),
+                end=pb_utils.from_proto_date_to_pydate(backtest.end_date) + timedelta(days=1),
             )
             for idx, row in data.iterrows():
                 time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)

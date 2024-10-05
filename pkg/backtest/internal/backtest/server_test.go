@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/pb"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -61,7 +61,7 @@ func (s *SessionTest) SetupTest() {
 	s.Require().NoError(err)
 
 	backtests := repository.Backtest{Conn: s.conn}
-	s.backtest, err = backtests.Create(context.Background(), "backtest", time.Now(), time.Now(), []string{}, nil)
+	s.backtest, err = backtests.Create(context.Background(), "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	sessions := repository.Session{Conn: s.conn}
 	s.session, err = sessions.Create(context.TODO(), "backtest")
 	s.Require().NoError(err)
@@ -100,8 +100,8 @@ func (s *SessionTest) TearDownTest() {
 func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
-			StartDate: pb.TimeToProtoTimestamp(time.Now()),
-			EndDate:   pb.TimeToProtoTimestamp(time.Now()),
+			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
 			Symbols:   []string{"AAPL"},
 		},
 		Algorithm: &service_pb.Algorithm{},
@@ -118,8 +118,8 @@ func (s *SessionTest) TestCreateExecution() {
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
-			StartDate: pb.TimeToProtoTimestamp(time.Now()),
-			EndDate:   pb.TimeToProtoTimestamp(time.Now()),
+			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
 			Symbols:   []string{"AAPL"},
 		},
 		Algorithm: &service_pb.Algorithm{},
@@ -134,7 +134,7 @@ func (s *SessionTest) TestRunExecution() {
 
 	executions := repository.Execution{Conn: s.conn}
 	execution, err := executions.Create(context.Background(), s.session.Id,
-		s.backtest.StartDate.AsTime(), s.backtest.EndDate.AsTime(), []string{"AAPL"}, nil)
+		s.backtest.StartDate, s.backtest.EndDate, []string{"AAPL"}, nil)
 	s.Require().NoError(err)
 
 	ch := make(chan *finance_pb.Portfolio, 5)
@@ -166,7 +166,7 @@ func (s *SessionTest) TestRunExecution() {
 func (s *SessionTest) TestGetExecution() {
 	executions := repository.Execution{Conn: s.conn}
 	execution, err := executions.Create(context.TODO(), s.session.Id,
-		s.backtest.StartDate.AsTime(), s.backtest.EndDate.AsTime(),
+		s.backtest.StartDate, s.backtest.EndDate,
 		[]string{"AAPL"}, nil)
 	s.Require().NoError(err)
 

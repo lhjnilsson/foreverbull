@@ -3,7 +3,7 @@ from datetime import datetime
 import typer
 from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.pb_utils import to_proto_timestamp
+from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_proto_date
 from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
@@ -33,8 +33,8 @@ def list():
         table.add_row(
             backtest.name,
             (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
-            backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
-            backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
+            (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+            (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
@@ -51,8 +51,8 @@ def create(
 ):
     backtest = backtest_pb2.Backtest(
         name=name,
-        start_date=to_proto_timestamp(start),
-        end_date=to_proto_timestamp(end),
+        start_date=from_pydate_to_proto_date(start.date()),
+        end_date=from_pydate_to_proto_date(end.date()),
         symbols=([symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []),
         benchmark=benchmark,
     )
@@ -68,8 +68,8 @@ def create(
     table.add_row(
         backtest.name,
         (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
-        backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
-        backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
+        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
@@ -91,8 +91,8 @@ def get(
     table.add_row(
         backtest.name,
         (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
-        backtest.start_date.ToDatetime().isoformat() if backtest.start_date else "",
-        backtest.end_date.ToDatetime().isoformat() if backtest.end_date else "",
+        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
+        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
         backtest.benchmark,
     )

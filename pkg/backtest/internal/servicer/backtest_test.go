@@ -5,11 +5,10 @@ import (
 	"log"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -83,7 +82,7 @@ func (suite *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	suite.T().Helper()
 
 	backtests := repository.Backtest{Conn: suite.pgx}
-	backtest, err := backtests.Create(context.TODO(), name, time.Now(), time.Now(), []string{"AAPL"}, nil)
+	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(backtest)
 	return backtest
@@ -111,8 +110,8 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	req := &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "test_1",
-			StartDate: pb_internal.TimeToProtoTimestamp(time.Now()),
-			EndDate:   pb_internal.TimeToProtoTimestamp(time.Now()),
+			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
 			Symbols:   []string{"AAPL"},
 			Benchmark: nil,
 		},

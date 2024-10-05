@@ -3,8 +3,10 @@ package command
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -42,12 +44,23 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return fmt.Errorf("error storing asset: %w", err)
 			}
 		}
-		exists, err := ohlc.Exists(ctx, []string{symbol}, command.Start, command.End)
+		exists, err := ohlc.Exists(ctx, []string{symbol},
+			common_pb.DateStringToDate(command.Start),
+			common_pb.DateStringToDate(command.End))
 		if err != nil {
 			return fmt.Errorf("error checking OHLC existence: %w", err)
 		}
+		start, err := time.Parse("2006-01-02", command.Start)
+		if err != nil {
+			return fmt.Errorf("error parsing start date: %w", err)
+		}
+		end, err := time.Parse("2006-01-02", command.End)
+		if err != nil {
+			return fmt.Errorf("error parsing end date: %w", err)
+		}
+
 		if !exists {
-			ohlcs, err := marketdata.GetOHLC(symbol, command.Start, command.End)
+			ohlcs, err := marketdata.GetOHLC(symbol, start, end)
 			if err != nil {
 				return fmt.Errorf("error getting OHLC: %w", err)
 			}

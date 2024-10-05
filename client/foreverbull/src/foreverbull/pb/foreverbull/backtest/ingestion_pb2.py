@@ -18,10 +18,10 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
+from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n$foreverbull/backtest/ingestion.proto\x12\x14\x66oreverbull.backtest\x1a\x1fgoogle/protobuf/timestamp.proto"z\n\tIngestion\x12.\n\nstart_date\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12,\n\x08\x65nd_date\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07symbols\x18\x03 \x03(\t*8\n\x0fIngestionStatus\x12\x0b\n\x07\x43REATED\x10\x00\x12\r\n\tINGESTING\x10\x01\x12\t\n\x05READY\x10\x02\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3'
+    b'\n$foreverbull/backtest/ingestion.proto\x12\x14\x66oreverbull.backtest\x1a\x18\x66oreverbull/common.proto"v\n\tIngestion\x12,\n\nstart_date\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x03 \x03(\t*8\n\x0fIngestionStatus\x12\x0b\n\x07\x43REATED\x10\x00\x12\r\n\tINGESTING\x10\x01\x12\t\n\x05READY\x10\x02\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3'
 )
 
 _globals = globals()
@@ -34,8 +34,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
     _globals["DESCRIPTOR"]._serialized_options = (
         b"Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
     )
-    _globals["_INGESTIONSTATUS"]._serialized_start = 219
-    _globals["_INGESTIONSTATUS"]._serialized_end = 275
-    _globals["_INGESTION"]._serialized_start = 95
-    _globals["_INGESTION"]._serialized_end = 217
+    _globals["_INGESTIONSTATUS"]._serialized_start = 208
+    _globals["_INGESTIONSTATUS"]._serialized_end = 264
+    _globals["_INGESTION"]._serialized_start = 88
+    _globals["_INGESTION"]._serialized_end = 206
 # @@protoc_insertion_point(module_scope)

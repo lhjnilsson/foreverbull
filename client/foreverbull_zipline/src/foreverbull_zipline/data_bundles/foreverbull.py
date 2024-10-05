@@ -1,6 +1,6 @@
 import os
 import warnings
-from datetime import datetime
+from datetime import date
 from typing import Iterable, Tuple
 
 import numpy as np
@@ -31,8 +31,8 @@ class DatabaseEngine:
 class SQLIngester:
     engine: DatabaseEngine
     symbols: list[str]
-    from_date: datetime
-    to_date: datetime
+    from_date: date
+    to_date: date
 
     def __init__(self):
         pass
@@ -70,7 +70,13 @@ class SQLIngester:
                 start_date = data.index[0]
                 end_date = data.index[-1]
                 autoclose_date = end_date + pd.Timedelta(days=1)
-                self._df_metadata.iloc[index] = start_date, end_date, autoclose_date, symbol, "NASDAQ"
+                self._df_metadata.iloc[index] = (
+                    start_date,
+                    end_date,
+                    autoclose_date,
+                    symbol,
+                    "NASDAQ",
+                )
                 yield index, data
 
     def __call__(

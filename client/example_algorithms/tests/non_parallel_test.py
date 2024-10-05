@@ -12,8 +12,8 @@ def test_positive_returns():
     with algo.backtest_session("github_action_test") as session:
         backtest = session.get_default()
         for period in session.run_execution(
-            backtest.start_date.ToDatetime(),
-            backtest.end_date.ToDatetime(),
+            backtest.start_date,
+            backtest.end_date,
             [s for s in backtest.symbols],
         ):
             assert period

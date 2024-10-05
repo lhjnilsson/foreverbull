@@ -363,8 +363,8 @@ def start(
                     config = json.load(f)
                 broker.backtest.ingest(
                     ingestion=ingestion_pb2.Ingestion(
-                        start_date=pb_utils.to_proto_timestamp(datetime.strptime(config["start"], "%Y-%m-%d")),
-                        end_date=pb_utils.to_proto_timestamp(datetime.strptime(config["end"], "%Y-%m-%d")),
+                        start_date=pb_utils.from_pydate_to_proto_date(datetime.strptime(config["start"], "%Y-%m-%d")),
+                        end_date=pb_utils.from_pydate_to_proto_date(datetime.strptime(config["end"], "%Y-%m-%d")),
                         symbols=config["symbols"],
                     )
                 )

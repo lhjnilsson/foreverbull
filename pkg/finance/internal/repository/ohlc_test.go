@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/stretchr/testify/suite"
@@ -53,7 +54,7 @@ func TestOHLC(t *testing.T) {
 	suite.Run(t, new(OHLCTests))
 }
 
-func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
+func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Date) {
 	count := 5
 	ohlcStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -64,7 +65,7 @@ func (test *OHLCTests) SampleOHLC() (string, time.Time, time.Time) {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
 		}
 	}
-	return test.asset.Symbol, ohlcStart, ohlcTime
+	return test.asset.Symbol, internal_pb.GoTimeToDate(ohlcStart), internal_pb.GoTimeToDate(ohlcTime)
 }
 
 func (test *OHLCTests) TestStore() {
@@ -79,18 +80,9 @@ func (test *OHLCTests) TestExists() {
 	test.True(exists)
 }
 
-func (test *OHLCTests) TestExistsOnlyDate() {
-	symbol, start, end := test.SampleOHLC()
-	start = start.Add(time.Hour * 3)
-	end = end.Add(time.Hour * 3)
-	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	test.Nil(err)
-	test.True(exists)
-}
-
 func (test *OHLCTests) TestExistsNot() {
 	symbol, start, end := test.SampleOHLC()
-	end = end.Add(time.Hour * 24)
+	end.Day += 1
 	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
 	test.Nil(err)
 	test.False(exists)
@@ -107,6 +99,6 @@ func (test *OHLCTests) TestMinMax() {
 	_, start, end := test.SampleOHLC()
 	min, max, err := test.ohlcStorage.MinMax(context.Background())
 	test.Nil(err)
-	test.Equal(start, *min)
-	test.Equal(end, *max)
+	test.Equal(start, min)
+	test.Equal(end, max)
 }

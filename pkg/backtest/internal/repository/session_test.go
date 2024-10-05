@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/suite"
@@ -38,7 +38,9 @@ func (test *SessionTest) SetupTest() {
 
 	ctx := context.Background()
 	b_postgres := &Backtest{Conn: test.conn}
-	test.storedBacktest, err = b_postgres.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest",
+		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
+		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.Require().NoError(err)
 }
 
@@ -150,7 +152,9 @@ func (test *SessionTest) TestListByBacktest() {
 	test.NotNil(s2.Id)
 
 	b_postgres := &Backtest{Conn: test.conn}
-	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2", time.Now(), time.Now(), []string{}, nil)
+	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2",
+		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
+		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 	s3, err := db.Create(ctx, "backtest2")
 	test.NoError(err)
