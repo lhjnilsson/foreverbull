@@ -66,13 +66,16 @@ func (db *OHLC) Exists(ctx context.Context, symbols []string, start, end *pb.Dat
 }
 
 func (db *OHLC) MinMax(ctx context.Context) (*pb.Date, *pb.Date, error) {
-	var minTime time.Time
-	var maxTime time.Time
+	var minTime *time.Time
+	var maxTime *time.Time
 	err := db.Conn.QueryRow(
 		ctx,
 		"SELECT MIN(time), MAX(time) FROM ohlc").Scan(&minTime, &maxTime)
 	if err != nil {
 		return nil, nil, err
 	}
-	return pb.GoTimeToDate(minTime), pb.GoTimeToDate(maxTime), nil
+	if minTime == nil || maxTime == nil {
+		return nil, nil, nil
+	}
+	return pb.GoTimeToDate(*minTime), pb.GoTimeToDate(*maxTime), nil
 }
