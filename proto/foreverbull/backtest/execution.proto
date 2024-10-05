@@ -4,6 +4,7 @@ package foreverbull.backtest;
 
 import "google/protobuf/timestamp.proto";
 import "foreverbull/finance/finance.proto";
+import "foreverbull/common.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
 
@@ -21,15 +22,15 @@ message Execution {
     }
     string id = 1;
     string session = 2;
-    google.protobuf.Timestamp start_date = 3;
-    google.protobuf.Timestamp end_date = 4;
+    foreverbull.common.Date start_date = 3;
+    foreverbull.common.Date end_date = 4;
     optional string benchmark = 5;
     repeated string symbols = 6;
     repeated Status statuses = 7;
 }
 
 message Period {
-    google.protobuf.Timestamp timestamp = 1;
+    foreverbull.common.Date date = 1;
     double PNL = 2;
     double returns = 3;
     double portfolio_value = 4;

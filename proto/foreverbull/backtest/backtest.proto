@@ -4,6 +4,7 @@ package foreverbull.backtest;
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
 
+import "foreverbull/common.proto";
 import "google/protobuf/timestamp.proto";
 
 message Backtest {
@@ -18,8 +19,8 @@ message Backtest {
         google.protobuf.Timestamp occurred_at = 3;
     }
     string name = 1;
-    google.protobuf.Timestamp start_date = 2;
-    google.protobuf.Timestamp end_date = 3;
+    foreverbull.common.Date start_date = 2;
+    foreverbull.common.Date end_date = 3;
     repeated string symbols = 4;
     optional string benchmark = 5;
 

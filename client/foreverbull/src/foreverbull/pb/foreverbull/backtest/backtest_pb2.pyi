@@ -1,3 +1,4 @@
+from foreverbull import common_pb2 as _common_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
@@ -48,16 +49,16 @@ class Backtest(_message.Message):
     BENCHMARK_FIELD_NUMBER: _ClassVar[int]
     STATUSES_FIELD_NUMBER: _ClassVar[int]
     name: str
-    start_date: _timestamp_pb2.Timestamp
-    end_date: _timestamp_pb2.Timestamp
+    start_date: _common_pb2.Date
+    end_date: _common_pb2.Date
     symbols: _containers.RepeatedScalarFieldContainer[str]
     benchmark: str
     statuses: _containers.RepeatedCompositeFieldContainer[Backtest.Status]
     def __init__(
         self,
         name: _Optional[str] = ...,
-        start_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        end_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
+        start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
+        end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
         symbols: _Optional[_Iterable[str]] = ...,
         benchmark: _Optional[str] = ...,
         statuses: _Optional[_Iterable[_Union[Backtest.Status, _Mapping]]] = ...,

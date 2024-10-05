@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -40,7 +39,7 @@ func (test *ExecutionTest) SetupTest() {
 
 	ctx := context.Background()
 	b_postgres := &Backtest{Conn: test.conn}
-	_, err = b_postgres.Create(ctx, "backtest", time.Now(), time.Now(), []string{}, nil)
+	_, err = b_postgres.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.Require().NoError(err)
 	test.storedBacktest, err = b_postgres.Get(ctx, "backtest")
 	test.Require().NoError(err)
@@ -62,17 +61,10 @@ func (s *ExecutionTest) TestCreate() {
 	db := Execution{Conn: s.conn}
 	ctx := context.Background()
 	e, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 	s.NotNil(e.Id)
 	s.Equal(s.storedSession.Id, e.Session)
-	// TODO: FIX, Github looses nanoseconds
-	// -(time.Time) 2023-10-19 19:53:22.382093481 +0000 UTC
-	// +(time.Time) 2023-10-19 19:53:22.382093 +0000 UTC
-	//test.Equal(start, *backtest.Start)
-	//test.Equal(end, *backtest.End)
-	//s.Equal(*s.storedBacktest.Start, e.Start)
-	//s.Equal(*s.storedBacktest.End, e.End)
 	s.Equal(s.storedBacktest.Symbols, e.Symbols)
 	s.Equal(1, len(e.Statuses))
 	s.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
@@ -84,7 +76,7 @@ func (s *ExecutionTest) TestGet() {
 	db := Execution{Conn: s.conn}
 	ctx := context.Background()
 	e, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 	e, err = db.Get(ctx, e.Id)
 	s.NoError(err)
@@ -103,10 +95,10 @@ func (s *ExecutionTest) TestUpdateSimulationDetails() {
 	db := Execution{Conn: s.conn}
 	ctx := context.Background()
 	e, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
-	e.StartDate = internal_pb.TimeToProtoTimestamp(time.Now())
-	e.EndDate = internal_pb.TimeToProtoTimestamp(time.Now())
+	//e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
+	//e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	e.Benchmark = func() *string { s := "AAPL"; return &s }()
 	e.Symbols = []string{"AAPL", "MSFT", "TSLA"}
 	err = db.UpdateSimulationDetails(ctx, e)
@@ -125,7 +117,7 @@ func (s *ExecutionTest) TestUpdateStatus() {
 	db := Execution{Conn: s.conn}
 	ctx := context.Background()
 	e, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 	err = db.UpdateStatus(ctx, e.Id, pb.Execution_Status_RUNNING, nil)
 	s.NoError(err)
@@ -152,11 +144,11 @@ func (s *ExecutionTest) TestList() {
 	ctx := context.Background()
 
 	_, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 
 	_, err = db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 
 	executions, err := db.List(ctx)
@@ -176,7 +168,7 @@ func (s *ExecutionTest) TestListBySession() {
 
 	db := Execution{Conn: s.conn}
 	_, err = db.Create(ctx, session1.Id,
-		s.storedBacktest.StartDate.AsTime(), s.storedBacktest.EndDate.AsTime(), s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 
 	executions, err := db.ListBySession(ctx, session1.Id)

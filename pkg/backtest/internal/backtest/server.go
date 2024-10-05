@@ -51,8 +51,8 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 	executions := repository.Execution{Conn: s.db}
 	execution, err := executions.Create(context.TODO(),
 		s.session.Id,
-		req.Backtest.StartDate.AsTime(),
-		req.Backtest.EndDate.AsTime(),
+		req.Backtest.StartDate,
+		req.Backtest.EndDate,
 		req.Backtest.Symbols,
 		req.Backtest.Benchmark,
 	)

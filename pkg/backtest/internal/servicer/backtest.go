@@ -43,8 +43,8 @@ func (bs *BacktestServer) CreateBacktest(ctx context.Context, req *pb.CreateBack
 		return nil, fmt.Errorf("backtest is required")
 	}
 
-	backtest, err := backtests.Create(ctx, b.GetName(), b.StartDate.AsTime(),
-		b.EndDate.AsTime(), b.Symbols, b.Benchmark)
+	backtest, err := backtests.Create(ctx, b.GetName(), b.StartDate,
+		b.EndDate, b.Symbols, b.Benchmark)
 	if err != nil {
 		return nil, fmt.Errorf("error creating backtest: %w", err)
 	}

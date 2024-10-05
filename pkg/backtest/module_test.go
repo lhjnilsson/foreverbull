@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -162,8 +163,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
-			StartDate: timestamppb.New(time.Now().Add(-time.Hour * 24 * 200)),
-			EndDate:   timestamppb.New(time.Now().Add(-time.Hour * 24 * 100)),
+			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})
