@@ -7,30 +7,30 @@ dependencies = ["grpcio>=1.66.1"]
 managed = true
 virtual = true
 dev-dependencies = [
-    "pytest-repeat>=0.9.3",
-    "grpcio-tools>=1.66.1",
-    "grpcio-testing>=1.66.1",
+  "pytest-repeat>=0.9.3",
+  "grpcio-tools>=1.66.1",
+  "grpcio-testing>=1.66.1",
 ]
 
 
 [tool.rye.workspace]
 packages = [
-    "foreverbull",
-    "foreverbull_testing",
-    "foreverbull_zipline",
-    "example_algorithms",
+  "foreverbull",
+  "foreverbull_testing",
+  "foreverbull_zipline",
+  "example_algorithms",
 ]
 dev-dependencies = [
-    "yfinance>=0.1.87,<1.0.0",
-    "pytest>=6.2.4,<7.0.0",
-    "pytest-mock>=3.6.1,<4.0.0",
-    "ruff<1.0.0",
-    "black>=21.7b0,<30",
-    "isort>=5.9.3,<6.0.0",
-    "pytest-cov>=3.0.0,<4.0.0",
-    "zipline-reloaded>=3.0.0,<4.0.0",
-    "ta-lib>=0.4.26,<0.5.0",
-    "testcontainers[postgres]",
+  "yfinance>=0.1.87,<1.0.0",
+  "pytest>=6.2.4,<7.0.0",
+  "pytest-mock>=3.6.1,<4.0.0",
+  "ruff<1.0.0",
+  "black>=21.7b0,<30",
+  "isort>=5.9.3,<6.0.0",
+  "pytest-cov>=3.0.0,<4.0.0",
+  "zipline-reloaded>=3.0.0,<4.0.0",
+  "ta-lib>=0.4.26,<0.5.0",
+  "testcontainers[postgres]",
 ]
 
 [tool.ruff.lint]
@@ -52,9 +52,9 @@ known-first-party = ["foreverbull"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    "foreverbull/tests/",
-    "foreverbull_testing/tests/",
-    "foreverbull_zipline/tests/",
-    "tests/",
+  "foreverbull/tests/",
+  "foreverbull_testing/tests/",
+  "foreverbull_zipline/tests/",
+  "tests/",
 ]
 filterwarnings = "ignore::DeprecationWarning"
