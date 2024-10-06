@@ -9,47 +9,39 @@ from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
-
 _runtime_version.ValidateProtobufRuntimeVersion(
     _runtime_version.Domain.PUBLIC,
     5,
     27,
     2,
-    "",
-    "foreverbull/backtest/ingestion_service.proto",
+    '',
+    'foreverbull/backtest/ingestion_service.proto'
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-from foreverbull.pb.foreverbull.backtest import (
-    ingestion_pb2 as foreverbull_dot_backtest_dot_ingestion__pb2,
-)
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2 as foreverbull_dot_backtest_dot_ingestion__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n,foreverbull/backtest/ingestion_service.proto\x12\x14\x66oreverbull.backtest\x1a$foreverbull/backtest/ingestion.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\x1c\n\x1aGetCurrentIngestionRequest"\x96\x01\n\x1bGetCurrentIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus\x12\x0c\n\x04size\x18\x03 \x01(\x03"L\n\x16\x43reateIngestionRequest\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion"\x84\x01\n\x17\x43reateIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus2\xff\x01\n\x11IngestionServicer\x12z\n\x13GetCurrentIngestion\x12\x30.foreverbull.backtest.GetCurrentIngestionRequest\x1a\x31.foreverbull.backtest.GetCurrentIngestionResponse\x12n\n\x0f\x43reateIngestion\x12,.foreverbull.backtest.CreateIngestionRequest\x1a-.foreverbull.backtest.CreateIngestionResponseB3Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3'
-)
+
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n,foreverbull/backtest/ingestion_service.proto\x12\x14\x66oreverbull.backtest\x1a$foreverbull/backtest/ingestion.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x1aGetCurrentIngestionRequest\"\x96\x01\n\x1bGetCurrentIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus\x12\x0c\n\x04size\x18\x03 \x01(\x03\"L\n\x16\x43reateIngestionRequest\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\"\x84\x01\n\x17\x43reateIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus2\xff\x01\n\x11IngestionServicer\x12z\n\x13GetCurrentIngestion\x12\x30.foreverbull.backtest.GetCurrentIngestionRequest\x1a\x31.foreverbull.backtest.GetCurrentIngestionResponse\x12n\n\x0f\x43reateIngestion\x12,.foreverbull.backtest.CreateIngestionRequest\x1a-.foreverbull.backtest.CreateIngestionResponseB3Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(
-    DESCRIPTOR, "foreverbull.backtest.ingestion_service_pb2", _globals
-)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.backtest.ingestion_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-    _globals["DESCRIPTOR"]._loaded_options = None
-    _globals["DESCRIPTOR"]._serialized_options = (
-        b"Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-    )
-    _globals["_GETCURRENTINGESTIONREQUEST"]._serialized_start = 141
-    _globals["_GETCURRENTINGESTIONREQUEST"]._serialized_end = 169
-    _globals["_GETCURRENTINGESTIONRESPONSE"]._serialized_start = 172
-    _globals["_GETCURRENTINGESTIONRESPONSE"]._serialized_end = 322
-    _globals["_CREATEINGESTIONREQUEST"]._serialized_start = 324
-    _globals["_CREATEINGESTIONREQUEST"]._serialized_end = 400
-    _globals["_CREATEINGESTIONRESPONSE"]._serialized_start = 403
-    _globals["_CREATEINGESTIONRESPONSE"]._serialized_end = 535
-    _globals["_INGESTIONSERVICER"]._serialized_start = 538
-    _globals["_INGESTIONSERVICER"]._serialized_end = 793
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pb'
+  _globals['_GETCURRENTINGESTIONREQUEST']._serialized_start=141
+  _globals['_GETCURRENTINGESTIONREQUEST']._serialized_end=169
+  _globals['_GETCURRENTINGESTIONRESPONSE']._serialized_start=172
+  _globals['_GETCURRENTINGESTIONRESPONSE']._serialized_end=322
+  _globals['_CREATEINGESTIONREQUEST']._serialized_start=324
+  _globals['_CREATEINGESTIONREQUEST']._serialized_end=400
+  _globals['_CREATEINGESTIONRESPONSE']._serialized_start=403
+  _globals['_CREATEINGESTIONRESPONSE']._serialized_end=535
+  _globals['_INGESTIONSERVICER']._serialized_start=538
+  _globals['_INGESTIONSERVICER']._serialized_end=793
 # @@protoc_insertion_point(module_scope)

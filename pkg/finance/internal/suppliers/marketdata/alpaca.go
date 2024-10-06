@@ -40,6 +40,11 @@ func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	return &storeAsset, nil
 }
 
+func (a *AlpacaClient) GetIndex(symbol string) ([]*pb.Asset, error) {
+	var storeAssets []*pb.Asset
+	return storeAssets, nil
+}
+
 func (a *AlpacaClient) GetOHLC(symbol string, start, end time.Time) ([]*pb.OHLC, error) {
 	var ohlcs []*pb.OHLC
 	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{

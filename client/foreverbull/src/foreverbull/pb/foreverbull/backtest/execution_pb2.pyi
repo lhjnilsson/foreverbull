@@ -5,37 +5,20 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import (
-    ClassVar as _ClassVar,
-    Iterable as _Iterable,
-    Mapping as _Mapping,
-    Optional as _Optional,
-    Union as _Union,
-)
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Execution(_message.Message):
-    __slots__ = (
-        "id",
-        "session",
-        "start_date",
-        "end_date",
-        "benchmark",
-        "symbols",
-        "statuses",
-    )
-
+    __slots__ = ("id", "session", "start_date", "end_date", "benchmark", "symbols", "statuses")
     class Status(_message.Message):
         __slots__ = ("status", "error", "occurred_at")
-
         class Status(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
             __slots__ = ()
             CREATED: _ClassVar[Execution.Status.Status]
             RUNNING: _ClassVar[Execution.Status.Status]
             COMPLETED: _ClassVar[Execution.Status.Status]
             FAILED: _ClassVar[Execution.Status.Status]
-
         CREATED: Execution.Status.Status
         RUNNING: Execution.Status.Status
         COMPLETED: Execution.Status.Status
@@ -46,13 +29,7 @@ class Execution(_message.Message):
         status: Execution.Status.Status
         error: str
         occurred_at: _timestamp_pb2.Timestamp
-        def __init__(
-            self,
-            status: _Optional[_Union[Execution.Status.Status, str]] = ...,
-            error: _Optional[str] = ...,
-            occurred_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        ) -> None: ...
-
+        def __init__(self, status: _Optional[_Union[Execution.Status.Status, str]] = ..., error: _Optional[str] = ..., occurred_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
     ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_FIELD_NUMBER: _ClassVar[int]
     START_DATE_FIELD_NUMBER: _ClassVar[int]
@@ -67,52 +44,10 @@ class Execution(_message.Message):
     benchmark: str
     symbols: _containers.RepeatedScalarFieldContainer[str]
     statuses: _containers.RepeatedCompositeFieldContainer[Execution.Status]
-    def __init__(
-        self,
-        id: _Optional[str] = ...,
-        session: _Optional[str] = ...,
-        start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
-        end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
-        benchmark: _Optional[str] = ...,
-        symbols: _Optional[_Iterable[str]] = ...,
-        statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ...,
-    ) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., benchmark: _Optional[str] = ..., symbols: _Optional[_Iterable[str]] = ..., statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ...) -> None: ...
 
 class Period(_message.Message):
-    __slots__ = (
-        "date",
-        "PNL",
-        "returns",
-        "portfolio_value",
-        "longs_count",
-        "shorts_count",
-        "long_value",
-        "short_value",
-        "starting_exposure",
-        "ending_exposure",
-        "long_exposure",
-        "short_exposure",
-        "capital_used",
-        "gross_leverage",
-        "net_leverage",
-        "starting_value",
-        "ending_value",
-        "starting_cash",
-        "ending_cash",
-        "max_drawdown",
-        "max_leverage",
-        "excess_return",
-        "treasury_period_return",
-        "algorithm_period_return",
-        "algo_volatility",
-        "sharpe",
-        "sortino",
-        "benchmark_period_return",
-        "benchmark_volatility",
-        "alpha",
-        "beta",
-        "positions",
-    )
+    __slots__ = ("date", "PNL", "returns", "portfolio_value", "longs_count", "shorts_count", "long_value", "short_value", "starting_exposure", "ending_exposure", "long_exposure", "short_exposure", "capital_used", "gross_leverage", "net_leverage", "starting_value", "ending_value", "starting_cash", "ending_cash", "max_drawdown", "max_leverage", "excess_return", "treasury_period_return", "algorithm_period_return", "algo_volatility", "sharpe", "sortino", "benchmark_period_return", "benchmark_volatility", "alpha", "beta", "positions")
     DATE_FIELD_NUMBER: _ClassVar[int]
     PNL_FIELD_NUMBER: _ClassVar[int]
     RETURNS_FIELD_NUMBER: _ClassVar[int]
@@ -177,38 +112,4 @@ class Period(_message.Message):
     alpha: float
     beta: float
     positions: _containers.RepeatedCompositeFieldContainer[_finance_pb2.Position]
-    def __init__(
-        self,
-        date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...,
-        PNL: _Optional[float] = ...,
-        returns: _Optional[float] = ...,
-        portfolio_value: _Optional[float] = ...,
-        longs_count: _Optional[int] = ...,
-        shorts_count: _Optional[int] = ...,
-        long_value: _Optional[float] = ...,
-        short_value: _Optional[float] = ...,
-        starting_exposure: _Optional[float] = ...,
-        ending_exposure: _Optional[float] = ...,
-        long_exposure: _Optional[float] = ...,
-        short_exposure: _Optional[float] = ...,
-        capital_used: _Optional[float] = ...,
-        gross_leverage: _Optional[float] = ...,
-        net_leverage: _Optional[float] = ...,
-        starting_value: _Optional[float] = ...,
-        ending_value: _Optional[float] = ...,
-        starting_cash: _Optional[float] = ...,
-        ending_cash: _Optional[float] = ...,
-        max_drawdown: _Optional[float] = ...,
-        max_leverage: _Optional[float] = ...,
-        excess_return: _Optional[float] = ...,
-        treasury_period_return: _Optional[float] = ...,
-        algorithm_period_return: _Optional[float] = ...,
-        algo_volatility: _Optional[float] = ...,
-        sharpe: _Optional[float] = ...,
-        sortino: _Optional[float] = ...,
-        benchmark_period_return: _Optional[float] = ...,
-        benchmark_volatility: _Optional[float] = ...,
-        alpha: _Optional[float] = ...,
-        beta: _Optional[float] = ...,
-        positions: _Optional[_Iterable[_Union[_finance_pb2.Position, _Mapping]]] = ...,
-    ) -> None: ...
+    def __init__(self, date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., PNL: _Optional[float] = ..., returns: _Optional[float] = ..., portfolio_value: _Optional[float] = ..., longs_count: _Optional[int] = ..., shorts_count: _Optional[int] = ..., long_value: _Optional[float] = ..., short_value: _Optional[float] = ..., starting_exposure: _Optional[float] = ..., ending_exposure: _Optional[float] = ..., long_exposure: _Optional[float] = ..., short_exposure: _Optional[float] = ..., capital_used: _Optional[float] = ..., gross_leverage: _Optional[float] = ..., net_leverage: _Optional[float] = ..., starting_value: _Optional[float] = ..., ending_value: _Optional[float] = ..., starting_cash: _Optional[float] = ..., ending_cash: _Optional[float] = ..., max_drawdown: _Optional[float] = ..., max_leverage: _Optional[float] = ..., excess_return: _Optional[float] = ..., treasury_period_return: _Optional[float] = ..., algorithm_period_return: _Optional[float] = ..., algo_volatility: _Optional[float] = ..., sharpe: _Optional[float] = ..., sortino: _Optional[float] = ..., benchmark_period_return: _Optional[float] = ..., benchmark_volatility: _Optional[float] = ..., alpha: _Optional[float] = ..., beta: _Optional[float] = ..., positions: _Optional[_Iterable[_Union[_finance_pb2.Position, _Mapping]]] = ...) -> None: ...

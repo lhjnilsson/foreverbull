@@ -10,9 +10,7 @@ class Request(_message.Message):
     DATA_FIELD_NUMBER: _ClassVar[int]
     task: str
     data: bytes
-    def __init__(
-        self, task: _Optional[str] = ..., data: _Optional[bytes] = ...
-    ) -> None: ...
+    def __init__(self, task: _Optional[str] = ..., data: _Optional[bytes] = ...) -> None: ...
 
 class Response(_message.Message):
     __slots__ = ("task", "data", "error")
@@ -22,12 +20,7 @@ class Response(_message.Message):
     task: str
     data: bytes
     error: str
-    def __init__(
-        self,
-        task: _Optional[str] = ...,
-        data: _Optional[bytes] = ...,
-        error: _Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, task: _Optional[str] = ..., data: _Optional[bytes] = ..., error: _Optional[str] = ...) -> None: ...
 
 class Date(_message.Message):
     __slots__ = ("year", "month", "day")
@@ -37,9 +30,4 @@ class Date(_message.Message):
     year: int
     month: int
     day: int
-    def __init__(
-        self,
-        year: _Optional[int] = ...,
-        month: _Optional[int] = ...,
-        day: _Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, year: _Optional[int] = ..., month: _Optional[int] = ..., day: _Optional[int] = ...) -> None: ...

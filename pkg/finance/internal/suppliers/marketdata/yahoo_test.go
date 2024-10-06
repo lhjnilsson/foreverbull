@@ -51,6 +51,31 @@ func (test *YahooTest) TestGetAsset() {
 	}
 }
 
+func (test *YahooTest) TestGetIndex() {
+	type TestCase struct {
+		Symbol      string
+		ExpectedErr error
+	}
+
+	testCases := []TestCase{
+		{"^FCHI", nil},
+		{"^DJI", nil},
+		{"^OMX", nil},
+	}
+	for _, tc := range testCases {
+		assets, err := test.client.GetIndex(tc.Symbol)
+		fmt.Println(assets)
+		if tc.ExpectedErr != nil {
+			test.Error(err)
+			test.Equal(tc.ExpectedErr.Error(), err.Error())
+		} else {
+			test.NoError(err)
+			test.NotNil(assets)
+			test.NotEqual(0, len(assets))
+		}
+	}
+}
+
 func (test *YahooTest) TestGetOHLC() {
 	type TestCase struct {
 		Symbol         string

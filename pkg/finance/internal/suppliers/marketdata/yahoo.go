@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -105,6 +107,63 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 		Name:   data.QuoteSummary.Result[0].QuoteType.LongName,
 	}
 	return &asset, nil
+}
+
+type IndexResponse struct {
+	Summary struct {
+		Result []struct {
+			Components struct {
+				Components []string `json:"components"`
+			} `json:"components"`
+		} `json:"result"`
+	} `json:"quoteSummary"`
+}
+
+func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
+	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
+	resp, err := y.doRequest(url, "modules=components%2CsummaryDetail")
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", err)
+	}
+
+	result := IndexResponse{}
+	defer resp.Body.Close()
+
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+	assets := make([]*pb.Asset, 0)
+	assetChan := make(chan *pb.Asset)
+
+	g, _ := errgroup.WithContext(context.Background())
+	for _, component := range result.Summary.Result[0].Components.Components {
+		g.Go(func() error {
+			a, err := y.GetAsset(component)
+			if err != nil {
+				return err
+			}
+			assetChan <- a
+			return nil
+		})
+	}
+	g.Go(func() error {
+		a, err := y.GetAsset(symbol)
+		if err != nil {
+			return err
+		}
+		assetChan <- a
+		return nil
+	})
+	go func() {
+		for a := range assetChan {
+			assets = append(assets, a)
+		}
+	}()
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return assets, nil
 }
 
 type OHLCResponse struct {
