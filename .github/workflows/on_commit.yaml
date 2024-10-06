@@ -150,8 +150,6 @@ jobs:
   go-module-tests:
     needs:
       [
-        lint-unit-tests,
-        python-lint-unit-tests,
         build-docker-foreverbull,
         build-docker-zipline,
 #        build-docker-python,
