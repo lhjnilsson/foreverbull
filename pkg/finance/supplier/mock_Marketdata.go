@@ -37,6 +37,29 @@ func (_m *MockMarketdata) GetAsset(symbol string) (*pb.Asset, error) {
 	return r0, r1
 }
 
+// GetIndex provides a mock function with given fields: symbol
+func (_m *MockMarketdata) GetIndex(symbol string) ([]*pb.Asset, error) {
+	ret := _m.Called(symbol)
+
+	var r0 []*pb.Asset
+	if rf, ok := ret.Get(0).(func(string) []*pb.Asset); ok {
+		r0 = rf(symbol)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*pb.Asset)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(symbol)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetOHLC provides a mock function with given fields: symbol, start, end
 func (_m *MockMarketdata) GetOHLC(symbol string, start time.Time, end time.Time) ([]*pb.OHLC, error) {
 	ret := _m.Called(symbol, start, end)

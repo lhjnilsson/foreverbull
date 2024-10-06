@@ -5,13 +5,7 @@ from foreverbull.pb.foreverbull.backtest import ingestion_pb2 as _ingestion_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import (
-    ClassVar as _ClassVar,
-    Iterable as _Iterable,
-    Mapping as _Mapping,
-    Optional as _Optional,
-    Union as _Union,
-)
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -21,17 +15,13 @@ class DownloadIngestionRequest(_message.Message):
     OBJECT_FIELD_NUMBER: _ClassVar[int]
     bucket: str
     object: str
-    def __init__(
-        self, bucket: _Optional[str] = ..., object: _Optional[str] = ...
-    ) -> None: ...
+    def __init__(self, bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
 
 class DownloadIngestionResponse(_message.Message):
     __slots__ = ("ingestion",)
     INGESTION_FIELD_NUMBER: _ClassVar[int]
     ingestion: _ingestion_pb2.Ingestion
-    def __init__(
-        self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...
-    ) -> None: ...
+    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...) -> None: ...
 
 class IngestRequest(_message.Message):
     __slots__ = ("ingestion", "bucket", "object")
@@ -41,12 +31,7 @@ class IngestRequest(_message.Message):
     ingestion: _ingestion_pb2.Ingestion
     bucket: str
     object: str
-    def __init__(
-        self,
-        ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...,
-        bucket: _Optional[str] = ...,
-        object: _Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ..., bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
 
 class IngestResponse(_message.Message):
     __slots__ = ()
@@ -56,17 +41,13 @@ class RunRequest(_message.Message):
     __slots__ = ("backtest",)
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
-    def __init__(
-        self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...
-    ) -> None: ...
+    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class RunResponse(_message.Message):
     __slots__ = ("backtest",)
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
-    def __init__(
-        self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...
-    ) -> None: ...
+    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class GetCurrentPeriodRequest(_message.Message):
     __slots__ = ()
@@ -78,19 +59,13 @@ class GetCurrentPeriodResponse(_message.Message):
     PORTFOLIO_FIELD_NUMBER: _ClassVar[int]
     is_running: bool
     portfolio: _finance_pb2.Portfolio
-    def __init__(
-        self,
-        is_running: bool = ...,
-        portfolio: _Optional[_Union[_finance_pb2.Portfolio, _Mapping]] = ...,
-    ) -> None: ...
+    def __init__(self, is_running: bool = ..., portfolio: _Optional[_Union[_finance_pb2.Portfolio, _Mapping]] = ...) -> None: ...
 
 class PlaceOrdersAndContinueRequest(_message.Message):
     __slots__ = ("orders",)
     ORDERS_FIELD_NUMBER: _ClassVar[int]
     orders: _containers.RepeatedCompositeFieldContainer[_finance_pb2.Order]
-    def __init__(
-        self, orders: _Optional[_Iterable[_Union[_finance_pb2.Order, _Mapping]]] = ...
-    ) -> None: ...
+    def __init__(self, orders: _Optional[_Iterable[_Union[_finance_pb2.Order, _Mapping]]] = ...) -> None: ...
 
 class PlaceOrdersAndContinueResponse(_message.Message):
     __slots__ = ()
@@ -108,10 +83,7 @@ class GetResultResponse(_message.Message):
     __slots__ = ("periods",)
     PERIODS_FIELD_NUMBER: _ClassVar[int]
     periods: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Period]
-    def __init__(
-        self,
-        periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...,
-    ) -> None: ...
+    def __init__(self, periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...) -> None: ...
 
 class StopRequest(_message.Message):
     __slots__ = ()

@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package foreverbull.finance;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/finance/pb";
+
+import "foreverbull/common.proto";
+import "foreverbull/finance/finance.proto";
+
+
+message GetAssetRequest {
+    string symbol = 1;
+}
+
+message GetAssetResponse {
+    foreverbull.finance.Asset asset = 1;
+}
+
+message GetIndexRequest {
+    string symbol = 1;
+}
+
+message GetIndexResponse {
+    repeated foreverbull.finance.Asset assets = 1;
+}
+
+message DownloadHistoricalDataRequest {
+    string symbol = 1;
+    foreverbull.common.Date start_date = 2;
+    foreverbull.common.Date end_date = 3;
+}
+
+message DownloadHistoricalDataResponse {
+}
+
+
+service Finance {
+    rpc GetAsset(GetAssetRequest) returns (GetAssetResponse) {}
+    rpc GetIndex(GetIndexRequest) returns (GetIndexResponse) {}
+    rpc DownloadHistoricalData(DownloadHistoricalDataRequest) returns (DownloadHistoricalDataResponse) {}
+}

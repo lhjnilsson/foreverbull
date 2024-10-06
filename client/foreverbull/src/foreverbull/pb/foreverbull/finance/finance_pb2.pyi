@@ -2,13 +2,7 @@ from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import (
-    ClassVar as _ClassVar,
-    Iterable as _Iterable,
-    Mapping as _Mapping,
-    Optional as _Optional,
-    Union as _Union,
-)
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -18,9 +12,7 @@ class Asset(_message.Message):
     NAME_FIELD_NUMBER: _ClassVar[int]
     symbol: str
     name: str
-    def __init__(
-        self, symbol: _Optional[str] = ..., name: _Optional[str] = ...
-    ) -> None: ...
+    def __init__(self, symbol: _Optional[str] = ..., name: _Optional[str] = ...) -> None: ...
 
 class OHLC(_message.Message):
     __slots__ = ("symbol", "timestamp", "open", "high", "low", "close", "volume")
@@ -38,16 +30,7 @@ class OHLC(_message.Message):
     low: float
     close: float
     volume: int
-    def __init__(
-        self,
-        symbol: _Optional[str] = ...,
-        timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        open: _Optional[float] = ...,
-        high: _Optional[float] = ...,
-        low: _Optional[float] = ...,
-        close: _Optional[float] = ...,
-        volume: _Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, symbol: _Optional[str] = ..., timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., open: _Optional[float] = ..., high: _Optional[float] = ..., low: _Optional[float] = ..., close: _Optional[float] = ..., volume: _Optional[int] = ...) -> None: ...
 
 class Position(_message.Message):
     __slots__ = ("symbol", "amount", "cost_basis", "last_sale_price", "last_sale_date")
@@ -61,28 +44,10 @@ class Position(_message.Message):
     cost_basis: float
     last_sale_price: float
     last_sale_date: _timestamp_pb2.Timestamp
-    def __init__(
-        self,
-        symbol: _Optional[str] = ...,
-        amount: _Optional[int] = ...,
-        cost_basis: _Optional[float] = ...,
-        last_sale_price: _Optional[float] = ...,
-        last_sale_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-    ) -> None: ...
+    def __init__(self, symbol: _Optional[str] = ..., amount: _Optional[int] = ..., cost_basis: _Optional[float] = ..., last_sale_price: _Optional[float] = ..., last_sale_date: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class Portfolio(_message.Message):
-    __slots__ = (
-        "timestamp",
-        "cash_flow",
-        "starting_cash",
-        "portfolio_value",
-        "pnl",
-        "returns",
-        "cash",
-        "positions_value",
-        "positions_exposure",
-        "positions",
-    )
+    __slots__ = ("timestamp", "cash_flow", "starting_cash", "portfolio_value", "pnl", "returns", "cash", "positions_value", "positions_exposure", "positions")
     TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
     CASH_FLOW_FIELD_NUMBER: _ClassVar[int]
     STARTING_CASH_FIELD_NUMBER: _ClassVar[int]
@@ -103,19 +68,7 @@ class Portfolio(_message.Message):
     positions_value: float
     positions_exposure: float
     positions: _containers.RepeatedCompositeFieldContainer[Position]
-    def __init__(
-        self,
-        timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...,
-        cash_flow: _Optional[float] = ...,
-        starting_cash: _Optional[float] = ...,
-        portfolio_value: _Optional[float] = ...,
-        pnl: _Optional[float] = ...,
-        returns: _Optional[float] = ...,
-        cash: _Optional[float] = ...,
-        positions_value: _Optional[float] = ...,
-        positions_exposure: _Optional[float] = ...,
-        positions: _Optional[_Iterable[_Union[Position, _Mapping]]] = ...,
-    ) -> None: ...
+    def __init__(self, timestamp: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., cash_flow: _Optional[float] = ..., starting_cash: _Optional[float] = ..., portfolio_value: _Optional[float] = ..., pnl: _Optional[float] = ..., returns: _Optional[float] = ..., cash: _Optional[float] = ..., positions_value: _Optional[float] = ..., positions_exposure: _Optional[float] = ..., positions: _Optional[_Iterable[_Union[Position, _Mapping]]] = ...) -> None: ...
 
 class Order(_message.Message):
     __slots__ = ("symbol", "amount")
@@ -123,6 +76,4 @@ class Order(_message.Message):
     AMOUNT_FIELD_NUMBER: _ClassVar[int]
     symbol: str
     amount: int
-    def __init__(
-        self, symbol: _Optional[str] = ..., amount: _Optional[int] = ...
-    ) -> None: ...
+    def __init__(self, symbol: _Optional[str] = ..., amount: _Optional[int] = ...) -> None: ...

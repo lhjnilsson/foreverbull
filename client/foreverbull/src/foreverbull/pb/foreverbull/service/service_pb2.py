@@ -9,38 +9,35 @@ from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
-
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC, 5, 27, 2, "", "foreverbull/service/service.proto"
+    _runtime_version.Domain.PUBLIC,
+    5,
+    27,
+    2,
+    '',
+    'foreverbull/service/service.proto'
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-from foreverbull.pb.foreverbull.service import (
-    worker_pb2 as foreverbull_dot_service_dot_worker__pb2,
-)
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
+from foreverbull.pb.foreverbull.service import worker_pb2 as foreverbull_dot_service_dot_worker__pb2
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n!foreverbull/service/service.proto\x12\x13\x66oreverbull.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a foreverbull/service/worker.proto"\xd3\x02\n\x07Service\x12\r\n\x05Image\x18\x01 \x01(\t\x12\x31\n\talgorithm\x18\x02 \x01(\x0b\x32\x1e.foreverbull.service.Algorithm\x12\x35\n\x08statuses\x18\x03 \x03(\x0b\x32#.foreverbull.service.Service.Status\x1a\xce\x01\n\x06Status\x12:\n\x06status\x18\x01 \x01(\x0e\x32*.foreverbull.service.Service.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\x12.\n\nOccurredAt\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp":\n\x06Status\x12\x0b\n\x07\x43REATED\x10\x00\x12\r\n\tINTERVIEW\x10\x01\x12\t\n\x05READY\x10\x02\x12\t\n\x05\x45RROR\x10\x03\x42\x08\n\x06_errorB2Z0github.com/lhjnilsson/foreverbull/pkg/service/pbb\x06proto3'
-)
+
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!foreverbull/service/service.proto\x12\x13\x66oreverbull.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a foreverbull/service/worker.proto\"\xd3\x02\n\x07Service\x12\r\n\x05Image\x18\x01 \x01(\t\x12\x31\n\talgorithm\x18\x02 \x01(\x0b\x32\x1e.foreverbull.service.Algorithm\x12\x35\n\x08statuses\x18\x03 \x03(\x0b\x32#.foreverbull.service.Service.Status\x1a\xce\x01\n\x06Status\x12:\n\x06status\x18\x01 \x01(\x0e\x32*.foreverbull.service.Service.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\x12.\n\nOccurredAt\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\":\n\x06Status\x12\x0b\n\x07\x43REATED\x10\x00\x12\r\n\tINTERVIEW\x10\x01\x12\t\n\x05READY\x10\x02\x12\t\n\x05\x45RROR\x10\x03\x42\x08\n\x06_errorB2Z0github.com/lhjnilsson/foreverbull/pkg/service/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(
-    DESCRIPTOR, "foreverbull.service.service_pb2", _globals
-)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.service.service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-    _globals["DESCRIPTOR"]._loaded_options = None
-    _globals["DESCRIPTOR"]._serialized_options = (
-        b"Z0github.com/lhjnilsson/foreverbull/pkg/service/pb"
-    )
-    _globals["_SERVICE"]._serialized_start = 126
-    _globals["_SERVICE"]._serialized_end = 465
-    _globals["_SERVICE_STATUS"]._serialized_start = 259
-    _globals["_SERVICE_STATUS"]._serialized_end = 465
-    _globals["_SERVICE_STATUS_STATUS"]._serialized_start = 397
-    _globals["_SERVICE_STATUS_STATUS"]._serialized_end = 455
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'Z0github.com/lhjnilsson/foreverbull/pkg/service/pb'
+  _globals['_SERVICE']._serialized_start=126
+  _globals['_SERVICE']._serialized_end=465
+  _globals['_SERVICE_STATUS']._serialized_start=259
+  _globals['_SERVICE_STATUS']._serialized_end=465
+  _globals['_SERVICE_STATUS_STATUS']._serialized_start=397
+  _globals['_SERVICE_STATUS_STATUS']._serialized_end=455
 # @@protoc_insertion_point(module_scope)

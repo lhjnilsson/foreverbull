@@ -49,17 +49,6 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle) error {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					return nil
-				},
-				OnStop: func(ctx context.Context) error {
-					return nil
-				},
-			})
-			return nil
-		},
 		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {

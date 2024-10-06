@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from foreverbull.pb.foreverbull.service import worker_service_pb2 as foreverbull_dot_service_dot_worker__service__pb2
+from foreverbull.pb.foreverbull.finance import finance_service_pb2 as foreverbull_dot_finance_dot_finance__service__pb2
 
 GRPC_GENERATED_VERSION = '1.66.1'
 GRPC_VERSION = grpc.__version__
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in foreverbull/service/worker_service_pb2_grpc.py depends on'
+        + f' but the generated code in foreverbull/finance/finance_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class WorkerStub(object):
+class FinanceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -34,75 +34,75 @@ class WorkerStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetServiceInfo = channel.unary_unary(
-                '/foreverbull.service.Worker/GetServiceInfo',
-                request_serializer=foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoResponse.FromString,
+        self.GetAsset = channel.unary_unary(
+                '/foreverbull.finance.Finance/GetAsset',
+                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.FromString,
                 _registered_method=True)
-        self.ConfigureExecution = channel.unary_unary(
-                '/foreverbull.service.Worker/ConfigureExecution',
-                request_serializer=foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionResponse.FromString,
+        self.GetIndex = channel.unary_unary(
+                '/foreverbull.finance.Finance/GetIndex',
+                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.FromString,
                 _registered_method=True)
-        self.RunExecution = channel.unary_unary(
-                '/foreverbull.service.Worker/RunExecution',
-                request_serializer=foreverbull_dot_service_dot_worker__service__pb2.RunExecutionRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_service_dot_worker__service__pb2.RunExecutionResponse.FromString,
+        self.DownloadHistoricalData = channel.unary_unary(
+                '/foreverbull.finance.Finance/DownloadHistoricalData',
+                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.FromString,
                 _registered_method=True)
 
 
-class WorkerServicer(object):
+class FinanceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def GetServiceInfo(self, request, context):
+    def GetAsset(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ConfigureExecution(self, request, context):
+    def GetIndex(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RunExecution(self, request, context):
+    def DownloadHistoricalData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_WorkerServicer_to_server(servicer, server):
+def add_FinanceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetServiceInfo': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetServiceInfo,
-                    request_deserializer=foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoRequest.FromString,
-                    response_serializer=foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoResponse.SerializeToString,
+            'GetAsset': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAsset,
+                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.SerializeToString,
             ),
-            'ConfigureExecution': grpc.unary_unary_rpc_method_handler(
-                    servicer.ConfigureExecution,
-                    request_deserializer=foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionRequest.FromString,
-                    response_serializer=foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionResponse.SerializeToString,
+            'GetIndex': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetIndex,
+                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.SerializeToString,
             ),
-            'RunExecution': grpc.unary_unary_rpc_method_handler(
-                    servicer.RunExecution,
-                    request_deserializer=foreverbull_dot_service_dot_worker__service__pb2.RunExecutionRequest.FromString,
-                    response_serializer=foreverbull_dot_service_dot_worker__service__pb2.RunExecutionResponse.SerializeToString,
+            'DownloadHistoricalData': grpc.unary_unary_rpc_method_handler(
+                    servicer.DownloadHistoricalData,
+                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'foreverbull.service.Worker', rpc_method_handlers)
+            'foreverbull.finance.Finance', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('foreverbull.service.Worker', rpc_method_handlers)
+    server.add_registered_method_handlers('foreverbull.finance.Finance', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class Worker(object):
+class Finance(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def GetServiceInfo(request,
+    def GetAsset(request,
             target,
             options=(),
             channel_credentials=None,
@@ -115,9 +115,9 @@ class Worker(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.service.Worker/GetServiceInfo',
-            foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoRequest.SerializeToString,
-            foreverbull_dot_service_dot_worker__service__pb2.GetServiceInfoResponse.FromString,
+            '/foreverbull.finance.Finance/GetAsset',
+            foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.SerializeToString,
+            foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -129,7 +129,7 @@ class Worker(object):
             _registered_method=True)
 
     @staticmethod
-    def ConfigureExecution(request,
+    def GetIndex(request,
             target,
             options=(),
             channel_credentials=None,
@@ -142,9 +142,9 @@ class Worker(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.service.Worker/ConfigureExecution',
-            foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionRequest.SerializeToString,
-            foreverbull_dot_service_dot_worker__service__pb2.ConfigureExecutionResponse.FromString,
+            '/foreverbull.finance.Finance/GetIndex',
+            foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.SerializeToString,
+            foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -156,7 +156,7 @@ class Worker(object):
             _registered_method=True)
 
     @staticmethod
-    def RunExecution(request,
+    def DownloadHistoricalData(request,
             target,
             options=(),
             channel_credentials=None,
@@ -169,9 +169,9 @@ class Worker(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.service.Worker/RunExecution',
-            foreverbull_dot_service_dot_worker__service__pb2.RunExecutionRequest.SerializeToString,
-            foreverbull_dot_service_dot_worker__service__pb2.RunExecutionResponse.FromString,
+            '/foreverbull.finance.Finance/DownloadHistoricalData',
+            foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.SerializeToString,
+            foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -8,13 +8,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
 )
 
 const Stream = "finance"
@@ -54,6 +57,11 @@ var Module = fx.Options(
 		},
 	),
 	fx.Invoke(
+		func(s *grpc.Server, pgx *pgxpool.Pool, md supplier.Marketdata) error {
+			server := servicer.NewFinanceServer(pgx, md)
+			pb.RegisterFinanceServer(s, server)
+			return nil
+		},
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
