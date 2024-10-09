@@ -19,7 +19,7 @@ class Storage:
         address = env.get("STORAGE_ENDPOINT", "localhost:9000")
         http = urllib3.PoolManager()
         try:
-            http.request('GET', f"http://{address}", timeout=0.1)
+            http.request("GET", f"http://{address}", timeout=0.1)
         except (MaxRetryError, NewConnectionError):
             address = "minio:9000"
 

@@ -5,10 +5,10 @@ from typing import Callable, Concatenate
 import grpc
 
 from foreverbull.pb.foreverbull.finance import (
-    finance_pb2,
     finance_service_pb2,
     finance_service_pb2_grpc,
 )
+
 
 def finance_servicer[R, **P](
     f: Callable[Concatenate[finance_service_pb2_grpc.FinanceStub, P], R],
@@ -22,6 +22,7 @@ def finance_servicer[R, **P](
 
     return wrapper
 
+
 @finance_servicer
 def get_index(
     servicer: finance_service_pb2_grpc.FinanceStub,
@@ -32,7 +33,8 @@ def get_index(
     )
     return servicer.GetIndex(req)
 
-from datetime import date
+
+
 
 @finance_servicer
 def download_historical_data(
