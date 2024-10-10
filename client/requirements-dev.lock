@@ -11,6 +11,9 @@
 
 -e file:example_algorithms
 -e file:foreverbull
+    # via foreverbull-cli
+    # via foreverbull-testing
+    # via foreverbull-zipline
 -e file:foreverbull_cli
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
