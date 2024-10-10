@@ -125,6 +125,7 @@ numpy==1.26.4
     # via tables
     # via yfinance
     # via zipline-reloaded
+packaging==24.1
     # via bcolz-zipline
     # via pytest
     # via statsmodels
