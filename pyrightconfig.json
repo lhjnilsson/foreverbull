@@ -6,7 +6,11 @@
   "executionEnvironments": [
     {
       "root": ".",
-      "extraPaths": ["client/foreverbull/src", "client/foreverbull_zipline/src"]
+      "extraPaths": [
+        "client/foreverbull/src",
+        "client/foreverbull_zipline/src",
+        "client/foreverbull_cli/src/foreverbull_cli"
+      ]
     }
   ]
 }

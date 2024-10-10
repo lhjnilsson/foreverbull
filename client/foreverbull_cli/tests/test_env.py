@@ -6,7 +6,7 @@ from unittest.mock import PropertyMock, patch
 
 import docker.errors
 import pytest
-from foreverbull.cli.env import env
+from foreverbull_cli.env import env
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from typer.testing import CliRunner
 
