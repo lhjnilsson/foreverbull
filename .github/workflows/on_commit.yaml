@@ -62,6 +62,9 @@ jobs:
       - name: Unittest foreverbull_testing
         run: |
           rye test -- foreverbull_testing/
+      - name: Unittest foreverbull_cli
+        run: |
+          rye test -- foreverbull_cli/
       - name: Integration Tests foreverbull
         run: |
           rye test -- tests/integration/
@@ -224,6 +227,8 @@ jobs:
         run: rye build --pyproject foreverbull/pyproject.toml
       - name: build foreverbull_testing
         run: rye build --pyproject foreverbull_testing/pyproject.toml
+      - name: build foreverbull_cli
+        run: rye build --pyproject foreverbull_cli/pyproject.toml
       - name: Upload foreverbull
         uses: actions/upload-artifact@v4
         with:
@@ -235,6 +240,12 @@ jobs:
         with:
           name: foreverbull_testing-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
+          retention-days: 1
+      - name: Upload foreverbull_cli
+        uses: actions/upload-artifact@v4
+        with:
+          name: foreverbull_cli-0.0.1-py3-none-any.whl
+          path: client/dist/foreverbull_cli-0.0.1-py3-none-any.whl
           retention-days: 1
       - name: Upload example algorithms
         uses: actions/upload-artifact@v4
@@ -311,6 +322,11 @@ jobs:
         with:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: /tmp
+      - name: Download foreverbull-cli pypi package
+        uses: actions/download-artifact@v4
+        with:
+          name: foreverbull_cli-0.0.1-py3-none-any.whl
+          path: /tmp
       - name: Download foreverbull_testing pypi package
         uses: actions/download-artifact@v4
         with:
@@ -328,12 +344,13 @@ jobs:
       - name: Install foreverbull and foreverbull_testing
         run: |
           pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
+          pip install /tmp/foreverbull_cli-0.0.1-py3-none-any.whl
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          foreverbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
+          fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
       - name: create backtest
-        run: foreverbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
+        run: fbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
       - name: Run backtest as pytest
         working-directory: /tmp/example_algorithms
         env:

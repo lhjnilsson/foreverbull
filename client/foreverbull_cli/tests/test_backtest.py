@@ -2,7 +2,7 @@ import traceback
 from datetime import date, datetime
 from unittest.mock import patch
 
-from foreverbull.cli.backtest import backtest
+from foreverbull_cli.backtest import backtest
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date, to_proto_timestamp
 from typer.testing import CliRunner

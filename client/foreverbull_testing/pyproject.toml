@@ -5,6 +5,9 @@ description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
 dependencies = ["pytest", "testcontainers", "yfinance"]
 
+[tool.rye.dependencies]
+foreverbull = { path = "../foreverbull" }
+
 [project.entry-points.pytest11]
 foreverbull = "foreverbull_testing.plugin"
 

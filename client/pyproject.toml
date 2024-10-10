@@ -16,6 +16,7 @@ dev-dependencies = [
 [tool.rye.workspace]
 packages = [
   "foreverbull",
+  "foreverbull_cli",
   "foreverbull_testing",
   "foreverbull_zipline",
   "example_algorithms",
