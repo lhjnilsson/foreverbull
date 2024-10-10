@@ -22,9 +22,6 @@ dependencies = [
   "grpcio>=1.66.1",
 ]
 
-[project.scripts]
-foreverbull = "foreverbull.cli:cli"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/foreverbull"]
 
