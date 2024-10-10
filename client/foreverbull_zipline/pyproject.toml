@@ -5,4 +5,4 @@ dependencies = []
 
 [tool.rye]
 managed = true
-dev-dependencies = []
+dev-dependencies = ["zipline-reloaded"]

@@ -14,16 +14,23 @@
 -e file:foreverbull_cli
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
+alembic==1.13.3
+    # via zipline-reloaded
 argon2-cffi==23.1.0
     # via minio
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 attrs==23.2.0
     # via pytest
+bcolz-zipline==1.2.12
+    # via zipline-reloaded
 beautifulsoup4==4.12.3
     # via yfinance
 blosc2==2.7.0
     # via tables
+bottleneck==1.4.0
+    # via empyrical-reloaded
+    # via zipline-reloaded
 certifi==2024.6.2
     # via minio
     # via requests
@@ -35,12 +42,17 @@ charset-normalizer==3.3.2
 click==8.1.7
     # via foreverbull
     # via typer
+    # via zipline-reloaded
 cython==3.0.10
     # via foreverbull
 docker==7.1.0
     # via foreverbull
     # via foreverbull-cli
     # via testcontainers
+empyrical-reloaded==0.5.11
+    # via zipline-reloaded
+exchange-calendars==4.5.6
+    # via zipline-reloaded
 frozendict==2.4.4
     # via yfinance
 greenlet==3.0.3
@@ -51,47 +63,87 @@ grpcio==1.66.1
     # via grpcio-tools
 grpcio-testing==1.66.1
 grpcio-tools==1.66.1
+h5py==3.12.1
+    # via zipline-reloaded
 html5lib==1.1
     # via yfinance
 idna==3.7
     # via requests
 iniconfig==2.0.0
     # via pytest
+intervaltree==3.1.0
+    # via zipline-reloaded
+iso3166==2.1.1
+    # via zipline-reloaded
+iso4217==1.12.20240625
+    # via zipline-reloaded
+korean-lunar-calendar==0.3.1
+    # via exchange-calendars
+lru-dict==1.3.0
+    # via zipline-reloaded
 lxml==5.2.2
     # via pandas-datareader
     # via yfinance
+mako==1.3.5
+    # via alembic
 markdown-it-py==3.0.0
     # via rich
+markupsafe==3.0.1
+    # via mako
 mdurl==0.1.2
     # via markdown-it-py
 minio==7.2.7
     # via foreverbull
 msgpack==1.0.8
     # via blosc2
+multipledispatch==1.0.0
+    # via zipline-reloaded
 multitasking==0.0.11
     # via yfinance
 ndindex==1.8
     # via blosc2
+networkx==3.3
+    # via zipline-reloaded
 numexpr==2.10.1
     # via blosc2
     # via tables
+    # via zipline-reloaded
 numpy==1.26.4
+    # via bcolz-zipline
     # via blosc2
+    # via bottleneck
+    # via empyrical-reloaded
+    # via exchange-calendars
     # via foreverbull
+    # via h5py
     # via numexpr
     # via pandas
+    # via patsy
+    # via scipy
+    # via statsmodels
     # via tables
     # via yfinance
+    # via zipline-reloaded
 packaging==24.1
+    # via bcolz-zipline
     # via pytest
+    # via statsmodels
     # via tables
 pandas==2.2.2
+    # via empyrical-reloaded
+    # via exchange-calendars
     # via foreverbull
     # via pandas-datareader
+    # via statsmodels
     # via yfinance
+    # via zipline-reloaded
 pandas-datareader==0.10.0
     # via foreverbull
+patsy==0.5.6
+    # via statsmodels
+    # via zipline-reloaded
 peewee==3.17.3
+    # via empyrical-reloaded
     # via yfinance
 platformdirs==4.2.2
     # via yfinance
@@ -114,6 +166,8 @@ pycryptodome==3.20.0
     # via minio
 pygments==2.18.0
     # via rich
+pyluach==2.2.0
+    # via exchange-calendars
 pynng==0.8.0
     # via foreverbull
 pytest==6.2.5
@@ -122,15 +176,24 @@ pytest==6.2.5
 pytest-repeat==0.9.3
 python-dateutil==2.9.0.post0
     # via pandas
+    # via zipline-reloaded
+python-interface==1.6.1
+    # via zipline-reloaded
 pytz==2024.1
     # via pandas
     # via yfinance
+    # via zipline-reloaded
 requests==2.31.0
     # via docker
     # via pandas-datareader
     # via yfinance
+    # via zipline-reloaded
 rich==13.7.1
     # via typer
+scipy==1.14.1
+    # via empyrical-reloaded
+    # via statsmodels
+    # via zipline-reloaded
 setuptools==70.2.0
     # via foreverbull
     # via grpcio-tools
@@ -138,29 +201,44 @@ shellingham==1.5.4
     # via typer
 six==1.16.0
     # via html5lib
+    # via patsy
     # via python-dateutil
+    # via python-interface
+    # via zipline-reloaded
 sniffio==1.3.1
     # via pynng
+sortedcontainers==2.4.0
+    # via intervaltree
 soupsieve==2.5
     # via beautifulsoup4
 sqlalchemy==2.0.31
+    # via alembic
     # via foreverbull
+    # via zipline-reloaded
+statsmodels==0.14.4
+    # via zipline-reloaded
 tables==3.9.1
     # via foreverbull
+    # via zipline-reloaded
 testcontainers==4.6.0
     # via foreverbull-testing
 toml==0.10.2
     # via pytest
+toolz==1.0.0
+    # via exchange-calendars
+    # via zipline-reloaded
 typer==0.12.3
     # via foreverbull-cli
 types-protobuf==5.27.0.20240626
     # via foreverbull
 typing-extensions==4.12.2
+    # via alembic
     # via minio
     # via sqlalchemy
     # via testcontainers
     # via typer
 tzdata==2024.1
+    # via exchange-calendars
     # via pandas
 urllib3==2.2.2
     # via docker
@@ -173,3 +251,4 @@ wrapt==1.16.0
     # via testcontainers
 yfinance==0.2.40
     # via foreverbull-testing
+zipline-reloaded==3.1
