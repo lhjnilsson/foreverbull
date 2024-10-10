@@ -1,0 +1,9 @@
+[project]
+name = "foreverbull_cli"
+version = "0.0.1"
+description = "foreverbull"
+authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
+dependencies = ["typer[all]>=0.9.0,<1.0.0"]
+
+[project.scripts]
+fb = "foreverbull_cli.main:main"

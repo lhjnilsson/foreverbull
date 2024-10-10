@@ -11,6 +11,7 @@
 
 -e file:example_algorithms
 -e file:foreverbull
+-e file:foreverbull_cli
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
 annotated-types==0.7.0
@@ -149,7 +150,7 @@ tables==3.9.1
 testcontainers==4.8.0
     # via foreverbull-testing
 typer==0.12.3
-    # via foreverbull
+    # via foreverbull-cli
 types-protobuf==5.27.0.20240626
     # via foreverbull
 typing-extensions==4.12.2

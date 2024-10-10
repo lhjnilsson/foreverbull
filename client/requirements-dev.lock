@@ -11,6 +11,7 @@
 
 -e file:example_algorithms
 -e file:foreverbull
+-e file:foreverbull_cli
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
 alembic==1.13.1
@@ -253,7 +254,7 @@ toolz==0.12.1
     # via exchange-calendars
     # via zipline-reloaded
 typer==0.12.3
-    # via foreverbull
+    # via foreverbull-cli
 types-protobuf==5.27.0.20240626
     # via foreverbull
 typing-extensions==4.12.2
