@@ -97,7 +97,7 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 			return nil, err
 		}
 		b.StartDate = pb_internal.GoTimeToDate(start)
-		if !e.Valid {
+		if e.Valid {
 			b.EndDate = pb_internal.GoTimeToDate(e.Time)
 		}
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(t)
@@ -151,7 +151,7 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 		status := pb.Backtest_Status{}
 		b := pb.Backtest{}
 		start := time.Time{}
-		end := time.Time{}
+		end := pgtype.Date{}
 		occurred_at := time.Time{}
 		err = rows.Scan(
 			&b.Name, &start, &end, &b.Benchmark,
@@ -162,7 +162,9 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 			return nil, err
 		}
 		b.StartDate = pb_internal.GoTimeToDate(start)
-		b.EndDate = pb_internal.GoTimeToDate(end)
+		if end.Valid {
+			b.EndDate = pb_internal.GoTimeToDate(end.Time)
+		}
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurred_at)
 		inReturnSlice = false
 		for i := range backtests {

@@ -148,7 +148,7 @@ func (s *ExecutionTest) TestList() {
 	s.NoError(err)
 
 	_, err = db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, nil, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 
 	executions, err := db.List(ctx)

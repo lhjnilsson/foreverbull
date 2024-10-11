@@ -58,6 +58,7 @@ func (test *BacktestTest) TestCreate() {
 		test.Equal(fmt.Sprintf("backtest_%d", i), backtest.Name)
 		test.Len(backtest.Statuses, 1)
 		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+		test.Equal(end, backtest.EndDate)
 	}
 }
 
@@ -125,7 +126,7 @@ func (test *BacktestTest) TestList() {
 	_, err := db.Create(ctx, "backtest1", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
-	_, err = db.Create(ctx, "backtest2", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
+	_, err = db.Create(ctx, "backtest2", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, nil, []string{}, nil)
 	test.NoError(err)
 
 	backtests, err := db.List(ctx)
