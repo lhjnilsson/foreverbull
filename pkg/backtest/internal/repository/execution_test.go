@@ -60,16 +60,21 @@ func TestExecutions(t *testing.T) {
 func (s *ExecutionTest) TestCreate() {
 	db := Execution{Conn: s.conn}
 	ctx := context.Background()
-	e, err := db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
-	s.NoError(err)
-	s.NotNil(e.Id)
-	s.Equal(s.storedSession.Id, e.Session)
-	s.Equal(s.storedBacktest.Symbols, e.Symbols)
-	s.Equal(1, len(e.Statuses))
-	s.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
-	s.Nil(e.Statuses[0].Error)
-	s.NotNil(e.Statuses[0].OccurredAt)
+	for _, end := range []*common_pb.Date{
+		{Year: 2024, Month: 01, Day: 01},
+		nil} {
+		e, err := db.Create(ctx, s.storedSession.Id,
+			s.storedBacktest.StartDate, end, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.NoError(err)
+		s.NotNil(e.Id)
+		s.Equal(s.storedSession.Id, e.Session)
+		s.Equal(s.storedBacktest.Symbols, e.Symbols)
+		s.Equal(1, len(e.Statuses))
+		s.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
+		s.Nil(e.Statuses[0].Error)
+		s.NotNil(e.Statuses[0].OccurredAt)
+		s.Equal(end, e.EndDate)
+	}
 }
 
 func (s *ExecutionTest) TestGet() {
@@ -148,7 +153,7 @@ func (s *ExecutionTest) TestList() {
 	s.NoError(err)
 
 	_, err = db.Create(ctx, s.storedSession.Id,
-		s.storedBacktest.StartDate, s.storedBacktest.EndDate, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
+		s.storedBacktest.StartDate, nil, s.storedBacktest.Symbols, s.storedBacktest.Benchmark)
 	s.NoError(err)
 
 	executions, err := db.List(ctx)

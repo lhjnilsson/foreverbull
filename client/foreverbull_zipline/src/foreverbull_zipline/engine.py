@@ -139,9 +139,9 @@ class EngineProcess(multiprocessing.Process, Engine):
             request = common_pb2.Request(task="run", data=data)
             socket.send(request.SerializeToString())
             response = common_pb2.Response()
+            response.ParseFromString(socket.recv())
             if response.HasField("error"):
                 raise SystemError(response.error)
-            response.ParseFromString(socket.recv())
             b = engine_service_pb2.RunResponse()
             b.ParseFromString(response.data)
             return b
@@ -336,7 +336,7 @@ class EngineProcess(multiprocessing.Process, Engine):
             if not isinstance(start_date, pd.Timestamp):
                 raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
 
-            if req.backtest.end_date:
+            if req.backtest.HasField("end_date"):
                 end = pd.Timestamp(pb_utils.from_proto_date_to_pydate(req.backtest.end_date))
                 if type(end) is not pd.Timestamp:
                     raise ConfigError(f"Invalid end date: {req.backtest.end_date}")

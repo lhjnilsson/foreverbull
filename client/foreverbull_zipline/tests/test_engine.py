@@ -133,6 +133,27 @@ def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, eng
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
+def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
+    request = engine_service_pb2.RunRequest(
+        backtest=backtest_pb2.Backtest(
+            start_date=execution.start_date,
+            end_date=None,
+            symbols=execution.symbols,
+            benchmark=None,
+        )
+    )
+    response = engine.run_backtest(request)
+    assert response.backtest
+    assert response.backtest.end_date == execution.end_date
+
+    while True:
+        response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
+        if response.is_running is False:
+            break
+        assert response.portfolio
+        engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
+
+
 def test_get_result(execution: execution_pb2.Execution, engine: Engine):
     request = engine_service_pb2.RunRequest(
         backtest=backtest_pb2.Backtest(

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
@@ -17,7 +18,7 @@ id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
 status int NOT NULL DEFAULT 0,
 error TEXT,
-start_date date,
+start_date date NOT NULL,
 end_date date,
 benchmark text,
 symbols text[]);
@@ -114,10 +115,15 @@ type Execution struct {
 func (db *Execution) Create(ctx context.Context, session string, start, end *internal_pb.Date,
 	symbols []string, benchmark *string) (*pb.Execution, error) {
 	var id string
+	var endDate *string
+	if end != nil {
+		ed := internal_pb.DateToDateString(end)
+		endDate = &ed
+	}
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO execution (session, start_date, end_date, benchmark, symbols)
 		VALUES($1,$2,$3,$4,$5) RETURNING id`, session, internal_pb.DateToDateString(start),
-		internal_pb.DateToDateString(end), benchmark, symbols).
+		endDate, benchmark, symbols).
 		Scan(&id)
 	if err != nil {
 		return nil, err
@@ -175,7 +181,7 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 	for rows.Next() {
 		status := pb.Execution_Status{}
 		start := time.Time{}
-		end := time.Time{}
+		end := pgtype.Date{}
 		occured_at := time.Time{}
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occured_at)
@@ -183,7 +189,9 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 			return nil, err
 		}
 		e.StartDate = internal_pb.GoTimeToDate(start)
-		e.EndDate = internal_pb.GoTimeToDate(end)
+		if end.Valid {
+			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+		}
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
 		e.Statuses = append(e.Statuses, &status)
 	}
@@ -218,7 +226,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 		status := pb.Execution_Status{}
 		e := pb.Execution{}
 		start := time.Time{}
-		end := time.Time{}
+		end := pgtype.Date{}
 		occurred_at := time.Time{}
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occurred_at)
@@ -226,7 +234,9 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 			return nil, err
 		}
 		e.StartDate = internal_pb.GoTimeToDate(start)
-		e.EndDate = internal_pb.GoTimeToDate(end)
+		if end.Valid {
+			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+		}
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
 
 		inReturnSlice = false
