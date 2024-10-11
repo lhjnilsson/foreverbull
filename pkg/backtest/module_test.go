@@ -162,8 +162,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
-			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
+			EndDate:   nil,
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})
