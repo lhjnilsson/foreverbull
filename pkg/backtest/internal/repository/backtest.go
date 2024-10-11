@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
@@ -15,7 +16,7 @@ name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0)
 status int NOT NULL DEFAULT 0,
 error text,
 start_date date NOT NULL,
-end_date date NOT NULL,
+end_date date,
 benchmark text,
 symbols text[]);
 
@@ -54,10 +55,15 @@ type Backtest struct {
 
 func (db *Backtest) Create(ctx context.Context, name string,
 	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
+	var endDate *string
+	if end != nil {
+		ed := pb_internal.DateToDateString(end)
+		endDate = &ed
+	}
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO backtest (name, start_date, end_date, symbols, benchmark)
 		VALUES ($1, $2, $3, $4, $5)`,
-		name, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end), symbols, benchmark)
+		name, pb_internal.DateToDateString(start), endDate, symbols, benchmark)
 	if err != nil {
 		return nil, err
 	}
@@ -82,16 +88,18 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 		status := pb.Backtest_Status{}
 		t := time.Time{}
 		start := time.Time{}
-		end := time.Time{}
+		e := pgtype.Date{}
 		err = rows.Scan(
-			&b.Name, &start, &end, &b.Benchmark, &b.Symbols,
+			&b.Name, &start, &e, &b.Benchmark, &b.Symbols,
 			&status.Status, &status.Error, &t,
 		)
 		if err != nil {
 			return nil, err
 		}
 		b.StartDate = pb_internal.GoTimeToDate(start)
-		b.EndDate = pb_internal.GoTimeToDate(end)
+		if !e.Valid {
+			b.EndDate = pb_internal.GoTimeToDate(e.Time)
+		}
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(t)
 		b.Statuses = append(b.Statuses, &status)
 	}

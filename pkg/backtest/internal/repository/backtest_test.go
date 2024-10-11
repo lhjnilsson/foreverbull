@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -44,12 +45,20 @@ func TestBacktests(t *testing.T) {
 func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
-	backtest, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
-	test.NoError(err)
-	test.Equal("backtest", backtest.Name)
-	test.Len(backtest.Statuses, 1)
-	test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+	for i, end := range []*common_pb.Date{nil, {Year: 2024, Month: 01, Day: 01}} {
+		db := &Backtest{Conn: test.conn}
+		backtest, err := db.Create(ctx,
+			fmt.Sprintf("backtest_%d", i),
+			&common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			end,
+			[]string{},
+			nil,
+		)
+		test.NoError(err)
+		test.Equal(fmt.Sprintf("backtest_%d", i), backtest.Name)
+		test.Len(backtest.Statuses, 1)
+		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+	}
 }
 
 func (test *BacktestTest) TestGet() {
