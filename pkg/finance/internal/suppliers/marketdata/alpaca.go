@@ -45,20 +45,20 @@ func (a *AlpacaClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	return storeAssets, nil
 }
 
-func (a *AlpacaClient) GetOHLC(symbol string, start, end time.Time) ([]*pb.OHLC, error) {
+func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	var ohlcs []*pb.OHLC
 	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 		Start: start,
-		End:   end,
+		End:   *end,
 	})
 	if err != nil {
 		if err, ok := err.(*alpaca.APIError); ok {
 			if err.StatusCode == 422 {
 				var innerErr error
-				end = end.Add(-15 * time.Minute)
+				e := end.Add(-15 * time.Minute)
 				ohlc, innerErr = a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 					Start: start,
-					End:   end,
+					End:   e,
 				})
 				if innerErr != nil {
 					return nil, innerErr

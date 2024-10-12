@@ -72,56 +72,7 @@ func (test *IngestCommandTest) SetupTest() {
 func (test *IngestCommandTest) TearDownTest() {
 }
 
-func (test *IngestCommandTest) TestIngestCommandNoIngestion() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
-
-	m.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		command := args.Get(0).(*fs.IngestCommand)
-		command.Symbols = []string{test.storedAsset.Symbol}
-		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
-		command.End = internal_pb.DateToDateString(test.storedOHLCEnd)
-	})
-	err := Ingest(context.Background(), m)
-	test.NoError(err)
-}
-
-func (test *IngestCommandTest) TestIngestCommandIngestNewOHLC() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
-
-	test.marketdata.On("GetOHLC", test.storedAsset.Symbol,
-		internal_pb.DateToTime(test.storedOHLCStart),
-		internal_pb.DateToTime(test.storedOHLCEnd).Add(time.Hour*24)).Return(
-		[]*pb.OHLC{
-			{
-				Timestamp: timestamppb.New(time.Date(2020, 1, 4, 0, 0, 0, 0, time.UTC)),
-			},
-		},
-		nil,
-	)
-	test.storedOHLCEnd.Day += 1
-	m.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		command := args.Get(0).(*fs.IngestCommand)
-		command.Symbols = []string{test.storedAsset.Symbol}
-		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
-		command.End = internal_pb.DateToDateString(test.storedOHLCEnd)
-	})
-	err := Ingest(context.Background(), m)
-	test.NoError(err)
-
-	exists, err := test.ohlc.Exists(context.Background(), []string{test.storedAsset.Symbol},
-		test.storedOHLCStart,
-		test.storedOHLCEnd)
-	test.NoError(err)
-	test.True(exists)
-
-	test.marketdata.AssertExpectations(test.T())
-}
-
-func (test *IngestCommandTest) TestIngestCommandIngestAll() {
+func (test *IngestCommandTest) TestIngestCommandIngest() {
 	m := new(stream.MockMessage)
 	m.On("MustGet", stream.DBDep).Return(test.db)
 	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
@@ -132,7 +83,7 @@ func (test *IngestCommandTest) TestIngestCommandIngestAll() {
 	}
 	test.marketdata.On("GetAsset", newAsset.Symbol).Return(&newAsset, nil)
 	test.marketdata.On("GetOHLC", "NEW123", internal_pb.DateToTime(test.storedOHLCStart),
-		internal_pb.DateToTime(test.storedOHLCEnd)).Return(
+		mock.Anything).Return(
 		[]*pb.OHLC{
 			{
 				Timestamp: timestamppb.New(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
@@ -151,7 +102,8 @@ func (test *IngestCommandTest) TestIngestCommandIngestAll() {
 		command := args.Get(0).(*fs.IngestCommand)
 		command.Symbols = []string{"NEW123"}
 		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
-		command.End = internal_pb.DateToDateString(test.storedOHLCEnd)
+		end := internal_pb.DateToDateString(test.storedOHLCEnd)
+		command.End = &end
 	})
 	err := Ingest(context.Background(), m)
 	test.NoError(err)

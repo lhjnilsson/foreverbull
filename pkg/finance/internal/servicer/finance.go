@@ -3,6 +3,7 @@ package servicer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
@@ -53,7 +54,11 @@ func (fs *FinanceServer) DownloadHistoricalData(ctx context.Context, req *pb.Dow
 	}
 
 	start := internal_pb.DateToTime(req.GetStartDate())
-	end := internal_pb.DateToTime(req.GetEndDate())
+	var end *time.Time
+	if req.GetEndDate() != nil {
+		e := internal_pb.DateToTime(req.GetEndDate())
+		end = &e
+	}
 	asset_repo := repository.Asset{Conn: fs.pgx}
 	ohlc_repo := repository.OHLC{Conn: fs.pgx}
 
