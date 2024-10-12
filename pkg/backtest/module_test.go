@@ -133,16 +133,21 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.NoError(err, "failed to list backtests")
 	_, err = test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 	test.NoError(err, "failed to get current ingestion")
-	// Create Ingestion
 
-	ingestion := pb.Ingestion{
-		StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
-		EndDate:   common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 100)),
-		Symbols:   []string{"AAPL", "MSFT"},
-	}
-	rsp, err := test.ingestionClient.CreateIngestion(context.TODO(), &pb.CreateIngestionRequest{
-		Ingestion: &ingestion,
+	// Create Backtest
+	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
+		Backtest: &pb.Backtest{
+			Name:      "Test Backtest",
+			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
+			EndDate:   nil,
+			Symbols:   []string{"AAPL", "MSFT"},
+		},
 	})
+	test.NoError(err, "failed to create backtest")
+	test.NotNil(rsp2, "response is nil")
+
+	// Create Ingestion
+	rsp, err := test.ingestionClient.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
 	test.NoError(err, "failed to create ingestion")
 	test.NotNil(rsp, "response is nil")
 
@@ -158,17 +163,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		test.Equal(rsp.Status, pb.IngestionStatus_READY, "status is not ready")
 		test.Greater(rsp.Size, int64(0), "size is 0")
 	}
-	// Create Backtest
-	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
-		Backtest: &pb.Backtest{
-			Name:      "Test Backtest",
-			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
-			EndDate:   nil,
-			Symbols:   []string{"AAPL", "MSFT"},
-		},
-	})
-	test.NoError(err, "failed to create backtest")
-	test.NotNil(rsp2, "response is nil")
+
 	// Run Backtest
 	rsp3, err := test.backtestClient.CreateSession(context.TODO(), &pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
 	test.NoError(err, "failed to create session")

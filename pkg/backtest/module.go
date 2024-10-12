@@ -42,7 +42,7 @@ var Module = fx.Options(
 		func(g *grpc.Server, pgx *pgxpool.Pool, s BacktestStream, st storage.Storage) error {
 			backtestServer := servicer.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
-			ingestionServer := servicer.NewIngestionServer(s, st)
+			ingestionServer := servicer.NewIngestionServer(s, st, pgx)
 			pb.RegisterIngestionServicerServer(g, ingestionServer)
 			return nil
 		},

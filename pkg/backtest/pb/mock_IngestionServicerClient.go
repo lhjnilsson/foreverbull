@@ -15,36 +15,6 @@ type MockIngestionServicerClient struct {
 	mock.Mock
 }
 
-// CreateIngestion provides a mock function with given fields: ctx, in, opts
-func (_m *MockIngestionServicerClient) CreateIngestion(ctx context.Context, in *CreateIngestionRequest, opts ...grpc.CallOption) (*CreateIngestionResponse, error) {
-	_va := make([]interface{}, len(opts))
-	for _i := range opts {
-		_va[_i] = opts[_i]
-	}
-	var _ca []interface{}
-	_ca = append(_ca, ctx, in)
-	_ca = append(_ca, _va...)
-	ret := _m.Called(_ca...)
-
-	var r0 *CreateIngestionResponse
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateIngestionRequest, ...grpc.CallOption) *CreateIngestionResponse); ok {
-		r0 = rf(ctx, in, opts...)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateIngestionResponse)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *CreateIngestionRequest, ...grpc.CallOption) error); ok {
-		r1 = rf(ctx, in, opts...)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // GetCurrentIngestion provides a mock function with given fields: ctx, in, opts
 func (_m *MockIngestionServicerClient) GetCurrentIngestion(ctx context.Context, in *GetCurrentIngestionRequest, opts ...grpc.CallOption) (*GetCurrentIngestionResponse, error) {
 	_va := make([]interface{}, len(opts))
@@ -67,6 +37,36 @@ func (_m *MockIngestionServicerClient) GetCurrentIngestion(ctx context.Context, 
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *GetCurrentIngestionRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateIngestion provides a mock function with given fields: ctx, in, opts
+func (_m *MockIngestionServicerClient) UpdateIngestion(ctx context.Context, in *UpdateIngestionRequest, opts ...grpc.CallOption) (*UpdateIngestionResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *UpdateIngestionResponse
+	if rf, ok := ret.Get(0).(func(context.Context, *UpdateIngestionRequest, ...grpc.CallOption) *UpdateIngestionResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UpdateIngestionResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *UpdateIngestionRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
