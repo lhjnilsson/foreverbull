@@ -350,7 +350,7 @@ jobs:
         run: |
           fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
       - name: create backtest
-        run: fbull backtest create github_action_test /tmp/example_algorithms/omx.json
+        run: fbull backtest create /tmp/example_algorithms/omx.json
       - name: Run backtest as pytest
         working-directory: /tmp/example_algorithms
         env:
