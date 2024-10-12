@@ -6,7 +6,7 @@ from foreverbull_cli.env import env
 
 cli = typer.Typer()
 
-cli.add_typer(backtest, name="backtest", help="asfk")
+cli.add_typer(backtest, name="backtest")
 cli.add_typer(env, name="env")
 
 std = Console()

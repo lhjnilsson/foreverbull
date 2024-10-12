@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 import typer
 from foreverbull import broker
@@ -7,9 +7,8 @@ from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_pr
 from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
-
-name_option = Annotated[str, typer.Option(help="name of the backtest")]
-session_argument = Annotated[str, typer.Argument(help="session id of the backtest")]
+import json
+from pathlib import Path
 
 backtest = typer.Typer()
 
@@ -19,8 +18,6 @@ std_err = Console(stderr=True)
 
 @backtest.command()
 def list():
-    backtests = broker.backtest.list()
-
     table = Table(title="Backtests")
     table.add_column("Name")
     table.add_column("Status")
@@ -28,13 +25,12 @@ def list():
     table.add_column("End")
     table.add_column("Symbols")
     table.add_column("Benchmark")
-
-    for backtest in backtests:
+    for backtest in broker.backtest.list():
         table.add_row(
             backtest.name,
             (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
-            (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
-            (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
+            (from_proto_date_to_pydate(backtest.start_date).isoformat()),
+            (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
@@ -43,18 +39,26 @@ def list():
 
 @backtest.command()
 def create(
-    name: Annotated[str, typer.Argument(help="name of the backtest")],
-    start: Annotated[datetime, typer.Option(help="start time of the backtest")],
-    end: Annotated[datetime, typer.Option(help="end time of the backtest")],
-    symbols: Annotated[str, typer.Option(help="comma separated list of symbols to use")],
-    benchmark: (Annotated[str, typer.Option(help="symbol of benchmark to use")] | None) = None,
+    config: Annotated[str, typer.Argument(help="path to the config file")],
+    name: Annotated[str, typer.Option(help="name of the backtest, filename if None")] | None = None,
 ):
+    config_file = Path(config)
+    with open(config_file, "r") as f:
+        cfg = json.load(f)
+
+    assert "start_date" in cfg, "start_date is required in config"
+    assert "symbols" in cfg, "symbols is required in config"
+    if name is None:
+        name = config_file.name
+    start = date.fromisoformat(cfg["start_date"])
+    end = date.fromisoformat(cfg.get("end_date")) if "end_date" in cfg else None
+
     backtest = backtest_pb2.Backtest(
         name=name,
-        start_date=from_pydate_to_proto_date(start.date()),
-        end_date=from_pydate_to_proto_date(end.date()),
-        symbols=([symbol.strip().upper() for symbol in symbols.split(",")] if symbols else []),
-        benchmark=benchmark,
+        start_date=from_pydate_to_proto_date(start),
+        end_date=from_pydate_to_proto_date(end) if end else None,
+        symbols=cfg["symbols"],
+        benchmark=cfg.get("benchmark"),
     )
     backtest = broker.backtest.create(backtest)
     table = Table(title="Created Backtest")
@@ -78,9 +82,9 @@ def create(
 
 @backtest.command()
 def get(
-    backtest_name: Annotated[str, typer.Argument(help="name of the backtest")],
+    name: Annotated[str, typer.Argument(help="name of the backtest")],
 ):
-    backtest = broker.backtest.get(backtest_name)
+    backtest = broker.backtest.get(name)
     table = Table(title="Backtest")
     table.add_column("Name")
     table.add_column("Status")
@@ -91,13 +95,16 @@ def get(
     table.add_row(
         backtest.name,
         (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
-        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
-        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
+        from_proto_date_to_pydate(backtest.start_date).isoformat(),
+        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
     std.print(table)
 
+@backtest.command()
+def ingest():
+    pass
 
 """
 @backtest.command()

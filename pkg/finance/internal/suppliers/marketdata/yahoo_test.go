@@ -64,7 +64,6 @@ func (test *YahooTest) TestGetIndex() {
 	}
 	for _, tc := range testCases {
 		assets, err := test.client.GetIndex(tc.Symbol)
-		fmt.Println(assets)
 		if tc.ExpectedErr != nil {
 			test.Error(err)
 			test.Equal(tc.ExpectedErr.Error(), err.Error())
@@ -97,7 +96,7 @@ func (test *YahooTest) TestGetOHLC() {
 		end, err := time.Parse("2006-01-02", tc.End)
 		test.Require().NoError(err)
 
-		ohlc, err := test.client.GetOHLC(tc.Symbol, start, end)
+		ohlc, err := test.client.GetOHLC(tc.Symbol, start, &end)
 		if tc.ExpectedErr != nil {
 			test.Error(err)
 			test.Equal(tc.ExpectedErr.Error(), err.Error())
@@ -107,5 +106,31 @@ func (test *YahooTest) TestGetOHLC() {
 			test.Equal(tc.ExpectedLength, len(ohlc))
 		}
 	}
+}
 
+func (test *YahooTest) TestGetOHLCNoEnd() {
+	type TestCase struct {
+		Symbol      string
+		Start       string
+		ExpectedErr error
+	}
+
+	testCases := []TestCase{
+		{"AAPL", "2021-01-01", nil},
+		{"GOOGL", "2015-01-01", nil},
+	}
+
+	for _, tc := range testCases {
+		start, err := time.Parse("2006-01-02", tc.Start)
+		test.Require().NoError(err)
+
+		ohlc, err := test.client.GetOHLC(tc.Symbol, start, nil)
+		if tc.ExpectedErr != nil {
+			test.Error(err)
+			test.Equal(tc.ExpectedErr.Error(), err.Error())
+		} else {
+			test.NoError(err)
+			test.NotNil(ohlc)
+		}
+	}
 }
