@@ -113,7 +113,13 @@ func (db *Backtest) GetUniverse(ctx context.Context) (*pb_internal.Date, *pb_int
 	var s, e pgtype.Date
 	var symbols []string
 	err := db.Conn.QueryRow(ctx,
-		`SELECT min(start_date), max(end_date), ARRAY_AGG(DISTINCT unnest_symbols) FROM backtest, unnest(symbols) as unnest_symbols`).Scan(&s, &e, &symbols)
+		`SELECT min(start_date),
+		CASE
+			WHEN count(*) FILTER(where end_date IS NULL) > 0 THEN CURRENT_DATE
+			ELSE
+				max(end_date)
+		END as max_date,
+		ARRAY_AGG(DISTINCT unnest_symbols) FROM backtest, unnest(symbols) as unnest_symbols`).Scan(&s, &e, &symbols)
 	if !s.Valid || !e.Valid {
 		return nil, nil, nil, &pgconn.PgError{Code: "02000"}
 	}

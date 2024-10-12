@@ -148,7 +148,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	// Create Ingestion
 	rsp, err := test.ingestionClient.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
-	test.NoError(err, "failed to create ingestion")
+	test.Require().NoError(err, "failed to create ingestion")
 	test.NotNil(rsp, "response is nil")
 
 	time.Sleep(time.Second * 30)
