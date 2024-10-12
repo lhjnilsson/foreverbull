@@ -49,7 +49,7 @@ def create(
     assert "start_date" in cfg, "start_date is required in config"
     assert "symbols" in cfg, "symbols is required in config"
     if name is None:
-        name = config_file.name
+        name = config_file.stem
     start = date.fromisoformat(cfg["start_date"])
     end = date.fromisoformat(cfg.get("end_date")) if "end_date" in cfg else None
 
