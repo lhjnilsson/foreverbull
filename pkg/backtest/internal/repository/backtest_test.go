@@ -54,7 +54,7 @@ func (test *BacktestTest) TestCreate() {
 			[]string{},
 			nil,
 		)
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(fmt.Sprintf("backtest_%d", i), backtest.Name)
 		test.Len(backtest.Statuses, 1)
 		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
@@ -74,6 +74,22 @@ func (test *BacktestTest) TestGet() {
 	test.Equal("backtest", backtest.Name)
 	test.Len(backtest.Statuses, 1)
 	test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+}
+
+func (test *BacktestTest) TestGetUniverse() {
+	ctx := context.Background()
+
+	db := &Backtest{Conn: test.conn}
+	_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 06, Day: 01}, []string{"AAPL", "MSFT"}, nil)
+	test.NoError(err)
+	_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 04, Day: 01}, []string{"IBM", "GE"}, nil)
+	test.NoError(err)
+
+	start, end, symbols, err := db.GetUniverse(ctx)
+	test.Require().NoError(err)
+	test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
+	test.Equal(&common_pb.Date{Year: 2024, Month: 06, Day: 01}, end)
+	test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
 }
 
 func (test *BacktestTest) TestUpdate() {
