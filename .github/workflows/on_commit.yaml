@@ -348,9 +348,9 @@ jobs:
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit --ingestion-config /tmp/example_algorithms/ingestion.json
+          fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
       - name: create backtest
-        run: fbull backtest create github_action_test --start 2020-01-01 --end 2020-06-01 --symbols aapl,tsla,msft
+        run: fbull backtest create github_action_test /tmp/example_algorithms/omx.json
       - name: Run backtest as pytest
         working-directory: /tmp/example_algorithms
         env:

@@ -1,8 +1,8 @@
 from datetime import datetime, date
-
+import time
 import typer
 from foreverbull import broker
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2, ingestion_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_proto_date
 from rich.console import Console
 from rich.table import Table
@@ -104,7 +104,16 @@ def get(
 
 @backtest.command()
 def ingest():
-    pass
+    broker.backtest.ingest()
+    for _ in range(60):
+        _, ingestion_status = broker.backtest.get_ingestion()
+        if ingestion_status == ingestion_pb2.IngestionStatus.READY:
+            std.print("Ingestion completed")
+            break
+        time.sleep(1)
+    else:
+        std_err.log("[red]Ingestion failed")
+        exit(1)
 
 """
 @backtest.command()
