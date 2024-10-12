@@ -68,7 +68,8 @@ func (test *FinanceModuleTest) TestIngestCommand() {
 	stream, err := stream.NewNATSStream(st, "finance_test", stream.NewDependencyContainer(), test.pool)
 	test.NoError(err)
 
-	command, err := fs.NewIngestCommand([]string{"AAPL"}, "2020-01-01", "2020-02-01")
+	endDate := "2020-02-01"
+	command, err := fs.NewIngestCommand([]string{"AAPL"}, "2020-01-01", &endDate)
 	test.NoError(err)
 	test.NoError(stream.Publish(context.Background(), command))
 
