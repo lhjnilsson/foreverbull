@@ -1,3 +1,4 @@
+import tempfile
 import traceback
 from datetime import date, datetime
 from unittest.mock import patch
@@ -37,7 +38,10 @@ def test_backtest_list():
 
 
 def test_backtest_create():
-    with patch("foreverbull.broker.backtest.create") as mock_create:
+    with (
+    patch("foreverbull.broker.backtest.create") as mock_create,
+    tempfile.NamedTemporaryFile() as cfg_file,
+        ):
         mock_create.return_value = backtest_pb2.Backtest(
             name="test_name",
             start_date=from_pydate_to_proto_date(date.today()),
@@ -51,17 +55,15 @@ def test_backtest_create():
                 )
             ],
         )
+        cfg_file.write(
+            b'{"start_date": "2021-01-01", "end_date": "2021-01-31", "symbols": ["AAPL", "MSFT"]}'
+        )
+        cfg_file.flush()
         result = runner.invoke(
             backtest,
             [
                 "create",
-                "test_name",
-                "--start",
-                "2021-01-01",
-                "--end",
-                "2021-01-02",
-                "--symbols",
-                "AAPL",
+                cfg_file.name,
             ],
         )
 

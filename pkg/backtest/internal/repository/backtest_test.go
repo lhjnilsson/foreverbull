@@ -55,7 +55,7 @@ func (test *BacktestTest) TestCreate() {
 			[]string{},
 			nil,
 		)
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(fmt.Sprintf("backtest_%d", i), backtest.Name)
 		test.Len(backtest.Statuses, 1)
 		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())

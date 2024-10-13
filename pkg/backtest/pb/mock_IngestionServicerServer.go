@@ -13,29 +13,6 @@ type MockIngestionServicerServer struct {
 	mock.Mock
 }
 
-// CreateIngestion provides a mock function with given fields: _a0, _a1
-func (_m *MockIngestionServicerServer) CreateIngestion(_a0 context.Context, _a1 *CreateIngestionRequest) (*CreateIngestionResponse, error) {
-	ret := _m.Called(_a0, _a1)
-
-	var r0 *CreateIngestionResponse
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateIngestionRequest) *CreateIngestionResponse); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateIngestionResponse)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *CreateIngestionRequest) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // GetCurrentIngestion provides a mock function with given fields: _a0, _a1
 func (_m *MockIngestionServicerServer) GetCurrentIngestion(_a0 context.Context, _a1 *GetCurrentIngestionRequest) (*GetCurrentIngestionResponse, error) {
 	ret := _m.Called(_a0, _a1)
@@ -51,6 +28,29 @@ func (_m *MockIngestionServicerServer) GetCurrentIngestion(_a0 context.Context, 
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *GetCurrentIngestionRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateIngestion provides a mock function with given fields: _a0, _a1
+func (_m *MockIngestionServicerServer) UpdateIngestion(_a0 context.Context, _a1 *UpdateIngestionRequest) (*UpdateIngestionResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 *UpdateIngestionResponse
+	if rf, ok := ret.Get(0).(func(context.Context, *UpdateIngestionRequest) *UpdateIngestionResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UpdateIngestionResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *UpdateIngestionRequest) error); ok {
 		r1 = rf(_a0, _a1)
 	} else {
 		r1 = ret.Error(1)

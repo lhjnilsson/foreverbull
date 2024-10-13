@@ -20,13 +20,11 @@ class GetCurrentIngestionResponse(_message.Message):
     size: int
     def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ..., status: _Optional[_Union[_ingestion_pb2.IngestionStatus, str]] = ..., size: _Optional[int] = ...) -> None: ...
 
-class CreateIngestionRequest(_message.Message):
-    __slots__ = ("ingestion",)
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
-    ingestion: _ingestion_pb2.Ingestion
-    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...) -> None: ...
+class UpdateIngestionRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
 
-class CreateIngestionResponse(_message.Message):
+class UpdateIngestionResponse(_message.Message):
     __slots__ = ("ingestion", "status")
     INGESTION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]

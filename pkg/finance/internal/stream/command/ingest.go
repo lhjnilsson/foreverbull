@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -28,6 +27,18 @@ func Ingest(ctx context.Context, message stream.Message) error {
 	assets := repository.Asset{Conn: db}
 	ohlc := repository.OHLC{Conn: db}
 
+	start, err := time.Parse("2006-01-02", command.Start)
+	if err != nil {
+		return fmt.Errorf("error parsing start date: %w", err)
+	}
+	var end *time.Time
+	if command.End != nil {
+		e, err := time.Parse("2006-01-02", *command.End)
+		if err != nil {
+			return fmt.Errorf("error parsing end date: %w", err)
+		}
+		end = &e
+	}
 	for _, symbol := range command.Symbols {
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
@@ -44,31 +55,14 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return fmt.Errorf("error storing asset: %w", err)
 			}
 		}
-		exists, err := ohlc.Exists(ctx, []string{symbol},
-			common_pb.DateStringToDate(command.Start),
-			common_pb.DateStringToDate(command.End))
+		ohlcs, err := marketdata.GetOHLC(symbol, start, end)
 		if err != nil {
-			return fmt.Errorf("error checking OHLC existence: %w", err)
+			return fmt.Errorf("error getting OHLC: %w", err)
 		}
-		start, err := time.Parse("2006-01-02", command.Start)
-		if err != nil {
-			return fmt.Errorf("error parsing start date: %w", err)
-		}
-		end, err := time.Parse("2006-01-02", command.End)
-		if err != nil {
-			return fmt.Errorf("error parsing end date: %w", err)
-		}
-
-		if !exists {
-			ohlcs, err := marketdata.GetOHLC(symbol, start, end)
+		for _, o := range ohlcs {
+			err = ohlc.Store(ctx, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 			if err != nil {
-				return fmt.Errorf("error getting OHLC: %w", err)
-			}
-			for _, o := range ohlcs {
-				err = ohlc.Store(ctx, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
-				if err != nil {
-					return fmt.Errorf("error creating OHLC: %w", err)
-				}
+				return fmt.Errorf("error creating OHLC: %w", err)
 			}
 		}
 	}

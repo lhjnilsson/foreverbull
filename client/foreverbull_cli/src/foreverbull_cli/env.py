@@ -122,7 +122,6 @@ ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | N
 ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
 BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
 BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
-INGESTION_CONFIG_OPT = Annotated[str, typer.Option(help="Path to ingestion config file")]
 
 
 @env.command()
@@ -131,7 +130,6 @@ def start(
     alpaca_secret: ALPACA_SECRET_OPT = None,
     broker_image: BROKER_IMAGE_OPT = BROKER_IMAGE,
     backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
-    ingestion_config: INGESTION_CONFIG_OPT = "ingestion.json",
 ):
     d = docker.from_env()
     std.print("Starting environment")
@@ -160,7 +158,6 @@ def start(
         minio_task_id = progress.add_task("[yellow]Setting up minio")
         health_task_id = progress.add_task("[yellow]Waiting for services to start")
         foreverbull_task_id = progress.add_task("[yellow]Setting up foreverbull")
-        ingestion_task_id = progress.add_task("[yellow]Creating Ingestion")
 
         with ThreadPoolExecutor() as executor:
             futures = []
@@ -358,40 +355,6 @@ def start(
                 )
                 exit(1)
             time.sleep(2)
-            try:
-                with open(ingestion_config, "r") as f:
-                    config = json.load(f)
-                broker.backtest.ingest(
-                    ingestion=ingestion_pb2.Ingestion(
-                        start_date=pb_utils.from_pydate_to_proto_date(datetime.strptime(config["start"], "%Y-%m-%d")),
-                        end_date=pb_utils.from_pydate_to_proto_date(datetime.strptime(config["end"], "%Y-%m-%d")),
-                        symbols=config["symbols"],
-                    )
-                )
-                for _ in range(60):
-                    _, ingestion_status = broker.backtest.get_ingestion()
-                    if ingestion_status == ingestion_pb2.IngestionStatus.READY:
-                        break
-                    time.sleep(1)
-                else:
-                    progress.update(
-                        ingestion_task_id,
-                        description="[red]Failed to ingest",
-                        completed=True,
-                    )
-                    exit(1)
-                progress.update(
-                    ingestion_task_id,
-                    description="[blue]Ingestion completed",
-                    completed=True,
-                )
-            except Exception as e:
-                progress.update(
-                    ingestion_task_id,
-                    description=f"[red]Failed to ingest: {e}",
-                    completed=True,
-                )
-                exit(1)
         progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
     std.print("Environment started")
 

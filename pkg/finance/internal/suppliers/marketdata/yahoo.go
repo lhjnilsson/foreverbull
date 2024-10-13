@@ -190,12 +190,18 @@ type OHLCResponse struct {
 	}
 }
 
-func (y *YahooClient) GetOHLC(symbol string, start, end time.Time) ([]*pb.OHLC, error) {
-	startUnix := start.Unix()
-	endUnix := end.Unix()
-
+func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	url := "https://query2.finance.yahoo.com/v8/finance/chart/" + strings.ToUpper(symbol)
-	resp, err := y.doRequest(url, fmt.Sprintf("period1=%d", startUnix), fmt.Sprintf("period2=%d", endUnix), fmt.Sprintf("interval=%s", "1d"))
+	params := []string{}
+	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
+	if end != nil {
+		params = append(params, fmt.Sprintf("period2=%d", end.Unix()))
+	} else {
+		params = append(params, fmt.Sprintf("period2=%d", time.Now().Unix()))
+	}
+	params = append(params, fmt.Sprintf("interval=%s", "1d"))
+
+	resp, err := y.doRequest(url, params...)
 	if err != nil {
 		return nil, nil
 	}

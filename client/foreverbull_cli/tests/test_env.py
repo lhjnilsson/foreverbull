@@ -126,20 +126,15 @@ def test_env_start():
         patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
         patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
         patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
-        tempfile.NamedTemporaryFile() as ingest_file,
         patch("foreverbull.broker.backtest.ingest") as mock_ingest,
         patch("foreverbull.broker.backtest.get_ingestion") as mock_get_ingestion,
     ):
-        ingest_file.write(
-            b'{"calendar": "XNYS", "symbols": ["AAPL", "MSFT"], "start": "2021-01-01", "end": "2021-01-02"}'
-        )
-        ingest_file.flush()
         mock_containers.return_value = MockedDockerProperty({})
         mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
         mock_ingest.return_value = None
         mock_get_ingestion.return_value = (None, ingestion_pb2.IngestionStatus.READY)
-        result = runner.invoke(env, ["start", "--ingestion-config", ingest_file.name])
+        result = runner.invoke(env, ["start"])
 
         if result.exception and result.exc_info:
             traceback.print_exception(*result.exc_info)
