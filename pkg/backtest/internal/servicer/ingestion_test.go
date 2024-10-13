@@ -2,16 +2,20 @@ package servicer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -26,6 +30,8 @@ type IngestionServerTest struct {
 	stream  *stream.MockStream
 	storage *storage.MockStorage
 
+	pgx *pgxpool.Pool
+
 	listner *bufconn.Listener
 	server  *grpc.Server
 	client  pb.IngestionServicerClient
@@ -36,18 +42,26 @@ func TestIngestionServerTest(t *testing.T) {
 }
 
 func (suite *IngestionServerTest) SetupSuite() {
+	test_helper.SetupEnvironment(suite.T(), &test_helper.Containers{
+		Postgres: true,
+	})
 }
 
 func (suite *IngestionServerTest) TearDownSuite() {
 }
 
 func (suite *IngestionServerTest) SetupSubTest() {
+	var err error
+	suite.pgx, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	suite.Require().NoError(err)
+	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
+
 	suite.listner = bufconn.Listen(1024 * 1024)
 	suite.server = grpc.NewServer()
 
 	suite.stream = new(stream.MockStream)
 	suite.storage = new(storage.MockStorage)
-	server := NewIngestionServer(suite.stream, suite.storage)
+	server := NewIngestionServer(suite.stream, suite.storage, suite.pgx)
 	pb.RegisterIngestionServicerServer(suite.server, server)
 	go func() {
 		suite.server.Serve(suite.listner)
@@ -64,53 +78,32 @@ func (suite *IngestionServerTest) SetupSubTest() {
 func (suite *IngestionServerTest) TearDownSubTest() {
 }
 
-func (suite *IngestionServerTest) TestCreateIngestion() {
-	type TestCase struct {
-		ingestion   *pb.Ingestion
-		expectedErr error
-	}
+func (suite *IngestionServerTest) TestUpdateIngestion() {
+	suite.Run("nothing stored", func() {
+		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
+			mock.Anything, mock.Anything).Return(nil, nil)
+		suite.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
 
-	testCases := []TestCase{
-		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
-			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-		},
-			expectedErr: nil},
-		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
-			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   nil,
-		},
-			expectedErr: errors.New("start date and end date must be provided")},
-		{ingestion: &pb.Ingestion{Symbols: []string{"AAPL"},
-			StartDate: nil,
-			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-		},
-			expectedErr: errors.New("start date and end date must be provided")},
-		{ingestion: &pb.Ingestion{Symbols: []string{},
-			StartDate: &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &pb_internal.Date{Year: 2024, Month: 01, Day: 01},
-		},
-			expectedErr: errors.New("at least one symbol must be provided")},
-	}
+		rsp, err := suite.client.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
+		suite.Require().Error(err)
+		suite.Require().Nil(rsp)
+	})
+	suite.Run("stored", func() {
+		db := repository.Backtest{Conn: suite.pgx}
+		ctx := context.TODO()
+		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 06, Day: 01}, []string{"AAPL", "MSFT"}, nil)
+		suite.NoError(err)
+		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 04, Day: 01}, []string{"IBM", "GE"}, nil)
+		suite.NoError(err)
 
-	for i, tc := range testCases {
-		suite.Run(fmt.Sprintf("test-%d", i), func() {
-			suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
-				mock.Anything, mock.Anything).Return(nil, nil)
-			suite.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
+		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
+			mock.Anything, mock.Anything).Return(nil, nil)
+		suite.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
 
-			req := &pb.CreateIngestionRequest{Ingestion: tc.ingestion}
-			rsp, err := suite.client.CreateIngestion(context.TODO(), req)
-			if tc.expectedErr != nil {
-				suite.Require().ErrorContains(err, tc.expectedErr.Error())
-				suite.Require().Nil(rsp)
-			} else {
-				suite.Require().NoError(err)
-				suite.Require().NotNil(rsp)
-				suite.storage.AssertExpectations(suite.T())
-			}
-		})
-	}
+		rsp, err := suite.client.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
+		suite.Require().NoError(err)
+		suite.Require().NotNil(rsp)
+	})
 }
 
 func (suite *IngestionServerTest) TestGetCurrentIngestion() {

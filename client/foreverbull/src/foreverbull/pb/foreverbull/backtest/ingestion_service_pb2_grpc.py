@@ -39,10 +39,10 @@ class IngestionServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionResponse.FromString,
                 _registered_method=True)
-        self.CreateIngestion = channel.unary_unary(
-                '/foreverbull.backtest.IngestionServicer/CreateIngestion',
-                request_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionResponse.FromString,
+        self.UpdateIngestion = channel.unary_unary(
+                '/foreverbull.backtest.IngestionServicer/UpdateIngestion',
+                request_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionResponse.FromString,
                 _registered_method=True)
 
 
@@ -55,7 +55,7 @@ class IngestionServicerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CreateIngestion(self, request, context):
+    def UpdateIngestion(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -69,10 +69,10 @@ def add_IngestionServicerServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionResponse.SerializeToString,
             ),
-            'CreateIngestion': grpc.unary_unary_rpc_method_handler(
-                    servicer.CreateIngestion,
-                    request_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionResponse.SerializeToString,
+            'UpdateIngestion': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateIngestion,
+                    request_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -113,7 +113,7 @@ class IngestionServicer(object):
             _registered_method=True)
 
     @staticmethod
-    def CreateIngestion(request,
+    def UpdateIngestion(request,
             target,
             options=(),
             channel_credentials=None,
@@ -126,9 +126,9 @@ class IngestionServicer(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.IngestionServicer/CreateIngestion',
-            foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionRequest.SerializeToString,
-            foreverbull_dot_backtest_dot_ingestion__service__pb2.CreateIngestionResponse.FromString,
+            '/foreverbull.backtest.IngestionServicer/UpdateIngestion',
+            foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionResponse.FromString,
             options,
             channel_credentials,
             insecure,

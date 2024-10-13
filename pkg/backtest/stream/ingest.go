@@ -24,7 +24,7 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end string) 
 
 func NewIngestOrchestration(name string, symbols []string, start, end string) (*stream.MessageOrchestration, error) {
 	orchestration := stream.NewMessageOrchestration("ingest backtest")
-	msg, err := financeStream.NewIngestCommand(symbols, start, end)
+	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
 	if err != nil {
 		return nil, err
 	}

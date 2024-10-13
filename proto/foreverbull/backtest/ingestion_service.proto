@@ -16,16 +16,15 @@ message GetCurrentIngestionResponse {
     int64 size = 3;
 }
 
-message CreateIngestionRequest {
-    Ingestion ingestion = 1;
+message UpdateIngestionRequest {
 }
 
-message CreateIngestionResponse {
+message UpdateIngestionResponse {
     Ingestion ingestion = 1;
     IngestionStatus status = 2;
 }
 
 service IngestionServicer {
     rpc GetCurrentIngestion(GetCurrentIngestionRequest) returns (GetCurrentIngestionResponse);
-    rpc CreateIngestion(CreateIngestionRequest) returns (CreateIngestionResponse);
+    rpc UpdateIngestion(UpdateIngestionRequest) returns (UpdateIngestionResponse);
 }
