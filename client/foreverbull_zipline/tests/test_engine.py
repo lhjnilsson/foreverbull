@@ -154,13 +154,14 @@ def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
-def test_get_result(execution: execution_pb2.Execution, engine: Engine):
+@pytest.mark.parametrize("benchmark", ["AAPL", None])
+def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmark):
     request = engine_service_pb2.RunRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
             symbols=execution.symbols,
-            benchmark=execution.benchmark,
+            benchmark=benchmark,
         )
     )
     response = engine.run_backtest(request)
@@ -175,7 +176,10 @@ def test_get_result(execution: execution_pb2.Execution, engine: Engine):
 
     response = engine.get_backtest_result(engine_service_pb2.GetResultRequest())
     assert len(response.periods)
-
+    if benchmark:
+        assert response.periods[-1].benchmark_period_return != 0.0
+    else:
+        assert response.periods[-1].benchmark_period_return == 0.0
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
@@ -184,7 +188,7 @@ def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: s
             start_date=execution.start_date,
             end_date=execution.end_date,
             symbols=execution.symbols,
-            benchmark=execution.benchmark,
+            benchmark=benchmark,
         )
     )
     response = engine.run_backtest(request)
@@ -240,3 +244,9 @@ def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: s
 
     response = engine.get_backtest_result(engine_service_pb2.GetResultRequest())
     assert len(response.periods)
+    if benchmark:
+        assert response.periods[-1].alpha != 0.0
+        assert response.periods[-1].beta != 0.0
+    else:
+        assert response.periods[-1].alpha == 0.0
+        assert response.periods[-1].beta == 0.0

@@ -111,6 +111,18 @@ func (test *BacktestTest) TestGetUniverse() {
 		test.Equal(expectedEnd, end)
 		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
 	})
+	test.Run("with benchmark", func() {
+		benchmark := "^DJI"
+		_, err := db.Create(ctx, "bench", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, nil, []string{"AAPL", "MSFT"}, &benchmark)
+		test.NoError(err)
+
+		start, end, symbols, err := db.GetUniverse(ctx)
+		expectedEnd := common_pb.GoTimeToDate(time.Now())
+		test.Require().NoError(err)
+		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
+		test.Equal(expectedEnd, end)
+		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE", "^DJI"}, symbols)
+	})
 }
 
 func (test *BacktestTest) TestUpdate() {

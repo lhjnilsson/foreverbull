@@ -49,7 +49,7 @@ jobs:
           path: client/dist
 
   build_push_zipline:
-    needs: build_python_packages
+    needs: [build_python_packages, version_tag]
     runs-on: ubuntu-latest
     defaults:
       run:
