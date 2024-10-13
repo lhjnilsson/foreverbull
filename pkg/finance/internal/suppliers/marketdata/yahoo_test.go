@@ -35,6 +35,7 @@ func (test *YahooTest) TestGetAsset() {
 		{"AAPL", "Apple Inc.", nil},
 		{"GOOGL", "Alphabet Inc.", nil},
 		{"MSFT", "Microsoft Corporation", nil},
+		{"^DJI", "Dow Jones Industrial Average", nil},
 		{"---", "", fmt.Errorf("Quote not found for ticker symbol: ---")},
 	}
 
@@ -88,6 +89,7 @@ func (test *YahooTest) TestGetOHLC() {
 	testCases := []TestCase{
 		{"AAPL", "2021-01-01", "2021-02-01", 19, nil},
 		{"GOOGL", "2015-01-01", "2024-02-01", 2285, nil},
+		{"^DJI", "2021-01-01", "2021-02-01", 19, nil},
 		{"NON_EXISTING", "2021-01-01", "2021-02-01", 0, fmt.Errorf("fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")},
 	}
 

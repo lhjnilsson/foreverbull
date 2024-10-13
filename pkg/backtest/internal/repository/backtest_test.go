@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -74,6 +75,54 @@ func (test *BacktestTest) TestGet() {
 	test.Equal("backtest", backtest.Name)
 	test.Len(backtest.Statuses, 1)
 	test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+}
+
+func (test *BacktestTest) TestGetUniverse() {
+	ctx := context.Background()
+
+	db := &Backtest{Conn: test.conn}
+	test.Run("without stored data", func() {
+		start, end, symbols, err := db.GetUniverse(ctx)
+		test.Require().Error(err)
+		test.Nil(start)
+		test.Nil(end)
+		test.Nil(symbols)
+	})
+	test.Run("with stored data", func() {
+		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 06, Day: 01}, []string{"AAPL", "MSFT"}, nil)
+		test.NoError(err)
+		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 04, Day: 01}, []string{"IBM", "GE"}, nil)
+		test.NoError(err)
+
+		start, end, symbols, err := db.GetUniverse(ctx)
+		test.Require().NoError(err)
+		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
+		test.Equal(&common_pb.Date{Year: 2024, Month: 06, Day: 01}, end)
+		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
+	})
+	test.Run("with None as end", func() {
+		_, err := db.Create(ctx, "none", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, nil, []string{"AAPL", "MSFT"}, nil)
+		test.NoError(err)
+
+		start, end, symbols, err := db.GetUniverse(ctx)
+		expectedEnd := common_pb.GoTimeToDate(time.Now())
+		test.Require().NoError(err)
+		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
+		test.Equal(expectedEnd, end)
+		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
+	})
+	test.Run("with benchmark", func() {
+		benchmark := "^DJI"
+		_, err := db.Create(ctx, "bench", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, nil, []string{"AAPL", "MSFT"}, &benchmark)
+		test.NoError(err)
+
+		start, end, symbols, err := db.GetUniverse(ctx)
+		expectedEnd := common_pb.GoTimeToDate(time.Now())
+		test.Require().NoError(err)
+		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
+		test.Equal(expectedEnd, end)
+		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE", "^DJI"}, symbols)
+	})
 }
 
 func (test *BacktestTest) TestUpdate() {

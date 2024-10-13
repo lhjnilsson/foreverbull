@@ -109,6 +109,33 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 	return &b, nil
 }
 
+func (db *Backtest) GetUniverse(ctx context.Context) (*pb_internal.Date, *pb_internal.Date, []string, error) {
+	var s, e pgtype.Date
+	var symbols []string
+	err := db.Conn.QueryRow(ctx,
+		`WITH symbols_unnested AS (
+    SELECT unnest(symbols) AS symbol
+    FROM backtest
+),
+all_symbols AS (
+    SELECT symbol FROM symbols_unnested
+    UNION
+    SELECT benchmark AS symbol FROM backtest WHERE benchmark IS NOT NULL
+)
+SELECT
+    MIN(start_date) AS min_start_date,
+    CASE
+        WHEN COUNT(*) FILTER (WHERE end_date IS NULL) > 0 THEN CURRENT_DATE
+        ELSE MAX(end_date)
+    END AS max_date,
+    ARRAY_AGG(DISTINCT symbol) AS distinct_symbols
+FROM backtest, all_symbols`).Scan(&s, &e, &symbols)
+	if !s.Valid || !e.Valid {
+		return nil, nil, nil, &pgconn.PgError{Code: "02000"}
+	}
+	return pb_internal.GoTimeToDate(s.Time), pb_internal.GoTimeToDate(e.Time), symbols, err
+}
+
 func (db *Backtest) Update(ctx context.Context, name string,
 	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
