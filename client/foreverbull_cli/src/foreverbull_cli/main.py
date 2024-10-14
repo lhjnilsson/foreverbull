@@ -12,5 +12,6 @@ cli.add_typer(env, name="env")
 std = Console()
 std_err = Console(stderr=True)
 
+
 def main():
     cli()

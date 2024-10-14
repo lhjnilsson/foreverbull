@@ -34,8 +34,6 @@ def get_index(
     return servicer.GetIndex(req)
 
 
-
-
 @finance_servicer
 def download_historical_data(
     servicer: finance_service_pb2_grpc.FinanceStub,
