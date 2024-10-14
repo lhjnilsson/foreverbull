@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import date
 import time
 import typer
 from foreverbull import broker
@@ -9,6 +9,7 @@ from rich.table import Table
 from typing_extensions import Annotated
 import json
 from pathlib import Path
+from foreverbull import Algorithm
 
 backtest = typer.Typer()
 
@@ -102,6 +103,7 @@ def get(
     )
     std.print(table)
 
+
 @backtest.command()
 def ingest():
     broker.backtest.ingest()
@@ -114,6 +116,27 @@ def ingest():
     else:
         std_err.log("[red]Ingestion failed")
         exit(1)
+
+
+@backtest.command()
+def run(
+    name: Annotated[str, typer.Argument(help="name of the backtest")],
+    file_path: Annotated[str, typer.Argument(help="name of the backtest")],
+):
+    algo = Algorithm.from_file_path(file_path)
+    std.print(f"Running backtest {name} with algorithm {file_path}")
+
+    with algo.backtest_session(name) as session:
+        backtest = session.get_default()
+        std.print(f"Running Execution for {backtest.name}")
+        for period in session.run_execution(
+            backtest.start_date,
+            backtest.end_date,
+            [s for s in backtest.symbols],
+        ):
+            pass
+        std.print(f"Execution completed for {backtest.name}")
+
 
 """
 @backtest.command()

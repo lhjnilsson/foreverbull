@@ -1,15 +1,10 @@
-import json
 import os
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from datetime import datetime
 
 import docker.errors
 import typer
-from foreverbull import broker
-from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -328,6 +323,11 @@ def start(
                         "27008/tcp": 27008,
                         "27009/tcp": 27009,
                         "27010/tcp": 27010,
+                        "27011/tcp": 27011,
+                        "27012/tcp": 27012,
+                        "27013/tcp": 27013,
+                        "27014/tcp": 27014,
+                        "27015/tcp": 27015,
                     },
                     environment={
                         "POSTGRES_URL": "postgres://foreverbull:foreverbull@postgres:5432/foreverbull",

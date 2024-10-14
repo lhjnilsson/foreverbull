@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from multiprocessing import Process, Queue
 from multiprocessing.synchronize import Event
+import time
 
 import pynng
 import sqlalchemy
@@ -87,7 +88,6 @@ class WorkerInstance(Worker):
     def run_execution(self, stop_event: Event | threading.Event) -> None:
         if not self._database_engine or not self._broker_socket or not self._namespace_socket:
             raise exceptions.ConfigurationError("Worker not configured")
-
         while not stop_event.is_set():
             request = None
             self.logger.debug("Getting context socket")
@@ -143,6 +143,7 @@ class WorkerDaemon(WorkerInstance):
         if self._logging_queue:
             handler = logging.handlers.QueueHandler(self._logging_queue)
             logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+            pass
         self.logger = logging.getLogger(__name__)
         try:
             responder = pynng.Respondent0(
@@ -196,22 +197,8 @@ class WorkerPool(Worker):
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger(__name__)
         self._log_queue = Queue()
-        self._log_thread = threading.Thread(target=self.logger_thread, args=(self._log_queue,), daemon=True)
+        self._log_listener = logging.handlers.QueueListener(self._log_queue, logging.StreamHandler())
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
-
-    @staticmethod
-    def logger_thread(queue: Queue):
-        handler = logging.handlers.QueueHandler(queue)
-        logging.basicConfig(level=logging.DEBUG, handlers=[handler])
-        logger = logging.getLogger(__name__)
-        while True:
-            try:
-                record = queue.get()
-                if record is None:
-                    break
-                logger.handle(record)
-            except Exception as e:
-                logger.error(f"Error in logger thread: {e}")
 
     def __enter__(
         self,
@@ -257,17 +244,24 @@ class WorkerPool(Worker):
                     raise exceptions.ConfigurationError("Worker failed to start")
                 self._workers.append(p)
             self._stop_event = stop_event
-        self._log_thread.start()
+        self._log_listener.start()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self._stop_event is None:
             return
         self._stop_event.set()
+        while not self._log_queue.empty():
+            time.sleep(0.1)
+
         self._log_queue.put_nowait(None)
-        self._log_thread.join()
+        self._log_listener.stop()
+        self._log_queue.close()
+        self._log_queue.join_thread()
         for w in self._workers:
-            w.join()
+            w.join(timeout=5)
+            if w.is_alive():
+                raise RuntimeError("Worker did not exit")
         self._worker_surveyor_socket.close()
 
     @staticmethod

@@ -181,6 +181,7 @@ def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmar
     else:
         assert response.periods[-1].benchmark_period_return == 0.0
 
+
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
     request = engine_service_pb2.RunRequest(
