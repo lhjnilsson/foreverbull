@@ -19,7 +19,7 @@ class WorkerService(worker_service_pb2_grpc.WorkerServicer):
         return worker_service_pb2.ConfigureExecutionResponse()
 
     def RunExecution(self, request, context):
-        self._worker_pool.run_execution(None)
+        self._worker_pool.run_execution(None)  # type: ignore
         return worker_service_pb2.RunExecutionResponse()
 
 

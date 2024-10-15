@@ -3,8 +3,9 @@ from datetime import datetime
 from typing import Any, Generator
 
 import yfinance as yf
-from foreverbull import Asset, Assets
 from pandas import DataFrame
+from typing import Union
+from foreverbull import Asset, Assets  # type: ignore
 
 
 class DateLimitedAsset(Asset):
@@ -13,7 +14,7 @@ class DateLimitedAsset(Asset):
         self._stock_data = df
         self.metrics = {}
 
-    def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
+    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
         try:
             return self.metrics[key]
         except KeyError:
@@ -51,7 +52,7 @@ class Asset(Asset):
         a = DateLimitedAsset(self._symbol, self._stock_data.loc[:end])
         yield a
 
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> T:
+    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
         try:
             return self.metrics[key]
         except KeyError:

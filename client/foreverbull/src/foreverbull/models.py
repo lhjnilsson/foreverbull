@@ -217,7 +217,7 @@ class Algorithm:
                 "asset_key": asset_key,
                 "portfolio_key": portfolio_key,
                 "definition": worker_pb2.Algorithm.Function(
-                    name=f.callable.__name__,
+                    name=f.callable.__name__,  # type: ignore
                     parameters=parameters,
                     parallelExecution=parallel_execution,
                     runFirst=f.run_first,

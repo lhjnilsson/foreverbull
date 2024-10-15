@@ -71,7 +71,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                 end=pb_utils.from_proto_date_to_pydate(backtest.end_date) + timedelta(days=1),
             )
             for idx, row in data.iterrows():
-                time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)
+                time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)  # type: ignore
                 conn.execute(
                     text(
                         """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)

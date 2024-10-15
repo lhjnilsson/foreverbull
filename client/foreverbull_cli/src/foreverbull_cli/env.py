@@ -81,7 +81,7 @@ def status():
     except docker.errors.ImageNotFound:
         minio_image = None
     try:
-        foreverbull_image = d.images.get(BROKER_IMAGE)
+        foreverbull_image = d.images.get(BROKER_IMAGE)  # type: ignore
     except docker.errors.ImageNotFound:
         foreverbull_image = None
 
@@ -339,14 +339,14 @@ def start(
                         "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
                         "LOG_LEVEL": "info",
-                    },
+                    },  # type: ignore
                     volumes={
                         "/var/run/docker.sock": {
                             "bind": "/var/run/docker.sock",
                             "mode": "rw",
                         }
                     },
-                )
+                )  # type: ignore
             except Exception as e:
                 progress.update(
                     foreverbull_task_id,
