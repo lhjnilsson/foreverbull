@@ -1,8 +1,8 @@
 {
   "venvPath": "client/",
   "venv": ".venv",
-  "include": ["client/python"],
-  "exclude": ["client/.venv", "client/python/foreverbull/src/foreverbull/pb"],
+  "include": ["client/"],
+  "exclude": ["client/.venv", "client/foreverbull/src/foreverbull/pb"],
   "executionEnvironments": [
     {
       "root": ".",
