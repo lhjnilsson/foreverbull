@@ -59,6 +59,7 @@ class TestAlgorithm:
                 port=5050,
             )
         )
+        mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
         algorithm, _, _ = parallel_algo_file
         port = start_grpc_server(mocked_servicer, mocked_sesion_servicer)
         with algorithm.backtest_session("test", broker_port=port) as algo:
