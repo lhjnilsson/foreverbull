@@ -100,7 +100,6 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		defer func() {
 			log.Info().Msg("closing session server")
 			server.Stop()
-			listener.Close()
 		}()
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
