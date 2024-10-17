@@ -92,6 +92,7 @@ class TestAlgorithm:
         mocked_sesion_servicer.CreateExecution.return_value = session_service_pb2.CreateExecutionResponse(
             configuration=configuration,
         )
+        mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
 
         def runner(req, ctx):
             for _ in range(10):
