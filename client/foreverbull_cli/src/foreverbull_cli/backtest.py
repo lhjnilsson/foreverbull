@@ -11,6 +11,9 @@ import json
 from pathlib import Path
 from foreverbull import Algorithm
 
+from rich.progress import Progress
+from rich.live import Live
+
 backtest = typer.Typer()
 
 std = Console()
@@ -125,15 +128,19 @@ def run(
 ):
     algo = Algorithm.from_file_path(file_path)
     std.print(f"Running backtest {name} with algorithm {file_path}")
+    progress = Progress()
+    console = Console()
 
-    with algo.backtest_session(name) as session:
+    with algo.backtest_session(name) as session, Live(progress, console=console):
         backtest = session.get_default()
         std.print(f"Running Execution for {backtest.name}")
+        task = progress.add_task("Running", total=12)
         for period in session.run_execution(
             backtest.start_date,
             backtest.end_date,
             [s for s in backtest.symbols],
         ):
+            progress.advance(task, 1)
             pass
         std.print(f"Execution completed for {backtest.name}")
 

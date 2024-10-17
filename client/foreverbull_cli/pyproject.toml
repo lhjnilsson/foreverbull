@@ -4,8 +4,9 @@ version = "0.0.1"
 description = "foreverbull"
 authors = [{ name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }]
 dependencies = [
-  "typer[all]>=0.9.0,<1.0.0",
-  "docker>=7.0.0,<8.0.0",
+    "typer[all]>=0.9.0,<1.0.0",
+    "docker>=7.0.0,<8.0.0",
+    "textual>=0.83.0",
 ]
 
 [tool.rye.dependencies]
