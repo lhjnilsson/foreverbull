@@ -56,7 +56,7 @@ class TestAlgorithm:
         )
         mocked_servicer.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
             session=session_pb2.Session(
-                port=5050,
+                port=7877,
             )
         )
         mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
