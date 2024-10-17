@@ -57,6 +57,7 @@ class Algorithm(models.Algorithm):
             grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
         )
         yield self
+        self._broker_session_stub.StopServer(session_service_pb2.StopServerRequest())
         channel.close()
 
     def get_default(self) -> backtest_pb2.Backtest:
