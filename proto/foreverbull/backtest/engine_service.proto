@@ -69,7 +69,11 @@ message StopResponse {
 service Engine {
     rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
     rpc Ingest(IngestRequest) returns (IngestResponse) {}
-    rpc RunBacktest(RunRequest) returns (RunResponse) {}
+    rpc Stop(StopRequest) returns (StopResponse) {}
+}
+
+service EngineSession {
+    rpc Run(RunRequest) returns (RunResponse) {}
     rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {}
     rpc PlaceOrdersAndContinue(PlaceOrdersAndContinueRequest) returns (PlaceOrdersAndContinueResponse) {}
     rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
