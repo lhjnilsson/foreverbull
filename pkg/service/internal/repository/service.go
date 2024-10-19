@@ -59,11 +59,13 @@ func (db *Service) Create(ctx context.Context, image string) (*pb.Service, error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service: %w", err)
 	}
+
 	return db.Get(ctx, image)
 }
 
 func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
 	s := pb.Service{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
 		FROM service
@@ -74,9 +76,11 @@ func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service: %w", err)
 	}
+
 	defer rows.Close()
 
 	a := []byte{}
+
 	for rows.Next() {
 		ss := pb.Service_Status{}
 		t := time.Time{}
@@ -88,18 +92,23 @@ func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get service: %w", err)
 		}
+
 		s.Statuses = append(s.Statuses, &ss)
 	}
+
 	if s.Image == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
+
 	if a == nil {
 		return &s, nil
 	}
+
 	err = json.Unmarshal(a, &s.Algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode algorithm: %w", err)
 	}
+
 	return &s, nil
 }
 
@@ -108,10 +117,12 @@ func (db *Service) SetAlgorithm(ctx context.Context, image string, a *pb.Algorit
 	if err != nil {
 		return fmt.Errorf("failed to encode algorithm: %w", err)
 	}
+
 	_, err = db.Conn.Exec(ctx,
 		`UPDATE service SET algorithm=$2 WHERE image=$1`,
 		image, algorithm,
 	)
+
 	return err
 }
 
@@ -127,6 +138,7 @@ func (db *Service) UpdateStatus(ctx context.Context, image string, status pb.Ser
 			image, status,
 		)
 	}
+
 	return err
 }
 
@@ -144,39 +156,48 @@ func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
 	defer rows.Close()
 
 	services := []*pb.Service{}
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		ss := pb.Service_Status{}
 		t := time.Time{}
 		s := pb.Service{}
 		a := []byte{}
+
 		err = rows.Scan(
 			&s.Image, &a, &ss.Status, &ss.Error, &t,
 		)
 		if err != nil {
 			return nil, err
 		}
+
 		ss.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
 
 		inReturnSlice = false
+
 		for i := range services {
 			if services[i].Image == s.Image {
 				services[i].Statuses = append(services[i].Statuses, &ss)
 				inReturnSlice = true
 			}
 		}
+
 		if !inReturnSlice {
 			s.Statuses = append(s.Statuses, &ss)
 			services = append(services, &s)
 		}
+
 		if a == nil {
 			continue
 		}
+
 		err = json.Unmarshal(a, &s.Algorithm)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode algorithm: %w", err)
 		}
 	}
+
 	return services, nil
 }
 

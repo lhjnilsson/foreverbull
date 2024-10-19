@@ -15,9 +15,11 @@ func WithMetadata(metadata map[string]string) func(*minio.PutObjectOptions) erro
 		if obj.UserMetadata == nil {
 			obj.UserMetadata = make(map[string]string)
 		}
+
 		for k, v := range metadata {
 			obj.UserMetadata[k] = v
 		}
+
 		return nil
 	}
 }
@@ -50,9 +52,11 @@ func (o *Object) Refresh() error {
 	if err != nil {
 		return fmt.Errorf("error refreshing object: %w", err)
 	}
+
 	o.Size = obj.Size
 	o.LastModified = obj.LastModified
 	o.Metadata = obj.UserMetadata
+
 	return nil
 }
 
@@ -61,6 +65,7 @@ func (o *Object) PresignedGetURL() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error creating presigned get url: %w", err)
 	}
+
 	return url.String(), nil
 }
 
@@ -69,6 +74,7 @@ func (o *Object) PresignedPutURL() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error creating presigned put url: %w", err)
 	}
+
 	return url.String(), nil
 }
 
@@ -89,6 +95,7 @@ func (o *Object) SetMetadata(ctx context.Context, metadata map[string]string) er
 	if err != nil {
 		return fmt.Errorf("error copying object: %w", err)
 	}
+
 	return nil
 }
 
@@ -100,7 +107,9 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	storage := &MinioStorage{client: client}
+
 	for _, bucket := range []Bucket{ResultsBucket, IngestionsBucket} {
 		exists, err := client.BucketExists(ctx, string(bucket))
 		if err != nil {
@@ -113,10 +122,12 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 				return nil, fmt.Errorf("error creating bucket: %w", err)
 			}
 		}
+
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return storage, nil
 }
 
@@ -127,6 +138,7 @@ type MinioStorage struct {
 func (s *MinioStorage) ListObjects(ctx context.Context, bucket Bucket) (*[]Object, error) {
 	objects := s.client.ListObjects(ctx, string(bucket), minio.ListObjectsOptions{})
 	results := []Object{}
+
 	for object := range objects {
 		if object.Err != nil {
 			return nil, object.Err
@@ -142,6 +154,7 @@ func (s *MinioStorage) ListObjects(ctx context.Context, bucket Bucket) (*[]Objec
 			Metadata:     object.UserMetadata,
 		})
 	}
+
 	return &results, nil
 }
 
@@ -150,6 +163,7 @@ func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string
 	if err != nil {
 		return nil, err
 	}
+
 	result := Object{
 		client: s.client,
 
@@ -159,6 +173,7 @@ func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string
 		LastModified: object.LastModified,
 		Metadata:     object.UserMetadata,
 	}
+
 	return &result, nil
 }
 
@@ -175,5 +190,6 @@ func (s *MinioStorage) CreateObject(ctx context.Context, bucket Bucket, name str
 	if err != nil {
 		return nil, fmt.Errorf("error creating object: %w", err)
 	}
+
 	return s.GetObject(ctx, bucket, name)
 }

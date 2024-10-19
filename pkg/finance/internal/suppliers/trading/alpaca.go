@@ -18,16 +18,20 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 		APIKey:    environment.GetAlpacaAPIKey(),
 		APISecret: environment.GetAlpacaAPISecret(),
 	})
+
 	acc, err := client.GetAccount()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
+
 	if acc.AccountBlocked {
 		return nil, fmt.Errorf("account is blocked")
 	}
+
 	if acc.TradingBlocked {
 		return nil, fmt.Errorf("trading is blocked")
 	}
+
 	return &AlpacaClient{client: client}, nil
 }
 
@@ -36,10 +40,12 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
+
 	pos, err := c.client.GetPositions()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get positions: %w", err)
 	}
+
 	var positions []*pb.Position
 	for _, position := range pos {
 		positions = append(positions, &pb.Position{
@@ -48,6 +54,7 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 			CostBasis: position.CostBasis.InexactFloat64(),
 		})
 	}
+
 	return &pb.Portfolio{
 		Cash:           acc.Cash.InexactFloat64(),
 		PortfolioValue: acc.PortfolioValue.InexactFloat64(),
@@ -60,6 +67,8 @@ func (c *AlpacaClient) GetOrders() ([]*pb.Order, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
+
 	var entityOrders []*pb.Order
+
 	return entityOrders, nil
 }

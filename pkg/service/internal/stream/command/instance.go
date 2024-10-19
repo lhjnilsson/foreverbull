@@ -9,8 +9,8 @@ import (
 )
 
 func InstanceInterview(ctx context.Context, message stream.Message) error {
-
 	var instance st.InstanceInterviewCommand
+
 	err := message.ParsePayload(&instance)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling InstanceInterview payload: %w", err)

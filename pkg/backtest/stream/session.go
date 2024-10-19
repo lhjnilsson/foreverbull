@@ -1,6 +1,8 @@
 package stream
 
 import (
+	"fmt"
+
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
@@ -17,15 +19,21 @@ func NewUpdateSessionStatusCommand(session string, status pb.Session_Status_Stat
 		Status:    status,
 		Error:     err,
 	}
-	return stream.NewMessage("backtest", "session", "status", entity)
+
+	msg, err := stream.NewMessage("backtest", "session", "status", entity)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %v", err)
+	}
+
+	return msg, nil
 }
 
 type SessionRunCommand struct {
-	Backtest           string   `json:"backtest"`
-	SessionID          string   `json:"session_id"`
-	Manual             bool     `json:"manual"`
-	BacktestInstanceID string   `json:"backtest_instance_id"`
-	WorkerInstanceIDs  []string `json:"worker_instance_ids"`
+	Backtest           string
+	SessionID          string
+	Manual             bool
+	BacktestInstanceID string
+	WorkerInstanceIDs  []string
 }
 
 func NewSessionRunCommand(backtest, sessionid string) (stream.Message, error) {
@@ -33,5 +41,11 @@ func NewSessionRunCommand(backtest, sessionid string) (stream.Message, error) {
 		Backtest:  backtest,
 		SessionID: sessionid,
 	}
-	return stream.NewMessage("backtest", "session", "run", entity)
+
+	msg, err := stream.NewMessage("backtest", "session", "run", entity)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %v", err)
+	}
+
+	return msg, nil
 }

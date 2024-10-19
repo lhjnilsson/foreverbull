@@ -29,27 +29,27 @@ var Module = fx.Options(
 
 		func() (supplier.Marketdata, supplier.Trading, error) {
 			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
-				md, err := marketdata.NewYahooClient()
+				marketData, err := marketdata.NewYahooClient()
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 				}
-				return md, nil, nil
+				return marketData, nil, nil
 			} else {
-				md, err := marketdata.NewAlpacaClient()
+				marketData, err := marketdata.NewAlpacaClient()
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
 				}
 				t, err := trading.NewAlpacaClient()
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
 				}
-				return md, t, nil
+				return marketData, t, nil
 			}
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, md supplier.Marketdata) (FinanceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata) (FinanceStream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
-			dc.AddSingleton(dependency.MarketDataDep, md)
+			dc.AddSingleton(dependency.MarketDataDep, marketData)
 			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)

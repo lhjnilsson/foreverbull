@@ -29,22 +29,22 @@ func (test *MessageTest) TestNewMessage() {
 		test.NoError(err)
 		test.NotNil(msg)
 
-		m, ok := msg.(*message)
+		parsed, ok := msg.(*message)
 		test.True(ok)
-		test.Nil(m.ID)
-		test.Nil(m.OrchestrationName)
-		test.Nil(m.OrchestrationID)
-		test.Nil(m.OrchestrationStep)
-		test.Nil(m.OrchestrationStepNumber)
-		test.Nil(m.OrchestrationFallbackStep)
+		test.Nil(parsed.ID)
+		test.Nil(parsed.OrchestrationName)
+		test.Nil(parsed.OrchestrationID)
+		test.Nil(parsed.OrchestrationStep)
+		test.Nil(parsed.OrchestrationStepNumber)
+		test.Nil(parsed.OrchestrationFallbackStep)
 
-		test.Equal("module", m.Module)
-		test.Equal("component", m.Component)
-		test.Equal("method", m.Method)
-		test.Nil(m.Error)
-		test.Equal([]byte(`{"key":"key","value":1}`), m.Payload)
-		test.Nil(m.StatusHistory)
-		test.Nil(m.dependencyContainer)
+		test.Equal("module", parsed.Module)
+		test.Equal("component", parsed.Component)
+		test.Equal("method", parsed.Method)
+		test.Nil(parsed.Error)
+		test.Equal([]byte(`{"key":"key","value":1}`), parsed.Payload)
+		test.Nil(parsed.StatusHistory)
+		test.Nil(parsed.dependencyContainer)
 	})
 	test.Run("bad entity", func() {
 		msg, err := NewMessage("module", "component", "method", func() {})
@@ -72,6 +72,7 @@ func (test *DependencyContainerTest) TestNewDependencyContainer() {
 	test.Run("call", func() {
 		container := NewDependencyContainer()
 		test.NotNil(container)
+
 		method := func(_ context.Context, _ Message) (interface{}, error) { return nil, nil }
 		container.AddMethod("key", method)
 
@@ -95,6 +96,7 @@ func (test *DependencyContainerTest) TestNewDependencyContainer() {
 	test.Run("MustGet", func() {
 		container := NewDependencyContainer()
 		test.NotNil(container)
+
 		singleton := "test_value"
 		container.AddSingleton("key", singleton)
 

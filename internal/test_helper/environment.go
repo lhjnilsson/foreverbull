@@ -19,6 +19,7 @@ type Containers struct {
 
 func SetupEnvironment(t *testing.T, containers *Containers) {
 	t.Helper()
+
 	_ = environment.Setup()
 
 	if containers == nil {
@@ -33,6 +34,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		os.Setenv(environment.DOCKER_NETWORK, network.Name)
 
 		t.Cleanup(func() {
@@ -48,19 +50,23 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 			return nil
 		})
 	}
+
 	if containers.NATS {
 		g.Go(func() error {
 			os.Setenv(environment.NATS_URL, NATSContainer(t, environment.GetDockerNetworkName()))
 			os.Setenv(environment.NATS_DELIVERY_POLICY, "all")
+
 			return nil
 		})
 	}
+
 	if containers.Minio {
 		g.Go(func() error {
 			uri, accessKey, secretKey := MinioContainer(t, environment.GetDockerNetworkName())
 			os.Setenv(environment.MINIO_URL, uri)
 			os.Setenv(environment.MINIO_ACCESS_KEY, accessKey)
 			os.Setenv(environment.MINIO_SECRET_KEY, secretKey)
+
 			return nil
 		})
 	}
@@ -73,9 +79,11 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 			return nil
 		})
 	}
+
 	err := g.Wait()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	os.Setenv(environment.SERVER_ADDRESS, "host.docker.internal")
 }

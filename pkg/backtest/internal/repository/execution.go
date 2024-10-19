@@ -114,21 +114,25 @@ type Execution struct {
 
 func (db *Execution) Create(ctx context.Context, session string, start, end *internal_pb.Date,
 	symbols []string, benchmark *string) (*pb.Execution, error) {
-	var id string
+	var executionId string
+
 	var endDate *string
+
 	if end != nil {
 		ed := internal_pb.DateToDateString(end)
 		endDate = &ed
 	}
+
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO execution (session, start_date, end_date, benchmark, symbols)
 		VALUES($1,$2,$3,$4,$5) RETURNING id`, session, internal_pb.DateToDateString(start),
 		endDate, benchmark, symbols).
-		Scan(&id)
+		Scan(&executionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
-	return db.Get(ctx, id)
+
+	return db.Get(ctx, executionId)
 }
 
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
@@ -161,11 +165,13 @@ func (db *Execution) StorePeriods(ctx context.Context, execution string, periods
 			return fmt.Errorf("error creating period result: %w", err)
 		}
 	}
+
 	return nil
 }
 
 func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) {
 	e := pb.Execution{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT execution.id, session, start_date, end_date, benchmark, symbols,
 		es.status, es.error, es.occurred_at
@@ -177,27 +183,34 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	for rows.Next() {
 		status := pb.Execution_Status{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occured_at := time.Time{}
+
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occured_at)
 		if err != nil {
 			return nil, err
 		}
+
 		e.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
 			e.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
+
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
 		e.Statuses = append(e.Statuses, &status)
 	}
+
 	if e.Id == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
+
 	return &e, nil
 }
 
@@ -206,6 +219,7 @@ func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Executio
 		`UPDATE execution SET start_date=$1, end_date=$2, benchmark=$3,
 		symbols=$4 WHERE id=$5`, internal_pb.DateToDateString(e.StartDate),
 		internal_pb.DateToDateString(e.EndDate), e.Benchmark, e.Symbols, e.Id)
+
 	return err
 }
 
@@ -215,43 +229,54 @@ func (db *Execution) UpdateStatus(ctx context.Context, id string, status pb.Exec
 	} else {
 		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2 WHERE id=$1", id, status)
 	}
+
 	return err
 }
 
 func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 	executions := make([]*pb.Execution, 0)
+
 	var err error
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		status := pb.Execution_Status{}
 		e := pb.Execution{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occurred_at := time.Time{}
+
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occurred_at)
 		if err != nil {
 			return nil, err
 		}
+
 		e.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
 			e.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
+
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
 
 		inReturnSlice = false
+
 		for i := range executions {
 			if executions[i].Id == e.Id {
 				executions[i].Statuses = append(executions[i].Statuses, &status)
 				inReturnSlice = true
+
 				break
 			}
 		}
+
 		if !inReturnSlice {
 			e.Statuses = append(e.Statuses, &status)
 			executions = append(executions, &e)
 		}
 	}
+
 	return executions, nil
 }
 
@@ -267,7 +292,9 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }
 
@@ -284,6 +311,8 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }

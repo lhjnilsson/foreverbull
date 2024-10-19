@@ -54,6 +54,7 @@ func (test *PoolTest) TestSimple() {
 	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
 	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
 	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+
 	namespaceSocket, err := req.NewSocket()
 	test.Require().NoError(err)
 	test.Require().NoError(namespaceSocket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.NamespacePort)))

@@ -1,4 +1,4 @@
-package backtest
+package backtest_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
@@ -42,6 +43,7 @@ func TestModuleBacktest(t *testing.T) {
 	if backtestImage == "" {
 		t.Skip("backtest image not set")
 	}
+
 	suite.Run(t, new(BacktestModuleTest))
 }
 
@@ -77,7 +79,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 			},
 		),
 		fx.Invoke(
-			func(lc fx.Lifecycle, g *grpc.Server) error {
+			func(lc fx.Lifecycle, gServer *grpc.Server) error {
 				lc.Append(fx.Hook{
 					OnStart: func(context.Context) error {
 						listener, err := net.Listen("tcp", ":50055")
@@ -85,29 +87,31 @@ func (test *BacktestModuleTest) SetupSuite() {
 							return fmt.Errorf("failed to listen: %w", err)
 						}
 						go func() {
-							if err := g.Serve(listener); err != nil {
+							if err := gServer.Serve(listener); err != nil {
 								panic(err)
 							}
 						}()
 						return nil
 					},
 					OnStop: func(context.Context) error {
-						g.GracefulStop()
+						gServer.GracefulStop()
 						return nil
 					},
 				})
+
 				return nil
 			},
 		),
 		stream.OrchestrationLifecycle,
 		service.Module,
 		finance.Module,
-		Module,
+		backtest.Module,
 	)
 }
 
 func (test *BacktestModuleTest) SetupTest() {
 	test.Require().NoError(test.app.Start(context.Background()), "failed to start app")
+
 	conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	test.NoError(err, "failed to create grpc client")
 	test.backtestClient = pb.NewBacktestServicerClient(conn)
@@ -154,10 +158,12 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	for i := 0; i < 30; i++ {
 		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 		test.NoError(err, "failed to get current ingestion")
+
 		if rsp.Status != pb.IngestionStatus_READY {
 			time.Sleep(time.Second / 2)
 			continue
 		}
+
 		test.NotNil(rsp, "response is nil")
 		test.Equal(rsp.Status, pb.IngestionStatus_READY, "status is not ready")
 		test.Greater(rsp.Size, int64(0), "size is 0")
@@ -167,16 +173,21 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	rsp3, err := test.backtestClient.CreateSession(context.TODO(), &pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
 	test.NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
+
 	var port int64
+
 	for i := 0; i < 30; i++ {
 		rsp, err := test.backtestClient.GetSession(context.TODO(), &pb.GetSessionRequest{SessionId: rsp3.Session.Id})
 		test.NoError(err, "failed to get session")
 		test.NotNil(rsp, "response is nil")
+
 		if rsp.Session.Statuses[0].Status != pb.Session_Status_RUNNING {
 			time.Sleep(time.Second / 2)
 			continue
 		}
+
 		port = rsp.Session.GetPort()
+
 		break
 	}
 
@@ -214,11 +225,13 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	})
 	test.NoError(err, "failed to run execution")
 	test.NotNil(stream, "response is nil")
+
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
+
 		test.Require().NoError(err, "failed to receive message")
 		test.Require().NotNil(msg, "message is nil")
 	}

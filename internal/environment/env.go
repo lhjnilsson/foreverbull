@@ -95,12 +95,15 @@ func Setup() error {
 			if err != nil {
 				return fmt.Errorf("failed to set default value for %s: %w", v.name, err)
 			}
+
 			if err := os.Setenv(v.name, defaultEnv); err != nil {
 				return fmt.Errorf("failed to set default value for %s: %w", v.name, err)
 			}
 		}
 	}
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+
 	switch os.Getenv(LOG_LEVEL) {
 	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -114,6 +117,7 @@ func Setup() error {
 		log.Warn().Msgf("unknown log level: %s", os.Getenv(LOG_LEVEL))
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	}
+
 	return nil
 }
 
@@ -143,19 +147,23 @@ func GetBacktestImage() string {
 
 func GetBacktestPortRangeStart() int {
 	portStr := os.Getenv(BACKTEST_PORT_RANGE_START)
+
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		panic(fmt.Errorf("failed to convert BACKTEST_PORT_RANGE_START to int: %w", err))
 	}
+
 	return port
 }
 
 func GetBacktestPortRangeEnd() int {
 	portStr := os.Getenv(BACKTEST_PORT_RANGE_END)
+
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		panic(fmt.Errorf("failed to convert BACKTEST_PORT_RANGE_END to int: %w", err))
 	}
+
 	return port
 }
 

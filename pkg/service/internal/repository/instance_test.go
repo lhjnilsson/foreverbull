@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -28,12 +29,13 @@ func (test *InstanceTest) SetupTest() {
 	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
+
 	ctx := context.Background()
 
-	err = Recreate(ctx, test.conn)
+	err = repository.Recreate(ctx, test.conn)
 	test.Require().NoError(err)
 
-	s_repository := &Service{Conn: test.conn}
+	s_repository := &repository.Service{Conn: test.conn}
 	_, err = s_repository.Create(ctx, "test_image")
 	test.Require().NoError(err)
 	test.Require().NoError(err)
@@ -48,9 +50,10 @@ func TestInstances(t *testing.T) {
 
 func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
+
 	image := "test_image"
 	for id, image := range []*string{nil, &image} {
-		db := &Instance{Conn: test.conn}
+		db := &repository.Instance{Conn: test.conn}
 		instance, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
 		test.NoError(err)
 		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
@@ -63,7 +66,7 @@ func (test *InstanceTest) TestGet() {
 
 	image := "test_image"
 	for id, image := range []*string{nil, &image} {
-		db := &Instance{Conn: test.conn}
+		db := &repository.Instance{Conn: test.conn}
 		_, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
 		test.NoError(err)
 
@@ -77,7 +80,7 @@ func (test *InstanceTest) TestGet() {
 func (test *InstanceTest) TestUpdateHostPort() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
+	db := &repository.Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance", nil)
 	test.NoError(err)
 
@@ -95,7 +98,7 @@ func (test *InstanceTest) TestUpdateHostPort() {
 func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
+	db := &repository.Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance", nil)
 	test.NoError(err)
 
@@ -110,7 +113,7 @@ func (test *InstanceTest) TestUpdateStatus() {
 func (test *InstanceTest) TestList() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
+	db := &repository.Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance1", nil)
 	test.NoError(err)
 	_, err = db.Create(ctx, "instance2", nil)
@@ -126,7 +129,7 @@ func (test *InstanceTest) TestListByImage() {
 
 	image := "test_image"
 
-	db := &Instance{Conn: test.conn}
+	db := &repository.Instance{Conn: test.conn}
 	_, err := db.Create(ctx, "instance1", &image)
 	test.NoError(err)
 	_, err = db.Create(ctx, "instance2", nil)

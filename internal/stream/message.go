@@ -22,8 +22,9 @@ type Message interface {
 func NewMessage(module, component, method string, entity any) (Message, error) {
 	payload, err := json.Marshal(entity)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error marshalling payload: %w", err)
 	}
+
 	return &message{
 		Module:    module,
 		Component: component,
@@ -59,6 +60,7 @@ func (m *message) GetID() string {
 	if m.ID == nil {
 		return ""
 	}
+
 	return *m.ID
 }
 
@@ -66,6 +68,7 @@ func (m *message) GetOrchestrationID() string {
 	if m.OrchestrationID == nil {
 		return ""
 	}
+
 	return *m.OrchestrationID
 }
 
@@ -73,6 +76,7 @@ func (m *message) GetOrchestrationStep() string {
 	if m.OrchestrationStep == nil {
 		return ""
 	}
+
 	return *m.OrchestrationStep
 }
 
@@ -81,7 +85,10 @@ func (m *message) RawPayload() []byte {
 }
 
 func (m *message) ParsePayload(v interface{}) error {
-	return json.Unmarshal(m.Payload, v)
+	if err := json.Unmarshal(m.Payload, v); err != nil {
+		return fmt.Errorf("error unmarshalling payload: %w", err)
+	}
+	return nil
 }
 
 func (m *message) Call(ctx context.Context, key Dependency) (interface{}, error) {
@@ -89,6 +96,7 @@ func (m *message) Call(ctx context.Context, key Dependency) (interface{}, error)
 	if !ok {
 		return nil, fmt.Errorf("dependency not found: %s", key)
 	}
+
 	return f(ctx, m)
 }
 
@@ -97,6 +105,7 @@ func (m *message) MustGet(key Dependency) interface{} {
 	if !ok {
 		panic(fmt.Sprintf("dependency not found: %s", key))
 	}
+
 	return v
 }
 
@@ -149,6 +158,7 @@ func (mo *MessageOrchestration) AddStep(name string, commands []Message) {
 	}
 	fallbackStep := false
 	stepNumber := len(mo.Steps)
+
 	for _, cmd := range step.Commands {
 		msg := cmd.(*message)
 		msg.OrchestrationID = &step.OrchestrationID
@@ -157,6 +167,7 @@ func (mo *MessageOrchestration) AddStep(name string, commands []Message) {
 		msg.OrchestrationStepNumber = &stepNumber
 		msg.OrchestrationFallbackStep = &fallbackStep
 	}
+
 	mo.Steps = append(mo.Steps, step)
 }
 
@@ -169,6 +180,7 @@ func (mo *MessageOrchestration) SettFallback(commands []Message) {
 		Commands:          commands,
 	}
 	fallbackStep := true
+
 	for _, cmd := range step.Commands {
 		msg := cmd.(*message)
 		msg.OrchestrationID = &step.OrchestrationID
@@ -176,6 +188,7 @@ func (mo *MessageOrchestration) SettFallback(commands []Message) {
 		msg.OrchestrationStep = &step.OrchestrationStep
 		msg.OrchestrationFallbackStep = &fallbackStep
 	}
+
 	mo.FallbackStep = &step
 }
 

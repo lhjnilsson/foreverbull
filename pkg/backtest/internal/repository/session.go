@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
@@ -53,17 +54,20 @@ type Session struct {
 }
 
 func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, error) {
-	var id string
+	var sessionId string
+
 	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ($1) RETURNING id`,
-		backtest).Scan(&id)
+		backtest).Scan(&sessionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
-	return db.Get(ctx, id)
+
+	return db.Get(ctx, sessionId)
 }
 
 func (db *Session) Get(ctx context.Context, id string) (*pb.Session, error) {
 	s := pb.Session{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT session.id, backtest, port,
 		(SELECT COUNT(*) FROM execution WHERE session=id) AS executions,
@@ -76,7 +80,9 @@ func (db *Session) Get(ctx context.Context, id string) (*pb.Session, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	for rows.Next() {
 		status := pb.Session_Status{}
 		occurred_at := time.Time{}
@@ -85,14 +91,18 @@ func (db *Session) Get(ctx context.Context, id string) (*pb.Session, error) {
 			&status.Status, &status.Error, &occurred_at,
 		)
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+
 		if err != nil {
 			return nil, err
 		}
+
 		s.Statuses = append(s.Statuses, &status)
 	}
+
 	if s.Id == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
+
 	return &s, nil
 }
 
@@ -102,6 +112,7 @@ func (db *Session) UpdateStatus(ctx context.Context, id string, status pb.Sessio
 	} else {
 		_, err = db.Conn.Exec(ctx, `UPDATE session SET status=$1, error=NULL WHERE id=$2`, status, id)
 	}
+
 	return err
 }
 
@@ -112,7 +123,9 @@ func (db *Session) UpdatePort(ctx context.Context, id string, port int) error {
 
 func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 	sessions := []*pb.Session{}
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		s := pb.Session{}
 		status := pb.Session_Status{}
@@ -122,21 +135,26 @@ func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 			&status.Status, &status.Error, &occurred_at,
 		)
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+
 		if err != nil {
 			return nil, err
 		}
+
 		inReturnSlice = false
+
 		for i := range sessions {
 			if sessions[i].Id == s.Id {
 				sessions[i].Statuses = append(sessions[i].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
+
 		if !inReturnSlice {
 			s.Statuses = append(s.Statuses, &status)
 			sessions = append(sessions, &s)
 		}
 	}
+
 	return sessions, nil
 }
 
@@ -152,7 +170,9 @@ func (db *Session) List(ctx context.Context) ([]*pb.Session, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }
 
@@ -169,6 +189,8 @@ func (db *Session) ListByBacktest(ctx context.Context, backtest string) ([]*pb.S
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }

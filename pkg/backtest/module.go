@@ -62,18 +62,18 @@ var Module = fx.Options(
 			return repository.CreateTables(context.TODO(), conn)
 		},
 		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool, ce container.Engine, dc DependecyContainer) error {
-			var c container.Container
-			var ze engine.Engine
+			var backtestContainer container.Container
+			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					var err error
-					c, err = ce.Start(ctx, environment.GetBacktestImage(), "")
+					backtestContainer, err = ce.Start(ctx, environment.GetBacktestImage(), "")
 					if err != nil {
 						return fmt.Errorf("error starting container: %v", err)
 					}
 
 					for i := 0; i < 30; i++ {
-						health, err := c.GetHealth()
+						health, err := backtestContainer.GetHealth()
 						if err != nil {
 							return fmt.Errorf("error getting container health: %v", err)
 						}
@@ -84,12 +84,12 @@ var Module = fx.Options(
 						}
 						time.Sleep(time.Second / 3)
 					}
-					ze, err = backtest.NewZiplineEngine(ctx, c, nil)
+					backtestEngine, err = backtest.NewZiplineEngine(ctx, backtestContainer, nil)
 					if err != nil {
 						return fmt.Errorf("error creating zipline engine: %v", err)
 					}
 					returnEngine := func(ctx context.Context, msg stream.Message) (interface{}, error) {
-						return ze, nil
+						return backtestEngine, nil
 					}
 					dc.AddMethod(dependency.GetEngineKey, returnEngine)
 
@@ -104,10 +104,10 @@ var Module = fx.Options(
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					if err := ze.Stop(ctx); err != nil {
+					if err := backtestEngine.Stop(ctx); err != nil {
 						return fmt.Errorf("error stopping zipline engine: %v", err)
 					}
-					if err := c.Stop(); err != nil {
+					if err := backtestContainer.Stop(); err != nil {
 						return fmt.Errorf("error stopping container: %v", err)
 					}
 					return s.Unsubscribe()

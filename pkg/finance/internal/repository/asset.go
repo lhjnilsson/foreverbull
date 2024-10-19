@@ -29,18 +29,24 @@ func (db *Asset) List(ctx context.Context) ([]*pb.Asset, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	assets := make([]*pb.Asset, 0)
+
 	for rows.Next() {
 		a := pb.Asset{}
+
 		err := rows.Scan(&a.Symbol, &a.Name)
 		if err != nil {
 			return nil, err
 		}
+
 		assets = append(assets, &a)
 	}
+
 	if rows.Err() != nil {
 		return nil, err
 	}
+
 	return assets, nil
 }
 
@@ -57,21 +63,28 @@ func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) ([]*pb.Ass
 	if err != nil {
 		return nil, err
 	}
+
 	assets := make([]*pb.Asset, 0)
+
 	for rows.Next() {
 		a := pb.Asset{}
+
 		err := rows.Scan(&a.Symbol, &a.Name)
 		if err != nil {
 			return nil, err
 		}
+
 		assets = append(assets, &a)
 	}
+
 	if rows.Err() != nil {
 		return nil, err
 	}
+
 	if len(assets) != len(symbols) {
 		return nil, errors.New("not all symbols found")
 	}
+
 	return assets, nil
 }
 
@@ -83,6 +96,7 @@ func (db *Asset) Store(ctx context.Context, symbol, name string) error {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO asset(symbol, name) values($1, $2)
 		ON CONFLICT DO NOTHING`, symbol, name)
+
 	return err
 }
 
@@ -92,12 +106,14 @@ Get a asset based on asset symbol
 */
 func (db *Asset) Get(ctx context.Context, symbol string) (*pb.Asset, error) {
 	a := pb.Asset{Symbol: symbol}
+
 	err := db.Conn.QueryRow(ctx,
 		"SELECT name FROM asset WHERE symbol=$1", symbol).Scan(
 		&a.Name)
 	if err != nil {
 		return nil, err
 	}
+
 	return &a, nil
 }
 

@@ -31,7 +31,6 @@ func (test *RepositoryTest) TearDownTest() {
 
 func (test *RepositoryTest) SetupSubTest() {
 	test.Require().NoError(RecreateTables(context.TODO(), test.db))
-
 }
 
 func TestRepository(t *testing.T) {
@@ -58,6 +57,7 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 		}
 		test.Require().NoError(test.repository.CreateMessage(context.TODO(), &msg))
 		test.Require().NotNil(msg.ID)
+
 		return &msg
 	}
 
@@ -65,6 +65,7 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 		Status        MessageStatus
 		ExpectMessage bool
 	}
+
 	testCases := []TestCase{
 		{Status: MessageStatusPublished,
 			ExpectMessage: true},
@@ -81,15 +82,16 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 		test.Run(string(tc.Status), func() {
 			msg := createMessage(test.T())
 			test.Require().NoError(test.repository.UpdateMessageStatus(context.TODO(), *msg.ID, tc.Status, nil))
-			m, err := test.repository.UpdatePublishedAndGetMessage(context.TODO(), *msg.ID)
+
+			msg, err := test.repository.UpdatePublishedAndGetMessage(context.TODO(), *msg.ID)
 			if tc.ExpectMessage {
 				test.NoError(err)
-				test.NotNil(m)
-				test.Equal(msg.ID, m.ID)
-				test.Equal(MessageStatusReceived, m.StatusHistory[0].Status)
+				test.NotNil(msg)
+				test.Equal(msg.ID, msg.ID)
+				test.Equal(MessageStatusReceived, msg.StatusHistory[0].Status)
 			} else {
 				test.Error(err)
-				test.Nil(m)
+				test.Nil(msg)
 			}
 		})
 	}
@@ -99,31 +101,31 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 	createBaseOrchestration := func(_ *testing.T) *MessageOrchestration {
 		baseOrchestration := NewMessageOrchestration("repository_test")
 
-		m1, err := NewMessage("service", "service", "start", nil)
+		msg1, err := NewMessage("service", "service", "start", nil)
 		test.Require().NoError(err)
-		m2, err := NewMessage("service", "service", "start", nil)
+		msg2, err := NewMessage("service", "service", "start", nil)
 		test.Require().NoError(err)
-		baseOrchestration.AddStep("start", []Message{m1, m2})
+		baseOrchestration.AddStep("start", []Message{msg1, msg2})
 
-		m1, err = NewMessage("service", "service", "sanity_check", nil)
+		msg1, err = NewMessage("service", "service", "sanity_check", nil)
 		test.Require().NoError(err)
-		baseOrchestration.AddStep("sanity", []Message{m1})
+		baseOrchestration.AddStep("sanity", []Message{msg1})
 
-		m1, err = NewMessage("backtest", "session", "run", nil)
+		msg1, err = NewMessage("backtest", "session", "run", nil)
 		test.Require().NoError(err)
-		baseOrchestration.AddStep("run", []Message{m1})
+		baseOrchestration.AddStep("run", []Message{msg1})
 
-		m1, err = NewMessage("service", "instance", "stop", nil)
+		msg1, err = NewMessage("service", "instance", "stop", nil)
 		test.Require().NoError(err)
-		m2, err = NewMessage("service", "instance", "stop", nil)
+		msg2, err = NewMessage("service", "instance", "stop", nil)
 		test.Require().NoError(err)
-		baseOrchestration.AddStep("stop", []Message{m1, m2})
+		baseOrchestration.AddStep("stop", []Message{msg1, msg2})
 
-		m1, err = NewMessage("service", "instance", "stop", nil)
+		msg1, err = NewMessage("service", "instance", "stop", nil)
 		test.Require().NoError(err)
-		m2, err = NewMessage("service", "instance", "stop", nil)
+		msg2, err = NewMessage("service", "instance", "stop", nil)
 		test.Require().NoError(err)
-		baseOrchestration.SettFallback([]Message{m1, m2})
+		baseOrchestration.SettFallback([]Message{msg1, msg2})
 
 		for _, step := range baseOrchestration.Steps {
 			for _, cmd := range step.Commands {
@@ -132,16 +134,18 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 				test.Require().NoError(err)
 			}
 		}
+
 		for _, cmd := range baseOrchestration.FallbackStep.Commands {
 			msg := cmd.(*message)
 			err := test.repository.CreateMessage(context.TODO(), msg)
 			test.Require().NoError(err)
 		}
+
 		return baseOrchestration
 	}
 
-	t := true
-	f := false
+	isTrue := true
+	isFalse := false
 
 	type TestCase struct {
 		Name             string
@@ -149,6 +153,7 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 		ExpectedMessages *[]message
 		StoredData       string
 	}
+
 	testCases := []TestCase{
 		{Name: "initial",
 			StoredData: ``},
@@ -163,7 +168,7 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 		{Name: "service started successfully",
 			CurrentStep: 0,
 			ExpectedMessages: &[]message{
-				{OrchestrationFallbackStep: &f, Module: "service", Component: "service", Method: "sanity_check"},
+				{OrchestrationFallbackStep: &isFalse, Module: "service", Component: "service", Method: "sanity_check"},
 			},
 			StoredData: `
 UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
@@ -176,8 +181,8 @@ UPDATE message set status='ERROR' WHERE id IN (
 	SELECT id FROM message where orchestration_step_number=0 limit 1
 )`,
 			ExpectedMessages: &[]message{
-				{OrchestrationFallbackStep: &t},
-				{OrchestrationFallbackStep: &t},
+				{OrchestrationFallbackStep: &isTrue},
+				{OrchestrationFallbackStep: &isTrue},
 			},
 		},
 		{Name: "Run failed",
@@ -187,8 +192,8 @@ UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
 UPDATE message set status='COMPLETE' WHERE orchestration_step_number=1;
 UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 			ExpectedMessages: &[]message{
-				{OrchestrationFallbackStep: &t},
-				{OrchestrationFallbackStep: &t},
+				{OrchestrationFallbackStep: &isTrue},
+				{OrchestrationFallbackStep: &isTrue},
 			},
 		},
 		{Name: "All steps succeeded",
@@ -207,6 +212,7 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 
 			commands, err := test.repository.GetNextOrchestrationCommands(context.TODO(), baseOrchestration.OrchestrationID, tc.CurrentStep)
 			test.NoError(err)
+
 			if tc.ExpectedMessages == nil {
 				test.Nil(commands)
 			} else {
@@ -215,5 +221,4 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 			}
 		})
 	}
-
 }

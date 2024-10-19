@@ -33,6 +33,7 @@ func CreateNamespace(namespaces []string) *namespace {
 			},
 		}
 	}
+
 	return ns
 }
 
@@ -41,6 +42,7 @@ func (n *namespace) Get(key string) *structpb.Struct {
 	if !ok {
 		return nil
 	}
+
 	return v.value
 }
 
@@ -49,11 +51,14 @@ func (n *namespace) Set(key string, value *structpb.Struct) error {
 	if !ok {
 		return fmt.Errorf("namespace not found")
 	}
+
 	c.sync.Lock()
 	defer c.sync.Unlock()
+
 	for k, v := range value.Fields {
 		c.value.Fields[k] = v
 	}
+
 	return nil
 }
 

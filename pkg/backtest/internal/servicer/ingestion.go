@@ -32,6 +32,7 @@ func NewIngestionServer(stream stream.Stream, storage storage.Storage, pgx *pgxp
 
 func (is *IngestionServer) UpdateIngestion(ctx context.Context, req *pb.UpdateIngestionRequest) (*pb.UpdateIngestionResponse, error) {
 	backtests := repository.Backtest{Conn: is.pgx}
+
 	start, end, symbols, err := backtests.GetUniverse(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting universe: %w", err)
@@ -44,18 +45,22 @@ func (is *IngestionServer) UpdateIngestion(ctx context.Context, req *pb.UpdateIn
 		"Status":     pb.IngestionStatus_CREATED.String(),
 	}
 	name := fmt.Sprintf("%s-%s", pb_internal.DateToDateString(start), pb_internal.DateToDateString(end))
+
 	_, err = is.storage.CreateObject(ctx, storage.IngestionsBucket, name, storage.WithMetadata(metadata))
 	if err != nil {
 		return nil, fmt.Errorf("error creating ingestion: %w", err)
 	}
+
 	o, err := bs.NewIngestOrchestration(name, symbols, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end))
 	if err != nil {
 		return nil, fmt.Errorf("error creating orchestration: %w", err)
 	}
+
 	err = is.stream.RunOrchestration(ctx, o)
 	if err != nil {
 		return nil, fmt.Errorf("error sending orchestration: %w", err)
 	}
+
 	return &pb.UpdateIngestionResponse{}, nil
 }
 
@@ -64,6 +69,7 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context, req *pb.GetC
 	if err != nil {
 		return nil, fmt.Errorf("error listing ingestions: %w", err)
 	}
+
 	if len(*ingestions) == 0 {
 		return &pb.GetCurrentIngestionResponse{
 			Ingestion: nil,
@@ -85,9 +91,11 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context, req *pb.GetC
 			return nil, fmt.Errorf("error refreshing ingestion: %w", err)
 		}
 	}
+
 	symbols := strings.Split(ingestion.Metadata["Symbols"], ",")
 
 	var status pb.IngestionStatus
+
 	switch ingestion.Metadata["Status"] {
 	case pb.IngestionStatus_CREATED.String():
 		status = pb.IngestionStatus_CREATED

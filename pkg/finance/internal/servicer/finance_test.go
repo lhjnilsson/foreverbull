@@ -39,7 +39,6 @@ func (suite *FinanceServerTest) SetupSuite() {
 	test_helper.SetupEnvironment(suite.T(), &test_helper.Containers{
 		Postgres: true,
 	})
-
 }
 
 func (suite *FinanceServerTest) TearDownSuite() {
@@ -57,6 +56,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.server = grpc.NewServer()
 	server := NewFinanceServer(suite.pgx, suite.marketdata)
 	pb.RegisterFinanceServer(suite.server, server)
+
 	go func() {
 		suite.server.Serve(suite.listener)
 	}()
@@ -68,6 +68,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	if err != nil {
 		log.Printf("error connecting to server: %v", err)
 	}
+
 	suite.client = pb.NewFinanceClient(conn)
 }
 

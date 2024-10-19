@@ -1,6 +1,7 @@
 package event
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -15,5 +16,9 @@ type MarketdataDownloadMessage struct {
 }
 
 func NewMarketdataDownloadCommand(entity MarketdataDownloadMessage) (stream.Message, error) {
-	return stream.NewMessage("finance", "marketdata", "download", entity)
+	msg, err := stream.NewMessage("finance", "marketdata", "download", entity)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %v", err)
+	}
+	return msg, nil
 }

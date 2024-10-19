@@ -1,4 +1,4 @@
-package finance
+package finance_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/nats-io/nats.go"
@@ -31,6 +32,7 @@ func TestFinanceModule(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("ALPACA_MARKETS_API_KEY not set")
 	}
+
 	suite.Run(t, new(FinanceModuleTest))
 }
 
@@ -39,6 +41,7 @@ func (test *FinanceModuleTest) SetupTest() {
 		Postgres: true,
 		NATS:     true,
 	})
+
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), test.pool)
@@ -53,7 +56,7 @@ func (test *FinanceModuleTest) SetupTest() {
 			},
 		),
 		stream.OrchestrationLifecycle,
-		Module,
+		finance.Module,
 	)
 	test.Require().NoError(test.app.Start(context.TODO()))
 }

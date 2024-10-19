@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,24 +20,36 @@ const (
 
 func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
-		return err
+		return fmt.Errorf("failed to create extension: %w", err)
 	}
+
 	_, err := conn.Exec(ctx, table)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	return nil
 }
 
 func RecreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS message_status;`); err != nil {
-		return err
+		return fmt.Errorf("failed to drop table: %w", err)
 	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS message;`); err != nil {
-		return err
+		return fmt.Errorf("failed to drop table: %w", err)
 	}
+
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
-		return err
+		return fmt.Errorf("failed to create extension: %w", err)
 	}
+
 	_, err := conn.Exec(ctx, table)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	return nil
 }
 
 const table = `
@@ -98,18 +111,23 @@ func NewRepository(db *pgxpool.Pool) repository {
 	return repository{db: db}
 }
 
-func (r *repository) CreateMessage(ctx context.Context, m *message) error {
+func (r *repository) CreateMessage(ctx context.Context, msg *message) error {
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO message (orchestration_name, orchestration_id, orchestration_step, orchestration_step_number,
 			orchestration_fallback_step, module, component, method, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, m.OrchestrationName,
-		m.OrchestrationID, m.OrchestrationStep, m.OrchestrationStepNumber, m.OrchestrationFallbackStep,
-		m.Module, m.Component, m.Method, m.Payload).Scan(&m.ID)
-	return err
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, msg.OrchestrationName,
+		msg.OrchestrationID, msg.OrchestrationStep, msg.OrchestrationStepNumber, msg.OrchestrationFallbackStep,
+		msg.Module, msg.Component, msg.Method, msg.Payload).Scan(&msg.ID)
+	if err != nil {
+		return fmt.Errorf("failed to insert message: %w", err)
+	}
+
+	return nil
 }
 
 func (r *repository) GetMessage(ctx context.Context, id string) (*message, error) {
 	m := message{}
+
 	rows, err := r.db.Query(ctx,
 		`SELECT message.id, orchestration_name, orchestration_id, orchestration_step, orchestration_step_number, orchestration_fallback_step,
 		module, component, method, payload, ms.status, ms.error, ms.occurred_at
@@ -119,29 +137,36 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 		)	AS ms ON message.id=ms.message_id
 		WHERE message.id=$1`, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query message: %w", err)
 	}
+
 	defer rows.Close()
+
 	for rows.Next() {
 		status := messageStatus{}
+
 		err := rows.Scan(&m.ID, &m.OrchestrationName, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationStepNumber, &m.OrchestrationFallbackStep,
 			&m.Module, &m.Component, &m.Method, &m.Payload, &status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
+
 		m.StatusHistory = append(m.StatusHistory, status)
 	}
+
 	return &m, nil
 }
 
 func (r *repository) UpdatePublishedAndGetMessage(ctx context.Context, id string) (*message, error) {
 	var messageID *string
+
 	err := r.db.QueryRow(ctx,
 		`UPDATE message SET status=$1 WHERE id=$2 AND status=$3
 		RETURNING id`, MessageStatusReceived, id, MessageStatusPublished).Scan(&messageID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update message: %w", err)
 	}
+
 	return r.GetMessage(ctx, *messageID)
 }
 
@@ -155,14 +180,23 @@ func (r *repository) UpdateMessageStatus(ctx context.Context, id string, status 
 			`UPDATE message SET status=$1 WHERE id=$2`,
 			status, id)
 	}
-	return err
+
+	if err != nil {
+		return fmt.Errorf("failed to update message status: %w", err)
+	}
+
+	return nil
 }
 
 func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (bool, error) {
 	var total int
+
 	var completed int
+
 	var canceled int
+
 	var created int
+
 	err := r.db.QueryRow(ctx,
 		`SELECT total.num, completed.num, canceled.num, created.num
 		FROM (
@@ -179,34 +213,40 @@ func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (boo
 		) as created ON true`, id, MessageStatusComplete, MessageStatusCanceled, MessageStatusCreated).Scan(
 		&total, &completed, &canceled, &created)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
+
 	if (total == created) || (total == (completed + canceled)) {
 		return false, nil
 	}
+
 	return true, nil
 }
 
 func (r *repository) OrchestrationIsComplete(ctx context.Context, id string) (bool, error) {
 	var count int
+
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.status IN ($2, $3, $4)
 		AND message.orchestration_fallback_step=false`,
 		id, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
+
 	return !(count > 0), nil
 }
 
 func (r *repository) GetNextOrchestrationCommands(ctx context.Context, orchestrationID string, currentStepNumber int) (*[]message, error) {
 	var stepComplete bool
+
 	err := r.db.QueryRow(ctx,
 		`SELECT count(*) = count(*) filter (where status IN ($1, $2)) FROM message WHERE orchestration_id=$3 AND orchestration_step_number=$4`,
 		MessageStatusComplete, MessageStatusError, orchestrationID, currentStepNumber).Scan(&stepComplete)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
+
 	if !stepComplete {
 		return nil, nil
 	}
@@ -222,41 +262,51 @@ CASE
         orchestration_fallback_step=false and orchestration.orchestration_step_number=$3 and orchestration.status=$4
 END`, orchestrationID, MessageStatusError, currentStepNumber+1, MessageStatusCreated)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query orchestration commands: %w", err)
 	}
+
 	defer rows.Close()
+
 	var msgs []message
+
 	for rows.Next() {
 		m := message{}
+
 		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationFallbackStep, &m.Module, &m.Component, &m.Method, &m.Payload)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan orchestration commands: %w", err)
 		}
+
 		msgs = append(msgs, m)
 	}
+
 	return &msgs, nil
 }
 
 func (r *repository) OrchestrationStepIsComplete(ctx context.Context, orchestrationID, step string) (bool, error) {
 	var count int
+
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.orchestration_step=$2
 		AND message.status IN ($3, $4, $5)`,
 		orchestrationID, step, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
+
 	return !(count > 0), nil
 }
 
 func (r *repository) OrchestrationHasError(ctx context.Context, id string) (bool, error) {
 	var count int
+
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.error IS NOT NULL`,
 		id).Scan(&count)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
+
 	return count > 0, nil
 }
 
@@ -264,5 +314,9 @@ func (r *repository) MarkAllCreatedAsCanceled(ctx context.Context, orchestration
 	_, err := r.db.Exec(ctx,
 		`UPDATE message SET status=$1 WHERE message.orchestration_id=$2 AND message.status IN ($3)`,
 		MessageStatusCanceled, orchestrationID, MessageStatusCreated)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to mark all created messages as canceled: %w", err)
+	}
+
+	return nil
 }

@@ -1,4 +1,4 @@
-package servicer
+package servicer_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -54,8 +55,9 @@ func (suite *BacktestServerTest) SetupTest() {
 	suite.server = grpc.NewServer()
 
 	suite.stream = new(stream.MockStream)
-	server := NewBacktestServer(suite.pgx, suite.stream)
+	server := servicer.NewBacktestServer(suite.pgx, suite.stream)
 	pb.RegisterBacktestServicerServer(suite.server, server)
+
 	go func() {
 		suite.server.Serve(suite.listener)
 	}()
@@ -67,6 +69,7 @@ func (suite *BacktestServerTest) SetupTest() {
 	if err != nil {
 		log.Printf("error connecting to server: %v", err)
 	}
+
 	suite.client = pb.NewBacktestServicerClient(conn)
 }
 
@@ -75,6 +78,7 @@ func (suite *BacktestServerTest) TearDownTest() {
 	if err != nil {
 		suite.T().Errorf("Error closing listener: %v", err)
 	}
+
 	suite.server.Stop()
 }
 
@@ -85,6 +89,7 @@ func (suite *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(backtest)
+
 	return backtest
 }
 
@@ -95,6 +100,7 @@ func (suite *BacktestServerTest) createSession(backtest string) *pb.Session {
 	session, err := sessions.Create(context.TODO(), backtest)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(session)
+
 	return session
 }
 

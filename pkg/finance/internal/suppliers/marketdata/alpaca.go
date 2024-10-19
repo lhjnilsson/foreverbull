@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -25,18 +26,21 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 		APIKey:    environment.GetAlpacaAPIKey(),
 		APISecret: environment.GetAlpacaAPISecret(),
 	})
+
 	return &AlpacaClient{client: client, mdclient: mdclient}, nil
 }
 
 func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	asset, err := a.client.GetAsset(symbol)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting asset: %v", err)
 	}
+
 	storeAsset := pb.Asset{
 		Symbol: asset.Symbol,
 		Name:   asset.Name,
 	}
+
 	return &storeAsset, nil
 }
 
@@ -47,6 +51,7 @@ func (a *AlpacaClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 
 func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	var ohlcs []*pb.OHLC
+
 	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 		Start: start,
 		End:   *end,
@@ -55,7 +60,9 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 		if err, ok := err.(*alpaca.APIError); ok {
 			if err.StatusCode == 422 {
 				var innerErr error
+
 				e := end.Add(-15 * time.Minute)
+
 				ohlc, innerErr = a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 					Start: start,
 					End:   e,
@@ -66,6 +73,7 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 			}
 		}
 	}
+
 	for _, bar := range ohlc {
 		o := pb.OHLC{
 			Open:      bar.Open,
@@ -78,5 +86,6 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 
 		ohlcs = append(ohlcs, &o)
 	}
+
 	return ohlcs, nil
 }

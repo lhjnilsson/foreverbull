@@ -39,6 +39,7 @@ func NewGRPCSessionServer(session *backtest_pb.Session, db postgres.Query,
 		activity: activity,
 	}
 	backtest_pb.RegisterSessionServicerServer(g, server)
+
 	return g, activity, nil
 }
 
@@ -48,7 +49,9 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 	case s.activity <- true:
 	default:
 	}
+
 	executions := repository.Execution{Conn: s.db}
+
 	execution, err := executions.Create(context.TODO(),
 		s.session.Id,
 		req.Backtest.StartDate,
@@ -60,11 +63,13 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 		log.Error().Err(err).Msg("error creating execution")
 		return nil, fmt.Errorf("error creating execution: %w", err)
 	}
+
 	s.wp, err = worker.NewPool(ctx, req.GetAlgorithm())
 	if err != nil {
 		log.Error().Err(err).Msg("error creating worker pool")
 		return nil, fmt.Errorf("error creating worker pool: %w", err)
 	}
+
 	configuration := s.wp.Configure()
 
 	/*
@@ -84,6 +89,7 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 		}
 	*/
 	log.Debug().Any("execution", execution).Any("configuration", configuration).Msg("execution created")
+
 	return &backtest_pb.CreateExecutionResponse{
 		Execution:     execution,
 		Configuration: configuration,
@@ -96,31 +102,37 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	case s.activity <- true:
 	default:
 	}
+
 	executions := repository.Execution{Conn: s.db}
+
 	execution, err := executions.Get(context.Background(), req.ExecutionId)
 	if err != nil {
 		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error getting execution")
 		return fmt.Errorf("error getting execution: %w", err)
 	}
+
 	backtest := backtest_pb.Backtest{
 		StartDate: execution.StartDate,
 		EndDate:   execution.EndDate,
 		Symbols:   execution.Symbols,
 		Benchmark: execution.Benchmark,
 	}
-	ch, err := s.backtest.RunBacktest(context.Background(), &backtest, s.wp)
+
+	portfolioCh, err := s.backtest.RunBacktest(context.Background(), &backtest, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
-		return err
+		return fmt.Errorf("error running backtest: %w", err)
 	}
-	for p := range ch {
+
+	for portfolio := range portfolioCh {
 		err := stream.Send(&backtest_pb.RunExecutionResponse{
-			Portfolio: p,
+			Portfolio: portfolio,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("error sending portfolio: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -130,11 +142,14 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.G
 	case s.activity <- true:
 	default:
 	}
+
 	executions := repository.Execution{Conn: s.db}
+
 	execution, err := executions.Get(ctx, req.ExecutionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting execution: %w", err)
 	}
+
 	return &backtest_pb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   []*backtest_pb.Period{},
@@ -144,5 +159,6 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.G
 func (s *grpcSessionServer) StopServer(ctx context.Context, req *backtest_pb.StopServerRequest) (*backtest_pb.StopServerResponse, error) {
 	log.Debug().Any("request", req).Msg("stop server")
 	close(s.activity)
+
 	return &backtest_pb.StopServerResponse{}, nil
 }

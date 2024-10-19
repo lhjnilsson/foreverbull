@@ -53,6 +53,7 @@ func (test *StorageTest) TearDownSuite() {
 		err := exec.Command("rm", file).Run()
 		test.Require().NoError(err)
 	}
+
 	for _, file := range test.backtestIngestionFiles {
 		err := exec.Command("rm", file).Run()
 		test.Require().NoError(err)
@@ -141,18 +142,24 @@ func (test *StorageTest) TestObject() {
 		if err != nil {
 			return
 		}
+
 		req, err := http.NewRequest("PUT", url, bytes.NewReader(fileData))
 		if err != nil {
 			return
 		}
+
 		req.Header.Set("Content-Type", "application/octet-stream")
+
 		client := &http.Client{}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println("Error uploading file:", err)
 			return
 		}
+
 		defer resp.Body.Close()
+
 		if resp.StatusCode != http.StatusOK {
 			fmt.Println("Upload failed with status code:", resp.StatusCode)
 			return

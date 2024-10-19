@@ -29,6 +29,7 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 	if err != nil {
 		return nil, fmt.Errorf("error getting connection string: %w", err)
 	}
+
 	conn, err := grpc.NewClient(
 		connStr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -36,6 +37,7 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 	if err != nil {
 		return nil, fmt.Errorf("error getting grpc client: %w", err)
 	}
+
 	client := backtest_pb.NewEngineClient(conn)
 	if ingestion_url != nil {
 		_, err = client.DownloadIngestion(ctx, &backtest_pb.DownloadIngestionRequest{})
@@ -43,7 +45,9 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 			return nil, fmt.Errorf("error downloading ingestion: %w", err)
 		}
 	}
+
 	z := Zipline{client: client, container: container}
+
 	return &z, nil
 }
 
@@ -59,10 +63,12 @@ func (z *Zipline) Ingest(ctx context.Context, ingestion *backtest_pb.Ingestion, 
 		Bucket:    &bucket,
 		Object:    &object.Name,
 	}
+
 	_, err := z.client.Ingest(ctx, &req)
 	if err != nil {
 		return fmt.Errorf("error ingesting: %w", err)
 	}
+
 	return nil
 }
 
@@ -72,10 +78,12 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object)
 		Bucket: bucket,
 		Object: object.Name,
 	}
+
 	_, err := z.client.DownloadIngestion(ctx, &req)
 	if err != nil {
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
+
 	return nil
 }
 
@@ -83,33 +91,41 @@ func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtes
 	req := backtest_pb.RunRequest{
 		Backtest: backtest,
 	}
+
 	rsp, err := z.client.RunBacktest(ctx, &req)
 	if err != nil {
 		return nil, fmt.Errorf("error running: %w", err)
 	}
+
 	log.Debug().Any("response", rsp).Msg("run backtest sent")
-	ch := make(chan *finance_pb.Portfolio)
+
+	portfolioCh := make(chan *finance_pb.Portfolio)
+
 	runner := func() {
 		for {
 			period, err := z.client.GetCurrentPeriod(ctx, &backtest_pb.GetCurrentPeriodRequest{})
 			if err != nil {
-				close(ch)
+				close(portfolioCh)
 				return
 			}
+
 			if period.IsRunning == false {
-				close(ch)
+				close(portfolioCh)
 				return
 			}
 			select {
-			case ch <- period.Portfolio:
+			case portfolioCh <- period.Portfolio:
 			default:
 			}
+
 			orders, err := wp.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
-				close(ch)
+				close(portfolioCh)
+
 				return
 			}
+
 			_, err = z.client.PlaceOrdersAndContinue(ctx,
 				&backtest_pb.PlaceOrdersAndContinueRequest{
 					Orders: orders,
@@ -117,29 +133,35 @@ func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtes
 			)
 			if err != nil {
 				log.Error().Err(err).Msg("error placing orders")
-				close(ch)
+				close(portfolioCh)
+
 				return
 			}
 		}
 	}
 	go runner()
-	return ch, nil
+
+	return portfolioCh, nil
 }
 
 func (z *Zipline) GetResult(ctx context.Context) (*backtest_pb.GetResultResponse, error) {
 	req := backtest_pb.GetResultRequest{}
+
 	rsp, err := z.client.GetResult(ctx, &req)
 	if err != nil {
 		return nil, fmt.Errorf("error getting result: %w", err)
 	}
+
 	return rsp, nil
 }
 
 func (z *Zipline) Stop(ctx context.Context) error {
 	req := backtest_pb.StopRequest{}
+
 	_, err := z.client.Stop(ctx, &req)
 	if err != nil {
 		return fmt.Errorf("error stopping: %w", err)
 	}
+
 	return nil
 }

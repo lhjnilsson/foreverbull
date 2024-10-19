@@ -21,11 +21,9 @@ type OHLCTests struct {
 }
 
 func (test *OHLCTests) SetupSuite() {
-
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
-
 }
 
 func (test *OHLCTests) SetupTest() {
@@ -58,13 +56,16 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 	count := 5
 	ohlcStart := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	for i := 0; i <= count; i++ {
 		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
 		test.Nil(err)
+
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
 		}
 	}
+
 	return test.asset.Symbol, internal_pb.GoTimeToDate(ohlcStart), internal_pb.GoTimeToDate(ohlcTime)
 }
 

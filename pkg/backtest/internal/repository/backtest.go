@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -56,22 +57,26 @@ type Backtest struct {
 func (db *Backtest) Create(ctx context.Context, name string,
 	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
 	var endDate *string
+
 	if end != nil {
 		ed := pb_internal.DateToDateString(end)
 		endDate = &ed
 	}
+
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO backtest (name, start_date, end_date, symbols, benchmark)
 		VALUES ($1, $2, $3, $4, $5)`,
 		name, pb_internal.DateToDateString(start), endDate, symbols, benchmark)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create backtest: %w", err)
 	}
+
 	return db.Get(ctx, name)
 }
 
 func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) {
 	b := pb.Backtest{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT backtest.name, start_date, end_date, benchmark, symbols,
 		bs.status, bs.error, bs.occurred_at
@@ -81,36 +86,44 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 		) AS bs ON backtest.name=bs.name
 		WHERE backtest.name=$1`, name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}
+
 	defer rows.Close()
+
 	for rows.Next() {
 		status := pb.Backtest_Status{}
 		t := time.Time{}
 		start := time.Time{}
 		e := pgtype.Date{}
+
 		err = rows.Scan(
 			&b.Name, &start, &e, &b.Benchmark, &b.Symbols,
 			&status.Status, &status.Error, &t,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan backtest: %w", err)
 		}
+
 		b.StartDate = pb_internal.GoTimeToDate(start)
 		if e.Valid {
 			b.EndDate = pb_internal.GoTimeToDate(e.Time)
 		}
+
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(t)
 		b.Statuses = append(b.Statuses, &status)
 	}
+
 	if b.Name == "" {
 		return nil, &pgconn.PgError{Code: "02000"}
 	}
+
 	return &b, nil
 }
 
 func (db *Backtest) GetUniverse(ctx context.Context) (*pb_internal.Date, *pb_internal.Date, []string, error) {
-	var s, e pgtype.Date
+	var startDate, endDate pgtype.Date
+
 	var symbols []string
 	err := db.Conn.QueryRow(ctx,
 		`WITH symbols_unnested AS (
@@ -129,11 +142,13 @@ SELECT
         ELSE MAX(end_date)
     END AS max_date,
     ARRAY_AGG(DISTINCT symbol) AS distinct_symbols
-FROM backtest, all_symbols`).Scan(&s, &e, &symbols)
-	if !s.Valid || !e.Valid {
-		return nil, nil, nil, &pgconn.PgError{Code: "02000"}
+FROM backtest, all_symbols`).Scan(&startDate, &endDate, &symbols)
+
+	if !startDate.Valid || !endDate.Valid {
+		return nil, nil, nil, fmt.Errorf("failed to get universe: %w", err)
 	}
-	return pb_internal.GoTimeToDate(s.Time), pb_internal.GoTimeToDate(e.Time), symbols, err
+
+	return pb_internal.GoTimeToDate(startDate.Time), pb_internal.GoTimeToDate(endDate.Time), symbols, err
 }
 
 func (db *Backtest) Update(ctx context.Context, name string,
@@ -144,8 +159,9 @@ func (db *Backtest) Update(ctx context.Context, name string,
 		WHERE name=$1`,
 		name, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end), symbols, benchmark)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update backtest: %w", err)
 	}
+
 	return db.Get(ctx, name)
 }
 
@@ -155,6 +171,7 @@ func (db *Backtest) UpdateStatus(ctx context.Context, name string, status pb.Bac
 	} else {
 		_, err = db.Conn.Exec(ctx, `UPDATE backtest SET status=$2 WHERE name=$1`, name, status)
 	}
+
 	return err
 }
 
@@ -173,13 +190,16 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 	defer rows.Close()
 
 	backtests := make([]*pb.Backtest, 0)
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		status := pb.Backtest_Status{}
 		b := pb.Backtest{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occurred_at := time.Time{}
+
 		err = rows.Scan(
 			&b.Name, &start, &end, &b.Benchmark,
 			&b.Symbols,
@@ -188,23 +208,28 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		b.StartDate = pb_internal.GoTimeToDate(start)
 		if end.Valid {
 			b.EndDate = pb_internal.GoTimeToDate(end.Time)
 		}
+
 		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurred_at)
 		inReturnSlice = false
+
 		for i := range backtests {
 			if backtests[i].Name == b.Name {
 				backtests[i].Statuses = append(backtests[i].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
+
 		if !inReturnSlice {
 			b.Statuses = append(b.Statuses, &status)
 			backtests = append(backtests, &b)
 		}
 	}
+
 	return backtests, nil
 }
 

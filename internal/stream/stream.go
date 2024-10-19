@@ -34,25 +34,25 @@ type Stream interface {
 }
 
 func New() (*nats.Conn, nats.JetStreamContext, error) {
-	nc, err := nats.Connect(environment.GetNATSURL())
+	natsConnect, err := nats.Connect(environment.GetNATSURL())
 	if err != nil {
 		return nil, nil, fmt.Errorf("error connecting to nats: %w", err)
 	}
-	jt, err := nc.JetStream()
+
+	natsJetstream, err := natsConnect.JetStream()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error connecting to jetstream: %w", err)
 	}
-	for s := range jt.Streams() {
-		fmt.Println("--stream: ", s)
-	}
-	_, err = jt.AddStream(&nats.StreamConfig{
+
+	_, err = natsJetstream.AddStream(&nats.StreamConfig{
 		Name:     "foreverbull",
 		Subjects: []string{"foreverbull.>"},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating stream: %w", err)
 	}
-	return nc, jt, nil
+
+	return natsConnect, natsJetstream, nil
 }
 
 type NATSStream struct {
@@ -73,40 +73,49 @@ func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContain
 		MaxDeliver: 1,
 		AckPolicy:  nats.AckExplicitPolicy,
 	}
+
 	_, err := jt.AddConsumer("foreverbull", cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating consumer: %w", err)
 	}
+
 	_, err = db.Exec(context.Background(), table)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating table: %w", err)
 	}
+
 	return &NATSStream{module: module, jt: jt, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
 }
 
 func (ns *NATSStream) CommandSubscriber(component, method string, cb func(context.Context, Message) error) error {
-	jtCb := func(m *nats.Msg) {
+	jtCb := func(natsMsg *nats.Msg) {
 		// For now we just ack the message
-		if err := m.Ack(); err != nil {
+		if err := natsMsg.Ack(); err != nil {
 			log.Err(err).Msg("error acknowledging message")
 		}
-		go func(m *nats.Msg) {
+
+		go func(natsMsg *nats.Msg) {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
 					fmt.Println("stacktrace from panic: \n" + string(debug.Stack()))
 				}
 			}()
+
 			msg := &message{}
-			err := json.Unmarshal(m.Data, &msg)
+
+			err := json.Unmarshal(natsMsg.Data, &msg)
 			if err != nil {
 				log.Err(err).Msg("error unmarshalling message")
 			}
+
 			if msg.ID == nil {
 				log.Error().Msg("message id is nil")
 				return
 			}
+
 			ctx := context.Background()
+
 			msg, err = ns.repository.UpdatePublishedAndGetMessage(ctx, *msg.ID)
 			if err != nil {
 				if err != pgx.ErrNoRows {
@@ -114,6 +123,7 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				} else {
 					log.Debug().Msg("message not found, probably already processed")
 				}
+
 				return
 			}
 
@@ -121,12 +131,15 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 			if msg.OrchestrationID != nil {
 				log = log.With().Str("id", *msg.ID).Str("Orchestration", *msg.OrchestrationName).Str("OrchestrationID", *msg.OrchestrationID).Str("OrchestrationStep", *msg.OrchestrationStep).Logger()
 			}
+
 			log.Info().Msg("received command")
 
 			msg.dependencyContainer = ns.deps
+
 			err = cb(ctx, msg)
 			if err != nil {
 				log.Err(err).Msg("error executing command")
+
 				err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusError, err)
 				if err != nil {
 					log.Err(err).Msg("error updating message status")
@@ -134,6 +147,7 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				}
 			} else {
 				log.Info().Msg("command completed successfully")
+
 				err = ns.repository.UpdateMessageStatus(ctx, *msg.ID, MessageStatusComplete, nil)
 				if err != nil {
 					log.Err(err).Msg("error updating message status")
@@ -146,18 +160,22 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 				log.Err(err).Msg("error marshalling message")
 				return
 			}
+
 			_, err = ns.jt.Publish(fmt.Sprintf("foreverbull.%s.%s.%s.event", ns.module, component, method), payload)
 			if err != nil {
 				log.Err(err).Msg("error publishing event")
 				return
 			}
-		}(m)
+		}(natsMsg)
 	}
+
 	opts := []nats.SubOpt{
 		nats.MaxDeliver(1),
 		nats.Durable(fmt.Sprintf("foreverbull-%s-%s-%s", ns.module, component, method)),
 	}
-	switch environment.GetNATSDeliveryPolicy() {
+	deliverPolicy := environment.GetNATSDeliveryPolicy()
+
+	switch deliverPolicy {
 	case "all":
 		opts = append(opts, nats.DeliverAll())
 	case "last":
@@ -170,7 +188,9 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 	if err != nil {
 		return fmt.Errorf("error subscribing to jetstream: %w", err)
 	}
+
 	ns.subs = append(ns.subs, sub)
+
 	return nil
 }
 
@@ -179,11 +199,13 @@ func (ns *NATSStream) Unsubscribe() error {
 		if !sub.IsValid() {
 			continue
 		}
+
 		err := sub.Drain()
 		if err != nil {
-			return err
+			return fmt.Errorf("error draining subscription: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -196,10 +218,12 @@ func (ns *NATSStream) Publish(ctx context.Context, msg Message) error {
 	}
 
 	topic := fmt.Sprintf("foreverbull.%s.%s.%s.command", m.Module, m.Component, m.Method)
+
 	payload, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("error marshalling message: %w", err)
 	}
+
 	err = ns.repository.UpdateMessageStatus(ctx, *m.ID, MessageStatusPublished, err)
 	if err != nil {
 		return fmt.Errorf("error updating message status: %w", err)
@@ -209,48 +233,58 @@ func (ns *NATSStream) Publish(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("error publishing message: %w", err)
 	}
+
 	return nil
 }
 
 func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *MessageOrchestration) error {
 	for _, step := range orchestration.Steps {
 		for _, cmd := range step.Commands {
-			msg, ok := cmd.(*message)
+			msg, isMsg := cmd.(*message)
 			if msg.OrchestrationID == nil {
 				return fmt.Errorf("orchestration id is nil")
 			}
+
 			if msg.OrchestrationStep == nil {
 				return fmt.Errorf("orchestration step is nil")
 			}
+
 			if msg.OrchestrationStepNumber == nil {
 				return fmt.Errorf("orchestration step number is nil")
 			}
-			if !ok {
+
+			if !isMsg {
 				return fmt.Errorf("command is not a message")
 			}
+
 			err := ns.repository.CreateMessage(ctx, msg)
 			if err != nil {
 				return err
 			}
 		}
 	}
+
 	if orchestration.FallbackStep == nil {
 		return fmt.Errorf("orchestration must have fallback step")
 	}
+
 	for _, cmd := range orchestration.FallbackStep.Commands {
 		msg, ok := cmd.(*message)
 		if msg.OrchestrationID == nil {
 			return fmt.Errorf("orchestration id is nil")
 		}
+
 		if msg.OrchestrationStep == nil {
 			return fmt.Errorf("orchestration step is nil")
 		}
+
 		if !ok {
 			return fmt.Errorf("command is not a message")
 		}
+
 		err := ns.repository.CreateMessage(ctx, msg)
 		if err != nil {
-			return err
+			return fmt.Errorf("error creating message: %w", err)
 		}
 	}
 
@@ -258,11 +292,13 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 	if err != nil {
 		return fmt.Errorf("error getting latest unpublished orchestration step commands: %w", err)
 	}
+
 	for _, cmd := range *commands {
 		err = ns.Publish(ctx, &cmd)
 		if err != nil {
 			return fmt.Errorf("error publishing command: %w", err)
 		}
 	}
+
 	return nil
 }

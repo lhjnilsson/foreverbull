@@ -1,6 +1,8 @@
 package stream
 
 import (
+	"fmt"
+
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 )
 
@@ -16,5 +18,10 @@ func NewIngestCommand(symbols []string, start string, end *string) (stream.Messa
 		Start:   start,
 		End:     end,
 	}
-	return stream.NewMessage("finance", "marketdata", "ingest", entity)
+
+	msg, err := stream.NewMessage("finance", "marketdata", "ingest", entity)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %v", err)
+	}
+	return msg, nil
 }

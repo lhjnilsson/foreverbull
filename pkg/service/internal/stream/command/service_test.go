@@ -1,4 +1,4 @@
-package command
+package command_test
 
 import (
 	"testing"
@@ -17,6 +17,7 @@ type ServiceTest struct {
 	testService *pb.Service
 }
 
+//nolint:paralleltest
 func TestServiceCommands(t *testing.T) {
 	suite.Run(t, new(ServiceTest))
 }
@@ -25,7 +26,6 @@ func (test *ServiceTest) SetupSuite() {
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
 	})
-
 }
 
 /*

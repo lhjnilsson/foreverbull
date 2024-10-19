@@ -22,11 +22,15 @@ func (h *HealthCheck) Check(ctx context.Context, req *emptypb.Empty) (*pb.Health
 	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
 }
 
-func InterceptorLogger(l *zap.Logger) logging.Logger {
-	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-		f := make([]zap.Field, 0, len(fields)/2)
+const (
+	FieldLength = 2
+)
 
-		for i := 0; i < len(fields); i += 2 {
+func InterceptorLogger(l *zap.Logger) logging.Logger {
+	parseMessage := func(msg string, fields ...any) []zap.Field {
+		f := make([]zap.Field, 0, len(fields)/FieldLength)
+
+		for i := 0; i < len(fields); i += FieldLength {
 			key := fields[i]
 			value := fields[i+1]
 
@@ -42,6 +46,11 @@ func InterceptorLogger(l *zap.Logger) logging.Logger {
 			}
 		}
 
+		return f
+	}
+
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+		f := parseMessage(msg, fields...)
 		logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
 
 		switch lvl {
@@ -65,16 +74,13 @@ var Module = fx.Options(
 			logger := zap.NewExample()
 			opts := []logging.Option{
 				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
-				// Add any other option (check functions starting with logging.With).
 			}
 			return grpc.NewServer(
 				grpc.ChainUnaryInterceptor(
 					logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
-					// Add any other interceptor you want.
 				),
 				grpc.ChainStreamInterceptor(
 					logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
-					// Add any other interceptor you want.
 				),
 			)
 		},
@@ -84,7 +90,7 @@ var Module = fx.Options(
 			lc.Append(
 				fx.Hook{
 					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", ":50055")
+						listener, err := net.Listen("tcp", ":50055") //nolint: gosec
 						if err != nil {
 							return fmt.Errorf("failed to listen: %w", err)
 						}

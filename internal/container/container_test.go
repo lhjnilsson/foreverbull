@@ -37,11 +37,14 @@ func (test *EngineTest) NoTestStart() {
 	for i := 0; i < 120; i++ {
 		health, err := c.GetHealth()
 		test.Require().NoError(err)
+
 		if health == "healthy" {
 			break
 		}
+
 		time.Sleep(time.Second / 4)
 	}
+
 	health, err := c.GetHealth()
 	test.NoError(err)
 	test.Equal("healthy", health)

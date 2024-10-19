@@ -38,8 +38,11 @@ type Strategy struct {
 
 func Request(t *testing.T, method string, endpoint string, payload interface{}) *http.Response {
 	t.Helper()
+
 	var err error
+
 	var res *http.Response
+
 	var req *http.Request
 
 	if payload != nil {
@@ -54,6 +57,7 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 				t.Fatalf("Failed to marshal payload: %v", err)
 				return nil
 			}
+
 			bytes := bytes.NewReader(marshalled)
 			req, err = http.NewRequest(method, "http://localhost:8080"+endpoint, bytes)
 			assert.Nil(t, err)
@@ -62,15 +66,18 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 	} else {
 		req, err = http.NewRequest(method, "http://localhost:8080"+endpoint, nil)
 	}
+
 	if err != nil {
 		t.Fatalf("Error creating request: %v", err)
 		return nil
 	}
+
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Error sending request: %v", err)
 		return nil
 	}
+
 	return res
 }
 
@@ -82,6 +89,7 @@ func CleanupEnv(t *testing.T, workerService Service, backtestService Service, ba
 	Request(t, http.MethodDelete, "/service/api/services/"+workerService.Name, nil)
 	Request(t, http.MethodDelete, "/service/api/services/"+backtestService.Name, nil)
 	Request(t, http.MethodDelete, "/backtest/api/backtests/"+backtest.Name, nil)
+
 	if strategy != nil {
 		Request(t, http.MethodDelete, "/strategy/api/strategies/"+strategy.Name, nil)
 	}
@@ -95,6 +103,7 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 		rspData, _ := io.ReadAll(rsp.Body)
 		t.Fatalf("Failed to create backtest: %s", string(rspData))
 	}
+
 	t.Logf("Backtest %s created", backtest.Name)
 
 	for i := 0; i <= 60; i++ {
@@ -103,6 +112,7 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 			rspData, _ := io.ReadAll(rsp.Body)
 			t.Fatalf("Failed to get backtest: %s", string(rspData))
 		}
+
 		err := json.NewDecoder(rsp.Body).Decode(&backtest)
 		if err != nil {
 			t.Fatalf("Failed to decode backtest: %v", err)
@@ -116,11 +126,14 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 		} else {
 			t.Fatalf("Backtest %s in error state: %s", backtest.Name, backtest.Status)
 		}
+
 		t.Fatalf("Backtest %s not ready after loop", backtest.Name)
 	}
+
 	if backtest.Status != "READY" {
 		t.Fatalf("Backtest %s not ready", backtest.Name)
 	}
+
 	t.Logf("Backtest %s ready", backtest.Name)
 
 	// Create strategy
@@ -130,10 +143,12 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 			rspData, _ := io.ReadAll(rsp.Body)
 			t.Fatalf("Failed to create strategy: %s", string(rspData))
 		}
+
 		err := json.NewDecoder(rsp.Body).Decode(&strategy)
 		if err != nil {
 			t.Fatalf("Failed to decode strategy: %v", err)
 		}
 	}
+
 	return nil
 }

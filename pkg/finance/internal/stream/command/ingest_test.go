@@ -1,4 +1,4 @@
-package command
+package command_test
 
 import (
 	"context"
@@ -64,6 +64,7 @@ func (test *IngestCommandTest) SetupTest() {
 		"Stored123", time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
 	test.Require().NoError(test.ohlc.Store(context.Background(),
 		"Stored123", time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
+
 	test.storedOHLCEnd = &internal_pb.Date{Year: 2020, Month: 1, Day: 3}
 
 	test.marketdata = new(supplier.MockMarketdata)
@@ -105,6 +106,7 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		end := internal_pb.DateToDateString(test.storedOHLCEnd)
 		command.End = &end
 	})
+
 	err := Ingest(context.Background(), m)
 	test.NoError(err)
 

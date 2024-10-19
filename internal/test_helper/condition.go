@@ -9,8 +9,10 @@ import (
 
 func WaitUntilCondition(t *testing.T, condition func() (bool, error), timeout time.Duration) error {
 	ctx := context.Background()
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -20,10 +22,12 @@ func WaitUntilCondition(t *testing.T, condition func() (bool, error), timeout ti
 			if err != nil {
 				return err
 			}
+
 			if !ok {
 				time.Sleep(time.Second / 4)
 				continue
 			}
+
 			return nil
 		}
 	}

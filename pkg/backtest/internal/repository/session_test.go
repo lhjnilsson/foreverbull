@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -33,11 +34,11 @@ func (test *SessionTest) SetupTest() {
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 
-	err = Recreate(context.Background(), test.conn)
+	err = repository.Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
 
 	ctx := context.Background()
-	b_postgres := &Backtest{Conn: test.conn}
+	b_postgres := &repository.Backtest{Conn: test.conn}
 	test.storedBacktest, err = b_postgres.Create(ctx, "backtest",
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
@@ -52,7 +53,7 @@ func TestSessions(t *testing.T) {
 }
 
 func (test *SessionTest) TestCreate() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 
 	s, err := db.Create(ctx, "backtest")
@@ -64,7 +65,7 @@ func (test *SessionTest) TestCreate() {
 }
 
 func (test *SessionTest) TestGet() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest")
 	test.NoError(err)
@@ -81,7 +82,7 @@ func (test *SessionTest) TestGet() {
 }
 
 func (test *SessionTest) TestUpdateStatus() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest")
 	test.NoError(err)
@@ -106,7 +107,7 @@ func (test *SessionTest) TestUpdateStatus() {
 }
 
 func (test *SessionTest) TestUpdatePort() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 	s, err := db.Create(ctx, "backtest")
 	test.NoError(err)
@@ -123,7 +124,7 @@ func (test *SessionTest) TestUpdatePort() {
 }
 
 func (test *SessionTest) TestList() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 	s1, err := db.Create(ctx, "backtest")
 	test.NoError(err)
@@ -141,7 +142,7 @@ func (test *SessionTest) TestList() {
 }
 
 func (test *SessionTest) TestListByBacktest() {
-	db := Session{Conn: test.conn}
+	db := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 	s1, err := db.Create(ctx, "backtest")
 	test.NoError(err)
@@ -151,7 +152,7 @@ func (test *SessionTest) TestListByBacktest() {
 	test.NoError(err)
 	test.NotNil(s2.Id)
 
-	b_postgres := &Backtest{Conn: test.conn}
+	b_postgres := &repository.Backtest{Conn: test.conn}
 	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2",
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)

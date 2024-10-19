@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
@@ -23,11 +24,13 @@ type ServiceModuleTest struct {
 	app *fx.App
 }
 
+//nolint:paralleltest
 func TestModuleService(t *testing.T) {
 	_, found := os.LookupEnv("IMAGES")
 	if !found {
 		t.Skip("images not set")
 	}
+
 	suite.Run(t, new(ServiceModuleTest))
 }
 
@@ -37,6 +40,7 @@ func (test *ServiceModuleTest) SetupTest() {
 		NATS:     true,
 		Loki:     true,
 	})
+
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.NoError(err)
 	err = repository.Recreate(context.Background(), pool)
@@ -52,7 +56,7 @@ func (test *ServiceModuleTest) SetupTest() {
 		),
 		stream.OrchestrationLifecycle,
 		finance.Module,
-		Module,
+		service.Module,
 	)
 	test.Require().NoError(test.app.Start(context.TODO()))
 }

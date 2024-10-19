@@ -29,7 +29,9 @@ import (
 
 func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.Duration) {
 	t.Helper()
+
 	ctx := context.TODO()
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -52,9 +54,11 @@ func WaitTillContainersAreRemoved(t *testing.T, NetworkID string, timeout time.D
 			if err != nil {
 				t.Error("Failed to list containers:", err)
 			}
+
 			if len(containers) == 0 {
 				return
 			}
+
 			time.Sleep(time.Second / 4)
 		}
 	}
@@ -96,6 +100,7 @@ func PostgresContainer(t *testing.T, NetworkID string) (ConnectionString string)
 			t.Fatal(err)
 		}
 	})
+
 	return ConnectionString
 }
 
@@ -120,6 +125,7 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 		} else {
 			time.Sleep(time.Second / 4)
 		}
+
 		require.NoError(t, err, "Failed to get NATS connection string")
 	}
 
@@ -128,6 +134,7 @@ func NATSContainer(t *testing.T, NetworkID string) (ConnectionString string) {
 			t.Fatal(err)
 		}
 	})
+
 	return ConnectionString
 }
 
@@ -155,6 +162,7 @@ func MinioContainer(t *testing.T, NetworkID string) (ConnectionString, AccessKey
 			t.Fatal(err)
 		}
 	})
+
 	return ConnectionString, "minioadmin", "minioadmin"
 }
 
@@ -168,14 +176,18 @@ func (l *LokiLogger) Write(p []byte) (n int, err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.entries[time.Now().UnixNano()] = string(p)
+
 	return len(p), nil
 }
 
 func (l *LokiLogger) Publish(t *testing.T) {
 	t.Log("Pushing log entries to loki...")
+
 	values := make([][]string, 0)
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	for k, v := range l.entries {
 		values = append(values, []string{fmt.Sprintf("%d", k), v})
 	}
@@ -191,29 +203,35 @@ func (l *LokiLogger) Publish(t *testing.T) {
 			},
 		},
 	}
+
 	marshalled, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("failed to marshal payload: %v", err)
 		return
 	}
+
 	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
 	if err != nil {
 		t.Fatalf("failed to send request: %v", err)
 		return
 	}
+
 	if resp.StatusCode >= 300 {
 		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)
 		return
 	}
+
 	t.Logf("Pushed %d log entries to loki", len(values))
 }
 
 func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString string) {
 	t.Helper()
+
 	ctx := context.TODO()
 
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok, "Fail to locate current caller folder")
+
 	dataFolder := path.Join(path.Dir(filename), "metrics/loki")
 
 	container := testcontainers.ContainerRequest{
@@ -237,10 +255,13 @@ func LokiContainerAndLogging(t *testing.T, NetworkID string) (ConnectionString s
 	require.NoError(t, err)
 
 	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
+
 	t.Cleanup(func() {
 		lokiLogger.Publish(t)
 		require.NoError(t, c.Terminate(ctx))
 	})
+
 	log.Logger = zerolog.New(zerolog.MultiLevelWriter(zerolog.NewConsoleWriter(), lokiLogger))
+
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }

@@ -1,4 +1,4 @@
-package command
+package command_test
 
 import (
 	"context"
@@ -23,6 +23,7 @@ type InstanceTest struct {
 	serviceInstance *test_helper.ServiceInstance
 }
 
+//nolint:paralleltest
 func TestInstanceCommand(t *testing.T) {
 	suite.Run(t, new(InstanceTest))
 }

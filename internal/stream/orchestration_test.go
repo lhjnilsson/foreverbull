@@ -33,6 +33,7 @@ func (test *OrchestrationTest) SetupTest() {
 		Postgres: true,
 		NATS:     true,
 	})
+
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
 
@@ -75,6 +76,7 @@ func (test *OrchestrationTest) TestMessageHandler() {
 	repository := repository{db: test.conn}
 	createOrchestration := func(t *testing.T, orchestration *MessageOrchestration) {
 		t.Helper()
+
 		for _, step := range orchestration.Steps {
 			for _, cmd := range step.Commands {
 				msg := cmd.(*message)
@@ -82,6 +84,7 @@ func (test *OrchestrationTest) TestMessageHandler() {
 				test.Require().NoError(err)
 			}
 		}
+
 		for _, cmd := range orchestration.FallbackStep.Commands {
 			msg := cmd.(*message)
 			err := repository.CreateMessage(context.Background(), msg)
@@ -94,9 +97,11 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		msg1, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.AddStep("first step", []Message{msg1})
+
 		msg2, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.AddStep("second step", []Message{msg2})
+
 		fallbackMsg, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.SettFallback([]Message{fallbackMsg})
@@ -131,9 +136,11 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		msg1, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.AddStep("first step", []Message{msg1})
+
 		msg2, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.AddStep("second step", []Message{msg2})
+
 		fallbackMsg, err := NewMessage("test_module", "test_comp", "test_method", nil)
 		test.NoError(err)
 		orchestration.SettFallback([]Message{fallbackMsg})

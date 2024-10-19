@@ -1,4 +1,4 @@
-package servicer
+package servicer_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -61,8 +62,9 @@ func (suite *IngestionServerTest) SetupSubTest() {
 
 	suite.stream = new(stream.MockStream)
 	suite.storage = new(storage.MockStorage)
-	server := NewIngestionServer(suite.stream, suite.storage, suite.pgx)
+	server := servicer.NewIngestionServer(suite.stream, suite.storage, suite.pgx)
 	pb.RegisterIngestionServicerServer(suite.server, server)
+
 	go func() {
 		suite.server.Serve(suite.listner)
 	}()

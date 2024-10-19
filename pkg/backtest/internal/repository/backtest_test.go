@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -32,7 +33,7 @@ func (test *BacktestTest) SetupTest() {
 
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
-	err = Recreate(context.Background(), test.conn)
+	err = repository.Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
 }
 
@@ -47,7 +48,7 @@ func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
 	for i, end := range []*common_pb.Date{nil, {Year: 2024, Month: 01, Day: 01}} {
-		db := &Backtest{Conn: test.conn}
+		db := &repository.Backtest{Conn: test.conn}
 		backtest, err := db.Create(ctx,
 			fmt.Sprintf("backtest_%d", i),
 			&common_pb.Date{Year: 2024, Month: 01, Day: 01},
@@ -66,7 +67,7 @@ func (test *BacktestTest) TestCreate() {
 func (test *BacktestTest) TestGet() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
@@ -80,7 +81,7 @@ func (test *BacktestTest) TestGet() {
 func (test *BacktestTest) TestGetUniverse() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	test.Run("without stored data", func() {
 		start, end, symbols, err := db.GetUniverse(ctx)
 		test.Require().Error(err)
@@ -106,6 +107,7 @@ func (test *BacktestTest) TestGetUniverse() {
 
 		start, end, symbols, err := db.GetUniverse(ctx)
 		expectedEnd := common_pb.GoTimeToDate(time.Now())
+
 		test.Require().NoError(err)
 		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
 		test.Equal(expectedEnd, end)
@@ -118,6 +120,7 @@ func (test *BacktestTest) TestGetUniverse() {
 
 		start, end, symbols, err := db.GetUniverse(ctx)
 		expectedEnd := common_pb.GoTimeToDate(time.Now())
+
 		test.Require().NoError(err)
 		test.Equal(&common_pb.Date{Year: 2024, Month: 01, Day: 01}, start)
 		test.Equal(expectedEnd, end)
@@ -128,7 +131,7 @@ func (test *BacktestTest) TestGetUniverse() {
 func (test *BacktestTest) TestUpdate() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
@@ -150,7 +153,7 @@ func (test *BacktestTest) TestUpdate() {
 func (test *BacktestTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
@@ -171,7 +174,7 @@ func (test *BacktestTest) TestUpdateStatus() {
 func (test *BacktestTest) TestList() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	_, err := db.Create(ctx, "backtest1", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
@@ -186,7 +189,7 @@ func (test *BacktestTest) TestList() {
 func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
-	db := &Backtest{Conn: test.conn}
+	db := &repository.Backtest{Conn: test.conn}
 	_, err := db.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
 
@@ -195,5 +198,5 @@ func (test *BacktestTest) TestDelete() {
 
 	backtests, err := db.List(ctx)
 	test.NoError(err)
-	test.Len(backtests, 0)
+	test.Empty(backtests)
 }
