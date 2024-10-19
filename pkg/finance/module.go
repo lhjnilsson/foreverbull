@@ -26,6 +26,7 @@ type FinanceStream stream.Stream
 
 var Module = fx.Options(
 	fx.Provide(
+
 		func() (supplier.Marketdata, supplier.Trading, error) {
 			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
 				md, err := marketdata.NewYahooClient()

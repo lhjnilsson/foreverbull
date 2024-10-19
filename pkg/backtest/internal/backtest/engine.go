@@ -141,5 +141,5 @@ func (z *Zipline) Stop(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error stopping: %w", err)
 	}
-	return z.container.Stop()
+	return nil
 }
