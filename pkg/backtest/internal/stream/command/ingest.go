@@ -60,5 +60,5 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error setting object metadata: %w", err)
 	}
 
-	return engine.Stop(ctx)
+	return nil
 }

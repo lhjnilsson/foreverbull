@@ -568,7 +568,8 @@ class EngineProcess(multiprocessing.Process, Engine):
                     case _:
                         raise Exception(f"Unknown task {req.task}")
             except StopExcecution as e:
-                raise e
+                self.log.info("Stopping execution early")
+                return
             except Exception as e:
                 self.log.error(f"Error processing request {req.task}: {e}")
                 rsp.error = str(e)

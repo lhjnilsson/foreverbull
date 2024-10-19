@@ -110,6 +110,8 @@ def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
+    engine.stop()
+
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
 def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, engine: Engine, symbols):
