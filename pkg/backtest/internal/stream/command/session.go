@@ -103,7 +103,6 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		}()
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
-		defer engine.Stop(context.Background())
 		for {
 			select {
 			case _, active := <-a:

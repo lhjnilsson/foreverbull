@@ -63,6 +63,7 @@ var Module = fx.Options(
 		},
 		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool, ce container.Engine, dc DependecyContainer) error {
 			var c container.Container
+			var ze engine.Engine
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					var err error
@@ -83,7 +84,7 @@ var Module = fx.Options(
 						}
 						time.Sleep(time.Second / 3)
 					}
-					ze, err := backtest.NewZiplineEngine(ctx, c, nil)
+					ze, err = backtest.NewZiplineEngine(ctx, c, nil)
 					if err != nil {
 						return fmt.Errorf("error creating zipline engine: %v", err)
 					}
@@ -103,6 +104,9 @@ var Module = fx.Options(
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
+					if err := ze.Stop(ctx); err != nil {
+						return fmt.Errorf("error stopping zipline engine: %v", err)
+					}
 					if err := c.Stop(); err != nil {
 						return fmt.Errorf("error stopping container: %v", err)
 					}

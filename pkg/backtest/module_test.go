@@ -151,7 +151,6 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err, "failed to create ingestion")
 	test.NotNil(rsp, "response is nil")
 
-	time.Sleep(time.Second * 30)
 	for i := 0; i < 30; i++ {
 		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 		test.NoError(err, "failed to get current ingestion")
