@@ -47,17 +47,17 @@ func TestBacktests(t *testing.T) {
 func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
-	for i, end := range []*common_pb.Date{nil, {Year: 2024, Month: 0o1, Day: 0o1}} {
+	for index, end := range []*common_pb.Date{nil, {Year: 2024, Month: 0o1, Day: 0o1}} {
 		backtests := &repository.Backtest{Conn: test.conn}
 		backtest, err := backtests.Create(ctx,
-			fmt.Sprintf("backtest_%d", i),
+			fmt.Sprintf("backtest_%d", index),
 			&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			end,
 			[]string{},
 			nil,
 		)
 		test.Require().NoError(err)
-		test.Equal(fmt.Sprintf("backtest_%d", i), backtest.Name)
+		test.Equal(fmt.Sprintf("backtest_%d", index), backtest.Name)
 		test.Len(backtest.Statuses, 1)
 		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
 		test.Equal(end, backtest.EndDate)

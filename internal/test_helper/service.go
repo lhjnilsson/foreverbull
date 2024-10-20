@@ -1,4 +1,4 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
-	_ "go.nanomsg.org/mangos/v3/transport/all"
+	_ "go.nanomsg.org/mangos/v3/transport/all" // for mangos transport.
 	"google.golang.org/protobuf/proto"
 )
 
@@ -77,7 +77,7 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 		default:
 			msg, err := s.socket.Recv()
 			if err != nil {
-				if err == mangos.ErrRecvTimeout || err == mangos.ErrClosed {
+				if errors.Is(err, mangos.ErrRecvTimeout) || errors.Is(err, mangos.ErrClosed) {
 					continue
 				}
 

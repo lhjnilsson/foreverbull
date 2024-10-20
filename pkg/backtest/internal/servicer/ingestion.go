@@ -31,7 +31,7 @@ func NewIngestionServer(stream stream.Stream, storage storage.Storage, pgx *pgxp
 }
 
 func (is *IngestionServer) UpdateIngestion(ctx context.Context,
-	req *pb.UpdateIngestionRequest,
+	_ *pb.UpdateIngestionRequest,
 ) (*pb.UpdateIngestionResponse, error) {
 	backtests := repository.Backtest{Conn: is.pgx}
 
@@ -68,7 +68,7 @@ func (is *IngestionServer) UpdateIngestion(ctx context.Context,
 }
 
 func (is *IngestionServer) GetCurrentIngestion(ctx context.Context,
-	req *pb.GetCurrentIngestionRequest,
+	_ *pb.GetCurrentIngestionRequest,
 ) (*pb.GetCurrentIngestionResponse, error) {
 	ingestions, err := is.storage.ListObjects(ctx, storage.IngestionsBucket)
 	if err != nil {

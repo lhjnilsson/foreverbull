@@ -115,7 +115,7 @@ type Execution struct {
 func (db *Execution) Create(ctx context.Context, session string, start, end *internal_pb.Date,
 	symbols []string, benchmark *string,
 ) (*pb.Execution, error) {
-	var executionId string
+	var executionID string
 
 	var endDate *string
 
@@ -128,12 +128,12 @@ func (db *Execution) Create(ctx context.Context, session string, start, end *int
 		`INSERT INTO execution (session, start_date, end_date, benchmark, symbols)
 		VALUES($1,$2,$3,$4,$5) RETURNING id`, session, internal_pb.DateToDateString(start),
 		endDate, benchmark, symbols).
-		Scan(&executionId)
+		Scan(&executionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
 
-	return db.Get(ctx, executionId)
+	return db.Get(ctx, executionID)
 }
 
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
@@ -191,10 +191,10 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 		status := pb.Execution_Status{}
 		start := time.Time{}
 		end := pgtype.Date{}
-		occured_at := time.Time{}
+		occurred_at := time.Time{}
 
 		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
-			&execution.Symbols, &status.Status, &status.Error, &occured_at)
+			&execution.Symbols, &status.Status, &status.Error, &occurred_at)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
@@ -204,7 +204,7 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
 		execution.Statuses = append(execution.Statuses, &status)
 	}
 
@@ -253,10 +253,10 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 		execution := pb.Execution{}
 		start := time.Time{}
 		end := pgtype.Date{}
-		occurred_at := time.Time{}
+		occurredAt := time.Time{}
 
 		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
-			&execution.Symbols, &status.Status, &status.Error, &occurred_at)
+			&execution.Symbols, &status.Status, &status.Error, &occurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
@@ -266,7 +266,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 
 		inReturnSlice = false
 

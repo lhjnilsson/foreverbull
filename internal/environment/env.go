@@ -13,8 +13,8 @@ const (
 	ServerAddress        = "SERVER_ADDRESS"
 	ServerAddressDefault = "foreverbull"
 
-	HttpPort        = "HTTP_PORT"
-	HttpPortDefault = "8080"
+	HTTPPort        = "HTTP_PORT"
+	HTTPPortDefault = "8080"
 
 	DockerNetwork        = "DOCKER_NETWORK"
 	DockerNetworkDefault = "foreverbull"
@@ -32,18 +32,18 @@ const (
 	LogLevel        = "LOG_LEVEL"
 	LogLevelDefault = "warning"
 
-	PostgresUrl        = "POSTGRES_URL"
-	PostgresUrlDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
+	PostgresURL        = "POSTGRES_URL"
+	PostgresURLDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
 
-	NatsUrl                   = "NATS_URL"
-	NatsUrlDefault            = "nats://localhost:4222"
+	NatsURL                   = "NATS_URL"
+	NatsURLDefault            = "nats://localhost:4222"
 	NatsDurable               = "NATS_DURABLE"
 	NatsDurableDefault        = "foreverbull"
 	NatsDeliveryPolicy        = "NATS_DELIVERY_POLICY"
 	NatsDeliveryPolicyDefault = "all"
 
-	MinioUrl              = "MINIO_URL"
-	MinioUrlDefault       = "localhost:9000"
+	MinioURL              = "MINIO_URL"
+	MinioURLDefault       = "localhost:9000"
 	MinioAccessKey        = "MINIO_ACCESS_KEY"
 	MinioAccessKeyDefault = "minioadmin"
 	MinioSecretKey        = "MINIO_SECRET"
@@ -51,8 +51,8 @@ const (
 
 	MarketDataProvider        = "MARKET_DATA_PROVIDER"
 	MarketDataProviderDefault = "alpaca_markets"
-	AlpacaBaseUrl             = "ALPACA_MARKETS_BASE_URL"
-	AlpacaBaseUrlDefault      = "https://paper-api.alpaca.markets"
+	AlpacaBaseURL             = "ALPACA_MARKETS_BASE_URL"
+	AlpacaBaseURLDefault      = "https://paper-api.alpaca.markets"
 	AlpacaApiKey              = "ALPACA_MARKETS_API_KEY"
 	AlpacaApiSecret           = "ALPACA_MARKETS_API_SECRET"
 )
@@ -64,22 +64,22 @@ type envVar struct {
 
 var envVars = []envVar{ //nolint: gochecknoglobals
 	{ServerAddress, func() (string, error) { return ServerAddressDefault, nil }},
-	{HttpPort, func() (string, error) { return HttpPortDefault, nil }},
+	{HTTPPort, func() (string, error) { return HTTPPortDefault, nil }},
 	{BacktestIngestionDefaultName, func() (string, error) { return BacktestIngestionDefaultNameDefault, nil }},
 	{BacktestImage, func() (string, error) { return BacktestImageDefault, nil }},
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
 	{BacktestPortRangeEnd, func() (string, error) { return BacktestPortRangeEndDefault, nil }},
 	{LogLevel, func() (string, error) { return LogLevelDefault, nil }},
 	{DockerNetwork, func() (string, error) { return DockerNetworkDefault, nil }},
-	{PostgresUrl, func() (string, error) { return PostgresUrlDefault, nil }},
-	{NatsUrl, func() (string, error) { return NatsUrlDefault, nil }},
+	{PostgresURL, func() (string, error) { return PostgresURLDefault, nil }},
+	{NatsURL, func() (string, error) { return NatsURLDefault, nil }},
 	{NatsDurable, func() (string, error) { return NatsDurableDefault, nil }},
 	{NatsDeliveryPolicy, func() (string, error) { return NatsDeliveryPolicyDefault, nil }},
-	{MinioUrl, func() (string, error) { return MinioUrlDefault, nil }},
+	{MinioURL, func() (string, error) { return MinioURLDefault, nil }},
 	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
 	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
 	{MarketDataProvider, func() (string, error) { return MarketDataProviderDefault, nil }},
-	{AlpacaBaseUrl, func() (string, error) { return AlpacaBaseUrlDefault, nil }},
+	{AlpacaBaseURL, func() (string, error) { return AlpacaBaseURLDefault, nil }},
 	{AlpacaApiKey, func() (string, error) { return "", nil }},
 	{AlpacaApiSecret, func() (string, error) { return "", nil }},
 }
@@ -122,7 +122,7 @@ func GetServerAddress() string {
 }
 
 func GetHTTPPort() string {
-	return os.Getenv(HttpPort)
+	return os.Getenv(HTTPPort)
 }
 
 func GetDockerNetworkName() string {
@@ -164,11 +164,11 @@ func GetLogLevel() string {
 }
 
 func GetPostgresURL() string {
-	return os.Getenv(PostgresUrl)
+	return os.Getenv(PostgresURL)
 }
 
 func GetNATSURL() string {
-	return os.Getenv(NatsUrl)
+	return os.Getenv(NatsURL)
 }
 
 func GetNATSDurable() string {
@@ -180,7 +180,7 @@ func GetNATSDeliveryPolicy() string {
 }
 
 func GetMinioURL() string {
-	return os.Getenv(MinioUrl)
+	return os.Getenv(MinioURL)
 }
 
 func GetMinioAccessKey() string {
@@ -196,7 +196,7 @@ func GetMarketDataProvider() string {
 }
 
 func GetAlpacaBaseURL() string {
-	return os.Getenv(AlpacaBaseUrl)
+	return os.Getenv(AlpacaBaseURL)
 }
 
 func GetAlpacaAPIKey() string {

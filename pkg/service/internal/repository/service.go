@@ -168,18 +168,18 @@ func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
 
 	for rows.Next() {
 		serviceStatus := pb.Service_Status{}
-		occuredAt := time.Time{}
+		occurredAt := time.Time{}
 		service := pb.Service{}
 		algorithm := []byte{}
 
 		err = rows.Scan(
-			&service.Image, &algorithm, &serviceStatus.Status, &serviceStatus.Error, &occuredAt,
+			&service.Image, &algorithm, &serviceStatus.Status, &serviceStatus.Error, &occurredAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list services: %w", err)
 		}
 
-		serviceStatus.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
+		serviceStatus.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 
 		inReturnSlice = false
 

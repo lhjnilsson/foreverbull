@@ -23,7 +23,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
-	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	"go.uber.org/fx"
@@ -63,9 +62,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	test.app = fx.New(
 		fx.Provide(
-			func() (*nats.Conn, nats.JetStreamContext, error) {
-				return stream.New()
-			},
+			stream.New,
 			func() *pgxpool.Pool {
 				return pool
 			},
@@ -135,9 +132,9 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	_, err := test.backtestClient.ListBacktests(context.Background(), &pb.ListBacktestsRequest{})
-	test.NoError(err, "failed to list backtests")
+	test.Require().NoError(err, "failed to list backtests")
 	_, err = test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
-	test.NoError(err, "failed to get current ingestion")
+	test.Require().NoError(err, "failed to get current ingestion")
 
 	// Create Backtest
 	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
@@ -148,7 +145,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})
-	test.NoError(err, "failed to create backtest")
+	test.Require().NoError(err, "failed to create backtest")
 	test.NotNil(rsp2, "response is nil")
 
 	// Create Ingestion
@@ -158,7 +155,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	for range 30 {
 		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
-		test.NoError(err, "failed to get current ingestion")
+		test.Require().NoError(err, "failed to get current ingestion")
 
 		if rsp.Status != pb.IngestionStatus_READY {
 			time.Sleep(time.Second / 2)
@@ -173,14 +170,14 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	// Run Backtest
 	rsp3, err := test.backtestClient.CreateSession(context.TODO(),
 		&pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
-	test.NoError(err, "failed to create session")
+	test.Require().NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
 
 	var port int64
 
 	for range 30 {
 		rsp, err := test.backtestClient.GetSession(context.TODO(), &pb.GetSessionRequest{SessionId: rsp3.Session.Id})
-		test.NoError(err, "failed to get session")
+		test.Require().NoError(err, "failed to get session")
 		test.NotNil(rsp, "response is nil")
 
 		if rsp.Session.Statuses[0].Status != pb.Session_Status_RUNNING {
@@ -229,7 +226,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	stream, err := sessionClient.RunExecution(context.TODO(), &pb.RunExecutionRequest{
 		ExecutionId: excRep.Execution.Id,
 	})
-	test.NoError(err, "failed to run execution")
+	test.Require().NoError(err, "failed to run execution")
 	test.NotNil(stream, "response is nil")
 
 	for {
@@ -243,6 +240,6 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	rsp5, err := sessionClient.StopServer(context.TODO(), &pb.StopServerRequest{})
-	test.NoError(err, "failed to stop server")
+	test.Require().NoError(err, "failed to stop server")
 	test.NotNil(rsp5, "response is nil")
 }

@@ -5,9 +5,8 @@ import (
 
 	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 )
 
 type SocketTest struct {
@@ -48,8 +47,8 @@ func (test *SocketTest) TestRequesterReplier() {
 		test.Run(testCase.Task, func() {
 			go func() {
 				request := common_pb.Request{Task: testCase.Task, Data: testCase.Data}
-				sock, err := replier.Recieve(&request)
-				test.NoError(err, "failed to recieve")
+				sock, err := replier.Receive(&request)
+				test.NoError(err, "failed to receive")
 
 				response := common_pb.Response{Task: request.Task, Data: request.Data}
 				err = sock.Reply(&response)

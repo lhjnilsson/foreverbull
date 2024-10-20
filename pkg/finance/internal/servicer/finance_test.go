@@ -64,6 +64,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
+
 	conn, err := grpc.NewClient(suite.listener.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
@@ -91,7 +92,7 @@ func (suite *FinanceServerTest) TestGetIndex() {
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
-	suite.NotEmpty(len(rsp.Assets))
+	suite.NotEmpty(rsp.Assets)
 }
 
 func (suite *FinanceServerTest) TestDownloadHistoricalData() {

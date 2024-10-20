@@ -2,17 +2,17 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 )
 
 func Ingest(ctx context.Context, msg stream.Message) error {
@@ -23,9 +23,12 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error unmarshalling Ingest payload: %w", err)
 	}
 
-	s := msg.MustGet(stream.StorageDep).(storage.Storage)
+	store, isStorage := msg.MustGet(stream.StorageDep).(storage.Storage)
+	if !isStorage {
+		return errors.New("error casting storage")
+	}
 
-	object, err := s.GetObject(ctx, storage.IngestionsBucket, command.Name)
+	object, err := store.GetObject(ctx, storage.IngestionsBucket, command.Name)
 	if err != nil {
 		return fmt.Errorf("error getting object from storage: %w", err)
 	}
@@ -42,7 +45,10 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
 
-	engine := ze.(engine.Engine)
+	engine, isEngine := ze.(engine.Engine)
+	if !isEngine {
+		return errors.New("error casting zipline engine")
+	}
 	ingestion := pb.Ingestion{
 		StartDate: pb_internal.DateStringToDate(command.Start),
 		EndDate:   pb_internal.DateStringToDate(command.End),

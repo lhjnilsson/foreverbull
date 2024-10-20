@@ -17,7 +17,10 @@ func UpdateServiceStatus(ctx context.Context, message stream.Message) error {
 }
 
 func ServiceStart(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
+	db, isDB := message.MustGet(stream.DBDep).(postgres.Query)
+	if !isDB {
+		return fmt.Errorf("db dependency casting failed")
+	}
 	container := message.MustGet(dependency.ContainerDep).(container.Engine)
 
 	command := ss.ServiceStartCommand{}
@@ -29,6 +32,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 
 	services := repository.Service{Conn: db}
 	_, err = services.Get(ctx, command.Image)
+
 	if err != nil {
 		// TODO, should we create a backtest service here?
 		_, crErr := services.Create(ctx, command.Image)

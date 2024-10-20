@@ -1,7 +1,7 @@
 package marketdata_test
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
@@ -37,7 +37,7 @@ func (test *YahooTest) TestGetAsset() {
 		{"GOOGL", "Alphabet Inc.", nil},
 		{"MSFT", "Microsoft Corporation", nil},
 		{"^DJI", "Dow Jones Industrial Average", nil},
-		{"---", "", fmt.Errorf("Quote not found for ticker symbol: ---")},
+		{"---", "", errors.New("Quote not found for ticker symbol: ---")},
 	}
 
 	for _, testCase := range testCases {
@@ -90,7 +90,7 @@ func (test *YahooTest) TestGetOHLC() {
 		{"AAPL", "2021-01-01", "2021-02-01", 19, nil},
 		{"GOOGL", "2015-01-01", "2024-02-01", 2285, nil},
 		{"^DJI", "2021-01-01", "2021-02-01", 19, nil},
-		{"NON_EXISTING", "2021-01-01", "2021-02-01", 0, fmt.Errorf("fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")},
+		{"NON_EXISTING", "2021-01-01", "2021-02-01", 0, errors.New("fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")},
 	}
 
 	for _, testCase := range testCases {

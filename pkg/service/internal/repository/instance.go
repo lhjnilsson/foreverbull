@@ -85,15 +85,15 @@ func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, e
 
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		occuredAt := time.Time{}
+		occurredAt := time.Time{}
 
 		err = rows.Scan(&instance.ID, &instance.Image, &instance.Host, &instance.Port,
-			&status.Status, &status.Error, &occuredAt)
+			&status.Status, &status.Error, &occurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 		instance.Statuses = append(instance.Statuses, &status)
 	}
 
@@ -143,17 +143,17 @@ func (db *Instance) parseRows(rows pgx.Rows) ([]*pb.Instance, error) {
 
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		occuredAt := time.Time{}
+		occurredAt := time.Time{}
 		instance := pb.Instance{}
 
 		err := rows.Scan(
 			&instance.ID, &instance.Image, &instance.Host, &instance.Port,
-			&status.Status, &status.Error, &occuredAt)
+			&status.Status, &status.Error, &occurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 		inReturnSlice = false
 
 		for index := range instances {

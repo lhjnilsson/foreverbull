@@ -46,7 +46,9 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	depEngine, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
 		log.Err(err).Msg("error getting zipline engine")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 
 		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
@@ -58,23 +60,33 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
 	if err != nil {
 		log.Err(err).Msg("error listing ingestions")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
-
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		return fmt.Errorf("error listing ingestions: %w", err)
 	}
 
 	if len(*ingestions) == 0 {
 		err = errors.New("no ingestions found")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		log.Err(err).Msg("no ingestions found")
 
-		return fmt.Errorf("no ingestions found")
+		return errors.New("no ingestions found")
 	}
 
 	var ingestion *storage.Object
 
 	for _, stored := range *ingestions {
-		stored.Refresh()
+		err = stored.Refresh()
+		if err != nil {
+			log.Err(err).Msg("error refreshing ingestion")
+			if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+				log.Err(inErr).Msg("error updating session status")
+			}
+			return fmt.Errorf("error refreshing ingestion: %w", err)
+		}
 
 		if ingestion == nil && stored.Metadata["Status"] == pb.IngestionStatus_READY.String() {
 			ingestion = &stored
@@ -85,24 +97,27 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	if ingestion == nil {
 		err = errors.New("no completed ingestions found, create one before running a session")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
-
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		return err
 	}
 
 	err = engine.DownloadIngestion(ctx, ingestion)
 	if err != nil {
 		log.Err(err).Msg("error downloading ingestion")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
-
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
 	server, activity, err := backtest.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
-
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		return fmt.Errorf("error creating grpc session server: %w", err)
 	}
 
@@ -119,7 +134,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		}
 
 		opErr := &net.OpError{}
-		if errors.As(err, &opErr) && errors.Unwrap(opErr.Unwrap()) == syscall.EADDRINUSE {
+		if errors.As(err, &opErr) && errors.Is(opErr, syscall.EADDRINUSE) {
 			continue
 		}
 
@@ -137,8 +152,9 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			log.Info().Msg("closing session server")
 			server.Stop()
 		}()
-		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
-
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+			log.Err(inErr).Msg("error updating session status")
+		}
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
 
 		for {
@@ -147,14 +163,14 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 				if !active {
 					time.Sleep(time.Second / 4) // make sure reply is sent
 					return
-				} else {
 				}
 			case <-time.After(SessionTimeout):
 				return
 			}
 		}
 	}()
-	sessions.UpdatePort(ctx, command.SessionID, port)
-
+	if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+		log.Err(inErr).Msg("error updating session status")
+	}
 	return nil
 }

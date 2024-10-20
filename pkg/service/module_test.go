@@ -13,7 +13,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 )
@@ -47,9 +46,7 @@ func (test *ServiceModuleTest) SetupTest() {
 	test.Require().NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			func() (*nats.Conn, nats.JetStreamContext, error) {
-				return stream.New()
-			},
+			stream.New,
 			func() *pgxpool.Pool {
 				return pool
 			},

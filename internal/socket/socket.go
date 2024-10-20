@@ -12,10 +12,9 @@ import (
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	"go.nanomsg.org/mangos/v3/protocol/req"
 	"go.nanomsg.org/mangos/v3/protocol/sub"
+	// Needed for Mangos to get needed meta- data.
+	_ "go.nanomsg.org/mangos/v3/transport/all" // for mangos transport.
 	"google.golang.org/protobuf/proto"
-
-	// Needed for Mangos to get needed meta- data
-	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
 var (
@@ -25,16 +24,15 @@ var (
 )
 
 func sockError(err error) error {
-	switch err {
-	case mangos.ErrClosed:
+	switch {
+	case errors.Is(err, mangos.ErrClosed):
 		return ErrClosed
-	case mangos.ErrRecvTimeout:
+	case errors.Is(err, mangos.ErrRecvTimeout):
 		return ErrReadTimeout
-	case mangos.ErrSendTimeout:
+	case errors.Is(err, mangos.ErrSendTimeout):
 		return ErrSendTimeout
-	default:
-		return fmt.Errorf("socket error: %w", err)
 	}
+	return fmt.Errorf("socket error: %w", err)
 }
 
 type OptionSetter interface {
@@ -164,7 +162,7 @@ func (r *requester) Request(msg proto.Message, reply proto.Message, options ...f
 
 type Replier interface {
 	Base
-	Recieve(proto.Message, ...func(OptionSetter) error) (ReplierSocket, error)
+	Receive(msg proto.Message, opt ...func(OptionSetter) error) (ReplierSocket, error)
 }
 
 type ReplierSocket interface {
@@ -252,7 +250,7 @@ func (r *replierSocket) Reply(msg proto.Message, options ...func(OptionSetter) e
 	return nil
 }
 
-func (r *replier) Recieve(msg proto.Message, options ...func(OptionSetter) error) (ReplierSocket, error) {
+func (r *replier) Receive(msg proto.Message, options ...func(OptionSetter) error) (ReplierSocket, error) {
 	ctx, err := r.socket.OpenContext()
 	if err != nil {
 		return nil, sockError(err)
@@ -280,7 +278,7 @@ func (r *replier) Recieve(msg proto.Message, options ...func(OptionSetter) error
 
 type Subscriber interface {
 	Base
-	Recieve(proto.Message, ...func(OptionSetter) error) error
+	Receive(msg proto.Message, opt ...func(OptionSetter) error) error
 }
 
 func NewSubscriber(host string, port int, options ...func(OptionSetter) error) (Subscriber, error) {
@@ -330,7 +328,7 @@ func (s *subscriber) Close() error {
 	return nil
 }
 
-func (s *subscriber) Recieve(msg proto.Message, options ...func(OptionSetter) error) error {
+func (s *subscriber) Receive(msg proto.Message, _ ...func(OptionSetter) error) error {
 	bytes, err := s.socket.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive message: %w", err)

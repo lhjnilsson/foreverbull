@@ -10,9 +10,8 @@ import (
 	"github.com/docker/docker/api/types"
 	cType "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
-
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/rs/zerolog/log"
 )
@@ -64,7 +63,7 @@ func (c *container) GetHealth() (string, error) {
 	}
 
 	if container.State.Health == nil {
-		return "", fmt.Errorf("container has no health")
+		return "", errors.New("container has no health")
 	}
 
 	return container.State.Health.Status, nil

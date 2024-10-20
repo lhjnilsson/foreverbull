@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
-
 	"github.com/jackc/pgx/v5"
+	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
@@ -54,18 +53,18 @@ type Session struct {
 }
 
 func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, error) {
-	var sessionId string
+	var sessionID string
 
 	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ($1) RETURNING id`,
-		backtest).Scan(&sessionId)
+		backtest).Scan(&sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	return db.Get(ctx, sessionId)
+	return db.Get(ctx, sessionID)
 }
 
-func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, error) {
+func (db *Session) Get(ctx context.Context, sessionID string) (*pb.Session, error) {
 	session := pb.Session{}
 
 	rows, err := db.Conn.Query(ctx,
@@ -76,7 +75,7 @@ func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, erro
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at DESC
 		) AS ss ON session.id=ss.id
-		WHERE session.id=$1`, sessionId)
+		WHERE session.id=$1`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
@@ -85,12 +84,12 @@ func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, erro
 
 	for rows.Next() {
 		status := pb.Session_Status{}
-		occurred_at := time.Time{}
+		occurredAt := time.Time{}
 		err = rows.Scan(
 			&session.Id, &session.Backtest, &session.Port, &session.Executions,
-			&status.Status, &status.Error, &occurred_at,
+			&status.Status, &status.Error, &occurredAt,
 		)
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get session: %w", err)
@@ -120,8 +119,8 @@ func (db *Session) UpdateStatus(ctx context.Context, sessionId string, status pb
 	return nil
 }
 
-func (db *Session) UpdatePort(ctx context.Context, sessionId string, port int) error {
-	_, err := db.Conn.Exec(ctx, `UPDATE session SET port=$1 WHERE id=$2`, port, sessionId)
+func (db *Session) UpdatePort(ctx context.Context, sessionID string, port int) error {
+	_, err := db.Conn.Exec(ctx, `UPDATE session SET port=$1 WHERE id=$2`, port, sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to update session port: %w", err)
 	}
@@ -137,12 +136,12 @@ func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 	for rows.Next() {
 		session := pb.Session{}
 		status := pb.Session_Status{}
-		occurred_at := time.Time{}
+		occurredAt := time.Time{}
 		err := rows.Scan(
 			&session.Id, &session.Backtest, &session.Port, &session.Executions,
-			&status.Status, &status.Error, &occurred_at,
+			&status.Status, &status.Error, &occurredAt,
 		)
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurredAt)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to list sessions: %w", err)

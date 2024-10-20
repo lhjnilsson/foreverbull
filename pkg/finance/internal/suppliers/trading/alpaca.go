@@ -1,6 +1,7 @@
 package trading
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -25,11 +26,11 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 	}
 
 	if acc.AccountBlocked {
-		return nil, fmt.Errorf("account is blocked")
+		return nil, errors.New("account is blocked")
 	}
 
 	if acc.TradingBlocked {
-		return nil, fmt.Errorf("trading is blocked")
+		return nil, errors.New("trading is blocked")
 	}
 
 	return &AlpacaClient{client: client}, nil

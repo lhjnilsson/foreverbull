@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 
@@ -125,10 +126,10 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 
 			msg, err = ns.repository.UpdatePublishedAndGetMessage(ctx, *msg.ID)
 			if err != nil {
-				if err != pgx.ErrNoRows {
-					log.Err(err).Msg("error updating message status")
-				} else {
+				if errors.Is(err, pgx.ErrNoRows) {
 					log.Debug().Msg("message not found, probably already processed")
+				} else {
+					log.Err(err).Msg("error updating message status")
 				}
 
 				return
@@ -253,11 +254,11 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 			}
 
 			if msg.OrchestrationStep == nil {
-				return fmt.Errorf("orchestration step is nil")
+				return errors.New("orchestration step is nil")
 			}
 
 			if msg.OrchestrationStepNumber == nil {
-				return fmt.Errorf("orchestration step number is nil")
+				return errors.New("orchestration step number is nil")
 			}
 
 			if !isMsg {
@@ -282,7 +283,7 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 		}
 
 		if msg.OrchestrationStep == nil {
-			return fmt.Errorf("orchestration step is nil")
+			return errors.New("orchestration step is nil")
 		}
 
 		if !isMsg {

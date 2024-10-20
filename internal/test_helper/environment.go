@@ -1,4 +1,4 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"context"
@@ -46,14 +46,14 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 
 	if containers.Postgres {
 		group.Go(func() error {
-			os.Setenv(environment.PostgresUrl, PostgresContainer(t, environment.GetDockerNetworkName()))
+			os.Setenv(environment.PostgresURL, PostgresContainer(t, environment.GetDockerNetworkName()))
 			return nil
 		})
 	}
 
 	if containers.NATS {
 		group.Go(func() error {
-			os.Setenv(environment.NatsUrl, NATSContainer(t, environment.GetDockerNetworkName()))
+			os.Setenv(environment.NatsURL, NATSContainer(t, environment.GetDockerNetworkName()))
 			os.Setenv(environment.NatsDeliveryPolicy, "all")
 
 			return nil
@@ -63,7 +63,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	if containers.Minio {
 		group.Go(func() error {
 			uri, accessKey, secretKey := MinioContainer(t, environment.GetDockerNetworkName())
-			os.Setenv(environment.MinioUrl, uri)
+			os.Setenv(environment.MinioURL, uri)
 			os.Setenv(environment.MinioAccessKey, accessKey)
 			os.Setenv(environment.MinioSecretKey, secretKey)
 

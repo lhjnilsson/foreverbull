@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -78,7 +79,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 						if health == types.Healthy {
 							break
 						} else if health == types.Unhealthy {
-							return fmt.Errorf("container is unhealthy")
+							return errors.New("container is unhealthy")
 						}
 						time.Sleep(time.Second / 3) //nolint: gomnd
 					}
