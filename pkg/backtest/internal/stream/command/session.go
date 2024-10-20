@@ -79,15 +79,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	var ingestion *storage.Object
 
 	for _, stored := range *ingestions {
-		err = stored.Refresh()
-		if err != nil {
-			log.Err(err).Msg("error refreshing ingestion")
-			if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-				log.Err(inErr).Msg("error updating session status")
-			}
-			return fmt.Errorf("error refreshing ingestion: %w", err)
-		}
-
+		stored.Refresh()
 		if ingestion == nil && stored.Metadata["Status"] == pb.IngestionStatus_READY.String() {
 			ingestion = &stored
 		} else if ingestion != nil && stored.LastModified.After(ingestion.LastModified) && stored.Metadata["Status"] == pb.IngestionStatus_READY.String() {
@@ -152,7 +144,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			log.Info().Msg("closing session server")
 			server.Stop()
 		}()
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil); inErr != nil {
 			log.Err(inErr).Msg("error updating session status")
 		}
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
@@ -169,7 +161,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			}
 		}
 	}()
-	if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
+	if inErr := sessions.UpdatePort(ctx, command.SessionID, port); inErr != nil {
 		log.Err(inErr).Msg("error updating session status")
 	}
 	return nil
