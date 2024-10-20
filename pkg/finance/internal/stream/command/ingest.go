@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -47,7 +48,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 	for _, symbol := range command.Symbols {
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
 
