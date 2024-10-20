@@ -42,9 +42,9 @@ func (test *ServiceModuleTest) SetupTest() {
 	})
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.app = fx.New(
 		fx.Provide(
 			func() (*nats.Conn, nats.JetStreamContext, error) {

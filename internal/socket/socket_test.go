@@ -49,11 +49,11 @@ func (test *SocketTest) TestRequesterReplier() {
 			go func() {
 				request := common_pb.Request{Task: testCase.Task, Data: testCase.Data}
 				sock, err := replier.Recieve(&request)
-				test.Require().NoError(err, "failed to recieve")
+				test.NoError(err, "failed to recieve")
 
 				response := common_pb.Response{Task: request.Task, Data: request.Data}
 				err = sock.Reply(&response)
-				test.Require().NoError(err, "failed to send")
+				test.NoError(err, "failed to send")
 			}()
 
 			request := common_pb.Request{Task: testCase.Task}

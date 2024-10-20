@@ -28,7 +28,7 @@ func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status
 
 	msg, err := stream.NewMessage("service", "service", "status", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -46,7 +46,7 @@ func NewServiceStartCommand(image, instanceID string) (stream.Message, error) {
 
 	msg, err := stream.NewMessage("service", "service", "start", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -59,33 +59,33 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 
 	msg, err := NewServiceStartCommand(image, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	msg2, err := NewUpdateServiceStatusCommand(image, pb.Service_Status_INTERVIEW, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.AddStep("start service", []stream.Message{msg, msg2})
 
 	msg, err = NewInstanceSanityCheckCommand([]string{instanceID})
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.AddStep("sanity check", []stream.Message{msg})
 
 	msg, err = NewInstanceInterviewCommand(instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.AddStep("interview", []stream.Message{msg})
 
 	msg, err = NewInstanceStopCommand(instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	msg2, err = NewUpdateServiceStatusCommand(image, pb.Service_Status_READY, nil)
@@ -97,12 +97,12 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 
 	msg, err = NewInstanceStopCommand(instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	msg2, err = NewUpdateServiceStatusCommand(image, pb.Service_Status_ERROR, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.SettFallback([]stream.Message{msg, msg2})

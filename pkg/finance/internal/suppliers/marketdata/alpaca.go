@@ -35,7 +35,7 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	asset, err := a.client.GetAsset(symbol)
 	if err != nil {
-		return nil, fmt.Errorf("error getting asset: %v", err)
+		return nil, fmt.Errorf("error getting asset: %w", err)
 	}
 
 	storeAsset := pb.Asset{

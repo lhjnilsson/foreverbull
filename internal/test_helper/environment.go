@@ -27,7 +27,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	}
 
 	ctx := context.TODO()
-	g, _ := errgroup.WithContext(ctx)
+	group, _ := errgroup.WithContext(ctx)
 
 	if containers.Postgres || containers.NATS || containers.Minio {
 		network, err := network.New(context.TODO())
@@ -35,7 +35,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 			t.Fatal(err)
 		}
 
-		os.Setenv(environment.DOCKER_NETWORK, network.Name)
+		os.Setenv(environment.DockerNetwork, network.Name)
 
 		t.Cleanup(func() {
 			if err := network.Remove(context.TODO()); err != nil {
@@ -45,27 +45,27 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	}
 
 	if containers.Postgres {
-		g.Go(func() error {
-			os.Setenv(environment.POSTGRES_URL, PostgresContainer(t, environment.GetDockerNetworkName()))
+		group.Go(func() error {
+			os.Setenv(environment.PostgresUrl, PostgresContainer(t, environment.GetDockerNetworkName()))
 			return nil
 		})
 	}
 
 	if containers.NATS {
-		g.Go(func() error {
-			os.Setenv(environment.NATS_URL, NATSContainer(t, environment.GetDockerNetworkName()))
-			os.Setenv(environment.NATS_DELIVERY_POLICY, "all")
+		group.Go(func() error {
+			os.Setenv(environment.NatsUrl, NATSContainer(t, environment.GetDockerNetworkName()))
+			os.Setenv(environment.NatsDeliveryPolicy, "all")
 
 			return nil
 		})
 	}
 
 	if containers.Minio {
-		g.Go(func() error {
+		group.Go(func() error {
 			uri, accessKey, secretKey := MinioContainer(t, environment.GetDockerNetworkName())
-			os.Setenv(environment.MINIO_URL, uri)
-			os.Setenv(environment.MINIO_ACCESS_KEY, accessKey)
-			os.Setenv(environment.MINIO_SECRET_KEY, secretKey)
+			os.Setenv(environment.MinioUrl, uri)
+			os.Setenv(environment.MinioAccessKey, accessKey)
+			os.Setenv(environment.MinioSecretKey, secretKey)
 
 			return nil
 		})
@@ -74,16 +74,16 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	// If we run in Github CI, Loki will have issue creating folder and fail to start
 	_, disableLoki := os.LookupEnv("DISABLE_LOKI_LOGGING")
 	if containers.Loki && !disableLoki {
-		g.Go(func() error {
+		group.Go(func() error {
 			LokiContainerAndLogging(t, environment.GetDockerNetworkName())
 			return nil
 		})
 	}
 
-	err := g.Wait()
+	err := group.Wait()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	os.Setenv(environment.SERVER_ADDRESS, "host.docker.internal")
+	t.Setenv(environment.ServerAddress, "host.docker.internal")
 }

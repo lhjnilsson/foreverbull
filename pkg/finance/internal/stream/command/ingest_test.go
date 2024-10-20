@@ -75,9 +75,9 @@ func (test *IngestCommandTest) TearDownTest() {
 }
 
 func (test *IngestCommandTest) TestIngestCommandIngest() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
 	newAsset := pb.Asset{
 		Symbol: "NEW123",
@@ -100,7 +100,7 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		nil,
 	)
 
-	m.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*fs.IngestCommand)
 		command.Symbols = []string{"NEW123"}
 		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
@@ -108,15 +108,15 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		command.End = &end
 	})
 
-	err := command.Ingest(context.Background(), m)
-	test.NoError(err)
+	err := command.Ingest(context.Background(), message)
+	test.Require().NoError(err)
 
 	asset, err := test.assets.Get(context.Background(), newAsset.Symbol)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Equal(newAsset.Name, asset.Name)
 
 	exists, err := test.ohlc.Exists(context.Background(), []string{"NEW123"}, test.storedOHLCStart, test.storedOHLCEnd)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.True(exists)
 
 	test.marketdata.AssertExpectations(test.T())

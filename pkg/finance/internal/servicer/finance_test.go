@@ -59,7 +59,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	pb.RegisterFinanceServer(suite.server, server)
 
 	go func() {
-		suite.server.Serve(suite.listener)
+		suite.NoError(suite.server.Serve(suite.listener))
 	}()
 
 	conn, err := grpc.DialContext(context.Background(), "",
@@ -67,7 +67,7 @@ func (suite *FinanceServerTest) SetupTest() {
 			return suite.listener.Dial()
 		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Printf("error connecting to server: %v", err)
+		log.Printf("error connecting to server: %w", err)
 	}
 
 	suite.client = pb.NewFinanceClient(conn)

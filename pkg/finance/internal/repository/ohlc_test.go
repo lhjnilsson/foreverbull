@@ -34,7 +34,7 @@ func (test *OHLCTests) SetupTest() {
 	err = repository.Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
 	assetStorage := repository.Asset{Conn: test.conn}
-	test.asset = pb.Asset{Symbol: "ABC", Name: "Comany ABC"}
+	test.asset = pb.Asset{Symbol: "ABC", Name: "Company ABC"}
 	err = assetStorage.Store(context.TODO(), test.asset.Symbol, test.asset.Name)
 	test.Require().NoError(err)
 
@@ -60,7 +60,7 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 
 	for i := 0; i <= count; i++ {
 		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
@@ -72,13 +72,13 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 
 func (test *OHLCTests) TestStore() {
 	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
-	test.NoError(err)
+	test.Require().NoError(err)
 }
 
 func (test *OHLCTests) TestExists() {
 	symbol, start, end := test.SampleOHLC()
 	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.True(exists)
 }
 
@@ -86,13 +86,13 @@ func (test *OHLCTests) TestExistsNot() {
 	symbol, start, end := test.SampleOHLC()
 	end.Day++
 	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.False(exists)
 }
 
 func (test *OHLCTests) TestMinMaxNothingStored() {
 	storedMin, storedMax, err := test.ohlcStorage.MinMax(context.Background())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Nil(storedMin)
 	test.Nil(storedMax)
 }
@@ -100,7 +100,7 @@ func (test *OHLCTests) TestMinMaxNothingStored() {
 func (test *OHLCTests) TestMinMax() {
 	_, start, end := test.SampleOHLC()
 	storedMin, storedMax, err := test.ohlcStorage.MinMax(context.Background())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Equal(start, storedMin)
 	test.Equal(end, storedMax)
 }

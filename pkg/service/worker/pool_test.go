@@ -20,9 +20,6 @@ import (
 
 type PoolTest struct {
 	suite.Suite
-
-	socket          mangos.Socket
-	namespaceSocket mangos.Socket
 }
 
 func (test *PoolTest) SetupSuite() {
@@ -34,7 +31,7 @@ func TestPool(t *testing.T) {
 }
 
 func (test *PoolTest) TestSimple() {
-	cb := func(req *pb.WorkerRequest) *pb.WorkerResponse {
+	cb := func(_ *pb.WorkerRequest) *pb.WorkerResponse {
 		return &pb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{

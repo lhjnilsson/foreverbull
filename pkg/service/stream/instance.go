@@ -17,7 +17,7 @@ func NewInstanceInterviewCommand(instanceID string) (stream.Message, error) {
 
 	msg, err := stream.NewMessage("service", "instance", "interview", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -34,7 +34,7 @@ func NewInstanceStopCommand(instanceID string) (stream.Message, error) {
 
 	msg, err := stream.NewMessage("service", "instance", "stop", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -51,7 +51,7 @@ func NewInstanceSanityCheckCommand(instanceIDs []string) (stream.Message, error)
 
 	msg, err := stream.NewMessage("service", "instance", "sanity_check", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil

@@ -64,17 +64,17 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, s Stream, marketdata supplier.Marketdata) error {
+		func(lc fx.Lifecycle, stream Stream) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					err := s.CommandSubscriber("marketdata", "ingest", command.Ingest)
+					err := stream.CommandSubscriber("marketdata", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("failed to subscribe to ingest command: %w", err)
 					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					return s.Unsubscribe()
+					return stream.Unsubscribe()
 				},
 			})
 			return nil

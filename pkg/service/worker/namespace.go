@@ -22,7 +22,7 @@ type namespace struct {
 	values map[string]*namespaceContainer
 }
 
-func CreateNamespace(namespaces []string) *namespace {
+func CreateNamespace(namespaces []string) Namespace {
 	nspace := &namespace{
 		values: make(map[string]*namespaceContainer),
 	}

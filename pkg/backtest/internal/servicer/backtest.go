@@ -25,7 +25,8 @@ func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer 
 	}
 }
 
-func (bs *BacktestServer) ListBacktests(ctx context.Context, req *pb.ListBacktestsRequest) (*pb.ListBacktestsResponse, error) {
+func (bs *BacktestServer) ListBacktests(ctx context.Context,
+	req *pb.ListBacktestsRequest) (*pb.ListBacktestsResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	list, err := backtests.List(ctx)
@@ -38,7 +39,8 @@ func (bs *BacktestServer) ListBacktests(ctx context.Context, req *pb.ListBacktes
 	}, nil
 }
 
-func (bs *BacktestServer) CreateBacktest(ctx context.Context, req *pb.CreateBacktestRequest) (*pb.CreateBacktestResponse, error) {
+func (bs *BacktestServer) CreateBacktest(ctx context.Context,
+	req *pb.CreateBacktestRequest) (*pb.CreateBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	reqBacktest := req.GetBacktest()
@@ -57,7 +59,8 @@ func (bs *BacktestServer) CreateBacktest(ctx context.Context, req *pb.CreateBack
 	}, nil
 }
 
-func (bs *BacktestServer) GetBacktest(ctx context.Context, req *pb.GetBacktestRequest) (*pb.GetBacktestResponse, error) {
+func (bs *BacktestServer) GetBacktest(ctx context.Context,
+	req *pb.GetBacktestRequest) (*pb.GetBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	backtest, err := backtests.Get(ctx, req.GetName())
@@ -71,7 +74,8 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context, req *pb.GetBacktestRe
 	}, nil
 }
 
-func (bs *BacktestServer) CreateSession(ctx context.Context, req *pb.CreateSessionRequest) (*pb.CreateSessionResponse, error) {
+func (bs *BacktestServer) CreateSession(ctx context.Context,
+	req *pb.CreateSessionRequest) (*pb.CreateSessionResponse, error) {
 	sessions := repository.Session{Conn: bs.pgx}
 
 	session, err := sessions.Create(ctx, req.GetBacktestName())
@@ -94,7 +98,8 @@ func (bs *BacktestServer) CreateSession(ctx context.Context, req *pb.CreateSessi
 	}, nil
 }
 
-func (bs *BacktestServer) GetSession(ctx context.Context, req *pb.GetSessionRequest) (*pb.GetSessionResponse, error) {
+func (bs *BacktestServer) GetSession(ctx context.Context,
+	req *pb.GetSessionRequest) (*pb.GetSessionResponse, error) {
 	sessions := repository.Session{Conn: bs.pgx}
 
 	session, err := sessions.Get(ctx, req.GetSessionId())

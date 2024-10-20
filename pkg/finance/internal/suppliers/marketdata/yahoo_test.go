@@ -40,15 +40,15 @@ func (test *YahooTest) TestGetAsset() {
 		{"---", "", fmt.Errorf("Quote not found for ticker symbol: ---")},
 	}
 
-	for _, tc := range testCases {
-		asset, err := test.client.GetAsset(tc.Symbol)
-		if tc.expectedError != nil {
+	for _, testCase := range testCases {
+		asset, err := test.client.GetAsset(testCase.Symbol)
+		if testCase.expectedError != nil {
 			test.Error(err)
-			test.Equal(tc.expectedError.Error(), err.Error())
+			test.Equal(testCase.expectedError.Error(), err.Error())
 		} else {
-			test.NoError(err)
+			test.Require().NoError(err)
 			test.NotNil(asset)
-			test.Equal(tc.ExpectedName, asset.Name)
+			test.Equal(testCase.ExpectedName, asset.Name)
 		}
 	}
 }
@@ -64,13 +64,13 @@ func (test *YahooTest) TestGetIndex() {
 		{"^DJI", nil},
 		{"^OMX", nil},
 	}
-	for _, tc := range testCases {
-		assets, err := test.client.GetIndex(tc.Symbol)
-		if tc.ExpectedErr != nil {
+	for _, testCase := range testCases {
+		assets, err := test.client.GetIndex(testCase.Symbol)
+		if testCase.ExpectedErr != nil {
 			test.Error(err)
-			test.Equal(tc.ExpectedErr.Error(), err.Error())
+			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
-			test.NoError(err)
+			test.Require().NoError(err)
 			test.NotNil(assets)
 			test.NotEmpty(assets)
 		}
@@ -93,20 +93,20 @@ func (test *YahooTest) TestGetOHLC() {
 		{"NON_EXISTING", "2021-01-01", "2021-02-01", 0, fmt.Errorf("fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")},
 	}
 
-	for _, tc := range testCases {
-		start, err := time.Parse("2006-01-02", tc.Start)
+	for _, testCase := range testCases {
+		start, err := time.Parse("2006-01-02", testCase.Start)
 		test.Require().NoError(err)
-		end, err := time.Parse("2006-01-02", tc.End)
+		end, err := time.Parse("2006-01-02", testCase.End)
 		test.Require().NoError(err)
 
-		ohlc, err := test.client.GetOHLC(tc.Symbol, start, &end)
-		if tc.ExpectedErr != nil {
+		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, &end)
+		if testCase.ExpectedErr != nil {
 			test.Error(err)
-			test.Equal(tc.ExpectedErr.Error(), err.Error())
+			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
-			test.NoError(err)
+			test.Require().NoError(err)
 			test.NotNil(ohlc)
-			test.Len(tc.ExpectedLength, len(ohlc))
+			test.Len(testCase.ExpectedLength, len(ohlc))
 		}
 	}
 }
@@ -123,16 +123,16 @@ func (test *YahooTest) TestGetOHLCNoEnd() {
 		{"GOOGL", "2015-01-01", nil},
 	}
 
-	for _, tc := range testCases {
-		start, err := time.Parse("2006-01-02", tc.Start)
+	for _, testCase := range testCases {
+		start, err := time.Parse("2006-01-02", testCase.Start)
 		test.Require().NoError(err)
 
-		ohlc, err := test.client.GetOHLC(tc.Symbol, start, nil)
-		if tc.ExpectedErr != nil {
+		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, nil)
+		if testCase.ExpectedErr != nil {
 			test.Error(err)
-			test.Equal(tc.ExpectedErr.Error(), err.Error())
+			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
-			test.NoError(err)
+			test.Require().NoError(err)
 			test.NotNil(ohlc)
 		}
 	}

@@ -60,10 +60,10 @@ func (test *InstanceTest) SetupSubTest() {
 
 	instances := repository.Instance{Conn: test.db}
 	err := instances.UpdateHostPort(context.Background(), test.testInstance.ID, test.serviceInstance.Host, test.serviceInstance.Port)
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	err = instances.UpdateStatus(context.Background(), test.testInstance.ID, service_pb.Instance_Status_RUNNING, nil)
-	test.NoError(err)
+	test.Require().NoError(err)
 }
 
 func (test *InstanceTest) TearDownSubTest() {

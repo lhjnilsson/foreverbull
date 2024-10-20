@@ -48,11 +48,11 @@ func (test *AssetTests) LoadSampleData() {
 	test.a2 = pb.Asset{Symbol: "DEF456", Name: "Company DEF"}
 	test.a3 = pb.Asset{Symbol: "GHI789", Name: "Company GHI"}
 	err := test.assetStorage.Store(context.TODO(), test.a1.Symbol, test.a1.Name)
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = test.assetStorage.Store(context.TODO(), test.a2.Symbol, test.a2.Name)
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = test.assetStorage.Store(context.TODO(), test.a3.Symbol, test.a3.Name)
-	test.NoError(err)
+	test.Require().NoError(err)
 }
 
 func TestAsset(t *testing.T) {
@@ -61,11 +61,11 @@ func TestAsset(t *testing.T) {
 
 func (test *AssetTests) TestListWithoutOHLC() {
 	assets, err := test.assetStorage.List(context.TODO())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Empty(assets)
 	test.LoadSampleData()
 	assets, err = test.assetStorage.List(context.TODO())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Len(assets, 3)
 }
 
@@ -75,14 +75,14 @@ func (test *AssetTests) TestListBySymbolsNormal() {
 	test.Error(err)
 	test.LoadSampleData()
 	assets, err = test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456"})
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Len(assets, 2)
 }
 
 func (test *AssetTests) TestListBySymbolNotStored() {
 	test.LoadSampleData()
 	assets, err := test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456"})
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Len(assets, 2)
 	assets, err = test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456", "OAB333"})
 	test.Nil(assets)
@@ -91,32 +91,32 @@ func (test *AssetTests) TestListBySymbolNotStored() {
 }
 
 func (test *AssetTests) TestStoreNormal() {
-	a1 := pb.Asset{Symbol: "ABC123", Name: "Comany ABC"}
-	err := test.assetStorage.Store(context.TODO(), a1.Symbol, a1.Name)
-	test.NoError(err)
+	asset := pb.Asset{Symbol: "ABC123", Name: "Company ABC"}
+	err := test.assetStorage.Store(context.TODO(), asset.Symbol, asset.Name)
+	test.Require().NoError(err)
 	assets, err := test.assetStorage.List(context.TODO())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Require().Len(assets, 1)
-	test.Equal(a1.Symbol, assets[0].Symbol)
-	test.Equal(a1.Name, assets[0].Name)
+	test.Equal(asset.Symbol, assets[0].Symbol)
+	test.Equal(asset.Name, assets[0].Name)
 }
 
 func (test *AssetTests) TestGetNormal() {
 	test.LoadSampleData()
 	asset, err := test.assetStorage.Get(context.TODO(), "ABC123")
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.NotNil(asset)
 	test.Equal("ABC123", asset.Symbol)
-	test.Equal("Comany ABC", asset.Name)
+	test.Equal("Company ABC", asset.Name)
 }
 
 func (test *AssetTests) TestGetNotFound() {
 	test.LoadSampleData()
 	asset, err := test.assetStorage.Get(context.TODO(), "ABC123")
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.NotNil(asset)
 	test.Equal("ABC123", asset.Symbol)
-	test.Equal("Comany ABC", asset.Name)
+	test.Equal("Company ABC", asset.Name)
 	asset, err = test.assetStorage.Get(context.TODO(), "ABC1234")
 	test.Error(err)
 	test.Nil(asset)
@@ -126,8 +126,8 @@ func (test *AssetTests) TestGetNotFound() {
 func (test *AssetTests) TestDeleteNormal() {
 	test.LoadSampleData()
 	err := test.assetStorage.Delete(context.TODO(), "ABC123")
-	test.NoError(err)
+	test.Require().NoError(err)
 	assets, err := test.assetStorage.List(context.TODO())
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Len(assets, 2)
 }

@@ -156,7 +156,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err, "failed to create ingestion")
 	test.NotNil(rsp, "response is nil")
 
-	for i := 0; i < 30; i++ {
+	for _ = range 30 {
 		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 		test.NoError(err, "failed to get current ingestion")
 
@@ -178,7 +178,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	var port int64
 
-	for i := 0; i < 30; i++ {
+	for _ = range 30 {
 		rsp, err := test.backtestClient.GetSession(context.TODO(), &pb.GetSessionRequest{SessionId: rsp3.Session.Id})
 		test.NoError(err, "failed to get session")
 		test.NotNil(rsp, "response is nil")
@@ -197,6 +197,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	gClient, err = grpc.NewClient(fmt.Sprintf("localhost:%d", port),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	sessionClient := pb.NewSessionServicerClient(gClient)
+
+	test.Require().NoError(err)
 
 	cb := func(_ *service_pb.WorkerRequest) *service_pb.WorkerResponse {
 		return &service_pb.WorkerResponse{}
@@ -217,7 +219,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err, "failed to create execution")
 
 	workerSocket, err := rep.NewSocket()
-	test.NoError(err)
+	test.Require().NoError(err)
 	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", excRep.Configuration.GetBrokerPort()))
 	test.Require().NoError(err, fmt.Sprintf("Failed to connect to broker port %d", excRep.Configuration.GetBrokerPort()))
 

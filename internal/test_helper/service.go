@@ -35,7 +35,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 	for ; socketStart < 6900; socketStart++ {
 		socket, err = rep.NewSocket()
 		if err != nil {
-			t.Logf("could not create socket: %v", err)
+			t.Logf("could not create socket: %w", err)
 			continue
 		}
 
@@ -47,7 +47,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 				continue
 			}
 
-			t.Fatalf("could not listen: %v", err)
+			t.Fatalf("could not listen: %w", err)
 
 			return nil
 		}
@@ -79,9 +79,9 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 			if err != nil {
 				if err == mangos.ErrRecvTimeout || err == mangos.ErrClosed {
 					continue
-				} else {
-					panic(err)
 				}
+
+				panic(err)
 			}
 
 			request := common_pb.Request{}

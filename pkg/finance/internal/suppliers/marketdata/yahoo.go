@@ -28,7 +28,7 @@ func NewYahooClient() (supplier.Marketdata, error) {
 
 	rsp, err := yc.doRequest("https://fc.yahoo.com")
 	if err != nil {
-		return nil, fmt.Errorf("error making request: %v", err)
+		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
 	defer rsp.Body.Close()
@@ -43,9 +43,9 @@ func NewYahooClient() (supplier.Marketdata, error) {
 
 	buffer := make([]byte, bufferSize)
 
-	length, err := rsp.Body.Read([]byte(buffer))
+	length, err := rsp.Body.Read(buffer)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response: %v", err)
+		return nil, fmt.Errorf("error reading response: %w", err)
 	}
 
 	yc.crumb = string(buffer[:length])
@@ -64,7 +64,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	req.Header.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'")
@@ -75,7 +75,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 
 	rsp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error making request: %v", err)
+		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
 	return rsp, nil
@@ -106,7 +106,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 
 	resp, err := y.doRequest(url, "modules=quoteType")
 	if err != nil {
-		return nil, fmt.Errorf("error: %v", err)
+		return nil, fmt.Errorf("error: %w", err)
 	}
 
 	defer resp.Body.Close()
@@ -115,7 +115,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
 	if data.QuoteSummary.Error.Code != "" {
@@ -145,7 +145,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 
 	resp, err := y.doRequest(url, "modules=components%2CsummaryDetail")
 	if err != nil {
-		return nil, fmt.Errorf("error: %v", err)
+		return nil, fmt.Errorf("error: %w", err)
 	}
 
 	result := IndexResponse{}
@@ -154,7 +154,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
 	assets := make([]*pb.Asset, 0)
@@ -165,7 +165,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 		group.Go(func() error {
 			a, err := y.GetAsset(component)
 			if err != nil {
-				return fmt.Errorf("error getting asset: %v", err)
+				return fmt.Errorf("error getting asset: %w", err)
 			}
 			assetChan <- a
 
@@ -176,7 +176,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	group.Go(func() error {
 		a, err := y.GetAsset(symbol)
 		if err != nil {
-			return fmt.Errorf("error getting asset: %v", err)
+			return fmt.Errorf("error getting asset: %w", err)
 		}
 		assetChan <- a
 
@@ -190,7 +190,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	}()
 
 	if err := group.Wait(); err != nil {
-		return nil, fmt.Errorf("error getting assets: %v", err)
+		return nil, fmt.Errorf("error getting assets: %w", err)
 	}
 
 	return assets, nil
@@ -231,19 +231,20 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		params = append(params, fmt.Sprintf("period2=%d", time.Now().Unix()))
 	}
 
-	params = append(params, fmt.Sprintf("interval=%s", "1d"))
+	params = append(params, "intervals=1d")
 
 	resp, err := y.doRequest(url, params...)
 	if err != nil {
 		return nil, nil
 	}
+
 	defer resp.Body.Close()
 
 	data := OHLCResponse{}
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
 	if data.Chart.Error.Code != "" {

@@ -26,7 +26,7 @@ type DemoEntity struct {
 func (test *MessageTest) TestNewMessage() {
 	test.Run("successful", func() {
 		msg, err := NewMessage("module", "component", "method", DemoEntity{Key: "key", Value: 1})
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.NotNil(msg)
 
 		parsed, ok := msg.(*message)
@@ -78,7 +78,7 @@ func (test *DependencyContainerTest) TestNewDependencyContainer() {
 
 		msg := &message{dependencyContainer: container.(*dependencyContainer)}
 		_, err := msg.Call(context.Background(), "key")
-		test.NoError(err)
+		test.Require().NoError(err)
 	})
 	test.Run("call missing", func() {
 		defer func() {
@@ -148,7 +148,7 @@ func (test *MessageOrchestrationTest) TestNewMessageOrchestration() {
 		test.Nil(orchestration.FallbackStep)
 
 		m, err := NewMessage("module", "component", "method", DemoEntity{Key: "key", Value: 1})
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		orchestration.AddStep("test step", []Message{m})
 		test.Len(orchestration.Steps, 1)
@@ -169,7 +169,7 @@ func (test *MessageOrchestrationTest) TestNewMessageOrchestration() {
 		test.Nil(orchestration.FallbackStep)
 
 		m, err := NewMessage("module", "component", "method", DemoEntity{Key: "key", Value: 1})
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		orchestration.SettFallback([]Message{m})
 		test.NotNil(orchestration.FallbackStep)

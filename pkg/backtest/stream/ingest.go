@@ -24,7 +24,7 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end string) 
 
 	msg, err := stream.NewMessage("backtest", "ingest", "ingest", cmd)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -35,14 +35,14 @@ func NewIngestOrchestration(name string, symbols []string, start, end string) (*
 
 	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.AddStep("ingest financial data", []stream.Message{msg})
 
 	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	orchestration.AddStep("ingest into backtest", []stream.Message{msg})

@@ -11,9 +11,9 @@ import (
 )
 
 type Engine interface {
-	Ingest(context.Context, *pb.Ingestion, *storage.Object) error
-	DownloadIngestion(context.Context, *storage.Object) error
-	RunBacktest(context.Context, *pb.Backtest, worker.Pool) (chan *finance_pb.Portfolio, error)
+	Ingest(ctx context.Context, ingestion *pb.Ingestion, object *storage.Object) error
+	DownloadIngestion(ctx context.Context, object *storage.Object) error
+	RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *finance_pb.Portfolio, error)
 	GetResult(ctx context.Context) (*pb.GetResultResponse, error)
-	Stop(context.Context) error
+	Stop(ctx context.Context) error
 }

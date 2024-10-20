@@ -24,13 +24,13 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 
 	cont, err := containerEngine.Start(ctx, environment.GetBacktestImage(), "")
 	if err != nil {
-		return nil, fmt.Errorf("error starting container: %v", err)
+		return nil, fmt.Errorf("error starting container: %w", err)
 	}
 
 	for _ = range NumberOfTries {
 		health, err := cont.GetHealth()
 		if err != nil {
-			return nil, fmt.Errorf("error getting container health: %v", err)
+			return nil, fmt.Errorf("error getting container health: %w", err)
 		}
 
 		if health == types.Healthy {
@@ -44,7 +44,7 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 
 	engine, err := backtest.NewZiplineEngine(ctx, cont, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating zipline engine: %v", err)
+		return nil, fmt.Errorf("error creating zipline engine: %w", err)
 	}
 
 	return engine, nil

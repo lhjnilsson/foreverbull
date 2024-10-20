@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -62,12 +63,16 @@ func (suite *BacktestServerTest) SetupTest() {
 		suite.server.Serve(suite.listener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(suite.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return suite.listener.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	if err != nil {
-		log.Printf("error connecting to server: %v", err)
+		log.Printf("error connecting to server: %w", err)
 	}
 
 	suite.client = pb.NewBacktestServicerClient(conn)
@@ -76,7 +81,7 @@ func (suite *BacktestServerTest) SetupTest() {
 func (suite *BacktestServerTest) TearDownTest() {
 	err := suite.listener.Close()
 	if err != nil {
-		suite.T().Errorf("Error closing listener: %v", err)
+		suite.T().Errorf("Error closing listener: %w", err)
 	}
 
 	suite.server.Stop()
@@ -108,7 +113,7 @@ func (suite *BacktestServerTest) TestListBacktests() {
 	req := &pb.ListBacktestsRequest{}
 
 	resp, err := suite.client.ListBacktests(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -124,7 +129,7 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	}
 
 	resp, err := suite.client.CreateBacktest(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -136,7 +141,7 @@ func (suite *BacktestServerTest) TestGetBacktest() {
 	}
 
 	resp, err := suite.client.GetBacktest(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(backtest, resp.Backtest)
 }
@@ -151,7 +156,7 @@ func (suite *BacktestServerTest) TestCreateSession() {
 	}
 
 	resp, err := suite.client.CreateSession(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -164,6 +169,6 @@ func (suite *BacktestServerTest) TestGetSession() {
 	}
 
 	resp, err := suite.client.GetSession(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }

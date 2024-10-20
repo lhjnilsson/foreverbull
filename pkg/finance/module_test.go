@@ -67,13 +67,13 @@ func (test *FinanceModuleTest) TearDownTest() {
 
 func (test *FinanceModuleTest) TestIngestCommand() {
 	_, st, err := stream.New()
-	test.NoError(err)
+	test.Require().NoError(err)
 	stream, err := stream.NewNATSStream(st, "finance_test", stream.NewDependencyContainer(), test.pool)
-	test.NoError(err)
+	test.Require().NoError(err)
 
 	endDate := "2020-02-01"
 	command, err := fs.NewIngestCommand([]string{"AAPL"}, "2020-01-01", &endDate)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.NoError(stream.Publish(context.Background(), command))
 
 	ohlcExists := func() (bool, error) {

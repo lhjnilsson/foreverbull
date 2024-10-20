@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// Image: ziptest:latest
+// Image: ziptest:latest.
 type EngineTest struct {
 	suite.Suite
 }
@@ -27,14 +27,14 @@ func (test *EngineTest) NoTestStart() {
 	test.Require().NoError(err)
 
 	container, err := engine.Start(context.TODO(), "ziptest:latest", "test")
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.NotNil(container)
 
 	status, err := container.GetStatus()
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Equal("running", status)
 
-	for i := 0; i < 120; i++ {
+	for _ = range 120 {
 		health, err := container.GetHealth()
 		test.Require().NoError(err)
 
@@ -46,10 +46,10 @@ func (test *EngineTest) NoTestStart() {
 	}
 
 	health, err := container.GetHealth()
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Equal("healthy", health)
 
 	conn, err := container.GetConnectionString()
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.NotEmpty(conn)
 }

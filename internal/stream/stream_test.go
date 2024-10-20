@@ -92,11 +92,11 @@ func (test *NatsStreamTest) TestPubSub() {
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func() {
 			err := test.stream.Publish(context.Background(), &testCase.message)
-			test.NoError(err)
+			test.Require().NoError(err)
 			time.Sleep(time.Second / 2)
 
 			message, err := test.stream.repository.GetMessage(context.Background(), *testCase.message.ID)
-			test.NoError(err)
+			test.Require().NoError(err)
 			test.Equal(testCase.expectedStatus, message.StatusHistory[0].Status)
 		})
 	}
@@ -118,11 +118,11 @@ func (test *NatsStreamTest) TestRunOrchestration() {
 
 	test.Run("normal orchestration", func() {
 		msg1, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 1})
-		test.NoError(err)
+		test.Require().NoError(err)
 		msg2, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 2})
-		test.NoError(err)
+		test.Require().NoError(err)
 		msg3, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 3})
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		orchestration := NewMessageOrchestration("test orchestration")
 		orchestration.AddStep("step1", []Message{msg1})
@@ -130,27 +130,27 @@ func (test *NatsStreamTest) TestRunOrchestration() {
 		orchestration.SettFallback([]Message{msg3})
 
 		err = test.stream.RunOrchestration(context.Background(), orchestration)
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		time.Sleep(time.Second / 2)
 
 		message, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
 		message, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
 		message, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusCanceled, message.StatusHistory[0].Status)
 	})
 	test.Run("error orchestration", func() {
 		msg1, err := NewMessage("test", "return", "err", TestPayload{Name: "test", Number: 1})
-		test.NoError(err)
+		test.Require().NoError(err)
 		msg2, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 2})
-		test.NoError(err)
+		test.Require().NoError(err)
 		msg3, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 3})
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		orchestration := NewMessageOrchestration("test orchestration")
 		orchestration.AddStep("step1", []Message{msg1})
@@ -158,18 +158,18 @@ func (test *NatsStreamTest) TestRunOrchestration() {
 		orchestration.SettFallback([]Message{msg3})
 
 		err = test.stream.RunOrchestration(context.Background(), orchestration)
-		test.NoError(err)
+		test.Require().NoError(err)
 
 		time.Sleep(time.Second / 2)
 
 		msg, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusError, msg.StatusHistory[0].Status)
 		msg, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusCanceled, msg.StatusHistory[0].Status)
 		msg, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
-		test.NoError(err)
+		test.Require().NoError(err)
 		test.Equal(MessageStatusComplete, msg.StatusHistory[0].Status)
 	})
 

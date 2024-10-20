@@ -87,7 +87,7 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 
 			msg, err := test.repository.UpdatePublishedAndGetMessage(context.TODO(), *msg.ID)
 			if testCase.ExpectMessage {
-				test.NoError(err)
+				test.Require().NoError(err)
 				test.NotNil(msg)
 				test.Equal(MessageStatusReceived, msg.StatusHistory[0].Status)
 			} else {
@@ -213,7 +213,7 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 
 			commands, err := test.repository.GetNextOrchestrationCommands(context.TODO(),
 				baseOrchestration.OrchestrationID, testCase.CurrentStep)
-			test.NoError(err)
+			test.Require().NoError(err)
 
 			if testCase.ExpectedMessages == nil {
 				test.Nil(commands)

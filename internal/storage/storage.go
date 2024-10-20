@@ -10,6 +10,10 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
+const (
+	PresignedURLExpiry = 24 * time.Hour
+)
+
 func WithMetadata(metadata map[string]string) func(*minio.PutObjectOptions) error {
 	return func(obj *minio.PutObjectOptions) error {
 		if obj.UserMetadata == nil {
@@ -26,7 +30,7 @@ func WithMetadata(metadata map[string]string) func(*minio.PutObjectOptions) erro
 
 type Bucket string
 
-var (
+const (
 	ResultsBucket    Bucket = "results"
 	IngestionsBucket Bucket = "ingestions"
 )
@@ -34,17 +38,18 @@ var (
 type Storage interface {
 	ListObjects(ctx context.Context, bucket Bucket) (*[]Object, error)
 	GetObject(ctx context.Context, bucket Bucket, name string) (*Object, error)
-	CreateObject(ctx context.Context, bucket Bucket, name string, opts ...func(*minio.PutObjectOptions) error) (*Object, error)
+	CreateObject(ctx context.Context, bucket Bucket, name string,
+		opts ...func(*minio.PutObjectOptions) error) (*Object, error)
 }
 
 type Object struct {
 	client *minio.Client
 
-	Bucket       Bucket            `json:"bucket"`
-	Name         string            `json:"name"`
-	Size         int64             `json:"size"`
-	LastModified time.Time         `json:"last_modified"`
-	Metadata     map[string]string `json:"metadata"`
+	Bucket       Bucket
+	Name         string
+	Size         int64
+	LastModified time.Time
+	Metadata     map[string]string
 }
 
 func (o *Object) Refresh() error {
@@ -61,7 +66,7 @@ func (o *Object) Refresh() error {
 }
 
 func (o *Object) PresignedGetURL() (string, error) {
-	url, err := o.client.PresignedGetObject(context.Background(), string(o.Bucket), o.Name, time.Hour*24, nil)
+	url, err := o.client.PresignedGetObject(context.Background(), string(o.Bucket), o.Name, PresignedURLExpiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("error creating presigned get url: %w", err)
 	}
@@ -70,7 +75,7 @@ func (o *Object) PresignedGetURL() (string, error) {
 }
 
 func (o *Object) PresignedPutURL() (string, error) {
-	url, err := o.client.PresignedPutObject(context.Background(), string(o.Bucket), o.Name, time.Hour*24)
+	url, err := o.client.PresignedPutObject(context.Background(), string(o.Bucket), o.Name, PresignedURLExpiry)
 	if err != nil {
 		return "", fmt.Errorf("error creating presigned put url: %w", err)
 	}
@@ -173,7 +178,8 @@ func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string
 	return &result, nil
 }
 
-func (s *MinioStorage) CreateObject(ctx context.Context, bucket Bucket, name string, opts ...func(*minio.PutObjectOptions) error) (*Object, error) {
+func (s *MinioStorage) CreateObject(ctx context.Context, bucket Bucket, name string,
+	opts ...func(*minio.PutObjectOptions) error) (*Object, error) {
 	putOptions := minio.PutObjectOptions{}
 
 	for _, opt := range opts {

@@ -40,7 +40,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	session, err := sessions.Get(ctx, command.SessionID)
 	if err != nil {
 		log.Err(err).Msg("error getting session")
-		return fmt.Errorf("error getting session: %v", err)
+		return fmt.Errorf("error getting session: %w", err)
 	}
 
 	depEngine, err := msg.Call(ctx, dependency.GetEngineKey)
@@ -56,6 +56,13 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	var ingestions *[]storage.Object
 
 	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
+	if err != nil {
+		log.Err(err).Msg("error listing ingestions")
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+
+		return fmt.Errorf("error listing ingestions: %w", err)
+	}
+
 	if len(*ingestions) == 0 {
 		err = errors.New("no ingestions found")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
@@ -96,7 +103,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		log.Err(err).Msg("error creating grpc session server")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
 
-		return fmt.Errorf("error creating grpc session server: %v", err)
+		return fmt.Errorf("error creating grpc session server: %w", err)
 	}
 
 	var listener net.Listener
@@ -138,7 +145,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			select {
 			case _, active := <-activity:
 				if !active {
-					time.Sleep(time.Second / 4) // Make sure reply is sent
+					time.Sleep(time.Second / 4) //nolint:gomnd make sure reply is sent
 					return
 				} else {
 				}

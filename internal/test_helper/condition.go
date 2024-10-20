@@ -8,6 +8,8 @@ import (
 )
 
 func WaitUntilCondition(t *testing.T, condition func() (bool, error), timeout time.Duration) error {
+	t.Helper()
+
 	ctx := context.Background()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)

@@ -12,7 +12,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
 
-// nolint: dupword
 const ExecutionTable = `CREATE TABLE IF NOT EXISTS execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,

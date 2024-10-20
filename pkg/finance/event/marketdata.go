@@ -18,7 +18,7 @@ type MarketdataDownloadMessage struct {
 func NewMarketdataDownloadCommand(entity MarketdataDownloadMessage) (stream.Message, error) {
 	msg, err := stream.NewMessage("finance", "marketdata", "download", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil

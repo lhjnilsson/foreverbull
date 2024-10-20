@@ -19,21 +19,21 @@ import (
 )
 
 var (
-	Closed      = errors.New("socket closed")
-	ReadTimeout = errors.New("read timeout")
-	SendTimeout = errors.New("send timeout")
+	ErrClosed      = errors.New("socket closed")
+	ErrReadTimeout = errors.New("read timeout")
+	ErrSendTimeout = errors.New("send timeout")
 )
 
 func sockError(err error) error {
 	switch err {
 	case mangos.ErrClosed:
-		return Closed
+		return ErrClosed
 	case mangos.ErrRecvTimeout:
-		return ReadTimeout
+		return ErrReadTimeout
 	case mangos.ErrSendTimeout:
-		return SendTimeout
+		return ErrSendTimeout
 	default:
-		return fmt.Errorf("socket error: %v", err)
+		return fmt.Errorf("socket error: %w", err)
 	}
 }
 
@@ -72,31 +72,31 @@ type Requester interface {
 func NewRequester(host string, port int, dial bool, options ...func(OptionSetter) error) (Requester, error) {
 	req, err := req.NewSocket()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create requester socket: %v", err)
+		return nil, fmt.Errorf("failed to create requester socket: %w", err)
 	}
 
 	if dial {
 		err = req.Dial(fmt.Sprintf("tcp://%s:%d", host, port))
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial: %v", err)
+			return nil, fmt.Errorf("failed to dial: %w", err)
 		}
 	} else {
 		if port == 0 {
 			port, err = ListenToFreePort(req, host)
 			if err != nil {
-				return nil, fmt.Errorf("failed to listen to free port: %v", err)
+				return nil, fmt.Errorf("failed to listen to free port: %w", err)
 			}
 		} else {
 			err = req.Listen(fmt.Sprintf("tcp://%s:%d", host, port))
 			if err != nil {
-				return nil, fmt.Errorf("failed to listen: %v", err)
+				return nil, fmt.Errorf("failed to listen: %w", err)
 			}
 		}
 	}
 
 	for _, opt := range options {
 		if err := opt(req); err != nil {
-			return nil, fmt.Errorf("failed to set option: %v", err)
+			return nil, fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (r *requester) Close() error {
 func (r *requester) Request(msg proto.Message, reply proto.Message, options ...func(OptionSetter) error) error {
 	bytes, err := proto.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %v", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	ctx, err := r.socket.OpenContext()
@@ -140,7 +140,7 @@ func (r *requester) Request(msg proto.Message, reply proto.Message, options ...f
 
 	for _, opt := range options {
 		if err := opt(ctx); err != nil {
-			return fmt.Errorf("failed to set option: %v", err)
+			return fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
@@ -155,7 +155,7 @@ func (r *requester) Request(msg proto.Message, reply proto.Message, options ...f
 
 	if reply != nil {
 		if err = proto.Unmarshal(bytes, reply); err != nil {
-			return fmt.Errorf("failed to unmarshal response: %v", err)
+			return fmt.Errorf("failed to unmarshal response: %w", err)
 		}
 	}
 
@@ -174,31 +174,31 @@ type ReplierSocket interface {
 func NewReplier(host string, port int, dial bool, options ...func(OptionSetter) error) (Replier, error) {
 	rep, err := rep.NewSocket()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create replier socket: %v", err)
+		return nil, fmt.Errorf("failed to create replier socket: %w", err)
 	}
 
 	if dial {
 		err = rep.Dial(fmt.Sprintf("tcp://%s:%d", host, port))
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial: %v", err)
+			return nil, fmt.Errorf("failed to dial: %w", err)
 		}
 	} else {
 		if port == 0 {
 			port, err = ListenToFreePort(rep, host)
 			if err != nil {
-				return nil, fmt.Errorf("failed to listen: %v", err)
+				return nil, fmt.Errorf("failed to listen: %w", err)
 			}
 		} else {
 			err = rep.Listen(fmt.Sprintf("tcp://%s:%d", host, port))
 			if err != nil {
-				return nil, fmt.Errorf("failed to listen: %v", err)
+				return nil, fmt.Errorf("failed to listen: %w", err)
 			}
 		}
 	}
 
 	for _, opt := range options {
 		if err := opt(rep); err != nil {
-			return nil, fmt.Errorf("failed to set option: %v", err)
+			return nil, fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
@@ -236,17 +236,17 @@ func (r *replierSocket) Reply(msg proto.Message, options ...func(OptionSetter) e
 
 	for _, opt := range options {
 		if err := opt(r.socket); err != nil {
-			return fmt.Errorf("failed to set option: %v", err)
+			return fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
 	bytes, err := proto.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal response: %v", err)
+		return fmt.Errorf("failed to marshal response: %w", err)
 	}
 
 	if err := r.socket.Send(bytes); err != nil {
-		return fmt.Errorf("failed to send response: %v", err)
+		return fmt.Errorf("failed to send response: %w", err)
 	}
 
 	return nil
@@ -260,7 +260,7 @@ func (r *replier) Recieve(msg proto.Message, options ...func(OptionSetter) error
 
 	for _, opt := range options {
 		if err := opt(ctx); err != nil {
-			return nil, fmt.Errorf("failed to set option: %v", err)
+			return nil, fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
@@ -270,7 +270,7 @@ func (r *replier) Recieve(msg proto.Message, options ...func(OptionSetter) error
 	}
 
 	if err := proto.Unmarshal(bytes, msg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal request: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal request: %w", err)
 	}
 
 	replier := &replierSocket{socket: ctx}
@@ -286,22 +286,22 @@ type Subscriber interface {
 func NewSubscriber(host string, port int, options ...func(OptionSetter) error) (Subscriber, error) {
 	sub, err := sub.NewSocket()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create subscriber socket: %v", err)
+		return nil, fmt.Errorf("failed to create subscriber socket: %w", err)
 	}
 
 	err = sub.Dial(fmt.Sprintf("tcp://%s:%d", host, port))
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial: %v", err)
+		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
 
 	err = sub.SetOption(mangos.OptionSubscribe, []byte(""))
 	if err != nil {
-		return nil, fmt.Errorf("failed to subscribe: %v", err)
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 
 	for _, opt := range options {
 		if err := opt(sub); err != nil {
-			return nil, fmt.Errorf("failed to set option: %v", err)
+			return nil, fmt.Errorf("failed to set option: %w", err)
 		}
 	}
 
@@ -333,11 +333,11 @@ func (s *subscriber) Close() error {
 func (s *subscriber) Recieve(msg proto.Message, options ...func(OptionSetter) error) error {
 	bytes, err := s.socket.Recv()
 	if err != nil {
-		return fmt.Errorf("failed to receive message: %v", err)
+		return fmt.Errorf("failed to receive message: %w", err)
 	}
 
 	if err := proto.Unmarshal(bytes, msg); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %v", err)
+		return fmt.Errorf("failed to unmarshal message: %w", err)
 	}
 
 	return nil

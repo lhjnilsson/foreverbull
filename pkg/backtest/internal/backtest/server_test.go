@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -77,16 +78,20 @@ func (s *SessionTest) SetupTest() {
 
 	go func() {
 		if err := s.baseServer.Serve(s.listener); err != nil {
-			log.Printf("error serving server: %v", err)
+			log.Printf("error serving server: %w", err)
 		}
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(s.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return s.listener.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	if err != nil {
-		log.Printf("error connecting to server: %v", err)
+		log.Printf("error connecting to server: %w", err)
 	}
 
 	s.client = backtest_pb.NewSessionServicerClient(conn)
@@ -95,7 +100,7 @@ func (s *SessionTest) SetupTest() {
 func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
-		s.Fail("error closing listener: %v", err)
+		s.Fail("error closing listener: %w", err)
 	}
 
 	s.baseServer.Stop()

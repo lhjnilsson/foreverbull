@@ -125,7 +125,7 @@ func (r *repository) CreateMessage(ctx context.Context, msg *message) error {
 	return nil
 }
 
-func (r *repository) GetMessage(ctx context.Context, id string) (*message, error) {
+func (r *repository) GetMessage(ctx context.Context, messageID string) (*message, error) {
 	m := message{}
 
 	rows, err := r.db.Query(ctx,
@@ -135,7 +135,7 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 		INNER JOIN (
 			SELECT message_id, status, error, occurred_at FROM message_status ORDER BY occurred_at DESC
 		)	AS ms ON message.id=ms.message_id
-		WHERE message.id=$1`, id)
+		WHERE message.id=$1`, messageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query message: %w", err)
 	}
@@ -157,28 +157,28 @@ func (r *repository) GetMessage(ctx context.Context, id string) (*message, error
 	return &m, nil
 }
 
-func (r *repository) UpdatePublishedAndGetMessage(ctx context.Context, id string) (*message, error) {
-	var messageID *string
+func (r *repository) UpdatePublishedAndGetMessage(ctx context.Context, messageID string) (*message, error) {
+	var msgID *string
 
 	err := r.db.QueryRow(ctx,
 		`UPDATE message SET status=$1 WHERE id=$2 AND status=$3
-		RETURNING id`, MessageStatusReceived, id, MessageStatusPublished).Scan(&messageID)
+		RETURNING id`, MessageStatusReceived, messageID, MessageStatusPublished).Scan(&msgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update message: %w", err)
 	}
 
-	return r.GetMessage(ctx, *messageID)
+	return r.GetMessage(ctx, *msgID)
 }
 
-func (r *repository) UpdateMessageStatus(ctx context.Context, id string, status MessageStatus, err error) error {
+func (r *repository) UpdateMessageStatus(ctx context.Context, messageID string, status MessageStatus, err error) error {
 	if err != nil {
 		_, err = r.db.Exec(ctx,
 			`UPDATE message SET status=$1, error=$2 WHERE id=$3`,
-			status, err.Error(), id)
+			status, err.Error(), messageID)
 	} else {
 		_, err = r.db.Exec(ctx,
 			`UPDATE message SET status=$1 WHERE id=$2`,
-			status, id)
+			status, messageID)
 	}
 
 	if err != nil {
@@ -188,7 +188,7 @@ func (r *repository) UpdateMessageStatus(ctx context.Context, id string, status 
 	return nil
 }
 
-func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (bool, error) {
+func (r *repository) OrchestrationIsRunning(ctx context.Context, orchestrationID string) (bool, error) {
 	var total int
 
 	var completed int
@@ -210,7 +210,7 @@ func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (boo
 		) as canceled ON true
 		INNER JOIN (
 			SELECT COUNT(*) as num FROM message WHERE message.orchestration_id=$1 AND message.status=$4
-		) as created ON true`, id, MessageStatusComplete, MessageStatusCanceled, MessageStatusCreated).Scan(
+		) as created ON true`, orchestrationID, MessageStatusComplete, MessageStatusCanceled, MessageStatusCreated).Scan(
 		&total, &completed, &canceled, &created)
 	if err != nil {
 		return false, fmt.Errorf("failed to query orchestration status: %w", err)
@@ -223,13 +223,13 @@ func (r *repository) OrchestrationIsRunning(ctx context.Context, id string) (boo
 	return true, nil
 }
 
-func (r *repository) OrchestrationIsComplete(ctx context.Context, id string) (bool, error) {
+func (r *repository) OrchestrationIsComplete(ctx context.Context, orchestrationID string) (bool, error) {
 	var count int
 
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.status IN ($2, $3, $4)
 		AND message.orchestration_fallback_step=false`,
-		id, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
+		orchestrationID, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
@@ -296,12 +296,12 @@ func (r *repository) OrchestrationStepIsComplete(ctx context.Context, orchestrat
 	return !(count > 0), nil
 }
 
-func (r *repository) OrchestrationHasError(ctx context.Context, id string) (bool, error) {
+func (r *repository) OrchestrationHasError(ctx context.Context, orchestrationID string) (bool, error) {
 	var count int
 
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.error IS NOT NULL`,
-		id).Scan(&count)
+		orchestrationID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}

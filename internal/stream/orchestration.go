@@ -158,7 +158,7 @@ func (or *OrchestrationRunner) Stop() error {
 	return nil
 }
 
-var OrchestrationLifecycle = fx.Options(
+var OrchestrationLifecycle = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func(jetstream nats.JetStreamContext, pool *pgxpool.Pool) (*OrchestrationRunner, error) {
 			cfg := nats.ConsumerConfig{

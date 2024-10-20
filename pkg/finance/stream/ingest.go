@@ -21,7 +21,7 @@ func NewIngestCommand(symbols []string, start string, end *string) (stream.Messa
 
 	msg, err := stream.NewMessage("finance", "marketdata", "ingest", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil

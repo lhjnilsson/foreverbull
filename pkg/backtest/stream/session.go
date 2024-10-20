@@ -8,9 +8,9 @@ import (
 )
 
 type UpdateSessionStatusCommand struct {
-	SessionID string                   `json:"session_id"`
-	Status    pb.Session_Status_Status `json:"status"`
-	Error     error                    `json:"error"`
+	SessionID string
+	Status    pb.Session_Status_Status
+	Error     error
 }
 
 func NewUpdateSessionStatusCommand(session string, status pb.Session_Status_Status, err error) (stream.Message, error) {
@@ -22,7 +22,7 @@ func NewUpdateSessionStatusCommand(session string, status pb.Session_Status_Stat
 
 	msg, err := stream.NewMessage("backtest", "session", "status", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil
@@ -44,7 +44,7 @@ func NewSessionRunCommand(backtest, sessionid string) (stream.Message, error) {
 
 	msg, err := stream.NewMessage("backtest", "session", "run", entity)
 	if err != nil {
-		return nil, fmt.Errorf("error creating message: %v", err)
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
 	return msg, nil

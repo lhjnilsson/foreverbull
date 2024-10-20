@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -69,10 +70,14 @@ func (suite *IngestionServerTest) SetupSubTest() {
 		suite.server.Serve(suite.listner)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(suite.listner.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return suite.listner.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	suite.Require().NoError(err)
 	suite.client = pb.NewIngestionServicerClient(conn)
 }
@@ -94,9 +99,9 @@ func (suite *IngestionServerTest) TestUpdateIngestion() {
 		db := repository.Backtest{Conn: suite.pgx}
 		ctx := context.TODO()
 		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 06, Day: 01}, []string{"AAPL", "MSFT"}, nil)
-		suite.NoError(err)
+		suite.Require().NoError(err)
 		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 04, Day: 01}, []string{"IBM", "GE"}, nil)
-		suite.NoError(err)
+		suite.Require().NoError(err)
 
 		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
 			mock.Anything, mock.Anything).Return(nil, nil)

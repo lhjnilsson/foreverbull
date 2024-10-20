@@ -16,12 +16,13 @@ import (
 
 type Pool interface {
 	Configure() *worker_pb.ExecutionConfiguration
-	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error)
+	Process(ctx context.Context,
+		timestamp time.Time, symbols []string, portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error)
 	Close() error
 }
 
 func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
-	s, err := socket.NewRequester("0.0.0.0", 0, false)
+	poolSocket, err := socket.NewRequester("0.0.0.0", 0, false)
 	if err != nil {
 		return nil, fmt.Errorf("error creating requester: %w", err)
 	}
@@ -37,18 +38,18 @@ func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
 
 	namespace := CreateNamespace(algo.Namespaces)
 
-	p := &pool{Socket: s, NamespaceSocket: namespaceSocket, algo: algo, namespace: namespace}
+	p := &pool{Socket: poolSocket, NamespaceSocket: namespaceSocket, algo: algo, namespace: namespace}
 	go p.startNamespaceListener()
 
 	return p, nil
 }
 
 type pool struct {
-	Socket          socket.Requester `json:"socket"`
-	NamespaceSocket socket.Replier   `json:"namespace_socket"`
+	Socket          socket.Requester
+	NamespaceSocket socket.Replier
 
 	algo      *worker_pb.Algorithm
-	namespace *namespace
+	namespace Namespace
 }
 
 func (p *pool) startNamespaceListener() {
@@ -58,7 +59,7 @@ func (p *pool) startNamespaceListener() {
 
 		sock, err := p.NamespaceSocket.Recieve(&request)
 		if err != nil {
-			if err == socket.Closed {
+			if err == socket.ErrClosed {
 				log.Info().Msg("namespace socket closed")
 				return
 			}
@@ -124,7 +125,8 @@ func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 	}
 }
 
-func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error) {
+func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string,
+	portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error) {
 	if p.algo == nil {
 		return nil, fmt.Errorf("algorithm not set")
 	}
@@ -136,13 +138,13 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 	functions := p.orderedFunctions()
 	for function := range functions {
 		if function.ParallelExecution {
-			g, _ := errgroup.WithContext(ctx)
+			group, _ := errgroup.WithContext(ctx)
 			orderWriteMutex := sync.Mutex{}
 
 			for _, symbol := range symbols {
 				s := symbol
 
-				g.Go(func() error {
+				group.Go(func() error {
 					request := worker_pb.WorkerRequest{
 						Task:      function.Name,
 						Symbols:   []string{s},
@@ -164,7 +166,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				})
 			}
 
-			err := g.Wait()
+			err := group.Wait()
 			if err != nil {
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
@@ -191,14 +193,14 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 func (p *pool) Close() error {
 	if p.Socket != nil {
 		err := p.Socket.Close()
-		if err != nil && err != socket.Closed {
+		if err != nil && err != socket.ErrClosed {
 			return fmt.Errorf("error closing socket: %w", err)
 		}
 	}
 
 	if p.NamespaceSocket != nil {
 		err := p.NamespaceSocket.Close()
-		if err != nil && err != socket.Closed {
+		if err != nil && err != socket.ErrClosed {
 			return fmt.Errorf("error closing namespace socket: %w", err)
 		}
 	}

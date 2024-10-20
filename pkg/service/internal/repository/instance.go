@@ -55,19 +55,19 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, instanceId string, image *string) (*pb.Instance, error) {
+func (db *Instance) Create(ctx context.Context, instanceID string, image *string) (*pb.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
-		instanceId, image,
+		instanceID, image,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating instance: %w", err)
 	}
 
-	return db.Get(ctx, instanceId)
+	return db.Get(ctx, instanceID)
 }
 
-func (db *Instance) Get(ctx context.Context, instanceId string) (*pb.Instance, error) {
+func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, error) {
 	i := pb.Instance{}
 
 	rows, err := db.Conn.Query(ctx,
@@ -76,7 +76,7 @@ func (db *Instance) Get(ctx context.Context, instanceId string) (*pb.Instance, e
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
-		WHERE service_instance.id=$1`, instanceId)
+		WHERE service_instance.id=$1`, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting instance: %w", err)
 	}
@@ -85,14 +85,14 @@ func (db *Instance) Get(ctx context.Context, instanceId string) (*pb.Instance, e
 
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		t := time.Time{}
+		occuredAt := time.Time{}
 
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &status.Status, &status.Error, &t)
+		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &status.Status, &status.Error, &occuredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
 		i.Statuses = append(i.Statuses, &status)
 	}
 
@@ -103,10 +103,10 @@ func (db *Instance) Get(ctx context.Context, instanceId string) (*pb.Instance, e
 	return &i, nil
 }
 
-func (db *Instance) UpdateHostPort(ctx context.Context, instanceId, host string, port int) error {
+func (db *Instance) UpdateHostPort(ctx context.Context, instanceID, host string, port int) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE service_instance SET host=$1, port=$2 WHERE id=$3`,
-		host, port, instanceId,
+		host, port, instanceID,
 	)
 	if err != nil {
 		return fmt.Errorf("error updating host and port: %w", err)
@@ -115,16 +115,16 @@ func (db *Instance) UpdateHostPort(ctx context.Context, instanceId, host string,
 	return nil
 }
 
-func (db *Instance) UpdateStatus(ctx context.Context, instanceId string, status pb.Instance_Status_Status, err error) error {
+func (db *Instance) UpdateStatus(ctx context.Context, instanceID string, status pb.Instance_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2, error=$3 WHERE id=$1`,
-			instanceId, status, err.Error(),
+			instanceID, status, err.Error(),
 		)
 	} else {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2 WHERE id=$1`,
-			instanceId, status,
+			instanceID, status,
 		)
 	}
 
@@ -142,29 +142,29 @@ func (db *Instance) parseRows(rows pgx.Rows) ([]*pb.Instance, error) {
 
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		t := time.Time{}
-		i := pb.Instance{}
+		occuredAt := time.Time{}
+		instance := pb.Instance{}
 
 		err := rows.Scan(
-			&i.ID, &i.Image, &i.Host, &i.Port,
-			&status.Status, &status.Error, &t)
+			&instance.ID, &instance.Image, &instance.Host, &instance.Port,
+			&status.Status, &status.Error, &occuredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
 
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
 		inReturnSlice = false
 
 		for index := range instances {
-			if instances[index].ID == i.ID {
+			if instances[index].ID == instance.ID {
 				instances[index].Statuses = append(instances[index].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
 
 		if !inReturnSlice {
-			i.Statuses = append(i.Statuses, &status)
-			instances = append(instances, &i)
+			instance.Statuses = append(instance.Statuses, &status)
+			instances = append(instances, &instance)
 		}
 	}
 

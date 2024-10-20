@@ -17,6 +17,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	DockerHeaderSize = 8
+)
+
 type Container interface {
 	GetStatus() (string, error)
 	GetHealth() (string, error)
@@ -30,15 +34,15 @@ type container struct {
 	container types.ContainerJSON
 }
 
-func GetContainer(id string) (Container, error) {
+func GetContainer(ctx context.Context, containerID string) (Container, error) {
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return nil, fmt.Errorf("error creating docker client: %v", err)
+		return nil, fmt.Errorf("error creating docker client: %w", err)
 	}
 
-	cont, err := client.ContainerInspect(context.Background(), id)
+	cont, err := client.ContainerInspect(ctx, containerID)
 	if err != nil {
-		return nil, fmt.Errorf("error inspecting container: %v", err)
+		return nil, fmt.Errorf("error inspecting container: %w", err)
 	}
 
 	return &container{client: client, container: cont}, nil
@@ -47,7 +51,7 @@ func GetContainer(id string) (Container, error) {
 func (c *container) GetStatus() (string, error) {
 	container, err := c.client.ContainerInspect(context.Background(), c.container.ID)
 	if err != nil {
-		return "", fmt.Errorf("error inspecting container: %v", err)
+		return "", fmt.Errorf("error inspecting container: %w", err)
 	}
 
 	return container.State.Status, nil
@@ -56,7 +60,7 @@ func (c *container) GetStatus() (string, error) {
 func (c *container) GetHealth() (string, error) {
 	container, err := c.client.ContainerInspect(context.Background(), c.container.ID)
 	if err != nil {
-		return "", fmt.Errorf("error inspecting container: %v", err)
+		return "", fmt.Errorf("error inspecting container: %w", err)
 	}
 
 	if container.State.Health == nil {
@@ -69,7 +73,7 @@ func (c *container) GetHealth() (string, error) {
 func (c *container) GetConnectionString() (string, error) {
 	container, err := c.client.ContainerInspect(context.Background(), c.container.ID)
 	if err != nil {
-		return "", fmt.Errorf("error inspecting container: %v", err)
+		return "", fmt.Errorf("error inspecting container: %w", err)
 	}
 
 	return fmt.Sprintf("%s:%d", container.NetworkSettings.Networks[environment.GetDockerNetworkName()].IPAddress, 50055), nil
@@ -78,12 +82,12 @@ func (c *container) GetConnectionString() (string, error) {
 func (c *container) Stop() error {
 	err := c.client.ContainerStop(context.Background(), c.container.ID, cType.StopOptions{})
 	if err != nil {
-		return fmt.Errorf("error stopping container: %v", err)
+		return fmt.Errorf("error stopping container: %w", err)
 	}
 
 	err = c.client.ContainerRemove(context.Background(), c.container.ID, cType.RemoveOptions{})
 	if err != nil {
-		return fmt.Errorf("error removing container: %v", err)
+		return fmt.Errorf("error removing container: %w", err)
 	}
 
 	return nil
@@ -92,7 +96,7 @@ func (c *container) Stop() error {
 func NewEngine() (Engine, error) {
 	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return nil, fmt.Errorf("error creating docker client: %v", err)
+		return nil, fmt.Errorf("error creating docker client: %w", err)
 	}
 
 	return &engine{client: client}, nil
@@ -109,18 +113,18 @@ type engine struct {
 	client *client.Client
 }
 
-func (c *engine) PullImage() error {
+func (e *engine) PullImage() error {
 	return nil
 }
 
-func (c *engine) Start(ctx context.Context, image string, name string) (Container, error) {
-	env := []string{fmt.Sprintf("BROKER_HOSTNAME=%s", environment.GetServerAddress())}
-	env = append(env, fmt.Sprintf("BROKER_PORT=%s", environment.GetHTTPPort()))
-	env = append(env, fmt.Sprintf("STORAGE_ENDPOINT=%s", environment.GetMinioURL()))
-	env = append(env, fmt.Sprintf("STORAGE_ACCESS_KEY=%s", environment.GetMinioAccessKey()))
-	env = append(env, fmt.Sprintf("STORAGE_SECRET_KEY=%s", environment.GetMinioSecretKey()))
-	env = append(env, fmt.Sprintf("DATABASE_URL=%s", environment.GetPostgresURL()))
-	env = append(env, fmt.Sprintf("LOGLEVEL=%s", environment.GetLogLevel()))
+func (e *engine) Start(ctx context.Context, image string, name string) (Container, error) {
+	env := []string{"BROKER_HOSTNAME=" + environment.GetServerAddress()}
+	env = append(env, "BROKER_PORT="+environment.GetHTTPPort())
+	env = append(env, "STORAGE_ENDPOINT="+environment.GetMinioURL())
+	env = append(env, "STORAGE_ACCESS_KEY="+environment.GetMinioAccessKey())
+	env = append(env, "STORAGE_SECRET_KEY="+environment.GetMinioSecretKey())
+	env = append(env, "DATABASE_URL="+environment.GetPostgresURL())
+	env = append(env, "LOGLEVEL="+environment.GetLogLevel())
 
 	labels := map[string]string{"platform": "foreverbull", "type": "service"}
 
@@ -138,28 +142,29 @@ func (c *engine) Start(ctx context.Context, image string, name string) (Containe
 
 	networkConfig.EndpointsConfig[environment.GetDockerNetworkName()] = endpointSettings
 
-	resp, err := c.client.ContainerCreate(ctx, &conf, &hostConf, &networkConfig, nil, name)
+	resp, err := e.client.ContainerCreate(ctx, &conf, &hostConf, &networkConfig, nil, name)
 	if err != nil {
-		return nil, fmt.Errorf("error creating container: %v", err)
+		return nil, fmt.Errorf("error creating container: %w", err)
 	}
 
-	err = c.client.ContainerStart(ctx, resp.ID, cType.StartOptions{})
+	err = e.client.ContainerStart(ctx, resp.ID, cType.StartOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error starting container: %v", err)
+		return nil, fmt.Errorf("error starting container: %w", err)
 	}
 
-	logs, err := c.client.ContainerLogs(ctx, resp.ID, cType.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
+	logs, err := e.client.ContainerLogs(ctx, resp.ID, cType.LogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
 	if err != nil {
-		return nil, fmt.Errorf("error getting container logs: %v", err)
+		return nil, fmt.Errorf("error getting container logs: %w", err)
 	}
 
 	go func() {
-		header := make([]byte, 8)
+		header := make([]byte, DockerHeaderSize)
 
 		for {
 			_, err := logs.Read(header)
 			if errors.Is(err, io.EOF) {
 				logs.Close()
+
 				break
 			}
 
@@ -177,6 +182,7 @@ func (c *engine) Start(ctx context.Context, image string, name string) (Containe
 			_, err = logs.Read(message)
 			if errors.Is(err, io.EOF) {
 				logs.Close()
+
 				break
 			}
 
@@ -188,10 +194,10 @@ func (c *engine) Start(ctx context.Context, image string, name string) (Containe
 		}
 	}()
 
-	return GetContainer(resp.ID)
+	return GetContainer(ctx, resp.ID)
 }
 
-func (e *engine) StopAll(ctx context.Context, remove bool) error {
+func (e *engine) StopAll(ctx context.Context, _ bool) error {
 	filters := filters.NewArgs()
 	filters.Add("label", "platform=foreverbull")
 	filters.Add("label", "type=service")
@@ -199,23 +205,23 @@ func (e *engine) StopAll(ctx context.Context, remove bool) error {
 
 	containers, err := e.client.ContainerList(ctx, cType.ListOptions{All: true, Filters: filters})
 	if err != nil {
-		return fmt.Errorf("error listing containers: %v", err)
+		return fmt.Errorf("error listing containers: %w", err)
 	}
 
 	for _, c := range containers {
-		c, err := GetContainer(c.ID)
+		c, err := GetContainer(ctx, c.ID)
 		if err != nil {
-			return fmt.Errorf("error getting container: %v", err)
+			return fmt.Errorf("error getting container: %w", err)
 		}
 
 		if err := c.Stop(); err != nil {
-			return fmt.Errorf("error stopping container: %v", err)
+			return fmt.Errorf("error stopping container: %w", err)
 		}
 	}
 
 	containers, err = e.client.ContainerList(ctx, cType.ListOptions{All: true, Filters: filters})
 	if err != nil {
-		return fmt.Errorf("error listing images: %v", err)
+		return fmt.Errorf("error listing images: %w", err)
 	}
 
 	if len(containers) == 0 {

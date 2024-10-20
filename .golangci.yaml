@@ -6,3 +6,9 @@ linters:
     - ireturn
     - testpackage
     - exportloopref
+    - nosprintfhostport
+    - err113
+    - dupword
+    - contextcheck
+    - cyclop
+    - lll
