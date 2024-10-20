@@ -2,11 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
@@ -68,7 +68,7 @@ func (db *Instance) Create(ctx context.Context, instanceID string, image *string
 }
 
 func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, error) {
-	i := pb.Instance{}
+	instance := pb.Instance{}
 
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
@@ -87,20 +87,21 @@ func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, e
 		status := pb.Instance_Status{}
 		occuredAt := time.Time{}
 
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &status.Status, &status.Error, &occuredAt)
+		err = rows.Scan(&instance.ID, &instance.Image, &instance.Host, &instance.Port,
+			&status.Status, &status.Error, &occuredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
 
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
-		i.Statuses = append(i.Statuses, &status)
+		instance.Statuses = append(instance.Statuses, &status)
 	}
 
-	if i.ID == "" {
-		return nil, &pgconn.PgError{Code: "02000"}
+	if instance.ID == "" {
+		return nil, errors.New("instance not found")
 	}
 
-	return &i, nil
+	return &instance, nil
 }
 
 func (db *Instance) UpdateHostPort(ctx context.Context, instanceID, host string, port int) error {

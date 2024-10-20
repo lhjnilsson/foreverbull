@@ -24,18 +24,18 @@ type YahooClient struct {
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
-	yc := &YahooClient{}
+	yahoo := &YahooClient{}
 
-	rsp, err := yc.doRequest("https://fc.yahoo.com")
+	rsp, err := yahoo.doRequest("https://fc.yahoo.com")
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
 	defer rsp.Body.Close()
 
-	yc.cookie = rsp.Header.Get("Set-Cookie")
+	yahoo.cookie = rsp.Header.Get("Set-Cookie")
 
-	rsp, err = yc.doRequest("https://query2.finance.yahoo.com/v1/test/getcrumb")
+	rsp, err = yahoo.doRequest("https://query2.finance.yahoo.com/v1/test/getcrumb")
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func NewYahooClient() (supplier.Marketdata, error) {
 		return nil, fmt.Errorf("error reading response: %w", err)
 	}
 
-	yc.crumb = string(buffer[:length])
+	yahoo.crumb = string(buffer[:length])
 
-	return yc, nil
+	return yahoo, nil
 }
 
 func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, error) {

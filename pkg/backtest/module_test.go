@@ -114,7 +114,7 @@ func (test *BacktestModuleTest) SetupTest() {
 	test.Require().NoError(test.app.Start(context.Background()), "failed to start app")
 
 	conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	test.NoError(err, "failed to create grpc client")
+	test.Require().NoError(err, "failed to create grpc client")
 	test.backtestClient = pb.NewBacktestServicerClient(conn)
 	test.ingestionClient = pb.NewIngestionServicerClient(conn)
 }
@@ -166,8 +166,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		}
 
 		test.NotNil(rsp, "response is nil")
-		test.Equal(rsp.Status, pb.IngestionStatus_READY, "status is not ready")
-		test.Greater(rsp.Size, int64(0), "size is 0")
+		test.Equal(pb.IngestionStatus_READY, rsp.Status, "status is not ready")
+		test.Positive(rsp.Size, "size is 0")
 	}
 
 	// Run Backtest

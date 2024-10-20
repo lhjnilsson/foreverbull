@@ -119,7 +119,7 @@ func (test *OrchestrationTest) TestMessageHandler() {
 		test.Require().NoError(err)
 		test.Equal(MessageStatusPublished, msg.StatusHistory[0].Status)
 
-		test.NoError(repository.UpdateMessageStatus(context.Background(), msg2.GetID(), MessageStatusComplete, nil))
+		test.Require().NoError(repository.UpdateMessageStatus(context.Background(), msg2.GetID(), MessageStatusComplete, nil))
 		payload, err = json.Marshal(msg2)
 		test.Require().NoError(err)
 		_, err = test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)
@@ -147,7 +147,7 @@ func (test *OrchestrationTest) TestMessageHandler() {
 
 		createOrchestration(test.T(), orchestration)
 
-		test.NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusError, nil))
+		test.Require().NoError(repository.UpdateMessageStatus(context.Background(), msg1.GetID(), MessageStatusError, nil))
 		payload, err := json.Marshal(msg1)
 		test.Require().NoError(err)
 		_, err = test.jt.Publish("foreverbull.test_module.test_comp.test_method.event", payload)

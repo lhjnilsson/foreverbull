@@ -35,7 +35,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 	for ; socketStart < 6900; socketStart++ {
 		socket, err = rep.NewSocket()
 		if err != nil {
-			t.Logf("could not create socket: %w", err)
+			t.Logf("could not create socket: %v", err)
 			continue
 		}
 
@@ -47,7 +47,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 				continue
 			}
 
-			t.Fatalf("could not listen: %w", err)
+			t.Fatalf("could not listen: %v", err)
 
 			return nil
 		}

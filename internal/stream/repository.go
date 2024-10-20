@@ -126,7 +126,7 @@ func (r *repository) CreateMessage(ctx context.Context, msg *message) error {
 }
 
 func (r *repository) GetMessage(ctx context.Context, messageID string) (*message, error) {
-	m := message{}
+	msg := message{}
 
 	rows, err := r.db.Query(ctx,
 		`SELECT message.id, orchestration_name, orchestration_id, orchestration_step, orchestration_step_number, orchestration_fallback_step,
@@ -145,16 +145,17 @@ func (r *repository) GetMessage(ctx context.Context, messageID string) (*message
 	for rows.Next() {
 		status := messageStatus{}
 
-		err := rows.Scan(&m.ID, &m.OrchestrationName, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationStepNumber, &m.OrchestrationFallbackStep,
-			&m.Module, &m.Component, &m.Method, &m.Payload, &status.Status, &status.Error, &status.OccurredAt)
+		err := rows.Scan(&msg.ID, &msg.OrchestrationName, &msg.OrchestrationID, &msg.OrchestrationStep, &msg.OrchestrationStepNumber,
+			&msg.OrchestrationFallbackStep, &msg.Module, &msg.Component, &msg.Method, &msg.Payload,
+			&status.Status, &status.Error, &status.OccurredAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 
-		m.StatusHistory = append(m.StatusHistory, status)
+		msg.StatusHistory = append(msg.StatusHistory, status)
 	}
 
-	return &m, nil
+	return &msg, nil
 }
 
 func (r *repository) UpdatePublishedAndGetMessage(ctx context.Context, messageID string) (*message, error) {
@@ -269,14 +270,15 @@ END`, orchestrationID, MessageStatusError, currentStepNumber+1, MessageStatusCre
 	defer rows.Close()
 
 	for rows.Next() {
-		m := message{}
+		msg := message{}
 
-		err := rows.Scan(&m.ID, &m.OrchestrationID, &m.OrchestrationStep, &m.OrchestrationFallbackStep, &m.Module, &m.Component, &m.Method, &m.Payload)
+		err := rows.Scan(&msg.ID, &msg.OrchestrationID, &msg.OrchestrationStep, &msg.OrchestrationFallbackStep,
+			&msg.Module, &msg.Component, &msg.Method, &msg.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan orchestration commands: %w", err)
 		}
 
-		msgs = append(msgs, m)
+		msgs = append(msgs, msg)
 	}
 
 	return &msgs, nil

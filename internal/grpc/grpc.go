@@ -68,7 +68,7 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	})
 }
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() *grpc.Server {
 			logger := zap.NewExample()

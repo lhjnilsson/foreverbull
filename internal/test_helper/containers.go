@@ -212,13 +212,13 @@ func (l *LokiLogger) Publish(t *testing.T) {
 
 	marshalled, err := json.Marshal(payload)
 	if err != nil {
-		t.Fatalf("failed to marshal payload: %w", err)
+		t.Fatalf("failed to marshal payload: %v", err)
 		return
 	}
 
 	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
 	if err != nil {
-		t.Fatalf("failed to send request: %w", err)
+		t.Fatalf("failed to send request: %v", err)
 		return
 	}
 
@@ -250,21 +250,21 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 		Networks: []string{networkID},
 	}
 
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	cont, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: container,
 		Started:          true,
 	})
 	require.NoError(t, err)
-	host, err := c.Host(ctx)
+	host, err := cont.Host(ctx)
 	require.NoError(t, err)
-	port, err := c.MappedPort(ctx, "3100/tcp")
+	port, err := cont.MappedPort(ctx, "3100/tcp")
 	require.NoError(t, err)
 
 	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
 
 	t.Cleanup(func() {
 		lokiLogger.Publish(t)
-		require.NoError(t, c.Terminate(ctx))
+		require.NoError(t, cont.Terminate(ctx))
 	})
 
 	log.Logger = zerolog.New(zerolog.MultiLevelWriter(zerolog.NewConsoleWriter(), lokiLogger))

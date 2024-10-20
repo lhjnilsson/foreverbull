@@ -109,7 +109,7 @@ func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtes
 				return
 			}
 
-			if period.IsRunning == false {
+			if !period.IsRunning {
 				close(portfolioCh)
 				return
 			}

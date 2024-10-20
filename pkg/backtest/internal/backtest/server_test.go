@@ -66,6 +66,7 @@ func (s *SessionTest) SetupTest() {
 
 	backtests := repository.Backtest{Conn: s.conn}
 	s.backtest, err = backtests.Create(context.Background(), "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	s.Require().NoError(err)
 	sessions := repository.Session{Conn: s.conn}
 	s.session, err = sessions.Create(context.TODO(), "backtest")
 	s.Require().NoError(err)

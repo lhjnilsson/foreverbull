@@ -17,3 +17,4 @@ linters:
     - gomnd
     - exhaustruct
     - protogetter
+    - depguard

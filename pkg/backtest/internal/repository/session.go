@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -65,7 +66,7 @@ func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, er
 }
 
 func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, error) {
-	s := pb.Session{}
+	session := pb.Session{}
 
 	rows, err := db.Conn.Query(ctx,
 		`SELECT session.id, backtest, port,
@@ -86,7 +87,7 @@ func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, erro
 		status := pb.Session_Status{}
 		occurred_at := time.Time{}
 		err = rows.Scan(
-			&s.Id, &s.Backtest, &s.Port, &s.Executions,
+			&session.Id, &session.Backtest, &session.Port, &session.Executions,
 			&status.Status, &status.Error, &occurred_at,
 		)
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
@@ -95,14 +96,14 @@ func (db *Session) Get(ctx context.Context, sessionId string) (*pb.Session, erro
 			return nil, fmt.Errorf("failed to get session: %w", err)
 		}
 
-		s.Statuses = append(s.Statuses, &status)
+		session.Statuses = append(session.Statuses, &status)
 	}
 
-	if s.Id == "" {
-		return nil, fmt.Errorf("session not found")
+	if session.Id == "" {
+		return nil, errors.New("session not found")
 	}
 
-	return &s, nil
+	return &session, nil
 }
 
 func (db *Session) UpdateStatus(ctx context.Context, sessionId string, status pb.Session_Status_Status, err error) error {
@@ -134,11 +135,11 @@ func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 	var inReturnSlice bool
 
 	for rows.Next() {
-		s := pb.Session{}
+		session := pb.Session{}
 		status := pb.Session_Status{}
 		occurred_at := time.Time{}
 		err := rows.Scan(
-			&s.Id, &s.Backtest, &s.Port, &s.Executions,
+			&session.Id, &session.Backtest, &session.Port, &session.Executions,
 			&status.Status, &status.Error, &occurred_at,
 		)
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
@@ -150,15 +151,15 @@ func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 		inReturnSlice = false
 
 		for i := range sessions {
-			if sessions[i].Id == s.Id {
+			if sessions[i].Id == session.Id {
 				sessions[i].Statuses = append(sessions[i].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
 
 		if !inReturnSlice {
-			s.Statuses = append(s.Statuses, &status)
-			sessions = append(sessions, &s)
+			session.Statuses = append(session.Statuses, &status)
+			sessions = append(sessions, &session)
 		}
 	}
 

@@ -91,7 +91,7 @@ func (suite *FinanceServerTest) TestGetIndex() {
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
-	suite.Greater(len(rsp.Assets), 0)
+	suite.NotEmpty(len(rsp.Assets))
 }
 
 func (suite *FinanceServerTest) TestDownloadHistoricalData() {

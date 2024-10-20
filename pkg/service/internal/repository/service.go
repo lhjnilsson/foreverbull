@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -63,7 +64,7 @@ func (db *Service) Create(ctx context.Context, image string) (*pb.Service, error
 }
 
 func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
-	s := pb.Service{}
+	service := pb.Service{}
 
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
@@ -81,34 +82,34 @@ func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
 	algorithm := []byte{}
 
 	for rows.Next() {
-		ss := pb.Service_Status{}
+		status := pb.Service_Status{}
 		t := time.Time{}
 		err = rows.Scan(
-			&s.Image, &algorithm, &ss.Status, &ss.Error, &t,
+			&service.Image, &algorithm, &status.Status, &status.Error, &t,
 		)
-		ss.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get service: %w", err)
 		}
 
-		s.Statuses = append(s.Statuses, &ss)
+		service.Statuses = append(service.Statuses, &status)
 	}
 
-	if s.Image == "" {
-		return nil, fmt.Errorf("service not found")
+	if service.Image == "" {
+		return nil, errors.New("service not found")
 	}
 
 	if algorithm == nil {
-		return &s, nil
+		return &service, nil
 	}
 
-	err = json.Unmarshal(algorithm, &s.Algorithm)
+	err = json.Unmarshal(algorithm, &service.Algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode algorithm: %w", err)
 	}
 
-	return &s, nil
+	return &service, nil
 }
 
 func (db *Service) SetAlgorithm(ctx context.Context, image string, a *pb.Algorithm) error {

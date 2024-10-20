@@ -2,6 +2,7 @@ package servicer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,7 +48,7 @@ func (bs *BacktestServer) CreateBacktest(ctx context.Context,
 
 	reqBacktest := req.GetBacktest()
 	if reqBacktest == nil {
-		return nil, fmt.Errorf("backtest is required")
+		return nil, errors.New("backtest is required")
 	}
 
 	backtest, err := backtests.Create(ctx, reqBacktest.GetName(), reqBacktest.StartDate,

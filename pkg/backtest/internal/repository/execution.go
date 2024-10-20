@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -170,7 +171,7 @@ func (db *Execution) StorePeriods(ctx context.Context, execution string, periods
 }
 
 func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution, error) {
-	e := pb.Execution{}
+	execution := pb.Execution{}
 
 	rows, err := db.Conn.Query(ctx,
 		`SELECT execution.id, session, start_date, end_date, benchmark, symbols,
@@ -192,26 +193,26 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 		end := pgtype.Date{}
 		occured_at := time.Time{}
 
-		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &occured_at)
+		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
+			&execution.Symbols, &status.Status, &status.Error, &occured_at)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
 
-		e.StartDate = internal_pb.GoTimeToDate(start)
+		execution.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
-			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
 
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
-		e.Statuses = append(e.Statuses, &status)
+		execution.Statuses = append(execution.Statuses, &status)
 	}
 
-	if e.Id == "" {
-		return nil, fmt.Errorf("execution not found")
+	if execution.Id == "" {
+		return nil, errors.New("execution not found")
 	}
 
-	return &e, nil
+	return &execution, nil
 }
 
 func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
@@ -249,20 +250,20 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 
 	for rows.Next() {
 		status := pb.Execution_Status{}
-		e := pb.Execution{}
+		execution := pb.Execution{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occurred_at := time.Time{}
 
-		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &occurred_at)
+		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
+			&execution.Symbols, &status.Status, &status.Error, &occurred_at)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
 
-		e.StartDate = internal_pb.GoTimeToDate(start)
+		execution.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
-			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
 
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
@@ -270,7 +271,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 		inReturnSlice = false
 
 		for i := range executions {
-			if executions[i].Id == e.Id {
+			if executions[i].Id == execution.Id {
 				executions[i].Statuses = append(executions[i].Statuses, &status)
 				inReturnSlice = true
 
@@ -279,8 +280,8 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 		}
 
 		if !inReturnSlice {
-			e.Statuses = append(e.Statuses, &status)
-			executions = append(executions, &e)
+			execution.Statuses = append(execution.Statuses, &status)
+			executions = append(executions, &execution)
 		}
 	}
 

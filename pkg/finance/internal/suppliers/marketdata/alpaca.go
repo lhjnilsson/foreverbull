@@ -71,14 +71,14 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 					End:   e,
 				})
 				if innerErr != nil {
-					return nil, fmt.Errorf("error getting bars: %v", innerErr)
+					return nil, fmt.Errorf("error getting bars: %w", innerErr)
 				}
 			}
 		}
 	}
 
 	for _, bar := range ohlc {
-		o := pb.OHLC{
+		ohlc := pb.OHLC{
 			Open:      bar.Open,
 			High:      bar.High,
 			Low:       bar.Low,
@@ -87,7 +87,7 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 			Timestamp: timestamppb.New(bar.Timestamp),
 		}
 
-		ohlcs = append(ohlcs, &o)
+		ohlcs = append(ohlcs, &ohlc)
 	}
 
 	return ohlcs, nil

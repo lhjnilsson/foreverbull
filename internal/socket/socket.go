@@ -168,7 +168,7 @@ type Replier interface {
 }
 
 type ReplierSocket interface {
-	Reply(proto.Message, ...func(OptionSetter) error) error
+	Reply(msg proto.Message, opt ...func(OptionSetter) error) error
 }
 
 func NewReplier(host string, port int, dial bool, options ...func(OptionSetter) error) (Replier, error) {
@@ -358,7 +358,7 @@ func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 			continue
 		}
 
-		return 0, fmt.Errorf("error listening to port %v: %v", port, err)
+		return 0, fmt.Errorf("error listening to port %v: %w", port, err)
 	}
 
 	return 0, errors.New("no free ports in range")

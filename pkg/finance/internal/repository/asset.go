@@ -30,14 +30,14 @@ func (db *Asset) List(ctx context.Context) ([]*pb.Asset, error) {
 	assets := make([]*pb.Asset, 0)
 
 	for rows.Next() {
-		a := pb.Asset{}
+		asset := pb.Asset{}
 
-		err := rows.Scan(&a.Symbol, &a.Name)
+		err := rows.Scan(&asset.Symbol, &asset.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan asset: %w", err)
 		}
 
-		assets = append(assets, &a)
+		assets = append(assets, &asset)
 	}
 
 	if rows.Err() != nil {
@@ -60,14 +60,14 @@ func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) ([]*pb.Ass
 	assets := make([]*pb.Asset, 0)
 
 	for rows.Next() {
-		a := pb.Asset{}
+		asset := pb.Asset{}
 
-		err := rows.Scan(&a.Symbol, &a.Name)
+		err := rows.Scan(&asset.Symbol, &asset.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan asset: %w", err)
 		}
 
-		assets = append(assets, &a)
+		assets = append(assets, &asset)
 	}
 
 	if rows.Err() != nil {
@@ -93,16 +93,16 @@ func (db *Asset) Store(ctx context.Context, symbol, name string) error {
 }
 
 func (db *Asset) Get(ctx context.Context, symbol string) (*pb.Asset, error) {
-	a := pb.Asset{Symbol: symbol}
+	asset := pb.Asset{Symbol: symbol}
 
 	err := db.Conn.QueryRow(ctx,
 		"SELECT name FROM asset WHERE symbol=$1", symbol).Scan(
-		&a.Name)
+		&asset.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get asset: %w", err)
 	}
 
-	return &a, nil
+	return &asset, nil
 }
 
 func (db *Asset) Delete(ctx context.Context, symbol string) error {

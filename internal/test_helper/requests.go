@@ -58,7 +58,7 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 		} else {
 			marshalled, err := json.Marshal(payload)
 			if err != nil {
-				t.Fatalf("Failed to marshal payload: %w", err)
+				t.Fatalf("Failed to marshal payload: %v", err)
 				return nil
 			}
 
@@ -72,13 +72,13 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 	}
 
 	if err != nil {
-		t.Fatalf("Error creating request: %w", err)
+		t.Fatalf("Error creating request: %v", err)
 		return nil
 	}
 
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("Error sending request: %w", err)
+		t.Fatalf("Error sending request: %v", err)
 		return nil
 	}
 
@@ -125,7 +125,7 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 
 		err := json.NewDecoder(rsp.Body).Decode(&backtest)
 		if err != nil {
-			t.Fatalf("Failed to decode backtest: %w", err)
+			t.Fatalf("Failed to decode backtest: %v", err)
 		}
 
 		if backtest.Status == "READY" {
@@ -156,7 +156,7 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 
 		err := json.NewDecoder(rsp.Body).Decode(&strategy)
 		if err != nil {
-			t.Fatalf("Failed to decode strategy: %w", err)
+			t.Fatalf("Failed to decode strategy: %v", err)
 		}
 	}
 
