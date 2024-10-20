@@ -72,7 +72,7 @@ func (test *ExecutionTest) TestCreate() {
 		test.NotNil(e.Id)
 		test.Equal(test.storedSession.Id, e.Session)
 		test.Equal(test.storedBacktest.Symbols, e.Symbols)
-		test.Len(1, len(e.Statuses))
+		test.Len(e.Statuses, 1)
 		test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
 		test.Nil(e.Statuses[0].Error)
 		test.NotNil(e.Statuses[0].OccurredAt)
@@ -93,7 +93,7 @@ func (test *ExecutionTest) TestGet() {
 	test.Equal(test.storedBacktest.StartDate, e.StartDate)
 	test.Equal(test.storedBacktest.EndDate, e.EndDate)
 	test.Equal(test.storedBacktest.Symbols, e.Symbols)
-	test.Len(1, len(e.Statuses))
+	test.Len(e.Statuses, 1)
 	test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
 	test.Nil(e.Statuses[0].Error)
 	test.NotNil(e.Statuses[0].OccurredAt)
@@ -115,7 +115,7 @@ func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	test.Require().NoError(err)
 	test.NotNil(e.Id)
 	test.Equal(test.storedSession.Id, e.Session)
-	test.Len(1, len(e.Statuses))
+	test.Len(e.Statuses, 1)
 	test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
 	test.Nil(e.Statuses[0].Error)
 	test.NotNil(e.Statuses[0].OccurredAt)
@@ -135,7 +135,7 @@ func (test *ExecutionTest) TestUpdateStatus() {
 	e, err = executions.Get(ctx, e.Id)
 	test.Require().NoError(err)
 	test.NotNil(e.Id)
-	test.Len(3, len(e.Statuses))
+	test.Len(e.Statuses, 3)
 	test.Equal(pb.Execution_Status_FAILED.String(), e.Statuses[0].Status.String())
 	test.Equal("test", *e.Statuses[0].Error)
 	test.NotNil(e.Statuses[0].OccurredAt)
@@ -161,7 +161,7 @@ func (test *ExecutionTest) TestList() {
 
 	storedExecutions, err := executions.List(ctx)
 	test.Require().NoError(err)
-	test.Len(2, len(storedExecutions))
+	test.Len(storedExecutions, 2)
 }
 
 func (test *ExecutionTest) TestListBySession() {
@@ -181,9 +181,9 @@ func (test *ExecutionTest) TestListBySession() {
 
 	storedExecutions, err := executions.ListBySession(ctx, session1.Id)
 	test.Require().NoError(err)
-	test.Len(1, len(storedExecutions))
+	test.Len(storedExecutions, 1)
 
 	storedExecutions, err = executions.ListBySession(ctx, session2.Id)
 	test.Require().NoError(err)
-	test.Len(0, len(storedExecutions))
+	test.Len(storedExecutions, 0)
 }

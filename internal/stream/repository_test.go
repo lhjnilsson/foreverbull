@@ -234,7 +234,7 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 			test.Require().NoError(err)
 
 			if testCase.ExpectedMessages == nil {
-				test.Nil(commands)
+				test.Empty(*commands)
 			} else {
 				test.Require().NotNil(commands)
 				test.Equal(len(*testCase.ExpectedMessages), len(*commands))
