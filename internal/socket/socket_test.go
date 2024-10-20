@@ -44,19 +44,22 @@ func (test *SocketTest) TestRequesterReplier() {
 		},
 	}
 
-	for _, tc := range testCases {
-		test.Run(tc.Task, func() {
+	for _, testCase := range testCases {
+		test.Run(testCase.Task, func() {
 			go func() {
-				request := common_pb.Request{Task: tc.Task, Data: tc.Data}
+				request := common_pb.Request{Task: testCase.Task, Data: testCase.Data}
 				sock, err := replier.Recieve(&request)
-				test.Require().NoError(err, "failed to recieve")
+				test.NoError(err, "failed to recieve")
+
 				response := common_pb.Response{Task: request.Task, Data: request.Data}
 				err = sock.Reply(&response)
-				test.Require().NoError(err, "failed to send")
+				test.NoError(err, "failed to send")
 			}()
-			request := common_pb.Request{Task: tc.Task}
+
+			request := common_pb.Request{Task: testCase.Task}
 			data, err := proto.Marshal(&request)
 			test.Require().NoError(err, "failed to marshal data")
+
 			request.Data = data
 			response := common_pb.Response{}
 			err = requester.Request(&request, &response)
@@ -65,6 +68,7 @@ func (test *SocketTest) TestRequesterReplier() {
 			test.Equal(request.Data, response.Data, "data mismatch")
 		})
 	}
+
 	test.NoError(replier.Close(), "failed to close replier")
 	test.NoError(requester.Close(), "failed to close requester")
 }

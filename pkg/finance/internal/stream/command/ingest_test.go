@@ -1,4 +1,4 @@
-package command
+package command_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
@@ -64,6 +65,7 @@ func (test *IngestCommandTest) SetupTest() {
 		"Stored123", time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
 	test.Require().NoError(test.ohlc.Store(context.Background(),
 		"Stored123", time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
+
 	test.storedOHLCEnd = &internal_pb.Date{Year: 2020, Month: 1, Day: 3}
 
 	test.marketdata = new(supplier.MockMarketdata)
@@ -73,9 +75,9 @@ func (test *IngestCommandTest) TearDownTest() {
 }
 
 func (test *IngestCommandTest) TestIngestCommandIngest() {
-	m := new(stream.MockMessage)
-	m.On("MustGet", stream.DBDep).Return(test.db)
-	m.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
 	newAsset := pb.Asset{
 		Symbol: "NEW123",
@@ -98,22 +100,23 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		nil,
 	)
 
-	m.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*fs.IngestCommand)
 		command.Symbols = []string{"NEW123"}
 		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
 		end := internal_pb.DateToDateString(test.storedOHLCEnd)
 		command.End = &end
 	})
-	err := Ingest(context.Background(), m)
-	test.NoError(err)
+
+	err := command.Ingest(context.Background(), message)
+	test.Require().NoError(err)
 
 	asset, err := test.assets.Get(context.Background(), newAsset.Symbol)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.Equal(newAsset.Name, asset.Name)
 
 	exists, err := test.ohlc.Exists(context.Background(), []string{"NEW123"}, test.storedOHLCStart, test.storedOHLCEnd)
-	test.NoError(err)
+	test.Require().NoError(err)
 	test.True(exists)
 
 	test.marketdata.AssertExpectations(test.T())

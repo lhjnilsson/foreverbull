@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"fmt"
+	"errors"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -22,38 +22,43 @@ type namespace struct {
 	values map[string]*namespaceContainer
 }
 
-func CreateNamespace(namespaces []string) *namespace {
-	ns := &namespace{
+func CreateNamespace(namespaces []string) Namespace {
+	nspace := &namespace{
 		values: make(map[string]*namespaceContainer),
 	}
 	for _, n := range namespaces {
-		ns.values[n] = &namespaceContainer{
+		nspace.values[n] = &namespaceContainer{
 			value: &structpb.Struct{
 				Fields: make(map[string]*structpb.Value),
 			},
 		}
 	}
-	return ns
+
+	return nspace
 }
 
 func (n *namespace) Get(key string) *structpb.Struct {
-	v, ok := n.values[key]
+	container, ok := n.values[key]
 	if !ok {
 		return nil
 	}
-	return v.value
+
+	return container.value
 }
 
 func (n *namespace) Set(key string, value *structpb.Struct) error {
-	c, ok := n.values[key]
+	container, ok := n.values[key]
 	if !ok {
-		return fmt.Errorf("namespace not found")
+		return errors.New("namespace not found")
 	}
-	c.sync.Lock()
-	defer c.sync.Unlock()
+
+	container.sync.Lock()
+	defer container.sync.Unlock()
+
 	for k, v := range value.Fields {
-		c.value.Fields[k] = v
+		container.value.Fields[k] = v
 	}
+
 	return nil
 }
 

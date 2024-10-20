@@ -19,18 +19,22 @@ func DateToDateString(date *Date) string {
 
 func DateStringToDate(date string) *Date {
 	splitted := strings.Split(date, "-")
+
 	year, err := strconv.Atoi(splitted[0])
 	if err != nil {
 		panic(err)
 	}
+
 	month, err := strconv.Atoi(splitted[1])
 	if err != nil {
 		panic(err)
 	}
+
 	day, err := strconv.Atoi(splitted[2])
 	if err != nil {
 		panic(err)
 	}
+
 	return &Date{
 		Year:  int32(year),
 		Month: int32(month),

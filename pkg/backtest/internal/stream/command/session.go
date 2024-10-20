@@ -21,75 +21,111 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	SessionTimeout = 30 * time.Minute
+)
+
 func SessionRun(ctx context.Context, msg stream.Message) error {
 	command := ss.SessionRunCommand{}
+
 	err := msg.ParsePayload(&command)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling SessionRun payload: %w", err)
 	}
+
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	s := msg.MustGet(stream.StorageDep).(storage.Storage)
 	sessions := repository.Session{Conn: db}
+
 	session, err := sessions.Get(ctx, command.SessionID)
 	if err != nil {
 		log.Err(err).Msg("error getting session")
-		return fmt.Errorf("error getting session: %v", err)
+		return fmt.Errorf("error getting session: %w", err)
 	}
-	ze, err := msg.Call(ctx, dependency.GetEngineKey)
+
+	depEngine, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
 		log.Err(err).Msg("error getting zipline engine")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+
 		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
-	engine := ze.(engine.Engine)
-	ingestions, err := s.ListObjects(ctx, storage.IngestionsBucket)
+
+	engine := depEngine.(engine.Engine)
+
+	var ingestions *[]storage.Object
+
+	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
+	if err != nil {
+		log.Err(err).Msg("error listing ingestions")
+		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+
+		return fmt.Errorf("error listing ingestions: %w", err)
+	}
+
 	if len(*ingestions) == 0 {
 		err = errors.New("no ingestions found")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
 		log.Err(err).Msg("no ingestions found")
+
 		return fmt.Errorf("no ingestions found")
 	}
+
 	var ingestion *storage.Object
-	for _, i := range *ingestions {
-		i.Refresh()
-		if ingestion == nil && i.Metadata["Status"] == pb.IngestionStatus_READY.String() {
-			ingestion = &i
-		} else if ingestion != nil && i.LastModified.After(ingestion.LastModified) && i.Metadata["Status"] == pb.IngestionStatus_READY.String() {
-			ingestion = &i
+
+	for _, stored := range *ingestions {
+		stored.Refresh()
+
+		if ingestion == nil && stored.Metadata["Status"] == pb.IngestionStatus_READY.String() {
+			ingestion = &stored
+		} else if ingestion != nil && stored.LastModified.After(ingestion.LastModified) && stored.Metadata["Status"] == pb.IngestionStatus_READY.String() {
+			ingestion = &stored
 		}
 	}
+
 	if ingestion == nil {
 		err = errors.New("no completed ingestions found, create one before running a session")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+
 		return err
 	}
+
 	err = engine.DownloadIngestion(ctx, ingestion)
 	if err != nil {
 		log.Err(err).Msg("error downloading ingestion")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
+
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
-	server, a, err := backtest.NewGRPCSessionServer(session, db, engine)
+	server, activity, err := backtest.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
-		return fmt.Errorf("error creating grpc session server: %v", err)
+
+		return fmt.Errorf("error creating grpc session server: %w", err)
 	}
 
 	var listener net.Listener
+
 	var port int
-	for port = environment.GetBacktestPortRangeStart(); port < environment.GetBacktestPortRangeEnd(); port++ {
+
+	portRangeEnd := environment.GetBacktestPortRangeEnd()
+
+	for port = environment.GetBacktestPortRangeStart(); port < portRangeEnd; port++ {
 		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
 			break
 		}
-		syscallErr, ok := err.(*net.OpError)
-		if ok && errors.Unwrap(syscallErr.Unwrap()) == syscall.EADDRINUSE {
+
+		opErr := &net.OpError{}
+		if errors.As(err, &opErr) && errors.Unwrap(opErr.Unwrap()) == syscall.EADDRINUSE {
 			continue
 		}
+
 		return fmt.Errorf("error creating listener: %w", err)
 	}
+
 	go func() {
 		err := server.Serve(listener)
 		if err != nil {
@@ -102,20 +138,23 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			server.Stop()
 		}()
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil)
+
 		defer sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil)
+
 		for {
 			select {
-			case _, active := <-a:
+			case _, active := <-activity:
 				if !active {
-					time.Sleep(time.Second / 4) // Make sure reply is sent
+					time.Sleep(time.Second / 4) // make sure reply is sent
 					return
 				} else {
 				}
-			case <-time.After(time.Minute * 30):
+			case <-time.After(SessionTimeout):
 				return
 			}
 		}
 	}()
 	sessions.UpdatePort(ctx, command.SessionID, port)
+
 	return nil
 }

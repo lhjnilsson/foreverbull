@@ -2,6 +2,7 @@ package servicer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,48 +26,63 @@ func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer 
 	}
 }
 
-func (bs *BacktestServer) ListBacktests(ctx context.Context, req *pb.ListBacktestsRequest) (*pb.ListBacktestsResponse, error) {
+func (bs *BacktestServer) ListBacktests(ctx context.Context,
+	req *pb.ListBacktestsRequest,
+) (*pb.ListBacktestsResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
+
 	list, err := backtests.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error listing backtests: %w", err)
 	}
+
 	return &pb.ListBacktestsResponse{
 		Backtests: list,
 	}, nil
 }
 
-func (bs *BacktestServer) CreateBacktest(ctx context.Context, req *pb.CreateBacktestRequest) (*pb.CreateBacktestResponse, error) {
+func (bs *BacktestServer) CreateBacktest(ctx context.Context,
+	req *pb.CreateBacktestRequest,
+) (*pb.CreateBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
-	b := req.GetBacktest()
-	if b == nil {
-		return nil, fmt.Errorf("backtest is required")
+
+	reqBacktest := req.GetBacktest()
+	if reqBacktest == nil {
+		return nil, errors.New("backtest is required")
 	}
 
-	backtest, err := backtests.Create(ctx, b.GetName(), b.StartDate,
-		b.EndDate, b.Symbols, b.Benchmark)
+	backtest, err := backtests.Create(ctx, reqBacktest.GetName(), reqBacktest.StartDate,
+		reqBacktest.EndDate, reqBacktest.Symbols, reqBacktest.Benchmark)
 	if err != nil {
 		return nil, fmt.Errorf("error creating backtest: %w", err)
 	}
+
 	return &pb.CreateBacktestResponse{
 		Backtest: backtest,
 	}, nil
 }
 
-func (bs *BacktestServer) GetBacktest(ctx context.Context, req *pb.GetBacktestRequest) (*pb.GetBacktestResponse, error) {
+func (bs *BacktestServer) GetBacktest(ctx context.Context,
+	req *pb.GetBacktestRequest,
+) (*pb.GetBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
+
 	backtest, err := backtests.Get(ctx, req.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("error getting backtest: %w", err)
 	}
+
 	return &pb.GetBacktestResponse{
 		Name:     backtest.Name,
 		Backtest: backtest,
 	}, nil
 }
 
-func (bs *BacktestServer) CreateSession(ctx context.Context, req *pb.CreateSessionRequest) (*pb.CreateSessionResponse, error) {
+func (bs *BacktestServer) CreateSession(ctx context.Context,
+	req *pb.CreateSessionRequest,
+) (*pb.CreateSessionResponse, error) {
 	sessions := repository.Session{Conn: bs.pgx}
+
 	session, err := sessions.Create(ctx, req.GetBacktestName())
 	if err != nil {
 		return nil, fmt.Errorf("error creating session: %w", err)
@@ -76,21 +92,27 @@ func (bs *BacktestServer) CreateSession(ctx context.Context, req *pb.CreateSessi
 	if err != nil {
 		return nil, fmt.Errorf("error creating session run command: %w", err)
 	}
+
 	err = bs.stream.Publish(ctx, msg)
 	if err != nil {
 		return nil, fmt.Errorf("error publishing session run command: %w", err)
 	}
+
 	return &pb.CreateSessionResponse{
 		Session: session,
 	}, nil
 }
 
-func (bs *BacktestServer) GetSession(ctx context.Context, req *pb.GetSessionRequest) (*pb.GetSessionResponse, error) {
+func (bs *BacktestServer) GetSession(ctx context.Context,
+	req *pb.GetSessionRequest,
+) (*pb.GetSessionResponse, error) {
 	sessions := repository.Session{Conn: bs.pgx}
+
 	session, err := sessions.Get(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, fmt.Errorf("error getting session: %w", err)
 	}
+
 	return &pb.GetSessionResponse{
 		Session: session,
 	}, nil

@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -36,13 +35,13 @@ func (test *StorageTest) SetupSuite() {
 	}
 
 	for _, file := range test.backtestResultFiles {
-		cmd := exec.Command("dd", "if=/dev/urandom", "of="+file, "bs=1", "count=1024")
+		cmd := exec.Command("dd", "if=/dev/urandom", "of="+file, "bs=1", "count=1024") //nolint: gosec
 		_, err := cmd.Output()
 		test.Require().NoError(err)
 	}
 
 	for _, file := range test.backtestIngestionFiles {
-		cmd := exec.Command("dd", "if=/dev/urandom", "of="+file, "bs=1", "count=1024")
+		cmd := exec.Command("dd", "if=/dev/urandom", "of="+file, "bs=1", "count=1024") //nolint: gosec
 		_, err := cmd.Output()
 		test.Require().NoError(err)
 	}
@@ -53,6 +52,7 @@ func (test *StorageTest) TearDownSuite() {
 		err := exec.Command("rm", file).Run()
 		test.Require().NoError(err)
 	}
+
 	for _, file := range test.backtestIngestionFiles {
 		err := exec.Command("rm", file).Run()
 		test.Require().NoError(err)
@@ -80,7 +80,7 @@ func (test *StorageTest) TestStorage() {
 	test.Run("ListOBjects", func() {
 		objects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
 		test.Require().NoError(err)
-		test.Require().Len(*objects, 0)
+		test.Require().Empty(*objects)
 	})
 	test.Run("Create and Get Object", func() {
 		metadata := map[string]string{
@@ -141,28 +141,34 @@ func (test *StorageTest) TestObject() {
 		if err != nil {
 			return
 		}
-		req, err := http.NewRequest("PUT", url, bytes.NewReader(fileData))
+
+		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, url, bytes.NewReader(fileData))
 		if err != nil {
 			return
 		}
+
 		req.Header.Set("Content-Type", "application/octet-stream")
+
 		client := &http.Client{}
+
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Println("Error uploading file:", err)
+			test.T().Log("Error uploading file:", err)
 			return
 		}
+
 		defer resp.Body.Close()
+
 		if resp.StatusCode != http.StatusOK {
-			fmt.Println("Upload failed with status code:", resp.StatusCode)
+			test.T().Log("Upload failed with status code:", resp.StatusCode)
 			return
 		}
 
 		test.Require().NoError(object.Refresh())
 		test.Empty(object.Metadata)
-		object.SetMetadata(context.TODO(), map[string]string{"Status": "uploaded"})
+		test.NoError(object.SetMetadata(context.TODO(), map[string]string{"Status": "uploaded"}))
 		test.Require().NoError(object.Refresh())
 		test.Require().Equal(map[string]string{"Status": "uploaded"}, object.Metadata)
-		test.Greater(object.Size, int64(0))
+		test.Positive(object.Size)
 	})
 }

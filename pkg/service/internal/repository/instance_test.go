@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -28,13 +29,14 @@ func (test *InstanceTest) SetupTest() {
 	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
+
 	ctx := context.Background()
 
-	err = Recreate(ctx, test.conn)
+	err = repository.Recreate(ctx, test.conn)
 	test.Require().NoError(err)
 
-	s_repository := &Service{Conn: test.conn}
-	_, err = s_repository.Create(ctx, "test_image")
+	services := &repository.Service{Conn: test.conn}
+	_, err = services.Create(ctx, "test_image")
 	test.Require().NoError(err)
 	test.Require().NoError(err)
 }
@@ -48,12 +50,13 @@ func TestInstances(t *testing.T) {
 
 func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
+
 	image := "test_image"
-	for id, image := range []*string{nil, &image} {
-		db := &Instance{Conn: test.conn}
-		instance, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
-		test.NoError(err)
-		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+	for index, image := range []*string{nil, &image} {
+		instances := &repository.Instance{Conn: test.conn}
+		instance, err := instances.Create(ctx, fmt.Sprintf("instance_%d", index), image)
+		test.Require().NoError(err)
+		test.Equal(fmt.Sprintf("instance_%d", index), instance.ID)
 		test.Equal(image, instance.Image)
 	}
 }
@@ -62,14 +65,14 @@ func (test *InstanceTest) TestGet() {
 	ctx := context.Background()
 
 	image := "test_image"
-	for id, image := range []*string{nil, &image} {
-		db := &Instance{Conn: test.conn}
-		_, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
-		test.NoError(err)
+	for index, image := range []*string{nil, &image} {
+		instances := &repository.Instance{Conn: test.conn}
+		_, err := instances.Create(ctx, fmt.Sprintf("instance_%d", index), image)
+		test.Require().NoError(err)
 
-		instance, err := db.Get(ctx, fmt.Sprintf("instance_%d", id))
-		test.NoError(err)
-		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+		instance, err := instances.Get(ctx, fmt.Sprintf("instance_%d", index))
+		test.Require().NoError(err)
+		test.Equal(fmt.Sprintf("instance_%d", index), instance.ID)
 		test.Equal(image, instance.Image)
 	}
 }
@@ -77,15 +80,15 @@ func (test *InstanceTest) TestGet() {
 func (test *InstanceTest) TestUpdateHostPort() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
+	instances := &repository.Instance{Conn: test.conn}
+	_, err := instances.Create(ctx, "instance", nil)
+	test.Require().NoError(err)
 
-	err = db.UpdateHostPort(ctx, "instance", "host", 1234)
-	test.NoError(err)
+	err = instances.UpdateHostPort(ctx, "instance", "host", 1234)
+	test.Require().NoError(err)
 
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
+	instance, err := instances.Get(ctx, "instance")
+	test.Require().NoError(err)
 	test.Require().NotNil(instance.Host)
 	test.Equal("host", *instance.Host)
 	test.Require().NotNil(instance.Port)
@@ -95,30 +98,30 @@ func (test *InstanceTest) TestUpdateHostPort() {
 func (test *InstanceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance", nil)
-	test.NoError(err)
+	instances := &repository.Instance{Conn: test.conn}
+	_, err := instances.Create(ctx, "instance", nil)
+	test.Require().NoError(err)
 
-	err = db.UpdateStatus(ctx, "instance", pb.Instance_Status_RUNNING, nil)
-	test.NoError(err)
+	err = instances.UpdateStatus(ctx, "instance", pb.Instance_Status_RUNNING, nil)
+	test.Require().NoError(err)
 
-	instance, err := db.Get(ctx, "instance")
-	test.NoError(err)
+	instance, err := instances.Get(ctx, "instance")
+	test.Require().NoError(err)
 	test.Equal(pb.Instance_Status_RUNNING.String(), instance.Statuses[0].Status.String())
 }
 
 func (test *InstanceTest) TestList() {
 	ctx := context.Background()
 
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", nil)
-	test.NoError(err)
-	_, err = db.Create(ctx, "instance2", nil)
-	test.NoError(err)
+	instances := &repository.Instance{Conn: test.conn}
+	_, err := instances.Create(ctx, "instance1", nil)
+	test.Require().NoError(err)
+	_, err = instances.Create(ctx, "instance2", nil)
+	test.Require().NoError(err)
 
-	instances, err := db.List(ctx)
-	test.NoError(err)
-	test.Len(instances, 2)
+	storedInstances, err := instances.List(ctx)
+	test.Require().NoError(err)
+	test.Len(storedInstances, 2)
 }
 
 func (test *InstanceTest) TestListByImage() {
@@ -126,13 +129,13 @@ func (test *InstanceTest) TestListByImage() {
 
 	image := "test_image"
 
-	db := &Instance{Conn: test.conn}
-	_, err := db.Create(ctx, "instance1", &image)
-	test.NoError(err)
-	_, err = db.Create(ctx, "instance2", nil)
-	test.NoError(err)
+	instances := &repository.Instance{Conn: test.conn}
+	_, err := instances.Create(ctx, "instance1", &image)
+	test.Require().NoError(err)
+	_, err = instances.Create(ctx, "instance2", nil)
+	test.Require().NoError(err)
 
-	instances, err := db.ListByImage(ctx, image)
-	test.NoError(err)
-	test.Len(instances, 1)
+	storedInstances, err := instances.ListByImage(ctx, image)
+	test.Require().NoError(err)
+	test.Len(storedInstances, 1)
 }

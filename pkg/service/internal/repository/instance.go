@@ -2,11 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
@@ -55,99 +55,120 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, id string, image *string) (*pb.Instance, error) {
+func (db *Instance) Create(ctx context.Context, instanceID string, image *string) (*pb.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
-		id, image,
+		instanceID, image,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating instance: %w", err)
 	}
-	return db.Get(ctx, id)
+
+	return db.Get(ctx, instanceID)
 }
 
-func (db *Instance) Get(ctx context.Context, id string) (*pb.Instance, error) {
-	i := pb.Instance{}
+func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, error) {
+	instance := pb.Instance{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
-		WHERE service_instance.id=$1`, id)
+		WHERE service_instance.id=$1`, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting instance: %w", err)
 	}
+
 	defer rows.Close()
 
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		t := time.Time{}
-		err = rows.Scan(&i.ID, &i.Image, &i.Host, &i.Port, &status.Status, &status.Error, &t)
+		occuredAt := time.Time{}
+
+		err = rows.Scan(&instance.ID, &instance.Image, &instance.Host, &instance.Port,
+			&status.Status, &status.Error, &occuredAt)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
-		i.Statuses = append(i.Statuses, &status)
+
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
+		instance.Statuses = append(instance.Statuses, &status)
 	}
-	if i.ID == "" {
-		return nil, &pgconn.PgError{Code: "02000"}
+
+	if instance.ID == "" {
+		return nil, errors.New("instance not found")
 	}
-	return &i, nil
+
+	return &instance, nil
 }
 
-func (db *Instance) UpdateHostPort(ctx context.Context, id, host string, port int) error {
+func (db *Instance) UpdateHostPort(ctx context.Context, instanceID, host string, port int) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE service_instance SET host=$1, port=$2 WHERE id=$3`,
-		host, port, id,
+		host, port, instanceID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("error updating host and port: %w", err)
 	}
+
 	return nil
 }
 
-func (db *Instance) UpdateStatus(ctx context.Context, id string, status pb.Instance_Status_Status, err error) error {
+func (db *Instance) UpdateStatus(ctx context.Context, instanceID string, status pb.Instance_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2, error=$3 WHERE id=$1`,
-			id, status, err.Error(),
+			instanceID, status, err.Error(),
 		)
 	} else {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2 WHERE id=$1`,
-			id, status,
+			instanceID, status,
 		)
 	}
-	return err
+
+	if err != nil {
+		return fmt.Errorf("error updating status: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Instance) parseRows(rows pgx.Rows) ([]*pb.Instance, error) {
 	instances := make([]*pb.Instance, 0)
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		status := pb.Instance_Status{}
-		t := time.Time{}
-		i := pb.Instance{}
+		occuredAt := time.Time{}
+		instance := pb.Instance{}
+
 		err := rows.Scan(
-			&i.ID, &i.Image, &i.Host, &i.Port,
-			&status.Status, &status.Error, &t)
+			&instance.ID, &instance.Image, &instance.Host, &instance.Port,
+			&status.Status, &status.Error, &occuredAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error scanning instance: %w", err)
 		}
-		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
 		inReturnSlice = false
+
 		for index := range instances {
-			if instances[index].ID == i.ID {
+			if instances[index].ID == instance.ID {
 				instances[index].Statuses = append(instances[index].Statuses, &status)
 				inReturnSlice = true
 			}
 		}
+
 		if !inReturnSlice {
-			i.Statuses = append(i.Statuses, &status)
-			instances = append(instances, &i)
+			instance.Statuses = append(instance.Statuses, &status)
+			instances = append(instances, &instance)
 		}
 	}
+
 	return instances, nil
 }
 
@@ -160,9 +181,11 @@ func (db *Instance) List(ctx context.Context) ([]*pb.Instance, error) {
 		) AS sis ON service_instance.id = sis.id
 		ORDER BY sis.occurred_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error listing instances: %w", err)
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }
 
@@ -176,8 +199,10 @@ func (db *Instance) ListByImage(ctx context.Context, image string) ([]*pb.Instan
 		WHERE image=$1
 		ORDER BY sis.occurred_at DESC`, image)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error listing instances by image: %w", err)
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }

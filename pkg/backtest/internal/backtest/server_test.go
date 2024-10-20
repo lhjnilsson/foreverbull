@@ -1,7 +1,8 @@
-package backtest
+package backtest_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -13,6 +14,7 @@ import (
 	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
@@ -21,6 +23,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -44,13 +47,14 @@ func TestSessionManual(t *testing.T) {
 	suite.Run(t, new(SessionTest))
 }
 
-func (test *SessionTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
+func (s *SessionTest) SetupSuite() {
+	test_helper.SetupEnvironment(s.T(), &test_helper.Containers{
 		Postgres: true,
 	})
+
 	var err error
-	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.Require().NoError(err)
+	s.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
+	s.Require().NoError(err)
 }
 
 func (s *SessionTest) TearDownSuite() {
@@ -61,7 +65,8 @@ func (s *SessionTest) SetupTest() {
 	s.Require().NoError(err)
 
 	backtests := repository.Backtest{Conn: s.conn}
-	s.backtest, err = backtests.Create(context.Background(), "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
+	s.backtest, err = backtests.Create(context.Background(), "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	s.Require().NoError(err)
 	sessions := repository.Session{Conn: s.conn}
 	s.session, err = sessions.Create(context.TODO(), "backtest")
 	s.Require().NoError(err)
@@ -69,39 +74,44 @@ func (s *SessionTest) SetupTest() {
 	s.listener = bufconn.Listen(1024 * 1024)
 
 	s.mockEngine = new(engine.MockEngine)
-	s.baseServer, s.activity, err = NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
+	s.baseServer, s.activity, err = backtest.NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
 	s.Require().NoError(err)
+
 	go func() {
 		if err := s.baseServer.Serve(s.listener); err != nil {
 			log.Printf("error serving server: %v", err)
 		}
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(s.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return s.listener.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	if err != nil {
 		log.Printf("error connecting to server: %v", err)
 	}
 
 	s.client = backtest_pb.NewSessionServicerClient(conn)
-
 }
 
 func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
-		s.Assert().Fail("error closing listener: %v", err)
+		s.Fail("error closing listener: %w", err)
 	}
+
 	s.baseServer.Stop()
 }
 
 func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
-			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			Symbols:   []string{"AAPL"},
 		},
 		Algorithm: &service_pb.Algorithm{},
@@ -118,8 +128,8 @@ func (s *SessionTest) TestCreateExecution() {
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
-			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			Symbols:   []string{"AAPL"},
 		},
 		Algorithm: &service_pb.Algorithm{},
@@ -137,29 +147,34 @@ func (s *SessionTest) TestRunExecution() {
 		s.backtest.StartDate, s.backtest.EndDate, []string{"AAPL"}, nil)
 	s.Require().NoError(err)
 
-	ch := make(chan *finance_pb.Portfolio, 5)
-	ch <- &finance_pb.Portfolio{}
-	ch <- &finance_pb.Portfolio{}
-	ch <- &finance_pb.Portfolio{}
-	ch <- &finance_pb.Portfolio{}
-	ch <- &finance_pb.Portfolio{}
-	close(ch)
-	s.mockEngine.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(ch, nil)
+	portfolioCh := make(chan *finance_pb.Portfolio, 5)
+	portfolioCh <- &finance_pb.Portfolio{}
+	portfolioCh <- &finance_pb.Portfolio{}
+	portfolioCh <- &finance_pb.Portfolio{}
+	portfolioCh <- &finance_pb.Portfolio{}
+	portfolioCh <- &finance_pb.Portfolio{}
+	close(portfolioCh)
+	s.mockEngine.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(portfolioCh, nil)
 
 	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{
 		ExecutionId: execution.Id,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(stream)
+
 	entries := 0
+
 	for {
 		_, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		s.Require().NoError(err)
+
 		entries++
 	}
+
 	s.Require().Equal(5, entries)
 }
 

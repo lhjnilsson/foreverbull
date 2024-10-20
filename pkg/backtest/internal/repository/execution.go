@@ -2,11 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
@@ -113,22 +113,27 @@ type Execution struct {
 }
 
 func (db *Execution) Create(ctx context.Context, session string, start, end *internal_pb.Date,
-	symbols []string, benchmark *string) (*pb.Execution, error) {
-	var id string
+	symbols []string, benchmark *string,
+) (*pb.Execution, error) {
+	var executionId string
+
 	var endDate *string
+
 	if end != nil {
 		ed := internal_pb.DateToDateString(end)
 		endDate = &ed
 	}
+
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO execution (session, start_date, end_date, benchmark, symbols)
 		VALUES($1,$2,$3,$4,$5) RETURNING id`, session, internal_pb.DateToDateString(start),
 		endDate, benchmark, symbols).
-		Scan(&id)
+		Scan(&executionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
-	return db.Get(ctx, id)
+
+	return db.Get(ctx, executionId)
 }
 
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
@@ -161,11 +166,13 @@ func (db *Execution) StorePeriods(ctx context.Context, execution string, periods
 			return fmt.Errorf("error creating period result: %w", err)
 		}
 	}
+
 	return nil
 }
 
-func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) {
-	e := pb.Execution{}
+func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution, error) {
+	execution := pb.Execution{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT execution.id, session, start_date, end_date, benchmark, symbols,
 		es.status, es.error, es.occurred_at
@@ -173,32 +180,39 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
-		WHERE execution.id=$1`, id)
+		WHERE execution.id=$1`, executionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get execution: %w", err)
 	}
+
 	defer rows.Close()
+
 	for rows.Next() {
 		status := pb.Execution_Status{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occured_at := time.Time{}
-		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &occured_at)
+
+		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
+			&execution.Symbols, &status.Status, &status.Error, &occured_at)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
-		e.StartDate = internal_pb.GoTimeToDate(start)
+
+		execution.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
-			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
+
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occured_at)
-		e.Statuses = append(e.Statuses, &status)
+		execution.Statuses = append(execution.Statuses, &status)
 	}
-	if e.Id == "" {
-		return nil, &pgconn.PgError{Code: "02000"}
+
+	if execution.Id == "" {
+		return nil, errors.New("execution not found")
 	}
-	return &e, nil
+
+	return &execution, nil
 }
 
 func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
@@ -206,52 +220,71 @@ func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Executio
 		`UPDATE execution SET start_date=$1, end_date=$2, benchmark=$3,
 		symbols=$4 WHERE id=$5`, internal_pb.DateToDateString(e.StartDate),
 		internal_pb.DateToDateString(e.EndDate), e.Benchmark, e.Symbols, e.Id)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to update execution: %w", err)
+	}
+
+	return nil
 }
 
-func (db *Execution) UpdateStatus(ctx context.Context, id string, status pb.Execution_Status_Status, err error) error {
+func (db *Execution) UpdateStatus(ctx context.Context, executionId string, status pb.Execution_Status_Status, err error) error {
 	if err != nil {
-		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", id, status, err.Error())
+		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", executionId, status, err.Error())
 	} else {
-		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2 WHERE id=$1", id, status)
+		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2 WHERE id=$1", executionId, status)
 	}
-	return err
+
+	if err != nil {
+		return fmt.Errorf("failed to update execution status: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 	executions := make([]*pb.Execution, 0)
+
 	var err error
+
 	var inReturnSlice bool
+
 	for rows.Next() {
 		status := pb.Execution_Status{}
-		e := pb.Execution{}
+		execution := pb.Execution{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occurred_at := time.Time{}
-		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
-			&status.Status, &status.Error, &occurred_at)
+
+		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
+			&execution.Symbols, &status.Status, &status.Error, &occurred_at)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
-		e.StartDate = internal_pb.GoTimeToDate(start)
+
+		execution.StartDate = internal_pb.GoTimeToDate(start)
 		if end.Valid {
-			e.EndDate = internal_pb.GoTimeToDate(end.Time)
+			execution.EndDate = internal_pb.GoTimeToDate(end.Time)
 		}
+
 		status.OccurredAt = internal_pb.TimeToProtoTimestamp(occurred_at)
 
 		inReturnSlice = false
+
 		for i := range executions {
-			if executions[i].Id == e.Id {
+			if executions[i].Id == execution.Id {
 				executions[i].Statuses = append(executions[i].Statuses, &status)
 				inReturnSlice = true
+
 				break
 			}
 		}
+
 		if !inReturnSlice {
-			e.Statuses = append(e.Statuses, &status)
-			executions = append(executions, &e)
+			execution.Statuses = append(execution.Statuses, &status)
+			executions = append(executions, &execution)
 		}
 	}
+
 	return executions, nil
 }
 
@@ -265,9 +298,11 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 		) AS es ON execution.id=es.id
 		ORDER BY es.occurred_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }
 
@@ -282,8 +317,10 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 		WHERE session=$1
 		ORDER BY es.occurred_at DESC`, session)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}
+
 	defer rows.Close()
+
 	return db.parseRows(rows)
 }

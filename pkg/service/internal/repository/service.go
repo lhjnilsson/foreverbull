@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
@@ -59,11 +59,13 @@ func (db *Service) Create(ctx context.Context, image string) (*pb.Service, error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service: %w", err)
 	}
+
 	return db.Get(ctx, image)
 }
 
 func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
-	s := pb.Service{}
+	service := pb.Service{}
+
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
 		FROM service
@@ -74,33 +76,40 @@ func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service: %w", err)
 	}
+
 	defer rows.Close()
 
-	a := []byte{}
+	algorithm := []byte{}
+
 	for rows.Next() {
-		ss := pb.Service_Status{}
+		status := pb.Service_Status{}
 		t := time.Time{}
 		err = rows.Scan(
-			&s.Image, &a, &ss.Status, &ss.Error, &t,
+			&service.Image, &algorithm, &status.Status, &status.Error, &t,
 		)
-		ss.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+		status.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get service: %w", err)
 		}
-		s.Statuses = append(s.Statuses, &ss)
+
+		service.Statuses = append(service.Statuses, &status)
 	}
-	if s.Image == "" {
-		return nil, &pgconn.PgError{Code: "02000"}
+
+	if service.Image == "" {
+		return nil, errors.New("service not found")
 	}
-	if a == nil {
-		return &s, nil
+
+	if algorithm == nil {
+		return &service, nil
 	}
-	err = json.Unmarshal(a, &s.Algorithm)
+
+	err = json.Unmarshal(algorithm, &service.Algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode algorithm: %w", err)
 	}
-	return &s, nil
+
+	return &service, nil
 }
 
 func (db *Service) SetAlgorithm(ctx context.Context, image string, a *pb.Algorithm) error {
@@ -108,11 +117,16 @@ func (db *Service) SetAlgorithm(ctx context.Context, image string, a *pb.Algorit
 	if err != nil {
 		return fmt.Errorf("failed to encode algorithm: %w", err)
 	}
+
 	_, err = db.Conn.Exec(ctx,
 		`UPDATE service SET algorithm=$2 WHERE image=$1`,
 		image, algorithm,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to set algorithm: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Service) UpdateStatus(ctx context.Context, image string, status pb.Service_Status_Status, err error) error {
@@ -127,7 +141,12 @@ func (db *Service) UpdateStatus(ctx context.Context, image string, status pb.Ser
 			image, status,
 		)
 	}
-	return err
+
+	if err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
@@ -139,49 +158,62 @@ func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
 		) ss ON service.image = ss.image
 		ORDER BY ss.occurred_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list services: %w", err)
 	}
 	defer rows.Close()
 
 	services := []*pb.Service{}
+
 	var inReturnSlice bool
+
 	for rows.Next() {
-		ss := pb.Service_Status{}
-		t := time.Time{}
-		s := pb.Service{}
-		a := []byte{}
+		serviceStatus := pb.Service_Status{}
+		occuredAt := time.Time{}
+		service := pb.Service{}
+		algorithm := []byte{}
+
 		err = rows.Scan(
-			&s.Image, &a, &ss.Status, &ss.Error, &t,
+			&service.Image, &algorithm, &serviceStatus.Status, &serviceStatus.Error, &occuredAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to list services: %w", err)
 		}
-		ss.OccurredAt = internal_pb.TimeToProtoTimestamp(t)
+
+		serviceStatus.OccurredAt = internal_pb.TimeToProtoTimestamp(occuredAt)
 
 		inReturnSlice = false
+
 		for i := range services {
-			if services[i].Image == s.Image {
-				services[i].Statuses = append(services[i].Statuses, &ss)
+			if services[i].Image == service.Image {
+				services[i].Statuses = append(services[i].Statuses, &serviceStatus)
 				inReturnSlice = true
 			}
 		}
+
 		if !inReturnSlice {
-			s.Statuses = append(s.Statuses, &ss)
-			services = append(services, &s)
+			service.Statuses = append(service.Statuses, &serviceStatus)
+			services = append(services, &service)
 		}
-		if a == nil {
+
+		if algorithm == nil {
 			continue
 		}
-		err = json.Unmarshal(a, &s.Algorithm)
+
+		err = json.Unmarshal(algorithm, &service.Algorithm)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode algorithm: %w", err)
 		}
 	}
+
 	return services, nil
 }
 
 func (db *Service) Delete(ctx context.Context, image string) error {
 	_, err := db.Conn.Exec(ctx,
 		"DELETE FROM service WHERE image=$1", image)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to delete service: %w", err)
+	}
+
+	return nil
 }

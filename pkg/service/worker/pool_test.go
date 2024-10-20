@@ -1,4 +1,4 @@
-package worker
+package worker_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -19,10 +20,6 @@ import (
 
 type PoolTest struct {
 	suite.Suite
-	pool *pool
-
-	socket          mangos.Socket
-	namespaceSocket mangos.Socket
 }
 
 func (test *PoolTest) SetupSuite() {
@@ -34,7 +31,7 @@ func TestPool(t *testing.T) {
 }
 
 func (test *PoolTest) TestSimple() {
-	cb := func(req *pb.WorkerRequest) *pb.WorkerResponse {
+	cb := func(_ *pb.WorkerRequest) *pb.WorkerResponse {
 		return &pb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{
@@ -45,7 +42,8 @@ func (test *PoolTest) TestSimple() {
 		},
 	}
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
-	pool, err := NewPool(context.TODO(), algo)
+	pool, err := worker.NewPool(context.TODO(), algo)
+	test.Require().NoError(err)
 
 	configuration := pool.Configure()
 
@@ -54,6 +52,7 @@ func (test *PoolTest) TestSimple() {
 	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
 	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
 	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+
 	namespaceSocket, err := req.NewSocket()
 	test.Require().NoError(err)
 	test.Require().NoError(namespaceSocket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.NamespacePort)))

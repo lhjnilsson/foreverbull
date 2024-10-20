@@ -1,4 +1,4 @@
-package servicer
+package servicer_test
 
 import (
 	"context"
@@ -12,11 +12,13 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -54,19 +56,25 @@ func (suite *BacktestServerTest) SetupTest() {
 	suite.server = grpc.NewServer()
 
 	suite.stream = new(stream.MockStream)
-	server := NewBacktestServer(suite.pgx, suite.stream)
+	server := servicer.NewBacktestServer(suite.pgx, suite.stream)
 	pb.RegisterBacktestServicerServer(suite.server, server)
+
 	go func() {
 		suite.server.Serve(suite.listener)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(suite.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return suite.listener.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	if err != nil {
 		log.Printf("error connecting to server: %v", err)
 	}
+
 	suite.client = pb.NewBacktestServicerClient(conn)
 }
 
@@ -75,6 +83,7 @@ func (suite *BacktestServerTest) TearDownTest() {
 	if err != nil {
 		suite.T().Errorf("Error closing listener: %v", err)
 	}
+
 	suite.server.Stop()
 }
 
@@ -82,9 +91,10 @@ func (suite *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	suite.T().Helper()
 
 	backtests := repository.Backtest{Conn: suite.pgx}
-	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
+	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{"AAPL"}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(backtest)
+
 	return backtest
 }
 
@@ -95,6 +105,7 @@ func (suite *BacktestServerTest) createSession(backtest string) *pb.Session {
 	session, err := sessions.Create(context.TODO(), backtest)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(session)
+
 	return session
 }
 
@@ -102,7 +113,7 @@ func (suite *BacktestServerTest) TestListBacktests() {
 	req := &pb.ListBacktestsRequest{}
 
 	resp, err := suite.client.ListBacktests(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -110,15 +121,15 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	req := &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "test_1",
-			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			Symbols:   []string{"AAPL"},
 			Benchmark: nil,
 		},
 	}
 
 	resp, err := suite.client.CreateBacktest(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -130,7 +141,7 @@ func (suite *BacktestServerTest) TestGetBacktest() {
 	}
 
 	resp, err := suite.client.GetBacktest(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(backtest, resp.Backtest)
 }
@@ -145,7 +156,7 @@ func (suite *BacktestServerTest) TestCreateSession() {
 	}
 
 	resp, err := suite.client.CreateSession(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
 
@@ -158,6 +169,6 @@ func (suite *BacktestServerTest) TestGetSession() {
 	}
 
 	resp, err := suite.client.GetSession(context.Background(), req)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }

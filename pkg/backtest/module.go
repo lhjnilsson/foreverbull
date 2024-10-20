@@ -13,7 +13,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
-	internalBacktest "github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
@@ -24,16 +23,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-const Stream = "backtest"
+const StreamName = "backtest"
 
-type BacktestStream stream.Stream
-type DependecyContainer stream.DependencyContainer
+type (
+	Stream             stream.Stream
+	DependecyContainer stream.DependencyContainer
+)
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(ce container.Engine) (engine.Engine, error) {
-			return internalBacktest.NewZiplineEngine(context.Background(), nil, nil)
-		},
 		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine) (DependecyContainer, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
@@ -42,8 +40,8 @@ var Module = fx.Options(
 			// dc.AddMethod(dependency.GetEngineKey, dependency.GetEngine)
 			return dc, nil
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, st storage.Storage, dc DependecyContainer) (BacktestStream, error) {
-			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, dc DependecyContainer) (Stream, error) {
+			s, err := stream.NewNATSStream(jt, StreamName, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -51,7 +49,7 @@ var Module = fx.Options(
 		},
 	),
 	fx.Invoke(
-		func(g *grpc.Server, pgx *pgxpool.Pool, s BacktestStream, st storage.Storage) error {
+		func(g *grpc.Server, pgx *pgxpool.Pool, s Stream, st storage.Storage) error {
 			backtestServer := servicer.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
 			ingestionServer := servicer.NewIngestionServer(s, st, pgx)
@@ -61,56 +59,56 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool, ce container.Engine, dc DependecyContainer) error {
-			var c container.Container
-			var ze engine.Engine
+		func(lc fx.Lifecycle, backtestStream Stream, containers container.Engine, dependencies DependecyContainer) error {
+			var backtestContainer container.Container
+			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					var err error
-					c, err = ce.Start(ctx, environment.GetBacktestImage(), "")
+					backtestContainer, err = containers.Start(ctx, environment.GetBacktestImage(), "")
 					if err != nil {
-						return fmt.Errorf("error starting container: %v", err)
+						return fmt.Errorf("error starting container: %w", err)
 					}
 
-					for i := 0; i < 30; i++ {
-						health, err := c.GetHealth()
+					for range 30 {
+						health, err := backtestContainer.GetHealth()
 						if err != nil {
-							return fmt.Errorf("error getting container health: %v", err)
+							return fmt.Errorf("error getting container health: %w", err)
 						}
 						if health == types.Healthy {
 							break
 						} else if health == types.Unhealthy {
 							return fmt.Errorf("container is unhealthy")
 						}
-						time.Sleep(time.Second / 3)
+						time.Sleep(time.Second / 3) //nolint: gomnd
 					}
-					ze, err = backtest.NewZiplineEngine(ctx, c, nil)
+					backtestEngine, err = backtest.NewZiplineEngine(ctx, backtestContainer, nil)
 					if err != nil {
-						return fmt.Errorf("error creating zipline engine: %v", err)
+						return fmt.Errorf("error creating zipline engine: %w", err)
 					}
 					returnEngine := func(ctx context.Context, msg stream.Message) (interface{}, error) {
-						return ze, nil
+						return backtestEngine, nil
 					}
-					dc.AddMethod(dependency.GetEngineKey, returnEngine)
+					dependencies.AddMethod(dependency.GetEngineKey, returnEngine)
 
-					err = s.CommandSubscriber("ingest", "ingest", command.Ingest)
+					err = backtestStream.CommandSubscriber("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
-					err = s.CommandSubscriber("session", "run", command.SessionRun)
+					err = backtestStream.CommandSubscriber("session", "run", command.SessionRun)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					if err := ze.Stop(ctx); err != nil {
-						return fmt.Errorf("error stopping zipline engine: %v", err)
+					if err := backtestEngine.Stop(ctx); err != nil {
+						return fmt.Errorf("error stopping zipline engine: %w", err)
 					}
-					if err := c.Stop(); err != nil {
-						return fmt.Errorf("error stopping container: %v", err)
+					if err := backtestContainer.Stop(); err != nil {
+						return fmt.Errorf("error stopping container: %w", err)
 					}
-					return s.Unsubscribe()
+					return backtestStream.Unsubscribe()
 				},
 			})
 			return nil

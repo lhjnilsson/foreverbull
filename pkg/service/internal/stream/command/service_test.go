@@ -1,31 +1,21 @@
-package command
+package command_test
 
 import (
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
 
 type ServiceTest struct {
 	suite.Suite
-
-	db *pgxpool.Pool
-
-	testService *pb.Service
 }
 
+//nolint:paralleltest
 func TestServiceCommands(t *testing.T) {
 	suite.Run(t, new(ServiceTest))
 }
 
 func (test *ServiceTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
-		Postgres: true,
-	})
-
 }
 
 /*
@@ -90,7 +80,7 @@ func (test *ServiceTest) TestServiceStart() {
 		b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 			command := args.Get(0).(*ss.ServiceStartCommand)
 			command.Image = test.testService.Image
-			command.InstanceID = "test-instance"
+			command.instanceID = "test-instance"
 		})
 		b.On("GetOrchestrationID").Return("test-orchestration-id")
 
@@ -110,7 +100,7 @@ func (test *ServiceTest) TestServiceStart() {
 		b.On("ParsePayload", &ss.ServiceStartCommand{}).Return(nil).Run(func(args mock.Arguments) {
 			command := args.Get(0).(*ss.ServiceStartCommand)
 			command.Image = test.testService.Image
-			command.InstanceID = "test-instance"
+			command.instanceID = "test-instance"
 		})
 		b.On("GetOrchestrationID").Return("test-orchestration-id")
 

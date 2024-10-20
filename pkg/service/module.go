@@ -12,50 +12,50 @@ import (
 	"go.uber.org/fx"
 )
 
-const Stream = "service"
+const StreamName = "service"
 
-type ServiceStream stream.Stream
+type Stream stream.Stream
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (ServiceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (Stream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
-			return stream.NewNATSStream(jt, Stream, dc, conn)
+			return stream.NewNATSStream(jt, StreamName, dc, conn)
 		},
 	),
 	fx.Invoke(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, s ServiceStream, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, stream Stream) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						err := s.CommandSubscriber("service", "start", command.ServiceStart)
+						err := stream.CommandSubscriber("service", "start", command.ServiceStart)
 						if err != nil {
 							return fmt.Errorf("error subscribing to service.start: %w", err)
 						}
-						err = s.CommandSubscriber("instance", "interview", command.InstanceInterview)
+						err = stream.CommandSubscriber("instance", "interview", command.InstanceInterview)
 						if err != nil {
 							return fmt.Errorf("error subscribing to instance.interview: %w", err)
 						}
-						err = s.CommandSubscriber("instance", "sanity_check", command.InstanceSanityCheck)
+						err = stream.CommandSubscriber("instance", "sanity_check", command.InstanceSanityCheck)
 						if err != nil {
 							return fmt.Errorf("error subscribing to instance.sanity_check: %w", err)
 						}
-						err = s.CommandSubscriber("instance", "stop", command.InstanceStop)
+						err = stream.CommandSubscriber("instance", "stop", command.InstanceStop)
 						if err != nil {
 							return fmt.Errorf("error subscribing to instance.stop: %w", err)
 						}
-						err = s.CommandSubscriber("service", "status", command.UpdateServiceStatus)
+						err = stream.CommandSubscriber("service", "status", command.UpdateServiceStatus)
 						if err != nil {
 							return fmt.Errorf("error subscribing to service.status: %w", err)
 						}
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
-						err := s.Unsubscribe()
+						err := stream.Unsubscribe()
 						if err != nil {
 							return fmt.Errorf("error unsubscribing: %w", err)
 						}

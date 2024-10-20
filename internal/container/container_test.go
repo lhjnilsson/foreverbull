@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// Image: ziptest:latest
+// Image: ziptest:latest.
 type EngineTest struct {
 	suite.Suite
 }
@@ -23,30 +23,33 @@ func (test *EngineTest) SetupSuite() {
 }
 
 func (test *EngineTest) NoTestStart() {
-	e, err := NewEngine()
+	engine, err := NewEngine()
 	test.Require().NoError(err)
 
-	c, err := e.Start(context.TODO(), "ziptest:latest", "test")
-	test.NoError(err)
-	test.NotNil(c)
+	container, err := engine.Start(context.TODO(), "ziptest:latest", "test")
+	test.Require().NoError(err)
+	test.NotNil(container)
 
-	status, err := c.GetStatus()
-	test.NoError(err)
+	status, err := container.GetStatus()
+	test.Require().NoError(err)
 	test.Equal("running", status)
 
-	for i := 0; i < 120; i++ {
-		health, err := c.GetHealth()
+	for range 120 {
+		health, err := container.GetHealth()
 		test.Require().NoError(err)
+
 		if health == "healthy" {
 			break
 		}
+
 		time.Sleep(time.Second / 4)
 	}
-	health, err := c.GetHealth()
-	test.NoError(err)
+
+	health, err := container.GetHealth()
+	test.Require().NoError(err)
 	test.Equal("healthy", health)
 
-	conn, err := c.GetConnectionString()
-	test.NoError(err)
+	conn, err := container.GetConnectionString()
+	test.Require().NoError(err)
 	test.NotEmpty(conn)
 }

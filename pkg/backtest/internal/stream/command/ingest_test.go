@@ -1,1 +1,1 @@
-package command
+package command_test

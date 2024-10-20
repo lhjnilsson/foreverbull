@@ -24,6 +24,7 @@ type WorkerFunction struct {
 
 func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm, func(socket mangos.Socket)) {
 	t.Helper()
+
 	algo := &pb.Algorithm{
 		FilePath: "worker_simulator",
 	}
@@ -36,22 +37,28 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 			Parameters:        []*service_pb.Algorithm_FunctionParameter{},
 		})
 	}
+
 	callbacks := make(map[string]func(*service_pb.WorkerRequest) *service_pb.WorkerResponse)
 	for _, f := range functions {
 		callbacks[f.Name] = f.CB
 	}
+
 	runner := func(socket mangos.Socket) {
 		for {
 			msg, err := socket.Recv()
 			if err != nil && err.Error() == "object closed" {
 				break
 			}
+
 			require.NoError(t, err, "failed to receive message")
+
 			req := service_pb.WorkerRequest{}
 			err = proto.Unmarshal(msg, &req)
 			require.NoError(t, err, "failed to unmarshal request")
+
 			cb, ok := callbacks[req.Task]
 			require.True(t, ok, "unknown function name")
+
 			rsp := cb(&req)
 			data, err := proto.Marshal(rsp)
 			require.NoError(t, err, "failed to marshal response data")
@@ -59,5 +66,6 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 			t.Log("Sent response")
 		}
 	}
+
 	return algo, runner
 }

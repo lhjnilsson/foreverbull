@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
@@ -17,37 +18,35 @@ type Asset struct {
 	Conn postgres.Query
 }
 
-/*
-List
-List all assets stored
-*/
 func (db *Asset) List(ctx context.Context) ([]*pb.Asset, error) {
 	rows, err := db.Conn.Query(
 		ctx,
 		`SELECT symbol, name FROM asset`,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
+
 	assets := make([]*pb.Asset, 0)
+
 	for rows.Next() {
-		a := pb.Asset{}
-		err := rows.Scan(&a.Symbol, &a.Name)
+		asset := pb.Asset{}
+
+		err := rows.Scan(&asset.Symbol, &asset.Name)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan asset: %w", err)
 		}
-		assets = append(assets, &a)
+
+		assets = append(assets, &asset)
 	}
+
 	if rows.Err() != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
+
 	return assets, nil
 }
 
-/*
-ListBySymbols
-List all assets stored based on list of symbols
-*/
 func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) ([]*pb.Asset, error) {
 	rows, err := db.Conn.Query(
 		ctx,
@@ -55,58 +54,63 @@ func (db *Asset) ListBySymbols(ctx context.Context, symbols []string) ([]*pb.Ass
 		symbols,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
+
 	assets := make([]*pb.Asset, 0)
+
 	for rows.Next() {
-		a := pb.Asset{}
-		err := rows.Scan(&a.Symbol, &a.Name)
+		asset := pb.Asset{}
+
+		err := rows.Scan(&asset.Symbol, &asset.Name)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan asset: %w", err)
 		}
-		assets = append(assets, &a)
+
+		assets = append(assets, &asset)
 	}
+
 	if rows.Err() != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
+
 	if len(assets) != len(symbols) {
 		return nil, errors.New("not all symbols found")
 	}
+
 	return assets, nil
 }
 
-/*
-Create
-Create a new asset
-*/
 func (db *Asset) Store(ctx context.Context, symbol, name string) error {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO asset(symbol, name) values($1, $2)
 		ON CONFLICT DO NOTHING`, symbol, name)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to store asset: %w", err)
+	}
+
+	return nil
 }
 
-/*
-Get
-Get a asset based on asset symbol
-*/
 func (db *Asset) Get(ctx context.Context, symbol string) (*pb.Asset, error) {
-	a := pb.Asset{Symbol: symbol}
+	asset := pb.Asset{Symbol: symbol}
+
 	err := db.Conn.QueryRow(ctx,
 		"SELECT name FROM asset WHERE symbol=$1", symbol).Scan(
-		&a.Name)
+		&asset.Name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get asset: %w", err)
 	}
-	return &a, nil
+
+	return &asset, nil
 }
 
-/*
-Delete
-Delete asset
-*/
 func (db *Asset) Delete(ctx context.Context, symbol string) error {
 	_, err := db.Conn.Exec(ctx,
 		"DELETE FROM asset WHERE symbol=$1", symbol)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to delete asset: %w", err)
+	}
+
+	return nil
 }

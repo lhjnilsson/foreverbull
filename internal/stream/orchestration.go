@@ -30,6 +30,7 @@ func (po *OrchestrationOutput) Contains(name string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -47,12 +48,15 @@ type OrchestrationRunner struct {
 
 func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 	msg := &message{}
+
 	err := json.Unmarshal(natsMsg.Data, &msg)
 	if err != nil {
 		log.Err(err).Msg("error unmarshalling message")
 		return
 	}
+
 	ctx := context.Background()
+
 	msg, err = or.stream.repository.GetMessage(ctx, *msg.ID)
 	if err != nil {
 		log.Err(err).Msg("error getting message")
@@ -72,11 +76,13 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		log.Err(err).Msg("error checking if orchestration is complete")
 		return
 	}
+
 	if complete {
 		err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
 		if err != nil {
 			log.Err(err).Msg("error marking all created as canceled")
 		}
+
 		return
 	}
 
@@ -91,12 +97,15 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		log.Err(err).Msg("error getting next orchestration commands")
 		return
 	}
+
 	if commands == nil {
 		log.Debug().Msg("no commands to run")
 		return
 	}
+
 	if len(*commands) > 0 && (*commands)[0].OrchestrationFallbackStep != nil && *(*commands)[0].OrchestrationFallbackStep {
 		log.Debug().Msg("orchestration is failing")
+
 		defer func() {
 			err = or.stream.repository.MarkAllCreatedAsCanceled(ctx, *msg.OrchestrationID)
 			if err != nil {
@@ -104,8 +113,10 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 			}
 		}()
 	}
+
 	for _, cmd := range *commands {
 		log.Info().Str("CmdID", *cmd.ID).Str("CmdComponent", cmd.Component).Str("CmdMethod", cmd.Method).Msg("publishing command")
+
 		err = or.stream.Publish(ctx, &cmd)
 		if err != nil {
 			log.Err(err).Msg("error publishing command")
@@ -113,13 +124,17 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		}
 	}
 }
+
 func (or *OrchestrationRunner) Start() error {
 	var err error
+
 	opts := []nats.SubOpt{
 		nats.MaxDeliver(1),
 		nats.Durable("foreverbull-orchestration-event"),
 	}
-	switch environment.GetNATSDeliveryPolicy() {
+	deliverPolicy := environment.GetNATSDeliveryPolicy()
+
+	switch deliverPolicy {
 	case "all":
 		opts = append(opts, nats.DeliverAll())
 	case "last":
@@ -132,38 +147,43 @@ func (or *OrchestrationRunner) Start() error {
 	if err != nil {
 		return fmt.Errorf("error subscribing to jetstream for orchestration: %w", err)
 	}
+
 	return nil
 }
 
 func (or *OrchestrationRunner) Stop() error {
-	return or.sub.Unsubscribe()
+	if err := or.sub.Unsubscribe(); err != nil {
+		return fmt.Errorf("error unsubscribing from jetstream for orchestration: %w", err)
+	}
+
+	return nil
 }
 
-var OrchestrationLifecycle = fx.Options(
+var OrchestrationLifecycle = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(jt nats.JetStreamContext, db *pgxpool.Pool) (*OrchestrationRunner, error) {
+		func(jetstream nats.JetStreamContext, pool *pgxpool.Pool) (*OrchestrationRunner, error) {
 			cfg := nats.ConsumerConfig{
 				Name:       "orchestration-event",
 				Durable:    "orchestration-event",
 				MaxDeliver: 1,
 			}
-			_, err := jt.AddConsumer("foreverbull", &cfg)
+			_, err := jetstream.AddConsumer("foreverbull", &cfg)
 			if err != nil {
 				return nil, fmt.Errorf("error adding consumer for orchestration: %w", err)
 			}
 			dc := NewDependencyContainer().(*dependencyContainer)
-			stream := &NATSStream{module: "orchestration", jt: jt, repository: NewRepository(db), deps: dc}
+			stream := &NATSStream{module: "orchestration", jt: jetstream, repository: NewRepository(pool), deps: dc}
 			return NewOrchestrationRunner(stream)
 		},
 	),
 	fx.Invoke(
-		func(lc fx.Lifecycle, or *OrchestrationRunner) error {
+		func(lc fx.Lifecycle, orchestration *OrchestrationRunner) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					return or.Start()
+					return orchestration.Start()
 				},
 				OnStop: func(ctx context.Context) error {
-					return or.Stop()
+					return orchestration.Stop()
 				},
 			})
 			return nil

@@ -24,8 +24,11 @@ type ServiceInstance struct {
 
 func NewServiceInstance(t *testing.T) *ServiceInstance {
 	t.Helper()
+
 	var err error
+
 	var socket mangos.Socket
+
 	host := "127.0.0.1"
 
 	socketStart := 6800
@@ -35,22 +38,30 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 			t.Logf("could not create socket: %v", err)
 			continue
 		}
+
 		err = socket.Listen(fmt.Sprintf("tcp://%v:%v", host, socketStart))
 		if err != nil {
 			socket = nil
+
 			if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
 				continue
 			}
+
 			t.Fatalf("could not listen: %v", err)
+
 			return nil
 		}
+
 		require.NoError(t, socket.SetOption(mangos.OptionSendDeadline, time.Second))
+
 		break
 	}
+
 	if socket == nil {
 		t.Fatalf("could not create socket")
 		return nil
 	}
+
 	return &ServiceInstance{
 		socket: socket,
 		Host:   host,
@@ -68,27 +79,33 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 			if err != nil {
 				if err == mangos.ErrRecvTimeout || err == mangos.ErrClosed {
 					continue
-				} else {
-					panic(err)
 				}
+
+				panic(err)
 			}
+
 			request := common_pb.Request{}
+
 			err = proto.Unmarshal(msg, &request)
 			if err != nil {
 				panic(err)
 			}
+
 			rsp, ok := responses[request.Task]
 			if !ok {
 				panic(fmt.Sprintf("no response for task %v", request.Task))
 			}
+
 			response := common_pb.Response{
 				Task: request.Task,
 				Data: rsp,
 			}
+
 			msg, err = proto.Marshal(&response)
 			if err != nil {
 				panic(err)
 			}
+
 			err = s.socket.Send(msg)
 			if err != nil {
 				panic(err)
@@ -101,6 +118,8 @@ func (s *ServiceInstance) Close() error {
 	if s.socket == nil {
 		return nil
 	}
+
 	s.socket.Close()
+
 	return nil
 }

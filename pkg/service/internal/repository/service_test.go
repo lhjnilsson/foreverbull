@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -27,8 +28,9 @@ func (test *ServiceTest) SetupTest() {
 	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
+
 	ctx := context.Background()
-	err = Recreate(ctx, test.conn)
+	err = repository.Recreate(ctx, test.conn)
 	test.Require().NoError(err)
 }
 
@@ -42,9 +44,9 @@ func TestServices(t *testing.T) {
 func (test *ServiceTest) TestCreate() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	service, err := db.Create(ctx, "test_image")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	service, err := services.Create(ctx, "test_image")
+	test.Require().NoError(err)
 	test.Equal("test_image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(pb.Service_Status_CREATED.String(), service.Statuses[0].Status.String())
@@ -53,12 +55,12 @@ func (test *ServiceTest) TestCreate() {
 func (test *ServiceTest) TestGet() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "test_image")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	_, err := services.Create(ctx, "test_image")
+	test.Require().NoError(err)
 
-	service, err := db.Get(ctx, "test_image")
-	test.NoError(err)
+	service, err := services.Get(ctx, "test_image")
+	test.Require().NoError(err)
 	test.Equal("test_image", service.Image)
 	test.Len(service.Statuses, 1)
 	test.Equal(pb.Service_Status_CREATED.String(), service.Statuses[0].Status.String())
@@ -67,18 +69,18 @@ func (test *ServiceTest) TestGet() {
 func (test *ServiceTest) TestSetAlgorithm() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "image")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	_, err := services.Create(ctx, "image")
+	test.Require().NoError(err)
 
 	algorithm := &pb.Algorithm{
 		FilePath: "/file.py",
 	}
-	err = db.SetAlgorithm(ctx, "image", algorithm)
-	test.NoError(err)
+	err = services.SetAlgorithm(ctx, "image", algorithm)
+	test.Require().NoError(err)
 
-	service, err := db.Get(ctx, "image")
-	test.NoError(err)
+	service, err := services.Get(ctx, "image")
+	test.Require().NoError(err)
 	test.Equal("image", service.Image)
 	test.NotNil(service.Algorithm)
 	test.Equal("/file.py", service.Algorithm.FilePath)
@@ -87,15 +89,15 @@ func (test *ServiceTest) TestSetAlgorithm() {
 func (test *ServiceTest) TestUpdateStatus() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "image")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	_, err := services.Create(ctx, "image")
+	test.Require().NoError(err)
 
-	err = db.UpdateStatus(ctx, "image", pb.Service_Status_READY, nil)
-	test.NoError(err)
+	err = services.UpdateStatus(ctx, "image", pb.Service_Status_READY, nil)
+	test.Require().NoError(err)
 
-	service, err := db.Get(ctx, "image")
-	test.NoError(err)
+	service, err := services.Get(ctx, "image")
+	test.Require().NoError(err)
 	test.Equal("image", service.Image)
 	test.Len(service.Statuses, 2)
 	test.Equal(pb.Service_Status_READY.String(), service.Statuses[0].Status.String())
@@ -105,28 +107,28 @@ func (test *ServiceTest) TestUpdateStatus() {
 func (test *ServiceTest) TestList() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "image1")
-	test.NoError(err)
-	_, err = db.Create(ctx, "image2")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	_, err := services.Create(ctx, "image1")
+	test.Require().NoError(err)
+	_, err = services.Create(ctx, "image2")
+	test.Require().NoError(err)
 
-	services, err := db.List(ctx)
-	test.NoError(err)
-	test.Len(services, 2)
+	storedServices, err := services.List(ctx)
+	test.Require().NoError(err)
+	test.Len(storedServices, 2)
 }
 
 func (test *ServiceTest) TestDelete() {
 	ctx := context.Background()
 
-	db := &Service{Conn: test.conn}
-	_, err := db.Create(ctx, "image")
-	test.NoError(err)
+	services := &repository.Service{Conn: test.conn}
+	_, err := services.Create(ctx, "image")
+	test.Require().NoError(err)
 
-	err = db.Delete(ctx, "image")
-	test.NoError(err)
+	err = services.Delete(ctx, "image")
+	test.Require().NoError(err)
 
-	service, err := db.Get(ctx, "image")
-	test.Error(err)
+	service, err := services.Get(ctx, "image")
+	test.Require().Error(err)
 	test.Nil(service)
 }

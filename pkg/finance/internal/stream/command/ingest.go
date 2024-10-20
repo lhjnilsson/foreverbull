@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +20,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 	marketdata := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
 
 	command := fs.IngestCommand{}
+
 	err := message.ParsePayload(&command)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling OHLCIngest payload: %w", err)
@@ -31,20 +33,25 @@ func Ingest(ctx context.Context, message stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error parsing start date: %w", err)
 	}
+
 	var end *time.Time
+
 	if command.End != nil {
 		e, err := time.Parse("2006-01-02", *command.End)
 		if err != nil {
 			return fmt.Errorf("error parsing end date: %w", err)
 		}
+
 		end = &e
 	}
+
 	for _, symbol := range command.Symbols {
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
+
 			a, err := marketdata.GetAsset(symbol)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", err)
@@ -55,10 +62,12 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return fmt.Errorf("error storing asset: %w", err)
 			}
 		}
+
 		ohlcs, err := marketdata.GetOHLC(symbol, start, end)
 		if err != nil {
 			return fmt.Errorf("error getting OHLC: %w", err)
 		}
+
 		for _, o := range ohlcs {
 			err = ohlc.Store(ctx, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 			if err != nil {
@@ -66,5 +75,6 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			}
 		}
 	}
+
 	return nil
 }
