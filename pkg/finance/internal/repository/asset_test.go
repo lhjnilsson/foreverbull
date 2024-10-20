@@ -72,7 +72,7 @@ func (test *AssetTests) TestListWithoutOHLC() {
 func (test *AssetTests) TestListBySymbolsNormal() {
 	assets, err := test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456"})
 	test.Empty(assets)
-	test.Error(err)
+	test.Require().Error(err)
 	test.LoadSampleData()
 	assets, err = test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456"})
 	test.Require().NoError(err)
@@ -86,7 +86,7 @@ func (test *AssetTests) TestListBySymbolNotStored() {
 	test.Len(assets, 2)
 	assets, err = test.assetStorage.ListBySymbols(context.TODO(), []string{"ABC123", "DEF456", "OAB333"})
 	test.Nil(assets)
-	test.Error(err)
+	test.Require().Error(err)
 	test.Equal("not all symbols found", err.Error())
 }
 
@@ -118,7 +118,7 @@ func (test *AssetTests) TestGetNotFound() {
 	test.Equal("ABC123", asset.Symbol)
 	test.Equal("Company ABC", asset.Name)
 	asset, err = test.assetStorage.Get(context.TODO(), "ABC1234")
-	test.Error(err)
+	test.Require().Error(err)
 	test.Nil(asset)
 	test.Equal(err, pgx.ErrNoRows)
 }

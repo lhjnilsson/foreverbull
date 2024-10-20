@@ -48,7 +48,7 @@ func (test *MessageTest) TestNewMessage() {
 	})
 	test.Run("bad entity", func() {
 		msg, err := NewMessage("module", "component", "method", func() {})
-		test.Error(err)
+		test.Require().Error(err)
 		test.Nil(msg)
 	})
 }

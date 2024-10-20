@@ -12,3 +12,7 @@ linters:
     - contextcheck
     - cyclop
     - lll
+    - nlreturn
+    - mnd
+    - gomnd
+    - exhaustruct

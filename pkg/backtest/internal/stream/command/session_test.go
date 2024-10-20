@@ -59,6 +59,7 @@ func (test *CommandSessionTest) SetupSubTest() {
 	test.Require().NoError(err)
 	sessions := repository.Session{Conn: test.db}
 	test.session, err = sessions.Create(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
 }
 
 func (test *CommandSessionTest) TearDownSubTest() {

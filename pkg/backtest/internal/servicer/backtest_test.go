@@ -72,7 +72,7 @@ func (suite *BacktestServerTest) SetupTest() {
 		}),
 	)
 	if err != nil {
-		log.Printf("error connecting to server: %w", err)
+		log.Printf("error connecting to server: %v", err)
 	}
 
 	suite.client = pb.NewBacktestServicerClient(conn)
@@ -81,7 +81,7 @@ func (suite *BacktestServerTest) SetupTest() {
 func (suite *BacktestServerTest) TearDownTest() {
 	err := suite.listener.Close()
 	if err != nil {
-		suite.T().Errorf("Error closing listener: %w", err)
+		suite.T().Errorf("Error closing listener: %v", err)
 	}
 
 	suite.server.Stop()

@@ -87,7 +87,8 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object)
 	return nil
 }
 
-func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtest, wp worker.Pool) (chan *finance_pb.Portfolio, error) {
+func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtest,
+	workers worker.Pool) (chan *finance_pb.Portfolio, error) {
 	req := backtest_pb.RunRequest{
 		Backtest: backtest,
 	}
@@ -118,7 +119,7 @@ func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtes
 			default:
 			}
 
-			orders, err := wp.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
+			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
 				close(portfolioCh)

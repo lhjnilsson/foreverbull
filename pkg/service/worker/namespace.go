@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"fmt"
+	"errors"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -49,7 +49,7 @@ func (n *namespace) Get(key string) *structpb.Struct {
 func (n *namespace) Set(key string, value *structpb.Struct) error {
 	container, ok := n.values[key]
 	if !ok {
-		return fmt.Errorf("namespace not found")
+		return errors.New("namespace not found")
 	}
 
 	container.sync.Lock()

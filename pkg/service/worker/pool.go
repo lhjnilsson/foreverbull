@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -33,7 +34,7 @@ func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
 	}
 
 	if algo == nil {
-		return nil, fmt.Errorf("algorithm is not set")
+		return nil, errors.New("algorithm is not set")
 	}
 
 	namespace := CreateNamespace(algo.Namespaces)
@@ -128,7 +129,7 @@ func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string,
 	portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error) {
 	if p.algo == nil {
-		return nil, fmt.Errorf("algorithm not set")
+		return nil, errors.New("algorithm not set")
 	}
 
 	p.namespace.Flush()

@@ -43,6 +43,7 @@ func (test *PoolTest) TestSimple() {
 	}
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
 	pool, err := worker.NewPool(context.TODO(), algo)
+	test.Require().NoError(err)
 
 	configuration := pool.Configure()
 

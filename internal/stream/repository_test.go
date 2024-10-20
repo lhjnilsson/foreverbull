@@ -91,7 +91,7 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 				test.NotNil(msg)
 				test.Equal(MessageStatusReceived, msg.StatusHistory[0].Status)
 			} else {
-				test.Error(err)
+				test.Require().Error(err)
 				test.Nil(msg)
 			}
 		})

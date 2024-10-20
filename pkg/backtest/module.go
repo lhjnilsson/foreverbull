@@ -57,7 +57,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle, s Stream, containers container.Engine, dependencies DependecyContainer) error {
+		func(lc fx.Lifecycle, backtestStream Stream, containers container.Engine, dependencies DependecyContainer) error {
 			var backtestContainer container.Container
 			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
@@ -89,11 +89,11 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					}
 					dependencies.AddMethod(dependency.GetEngineKey, returnEngine)
 
-					err = s.CommandSubscriber("ingest", "ingest", command.Ingest)
+					err = backtestStream.CommandSubscriber("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
-					err = s.CommandSubscriber("session", "run", command.SessionRun)
+					err = backtestStream.CommandSubscriber("session", "run", command.SessionRun)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
@@ -106,7 +106,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					if err := backtestContainer.Stop(); err != nil {
 						return fmt.Errorf("error stopping container: %w", err)
 					}
-					return s.Unsubscribe()
+					return backtestStream.Unsubscribe()
 				},
 			})
 			return nil

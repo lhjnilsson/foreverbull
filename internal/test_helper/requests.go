@@ -53,7 +53,7 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 		str, isString := payload.(string)
 		if isString {
 			req, err = http.NewRequestWithContext(ctx, method, "http://localhost:8080"+endpoint, bytes.NewBufferString(str))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
 		} else {
 			marshalled, err := json.Marshal(payload)
@@ -64,7 +64,7 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 
 			bytes := bytes.NewReader(marshalled)
 			req, err = http.NewRequestWithContext(ctx, method, "http://localhost:8080"+endpoint, bytes)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
 		}
 	} else {

@@ -43,7 +43,7 @@ func (test *YahooTest) TestGetAsset() {
 	for _, testCase := range testCases {
 		asset, err := test.client.GetAsset(testCase.Symbol)
 		if testCase.expectedError != nil {
-			test.Error(err)
+			test.Require().Error(err)
 			test.Equal(testCase.expectedError.Error(), err.Error())
 		} else {
 			test.Require().NoError(err)
@@ -67,7 +67,7 @@ func (test *YahooTest) TestGetIndex() {
 	for _, testCase := range testCases {
 		assets, err := test.client.GetIndex(testCase.Symbol)
 		if testCase.ExpectedErr != nil {
-			test.Error(err)
+			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
 			test.Require().NoError(err)
@@ -101,7 +101,7 @@ func (test *YahooTest) TestGetOHLC() {
 
 		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, &end)
 		if testCase.ExpectedErr != nil {
-			test.Error(err)
+			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
 			test.Require().NoError(err)
@@ -129,7 +129,7 @@ func (test *YahooTest) TestGetOHLCNoEnd() {
 
 		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, nil)
 		if testCase.ExpectedErr != nil {
-			test.Error(err)
+			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
 		} else {
 			test.Require().NoError(err)

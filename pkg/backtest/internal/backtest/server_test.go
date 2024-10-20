@@ -78,7 +78,7 @@ func (s *SessionTest) SetupTest() {
 
 	go func() {
 		if err := s.baseServer.Serve(s.listener); err != nil {
-			log.Printf("error serving server: %w", err)
+			log.Printf("error serving server: %v", err)
 		}
 	}()
 
@@ -91,7 +91,7 @@ func (s *SessionTest) SetupTest() {
 		}),
 	)
 	if err != nil {
-		log.Printf("error connecting to server: %w", err)
+		log.Printf("error connecting to server: %v", err)
 	}
 
 	s.client = backtest_pb.NewSessionServicerClient(conn)

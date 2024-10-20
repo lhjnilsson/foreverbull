@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -62,12 +63,15 @@ func (suite *FinanceServerTest) SetupTest() {
 		suite.NoError(suite.server.Serve(suite.listener))
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+	resolver.SetDefaultScheme("passthrough")
+	conn, err := grpc.NewClient(suite.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return suite.listener.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}),
+	)
 	if err != nil {
-		log.Printf("error connecting to server: %w", err)
+		log.Printf("error connecting to server: %v", err)
 	}
 
 	suite.client = pb.NewFinanceClient(conn)

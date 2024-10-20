@@ -66,7 +66,8 @@ type NATSStream struct {
 	repository repository
 }
 
-func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContainer, pool *pgxpool.Pool) (Stream, error) {
+func NewNATSStream(jetstream nats.JetStreamContext, module string,
+	dependencies DependencyContainer, pool *pgxpool.Pool) (Stream, error) {
 	cfg := &nats.ConsumerConfig{
 		Name:       module,
 		Durable:    module,
@@ -74,7 +75,7 @@ func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContain
 		AckPolicy:  nats.AckExplicitPolicy,
 	}
 
-	_, err := jt.AddConsumer("foreverbull", cfg)
+	_, err := jetstream.AddConsumer("foreverbull", cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating consumer: %w", err)
 	}
@@ -84,7 +85,10 @@ func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContain
 		return nil, fmt.Errorf("error creating table: %w", err)
 	}
 
-	return &NATSStream{module: module, jt: jt, deps: dc.(*dependencyContainer), repository: NewRepository(pool)}, nil
+	return &NATSStream{module: module,
+		jt:         jetstream,
+		deps:       dependencies.(*dependencyContainer),
+		repository: NewRepository(pool)}, nil
 }
 
 func (ns *NATSStream) CommandSubscriber(component, method string, cb func(context.Context, Message) error) error {

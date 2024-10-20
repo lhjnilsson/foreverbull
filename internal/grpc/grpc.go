@@ -26,32 +26,32 @@ const (
 	FieldLength = 2
 )
 
-func InterceptorLogger(l *zap.Logger) logging.Logger {
+func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	parseMessage := func(msg string, fields ...any) []zap.Field {
-		f := make([]zap.Field, 0, len(fields)/FieldLength)
+		zFields := make([]zap.Field, 0, len(fields)/FieldLength)
 
 		for i := 0; i < len(fields); i += FieldLength {
 			key := fields[i]
 			value := fields[i+1]
 
-			switch v := value.(type) {
+			switch value := value.(type) {
 			case string:
-				f = append(f, zap.String(key.(string), v))
+				zFields = append(zFields, zap.String(key.(string), value))
 			case int:
-				f = append(f, zap.Int(key.(string), v))
+				zFields = append(zFields, zap.Int(key.(string), value))
 			case bool:
-				f = append(f, zap.Bool(key.(string), v))
+				zFields = append(zFields, zap.Bool(key.(string), value))
 			default:
-				f = append(f, zap.Any(key.(string), v))
+				zFields = append(zFields, zap.Any(key.(string), value))
 			}
 		}
 
-		return f
+		return zFields
 	}
 
 	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
 		f := parseMessage(msg, fields...)
-		logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
+		logger := logger.WithOptions(zap.AddCallerSkip(1)).With(f...)
 
 		switch lvl {
 		case logging.LevelDebug:
@@ -86,7 +86,7 @@ var Module = fx.Options(
 		},
 	),
 	fx.Invoke(
-		func(lc fx.Lifecycle, g *grpc.Server) error {
+		func(lc fx.Lifecycle, grpcServer *grpc.Server) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(context.Context) error {
@@ -95,16 +95,16 @@ var Module = fx.Options(
 							return fmt.Errorf("failed to listen: %w", err)
 						}
 						server := &HealthCheck{}
-						pb.RegisterHealthServer(g, server)
+						pb.RegisterHealthServer(grpcServer, server)
 						go func() {
-							if err := g.Serve(listener); err != nil {
+							if err := grpcServer.Serve(listener); err != nil {
 								panic(err)
 							}
 						}()
 						return nil
 					},
 					OnStop: func(context.Context) error {
-						g.GracefulStop()
+						grpcServer.GracefulStop()
 						return nil
 					},
 				},

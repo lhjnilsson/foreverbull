@@ -129,6 +129,6 @@ func (test *ServiceTest) TestDelete() {
 	test.Require().NoError(err)
 
 	service, err := services.Get(ctx, "image")
-	test.Error(err)
+	test.Require().Error(err)
 	test.Nil(service)
 }

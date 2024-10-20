@@ -59,8 +59,8 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 		End:   *end,
 	})
 	if err != nil {
-		alpacaErr := &alpaca.APIError{}
-		if errors.As(err, alpacaErr) {
+		alpacaErr := alpaca.APIError{}
+		if errors.As(err, &alpacaErr) {
 			if alpacaErr.StatusCode == http.StatusUnprocessableEntity {
 				var innerErr error
 
