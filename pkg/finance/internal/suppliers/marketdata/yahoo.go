@@ -230,7 +230,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		params = append(params, fmt.Sprintf("period2=%d", time.Now().Unix()))
 	}
 
-	params = append(params, "intervals=1d")
+	params = append(params, "interval=1d")
 
 	resp, err := y.doRequest(url, params...)
 	if err != nil {

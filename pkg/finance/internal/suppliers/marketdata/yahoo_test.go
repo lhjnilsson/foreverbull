@@ -106,7 +106,7 @@ func (test *YahooTest) TestGetOHLC() {
 		} else {
 			test.Require().NoError(err)
 			test.NotNil(ohlc)
-			test.Len(testCase.ExpectedLength, len(ohlc))
+			test.Len(ohlc, testCase.ExpectedLength)
 		}
 	}
 }
