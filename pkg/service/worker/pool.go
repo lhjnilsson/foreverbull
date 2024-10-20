@@ -58,9 +58,9 @@ func (p *pool) startNamespaceListener() {
 		request := worker_pb.NamespaceRequest{}
 		response := worker_pb.NamespaceResponse{}
 
-		sock, err := p.NamespaceSocket.Recieve(&request)
+		sock, err := p.NamespaceSocket.Receive(&request)
 		if err != nil {
-			if err == socket.ErrClosed {
+			if errors.Is(err, socket.ErrClosed) {
 				log.Info().Msg("namespace socket closed")
 				return
 			}
@@ -196,14 +196,14 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 func (p *pool) Close() error {
 	if p.Socket != nil {
 		err := p.Socket.Close()
-		if err != nil && err != socket.ErrClosed {
+		if err != nil && !errors.Is(err, socket.ErrClosed) {
 			return fmt.Errorf("error closing socket: %w", err)
 		}
 	}
 
 	if p.NamespaceSocket != nil {
 		err := p.NamespaceSocket.Close()
-		if err != nil && err != socket.ErrClosed {
+		if err != nil && !errors.Is(err, socket.ErrClosed) {
 			return fmt.Errorf("error closing namespace socket: %w", err)
 		}
 	}

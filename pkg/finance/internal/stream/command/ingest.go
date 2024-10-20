@@ -16,8 +16,14 @@ import (
 )
 
 func Ingest(ctx context.Context, message stream.Message) error {
-	db := message.MustGet(stream.DBDep).(postgres.Query)
-	marketdata := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
+	db, isDB := message.MustGet(stream.DBDep).(postgres.Query)
+	if !isDB {
+		return errors.New("db dependency casting failed")
+	}
+	marketdata, isMd := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
+	if !isMd {
+		return errors.New("marketdata dependency casting failed")
+	}
 
 	command := fs.IngestCommand{}
 

@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -14,15 +11,17 @@ import (
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var NoActiveExecution error = fmt.Errorf("no active execution")
 
 /*
 NewZiplineEngine
-Returns a Zipline backtest engine
+Returns a Zipline backtest engine.
 */
-func NewZiplineEngine(ctx context.Context, container container.Container, ingestion_url *string) (engine.Engine, error) {
+func NewZiplineEngine(ctx context.Context, container container.Container, ingestionURL *string) (engine.Engine, error) {
 	connStr, err := container.GetConnectionString()
 	if err != nil {
 		return nil, fmt.Errorf("error getting connection string: %w", err)
@@ -37,7 +36,7 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 	}
 
 	client := backtest_pb.NewEngineClient(conn)
-	if ingestion_url != nil {
+	if ingestionURL != nil {
 		_, err = client.DownloadIngestion(ctx, &backtest_pb.DownloadIngestionRequest{})
 		if err != nil {
 			return nil, fmt.Errorf("error downloading ingestion: %w", err)

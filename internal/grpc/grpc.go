@@ -6,7 +6,6 @@ import (
 	"net"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-
 	"github.com/lhjnilsson/foreverbull/internal/pb"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -18,7 +17,7 @@ type HealthCheck struct {
 	pb.UnimplementedHealthServer
 }
 
-func (h *HealthCheck) Check(ctx context.Context, req *emptypb.Empty) (*pb.HealthCheckResponse, error) {
+func (h *HealthCheck) Check(_ context.Context, _ *emptypb.Empty) (*pb.HealthCheckResponse, error) {
 	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
 }
 
@@ -36,13 +35,13 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 
 			switch value := value.(type) {
 			case string:
-				zFields = append(zFields, zap.String(key.(string), value))
+				zFields = append(zFields, zap.String(key.(string), value)) //nolint: forcetypeassert
 			case int:
-				zFields = append(zFields, zap.Int(key.(string), value))
+				zFields = append(zFields, zap.Int(key.(string), value)) //nolint: forcetypeassert
 			case bool:
-				zFields = append(zFields, zap.Bool(key.(string), value))
+				zFields = append(zFields, zap.Bool(key.(string), value)) //nolint: forcetypeassert
 			default:
-				zFields = append(zFields, zap.Any(key.(string), value))
+				zFields = append(zFields, zap.Any(key.(string), value)) //nolint: forcetypeassert
 			}
 		}
 

@@ -1,4 +1,4 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"bytes"
@@ -99,7 +99,8 @@ func CleanupEnv(t *testing.T, workerService Service, backtestService Service, ba
 	require.NoError(t, rsp.Body.Close())
 
 	if strategy != nil {
-		Request(t, http.MethodDelete, "/strategy/api/strategies/"+strategy.Name, nil)
+		rsp = Request(t, http.MethodDelete, "/strategy/api/strategies/"+strategy.Name, nil)
+		require.NoError(t, rsp.Body.Close())
 	}
 }
 
@@ -112,6 +113,8 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 		t.Fatalf("Failed to create backtest: %s", string(rspData))
 	}
 
+	require.NoError(t, rsp.Body.Close())
+
 	t.Logf("Backtest %s created", backtest.Name)
 
 	backoff := time.Second / 2
@@ -123,6 +126,8 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 			t.Fatalf("Failed to get backtest: %s", string(rspData))
 		}
 
+		require.NoError(t, rsp.Body.Close())
+
 		err := json.NewDecoder(rsp.Body).Decode(&backtest)
 		if err != nil {
 			t.Fatalf("Failed to decode backtest: %v", err)
@@ -133,8 +138,6 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 		} else if backtest.Status == "CREATED" {
 			time.Sleep(backoff)
 			continue
-		} else {
-			t.Fatalf("Backtest %s in error state: %s", backtest.Name, backtest.Status)
 		}
 
 		t.Fatalf("Backtest %s not ready after loop", backtest.Name)
@@ -153,6 +156,8 @@ func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 			rspData, _ := io.ReadAll(rsp.Body)
 			t.Fatalf("Failed to create strategy: %s", string(rspData))
 		}
+
+		require.NoError(t, rsp.Body.Close())
 
 		err := json.NewDecoder(rsp.Body).Decode(&strategy)
 		if err != nil {

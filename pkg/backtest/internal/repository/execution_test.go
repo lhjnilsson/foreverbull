@@ -5,10 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
@@ -66,85 +65,85 @@ func (test *ExecutionTest) TestCreate() {
 		{Year: 2024, Month: 0o1, Day: 0o1},
 		nil,
 	} {
-		e, err := executions.Create(ctx, test.storedSession.Id,
+		execution, err := executions.Create(ctx, test.storedSession.Id,
 			test.storedBacktest.StartDate, end, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 		test.Require().NoError(err)
-		test.NotNil(e.Id)
-		test.Equal(test.storedSession.Id, e.Session)
-		test.Equal(test.storedBacktest.Symbols, e.Symbols)
-		test.Len(e.Statuses, 1)
-		test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
-		test.Nil(e.Statuses[0].Error)
-		test.NotNil(e.Statuses[0].OccurredAt)
-		test.Equal(end, e.EndDate)
+		test.NotNil(execution.Id)
+		test.Equal(test.storedSession.Id, execution.Session)
+		test.Equal(test.storedBacktest.Symbols, execution.Symbols)
+		test.Len(execution.Statuses, 1)
+		test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
+		test.Nil(execution.Statuses[0].Error)
+		test.NotNil(execution.Statuses[0].OccurredAt)
+		test.Equal(end, execution.EndDate)
 	}
 }
 
 func (test *ExecutionTest) TestGet() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	e, err := executions.Create(ctx, test.storedSession.Id,
+	execution, err := executions.Create(ctx, test.storedSession.Id,
 		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 	test.Require().NoError(err)
-	e, err = executions.Get(ctx, e.Id)
-	test.NoError(err)
-	test.NotNil(e.Id)
-	test.Equal(test.storedSession.Id, e.Session)
-	test.Equal(test.storedBacktest.StartDate, e.StartDate)
-	test.Equal(test.storedBacktest.EndDate, e.EndDate)
-	test.Equal(test.storedBacktest.Symbols, e.Symbols)
-	test.Len(e.Statuses, 1)
-	test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
-	test.Nil(e.Statuses[0].Error)
-	test.NotNil(e.Statuses[0].OccurredAt)
+	execution, err = executions.Get(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.NotNil(execution.Id)
+	test.Equal(test.storedSession.Id, execution.Session)
+	test.Equal(test.storedBacktest.StartDate, execution.StartDate)
+	test.Equal(test.storedBacktest.EndDate, execution.EndDate)
+	test.Equal(test.storedBacktest.Symbols, execution.Symbols)
+	test.Len(execution.Statuses, 1)
+	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
+	test.Nil(execution.Statuses[0].Error)
+	test.NotNil(execution.Statuses[0].OccurredAt)
 }
 
 func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	e, err := executions.Create(ctx, test.storedSession.Id,
+	execution, err := executions.Create(ctx, test.storedSession.Id,
 		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 	test.Require().NoError(err)
 	// e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	// e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
-	e.Benchmark = func() *string { s := "AAPL"; return &s }()
-	e.Symbols = []string{"AAPL", "MSFT", "TSLA"}
-	err = executions.UpdateSimulationDetails(ctx, e)
+	execution.Benchmark = func() *string { s := "AAPL"; return &s }()
+	execution.Symbols = []string{"AAPL", "MSFT", "TSLA"}
+	err = executions.UpdateSimulationDetails(ctx, execution)
 	test.Require().NoError(err)
-	e, err = executions.Get(ctx, e.Id)
+	execution, err = executions.Get(ctx, execution.Id)
 	test.Require().NoError(err)
-	test.NotNil(e.Id)
-	test.Equal(test.storedSession.Id, e.Session)
-	test.Len(e.Statuses, 1)
-	test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[0].Status.String())
-	test.Nil(e.Statuses[0].Error)
-	test.NotNil(e.Statuses[0].OccurredAt)
+	test.NotNil(execution.Id)
+	test.Equal(test.storedSession.Id, execution.Session)
+	test.Len(execution.Statuses, 1)
+	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
+	test.Nil(execution.Statuses[0].Error)
+	test.NotNil(execution.Statuses[0].OccurredAt)
 }
 
 func (test *ExecutionTest) TestUpdateStatus() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	e, err := executions.Create(ctx, test.storedSession.Id,
+	execution, err := executions.Create(ctx, test.storedSession.Id,
 		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 	test.Require().NoError(err)
-	err = executions.UpdateStatus(ctx, e.Id, pb.Execution_Status_RUNNING, nil)
+	err = executions.UpdateStatus(ctx, execution.Id, pb.Execution_Status_RUNNING, nil)
 	test.Require().NoError(err)
-	err = executions.UpdateStatus(ctx, e.Id, pb.Execution_Status_FAILED, errors.New("test"))
+	err = executions.UpdateStatus(ctx, execution.Id, pb.Execution_Status_FAILED, errors.New("test"))
 	test.Require().NoError(err)
 
-	e, err = executions.Get(ctx, e.Id)
+	execution, err = executions.Get(ctx, execution.Id)
 	test.Require().NoError(err)
-	test.NotNil(e.Id)
-	test.Len(e.Statuses, 3)
-	test.Equal(pb.Execution_Status_FAILED.String(), e.Statuses[0].Status.String())
-	test.Equal("test", *e.Statuses[0].Error)
-	test.NotNil(e.Statuses[0].OccurredAt)
-	test.Equal(pb.Execution_Status_RUNNING.String(), e.Statuses[1].Status.String())
-	test.Nil(e.Statuses[1].Error)
-	test.NotNil(e.Statuses[1].OccurredAt)
-	test.Equal(pb.Execution_Status_CREATED.String(), e.Statuses[2].Status.String())
-	test.Nil(e.Statuses[2].Error)
-	test.NotNil(e.Statuses[2].OccurredAt)
+	test.NotNil(execution.Id)
+	test.Len(execution.Statuses, 3)
+	test.Equal(pb.Execution_Status_FAILED.String(), execution.Statuses[0].Status.String())
+	test.Equal("test", *execution.Statuses[0].Error)
+	test.NotNil(execution.Statuses[0].OccurredAt)
+	test.Equal(pb.Execution_Status_RUNNING.String(), execution.Statuses[1].Status.String())
+	test.Nil(execution.Statuses[1].Error)
+	test.NotNil(execution.Statuses[1].OccurredAt)
+	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[2].Status.String())
+	test.Nil(execution.Statuses[2].Error)
+	test.NotNil(execution.Statuses[2].OccurredAt)
 }
 
 func (test *ExecutionTest) TestList() {
@@ -185,5 +184,5 @@ func (test *ExecutionTest) TestListBySession() {
 
 	storedExecutions, err = executions.ListBySession(ctx, session2.Id)
 	test.Require().NoError(err)
-	test.Len(storedExecutions, 0)
+	test.Empty(storedExecutions)
 }

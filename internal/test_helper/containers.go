@@ -1,4 +1,4 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"bytes"
@@ -77,7 +77,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	// Disable logging, its very verbose otherwise
 	// testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
 
-	dbName := strings.ToLower(strings.Replace(t.Name(), "/", "_", -1))
+	dbName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
 	container, err := postgres.Run(context.TODO(),
 		PostgresImage,
 		postgres.WithDatabase(dbName),
@@ -93,7 +93,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	)
 	require.NoError(t, err)
 
-	ConnectionString, err = container.ConnectionString(context.TODO(), "sslmode=disable")
+	connectionString, err := container.ConnectionString(context.TODO(), "sslmode=disable")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -102,7 +102,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 		}
 	})
 
-	return ConnectionString
+	return connectionString
 }
 
 func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
@@ -122,14 +122,16 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	attempts := 12
 	timeout := time.Second / 4
 
+	var connectionString string
 	for range attempts {
-		ConnectionString, err = container.ConnectionString(context.TODO())
+		connectionString, err = container.ConnectionString(context.TODO())
 		if err == nil {
 			break
-		} else {
-			time.Sleep(timeout)
-			continue
 		}
+
+		time.Sleep(timeout)
+
+		continue
 	}
 
 	require.NoError(t, err, "Failed to get NATS connection string")
@@ -140,7 +142,7 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 		}
 	})
 
-	return ConnectionString
+	return connectionString
 }
 
 func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey, SecretKey string) {
@@ -159,7 +161,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 	)
 	require.NoError(t, err)
 
-	ConnectionString, err = container.ConnectionString(context.TODO())
+	connectionString, err := container.ConnectionString(context.TODO())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -168,7 +170,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 		}
 	})
 
-	return ConnectionString, "minioadmin", "minioadmin"
+	return connectionString, "minioadmin", "minioadmin"
 }
 
 type LokiLogger struct {
@@ -216,11 +218,21 @@ func (l *LokiLogger) Publish(t *testing.T) {
 		return
 	}
 
-	resp, err := http.Post(l.LokiURL+"/loki/api/v1/push", "application/json", bytes.NewReader(marshalled))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, l.LokiURL+"/loki/api/v1/push", bytes.NewReader(marshalled))
 	if err != nil {
-		t.Fatalf("failed to send request: %v", err)
+		t.Fatalf("failed to create request: %v", err)
 		return
 	}
+
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to push logs to loki: %v", err)
+		return
+	}
+
+	require.NoError(t, resp.Body.Close())
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)

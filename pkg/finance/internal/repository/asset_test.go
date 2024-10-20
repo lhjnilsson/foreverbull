@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -121,7 +120,7 @@ func (test *AssetTests) TestGetNotFound() {
 	asset, err = test.assetStorage.Get(context.TODO(), "ABC1234")
 	test.Require().Error(err)
 	test.Nil(asset)
-	test.True(errors.Is(err, pgx.ErrNoRows))
+	test.ErrorIs(err, pgx.ErrNoRows)
 	test.ErrorContains(err, "no rows in result set")
 }
 

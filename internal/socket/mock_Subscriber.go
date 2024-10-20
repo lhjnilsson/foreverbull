@@ -54,8 +54,8 @@ func (_m *MockSubscriber) GetPort() int {
 	return r0
 }
 
-// Recieve provides a mock function with given fields: _a0, _a1
-func (_m *MockSubscriber) Recieve(_a0 protoreflect.ProtoMessage, _a1 ...func(OptionSetter) error) error {
+// Receive provides a mock function with given fields: _a0, _a1
+func (_m *MockSubscriber) Receive(_a0 protoreflect.ProtoMessage, _a1 ...func(OptionSetter) error) error {
 	_va := make([]interface{}, len(_a1))
 	for _i := range _a1 {
 		_va[_i] = _a1[_i]

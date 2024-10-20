@@ -94,13 +94,13 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 
 	for rows.Next() {
 		status := pb.Backtest_Status{}
-		occuredAt := time.Time{}
+		occurredAt := time.Time{}
 		start := time.Time{}
 		endDate := pgtype.Date{}
 
 		err = rows.Scan(
 			&backtest.Name, &start, &endDate, &backtest.Benchmark, &backtest.Symbols,
-			&status.Status, &status.Error, &occuredAt,
+			&status.Status, &status.Error, &occurredAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backtest: %w", err)
@@ -111,7 +111,7 @@ func (db *Backtest) Get(ctx context.Context, name string) (*pb.Backtest, error) 
 			backtest.EndDate = pb_internal.GoTimeToDate(endDate.Time)
 		}
 
-		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occuredAt)
+		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurredAt)
 		backtest.Statuses = append(backtest.Statuses, &status)
 	}
 
@@ -204,12 +204,12 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 		backtest := pb.Backtest{}
 		start := time.Time{}
 		end := pgtype.Date{}
-		occurred_at := time.Time{}
+		occurredAt := time.Time{}
 
 		err = rows.Scan(
 			&backtest.Name, &start, &end, &backtest.Benchmark,
 			&backtest.Symbols,
-			&status.Status, &status.Error, &occurred_at,
+			&status.Status, &status.Error, &occurredAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backtest: %w", err)
@@ -220,7 +220,7 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 			backtest.EndDate = pb_internal.GoTimeToDate(end.Time)
 		}
 
-		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurred_at)
+		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurredAt)
 		inReturnSlice = false
 
 		for i := range backtests {

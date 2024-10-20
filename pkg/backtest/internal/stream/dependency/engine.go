@@ -2,6 +2,7 @@ package dependency
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +21,10 @@ const (
 )
 
 func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
-	containerEngine := msg.MustGet(stream.ContainerEngineDep).(container.Engine)
+	containerEngine, isEngine := msg.MustGet(stream.ContainerEngineDep).(container.Engine)
+	if !isEngine {
+		return nil, errors.New("error casting container engine")
+	}
 
 	cont, err := containerEngine.Start(ctx, environment.GetBacktestImage(), "")
 	if err != nil {
@@ -36,7 +40,7 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 		if health == types.Healthy {
 			break
 		} else if health == types.Unhealthy {
-			return nil, fmt.Errorf("container is unhealthy")
+			return nil, errors.New("container is unhealthy")
 		}
 
 		time.Sleep(WaitTime)

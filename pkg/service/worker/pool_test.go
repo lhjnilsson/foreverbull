@@ -6,16 +6,15 @@ import (
 	"testing"
 	"time"
 
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	"go.nanomsg.org/mangos/v3/protocol/req"
-	_ "go.nanomsg.org/mangos/v3/transport/all"
+	_ "go.nanomsg.org/mangos/v3/transport/all" // for mangos transport.
 )
 
 type PoolTest struct {

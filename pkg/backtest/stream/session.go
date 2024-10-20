@@ -36,10 +36,10 @@ type SessionRunCommand struct {
 	WorkerInstanceIDs  []string
 }
 
-func NewSessionRunCommand(backtest, sessionid string) (stream.Message, error) {
+func NewSessionRunCommand(backtest, sessionID string) (stream.Message, error) {
 	entity := &SessionRunCommand{
 		Backtest:  backtest,
-		SessionID: sessionid,
+		SessionID: sessionID,
 	}
 
 	msg, err := stream.NewMessage("backtest", "session", "run", entity)

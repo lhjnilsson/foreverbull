@@ -54,8 +54,8 @@ func (_m *MockReplier) GetPort() int {
 	return r0
 }
 
-// Recieve provides a mock function with given fields: _a0, _a1
-func (_m *MockReplier) Recieve(_a0 protoreflect.ProtoMessage, _a1 ...func(OptionSetter) error) (ReplierSocket, error) {
+// Receive provides a mock function with given fields: _a0, _a1
+func (_m *MockReplier) Receive(_a0 protoreflect.ProtoMessage, _a1 ...func(OptionSetter) error) (ReplierSocket, error) {
 	_va := make([]interface{}, len(_a1))
 	for _i := range _a1 {
 		_va[_i] = _a1[_i]

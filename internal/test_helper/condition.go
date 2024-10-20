@@ -1,4 +1,4 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"context"

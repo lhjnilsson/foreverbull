@@ -9,12 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
-	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
@@ -98,9 +96,9 @@ func (suite *IngestionServerTest) TestUpdateIngestion() {
 	suite.Run("stored", func() {
 		db := repository.Backtest{Conn: suite.pgx}
 		ctx := context.TODO()
-		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o6, Day: 0o1}, []string{"AAPL", "MSFT"}, nil)
+		_, err := db.Create(ctx, "nasdaq", &pb_internal.Date{Year: 2024, Month: 0o1, Day: 0o1}, &pb_internal.Date{Year: 2024, Month: 0o6, Day: 0o1}, []string{"AAPL", "MSFT"}, nil)
 		suite.Require().NoError(err)
-		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o4, Day: 0o1}, []string{"IBM", "GE"}, nil)
+		_, err = db.Create(ctx, "nyse", &pb_internal.Date{Year: 2024, Month: 0o1, Day: 0o1}, &pb_internal.Date{Year: 2024, Month: 0o4, Day: 0o1}, []string{"IBM", "GE"}, nil)
 		suite.Require().NoError(err)
 
 		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,

@@ -1,21 +1,20 @@
-package test_helper
+package test_helper //nolint:stylecheck,revive
 
 import (
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
-	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"
 )
 
-func Example(req *service_pb.WorkerRequest) *service_pb.WorkerResponse {
-	return &service_pb.WorkerResponse{}
+func Example(_ *pb.WorkerRequest) *pb.WorkerResponse {
+	return &pb.WorkerResponse{}
 }
 
 type WorkerFunction struct {
-	CB       func(*service_pb.WorkerRequest) *service_pb.WorkerResponse
+	CB       func(*pb.WorkerRequest) *pb.WorkerResponse
 	Name     string
 	Parallel bool
 	RunFirst bool
@@ -34,11 +33,11 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 			ParallelExecution: f.Parallel,
 			RunFirst:          f.RunFirst,
 			RunLast:           f.RunLast,
-			Parameters:        []*service_pb.Algorithm_FunctionParameter{},
+			Parameters:        []*pb.Algorithm_FunctionParameter{},
 		})
 	}
 
-	callbacks := make(map[string]func(*service_pb.WorkerRequest) *service_pb.WorkerResponse)
+	callbacks := make(map[string]func(*pb.WorkerRequest) *pb.WorkerResponse)
 	for _, f := range functions {
 		callbacks[f.Name] = f.CB
 	}
@@ -52,7 +51,7 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 
 			require.NoError(t, err, "failed to receive message")
 
-			req := service_pb.WorkerRequest{}
+			req := pb.WorkerRequest{}
 			err = proto.Unmarshal(msg, &req)
 			require.NoError(t, err, "failed to unmarshal request")
 
