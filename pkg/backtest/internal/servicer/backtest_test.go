@@ -60,7 +60,7 @@ func (suite *BacktestServerTest) SetupTest() {
 	pb.RegisterBacktestServicerServer(suite.server, server)
 
 	go func() {
-		suite.server.Serve(suite.listener)
+		suite.NoError(suite.server.Serve(suite.listener))
 	}()
 
 	resolver.SetDefaultScheme("passthrough")

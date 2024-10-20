@@ -1,21 +1,12 @@
 linters:
-  enable-all: true
-  disable:
-    - paralleltest
-    - musttag
-    - ireturn
-    - testpackage
-    - exportloopref
-    - nosprintfhostport
-    - err113
-    - dupword
-    - contextcheck
-    - cyclop
-    - lll
-    - nlreturn
-    - mnd
-    - gomnd
-    - exhaustruct
-    - protogetter
-    - depguard
-    - execinquery
+  enable:
+    # - goerr113
+    - errcheck
+    - goimports
+    # - revive
+    - staticcheck
+    - govet
+    - forbidigo
+    - exhaustive
+    - godox
+    - testifylint

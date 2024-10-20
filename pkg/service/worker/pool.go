@@ -77,8 +77,8 @@ func (p *pool) startNamespaceListener() {
 		case worker_pb.NamespaceRequestType_SET:
 			err := p.namespace.Set(request.Key, request.Value)
 			if err != nil {
-				error := err.Error()
-				response.Error = &error
+				setError := err.Error()
+				response.Error = &setError
 			}
 		}
 

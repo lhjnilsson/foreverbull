@@ -120,7 +120,7 @@ func (test *AssetTests) TestGetNotFound() {
 	asset, err = test.assetStorage.Get(context.TODO(), "ABC1234")
 	test.Require().Error(err)
 	test.Nil(asset)
-	test.ErrorIs(err, pgx.ErrNoRows)
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 	test.ErrorContains(err, "no rows in result set")
 }
 

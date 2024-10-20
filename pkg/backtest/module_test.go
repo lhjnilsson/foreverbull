@@ -72,15 +72,13 @@ func (test *BacktestModuleTest) SetupSuite() {
 			func() *grpc.Server {
 				return grpc.NewServer()
 			},
-			func() (container.Engine, error) {
-				return container.NewEngine()
-			},
+			container.NewEngine,
 		),
 		fx.Invoke(
 			func(lc fx.Lifecycle, gServer *grpc.Server) error {
 				lc.Append(fx.Hook{
 					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", ":50055")
+						listener, err := net.Listen("tcp", ":50055") //nolint: gosec
 						if err != nil {
 							return fmt.Errorf("failed to listen: %w", err)
 						}

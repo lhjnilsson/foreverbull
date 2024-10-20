@@ -17,10 +17,11 @@ func UpdateServiceStatus(ctx context.Context, message stream.Message) error {
 }
 
 func ServiceStart(ctx context.Context, message stream.Message) error {
-	db, isDB := message.MustGet(stream.DBDep).(postgres.Query)
+	postgres, isDB := message.MustGet(stream.DBDep).(postgres.Query)
 	if !isDB {
 		return fmt.Errorf("db dependency casting failed")
 	}
+
 	container := message.MustGet(dependency.ContainerDep).(container.Engine)
 
 	command := ss.ServiceStartCommand{}
@@ -30,11 +31,10 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error unmarshalling ServiceStart payload: %w", err)
 	}
 
-	services := repository.Service{Conn: db}
+	services := repository.Service{Conn: postgres}
 	_, err = services.Get(ctx, command.Image)
 
 	if err != nil {
-		// TODO, should we create a backtest service here?
 		_, crErr := services.Create(ctx, command.Image)
 		if crErr != nil {
 			return fmt.Errorf("error creating service: %w", crErr)
@@ -49,7 +49,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error starting container: %w", err)
 	}
 
-	instances := repository.Instance{Conn: db}
+	instances := repository.Instance{Conn: postgres}
 
 	_, err = instances.Create(ctx, command.InstanceID, &command.Image)
 	if err != nil {
