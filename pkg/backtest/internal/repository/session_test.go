@@ -53,117 +53,117 @@ func TestSessions(t *testing.T) {
 }
 
 func (test *SessionTest) TestCreate() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
 
-	s, err := db.Create(ctx, "backtest")
+	session, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s.Id)
-	test.Equal("backtest", s.Backtest)
-	test.Len(s.Statuses, 1)
-	test.Equal(pb.Session_Status_CREATED.String(), s.Statuses[0].Status.String())
+	test.NotNil(session.Id)
+	test.Equal("backtest", session.Backtest)
+	test.Len(session.Statuses, 1)
+	test.Equal(pb.Session_Status_CREATED.String(), session.Statuses[0].Status.String())
 }
 
 func (test *SessionTest) TestGet() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
-	s, err := db.Create(ctx, "backtest")
+	session, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s.Id)
+	test.NotNil(session.Id)
 
-	s2, err := db.Get(ctx, s.Id)
+	session2, err := sessions.Get(ctx, session.Id)
 	test.NoError(err)
-	test.Equal(s.Id, s2.Id)
-	test.Equal(s.Backtest, s2.Backtest)
-	test.Equal(s.Port, s2.Port)
-	test.Equal(s.Executions, s2.Executions)
-	test.Len(s.Statuses, 1)
-	test.Equal(pb.Session_Status_CREATED.String(), s.Statuses[0].Status.String())
+	test.Equal(session.Id, session2.Id)
+	test.Equal(session.Backtest, session2.Backtest)
+	test.Equal(session.Port, session2.Port)
+	test.Equal(session.Executions, session2.Executions)
+	test.Len(session.Statuses, 1)
+	test.Equal(pb.Session_Status_CREATED.String(), session.Statuses[0].Status.String())
 }
 
 func (test *SessionTest) TestUpdateStatus() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
-	s, err := db.Create(ctx, "backtest")
+	session1, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s.Id)
+	test.NotNil(session1.Id)
 
-	err = db.UpdateStatus(ctx, s.Id, pb.Session_Status_RUNNING, nil)
-	test.NoError(err)
-
-	err = db.UpdateStatus(ctx, s.Id, pb.Session_Status_FAILED, errors.New("test"))
+	err = sessions.UpdateStatus(ctx, session1.Id, pb.Session_Status_RUNNING, nil)
 	test.NoError(err)
 
-	s2, err := db.Get(ctx, s.Id)
+	err = sessions.UpdateStatus(ctx, session1.Id, pb.Session_Status_FAILED, errors.New("test"))
 	test.NoError(err)
-	test.Equal(s.Id, s2.Id)
-	test.Equal(pb.Session_Status_FAILED.String(), s2.Statuses[0].Status.String())
-	test.NotNil(s2.Statuses[0].OccurredAt)
-	test.Equal("test", *s2.Statuses[0].Error)
-	test.Equal(pb.Session_Status_RUNNING.String(), s2.Statuses[1].Status.String())
-	test.NotNil(s2.Statuses[1].OccurredAt)
-	test.Equal(pb.Session_Status_CREATED.String(), s2.Statuses[2].Status.String())
-	test.NotNil(s2.Statuses[2].OccurredAt)
+
+	session2, err := sessions.Get(ctx, session1.Id)
+	test.NoError(err)
+	test.Equal(session1.Id, session2.Id)
+	test.Equal(pb.Session_Status_FAILED.String(), session2.Statuses[0].Status.String())
+	test.NotNil(session2.Statuses[0].OccurredAt)
+	test.Equal("test", *session2.Statuses[0].Error)
+	test.Equal(pb.Session_Status_RUNNING.String(), session2.Statuses[1].Status.String())
+	test.NotNil(session2.Statuses[1].OccurredAt)
+	test.Equal(pb.Session_Status_CREATED.String(), session2.Statuses[2].Status.String())
+	test.NotNil(session2.Statuses[2].OccurredAt)
 }
 
 func (test *SessionTest) TestUpdatePort() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
-	s, err := db.Create(ctx, "backtest")
+	session, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s.Id)
+	test.NotNil(session.Id)
 
-	err = db.UpdatePort(ctx, s.Id, 1337)
+	err = sessions.UpdatePort(ctx, session.Id, 1337)
 	test.NoError(err)
 
-	s2, err := db.Get(ctx, s.Id)
+	session2, err := sessions.Get(ctx, session.Id)
 	test.NoError(err)
-	test.Equal(s.Id, s2.Id)
-	test.NotNil(s2.Port)
-	test.Equal(int64(1337), *s2.Port)
+	test.Equal(session.Id, session2.Id)
+	test.NotNil(session2.Port)
+	test.Equal(int64(1337), *session2.Port)
 }
 
 func (test *SessionTest) TestList() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
-	s1, err := db.Create(ctx, "backtest")
+	session1, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s1.Id)
+	test.NotNil(session1.Id)
 
-	s2, err := db.Create(ctx, "backtest")
+	session2, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s2.Id)
+	test.NotNil(session2.Id)
 
-	sessions, err := db.List(ctx)
+	allSessions, err := sessions.List(ctx)
 	test.NoError(err)
-	test.Len(sessions, 2)
-	test.Equal(s2.Id, sessions[0].Id)
-	test.Equal(s1.Id, sessions[1].Id)
+	test.Len(allSessions, 2)
+	test.Equal(session2.Id, allSessions[0].Id)
+	test.Equal(session1.Id, allSessions[1].Id)
 }
 
 func (test *SessionTest) TestListByBacktest() {
-	db := repository.Session{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
 	ctx := context.Background()
-	s1, err := db.Create(ctx, "backtest")
+	session1, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s1.Id)
+	test.NotNil(session1.Id)
 
-	s2, err := db.Create(ctx, "backtest")
+	session2, err := sessions.Create(ctx, "backtest")
 	test.NoError(err)
-	test.NotNil(s2.Id)
+	test.NotNil(session2.Id)
 
-	b_postgres := &repository.Backtest{Conn: test.conn}
-	test.storedBacktest, err = b_postgres.Create(ctx, "backtest2",
+	backtests := &repository.Backtest{Conn: test.conn}
+	test.storedBacktest, err = backtests.Create(ctx, "backtest2",
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
 		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
 	test.NoError(err)
-	s3, err := db.Create(ctx, "backtest2")
+	session3, err := sessions.Create(ctx, "backtest2")
 	test.NoError(err)
-	test.NotNil(s3.Id)
+	test.NotNil(session3.Id)
 
-	sessions, err := db.ListByBacktest(ctx, "backtest")
+	allSessions, err := sessions.ListByBacktest(ctx, "backtest")
 	test.NoError(err)
-	test.Len(sessions, 2)
-	test.Equal(s2.Id, sessions[0].Id)
-	test.Equal(s1.Id, sessions[1].Id)
+	test.Len(allSessions, 2)
+	test.Equal(session2.Id, allSessions[0].Id)
+	test.Equal(session1.Id, allSessions[1].Id)
 }

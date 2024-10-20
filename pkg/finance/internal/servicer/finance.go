@@ -64,26 +64,24 @@ func (fs *FinanceServer) DownloadHistoricalData(ctx context.Context, req *pb.Dow
 		end = &e
 	}
 
-	asset_repo := repository.Asset{Conn: fs.pgx}
-	ohlc_repo := repository.OHLC{Conn: fs.pgx}
+	assetRepo := repository.Asset{Conn: fs.pgx}
+	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
-	g, gctx := errgroup.WithContext(ctx)
+	group, gctx := errgroup.WithContext(ctx)
 
 	for _, asset := range assets {
-		a := asset
-
-		g.Go(func() error {
-			ohlcs, err := fs.marketdata.GetOHLC(a.Symbol, start, end)
+		group.Go(func() error {
+			ohlcs, err := fs.marketdata.GetOHLC(asset.Symbol, start, end)
 			if err != nil {
 				return fmt.Errorf("error getting ohlc: %w", err)
 			}
 
-			if err := asset_repo.Store(gctx, a.Symbol, a.Name); err != nil {
+			if err := assetRepo.Store(gctx, asset.Symbol, asset.Name); err != nil {
 				return fmt.Errorf("error creating asset: %w", err)
 			}
 
 			for _, ohlc := range ohlcs {
-				if err := ohlc_repo.Store(gctx, a.Symbol, ohlc.Timestamp.AsTime(),
+				if err := ohlcRepo.Store(gctx, asset.Symbol, ohlc.Timestamp.AsTime(),
 					ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
 					return fmt.Errorf("error creating ohlc: %w", err)
 				}
@@ -93,7 +91,7 @@ func (fs *FinanceServer) DownloadHistoricalData(ctx context.Context, req *pb.Dow
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("error downloading historical data: %w", err)
 	}
 

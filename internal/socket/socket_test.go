@@ -44,10 +44,10 @@ func (test *SocketTest) TestRequesterReplier() {
 		},
 	}
 
-	for _, tc := range testCases {
-		test.Run(tc.Task, func() {
+	for _, testCase := range testCases {
+		test.Run(testCase.Task, func() {
 			go func() {
-				request := common_pb.Request{Task: tc.Task, Data: tc.Data}
+				request := common_pb.Request{Task: testCase.Task, Data: testCase.Data}
 				sock, err := replier.Recieve(&request)
 				test.Require().NoError(err, "failed to recieve")
 
@@ -56,7 +56,7 @@ func (test *SocketTest) TestRequesterReplier() {
 				test.Require().NoError(err, "failed to send")
 			}()
 
-			request := common_pb.Request{Task: tc.Task}
+			request := common_pb.Request{Task: testCase.Task}
 			data, err := proto.Marshal(&request)
 			test.Require().NoError(err, "failed to marshal data")
 

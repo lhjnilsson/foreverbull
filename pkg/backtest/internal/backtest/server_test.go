@@ -2,6 +2,7 @@ package backtest_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -94,7 +95,7 @@ func (s *SessionTest) SetupTest() {
 func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
-		s.Assert().Fail("error closing listener: %v", err)
+		s.Fail("error closing listener: %v", err)
 	}
 
 	s.baseServer.Stop()
@@ -159,7 +160,7 @@ func (s *SessionTest) TestRunExecution() {
 
 	for {
 		_, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 

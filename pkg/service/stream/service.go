@@ -9,14 +9,14 @@ import (
 )
 
 type UpdateServiceStatusCommand struct {
-	Image  string                   `json:"image"`
-	Status pb.Service_Status_Status `json:"status"`
-	Error  error                    `json:"error"`
+	Image  string
+	Status pb.Service_Status_Status
+	Error  error
 }
 
 type ServiceStartCommand struct {
-	Image      string `json:"image"`
-	InstanceID string `json:"instance_id"`
+	Image      string
+	InstanceID string
 }
 
 func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status, err error) (stream.Message, error) {
@@ -30,6 +30,7 @@ func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }
 
@@ -47,6 +48,7 @@ func NewServiceStartCommand(image, instanceID string) (stream.Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }
 

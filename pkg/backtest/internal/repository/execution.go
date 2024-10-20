@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 )
 
+// nolint: dupword
 const ExecutionTable = `CREATE TABLE IF NOT EXISTS execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
@@ -169,7 +169,7 @@ func (db *Execution) StorePeriods(ctx context.Context, execution string, periods
 	return nil
 }
 
-func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) {
+func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution, error) {
 	e := pb.Execution{}
 
 	rows, err := db.Conn.Query(ctx,
@@ -179,9 +179,9 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
-		WHERE execution.id=$1`, id)
+		WHERE execution.id=$1`, executionId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get execution: %w", err)
 	}
 
 	defer rows.Close()
@@ -195,7 +195,7 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occured_at)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
 
 		e.StartDate = internal_pb.GoTimeToDate(start)
@@ -208,7 +208,7 @@ func (db *Execution) Get(ctx context.Context, id string) (*pb.Execution, error) 
 	}
 
 	if e.Id == "" {
-		return nil, &pgconn.PgError{Code: "02000"}
+		return nil, fmt.Errorf("execution not found")
 	}
 
 	return &e, nil
@@ -219,18 +219,25 @@ func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Executio
 		`UPDATE execution SET start_date=$1, end_date=$2, benchmark=$3,
 		symbols=$4 WHERE id=$5`, internal_pb.DateToDateString(e.StartDate),
 		internal_pb.DateToDateString(e.EndDate), e.Benchmark, e.Symbols, e.Id)
-
-	return err
-}
-
-func (db *Execution) UpdateStatus(ctx context.Context, id string, status pb.Execution_Status_Status, err error) error {
 	if err != nil {
-		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", id, status, err.Error())
-	} else {
-		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2 WHERE id=$1", id, status)
+		return fmt.Errorf("failed to update execution: %w", err)
 	}
 
-	return err
+	return nil
+}
+
+func (db *Execution) UpdateStatus(ctx context.Context, executionId string, status pb.Execution_Status_Status, err error) error {
+	if err != nil {
+		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2, error=$3 WHERE id=$1", executionId, status, err.Error())
+	} else {
+		_, err = db.Conn.Exec(ctx, "UPDATE execution SET status=$2 WHERE id=$1", executionId, status)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to update execution status: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
@@ -250,7 +257,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 		err = rows.Scan(&e.Id, &e.Session, &start, &end, &e.Benchmark, &e.Symbols,
 			&status.Status, &status.Error, &occurred_at)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
 
 		e.StartDate = internal_pb.GoTimeToDate(start)
@@ -290,7 +297,7 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 		) AS es ON execution.id=es.id
 		ORDER BY es.occurred_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}
 
 	defer rows.Close()
@@ -309,7 +316,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 		WHERE session=$1
 		ORDER BY es.occurred_at DESC`, session)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}
 
 	defer rows.Close()

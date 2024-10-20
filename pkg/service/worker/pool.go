@@ -87,30 +87,30 @@ func (p *pool) startNamespaceListener() {
 	}
 }
 func (p *pool) orderedFunctions() <-chan *worker_pb.Algorithm_Function {
-	ch := make(chan *worker_pb.Algorithm_Function)
+	functionCh := make(chan *worker_pb.Algorithm_Function)
 	go func() {
 		for _, function := range p.algo.Functions {
 			if function.RunFirst && !function.RunLast {
-				ch <- function
+				functionCh <- function
 			}
 		}
 
 		for _, function := range p.algo.Functions {
 			if !function.RunFirst && !function.RunLast {
-				ch <- function
+				functionCh <- function
 			}
 		}
 
 		for _, function := range p.algo.Functions {
 			if !function.RunFirst && function.RunLast {
-				ch <- function
+				functionCh <- function
 			}
 		}
 
-		close(ch)
+		close(functionCh)
 	}()
 
-	return ch
+	return functionCh
 }
 
 func (p *pool) Configure() *worker_pb.ExecutionConfiguration {

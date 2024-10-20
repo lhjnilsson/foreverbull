@@ -20,5 +20,6 @@ func NewMarketdataDownloadCommand(entity MarketdataDownloadMessage) (stream.Mess
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }

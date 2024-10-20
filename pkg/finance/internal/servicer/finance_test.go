@@ -1,4 +1,4 @@
-package servicer
+package servicer_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
@@ -54,7 +55,7 @@ func (suite *FinanceServerTest) SetupTest() {
 
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server = grpc.NewServer()
-	server := NewFinanceServer(suite.pgx, suite.marketdata)
+	server := servicer.NewFinanceServer(suite.pgx, suite.marketdata)
 	pb.RegisterFinanceServer(suite.server, server)
 
 	go func() {

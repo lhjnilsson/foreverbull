@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/pb"
@@ -23,23 +24,18 @@ type OHLC struct {
 	Conn postgres.Query
 }
 
-/*
-Create
-Create new End-of-day entry, based on instrument and session
-*/
 func (db *OHLC) Store(ctx context.Context, symbol string, t time.Time, o, h, l, c float64, v int) error {
 	_, err := db.Conn.Exec(
 		ctx,
 		`INSERT into ohlc(symbol, time, open, high, low, close, volume)
 		values ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`, symbol, t, o, h, l, c, v)
+	if err != nil {
+		return fmt.Errorf("failed to store ohlc: %w", err)
+	}
 
-	return err
+	return nil
 }
 
-/*
-Exists
-Check if OHLC entry exists for instrument
-*/
 func (db *OHLC) Exists(ctx context.Context, symbols []string, start, end *pb.Date) (bool, error) {
 	var startExists bool
 
@@ -51,7 +47,7 @@ func (db *OHLC) Exists(ctx context.Context, symbols []string, start, end *pb.Dat
 			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time::date = $2)",
 			symbol, pb.DateToDateString(start)).Scan(&startExists)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to check if ohlc exists: %w", err)
 		}
 
 		err = db.Conn.QueryRow(
@@ -59,7 +55,7 @@ func (db *OHLC) Exists(ctx context.Context, symbols []string, start, end *pb.Dat
 			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE symbol = $1 AND time::date = $2)",
 			symbol, pb.DateToDateString(end)).Scan(&endExists)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to check if ohlc exists: %w", err)
 		}
 
 		if !startExists || !endExists {
@@ -79,7 +75,7 @@ func (db *OHLC) MinMax(ctx context.Context) (*pb.Date, *pb.Date, error) {
 		ctx,
 		"SELECT MIN(time), MAX(time) FROM ohlc").Scan(&minTime, &maxTime)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get min/max time: %w", err)
 	}
 
 	if minTime == nil || maxTime == nil {

@@ -7,7 +7,7 @@ import (
 )
 
 type InstanceInterviewCommand struct {
-	ID string `json:"id"`
+	ID string
 }
 
 func NewInstanceInterviewCommand(instanceID string) (stream.Message, error) {
@@ -19,11 +19,12 @@ func NewInstanceInterviewCommand(instanceID string) (stream.Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }
 
 type InstanceStopCommand struct {
-	ID string `json:"id"`
+	ID string
 }
 
 func NewInstanceStopCommand(instanceID string) (stream.Message, error) {
@@ -35,11 +36,12 @@ func NewInstanceStopCommand(instanceID string) (stream.Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }
 
 type InstanceSanityCheckCommand struct {
-	IDs []string `json:"ids"`
+	IDs []string
 }
 
 func NewInstanceSanityCheckCommand(instanceIDs []string) (stream.Message, error) {
@@ -51,5 +53,6 @@ func NewInstanceSanityCheckCommand(instanceIDs []string) (stream.Message, error)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }

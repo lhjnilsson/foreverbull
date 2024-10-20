@@ -12,23 +12,23 @@ import (
 	"go.uber.org/fx"
 )
 
-const Stream = "service"
+const StreamName = "service"
 
-type ServiceStream stream.Stream
+type Stream stream.Stream
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (ServiceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool) (Stream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
-			return stream.NewNATSStream(jt, Stream, dc, conn)
+			return stream.NewNATSStream(jt, StreamName, dc, conn)
 		},
 	),
 	fx.Invoke(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, s ServiceStream, conn *pgxpool.Pool) error {
+		func(lc fx.Lifecycle, s Stream, conn *pgxpool.Pool) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(ctx context.Context) error {

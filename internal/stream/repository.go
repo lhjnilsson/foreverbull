@@ -247,8 +247,9 @@ func (r *repository) GetNextOrchestrationCommands(ctx context.Context, orchestra
 		return nil, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
 
+	var msgs []message
 	if !stepComplete {
-		return nil, nil
+		return &msgs, nil
 	}
 
 	rows, err := r.db.Query(ctx, `
@@ -266,8 +267,6 @@ END`, orchestrationID, MessageStatusError, currentStepNumber+1, MessageStatusCre
 	}
 
 	defer rows.Close()
-
-	var msgs []message
 
 	for rows.Next() {
 		m := message{}

@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
@@ -107,7 +108,7 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		command.End = &end
 	})
 
-	err := Ingest(context.Background(), m)
+	err := command.Ingest(context.Background(), m)
 	test.NoError(err)
 
 	asset, err := test.assets.Get(context.Background(), newAsset.Symbol)

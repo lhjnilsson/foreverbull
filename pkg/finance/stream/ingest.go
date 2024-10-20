@@ -23,5 +23,6 @@ func NewIngestCommand(symbols []string, start string, end *string) (stream.Messa
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %v", err)
 	}
+
 	return msg, nil
 }

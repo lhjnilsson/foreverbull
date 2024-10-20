@@ -78,16 +78,17 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 		{Status: MessageStatusError,
 			ExpectMessage: false},
 	}
-	for _, tc := range testCases {
-		test.Run(string(tc.Status), func() {
+	for _, testCase := range testCases {
+		test.Run(string(testCase.Status), func() {
 			msg := createMessage(test.T())
-			test.Require().NoError(test.repository.UpdateMessageStatus(context.TODO(), *msg.ID, tc.Status, nil))
+			test.Require().NoError(
+				test.repository.UpdateMessageStatus(context.TODO(), *msg.ID, testCase.Status, nil),
+			)
 
 			msg, err := test.repository.UpdatePublishedAndGetMessage(context.TODO(), *msg.ID)
-			if tc.ExpectMessage {
+			if testCase.ExpectMessage {
 				test.NoError(err)
 				test.NotNil(msg)
-				test.Equal(msg.ID, msg.ID)
 				test.Equal(MessageStatusReceived, msg.StatusHistory[0].Status)
 			} else {
 				test.Error(err)
@@ -203,21 +204,22 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 			ExpectedMessages: &[]message{},
 		},
 	}
-	for _, tc := range testCases {
-		test.Run(tc.Name, func() {
+	for _, testCase := range testCases {
+		test.Run(testCase.Name, func() {
 			baseOrchestration := createBaseOrchestration(test.T())
 
-			_, err := test.db.Exec(context.TODO(), tc.StoredData)
+			_, err := test.db.Exec(context.TODO(), testCase.StoredData)
 			test.Require().NoError(err)
 
-			commands, err := test.repository.GetNextOrchestrationCommands(context.TODO(), baseOrchestration.OrchestrationID, tc.CurrentStep)
+			commands, err := test.repository.GetNextOrchestrationCommands(context.TODO(),
+				baseOrchestration.OrchestrationID, testCase.CurrentStep)
 			test.NoError(err)
 
-			if tc.ExpectedMessages == nil {
+			if testCase.ExpectedMessages == nil {
 				test.Nil(commands)
 			} else {
 				test.Require().NotNil(commands)
-				test.Equal(len(*tc.ExpectedMessages), len(*commands))
+				test.Equal(len(*testCase.ExpectedMessages), len(*commands))
 			}
 		})
 	}

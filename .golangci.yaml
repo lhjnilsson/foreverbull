@@ -3,3 +3,6 @@ linters:
   disable:
     - paralleltest
     - musttag
+    - ireturn
+    - testpackage
+    - exportloopref

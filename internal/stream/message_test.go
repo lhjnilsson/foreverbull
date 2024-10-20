@@ -73,7 +73,7 @@ func (test *DependencyContainerTest) TestNewDependencyContainer() {
 		container := NewDependencyContainer()
 		test.NotNil(container)
 
-		method := func(_ context.Context, _ Message) (interface{}, error) { return nil, nil }
+		method := func(_ context.Context, _ Message) (interface{}, error) { return "working", nil }
 		container.AddMethod("key", method)
 
 		msg := &message{dependencyContainer: container.(*dependencyContainer)}

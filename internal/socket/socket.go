@@ -346,8 +346,7 @@ func (s *subscriber) Recieve(msg proto.Message, options ...func(OptionSetter) er
 func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 	var err error
 
-	for i := environment.GetBacktestPortRangeStart(); i <= environment.GetBacktestPortRangeEnd(); i++ {
-		port := i
+	for port := environment.GetBacktestPortRangeStart(); port <= environment.GetBacktestPortRangeEnd(); port++ {
 		err = socket.Listen(fmt.Sprintf("tcp://%v:%v", host, port))
 
 		if err == nil {
@@ -355,11 +354,11 @@ func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 		}
 
 		if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
-			log.Debug().Msgf("Port %v already in use, trying next port", i)
+			log.Debug().Msgf("Port %v already in use, trying next port", port)
 			continue
 		}
 
-		return 0, fmt.Errorf("error listening to port %v: %v", i, err)
+		return 0, fmt.Errorf("error listening to port %v: %v", port, err)
 	}
 
 	return 0, errors.New("no free ports in range")

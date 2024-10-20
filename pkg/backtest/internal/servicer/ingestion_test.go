@@ -175,14 +175,14 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 		},
 	}
 
-	for i, tc := range testCases {
-		suite.Run(fmt.Sprintf("test-%d", i), func() {
-			suite.storage.On("ListObjects", mock.Anything, storage.IngestionsBucket).Return(&tc.storedObjects, nil)
+	for index, testCase := range testCases {
+		suite.Run(fmt.Sprintf("test-%d", index), func() {
+			suite.storage.On("ListObjects", mock.Anything, storage.IngestionsBucket).Return(&testCase.storedObjects, nil)
 
 			rsp, err := suite.client.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 			suite.Require().NoError(err)
 			suite.Require().NotNil(rsp)
-			suite.Require().Equal(tc.expected, rsp.Ingestion)
+			suite.Require().Equal(testCase.expected, rsp.Ingestion)
 		})
 	}
 }

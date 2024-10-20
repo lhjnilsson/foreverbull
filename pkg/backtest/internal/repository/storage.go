@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
+func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS period;`); err != nil {
 		return fmt.Errorf("failed to drop table period: %w", err)
 	}

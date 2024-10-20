@@ -14,6 +14,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	bufferSize = 128
+)
+
 type YahooClient struct {
 	cookie string
 	crumb  string
@@ -37,14 +41,14 @@ func NewYahooClient() (supplier.Marketdata, error) {
 	}
 	defer rsp.Body.Close()
 
-	buffer := make([]byte, 128)
+	buffer := make([]byte, bufferSize)
 
-	n, err := rsp.Body.Read([]byte(buffer))
+	length, err := rsp.Body.Read([]byte(buffer))
 	if err != nil {
 		return nil, fmt.Errorf("error reading response: %v", err)
 	}
 
-	yc.crumb = string(buffer[:n])
+	yc.crumb = string(buffer[:length])
 
 	return yc, nil
 }
@@ -58,7 +62,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 		url += "&" + param
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
@@ -69,7 +73,12 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 		req.Header.Add("Cookie", y.cookie)
 	}
 
-	return http.DefaultClient.Do(req)
+	rsp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+
+	return rsp, nil
 }
 
 type AssetResponse struct {
@@ -151,9 +160,9 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	assets := make([]*pb.Asset, 0)
 	assetChan := make(chan *pb.Asset)
 
-	g, _ := errgroup.WithContext(context.Background())
+	group, _ := errgroup.WithContext(context.Background())
 	for _, component := range result.Summary.Result[0].Components.Components {
-		g.Go(func() error {
+		group.Go(func() error {
 			a, err := y.GetAsset(component)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %v", err)
@@ -164,7 +173,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 		})
 	}
 
-	g.Go(func() error {
+	group.Go(func() error {
 		a, err := y.GetAsset(symbol)
 		if err != nil {
 			return fmt.Errorf("error getting asset: %v", err)
@@ -180,7 +189,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 		}
 	}()
 
-	if err := g.Wait(); err != nil {
+	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("error getting assets: %v", err)
 	}
 
@@ -242,13 +251,13 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	}
 
 	ohlcs := make([]*pb.OHLC, 0)
-	for i, ts := range data.Chart.Result[0].Timestamp {
+	for index, ts := range data.Chart.Result[0].Timestamp {
 		ohlcs = append(ohlcs, &pb.OHLC{
 			Timestamp: timestamppb.New(time.Unix(ts, 0)),
-			Open:      data.Chart.Result[0].Indicators.Quote[0].Open[i],
-			High:      data.Chart.Result[0].Indicators.Quote[0].High[i],
-			Low:       data.Chart.Result[0].Indicators.Quote[0].Low[i],
-			Close:     data.Chart.Result[0].Indicators.Quote[0].Close[i],
+			Open:      data.Chart.Result[0].Indicators.Quote[0].Open[index],
+			High:      data.Chart.Result[0].Indicators.Quote[0].High[index],
+			Low:       data.Chart.Result[0].Indicators.Quote[0].Low[index],
+			Close:     data.Chart.Result[0].Indicators.Quote[0].Close[index],
 		})
 	}
 

@@ -23,19 +23,19 @@ func (test *EngineTest) SetupSuite() {
 }
 
 func (test *EngineTest) NoTestStart() {
-	e, err := NewEngine()
+	engine, err := NewEngine()
 	test.Require().NoError(err)
 
-	c, err := e.Start(context.TODO(), "ziptest:latest", "test")
+	container, err := engine.Start(context.TODO(), "ziptest:latest", "test")
 	test.NoError(err)
-	test.NotNil(c)
+	test.NotNil(container)
 
-	status, err := c.GetStatus()
+	status, err := container.GetStatus()
 	test.NoError(err)
 	test.Equal("running", status)
 
 	for i := 0; i < 120; i++ {
-		health, err := c.GetHealth()
+		health, err := container.GetHealth()
 		test.Require().NoError(err)
 
 		if health == "healthy" {
@@ -45,11 +45,11 @@ func (test *EngineTest) NoTestStart() {
 		time.Sleep(time.Second / 4)
 	}
 
-	health, err := c.GetHealth()
+	health, err := container.GetHealth()
 	test.NoError(err)
 	test.Equal("healthy", health)
 
-	conn, err := c.GetConnectionString()
+	conn, err := container.GetConnectionString()
 	test.NoError(err)
 	test.NotEmpty(conn)
 }

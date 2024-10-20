@@ -21,6 +21,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	SessionTimeout = 30 * time.Minute
+)
+
 func SessionRun(ctx context.Context, msg stream.Message) error {
 	command := ss.SessionRunCommand{}
 
@@ -49,7 +53,9 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	engine := depEngine.(engine.Engine)
 
-	ingestions, err := s.ListObjects(ctx, storage.IngestionsBucket)
+	var ingestions *[]storage.Object
+
+	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
 	if len(*ingestions) == 0 {
 		err = errors.New("no ingestions found")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
@@ -85,7 +91,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
-	server, a, err := backtest.NewGRPCSessionServer(session, db, engine)
+	server, activity, err := backtest.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
 		sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err)
@@ -105,8 +111,8 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			break
 		}
 
-		syscallErr, ok := err.(*net.OpError)
-		if ok && errors.Unwrap(syscallErr.Unwrap()) == syscall.EADDRINUSE {
+		opErr := &net.OpError{}
+		if errors.As(err, &opErr) && errors.Unwrap(opErr.Unwrap()) == syscall.EADDRINUSE {
 			continue
 		}
 
@@ -130,13 +136,13 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 		for {
 			select {
-			case _, active := <-a:
+			case _, active := <-activity:
 				if !active {
 					time.Sleep(time.Second / 4) // Make sure reply is sent
 					return
 				} else {
 				}
-			case <-time.After(time.Minute * 30):
+			case <-time.After(SessionTimeout):
 				return
 			}
 		}

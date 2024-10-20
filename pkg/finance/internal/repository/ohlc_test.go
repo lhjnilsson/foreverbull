@@ -1,4 +1,4 @@
-package repository
+package repository_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/stretchr/testify/suite"
 )
@@ -17,7 +18,7 @@ type OHLCTests struct {
 	suite.Suite
 	conn        *pgxpool.Pool
 	asset       pb.Asset
-	ohlcStorage OHLC
+	ohlcStorage repository.OHLC
 }
 
 func (test *OHLCTests) SetupSuite() {
@@ -30,18 +31,18 @@ func (test *OHLCTests) SetupTest() {
 	var err error
 	test.conn, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	test.Require().NoError(err)
-	err = Recreate(context.Background(), test.conn)
+	err = repository.Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
-	assetStorage := Asset{Conn: test.conn}
+	assetStorage := repository.Asset{Conn: test.conn}
 	test.asset = pb.Asset{Symbol: "ABC", Name: "Comany ABC"}
 	err = assetStorage.Store(context.TODO(), test.asset.Symbol, test.asset.Name)
 	test.Require().NoError(err)
 
 	_, err = test.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
 	test.Require().NoError(err)
-	_, err = test.conn.Exec(context.TODO(), OHLCTable)
+	_, err = test.conn.Exec(context.TODO(), repository.OHLCTable)
 	test.Require().NoError(err)
-	test.ohlcStorage = OHLC{Conn: test.conn}
+	test.ohlcStorage = repository.OHLC{Conn: test.conn}
 }
 
 func (test *OHLCTests) TearDownTest() {
@@ -59,7 +60,7 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 
 	for i := 0; i <= count; i++ {
 		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
-		test.Nil(err)
+		test.NoError(err)
 
 		if i != count {
 			ohlcTime = ohlcTime.Add(time.Hour * 24)
@@ -71,35 +72,35 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 
 func (test *OHLCTests) TestStore() {
 	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
-	test.Nil(err)
+	test.NoError(err)
 }
 
 func (test *OHLCTests) TestExists() {
 	symbol, start, end := test.SampleOHLC()
 	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	test.Nil(err)
+	test.NoError(err)
 	test.True(exists)
 }
 
 func (test *OHLCTests) TestExistsNot() {
 	symbol, start, end := test.SampleOHLC()
-	end.Day += 1
+	end.Day++
 	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
-	test.Nil(err)
+	test.NoError(err)
 	test.False(exists)
 }
 
 func (test *OHLCTests) TestMinMaxNothingStored() {
-	min, max, err := test.ohlcStorage.MinMax(context.Background())
-	test.Nil(err)
-	test.Nil(min)
-	test.Nil(max)
+	storedMin, storedMax, err := test.ohlcStorage.MinMax(context.Background())
+	test.NoError(err)
+	test.Nil(storedMin)
+	test.Nil(storedMax)
 }
 
 func (test *OHLCTests) TestMinMax() {
 	_, start, end := test.SampleOHLC()
-	min, max, err := test.ohlcStorage.MinMax(context.Background())
-	test.Nil(err)
-	test.Equal(start, min)
-	test.Equal(end, max)
+	storedMin, storedMax, err := test.ohlcStorage.MinMax(context.Background())
+	test.NoError(err)
+	test.Equal(start, storedMin)
+	test.Equal(end, storedMax)
 }

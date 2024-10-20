@@ -26,21 +26,25 @@ type grpcSessionServer struct {
 	activity chan bool
 }
 
-func NewGRPCSessionServer(session *backtest_pb.Session, db postgres.Query,
-	backtest engine.Engine) (*grpc.Server, <-chan bool, error) {
-	g := grpc.NewServer()
+const (
+	ActivityBufferSize = 5
+)
 
-	activity := make(chan bool, 5)
+func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
+	backtest engine.Engine) (*grpc.Server, <-chan bool, error) {
+	grpcServer := grpc.NewServer()
+
+	activity := make(chan bool, ActivityBufferSize)
 	server := &grpcSessionServer{
 		session:  session,
-		db:       db,
+		db:       database,
 		backtest: backtest,
-		server:   g,
+		server:   grpcServer,
 		activity: activity,
 	}
-	backtest_pb.RegisterSessionServicerServer(g, server)
+	backtest_pb.RegisterSessionServicerServer(grpcServer, server)
 
-	return g, activity, nil
+	return grpcServer, activity, nil
 }
 
 func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_pb.CreateExecutionRequest) (*backtest_pb.CreateExecutionResponse, error) {

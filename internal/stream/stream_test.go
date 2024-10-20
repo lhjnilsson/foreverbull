@@ -89,15 +89,15 @@ func (test *NatsStreamTest) TestPubSub() {
 			expectedStatus: MessageStatusError,
 		},
 	}
-	for _, tc := range testCases {
-		test.Run(tc.name, func() {
-			err := test.stream.Publish(context.Background(), &tc.message)
+	for _, testCase := range testCases {
+		test.Run(testCase.name, func() {
+			err := test.stream.Publish(context.Background(), &testCase.message)
 			test.NoError(err)
 			time.Sleep(time.Second / 2)
 
-			m, err := test.stream.repository.GetMessage(context.Background(), *tc.message.ID)
+			message, err := test.stream.repository.GetMessage(context.Background(), *testCase.message.ID)
 			test.NoError(err)
-			test.Equal(tc.expectedStatus, m.StatusHistory[0].Status)
+			test.Equal(testCase.expectedStatus, message.StatusHistory[0].Status)
 		})
 	}
 }
@@ -134,15 +134,15 @@ func (test *NatsStreamTest) TestRunOrchestration() {
 
 		time.Sleep(time.Second / 2)
 
-		m, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
+		message, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
 		test.NoError(err)
-		test.Equal(MessageStatusComplete, m.StatusHistory[0].Status)
-		m, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
+		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
+		message, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
 		test.NoError(err)
-		test.Equal(MessageStatusComplete, m.StatusHistory[0].Status)
-		m, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
+		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
+		message, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
 		test.NoError(err)
-		test.Equal(MessageStatusCanceled, m.StatusHistory[0].Status)
+		test.Equal(MessageStatusCanceled, message.StatusHistory[0].Status)
 	})
 	test.Run("error orchestration", func() {
 		msg1, err := NewMessage("test", "return", "err", TestPayload{Name: "test", Number: 1})

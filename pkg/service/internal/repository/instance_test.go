@@ -52,11 +52,11 @@ func (test *InstanceTest) TestCreate() {
 	ctx := context.Background()
 
 	image := "test_image"
-	for id, image := range []*string{nil, &image} {
+	for index, image := range []*string{nil, &image} {
 		db := &repository.Instance{Conn: test.conn}
-		instance, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
+		instance, err := db.Create(ctx, fmt.Sprintf("instance_%d", index), image)
 		test.NoError(err)
-		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+		test.Equal(fmt.Sprintf("instance_%d", index), instance.ID)
 		test.Equal(image, instance.Image)
 	}
 }
@@ -65,14 +65,14 @@ func (test *InstanceTest) TestGet() {
 	ctx := context.Background()
 
 	image := "test_image"
-	for id, image := range []*string{nil, &image} {
+	for index, image := range []*string{nil, &image} {
 		db := &repository.Instance{Conn: test.conn}
-		_, err := db.Create(ctx, fmt.Sprintf("instance_%d", id), image)
+		_, err := db.Create(ctx, fmt.Sprintf("instance_%d", index), image)
 		test.NoError(err)
 
-		instance, err := db.Get(ctx, fmt.Sprintf("instance_%d", id))
+		instance, err := db.Get(ctx, fmt.Sprintf("instance_%d", index))
 		test.NoError(err)
-		test.Equal(fmt.Sprintf("instance_%d", id), instance.ID)
+		test.Equal(fmt.Sprintf("instance_%d", index), instance.ID)
 		test.Equal(image, instance.Image)
 	}
 }

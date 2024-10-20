@@ -24,12 +24,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-const Stream = "backtest"
+const StreamName = "backtest"
 
-type BacktestStream stream.Stream
+type Stream stream.Stream
 type DependecyContainer stream.DependencyContainer
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func(ce container.Engine) (engine.Engine, error) {
 			return internalBacktest.NewZiplineEngine(context.Background(), nil, nil)
@@ -42,8 +42,8 @@ var Module = fx.Options(
 			// dc.AddMethod(dependency.GetEngineKey, dependency.GetEngine)
 			return dc, nil
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, st storage.Storage, dc DependecyContainer) (BacktestStream, error) {
-			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, st storage.Storage, dc DependecyContainer) (Stream, error) {
+			s, err := stream.NewNATSStream(jt, StreamName, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -51,7 +51,7 @@ var Module = fx.Options(
 		},
 	),
 	fx.Invoke(
-		func(g *grpc.Server, pgx *pgxpool.Pool, s BacktestStream, st storage.Storage) error {
+		func(g *grpc.Server, pgx *pgxpool.Pool, s Stream, st storage.Storage) error {
 			backtestServer := servicer.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
 			ingestionServer := servicer.NewIngestionServer(s, st, pgx)
@@ -61,7 +61,7 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle, s BacktestStream, conn *pgxpool.Pool, ce container.Engine, dc DependecyContainer) error {
+		func(lc fx.Lifecycle, s Stream, conn *pgxpool.Pool, ce container.Engine, dc DependecyContainer) error {
 			var backtestContainer container.Container
 			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
@@ -72,7 +72,8 @@ var Module = fx.Options(
 						return fmt.Errorf("error starting container: %v", err)
 					}
 
-					for i := 0; i < 30; i++ {
+					Backoff := time.Second / 3
+					for _ = range 30 {
 						health, err := backtestContainer.GetHealth()
 						if err != nil {
 							return fmt.Errorf("error getting container health: %v", err)
@@ -82,7 +83,7 @@ var Module = fx.Options(
 						} else if health == types.Unhealthy {
 							return fmt.Errorf("container is unhealthy")
 						}
-						time.Sleep(time.Second / 3)
+						time.Sleep(Backoff)
 					}
 					backtestEngine, err = backtest.NewZiplineEngine(ctx, backtestContainer, nil)
 					if err != nil {

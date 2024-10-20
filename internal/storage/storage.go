@@ -105,7 +105,7 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 		Secure: false,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating minio client: %w", err)
 	}
 
 	storage := &MinioStorage{client: client}
@@ -121,10 +121,6 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 			if err != nil {
 				return nil, fmt.Errorf("error creating bucket: %w", err)
 			}
-		}
-
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -161,7 +157,7 @@ func (s *MinioStorage) ListObjects(ctx context.Context, bucket Bucket) (*[]Objec
 func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string) (*Object, error) {
 	object, err := s.client.StatObject(ctx, string(bucket), name, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting object: %w", err)
 	}
 
 	result := Object{

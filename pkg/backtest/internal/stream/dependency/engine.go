@@ -14,6 +14,11 @@ import (
 
 const GetEngineKey stream.Dependency = "get_engine"
 
+const (
+	NumberOfTries = 30
+	WaitTime      = time.Second / 3
+)
+
 func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 	containerEngine := msg.MustGet(stream.ContainerEngineDep).(container.Engine)
 
@@ -22,7 +27,7 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 		return nil, fmt.Errorf("error starting container: %v", err)
 	}
 
-	for i := 0; i < 30; i++ {
+	for _ = range NumberOfTries {
 		health, err := cont.GetHealth()
 		if err != nil {
 			return nil, fmt.Errorf("error getting container health: %v", err)
@@ -34,13 +39,13 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 			return nil, fmt.Errorf("container is unhealthy")
 		}
 
-		time.Sleep(time.Second / 3)
+		time.Sleep(WaitTime)
 	}
 
-	ze, err := backtest.NewZiplineEngine(ctx, cont, nil)
+	engine, err := backtest.NewZiplineEngine(ctx, cont, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating zipline engine: %v", err)
 	}
 
-	return ze, nil
+	return engine, nil
 }

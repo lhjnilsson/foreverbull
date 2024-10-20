@@ -22,7 +22,11 @@ import (
 	"go.uber.org/fx"
 )
 
-var CoreModules = fx.Options(
+const (
+	PostgresRetryInterval = 3
+)
+
+var CoreModules = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() (*pgxpool.Pool, error) {
 			pool, err := pgxpool.New(context.TODO(), environment.GetPostgresURL())
@@ -34,8 +38,8 @@ var CoreModules = fx.Options(
 				if err == nil {
 					return pool, nil
 				}
-				log.Printf("failed to ping postgres, retrying in %d seconds", 3)
-				time.Sleep(time.Second * time.Duration(3))
+				log.Printf("failed to ping postgres, retrying in %d seconds", PostgresRetryInterval)
+				time.Sleep(time.Second * time.Duration(PostgresRetryInterval))
 			}
 		},
 		container.NewEngine,
@@ -64,7 +68,7 @@ func app() *fx.App {
 func main() {
 	cli := &cli.App{
 		Name: "foreverbull",
-		Action: func(c *cli.Context) error {
+		Action: func(_ *cli.Context) error {
 			if err := environment.Setup(); err != nil {
 				return fmt.Errorf("failed to setup environment: %w", err)
 			}

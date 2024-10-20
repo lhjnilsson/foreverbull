@@ -20,13 +20,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-const Stream = "finance"
+const StreamName = "finance"
 
-type FinanceStream stream.Stream
+type Stream stream.Stream
 
-var Module = fx.Options(
+var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-
 		func() (supplier.Marketdata, supplier.Trading, error) {
 			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
 				marketData, err := marketdata.NewYahooClient()
@@ -34,23 +33,22 @@ var Module = fx.Options(
 					return nil, nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 				}
 				return marketData, nil, nil
-			} else {
-				marketData, err := marketdata.NewAlpacaClient()
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-				}
-				t, err := trading.NewAlpacaClient()
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-				}
-				return marketData, t, nil
 			}
+			marketData, err := marketdata.NewAlpacaClient()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+			}
+			t, err := trading.NewAlpacaClient()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+			}
+			return marketData, t, nil
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata) (FinanceStream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata) (Stream, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.MarketDataDep, marketData)
-			s, err := stream.NewNATSStream(jt, Stream, dc, conn)
+			s, err := stream.NewNATSStream(jt, StreamName, dc, conn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create stream: %w", err)
 			}
@@ -66,7 +64,7 @@ var Module = fx.Options(
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, s FinanceStream, pgxpool *pgxpool.Pool, marketdata supplier.Marketdata) error {
+		func(lc fx.Lifecycle, s Stream, marketdata supplier.Marketdata) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					err := s.CommandSubscriber("marketdata", "ingest", command.Ingest)

@@ -14,7 +14,7 @@ type Message interface {
 	GetOrchestrationID() string
 	GetOrchestrationStep() string
 	RawPayload() []byte
-	ParsePayload(interface{}) error
+	ParsePayload(payload interface{}) error
 	Call(ctx context.Context, key Dependency) (interface{}, error)
 	MustGet(key Dependency) interface{}
 }
@@ -88,6 +88,7 @@ func (m *message) ParsePayload(v interface{}) error {
 	if err := json.Unmarshal(m.Payload, v); err != nil {
 		return fmt.Errorf("error unmarshalling payload: %w", err)
 	}
+
 	return nil
 }
 

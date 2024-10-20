@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -157,7 +158,7 @@ func (c *engine) Start(ctx context.Context, image string, name string) (Containe
 
 		for {
 			_, err := logs.Read(header)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				logs.Close()
 				break
 			}
@@ -174,7 +175,7 @@ func (c *engine) Start(ctx context.Context, image string, name string) (Containe
 			message := make([]byte, count)
 
 			_, err = logs.Read(message)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				logs.Close()
 				break
 			}

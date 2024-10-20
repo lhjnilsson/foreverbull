@@ -66,7 +66,7 @@ type NATSStream struct {
 	repository repository
 }
 
-func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContainer, db *pgxpool.Pool) (Stream, error) {
+func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContainer, pool *pgxpool.Pool) (Stream, error) {
 	cfg := &nats.ConsumerConfig{
 		Name:       module,
 		Durable:    module,
@@ -79,12 +79,12 @@ func NewNATSStream(jt nats.JetStreamContext, module string, dc DependencyContain
 		return nil, fmt.Errorf("error creating consumer: %w", err)
 	}
 
-	_, err = db.Exec(context.Background(), table)
+	_, err = pool.Exec(context.Background(), table)
 	if err != nil {
 		return nil, fmt.Errorf("error creating table: %w", err)
 	}
 
-	return &NATSStream{module: module, jt: jt, deps: dc.(*dependencyContainer), repository: NewRepository(db)}, nil
+	return &NATSStream{module: module, jt: jt, deps: dc.(*dependencyContainer), repository: NewRepository(pool)}, nil
 }
 
 func (ns *NATSStream) CommandSubscriber(component, method string, cb func(context.Context, Message) error) error {
@@ -269,7 +269,7 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 	}
 
 	for _, cmd := range orchestration.FallbackStep.Commands {
-		msg, ok := cmd.(*message)
+		msg, isMsg := cmd.(*message)
 		if msg.OrchestrationID == nil {
 			return fmt.Errorf("orchestration id is nil")
 		}
@@ -278,7 +278,7 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 			return fmt.Errorf("orchestration step is nil")
 		}
 
-		if !ok {
+		if !isMsg {
 			return fmt.Errorf("command is not a message")
 		}
 

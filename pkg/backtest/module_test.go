@@ -2,6 +2,7 @@ package backtest_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -170,7 +171,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	// Run Backtest
-	rsp3, err := test.backtestClient.CreateSession(context.TODO(), &pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
+	rsp3, err := test.backtestClient.CreateSession(context.TODO(),
+		&pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
 	test.NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
 
@@ -191,10 +193,12 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		break
 	}
 
-	gCleint, err := grpc.NewClient(fmt.Sprintf("localhost:%d", port), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	sessionClient := pb.NewSessionServicerClient(gCleint)
+	var gClient *grpc.ClientConn
+	gClient, err = grpc.NewClient(fmt.Sprintf("localhost:%d", port),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	sessionClient := pb.NewSessionServicerClient(gClient)
 
-	cb := func(req *service_pb.WorkerRequest) *service_pb.WorkerResponse {
+	cb := func(_ *service_pb.WorkerRequest) *service_pb.WorkerResponse {
 		return &service_pb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{
@@ -228,7 +232,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	for {
 		msg, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 

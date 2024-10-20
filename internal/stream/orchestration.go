@@ -154,23 +154,24 @@ func (or *OrchestrationRunner) Stop() error {
 	if err := or.sub.Unsubscribe(); err != nil {
 		return fmt.Errorf("error unsubscribing from jetstream for orchestration: %w", err)
 	}
+
 	return nil
 }
 
 var OrchestrationLifecycle = fx.Options(
 	fx.Provide(
-		func(jt nats.JetStreamContext, pool *pgxpool.Pool) (*OrchestrationRunner, error) {
+		func(jetstream nats.JetStreamContext, pool *pgxpool.Pool) (*OrchestrationRunner, error) {
 			cfg := nats.ConsumerConfig{
 				Name:       "orchestration-event",
 				Durable:    "orchestration-event",
 				MaxDeliver: 1,
 			}
-			_, err := jt.AddConsumer("foreverbull", &cfg)
+			_, err := jetstream.AddConsumer("foreverbull", &cfg)
 			if err != nil {
 				return nil, fmt.Errorf("error adding consumer for orchestration: %w", err)
 			}
 			dc := NewDependencyContainer().(*dependencyContainer)
-			stream := &NATSStream{module: "orchestration", jt: jt, repository: NewRepository(pool), deps: dc}
+			stream := &NATSStream{module: "orchestration", jt: jetstream, repository: NewRepository(pool), deps: dc}
 			return NewOrchestrationRunner(stream)
 		},
 	),

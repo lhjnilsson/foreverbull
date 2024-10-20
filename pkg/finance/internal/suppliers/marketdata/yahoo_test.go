@@ -1,23 +1,24 @@
-package marketdata
+package marketdata_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/stretchr/testify/suite"
 )
 
 type YahooTest struct {
 	suite.Suite
 
-	client *YahooClient
+	client *marketdata.YahooClient
 }
 
 func (test *YahooTest) SetupTest() {
-	client, err := NewYahooClient()
+	client, err := marketdata.NewYahooClient()
 	test.Require().NoError(err)
-	test.client = client.(*YahooClient)
+	test.client = client.(*marketdata.YahooClient)
 }
 
 func TestYahooClient(t *testing.T) {
@@ -71,7 +72,7 @@ func (test *YahooTest) TestGetIndex() {
 		} else {
 			test.NoError(err)
 			test.NotNil(assets)
-			test.NotEqual(0, len(assets))
+			test.NotEmpty(assets)
 		}
 	}
 }
@@ -105,7 +106,7 @@ func (test *YahooTest) TestGetOHLC() {
 		} else {
 			test.NoError(err)
 			test.NotNil(ohlc)
-			test.Equal(tc.ExpectedLength, len(ohlc))
+			test.Len(tc.ExpectedLength, len(ohlc))
 		}
 	}
 }

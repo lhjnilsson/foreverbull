@@ -1,7 +1,9 @@
 package marketdata
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -44,21 +46,22 @@ func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	return &storeAsset, nil
 }
 
-func (a *AlpacaClient) GetIndex(symbol string) ([]*pb.Asset, error) {
+func (a *AlpacaClient) GetIndex(_ string) ([]*pb.Asset, error) {
 	var storeAssets []*pb.Asset
 	return storeAssets, nil
 }
 
 func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	var ohlcs []*pb.OHLC
+	ohlcs := make([]*pb.OHLC, 0)
 
 	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
 		Start: start,
 		End:   *end,
 	})
 	if err != nil {
-		if err, ok := err.(*alpaca.APIError); ok {
-			if err.StatusCode == 422 {
+		alpacaErr := &alpaca.APIError{}
+		if errors.As(err, alpacaErr) {
+			if alpacaErr.StatusCode == http.StatusUnprocessableEntity {
 				var innerErr error
 
 				e := end.Add(-15 * time.Minute)
@@ -68,7 +71,7 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 					End:   e,
 				})
 				if innerErr != nil {
-					return nil, innerErr
+					return nil, fmt.Errorf("error getting bars: %v", innerErr)
 				}
 			}
 		}

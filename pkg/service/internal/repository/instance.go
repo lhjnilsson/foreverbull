@@ -55,19 +55,19 @@ type Instance struct {
 	Conn postgres.Query
 }
 
-func (db *Instance) Create(ctx context.Context, id string, image *string) (*pb.Instance, error) {
+func (db *Instance) Create(ctx context.Context, instanceId string, image *string) (*pb.Instance, error) {
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service_instance (id, image) VALUES ($1, $2)`,
-		id, image,
+		instanceId, image,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating instance: %w", err)
 	}
 
-	return db.Get(ctx, id)
+	return db.Get(ctx, instanceId)
 }
 
-func (db *Instance) Get(ctx context.Context, id string) (*pb.Instance, error) {
+func (db *Instance) Get(ctx context.Context, instanceId string) (*pb.Instance, error) {
 	i := pb.Instance{}
 
 	rows, err := db.Conn.Query(ctx,
@@ -76,7 +76,7 @@ func (db *Instance) Get(ctx context.Context, id string) (*pb.Instance, error) {
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
 		) AS sis ON service_instance.id = sis.id
-		WHERE service_instance.id=$1`, id)
+		WHERE service_instance.id=$1`, instanceId)
 	if err != nil {
 		return nil, fmt.Errorf("error getting instance: %w", err)
 	}
@@ -103,10 +103,10 @@ func (db *Instance) Get(ctx context.Context, id string) (*pb.Instance, error) {
 	return &i, nil
 }
 
-func (db *Instance) UpdateHostPort(ctx context.Context, id, host string, port int) error {
+func (db *Instance) UpdateHostPort(ctx context.Context, instanceId, host string, port int) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE service_instance SET host=$1, port=$2 WHERE id=$3`,
-		host, port, id,
+		host, port, instanceId,
 	)
 	if err != nil {
 		return fmt.Errorf("error updating host and port: %w", err)
@@ -115,16 +115,16 @@ func (db *Instance) UpdateHostPort(ctx context.Context, id, host string, port in
 	return nil
 }
 
-func (db *Instance) UpdateStatus(ctx context.Context, id string, status pb.Instance_Status_Status, err error) error {
+func (db *Instance) UpdateStatus(ctx context.Context, instanceId string, status pb.Instance_Status_Status, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2, error=$3 WHERE id=$1`,
-			id, status, err.Error(),
+			instanceId, status, err.Error(),
 		)
 	} else {
 		_, err = db.Conn.Exec(ctx,
 			`UPDATE service_instance SET status=$2 WHERE id=$1`,
-			id, status,
+			instanceId, status,
 		)
 	}
 

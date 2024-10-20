@@ -1,4 +1,4 @@
-package worker
+package worker_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -19,7 +20,6 @@ import (
 
 type PoolTest struct {
 	suite.Suite
-	pool *pool
 
 	socket          mangos.Socket
 	namespaceSocket mangos.Socket
@@ -45,7 +45,7 @@ func (test *PoolTest) TestSimple() {
 		},
 	}
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
-	pool, err := NewPool(context.TODO(), algo)
+	pool, err := worker.NewPool(context.TODO(), algo)
 
 	configuration := pool.Configure()
 
