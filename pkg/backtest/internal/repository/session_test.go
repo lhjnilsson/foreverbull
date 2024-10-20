@@ -40,8 +40,8 @@ func (test *SessionTest) SetupTest() {
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
 	test.storedBacktest, err = backtests.Create(ctx, "backtest",
-		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
-		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
+		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
 	test.Require().NoError(err)
 }
 
@@ -154,8 +154,8 @@ func (test *SessionTest) TestListByBacktest() {
 
 	backtests := &repository.Backtest{Conn: test.conn}
 	test.storedBacktest, err = backtests.Create(ctx, "backtest2",
-		&common_pb.Date{Year: 2024, Month: 01, Day: 01},
-		&common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
+		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
 	test.Require().NoError(err)
 	session3, err := sessions.Create(ctx, "backtest2")
 	test.Require().NoError(err)

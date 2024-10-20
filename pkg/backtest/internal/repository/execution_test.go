@@ -40,7 +40,7 @@ func (test *ExecutionTest) SetupTest() {
 
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err = backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{}, nil)
+	_, err = backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
 	test.Require().NoError(err)
 	test.storedBacktest, err = backtests.Get(ctx, "backtest")
 	test.Require().NoError(err)
@@ -63,8 +63,9 @@ func (test *ExecutionTest) TestCreate() {
 	ctx := context.Background()
 
 	for _, end := range []*common_pb.Date{
-		{Year: 2024, Month: 01, Day: 01},
-		nil} {
+		{Year: 2024, Month: 0o1, Day: 0o1},
+		nil,
+	} {
 		e, err := executions.Create(ctx, test.storedSession.Id,
 			test.storedBacktest.StartDate, end, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 		test.Require().NoError(err)
@@ -104,8 +105,8 @@ func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	e, err := executions.Create(ctx, test.storedSession.Id,
 		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
 	test.Require().NoError(err)
-	//e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
-	//e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
+	// e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
+	// e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	e.Benchmark = func() *string { s := "AAPL"; return &s }()
 	e.Symbols = []string{"AAPL", "MSFT", "TSLA"}
 	err = executions.UpdateSimulationDetails(ctx, e)

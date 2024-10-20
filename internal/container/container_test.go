@@ -34,7 +34,7 @@ func (test *EngineTest) NoTestStart() {
 	test.Require().NoError(err)
 	test.Equal("running", status)
 
-	for _ = range 120 {
+	for range 120 {
 		health, err := container.GetHealth()
 		test.Require().NoError(err)
 

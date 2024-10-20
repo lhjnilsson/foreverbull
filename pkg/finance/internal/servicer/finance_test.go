@@ -98,7 +98,7 @@ func (suite *FinanceServerTest) TestDownloadHistoricalData() {
 	req := &pb.DownloadHistoricalDataRequest{
 		Symbol:    "^GDAXI",
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
-		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 0o6, Day: 30},
 	}
 	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)

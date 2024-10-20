@@ -84,9 +84,8 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 type AssetResponse struct {
 	QuoteSummary struct {
 		Result []struct {
-			AssetProfile struct {
-			} `json:"assetProfile"`
-			QuoteType struct {
+			AssetProfile struct{} `json:"assetProfile"`
+			QuoteType    struct {
 				Exchange  string `json:"exchange"`
 				Symbol    string `json:"symbol"`
 				QuoteType string `json:"quoteType"`

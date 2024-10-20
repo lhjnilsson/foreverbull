@@ -91,7 +91,7 @@ func (suite *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	suite.T().Helper()
 
 	backtests := repository.Backtest{Conn: suite.pgx}
-	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
+	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{"AAPL"}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(backtest)
 
@@ -121,8 +121,8 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	req := &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "test_1",
-			StartDate: &common_pb.Date{Year: 2024, Month: 01, Day: 01},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 01, Day: 01},
+			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			Symbols:   []string{"AAPL"},
 			Benchmark: nil,
 		},

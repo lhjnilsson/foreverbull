@@ -145,7 +145,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			select {
 			case _, active := <-activity:
 				if !active {
-					time.Sleep(time.Second / 4) //nolint:gomnd make sure reply is sent
+					time.Sleep(time.Second / 4) // make sure reply is sent
 					return
 				} else {
 				}

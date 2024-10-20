@@ -16,3 +16,4 @@ linters:
     - mnd
     - gomnd
     - exhaustruct
+    - protogetter

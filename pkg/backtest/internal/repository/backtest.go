@@ -55,7 +55,8 @@ type Backtest struct {
 }
 
 func (db *Backtest) Create(ctx context.Context, name string,
-	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
+	start, end *pb_internal.Date, symbols []string, benchmark *string,
+) (*pb.Backtest, error) {
 	var endDate *string
 
 	if end != nil {
@@ -152,7 +153,8 @@ FROM backtest, all_symbols`).Scan(&startDate, &endDate, &symbols)
 }
 
 func (db *Backtest) Update(ctx context.Context, name string,
-	start, end *pb_internal.Date, symbols []string, benchmark *string) (*pb.Backtest, error) {
+	start, end *pb_internal.Date, symbols []string, benchmark *string,
+) (*pb.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE backtest SET start_date=$2, end_date=$3,
 		symbols=$4, benchmark=$5

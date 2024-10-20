@@ -16,9 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var (
-	NoActiveExecution error = fmt.Errorf("no active execution")
-)
+var NoActiveExecution error = fmt.Errorf("no active execution")
 
 /*
 NewZiplineEngine
@@ -88,7 +86,8 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object)
 }
 
 func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtest,
-	workers worker.Pool) (chan *finance_pb.Portfolio, error) {
+	workers worker.Pool,
+) (chan *finance_pb.Portfolio, error) {
 	req := backtest_pb.RunRequest{
 		Backtest: backtest,
 	}

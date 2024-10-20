@@ -29,7 +29,6 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 
 	services := repository.Service{Conn: db}
 	_, err = services.Get(ctx, command.Image)
-
 	if err != nil {
 		// TODO, should we create a backtest service here?
 		_, crErr := services.Create(ctx, command.Image)

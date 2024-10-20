@@ -88,6 +88,7 @@ func (p *pool) startNamespaceListener() {
 		}
 	}
 }
+
 func (p *pool) orderedFunctions() <-chan *worker_pb.Algorithm_Function {
 	functionCh := make(chan *worker_pb.Algorithm_Function)
 	go func() {
@@ -127,7 +128,8 @@ func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 }
 
 func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []string,
-	portfolio *finance_pb.Portfolio) ([]*finance_pb.Order, error) {
+	portfolio *finance_pb.Portfolio,
+) ([]*finance_pb.Order, error) {
 	if p.algo == nil {
 		return nil, errors.New("algorithm not set")
 	}

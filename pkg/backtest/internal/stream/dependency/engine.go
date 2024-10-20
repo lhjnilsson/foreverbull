@@ -27,7 +27,7 @@ func GetEngine(ctx context.Context, msg stream.Message) (interface{}, error) {
 		return nil, fmt.Errorf("error starting container: %w", err)
 	}
 
-	for _ = range NumberOfTries {
+	for range NumberOfTries {
 		health, err := cont.GetHealth()
 		if err != nil {
 			return nil, fmt.Errorf("error getting container health: %w", err)

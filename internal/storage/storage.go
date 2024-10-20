@@ -179,7 +179,8 @@ func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string
 }
 
 func (s *MinioStorage) CreateObject(ctx context.Context, bucket Bucket, name string,
-	opts ...func(*minio.PutObjectOptions) error) (*Object, error) {
+	opts ...func(*minio.PutObjectOptions) error,
+) (*Object, error) {
 	putOptions := minio.PutObjectOptions{}
 
 	for _, opt := range opts {

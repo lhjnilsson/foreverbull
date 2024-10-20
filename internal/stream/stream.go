@@ -67,7 +67,8 @@ type NATSStream struct {
 }
 
 func NewNATSStream(jetstream nats.JetStreamContext, module string,
-	dependencies DependencyContainer, pool *pgxpool.Pool) (Stream, error) {
+	dependencies DependencyContainer, pool *pgxpool.Pool,
+) (Stream, error) {
 	cfg := &nats.ConsumerConfig{
 		Name:       module,
 		Durable:    module,
@@ -85,10 +86,12 @@ func NewNATSStream(jetstream nats.JetStreamContext, module string,
 		return nil, fmt.Errorf("error creating table: %w", err)
 	}
 
-	return &NATSStream{module: module,
+	return &NATSStream{
+		module:     module,
 		jt:         jetstream,
 		deps:       dependencies.(*dependencyContainer),
-		repository: NewRepository(pool)}, nil
+		repository: NewRepository(pool),
+	}, nil
 }
 
 func (ns *NATSStream) CommandSubscriber(component, method string, cb func(context.Context, Message) error) error {

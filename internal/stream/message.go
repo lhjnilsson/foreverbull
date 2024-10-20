@@ -139,7 +139,8 @@ func NewMessageOrchestration(name string) *MessageOrchestration {
 	return &MessageOrchestration{
 		Name:            name,
 		OrchestrationID: uuid.New().String(),
-		Steps:           []MessageOrchestrationStep{}}
+		Steps:           []MessageOrchestrationStep{},
+	}
 }
 
 type MessageOrchestration struct {

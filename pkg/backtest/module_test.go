@@ -156,7 +156,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err, "failed to create ingestion")
 	test.NotNil(rsp, "response is nil")
 
-	for _ = range 30 {
+	for range 30 {
 		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
 		test.NoError(err, "failed to get current ingestion")
 
@@ -178,7 +178,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	var port int64
 
-	for _ = range 30 {
+	for range 30 {
 		rsp, err := test.backtestClient.GetSession(context.TODO(), &pb.GetSessionRequest{SessionId: rsp3.Session.Id})
 		test.NoError(err, "failed to get session")
 		test.NotNil(rsp, "response is nil")

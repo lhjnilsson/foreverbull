@@ -55,7 +55,7 @@ func (test *CommandSessionTest) SetupSubTest() {
 	err = repository.Recreate(context.TODO(), test.db)
 	test.Require().NoError(err)
 	backtests := repository.Backtest{Conn: test.db}
-	test.backtest, err = backtests.Create(context.TODO(), "test-backtest", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 01, Day: 01}, []string{"AAPL"}, nil)
+	test.backtest, err = backtests.Create(context.TODO(), "test-backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{"AAPL"}, nil)
 	test.Require().NoError(err)
 	sessions := repository.Session{Conn: test.db}
 	test.session, err = sessions.Create(context.TODO(), "test-backtest")

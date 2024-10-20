@@ -124,6 +124,7 @@ func (or *OrchestrationRunner) msgHandler(natsMsg *nats.Msg) {
 		}
 	}
 }
+
 func (or *OrchestrationRunner) Start() error {
 	var err error
 

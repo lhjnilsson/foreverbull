@@ -31,7 +31,8 @@ const (
 )
 
 func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
-	backtest engine.Engine) (*grpc.Server, <-chan bool, error) {
+	backtest engine.Engine,
+) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
 
 	activity := make(chan bool, ActivityBufferSize)

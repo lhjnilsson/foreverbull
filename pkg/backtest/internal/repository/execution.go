@@ -112,7 +112,8 @@ type Execution struct {
 }
 
 func (db *Execution) Create(ctx context.Context, session string, start, end *internal_pb.Date,
-	symbols []string, benchmark *string) (*pb.Execution, error) {
+	symbols []string, benchmark *string,
+) (*pb.Execution, error) {
 	var executionId string
 
 	var endDate *string

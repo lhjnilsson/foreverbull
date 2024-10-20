@@ -67,16 +67,26 @@ func (test *RepositoryTest) TestUpdatePublishedAndGetMessage() {
 	}
 
 	testCases := []TestCase{
-		{Status: MessageStatusPublished,
-			ExpectMessage: true},
-		{Status: MessageStatusCreated,
-			ExpectMessage: false},
-		{Status: MessageStatusReceived,
-			ExpectMessage: false},
-		{Status: MessageStatusComplete,
-			ExpectMessage: false},
-		{Status: MessageStatusError,
-			ExpectMessage: false},
+		{
+			Status:        MessageStatusPublished,
+			ExpectMessage: true,
+		},
+		{
+			Status:        MessageStatusCreated,
+			ExpectMessage: false,
+		},
+		{
+			Status:        MessageStatusReceived,
+			ExpectMessage: false,
+		},
+		{
+			Status:        MessageStatusComplete,
+			ExpectMessage: false,
+		},
+		{
+			Status:        MessageStatusError,
+			ExpectMessage: false,
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(string(testCase.Status), func() {
@@ -156,9 +166,12 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 	}
 
 	testCases := []TestCase{
-		{Name: "initial",
-			StoredData: ``},
-		{Name: "current step -1",
+		{
+			Name:       "initial",
+			StoredData: ``,
+		},
+		{
+			Name:        "current step -1",
 			CurrentStep: -1,
 			StoredData:  ``,
 			ExpectedMessages: &[]message{
@@ -166,15 +179,18 @@ func (test *RepositoryTest) TestGetNextOrchestrationCommands() {
 				{},
 			},
 		},
-		{Name: "service started successfully",
+		{
+			Name:        "service started successfully",
 			CurrentStep: 0,
 			ExpectedMessages: &[]message{
 				{OrchestrationFallbackStep: &isFalse, Module: "service", Component: "service", Method: "sanity_check"},
 			},
 			StoredData: `
 UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
-`},
-		{Name: "One start failed",
+`,
+		},
+		{
+			Name:        "One start failed",
 			CurrentStep: 0,
 			StoredData: `
 UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
@@ -186,7 +202,8 @@ UPDATE message set status='ERROR' WHERE id IN (
 				{OrchestrationFallbackStep: &isTrue},
 			},
 		},
-		{Name: "Run failed",
+		{
+			Name:        "Run failed",
 			CurrentStep: 2,
 			StoredData: `
 UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
@@ -197,7 +214,8 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 				{OrchestrationFallbackStep: &isTrue},
 			},
 		},
-		{Name: "All steps succeeded",
+		{
+			Name:        "All steps succeeded",
 			CurrentStep: 3,
 			StoredData: `
 		UPDATE message SET status='COMPLETE' WHERE orchestration_fallback_step=false;`,

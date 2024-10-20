@@ -86,7 +86,8 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 }
 
 func CleanupEnv(t *testing.T, workerService Service, backtestService Service, backtest Backtest,
-	strategy *Strategy) {
+	strategy *Strategy,
+) {
 	t.Helper()
 
 	// Delete old services

@@ -122,7 +122,7 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	attempts := 12
 	timeout := time.Second / 4
 
-	for _ = range attempts {
+	for range attempts {
 		ConnectionString, err = container.ConnectionString(context.TODO())
 		if err == nil {
 			break

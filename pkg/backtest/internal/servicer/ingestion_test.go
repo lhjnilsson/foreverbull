@@ -98,9 +98,9 @@ func (suite *IngestionServerTest) TestUpdateIngestion() {
 	suite.Run("stored", func() {
 		db := repository.Backtest{Conn: suite.pgx}
 		ctx := context.TODO()
-		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 06, Day: 01}, []string{"AAPL", "MSFT"}, nil)
+		_, err := db.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o6, Day: 0o1}, []string{"AAPL", "MSFT"}, nil)
 		suite.Require().NoError(err)
-		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 01, Day: 01}, &common_pb.Date{Year: 2024, Month: 04, Day: 01}, []string{"IBM", "GE"}, nil)
+		_, err = db.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o4, Day: 0o1}, []string{"IBM", "GE"}, nil)
 		suite.Require().NoError(err)
 
 		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
@@ -138,8 +138,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 			},
 			expected: &pb.Ingestion{
 				Symbols:   []string{"AAPL", "MSFT"},
-				StartDate: &pb_internal.Date{Year: 2021, Month: 01, Day: 01},
-				EndDate:   &pb_internal.Date{Year: 2021, Month: 01, Day: 02},
+				StartDate: &pb_internal.Date{Year: 2021, Month: 0o1, Day: 0o1},
+				EndDate:   &pb_internal.Date{Year: 2021, Month: 0o1, Day: 0o2},
 			},
 		},
 		{
@@ -174,8 +174,8 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 			},
 			expected: &pb.Ingestion{
 				Symbols:   []string{"AAPL", "MSFT"},
-				StartDate: &pb_internal.Date{Year: 2021, Month: 01, Day: 01},
-				EndDate:   &pb_internal.Date{Year: 2021, Month: 01, Day: 02},
+				StartDate: &pb_internal.Date{Year: 2021, Month: 0o1, Day: 0o1},
+				EndDate:   &pb_internal.Date{Year: 2021, Month: 0o1, Day: 0o2},
 			},
 		},
 	}

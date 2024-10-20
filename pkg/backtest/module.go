@@ -25,8 +25,10 @@ import (
 
 const StreamName = "backtest"
 
-type Stream stream.Stream
-type DependecyContainer stream.DependencyContainer
+type (
+	Stream             stream.Stream
+	DependecyContainer stream.DependencyContainer
+)
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
@@ -68,7 +70,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 						return fmt.Errorf("error starting container: %w", err)
 					}
 
-					for _ = range 30 {
+					for range 30 {
 						health, err := backtestContainer.GetHealth()
 						if err != nil {
 							return fmt.Errorf("error getting container health: %w", err)
