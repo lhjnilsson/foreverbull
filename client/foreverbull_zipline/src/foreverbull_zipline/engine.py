@@ -567,7 +567,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                         raise Exception("Cannot place orders without a running algorithm")
                     case _:
                         raise Exception(f"Unknown task {req.task}")
-            except StopExcecution as e:
+            except StopExcecution:
                 self.log.info("Stopping execution early")
                 return
             except Exception as e:

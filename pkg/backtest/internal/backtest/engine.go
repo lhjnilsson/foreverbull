@@ -15,8 +15,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var NoActiveExecution error = fmt.Errorf("no active execution")
-
 /*
 NewZiplineEngine
 Returns a Zipline backtest engine.

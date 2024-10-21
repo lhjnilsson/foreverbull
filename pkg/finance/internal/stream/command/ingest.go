@@ -16,10 +16,11 @@ import (
 )
 
 func Ingest(ctx context.Context, message stream.Message) error {
-	db, isDB := message.MustGet(stream.DBDep).(postgres.Query)
+	postgres, isDB := message.MustGet(stream.DBDep).(postgres.Query)
 	if !isDB {
 		return errors.New("db dependency casting failed")
 	}
+
 	marketdata, isMd := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
 	if !isMd {
 		return errors.New("marketdata dependency casting failed")
@@ -32,8 +33,8 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("error unmarshalling OHLCIngest payload: %w", err)
 	}
 
-	assets := repository.Asset{Conn: db}
-	ohlc := repository.OHLC{Conn: db}
+	assets := repository.Asset{Conn: postgres}
+	ohlc := repository.OHLC{Conn: postgres}
 
 	start, err := time.Parse("2006-01-02", command.Start)
 	if err != nil {

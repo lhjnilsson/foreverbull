@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime/debug"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -86,7 +85,6 @@ func NewNATSStream(jetstream nats.JetStreamContext, module string,
 	if err != nil {
 		return nil, fmt.Errorf("error creating table: %w", err)
 	}
-
 	return &NATSStream{
 		module:     module,
 		jt:         jetstream,
@@ -106,7 +104,6 @@ func (ns *NATSStream) CommandSubscriber(component, method string, cb func(contex
 			defer func() {
 				if r := recover(); r != nil {
 					log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
-					fmt.Println("stacktrace from panic: \n" + string(debug.Stack()))
 				}
 			}()
 
@@ -218,7 +215,10 @@ func (ns *NATSStream) Unsubscribe() error {
 }
 
 func (ns *NATSStream) Publish(ctx context.Context, msg Message) error {
-	m := msg.(*message)
+	m, isMsg := msg.(*message)
+	if !isMsg {
+		return fmt.Errorf("invalid message")
+	}
 	if m.ID == nil {
 		if err := ns.repository.CreateMessage(ctx, m); err != nil {
 			return fmt.Errorf("error creating message: %w", err)
@@ -249,6 +249,9 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 	for _, step := range orchestration.Steps {
 		for _, cmd := range step.Commands {
 			msg, isMsg := cmd.(*message)
+			if !isMsg {
+				return fmt.Errorf("command is not a message")
+			}
 			if msg.OrchestrationID == nil {
 				return fmt.Errorf("orchestration id is nil")
 			}
@@ -259,10 +262,6 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 
 			if msg.OrchestrationStepNumber == nil {
 				return errors.New("orchestration step number is nil")
-			}
-
-			if !isMsg {
-				return fmt.Errorf("command is not a message")
 			}
 
 			err := ns.repository.CreateMessage(ctx, msg)
@@ -278,16 +277,15 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 
 	for _, cmd := range orchestration.FallbackStep.Commands {
 		msg, isMsg := cmd.(*message)
+		if !isMsg {
+			return fmt.Errorf("command is not a message")
+		}
 		if msg.OrchestrationID == nil {
 			return fmt.Errorf("orchestration id is nil")
 		}
 
 		if msg.OrchestrationStep == nil {
 			return errors.New("orchestration step is nil")
-		}
-
-		if !isMsg {
-			return fmt.Errorf("command is not a message")
 		}
 
 		err := ns.repository.CreateMessage(ctx, msg)

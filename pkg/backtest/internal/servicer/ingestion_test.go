@@ -65,7 +65,7 @@ func (suite *IngestionServerTest) SetupSubTest() {
 	pb.RegisterIngestionServicerServer(suite.server, server)
 
 	go func() {
-		suite.server.Serve(suite.listner)
+		suite.server.Serve(suite.listner) // nolint:errcheck
 	}()
 
 	resolver.SetDefaultScheme("passthrough")

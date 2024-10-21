@@ -12,6 +12,7 @@ import (
 	"go.nanomsg.org/mangos/v3/protocol/rep"
 	"go.nanomsg.org/mangos/v3/protocol/req"
 	"go.nanomsg.org/mangos/v3/protocol/sub"
+
 	// Needed for Mangos to get needed meta- data.
 	_ "go.nanomsg.org/mangos/v3/transport/all" // for mangos transport.
 	"google.golang.org/protobuf/proto"
@@ -32,6 +33,7 @@ func sockError(err error) error {
 	case errors.Is(err, mangos.ErrSendTimeout):
 		return ErrSendTimeout
 	}
+
 	return fmt.Errorf("socket error: %w", err)
 }
 
@@ -73,7 +75,7 @@ func NewRequester(host string, port int, dial bool, options ...func(OptionSetter
 		return nil, fmt.Errorf("failed to create requester socket: %w", err)
 	}
 
-	if dial {
+	if dial { //nolint: nestif
 		err = req.Dial(fmt.Sprintf("tcp://%s:%d", host, port))
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial: %w", err)
@@ -175,7 +177,7 @@ func NewReplier(host string, port int, dial bool, options ...func(OptionSetter) 
 		return nil, fmt.Errorf("failed to create replier socket: %w", err)
 	}
 
-	if dial {
+	if dial { //nolint: nestif
 		err = rep.Dial(fmt.Sprintf("tcp://%s:%d", host, port))
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial: %w", err)

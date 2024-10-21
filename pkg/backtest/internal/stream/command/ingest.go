@@ -49,6 +49,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	if !isEngine {
 		return errors.New("error casting zipline engine")
 	}
+
 	ingestion := pb.Ingestion{
 		StartDate: pb_internal.DateStringToDate(command.Start),
 		EndDate:   pb_internal.DateStringToDate(command.End),
