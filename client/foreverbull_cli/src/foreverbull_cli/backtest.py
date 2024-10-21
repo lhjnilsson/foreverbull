@@ -117,15 +117,14 @@ def ingest():
         std_err.log("[red]Ingestion failed")
         exit(1)
 
-import time
+
 import logging
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.logging import RichHandler
 from rich.live import Live
 from rich.console import Console
 from rich.panel import Panel
 from rich.layout import Layout
-from rich.text import Text
+
 
 class LoggingHandler(logging.Handler):
     def __init__(self, layout, name):
@@ -162,14 +161,10 @@ def run(
     )
 
     layout = Layout()
-    layout.split(
-        Layout(name="logs", ratio=3),
-        Layout(name="progress", ratio=1)
-    )
+    layout.split(Layout(name="logs", ratio=3), Layout(name="progress", ratio=1))
     layout_handler = LoggingHandler(layout, "logs")
     layout_handler.setLevel(logging.INFO)
     layout_handler.setFormatter(logging.Formatter("%(message)s"))
-
 
     logger = logging.getLogger("rich")
     logger.setLevel(logging.DEBUG)
