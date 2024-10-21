@@ -163,8 +163,11 @@ func (e *engine) Start(ctx context.Context, image string, name string) (Containe
 			_, err := logs.Read(header)
 			if errors.Is(err, io.EOF) {
 				logs.Close()
-
 				break
+			}
+			if err != nil {
+				log.Err(err).Msg("error reading container logs")
+				return
 			}
 
 			if err != nil {

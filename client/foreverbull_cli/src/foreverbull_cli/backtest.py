@@ -117,6 +117,32 @@ def ingest():
         std_err.log("[red]Ingestion failed")
         exit(1)
 
+import time
+import logging
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.logging import RichHandler
+from rich.live import Live
+from rich.console import Console
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.text import Text
+
+class LoggingHandler(logging.Handler):
+    def __init__(self, layout, name):
+        super().__init__()
+        self.layout = layout
+        self.name = name
+        self.console = Console(record=True)
+        self.log_buffer = []
+
+    def emit(self, record):
+        log_entry = self.format(record)
+        self.log_buffer.append(log_entry)
+        self.console.clear()
+        for entry in self.log_buffer:
+            self.console.print(entry)
+        self.layout[self.name].update(Panel(self.console.export_text()))
+
 
 @backtest.command()
 def run(
@@ -126,7 +152,33 @@ def run(
     algo = Algorithm.from_file_path(file_path)
     std.print(f"Running backtest {name} with algorithm {file_path}")
 
-    with algo.backtest_session(name) as session:
+    console = Console()
+    progress = Progress(
+        SpinnerColumn(),
+        "[progress.description]{task.description}",
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TextColumn("[progress.completed]{task.completed}/{task.total}"),
+    )
+
+    layout = Layout()
+    layout.split(
+        Layout(name="logs", ratio=3),
+        Layout(name="progress", ratio=1)
+    )
+    layout_handler = LoggingHandler(layout, "logs")
+    layout_handler.setLevel(logging.INFO)
+    layout_handler.setFormatter(logging.Formatter("%(message)s"))
+
+
+    logger = logging.getLogger("rich")
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(layout_handler)
+
+    with algo.backtest_session(name) as session, Live(layout, refresh_per_second=4):
+        task = progress.add_task("Processing...", total=100)
+        layout["progress"].update(Panel(progress, width=console.width))
+
         backtest = session.get_default()
         std.print(f"Running Execution for {backtest.name}")
         for period in session.run_execution(
@@ -135,56 +187,4 @@ def run(
             [s for s in backtest.symbols],
         ):
             pass
-        std.print(f"Execution completed for {backtest.name}")
-
-
-"""
-@backtest.command()
-def run(
-    file_path: Annotated[str, typer.Argument(help="name of the file to use")],
-    backtest_name: Annotated[str, typer.Option(help="name of the backtest")],
-):
-    def show_progress(session: entity.backtest.Session):
-        with Progress() as progress:
-            task = progress.add_task("Starting", total=2)
-            previous_status = session.statuses[0].status
-            while not progress.finished:
-                time.sleep(0.5)
-                session = broker.backtest.get_session(session.id)
-                status = session.statuses[0].status
-                if previous_status and previous_status != status:
-                    match status:
-                        case entity.backtest.SessionStatusType.RUNNING:
-                            progress.advance(task)
-                            progress.update(task, description="Running")
-                        case entity.backtest.SessionStatusType.COMPLETED:
-                            progress.advance(task)
-                            progress.update(task, description="Completed")
-                        case entity.backtest.SessionStatusType.FAILED:
-                            std_err.log(f"[red]Error while running session: {session.statuses[0].error}")
-                            exit(1)
-                    previous_status = status
-
-        table = Table(title="Session")
-        table.add_column("Id")
-        table.add_column("Status")
-        table.add_column("Date")
-        table.add_column("Executions")
-        table.add_row(
-            session.id,
-            session.statuses[0].status.value if session.statuses else "Unknown",
-            session.statuses[0].occurred_at.isoformat() if session.statuses else "Unknown",
-            str(session.executions),
-        )
-        std.print(table)
-
-    algorithm = Algorithm.from_file_path(file_path)
-    with algorithm.backtest_session(backtest_name) as session:
-        default = session.get_default()
-        session.run_execution(
-            start=default.start,
-            end=default.end,
-            symbols=default.symbols,
-            benchmark=default.benchmark,
-        )
-"""
+        logger.info(f"Execution completed for {backtest.name}")
