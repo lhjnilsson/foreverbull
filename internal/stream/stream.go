@@ -248,10 +248,7 @@ func (ns *NATSStream) Publish(ctx context.Context, msg Message) error {
 func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *MessageOrchestration) error {
 	for _, step := range orchestration.Steps {
 		for _, cmd := range step.Commands {
-			msg, isMsg := cmd.(*message)
-			if !isMsg {
-				return fmt.Errorf("command is not a message")
-			}
+			msg := cmd.(*message)
 			if msg.OrchestrationID == nil {
 				return fmt.Errorf("orchestration id is nil")
 			}
@@ -276,10 +273,7 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 	}
 
 	for _, cmd := range orchestration.FallbackStep.Commands {
-		msg, isMsg := cmd.(*message)
-		if !isMsg {
-			return fmt.Errorf("command is not a message")
-		}
+		msg := cmd.(*message)
 		if msg.OrchestrationID == nil {
 			return fmt.Errorf("orchestration id is nil")
 		}
