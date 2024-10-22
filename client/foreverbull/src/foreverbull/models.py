@@ -20,7 +20,7 @@ from sqlalchemy import Connection, create_engine, engine
 
 # Hacky way to get the database URL, TODO: find a better way
 def get_engine(url: str):
-    log = logging.getLogger(__name__)
+    log = logging.getLogger().getChild(__name__)
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)

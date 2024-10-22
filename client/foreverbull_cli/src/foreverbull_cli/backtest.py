@@ -10,6 +10,10 @@ from typing_extensions import Annotated
 import json
 from pathlib import Path
 from foreverbull import Algorithm
+from foreverbull_cli.logger import LoggingHandler
+import logging
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.live import Live
 
 backtest = typer.Typer()
 
@@ -118,68 +122,42 @@ def ingest():
         exit(1)
 
 
-import logging
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.live import Live
-from rich.console import Console
-from rich.panel import Panel
-from rich.layout import Layout
-
-
-class LoggingHandler(logging.Handler):
-    def __init__(self, layout, name):
-        super().__init__()
-        self.layout = layout
-        self.name = name
-        self.console = Console(record=True)
-        self.log_buffer = []
-
-    def emit(self, record):
-        log_entry = self.format(record)
-        self.log_buffer.append(log_entry)
-        self.console.clear()
-        for entry in self.log_buffer:
-            self.console.print(entry)
-        self.layout[self.name].update(Panel(self.console.export_text()))
-
-
 @backtest.command()
 def run(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     file_path: Annotated[str, typer.Argument(help="name of the backtest")],
 ):
-    algo = Algorithm.from_file_path(file_path)
-    std.print(f"Running backtest {name} with algorithm {file_path}")
-
-    console = Console()
     progress = Progress(
         SpinnerColumn(),
         "[progress.description]{task.description}",
         BarColumn(),
         "[progress.percentage]{task.percentage:>3.0f}%",
-        TextColumn("[progress.completed]{task.completed}/{task.total}"),
+        TextColumn("[progress.completed]"),
     )
+    live = Live(progress, refresh_per_second=120)
 
-    layout = Layout()
-    layout.split(Layout(name="logs", ratio=3), Layout(name="progress", ratio=1))
-    layout_handler = LoggingHandler(layout, "logs")
-    layout_handler.setLevel(logging.INFO)
-    layout_handler.setFormatter(logging.Formatter("%(message)s"))
-
-    logger = logging.getLogger("rich")
+    layout_handler = LoggingHandler(live)
+    logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.addHandler(layout_handler)
 
-    with algo.backtest_session(name) as session, Live(layout, refresh_per_second=4):
-        task = progress.add_task("Processing...", total=100)
-        layout["progress"].update(Panel(progress, width=console.width))
-
+    with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
-        std.print(f"Running Execution for {backtest.name}")
+        logger.info(f"Execution for {backtest.name}")
+        total_months = (
+            (backtest.end_date.year - backtest.start_date.year) * 12
+            + backtest.end_date.month
+            - backtest.start_date.month
+        )
+
+        task = progress.add_task(f"Running Execution for {backtest.name}", total=total_months)
+        current_month = backtest.start_date.month
         for period in session.run_execution(
             backtest.start_date,
             backtest.end_date,
             [s for s in backtest.symbols],
         ):
-            pass
+            if period.timestamp.ToDatetime().month != current_month:
+                progress.update(task, advance=1)
+                current_month = period.timestamp.ToDatetime().month
         logger.info(f"Execution completed for {backtest.name}")

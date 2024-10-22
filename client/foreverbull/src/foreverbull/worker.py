@@ -31,7 +31,7 @@ class Worker(ABC):
 
 class WorkerInstance(Worker):
     def __init__(self, file_path: str):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger().getChild(__name__)
         self._file_path = file_path
 
         self._broker_socket: pynng.Socket | None = None
@@ -144,7 +144,7 @@ class WorkerDaemon(WorkerInstance):
             handler = logging.handlers.QueueHandler(self._logging_queue)
             logging.basicConfig(level=logging.DEBUG, handlers=[handler])
             pass
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger().getChild(__name__)
         try:
             responder = pynng.Respondent0(
                 dial=self._survey_address,
@@ -195,9 +195,11 @@ class WorkerPool(Worker):
         self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
         self._worker_surveyor_socket: pynng.Surveyor0
         self._workers: list[threading.Thread | Process] = []
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger().getChild(__name__)
         self._log_queue = Queue()
-        self._log_listener = logging.handlers.QueueListener(self._log_queue, logging.StreamHandler())
+        self._log_listener = logging.handlers.QueueListener(
+            self._log_queue, *logging.getLogger().handlers, respect_handler_level=True
+        )
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
 
     def __enter__(
