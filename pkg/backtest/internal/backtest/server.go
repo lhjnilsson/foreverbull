@@ -163,7 +163,11 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.G
 
 func (s *grpcSessionServer) StopServer(ctx context.Context, req *backtest_pb.StopServerRequest) (*backtest_pb.StopServerResponse, error) {
 	log.Debug().Any("request", req).Msg("stop server")
+	if s.wp != nil {
+		if err := s.wp.Close(); err != nil {
+			log.Error().Err(err).Msg("error closing worker pool")
+		}
+	}
 	close(s.activity)
-
 	return &backtest_pb.StopServerResponse{}, nil
 }

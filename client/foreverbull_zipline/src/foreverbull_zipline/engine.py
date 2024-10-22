@@ -86,7 +86,7 @@ class EngineProcess(multiprocessing.Process, Engine):
     ):
         self._socket_file_path = socket_file_path
         self._logging_queue = logging_queue
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger().getChild(__name__)
         self.is_ready = multiprocessing.Event()
         super(EngineProcess, self).__init__()
 
@@ -225,10 +225,10 @@ class EngineProcess(multiprocessing.Process, Engine):
         if self._logging_queue is not None:
             handler = logging.handlers.QueueHandler(self._logging_queue)
             logging.basicConfig(handlers=[handler], level=logging.DEBUG)
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger().getChild(__name__)
         self.log.info("Starting Execution Process")
         self._trading_algorithm: TradingAlgorithm | None = None
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger().getChild(__name__)
 
         if os.path.exists(self._socket_file_path):
             os.remove(self._socket_file_path)

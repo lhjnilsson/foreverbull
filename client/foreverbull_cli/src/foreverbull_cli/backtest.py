@@ -10,6 +10,10 @@ from typing_extensions import Annotated
 import json
 from pathlib import Path
 from foreverbull import Algorithm
+from foreverbull_cli.logger import LoggingHandler
+import logging
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.live import Live
 
 backtest = typer.Typer()
 
@@ -123,68 +127,37 @@ def run(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     file_path: Annotated[str, typer.Argument(help="name of the backtest")],
 ):
-    algo = Algorithm.from_file_path(file_path)
-    std.print(f"Running backtest {name} with algorithm {file_path}")
+    progress = Progress(
+        SpinnerColumn(),
+        "[progress.description]{task.description}",
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TextColumn("[progress.completed]"),
+    )
+    live = Live(progress, refresh_per_second=120)
 
-    with algo.backtest_session(name) as session:
+    layout_handler = LoggingHandler(live)
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(layout_handler)
+
+    with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
-        std.print(f"Running Execution for {backtest.name}")
+        logger.info(f"Execution for {backtest.name}")
+        total_months = (
+            (backtest.end_date.year - backtest.start_date.year) * 12
+            + backtest.end_date.month
+            - backtest.start_date.month
+        )
+
+        task = progress.add_task(f"Running Execution for {backtest.name}", total=total_months)
+        current_month = backtest.start_date.month
         for period in session.run_execution(
             backtest.start_date,
             backtest.end_date,
             [s for s in backtest.symbols],
         ):
-            pass
-        std.print(f"Execution completed for {backtest.name}")
-
-
-"""
-@backtest.command()
-def run(
-    file_path: Annotated[str, typer.Argument(help="name of the file to use")],
-    backtest_name: Annotated[str, typer.Option(help="name of the backtest")],
-):
-    def show_progress(session: entity.backtest.Session):
-        with Progress() as progress:
-            task = progress.add_task("Starting", total=2)
-            previous_status = session.statuses[0].status
-            while not progress.finished:
-                time.sleep(0.5)
-                session = broker.backtest.get_session(session.id)
-                status = session.statuses[0].status
-                if previous_status and previous_status != status:
-                    match status:
-                        case entity.backtest.SessionStatusType.RUNNING:
-                            progress.advance(task)
-                            progress.update(task, description="Running")
-                        case entity.backtest.SessionStatusType.COMPLETED:
-                            progress.advance(task)
-                            progress.update(task, description="Completed")
-                        case entity.backtest.SessionStatusType.FAILED:
-                            std_err.log(f"[red]Error while running session: {session.statuses[0].error}")
-                            exit(1)
-                    previous_status = status
-
-        table = Table(title="Session")
-        table.add_column("Id")
-        table.add_column("Status")
-        table.add_column("Date")
-        table.add_column("Executions")
-        table.add_row(
-            session.id,
-            session.statuses[0].status.value if session.statuses else "Unknown",
-            session.statuses[0].occurred_at.isoformat() if session.statuses else "Unknown",
-            str(session.executions),
-        )
-        std.print(table)
-
-    algorithm = Algorithm.from_file_path(file_path)
-    with algorithm.backtest_session(backtest_name) as session:
-        default = session.get_default()
-        session.run_execution(
-            start=default.start,
-            end=default.end,
-            symbols=default.symbols,
-            benchmark=default.benchmark,
-        )
-"""
+            if period.timestamp.ToDatetime().month != current_month:
+                progress.update(task, advance=1)
+                current_month = period.timestamp.ToDatetime().month
+        logger.info(f"Execution completed for {backtest.name}")
