@@ -5,11 +5,10 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker.errors
 import typer
-from rich.progress import Progress, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
 from foreverbull_cli.output import console
-from foreverbull_cli.output import FBSpinnerColumn
+from foreverbull_cli.output import FBProgress
 
 import docker
 
@@ -139,11 +138,7 @@ def start(
             return e
         return None
 
-    with Progress(
-        FBSpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        transient=False,
-    ) as progress:
+    with FBProgress() as progress:
         download_images = progress.add_task("Download Images", total=2)
         net_task_id = progress.add_task("Creating Environment", total=2)
         postgres_task_id = progress.add_task("Postgres", total=2)
@@ -365,10 +360,7 @@ def start(
 @env.command()
 def stop():
     d = docker.from_env()
-    with Progress(
-        FBSpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-    ) as progress:
+    with FBProgress() as progress:
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
         nats_task_id = progress.add_task("NATS", total=2)
