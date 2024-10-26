@@ -4,21 +4,18 @@ import typer
 from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2, ingestion_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_proto_date
-from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
 import json
 from pathlib import Path
 from foreverbull import Algorithm
-from foreverbull_cli.logger import LoggingHandler
 import logging
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.live import Live
+from foreverbull_cli.output import console
 
 backtest = typer.Typer()
-
-std = Console()
-std_err = Console(stderr=True)
+log = logging.getLogger().getChild(__name__)
 
 
 @backtest.command()
@@ -39,7 +36,7 @@ def list():
             ",".join(backtest.symbols),
             backtest.benchmark,
         )
-    std.print(table)
+    console.print(table)
 
 
 @backtest.command()
@@ -82,7 +79,7 @@ def create(
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
-    std.print(table)
+    console.print(table)
 
 
 @backtest.command()
@@ -105,7 +102,7 @@ def get(
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
-    std.print(table)
+    console.print(table)
 
 
 @backtest.command()
@@ -114,11 +111,11 @@ def ingest():
     for _ in range(60):
         _, ingestion_status = broker.backtest.get_ingestion()
         if ingestion_status == ingestion_pb2.IngestionStatus.READY:
-            std.print("Ingestion completed")
+            console.print("Ingestion completed")
             break
         time.sleep(1)
     else:
-        std_err.log("[red]Ingestion failed")
+        log.error("[red]Ingestion failed")
         exit(1)
 
 
@@ -136,14 +133,9 @@ def run(
     )
     live = Live(progress, refresh_per_second=120)
 
-    layout_handler = LoggingHandler(live)
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(layout_handler)
-
     with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
-        logger.info(f"Execution for {backtest.name}")
+        log.info(f"Execution for {backtest.name}")
         total_months = (
             (backtest.end_date.year - backtest.start_date.year) * 12
             + backtest.end_date.month
@@ -160,4 +152,4 @@ def run(
             if period.timestamp.ToDatetime().month != current_month:
                 progress.update(task, advance=1)
                 current_month = period.timestamp.ToDatetime().month
-        logger.info(f"Execution completed for {backtest.name}")
+        log.info(f"Execution completed for {backtest.name}")

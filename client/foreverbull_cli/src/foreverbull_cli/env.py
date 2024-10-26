@@ -5,18 +5,16 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker.errors
 import typer
-from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
+from foreverbull_cli.output import console
 
 import docker
 
 version = "0.1.0"
 
 env = typer.Typer()
-
-std = Console()
 
 INIT_DB_SCIPT = """
 #!/bin/bash
@@ -110,7 +108,7 @@ def status():
         "Foreverbull",
         foreverbull_image.short_id if foreverbull_image else "Not found",
     )
-    std.print(table)
+    console.print(table)
 
 
 ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
@@ -127,7 +125,7 @@ def start(
     backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
 ):
     d = docker.from_env()
-    std.print("Starting environment")
+    console.print("Starting environment")
 
     def get_or_pull_image(image_name):
         try:
@@ -356,13 +354,13 @@ def start(
                 exit(1)
             time.sleep(2)
         progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
-    std.print("Environment started")
+    console.print("Environment started")
 
 
 @env.command()
 def stop():
     d = docker.from_env()
-    std.print("Stopping environment")
+    console.print("Stopping environment")
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -406,4 +404,4 @@ def stop():
         except docker.errors.NotFound:
             pass
         progress.update(net_task_id, description="[blue]Network removed", completed=True)
-    std.print("Environment stopped")
+    console.print("Environment stopped")
