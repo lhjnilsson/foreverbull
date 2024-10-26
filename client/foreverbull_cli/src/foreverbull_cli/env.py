@@ -5,18 +5,16 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 import docker.errors
 import typer
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
+from foreverbull_cli.output import console
+from foreverbull_cli.output import FBProgress
 
 import docker
 
 version = "0.1.0"
 
 env = typer.Typer()
-
-std = Console()
 
 INIT_DB_SCIPT = """
 #!/bin/bash
@@ -110,7 +108,7 @@ def status():
         "Foreverbull",
         foreverbull_image.short_id if foreverbull_image else "Not found",
     )
-    std.print(table)
+    console.print(table)
 
 
 ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
@@ -127,7 +125,6 @@ def start(
     backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
 ):
     d = docker.from_env()
-    std.print("Starting environment")
 
     def get_or_pull_image(image_name):
         try:
@@ -141,19 +138,16 @@ def start(
             return e
         return None
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        transient=False,
-    ) as progress:
-        download_images = progress.add_task("[yellow]Downloading images")
-        net_task_id = progress.add_task("[yellow]Setting up network")
-        postgres_task_id = progress.add_task("[yellow]Setting up postgres")
-        nats_task_id = progress.add_task("[yellow]Setting up nats")
-        minio_task_id = progress.add_task("[yellow]Setting up minio")
-        health_task_id = progress.add_task("[yellow]Waiting for services to start")
-        foreverbull_task_id = progress.add_task("[yellow]Setting up foreverbull")
+    with FBProgress() as progress:
+        download_images = progress.add_task("Download Images", total=2)
+        net_task_id = progress.add_task("Creating Environment", total=2)
+        postgres_task_id = progress.add_task("Postgres", total=2)
+        nats_task_id = progress.add_task("NATS", total=2)
+        minio_task_id = progress.add_task("Minio", total=2)
+        health_task_id = progress.add_task("Waiting for services to start", total=2)
+        foreverbull_task_id = progress.add_task("Foreverbull", total=2)
 
+        progress.update(download_images, completed=1)
         with ThreadPoolExecutor() as executor:
             futures = []
             for image in [
@@ -172,15 +166,16 @@ def start(
                         description=f"[red]Failed to download images: {future.result()}",
                     )
                     exit(1)
+        progress.update(download_images, completed=2)
 
-        progress.update(download_images, description="[blue]Images downloaded", completed=True)
-
+        progress.update(net_task_id, completed=1)
         try:
             d.networks.get(NETWORK_NAME)
         except docker.errors.NotFound:
             d.networks.create(NETWORK_NAME, driver="bridge")
-        progress.update(net_task_id, description="[blue]Network created", completed=True)
+        progress.update(net_task_id, completed=2)
 
+        progress.update(postgres_task_id, completed=1)
         try:
             postgres_container = d.containers.get("foreverbull_postgres")
             if postgres_container.status != "running":
@@ -221,11 +216,12 @@ def start(
                 progress.update(
                     postgres_task_id,
                     description=f"[red]Failed to start postgres: {e}",
-                    completed=True,
+                    completed=100,
                 )
                 exit(1)
-        progress.update(postgres_task_id, description="[blue]Postgres started", completed=True)
+        progress.update(postgres_task_id, completed=2)
 
+        progress.update(nats_task_id, completed=1)
         try:
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.status != "running":
@@ -253,11 +249,12 @@ def start(
                 progress.update(
                     nats_task_id,
                     description=f"[red]Failed to start nats: {e}",
-                    completed=True,
+                    completed=2,
                 )
                 exit(1)
-        progress.update(nats_task_id, description="[blue]NATS started", completed=True)
+        progress.update(nats_task_id, completed=2)
 
+        progress.update(minio_task_id, completed=1)
         try:
             d.containers.get("foreverbull_minio")
         except docker.errors.NotFound:
@@ -275,11 +272,12 @@ def start(
                 progress.update(
                     minio_task_id,
                     description=f"[red]Failed to start minio: {e}",
-                    completed=True,
+                    completed=2,
                 )
                 exit(1)
-        progress.update(minio_task_id, description="[blue]Minio started", completed=True)
+        progress.update(minio_task_id, completed=2)
 
+        progress.update(health_task_id, completed=1)
         for _ in range(100):
             time.sleep(0.2)
             postgres_container = d.containers.get("foreverbull_postgres")
@@ -288,16 +286,17 @@ def start(
             nats_container = d.containers.get("foreverbull_nats")
             if nats_container.health != "healthy":
                 continue
-            progress.update(health_task_id, description="[blue]All services healthy", completed=True)
+            progress.update(health_task_id, completed=2)
             break
         else:
             progress.update(
                 health_task_id,
                 description="[red]Failed to start services, timeout",
-                completed=True,
+                completed=2,
             )
             exit(1)
 
+        progress.update(foreverbull_task_id, completed=1)
         try:
             foreverbull_container = d.containers.get("foreverbull_foreverbull")
             if foreverbull_container.status != "running":
@@ -351,59 +350,58 @@ def start(
                 progress.update(
                     foreverbull_task_id,
                     description=f"[red]Failed to start foreverbull: {e}",
-                    completed=True,
+                    completed=100,
                 )
                 exit(1)
             time.sleep(2)
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull started", completed=True)
-    std.print("Environment started")
+        progress.update(foreverbull_task_id, completed=2)
 
 
 @env.command()
 def stop():
     d = docker.from_env()
-    std.print("Stopping environment")
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-    ) as progress:
-        net_task_id = progress.add_task("[yellow]Tearing down network")
-        postgres_task_id = progress.add_task("[yellow]Tearing down postgres")
-        nats_task_id = progress.add_task("[yellow]Tearing down nats")
-        minio_task_id = progress.add_task("[yellow]Tearing down minio")
-        foreverbull_task_id = progress.add_task("[yellow]Tearing down foreverbull")
+    with FBProgress() as progress:
+        foreverbull_task_id = progress.add_task("Foreverbull", total=2)
+        minio_task_id = progress.add_task("Minio", total=2)
+        nats_task_id = progress.add_task("NATS", total=2)
+        postgres_task_id = progress.add_task("Postgres", total=2)
+        net_task_id = progress.add_task("Removing Environment", total=2)
 
+        progress.update(foreverbull_task_id, completed=1)
         try:
             d.containers.get("foreverbull_foreverbull").stop()
             d.containers.get("foreverbull_foreverbull").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(foreverbull_task_id, description="[blue]Foreverbull removed", completed=True)
+        progress.update(foreverbull_task_id, completed=2)
 
+        progress.update(minio_task_id, completed=1)
         try:
             d.containers.get("foreverbull_minio").stop()
             d.containers.get("foreverbull_minio").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(minio_task_id, description="[blue]Minio removed", completed=True)
+        progress.update(minio_task_id, completed=2)
 
+        progress.update(minio_task_id, completed=1)
         try:
             d.containers.get("foreverbull_nats").stop()
             d.containers.get("foreverbull_nats").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(nats_task_id, description="[blue]NATS removed", completed=True)
+        progress.update(nats_task_id, completed=2)
 
+        progress.update(postgres_task_id, completed=1)
         try:
             d.containers.get("foreverbull_postgres").stop()
             d.containers.get("foreverbull_postgres").remove()
         except docker.errors.NotFound:
             pass
-        progress.update(postgres_task_id, description="[blue]Postgres removed", completed=True)
+        progress.update(postgres_task_id, completed=2)
 
+        progress.update(net_task_id, completed=1)
         try:
             d.networks.get(NETWORK_NAME).remove()
         except docker.errors.NotFound:
             pass
-        progress.update(net_task_id, description="[blue]Network removed", completed=True)
-    std.print("Environment stopped")
+        progress.update(net_task_id, completed=2)
