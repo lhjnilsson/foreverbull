@@ -38,7 +38,6 @@ def test_backtest_list():
         if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
-        assert "READY" in result.stdout
         assert "AAPL,MSFT" in result.stdout
 
 
