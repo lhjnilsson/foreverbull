@@ -4,19 +4,25 @@ import multiprocessing
 import multiprocessing.synchronize
 import os
 import threading
-from abc import ABC, abstractmethod
-from functools import wraps
-from multiprocessing import Process, Queue
-from multiprocessing.synchronize import Event
 import time
+
+from abc import ABC
+from abc import abstractmethod
+from functools import wraps
+from multiprocessing import Process
+from multiprocessing import Queue
+from multiprocessing.synchronize import Event
 
 import pynng
 import sqlalchemy
-from foreverbull import exceptions, models
+
+from foreverbull import exceptions
+from foreverbull import models
 from foreverbull.models import get_engine
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
+from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2
 
 
 class Worker(ABC):
@@ -39,7 +45,7 @@ class WorkerInstance(Worker):
         self._database_engine: sqlalchemy.Engine | None = None
 
     def configure_execution(self, req: worker_pb2.ExecutionConfiguration) -> None:
-        self.logger.info("configuring worker")
+        self.logger.debug("configuring worker")
         try:
             self._algo = models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
@@ -96,7 +102,7 @@ class WorkerInstance(Worker):
                 request = worker_service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
                 response = worker_service_pb2.WorkerResponse(task=request.task, error=None)
-                self.logger.info("Processing symbols: %s", request.symbols)
+                self.logger.debug("Processing symbols: %s", request.symbols)
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
                         request.task,
@@ -104,7 +110,7 @@ class WorkerInstance(Worker):
                         request.portfolio,
                         [symbol for symbol in request.symbols],
                     )
-                self.logger.info("Sending orders to broker: %s", orders)
+                self.logger.debug("Sending orders to broker: %s", orders)
                 for order in orders:
                     response.orders.append(finance_pb2.Order(symbol=order.symbol, amount=order.amount))
                 context_socket.send(response.SerializeToString())
@@ -165,7 +171,7 @@ class WorkerDaemon(WorkerInstance):
             request = common_pb2.Request()
             try:
                 request.ParseFromString(responder.recv())
-                self.logger.info(f"Received request: {request.task}")
+                self.logger.debug(f"Received request: {request.task}")
                 if request.task == "configure":
                     req = worker_pb2.ExecutionConfiguration()
                     req.ParseFromString(request.data)
@@ -185,7 +191,7 @@ class WorkerDaemon(WorkerInstance):
                 self.logger.exception(repr(e))
                 response = common_pb2.Response(task=request.task, error=repr(e))
                 responder.send(response.SerializeToString())
-            self.logger.info(f"Request processed: {request.task}")
+            self.logger.debug(f"Request processed: {request.task}")
         responder.close()
         return
 

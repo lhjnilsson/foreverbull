@@ -114,12 +114,10 @@ func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtes
 			case portfolioCh <- period.Portfolio:
 			default:
 			}
-
 			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
 				close(portfolioCh)
-
 				return
 			}
 
