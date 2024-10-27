@@ -1,5 +1,6 @@
 from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
 from foreverbull.pb.foreverbull.backtest import session_pb2 as _session_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -66,3 +67,31 @@ class GetSessionResponse(_message.Message):
     SESSION_FIELD_NUMBER: _ClassVar[int]
     session: _session_pb2.Session
     def __init__(self, session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ...) -> None: ...
+
+class ListExecutionRequest(_message.Message):
+    __slots__ = ("backtest", "session_id")
+    BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    backtest: str
+    session_id: str
+    def __init__(self, backtest: _Optional[str] = ..., session_id: _Optional[str] = ...) -> None: ...
+
+class ListExecutionResponse(_message.Message):
+    __slots__ = ("executions",)
+    EXECUTIONS_FIELD_NUMBER: _ClassVar[int]
+    executions: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Execution]
+    def __init__(self, executions: _Optional[_Iterable[_Union[_execution_pb2.Execution, _Mapping]]] = ...) -> None: ...
+
+class GetExecutionRequest(_message.Message):
+    __slots__ = ("execution_id",)
+    EXECUTION_ID_FIELD_NUMBER: _ClassVar[int]
+    execution_id: str
+    def __init__(self, execution_id: _Optional[str] = ...) -> None: ...
+
+class GetExecutionResponse(_message.Message):
+    __slots__ = ("execution", "periods")
+    EXECUTION_FIELD_NUMBER: _ClassVar[int]
+    PERIODS_FIELD_NUMBER: _ClassVar[int]
+    execution: _execution_pb2.Execution
+    periods: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Period]
+    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...) -> None: ...

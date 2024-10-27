@@ -178,27 +178,6 @@ func (s *SessionTest) TestRunExecution() {
 	s.Require().Equal(5, entries)
 }
 
-func (s *SessionTest) TestGetExecution() {
-	executions := repository.Execution{Conn: s.conn}
-	execution, err := executions.Create(context.TODO(), s.session.Id,
-		s.backtest.StartDate, s.backtest.EndDate,
-		[]string{"AAPL"}, nil)
-	s.Require().NoError(err)
-
-	rsp, err := s.client.GetExecution(context.Background(), &backtest_pb.GetExecutionRequest{
-		ExecutionId: execution.Id,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(rsp)
-	s.Require().Equal(execution.Id, rsp.Execution.Id)
-	select {
-	case _, running := <-s.activity:
-		s.Require().True(running)
-	default:
-		s.Require().Fail("activity channel should be closed")
-	}
-}
-
 func (s *SessionTest) TestStopServer() {
 	rsp, err := s.client.StopServer(context.Background(), &backtest_pb.StopServerRequest{})
 	s.Require().NoError(err)
