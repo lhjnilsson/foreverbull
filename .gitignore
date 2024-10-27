@@ -181,3 +181,5 @@ yarn-error.log*
 # Loki metric folder
 internal/test_helper/metrics/
 client/baseline_performance.pickle
+
+.foreverbull

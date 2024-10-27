@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -15,6 +16,48 @@ import docker
 version = "0.1.0"
 
 env = typer.Typer()
+
+
+class Environment:
+    def __init__(self, path: str | None = None):
+        if path is None:
+            self.path = Path(".") / ".foreverbull"
+        else:
+            self.path = Path(path) / ".foreverbull"
+        if not self.path.exists():
+            self.path.mkdir(parents=True)
+        for loc in [
+            self.postgres_location,
+            self.minio_location,
+            self.nats_location,
+        ]:
+            if not loc.exists():
+                loc.mkdir()
+
+    @property
+    def postgres_location(self) -> Path:
+        return self.path / "postgres"
+
+    @property
+    def minio_location(self) -> Path:
+        return self.path / "minio"
+
+    @property
+    def nats_location(self) -> Path:
+        return self.path / "nats"
+
+
+_environment: Environment
+
+
+@env.callback()
+def setup_path(
+    ctx: typer.Context,
+    path: str = typer.Option(None, "-p", help="Path to foreverbull configuration"),
+):
+    global _environment
+    _environment = Environment(path)
+
 
 INIT_DB_SCIPT = """
 #!/bin/bash
@@ -198,6 +241,7 @@ def start(
                     ports={"5432/tcp": 5432},
                     environment={
                         "POSTGRES_PASSWORD": "foreverbull",
+                        "PGDATA": "/pgdata",
                     },
                     healthcheck={
                         "test": ["CMD", "pg_isready", "-U", "foreverbull"],
@@ -209,7 +253,11 @@ def start(
                         init_db_file.name: {
                             "bind": "/docker-entrypoint-initdb.d/init.sh",
                             "mode": "ro",
-                        }
+                        },
+                        str((_environment.postgres_location / "data").absolute()): {
+                            "bind": "/pgdata",
+                            "mode": "rw",
+                        },
                     },
                 )
             except Exception as e:
@@ -243,6 +291,12 @@ def start(
                         "timeout": 5000000000,
                         "retries": 5,
                     },
+                    volumes={
+                        str((_environment.nats_location / "data").absolute()): {
+                            "bind": "/var/lib/nats/data",
+                            "mode": "rw",
+                        },
+                    },
                     command="-js -sd /var/lib/nats/data",
                 )
             except Exception as e:
@@ -266,6 +320,12 @@ def start(
                     network=NETWORK_NAME,
                     hostname="minio",
                     ports={"9000/tcp": 9000},
+                    volumes={
+                        str((_environment.minio_location / "data").absolute()): {
+                            "bind": "/data",
+                            "mode": "rw",
+                        },
+                    },
                     command='server --console-address ":9001" /data',
                 )
             except Exception as e:
