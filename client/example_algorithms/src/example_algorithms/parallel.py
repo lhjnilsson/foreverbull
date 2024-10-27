@@ -1,6 +1,11 @@
 import logging
 
-from foreverbull import Algorithm, Asset, Function, Order, Portfolio
+from foreverbull import Algorithm
+from foreverbull import Asset
+from foreverbull import Function
+from foreverbull import Order
+from foreverbull import Portfolio
+
 
 logger = logging.getLogger("parallel")
 

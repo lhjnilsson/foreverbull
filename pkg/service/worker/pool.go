@@ -37,6 +37,10 @@ func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
 		return nil, errors.New("algorithm is not set")
 	}
 
+	if len(algo.Functions) == 0 {
+		log.Warn().Any("algorithm", algo).Msg("no functions in algorithm")
+	}
+
 	namespace := CreateNamespace(algo.Namespaces)
 
 	p := &pool{Socket: poolSocket, NamespaceSocket: namespaceSocket, algo: algo, namespace: namespace}
@@ -89,7 +93,14 @@ func (p *pool) startNamespaceListener() {
 	}
 }
 
-func (p *pool) orderedFunctions() <-chan *worker_pb.Algorithm_Function {
+func (p *pool) orderedFunctions() (<-chan *worker_pb.Algorithm_Function, error) {
+	if p.algo == nil {
+		return nil, errors.New("algorithm not set")
+	}
+	if len(p.algo.Functions) == 0 {
+		return nil, errors.New("no functions in algorithm")
+	}
+
 	functionCh := make(chan *worker_pb.Algorithm_Function)
 	go func() {
 		for _, function := range p.algo.Functions {
@@ -113,7 +124,7 @@ func (p *pool) orderedFunctions() <-chan *worker_pb.Algorithm_Function {
 		close(functionCh)
 	}()
 
-	return functionCh
+	return functionCh, nil
 }
 
 func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
@@ -138,7 +149,10 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 
 	var orders []*finance_pb.Order
 
-	functions := p.orderedFunctions()
+	functions, err := p.orderedFunctions()
+	if err != nil {
+		return nil, fmt.Errorf("error getting ordered functions: %w", err)
+	}
 	for function := range functions {
 		if function.ParallelExecution {
 			group, _ := errgroup.WithContext(ctx)

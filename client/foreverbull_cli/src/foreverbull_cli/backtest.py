@@ -1,18 +1,28 @@
-from datetime import date
+import json
+import logging
 import time
+
+from datetime import date
+from pathlib import Path
+
 import typer
-from foreverbull import broker
-from foreverbull.pb.foreverbull.backtest import backtest_pb2, ingestion_pb2
-from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_proto_date
+
+from rich.live import Live
+from rich.progress import BarColumn
+from rich.progress import Progress
+from rich.progress import SpinnerColumn
+from rich.progress import TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
-import json
-from pathlib import Path
+
 from foreverbull import Algorithm
-import logging
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.live import Live
+from foreverbull import broker
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+from foreverbull.pb.pb_utils import from_proto_date_to_pydate
+from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import console
+
 
 backtest = typer.Typer()
 log = logging.getLogger().getChild(__name__)
@@ -22,7 +32,6 @@ log = logging.getLogger().getChild(__name__)
 def list():
     table = Table(title="Backtests")
     table.add_column("Name")
-    table.add_column("Status")
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Symbols")
@@ -30,7 +39,6 @@ def list():
     for backtest in broker.backtest.list():
         table.add_row(
             backtest.name,
-            (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
             (from_proto_date_to_pydate(backtest.start_date).isoformat()),
             (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
             ",".join(backtest.symbols),
@@ -65,7 +73,6 @@ def create(
     backtest = broker.backtest.create(backtest)
     table = Table(title="Created Backtest")
     table.add_column("Name")
-    table.add_column("Status")
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Symbols")
@@ -73,7 +80,6 @@ def create(
 
     table.add_row(
         backtest.name,
-        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
         (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
@@ -131,7 +137,7 @@ def run(
         "[progress.percentage]{task.percentage:>3.0f}%",
         TextColumn("[progress.completed]"),
     )
-    live = Live(progress, refresh_per_second=120)
+    live = Live(progress, console=console, refresh_per_second=120)
 
     with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
@@ -142,7 +148,7 @@ def run(
             - backtest.start_date.month
         )
 
-        task = progress.add_task(f"Running Execution for {backtest.name}", total=total_months)
+        task = progress.add_task(f"{backtest.name}", total=total_months)
         current_month = backtest.start_date.month
         for period in session.run_execution(
             backtest.start_date,

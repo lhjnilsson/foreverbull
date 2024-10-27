@@ -1,15 +1,15 @@
 from concurrent import futures
-from multiprocessing import get_start_method, set_start_method
+from multiprocessing import get_start_method
+from multiprocessing import set_start_method
 
 import grpc
 import pytest
+
 from foreverbull.algorithm import Algorithm
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_service_pb2_grpc,
-    engine_service_pb2_grpc,
-    execution_pb2,
-    session_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 from foreverbull_zipline import grpc_servicer
 from foreverbull_zipline.engine import EngineProcess
 from tests.broker import Broker

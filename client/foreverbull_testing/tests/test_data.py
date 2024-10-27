@@ -1,4 +1,5 @@
-from foreverbull_testing.data import Asset, Assets
+from foreverbull_testing.data import Asset
+from foreverbull_testing.data import Assets
 
 
 def test_asset():

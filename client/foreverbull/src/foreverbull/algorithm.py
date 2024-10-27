@@ -1,23 +1,22 @@
 import time
+
 from contextlib import contextmanager
 from multiprocessing import Event
 from typing import Generator
 
 import grpc
 import pandas
+
 from foreverbull import models
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    backtest_service_pb2,
-    backtest_service_pb2_grpc,
-    execution_pb2,
-    session_pb2,
-    session_service_pb2,
-    session_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import session_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.service import worker_pb2
 from foreverbull.worker import WorkerPool
 
 
@@ -85,11 +84,7 @@ class Algorithm(models.Algorithm):
                     symbols=symbols,
                     benchmark=benchmark,
                 ),
-                algorithm=worker_pb2.Algorithm(
-                    file_path=self._file_path,
-                    functions=[],
-                    namespaces=[],
-                ),
+                algorithm=self.get_definition(),
             )
             create: session_service_pb2.CreateExecutionResponse = self._broker_session_stub.CreateExecution(req)
             wp.configure_execution(create.configuration)

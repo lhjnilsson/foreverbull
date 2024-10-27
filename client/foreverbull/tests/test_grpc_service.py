@@ -1,10 +1,9 @@
 import grpc
 import pytest
+
 from foreverbull.gprc_service import new_grpc_server
-from foreverbull.pb.foreverbull.service import (
-    worker_service_pb2,
-    worker_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2_grpc
 from foreverbull.worker import WorkerPool
 
 

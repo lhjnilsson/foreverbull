@@ -3,19 +3,28 @@ import importlib.util
 import logging
 import os
 import re
+
 from contextlib import contextmanager
 from datetime import datetime
 from functools import partial
-from inspect import getabsfile, signature
-from typing import Callable, Iterator
+from inspect import getabsfile
+from inspect import signature
+from typing import Callable
+from typing import Iterator
 
 import pynng
+
+from google.protobuf.struct_pb2 import Struct
+from pandas import DataFrame
+from pandas import read_sql_query
+from sqlalchemy import Connection
+from sqlalchemy import create_engine
+from sqlalchemy import engine
+
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
-from google.protobuf.struct_pb2 import Struct
-from pandas import DataFrame, read_sql_query
-from sqlalchemy import Connection, create_engine, engine
+from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2
 
 
 # Hacky way to get the database URL, TODO: find a better way
@@ -227,6 +236,16 @@ class Algorithm:
 
             Algorithm._functions[f.callable.__name__] = function
         Algorithm._algo = self
+
+    def get_definition(self) -> worker_pb2.Algorithm:
+        functions: list[worker_pb2.Algorithm.Function] = []
+        for name, function in Algorithm._functions.items():
+            functions.append(function["definition"])
+        return worker_pb2.Algorithm(
+            file_path=Algorithm._file_path,
+            functions=functions,
+            namespaces=Algorithm._namespaces,
+        )
 
     @staticmethod
     def type_to_str[T: (int, float, bool, str)](t: T) -> str:

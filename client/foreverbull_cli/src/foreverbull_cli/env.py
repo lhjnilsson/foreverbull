@@ -1,17 +1,21 @@
 import os
-from pathlib import Path
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, wait
 
-import docker.errors
-import typer
-from rich.table import Table
-from typing_extensions import Annotated
-from foreverbull_cli.output import console
-from foreverbull_cli.output import FBProgress
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from pathlib import Path
 
 import docker
+import docker.errors
+import typer
+
+from rich.table import Table
+from typing_extensions import Annotated
+
+from foreverbull_cli.output import FBProgress
+from foreverbull_cli.output import console
+
 
 version = "0.1.0"
 

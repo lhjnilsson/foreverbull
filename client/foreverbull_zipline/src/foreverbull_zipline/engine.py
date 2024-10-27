@@ -5,22 +5,15 @@ import multiprocessing
 import multiprocessing.queues
 import os
 import tarfile
-from abc import ABC, abstractmethod
+
+from abc import ABC
+from abc import abstractmethod
 
 import pandas as pd
 import pynng
 import pytz
 import six
-from foreverbull.broker.storage import Storage
-from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    engine_service_pb2,
-    execution_pb2,
-)
-from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine, SQLIngester
+
 from zipline import TradingAlgorithm
 from zipline.data import bundles
 from zipline.data.bundles.core import BundleData
@@ -29,9 +22,21 @@ from zipline.extensions import load
 from zipline.finance import metrics
 from zipline.finance.blotter import Blotter
 from zipline.finance.trading import SimulationParameters
-from zipline.protocol import BarData, Portfolio
+from zipline.protocol import BarData
+from zipline.protocol import Portfolio
 from zipline.utils.calendar_utils import get_calendar
-from zipline.utils.paths import data_path, data_root
+from zipline.utils.paths import data_path
+from zipline.utils.paths import data_root
+
+from foreverbull.broker.storage import Storage
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine
+from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 
 
 class ConfigError(Exception):

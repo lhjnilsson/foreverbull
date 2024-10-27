@@ -1,17 +1,18 @@
 import logging
 import multiprocessing
+
 from multiprocessing.queues import Queue
 from threading import Thread
 
 import pytest
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    engine_service_pb2,
-    execution_pb2,
-    ingestion_pb2,
-)
+
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull_zipline.engine import Engine, EngineProcess
+from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.engine import EngineProcess
 
 
 def test_start_stop(spawn_process):

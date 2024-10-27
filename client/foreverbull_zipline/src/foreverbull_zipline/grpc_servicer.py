@@ -2,7 +2,9 @@ from concurrent import futures
 from contextlib import contextmanager
 
 import grpc
-from foreverbull.pb import health_pb2, health_pb2_grpc
+
+from foreverbull.pb import health_pb2
+from foreverbull.pb import health_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
 from foreverbull_zipline.engine import Engine
 

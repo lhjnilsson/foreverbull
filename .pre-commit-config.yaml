@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/dnephin/pre-commit-golang
-    rev: master
+    rev: v0.5.1
     hooks:
       # - id: go-fmt
       # - id: go-vet
@@ -17,7 +17,11 @@ repos:
     rev: v0.6.9
     hooks:
       - id: ruff
+        name: lint with ruff
         args: [--fix]
+      - id: ruff
+        name: sort imports with ruff
+        args: [--select, I, --fix]
       - id: ruff-format
 
   - repo: https://github.com/astral-sh/uv-pre-commit

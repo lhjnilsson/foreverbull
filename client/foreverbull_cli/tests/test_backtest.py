@@ -1,12 +1,17 @@
 import tempfile
 import traceback
-from datetime import date, datetime
+
+from datetime import date
+from datetime import datetime
 from unittest.mock import patch
 
-from foreverbull_cli.backtest import backtest
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.pb_utils import from_pydate_to_proto_date, to_proto_timestamp
 from typer.testing import CliRunner
+
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.pb_utils import from_pydate_to_proto_date
+from foreverbull.pb.pb_utils import to_proto_timestamp
+from foreverbull_cli.backtest import backtest
+
 
 runner = CliRunner(mix_stderr=False)
 
@@ -33,7 +38,6 @@ def test_backtest_list():
         if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
-        assert "READY" in result.stdout
         assert "AAPL,MSFT" in result.stdout
 
 

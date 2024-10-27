@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
+
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from foreverbull.pb import pb_utils
-from google.protobuf.timestamp_pb2 import Timestamp
 
 
 def test_from_proto_timestamp():

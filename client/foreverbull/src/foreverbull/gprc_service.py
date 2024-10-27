@@ -1,12 +1,11 @@
 from concurrent import futures
 
 import grpc
+
 from foreverbull.algorithm import WorkerPool
 from foreverbull.models import Algorithm
-from foreverbull.pb.foreverbull.service import (
-    worker_service_pb2,
-    worker_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2_grpc
 
 
 class WorkerService(worker_service_pb2_grpc.WorkerServicer):

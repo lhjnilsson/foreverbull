@@ -2,7 +2,9 @@ from multiprocessing import Event
 from threading import Thread
 
 import pytest
-from foreverbull import exceptions, worker
+
+from foreverbull import exceptions
+from foreverbull import worker
 from foreverbull.pb.foreverbull.service import worker_pb2
 
 

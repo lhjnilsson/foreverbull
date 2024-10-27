@@ -1,13 +1,18 @@
 import traceback
+
 from collections import namedtuple
 from datetime import datetime
-from unittest.mock import PropertyMock, patch
+from unittest.mock import PropertyMock
+from unittest.mock import patch
 
 import docker.errors
 import pytest
-from foreverbull_cli.env import env
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+
 from typer.testing import CliRunner
+
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+from foreverbull_cli.env import env
+
 
 runner = CliRunner(mix_stderr=False)
 
