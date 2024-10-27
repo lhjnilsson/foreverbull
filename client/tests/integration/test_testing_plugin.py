@@ -1,7 +1,11 @@
 import pytest
-from example_algorithms import multistep_with_namespace, non_parallel, parallel
+
+from example_algorithms import multistep_with_namespace
+from example_algorithms import non_parallel
+from example_algorithms import parallel
 from foreverbull import Portfolio
-from foreverbull_testing.data import Asset, Assets
+from foreverbull_testing.data import Asset
+from foreverbull_testing.data import Assets
 
 
 class TestParallel:

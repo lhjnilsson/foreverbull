@@ -1,10 +1,14 @@
 import tempfile
+
 from datetime import datetime
 from unittest import mock
 
 import pandas
 import pytest
-from foreverbull.models import Algorithm, Asset, Assets
+
+from foreverbull.models import Algorithm
+from foreverbull.models import Asset
+from foreverbull.models import Assets
 from foreverbull.pb.foreverbull.service import worker_pb2
 
 

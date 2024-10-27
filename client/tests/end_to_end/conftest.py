@@ -3,10 +3,12 @@ import time
 
 import grpc
 import pytest
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_container_is_ready
 from testcontainers.minio import MinioContainer
+
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
 
 
 @pytest.fixture(scope="function")

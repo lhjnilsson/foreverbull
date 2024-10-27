@@ -1,13 +1,13 @@
 import os
+
 from functools import wraps
-from typing import Callable, Concatenate
+from typing import Callable
+from typing import Concatenate
 
 import grpc
 
-from foreverbull.pb.foreverbull.finance import (
-    finance_service_pb2,
-    finance_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.finance import finance_service_pb2
+from foreverbull.pb.foreverbull.finance import finance_service_pb2_grpc
 
 
 def finance_servicer[R, **P](

@@ -1,18 +1,28 @@
-from datetime import date
+import json
+import logging
 import time
+
+from datetime import date
+from pathlib import Path
+
 import typer
-from foreverbull import broker
-from foreverbull.pb.foreverbull.backtest import backtest_pb2, ingestion_pb2
-from foreverbull.pb.pb_utils import from_proto_date_to_pydate, from_pydate_to_proto_date
+
+from rich.live import Live
+from rich.progress import BarColumn
+from rich.progress import Progress
+from rich.progress import SpinnerColumn
+from rich.progress import TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
-import json
-from pathlib import Path
+
 from foreverbull import Algorithm
-import logging
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.live import Live
+from foreverbull import broker
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+from foreverbull.pb.pb_utils import from_proto_date_to_pydate
+from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import console
+
 
 backtest = typer.Typer()
 log = logging.getLogger().getChild(__name__)

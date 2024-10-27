@@ -2,7 +2,9 @@ import logging
 import os
 import signal
 
-from . import engine, grpc_servicer
+from . import engine
+from . import grpc_servicer
+
 
 log_level = os.environ.get("LOGLEVEL", "WARNING").upper()
 logging.basicConfig(level=log_level)

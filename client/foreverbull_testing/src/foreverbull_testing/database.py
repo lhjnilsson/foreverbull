@@ -1,11 +1,21 @@
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 
 import yfinance
+
+from sqlalchemy import Column
+from sqlalchemy import DateTime
+from sqlalchemy import Integer
+from sqlalchemy import String
+from sqlalchemy import UniqueConstraint
+from sqlalchemy import engine
+from sqlalchemy import text
+from sqlalchemy.orm import declarative_base
+
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, engine, text
-from sqlalchemy.orm import declarative_base
+
 
 Base = declarative_base()
 

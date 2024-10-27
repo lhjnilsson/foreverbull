@@ -2,6 +2,7 @@ from multiprocessing import set_start_method
 
 from example_algorithms.parallel import algo
 
+
 try:
     set_start_method("spawn")
 except RuntimeError:

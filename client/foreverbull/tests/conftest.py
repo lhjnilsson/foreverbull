@@ -1,19 +1,27 @@
 import importlib.util
 import os
 import tempfile
+
 from datetime import timedelta
 from functools import partial
-from multiprocessing import get_start_method, set_start_method
+from multiprocessing import get_start_method
+from multiprocessing import set_start_method
 from threading import Thread
 
 import pynng
 import pytest
-from foreverbull import Algorithm, Function, Order, models
+
+from foreverbull import Algorithm
+from foreverbull import Function
+from foreverbull import Order
+from foreverbull import models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2, execution_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
+from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2
 
 
 @pytest.fixture(scope="session")

@@ -2,13 +2,12 @@ import time
 
 import grpc
 import pytest
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    engine_service_pb2,
-    engine_service_pb2_grpc,
-    execution_pb2,
-    ingestion_pb2,
-)
+
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline import grpc_servicer
 from foreverbull_zipline.engine import EngineProcess

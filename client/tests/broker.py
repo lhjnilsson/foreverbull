@@ -1,16 +1,17 @@
 import os
+
 from typing import Generator
 
 import pynng
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    session_pb2,
-    backtest_service_pb2,
-    engine_service_pb2,
-    engine_service_pb2_grpc,
-    session_service_pb2,
-)
-from foreverbull.pb.foreverbull.service import worker_pb2, worker_service_pb2
+
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import session_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2
+from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service import worker_service_pb2
 
 
 class Broker:

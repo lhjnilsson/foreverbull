@@ -1,14 +1,19 @@
 import os
 import warnings
+
 from datetime import date
-from typing import Iterable, Tuple
+from typing import Iterable
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from foreverbull.models import get_engine
+
 from pandas import read_sql_query
 from zipline.data.bundles import register
 from zipline.utils.cli import maybe_show_progress
+
+from foreverbull.models import get_engine
+
 
 warnings.filterwarnings("ignore")
 

@@ -1,11 +1,15 @@
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Generator
+from typing import Any
+from typing import Generator
+from typing import Union
 
 import yfinance as yf
+
 from pandas import DataFrame
-from typing import Union
-from foreverbull import Asset, Assets  # type: ignore
+
+from foreverbull import Asset  # type: ignore
+from foreverbull import Assets  # type: ignore
 
 
 class DateLimitedAsset(Asset):

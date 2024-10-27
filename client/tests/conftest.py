@@ -1,24 +1,27 @@
 import os
+
 from functools import partial
 
 import pandas as pd
 import pytest
-from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    engine_service_pb2,
-    execution_pb2,
-    ingestion_pb2,
-)
-from foreverbull_zipline import engine
-from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
-from zipline.api import order_target, symbol
+
+from zipline.api import order_target
+from zipline.api import symbol
 from zipline.data import bundles
 from zipline.data.bundles import register
 from zipline.errors import SymbolNotFound
 from zipline.utils.calendar_utils import get_calendar
-from zipline.utils.run_algo import BenchmarkSpec, _run
+from zipline.utils.run_algo import BenchmarkSpec
+from zipline.utils.run_algo import _run
+
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+from foreverbull_zipline import engine
+from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 
 
 @pytest.fixture(scope="session")

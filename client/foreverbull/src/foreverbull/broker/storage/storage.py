@@ -2,7 +2,9 @@ import os
 
 import minio
 import urllib3
-from urllib3.exceptions import MaxRetryError, NewConnectionError
+
+from urllib3.exceptions import MaxRetryError
+from urllib3.exceptions import NewConnectionError
 
 from .backtest import Backtest
 

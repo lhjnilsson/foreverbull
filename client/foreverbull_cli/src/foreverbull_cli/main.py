@@ -1,11 +1,14 @@
+import logging
+import os
+
 import typer
 
-from foreverbull_cli.backtest import backtest
-from foreverbull_cli.output import console
-from foreverbull_cli.env import env
-import logging
 from rich.logging import RichHandler
-import os
+
+from foreverbull_cli.backtest import backtest
+from foreverbull_cli.env import env
+from foreverbull_cli.output import console
+
 
 cli = typer.Typer()
 

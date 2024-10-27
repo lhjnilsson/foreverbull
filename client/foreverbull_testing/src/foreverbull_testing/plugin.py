@@ -1,9 +1,11 @@
 import os
 
 import pytest
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
+
 from sqlalchemy import create_engine
 from testcontainers.postgres import PostgresContainer
+
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
 
 from . import database
 

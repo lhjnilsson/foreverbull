@@ -1,19 +1,19 @@
 import time
+
 from concurrent import futures
 from datetime import date
 from unittest.mock import MagicMock
 
 import grpc
 import pytest
+
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import (
-    backtest_pb2,
-    backtest_service_pb2,
-    backtest_service_pb2_grpc,
-    session_pb2,
-    session_service_pb2,
-    session_service_pb2_grpc,
-)
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import session_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2
+from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 
 
 class TestAlgorithm:

@@ -1,5 +1,9 @@
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, Task, TextColumn
+from rich.progress import Progress
+from rich.progress import SpinnerColumn
+from rich.progress import Task
+from rich.progress import TextColumn
+
 
 console = Console()
 
