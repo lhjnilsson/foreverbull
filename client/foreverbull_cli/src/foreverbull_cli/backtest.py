@@ -22,7 +22,6 @@ log = logging.getLogger().getChild(__name__)
 def list():
     table = Table(title="Backtests")
     table.add_column("Name")
-    table.add_column("Status")
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Symbols")
@@ -30,7 +29,6 @@ def list():
     for backtest in broker.backtest.list():
         table.add_row(
             backtest.name,
-            (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
             (from_proto_date_to_pydate(backtest.start_date).isoformat()),
             (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
             ",".join(backtest.symbols),
@@ -65,7 +63,6 @@ def create(
     backtest = broker.backtest.create(backtest)
     table = Table(title="Created Backtest")
     table.add_column("Name")
-    table.add_column("Status")
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Symbols")
@@ -73,7 +70,6 @@ def create(
 
     table.add_row(
         backtest.name,
-        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
         (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
         ",".join(backtest.symbols),
@@ -131,7 +127,7 @@ def run(
         "[progress.percentage]{task.percentage:>3.0f}%",
         TextColumn("[progress.completed]"),
     )
-    live = Live(progress, refresh_per_second=120)
+    live = Live(progress, console=console, refresh_per_second=120)
 
     with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
@@ -142,7 +138,7 @@ def run(
             - backtest.start_date.month
         )
 
-        task = progress.add_task(f"Running Execution for {backtest.name}", total=total_months)
+        task = progress.add_task(f"{backtest.name}", total=total_months)
         current_month = backtest.start_date.month
         for period in session.run_execution(
             backtest.start_date,

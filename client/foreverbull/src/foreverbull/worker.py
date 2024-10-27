@@ -140,11 +140,14 @@ class WorkerDaemon(WorkerInstance):
         super().__init__(file_path)
 
     def run(self):
-        if self._logging_queue:
-            handler = logging.handlers.QueueHandler(self._logging_queue)
-            logging.basicConfig(level=logging.DEBUG, handlers=[handler])
-            pass
         self.logger = logging.getLogger().getChild(__name__)
+        level = os.environ.get("LOGGING_LEVEL", "INFO")
+        logging.basicConfig(
+            handlers=[
+                logging.handlers.QueueHandler(self._logging_queue) if self._logging_queue else logging.StreamHandler()
+            ],
+            level=level,
+        )
         try:
             responder = pynng.Respondent0(
                 dial=self._survey_address,
@@ -197,9 +200,7 @@ class WorkerPool(Worker):
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger().getChild(__name__)
         self._log_queue = Queue()
-        self._log_listener = logging.handlers.QueueListener(
-            self._log_queue, *logging.getLogger().handlers, respect_handler_level=True
-        )
+        self._log_listener = logging.handlers.QueueListener(self._log_queue, *logging.getLogger().handlers)
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
 
     def __enter__(
