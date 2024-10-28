@@ -216,6 +216,159 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 	return &execution, nil
 }
 
+func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.Period, error) {
+	rows, err := db.Conn.Query(ctx,
+		`SELECT date, pnl, returns, portfolio_value, longs_count, shorts_count,
+		long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
+		net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
+		max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+		algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+		alpha, beta FROM backtest_period WHERE backtest_execution=$1 ORDER BY DATE desc`, executionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get periods: %w", err)
+	}
+
+	periods := make([]*pb.Period, 0)
+	defer rows.Close()
+	for rows.Next() {
+		period := pb.Period{}
+		pnl := sql.NullFloat64{}
+		returns := sql.NullFloat64{}
+		portfolioValue := sql.NullFloat64{}
+		longsCount := sql.NullInt32{}
+		shortsCount := sql.NullInt32{}
+		longValue := sql.NullFloat64{}
+		shortValue := sql.NullFloat64{}
+		startingExposure := sql.NullFloat64{}
+		endingExposure := sql.NullFloat64{}
+		longExposure := sql.NullFloat64{}
+		shortExposure := sql.NullFloat64{}
+		capitalUsed := sql.NullFloat64{}
+		grossLeverage := sql.NullFloat64{}
+		netLeverage := sql.NullFloat64{}
+		startingValue := sql.NullFloat64{}
+		endingValue := sql.NullFloat64{}
+		startingCash := sql.NullFloat64{}
+		endingCash := sql.NullFloat64{}
+		maxDrawdown := sql.NullFloat64{}
+		maxLeverage := sql.NullFloat64{}
+		excessReturn := sql.NullFloat64{}
+		treasuryPeriodReturn := sql.NullFloat64{}
+		algorithmPeriodReturn := sql.NullFloat64{}
+		algoVolatility := sql.NullFloat64{}
+		sharpe := sql.NullFloat64{}
+		sortino := sql.NullFloat64{}
+		benchmarkPeriodReturn := sql.NullFloat64{}
+		benchmarkVolatility := sql.NullFloat64{}
+		alpha := sql.NullFloat64{}
+		beta := sql.NullFloat64{}
+
+		err = rows.Scan(&period.Date, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
+			&longValue, &shortValue, &startingExposure, &endingExposure, &longExposure, &shortExposure, &capitalUsed, &grossLeverage,
+			&netLeverage, &startingValue, &endingValue, &startingCash, &endingCash, &maxDrawdown,
+			&maxLeverage, &excessReturn, &treasuryPeriodReturn, &algorithmPeriodReturn,
+			&algoVolatility, &sharpe, &sortino, &benchmarkPeriodReturn, &benchmarkVolatility,
+			&alpha, &beta)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan period: %w", err)
+		}
+		if pnl.Valid {
+			period.PNL = pnl.Float64
+		}
+		if returns.Valid {
+			period.Returns = returns.Float64
+		}
+		if portfolioValue.Valid {
+			period.PortfolioValue = portfolioValue.Float64
+		}
+		if longsCount.Valid {
+			period.LongsCount = longsCount.Int32
+		}
+		if shortsCount.Valid {
+			period.ShortsCount = shortsCount.Int32
+		}
+		if longValue.Valid {
+			period.LongValue = longValue.Float64
+		}
+		if shortValue.Valid {
+			period.ShortValue = shortValue.Float64
+		}
+		if startingExposure.Valid {
+			period.StartingExposure = startingExposure.Float64
+		}
+		if endingExposure.Valid {
+			period.EndingExposure = endingExposure.Float64
+		}
+		if longExposure.Valid {
+			period.LongExposure = longExposure.Float64
+		}
+		if shortExposure.Valid {
+			period.ShortExposure = shortExposure.Float64
+		}
+		if capitalUsed.Valid {
+			period.CapitalUsed = capitalUsed.Float64
+		}
+		if grossLeverage.Valid {
+			period.GrossLeverage = grossLeverage.Float64
+		}
+		if netLeverage.Valid {
+			period.NetLeverage = netLeverage.Float64
+		}
+		if startingValue.Valid {
+			period.StartingValue = startingValue.Float64
+		}
+		if endingValue.Valid {
+			period.EndingValue = endingValue.Float64
+		}
+		if startingCash.Valid {
+			period.StartingCash = startingCash.Float64
+		}
+		if endingCash.Valid {
+			period.EndingCash = endingCash.Float64
+		}
+		if maxDrawdown.Valid {
+			period.MaxDrawdown = maxDrawdown.Float64
+		}
+		if maxLeverage.Valid {
+			period.MaxLeverage = maxLeverage.Float64
+		}
+		if excessReturn.Valid {
+			period.ExcessReturn = excessReturn.Float64
+		}
+		if treasuryPeriodReturn.Valid {
+			period.TreasuryPeriodReturn = treasuryPeriodReturn.Float64
+		}
+		if algorithmPeriodReturn.Valid {
+			period.AlgorithmPeriodReturn = algorithmPeriodReturn.Float64
+		}
+		if algoVolatility.Valid {
+			period.AlgoVolatility = &algoVolatility.Float64
+		}
+		if sharpe.Valid {
+			period.Sharpe = &sharpe.Float64
+		}
+		if sortino.Valid {
+			period.Sortino = &sortino.Float64
+		}
+		if benchmarkPeriodReturn.Valid {
+			period.BenchmarkPeriodReturn = &benchmarkPeriodReturn.Float64
+		}
+		if benchmarkVolatility.Valid {
+			period.BenchmarkVolatility = &benchmarkVolatility.Float64
+		}
+		if alpha.Valid {
+			period.Alpha = &alpha.Float64
+		}
+		if beta.Valid {
+			period.Beta = &beta.Float64
+		}
+
+		periods = append(periods, &period)
+	}
+
+	return periods, nil
+}
+
 func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE execution SET start_date=$1, end_date=$2, benchmark=$3,

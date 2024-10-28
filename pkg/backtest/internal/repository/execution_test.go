@@ -98,6 +98,17 @@ func (test *ExecutionTest) TestGet() {
 	test.NotNil(execution.Statuses[0].OccurredAt)
 }
 
+func (test *ExecutionTest) TestGetPeriods() {
+	executions := repository.Execution{Conn: test.conn}
+	ctx := context.Background()
+	execution, err := executions.Create(ctx, test.storedSession.Id,
+		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	test.Require().NoError(err)
+	periods, err := executions.GetPeriods(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.NotNil(periods)
+}
+
 func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
