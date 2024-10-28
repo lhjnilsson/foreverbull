@@ -59,10 +59,10 @@ class BacktestServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.GetSessionRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.GetSessionResponse.FromString,
                 _registered_method=True)
-        self.ListExecution = channel.unary_unary(
-                '/foreverbull.backtest.BacktestServicer/ListExecution',
-                request_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionResponse.FromString,
+        self.ListExecutions = channel.unary_unary(
+                '/foreverbull.backtest.BacktestServicer/ListExecutions',
+                request_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsResponse.FromString,
                 _registered_method=True)
         self.GetExecution = channel.unary_unary(
                 '/foreverbull.backtest.BacktestServicer/GetExecution',
@@ -104,7 +104,7 @@ class BacktestServicerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ListExecution(self, request, context):
+    def ListExecutions(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -144,10 +144,10 @@ def add_BacktestServicerServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.GetSessionRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.GetSessionResponse.SerializeToString,
             ),
-            'ListExecution': grpc.unary_unary_rpc_method_handler(
-                    servicer.ListExecution,
-                    request_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionResponse.SerializeToString,
+            'ListExecutions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListExecutions,
+                    request_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsResponse.SerializeToString,
             ),
             'GetExecution': grpc.unary_unary_rpc_method_handler(
                     servicer.GetExecution,
@@ -301,7 +301,7 @@ class BacktestServicer(object):
             _registered_method=True)
 
     @staticmethod
-    def ListExecution(request,
+    def ListExecutions(request,
             target,
             options=(),
             channel_credentials=None,
@@ -314,9 +314,9 @@ class BacktestServicer(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.BacktestServicer/ListExecution',
-            foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionRequest.SerializeToString,
-            foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionResponse.FromString,
+            '/foreverbull.backtest.BacktestServicer/ListExecutions',
+            foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_backtest__service__pb2.ListExecutionsResponse.FromString,
             options,
             channel_credentials,
             insecure,

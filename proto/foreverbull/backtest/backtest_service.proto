@@ -48,12 +48,12 @@ message GetSessionResponse {
     foreverbull.backtest.Session session = 1;
 }
 
-message ListExecutionRequest {
+message ListExecutionsRequest {
     string backtest = 1;
     string session_id = 2;
 }
 
-message ListExecutionResponse {
+message ListExecutionsResponse {
     repeated foreverbull.backtest.Execution executions = 1;
 }
 
@@ -72,6 +72,6 @@ service BacktestServicer {
     rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
     rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
-    rpc ListExecution(ListExecutionRequest) returns (ListExecutionResponse) {}
+    rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {}
     rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
 }

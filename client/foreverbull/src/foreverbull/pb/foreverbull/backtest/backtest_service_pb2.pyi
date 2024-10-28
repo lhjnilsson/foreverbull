@@ -68,7 +68,7 @@ class GetSessionResponse(_message.Message):
     session: _session_pb2.Session
     def __init__(self, session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ...) -> None: ...
 
-class ListExecutionRequest(_message.Message):
+class ListExecutionsRequest(_message.Message):
     __slots__ = ("backtest", "session_id")
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
@@ -76,7 +76,7 @@ class ListExecutionRequest(_message.Message):
     session_id: str
     def __init__(self, backtest: _Optional[str] = ..., session_id: _Optional[str] = ...) -> None: ...
 
-class ListExecutionResponse(_message.Message):
+class ListExecutionsResponse(_message.Message):
     __slots__ = ("executions",)
     EXECUTIONS_FIELD_NUMBER: _ClassVar[int]
     executions: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Execution]

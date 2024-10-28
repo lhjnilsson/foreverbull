@@ -237,8 +237,8 @@ func (_m *MockBacktestServicerClient) ListBacktests(ctx context.Context, in *Lis
 	return r0, r1
 }
 
-// ListExecution provides a mock function with given fields: ctx, in, opts
-func (_m *MockBacktestServicerClient) ListExecution(ctx context.Context, in *ListExecutionRequest, opts ...grpc.CallOption) (*ListExecutionResponse, error) {
+// ListExecutions provides a mock function with given fields: ctx, in, opts
+func (_m *MockBacktestServicerClient) ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -249,23 +249,23 @@ func (_m *MockBacktestServicerClient) ListExecution(ctx context.Context, in *Lis
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListExecution")
+		panic("no return value specified for ListExecutions")
 	}
 
-	var r0 *ListExecutionResponse
+	var r0 *ListExecutionsResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionRequest, ...grpc.CallOption) (*ListExecutionResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionsRequest, ...grpc.CallOption) (*ListExecutionsResponse, error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionRequest, ...grpc.CallOption) *ListExecutionResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionsRequest, ...grpc.CallOption) *ListExecutionsResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ListExecutionResponse)
+			r0 = ret.Get(0).(*ListExecutionsResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *ListExecutionRequest, ...grpc.CallOption) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *ListExecutionsRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)

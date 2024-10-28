@@ -193,28 +193,28 @@ func (_m *MockBacktestServicerServer) ListBacktests(_a0 context.Context, _a1 *Li
 	return r0, r1
 }
 
-// ListExecution provides a mock function with given fields: _a0, _a1
-func (_m *MockBacktestServicerServer) ListExecution(_a0 context.Context, _a1 *ListExecutionRequest) (*ListExecutionResponse, error) {
+// ListExecutions provides a mock function with given fields: _a0, _a1
+func (_m *MockBacktestServicerServer) ListExecutions(_a0 context.Context, _a1 *ListExecutionsRequest) (*ListExecutionsResponse, error) {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListExecution")
+		panic("no return value specified for ListExecutions")
 	}
 
-	var r0 *ListExecutionResponse
+	var r0 *ListExecutionsResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionRequest) (*ListExecutionResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error)); ok {
 		return rf(_a0, _a1)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionRequest) *ListExecutionResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExecutionsRequest) *ListExecutionsResponse); ok {
 		r0 = rf(_a0, _a1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*ListExecutionResponse)
+			r0 = ret.Get(0).(*ListExecutionsResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *ListExecutionRequest) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *ListExecutionsRequest) error); ok {
 		r1 = rf(_a0, _a1)
 	} else {
 		r1 = ret.Error(1)
