@@ -186,3 +186,20 @@ func (test *ExecutionTest) TestListBySession() {
 	test.Require().NoError(err)
 	test.Empty(storedExecutions)
 }
+
+func (test *ExecutionTest) TestListByBacktest() {
+	sessions := repository.Session{Conn: test.conn}
+
+	ctx := context.Background()
+	session, err := sessions.Create(ctx, "backtest")
+	test.Require().NoError(err)
+
+	executions := repository.Execution{Conn: test.conn}
+	_, err = executions.Create(ctx, session.Id,
+		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	test.Require().NoError(err)
+
+	storedExecutions, err := executions.ListByBacktest(ctx, "backtest")
+	test.Require().NoError(err)
+	test.Len(storedExecutions, 1)
+}
