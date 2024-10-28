@@ -58,6 +58,14 @@ class Broker:
             )
         )
 
+    def GetExecution(
+        self, request: backtest_service_pb2.GetExecutionRequest, context
+    ) -> backtest_service_pb2.GetExecutionResponse:
+        rsp: engine_service_pb2.GetResultResponse = self.engine.GetResult(engine_service_pb2.GetResultRequest())
+        return backtest_service_pb2.GetExecutionResponse(
+            periods=rsp.periods,
+        )
+
     @staticmethod
     def namespace_server(port: int):
         pass
@@ -115,14 +123,6 @@ class Broker:
             yield session_service_pb2.RunExecutionResponse(
                 portfolio=rsp.portfolio,
             )
-
-    def GetExecution(
-        self, request: session_service_pb2.GetExecutionRequest, context
-    ) -> session_service_pb2.GetExecutionResponse:
-        rsp: engine_service_pb2.GetResultResponse = self.engine.GetResult(engine_service_pb2.GetResultRequest())
-        return session_service_pb2.GetExecutionResponse(
-            periods=rsp.periods,
-        )
 
     def StopServer(
         self, request: session_service_pb2.StopServerRequest, context

@@ -67,7 +67,7 @@ def test_baseline_performance(
         ]
         assert periods
 
-        result, df = algorithm.get_execution("demo")
+    result, df = algorithm.get_execution("demo")
 
-        baseline_performance = baseline_performance[df.columns]
-        assert baseline_performance.equals(df), "Baseline performance does not match."
+    baseline_performance = baseline_performance[df.columns]
+    assert baseline_performance.equals(df), "Baseline performance does not match."
