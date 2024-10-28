@@ -60,7 +60,7 @@ func (suite *BacktestServerTest) SetupTest() {
 	pb.RegisterBacktestServicerServer(suite.server, server)
 
 	go func() {
-		suite.NoError(suite.server.Serve(suite.listener))
+		suite.server.Serve(suite.listener) // nolint:errcheck
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
@@ -107,6 +107,20 @@ func (suite *BacktestServerTest) createSession(backtest string) *pb.Session {
 	suite.Require().NotNil(session)
 
 	return session
+}
+
+func (suite *BacktestServerTest) createExecution(session string) *pb.Execution {
+	suite.T().Helper()
+
+	executions := repository.Execution{Conn: suite.pgx}
+	execution, err := executions.Create(context.TODO(),
+		session, &common_pb.Date{Year: 2024, Month: 1, Day: 1},
+		&common_pb.Date{Year: 2024, Month: 1, Day: 1},
+		[]string{"AAPL"}, nil)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(execution)
+
+	return execution
 }
 
 func (suite *BacktestServerTest) TestListBacktests() {
@@ -169,6 +183,26 @@ func (suite *BacktestServerTest) TestGetSession() {
 	}
 
 	resp, err := suite.client.GetSession(context.Background(), req)
+	suite.Require().NoError(err)
+	suite.NotNil(resp)
+}
+
+func (suite *BacktestServerTest) TestListExecutions() {
+	req := &pb.ListExecutionsRequest{}
+	resp, err := suite.client.ListExecutions(context.Background(), req)
+	suite.Require().NoError(err)
+	suite.NotNil(resp)
+}
+
+func (suite *BacktestServerTest) TestGetExecution() {
+	backtest := suite.createBacktest("test_1")
+	session := suite.createSession(backtest.Name)
+	execution := suite.createExecution(session.Id)
+
+	req := &pb.GetExecutionRequest{
+		ExecutionId: execution.Id,
+	}
+	resp, err := suite.client.GetExecution(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }

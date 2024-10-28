@@ -6,6 +6,8 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
 
 import "foreverbull/backtest/backtest.proto";
 import "foreverbull/backtest/session.proto";
+import "foreverbull/backtest/execution.proto";
+
 
 message ListBacktestsRequest {}
 
@@ -46,10 +48,30 @@ message GetSessionResponse {
     foreverbull.backtest.Session session = 1;
 }
 
+message ListExecutionsRequest {
+    string backtest = 1;
+    string session_id = 2;
+}
+
+message ListExecutionsResponse {
+    repeated foreverbull.backtest.Execution executions = 1;
+}
+
+message GetExecutionRequest {
+    string execution_id = 1;
+}
+
+message GetExecutionResponse {
+    foreverbull.backtest.Execution execution = 1;
+    repeated foreverbull.backtest.Period periods = 2;
+}
+
 service BacktestServicer {
     rpc ListBacktests(ListBacktestsRequest) returns (ListBacktestsResponse) {}
     rpc CreateBacktest(CreateBacktestRequest) returns (CreateBacktestResponse) {}
     rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
     rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
+    rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {}
+    rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
 }

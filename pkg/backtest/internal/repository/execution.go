@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -215,6 +216,159 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 	return &execution, nil
 }
 
+func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.Period, error) {
+	rows, err := db.Conn.Query(ctx,
+		`SELECT date, pnl, returns, portfolio_value, longs_count, shorts_count,
+		long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
+		net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
+		max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+		algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+		alpha, beta FROM backtest_period WHERE backtest_execution=$1 ORDER BY DATE desc`, executionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get periods: %w", err)
+	}
+
+	periods := make([]*pb.Period, 0)
+	defer rows.Close()
+	for rows.Next() {
+		period := pb.Period{}
+		pnl := sql.NullFloat64{}
+		returns := sql.NullFloat64{}
+		portfolioValue := sql.NullFloat64{}
+		longsCount := sql.NullInt32{}
+		shortsCount := sql.NullInt32{}
+		longValue := sql.NullFloat64{}
+		shortValue := sql.NullFloat64{}
+		startingExposure := sql.NullFloat64{}
+		endingExposure := sql.NullFloat64{}
+		longExposure := sql.NullFloat64{}
+		shortExposure := sql.NullFloat64{}
+		capitalUsed := sql.NullFloat64{}
+		grossLeverage := sql.NullFloat64{}
+		netLeverage := sql.NullFloat64{}
+		startingValue := sql.NullFloat64{}
+		endingValue := sql.NullFloat64{}
+		startingCash := sql.NullFloat64{}
+		endingCash := sql.NullFloat64{}
+		maxDrawdown := sql.NullFloat64{}
+		maxLeverage := sql.NullFloat64{}
+		excessReturn := sql.NullFloat64{}
+		treasuryPeriodReturn := sql.NullFloat64{}
+		algorithmPeriodReturn := sql.NullFloat64{}
+		algoVolatility := sql.NullFloat64{}
+		sharpe := sql.NullFloat64{}
+		sortino := sql.NullFloat64{}
+		benchmarkPeriodReturn := sql.NullFloat64{}
+		benchmarkVolatility := sql.NullFloat64{}
+		alpha := sql.NullFloat64{}
+		beta := sql.NullFloat64{}
+
+		err = rows.Scan(&period.Date, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
+			&longValue, &shortValue, &startingExposure, &endingExposure, &longExposure, &shortExposure, &capitalUsed, &grossLeverage,
+			&netLeverage, &startingValue, &endingValue, &startingCash, &endingCash, &maxDrawdown,
+			&maxLeverage, &excessReturn, &treasuryPeriodReturn, &algorithmPeriodReturn,
+			&algoVolatility, &sharpe, &sortino, &benchmarkPeriodReturn, &benchmarkVolatility,
+			&alpha, &beta)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan period: %w", err)
+		}
+		if pnl.Valid {
+			period.PNL = pnl.Float64
+		}
+		if returns.Valid {
+			period.Returns = returns.Float64
+		}
+		if portfolioValue.Valid {
+			period.PortfolioValue = portfolioValue.Float64
+		}
+		if longsCount.Valid {
+			period.LongsCount = longsCount.Int32
+		}
+		if shortsCount.Valid {
+			period.ShortsCount = shortsCount.Int32
+		}
+		if longValue.Valid {
+			period.LongValue = longValue.Float64
+		}
+		if shortValue.Valid {
+			period.ShortValue = shortValue.Float64
+		}
+		if startingExposure.Valid {
+			period.StartingExposure = startingExposure.Float64
+		}
+		if endingExposure.Valid {
+			period.EndingExposure = endingExposure.Float64
+		}
+		if longExposure.Valid {
+			period.LongExposure = longExposure.Float64
+		}
+		if shortExposure.Valid {
+			period.ShortExposure = shortExposure.Float64
+		}
+		if capitalUsed.Valid {
+			period.CapitalUsed = capitalUsed.Float64
+		}
+		if grossLeverage.Valid {
+			period.GrossLeverage = grossLeverage.Float64
+		}
+		if netLeverage.Valid {
+			period.NetLeverage = netLeverage.Float64
+		}
+		if startingValue.Valid {
+			period.StartingValue = startingValue.Float64
+		}
+		if endingValue.Valid {
+			period.EndingValue = endingValue.Float64
+		}
+		if startingCash.Valid {
+			period.StartingCash = startingCash.Float64
+		}
+		if endingCash.Valid {
+			period.EndingCash = endingCash.Float64
+		}
+		if maxDrawdown.Valid {
+			period.MaxDrawdown = maxDrawdown.Float64
+		}
+		if maxLeverage.Valid {
+			period.MaxLeverage = maxLeverage.Float64
+		}
+		if excessReturn.Valid {
+			period.ExcessReturn = excessReturn.Float64
+		}
+		if treasuryPeriodReturn.Valid {
+			period.TreasuryPeriodReturn = treasuryPeriodReturn.Float64
+		}
+		if algorithmPeriodReturn.Valid {
+			period.AlgorithmPeriodReturn = algorithmPeriodReturn.Float64
+		}
+		if algoVolatility.Valid {
+			period.AlgoVolatility = &algoVolatility.Float64
+		}
+		if sharpe.Valid {
+			period.Sharpe = &sharpe.Float64
+		}
+		if sortino.Valid {
+			period.Sortino = &sortino.Float64
+		}
+		if benchmarkPeriodReturn.Valid {
+			period.BenchmarkPeriodReturn = &benchmarkPeriodReturn.Float64
+		}
+		if benchmarkVolatility.Valid {
+			period.BenchmarkVolatility = &benchmarkVolatility.Float64
+		}
+		if alpha.Valid {
+			period.Alpha = &alpha.Float64
+		}
+		if beta.Valid {
+			period.Beta = &beta.Float64
+		}
+
+		periods = append(periods, &period)
+	}
+
+	return periods, nil
+}
+
 func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE execution SET start_date=$1, end_date=$2, benchmark=$3,
@@ -251,12 +405,50 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 	for rows.Next() {
 		status := pb.Execution_Status{}
 		execution := pb.Execution{}
+		result := pb.Period{}
 		start := time.Time{}
 		end := pgtype.Date{}
 		occurredAt := time.Time{}
 
+		pnl := sql.NullFloat64{}
+		returns := sql.NullFloat64{}
+		portfolioValue := sql.NullFloat64{}
+		longsCount := sql.NullInt32{}
+		shortsCount := sql.NullInt32{}
+		longValue := sql.NullFloat64{}
+		shortValue := sql.NullFloat64{}
+		startingExposure := sql.NullFloat64{}
+		endingExposure := sql.NullFloat64{}
+		longExposure := sql.NullFloat64{}
+		shortExposure := sql.NullFloat64{}
+		capitalUsed := sql.NullFloat64{}
+		grossLeverage := sql.NullFloat64{}
+		netLeverage := sql.NullFloat64{}
+		startingValue := sql.NullFloat64{}
+		endingValue := sql.NullFloat64{}
+		startingCash := sql.NullFloat64{}
+		endingCash := sql.NullFloat64{}
+		maxDrawdown := sql.NullFloat64{}
+		maxLeverage := sql.NullFloat64{}
+		excessReturn := sql.NullFloat64{}
+		treasuryPeriodReturn := sql.NullFloat64{}
+		algorithmPeriodReturn := sql.NullFloat64{}
+		algoVolatility := sql.NullFloat64{}
+		sharpe := sql.NullFloat64{}
+		sortino := sql.NullFloat64{}
+		benchmarkPeriodReturn := sql.NullFloat64{}
+		benchmarkVolatility := sql.NullFloat64{}
+		alpha := sql.NullFloat64{}
+		beta := sql.NullFloat64{}
+
 		err = rows.Scan(&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
-			&execution.Symbols, &status.Status, &status.Error, &occurredAt)
+			&execution.Symbols, &status.Status, &status.Error, &occurredAt,
+			&result.Date, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
+			&longValue, &shortValue, &startingExposure, &endingExposure, &longExposure,
+			&shortExposure, &capitalUsed, &grossLeverage, &netLeverage, &startingValue,
+			&endingValue, &startingCash, &endingCash, &maxDrawdown, &maxLeverage,
+			&excessReturn, &treasuryPeriodReturn, &algorithmPeriodReturn, &algoVolatility,
+			&sharpe, &sortino, &benchmarkPeriodReturn, &benchmarkVolatility, &alpha, &beta)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan execution: %w", err)
 		}
@@ -274,7 +466,6 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 			if executions[i].Id == execution.Id {
 				executions[i].Statuses = append(executions[i].Statuses, &status)
 				inReturnSlice = true
-
 				break
 			}
 		}
@@ -283,6 +474,97 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 			execution.Statuses = append(execution.Statuses, &status)
 			executions = append(executions, &execution)
 		}
+		if pnl.Valid {
+			result.PNL = pnl.Float64
+		}
+		if returns.Valid {
+			result.Returns = returns.Float64
+		}
+		if portfolioValue.Valid {
+			result.PortfolioValue = portfolioValue.Float64
+		}
+		if longsCount.Valid {
+			result.LongsCount = longsCount.Int32
+		}
+		if shortsCount.Valid {
+			result.ShortsCount = shortsCount.Int32
+		}
+		if longValue.Valid {
+			result.LongValue = longValue.Float64
+		}
+		if shortValue.Valid {
+			result.ShortValue = shortValue.Float64
+		}
+		if startingExposure.Valid {
+			result.StartingExposure = startingExposure.Float64
+		}
+		if endingExposure.Valid {
+			result.EndingExposure = endingExposure.Float64
+		}
+		if longExposure.Valid {
+			result.LongExposure = longExposure.Float64
+		}
+		if shortExposure.Valid {
+			result.ShortExposure = shortExposure.Float64
+		}
+		if capitalUsed.Valid {
+			result.CapitalUsed = capitalUsed.Float64
+		}
+		if grossLeverage.Valid {
+			result.GrossLeverage = grossLeverage.Float64
+		}
+		if netLeverage.Valid {
+			result.NetLeverage = netLeverage.Float64
+		}
+		if startingValue.Valid {
+			result.StartingValue = startingValue.Float64
+		}
+		if endingValue.Valid {
+			result.EndingValue = endingValue.Float64
+		}
+		if startingCash.Valid {
+			result.StartingCash = startingCash.Float64
+		}
+		if endingCash.Valid {
+			result.EndingCash = endingCash.Float64
+		}
+		if maxDrawdown.Valid {
+			result.MaxDrawdown = maxDrawdown.Float64
+		}
+		if maxLeverage.Valid {
+			result.MaxLeverage = maxLeverage.Float64
+		}
+		if excessReturn.Valid {
+			result.ExcessReturn = excessReturn.Float64
+		}
+		if treasuryPeriodReturn.Valid {
+			result.TreasuryPeriodReturn = treasuryPeriodReturn.Float64
+		}
+		if algorithmPeriodReturn.Valid {
+			result.AlgorithmPeriodReturn = algorithmPeriodReturn.Float64
+		}
+		if algoVolatility.Valid {
+			result.AlgoVolatility = &algoVolatility.Float64
+		}
+		if sharpe.Valid {
+			result.Sharpe = &sharpe.Float64
+		}
+		if sortino.Valid {
+			result.Sortino = &sortino.Float64
+		}
+		if benchmarkPeriodReturn.Valid {
+			result.BenchmarkPeriodReturn = &benchmarkPeriodReturn.Float64
+		}
+		if benchmarkVolatility.Valid {
+			result.BenchmarkVolatility = &benchmarkVolatility.Float64
+		}
+		if alpha.Valid {
+			result.Alpha = &alpha.Float64
+		}
+		if beta.Valid {
+			result.Beta = &beta.Float64
+		}
+		execution.Result = &result
 	}
 
 	return executions, nil
@@ -291,11 +573,26 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT execution.id, session, start_date, end_date, benchmark, symbols,
-		es.status, es.error, es.occurred_at
+		es.status, es.error, es.occurred_at,
+		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
+		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
+		ep.capital_used, ep.gross_leverage, ep.net_leverage,
+		ep.starting_value, ep.ending_value, ep.starting_cash, ep.ending_cash,
+		ep.max_drawdown, ep.max_leverage, ep.excess_returns, ep.treasury_period_return, ep.algorithm_period_return,
+		ep.algo_volatility, ep.sharpe, ep.sortino,
+		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
 		FROM execution
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
+		LEFT JOIN (
+			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
+			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
+			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+		) as ep ON execution.id=ep.backtest_execution
 		ORDER BY es.occurred_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
@@ -309,13 +606,65 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT execution.id, session, start_date, end_date, benchmark, symbols,
-		es.status, es.error, es.occurred_at
+		es.status, es.error, es.occurred_at,
+		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
+		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
+		ep.capital_used, ep.gross_leverage, ep.net_leverage,
+		ep.starting_value, ep.ending_value, ep.starting_cash, ep.ending_cash,
+		ep.max_drawdown, ep.max_leverage, ep.excess_returns, ep.treasury_period_return, ep.algorithm_period_return,
+		ep.algo_volatility, ep.sharpe, ep.sortino,
+		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
 		FROM execution
 		INNER JOIN (
 			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
+		LEFT JOIN (
+			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
+			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
+			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+		) as ep ON execution.id=ep.backtest_execution
 		WHERE session=$1
 		ORDER BY es.occurred_at DESC`, session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list executions: %w", err)
+	}
+
+	defer rows.Close()
+
+	return db.parseRows(rows)
+}
+
+func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*pb.Execution, error) {
+	rows, err := db.Conn.Query(ctx,
+		`SELECT execution.id, execution.session, execution.start_date, execution.end_date,
+		execution.benchmark, execution.symbols,
+		es.status, es.error, es.occurred_at,
+		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
+		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
+		ep.capital_used, ep.gross_leverage, ep.net_leverage,
+		ep.starting_value, ep.ending_value, ep.starting_cash, ep.ending_cash,
+		ep.max_drawdown, ep.max_leverage, ep.excess_returns, ep.treasury_period_return, ep.algorithm_period_return,
+		ep.algo_volatility, ep.sharpe, ep.sortino,
+		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
+		FROM execution
+		INNER JOIN (
+			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
+		) AS es ON execution.id=es.id
+		LEFT JOIN (
+			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
+			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
+			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+		) as ep ON execution.id=ep.backtest_execution
+		INNER JOIN session ON execution.session=session.id
+		INNER JOIN backtest ON session.backtest=backtest.name
+		WHERE backtest.name=$1
+		ORDER BY es.occurred_at DESC`, backtest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}

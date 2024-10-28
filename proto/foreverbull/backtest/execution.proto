@@ -27,6 +27,7 @@ message Execution {
     optional string benchmark = 5;
     repeated string symbols = 6;
     repeated Status statuses = 7;
+    optional Period result = 8;
 }
 
 message Period {

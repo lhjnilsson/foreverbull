@@ -8,7 +8,6 @@ package pb
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -22,7 +21,6 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SessionServicer_CreateExecution_FullMethodName = "/foreverbull.backtest.SessionServicer/CreateExecution"
 	SessionServicer_RunExecution_FullMethodName    = "/foreverbull.backtest.SessionServicer/RunExecution"
-	SessionServicer_GetExecution_FullMethodName    = "/foreverbull.backtest.SessionServicer/GetExecution"
 	SessionServicer_StopServer_FullMethodName      = "/foreverbull.backtest.SessionServicer/StopServer"
 )
 
@@ -32,7 +30,6 @@ const (
 type SessionServicerClient interface {
 	CreateExecution(ctx context.Context, in *CreateExecutionRequest, opts ...grpc.CallOption) (*CreateExecutionResponse, error)
 	RunExecution(ctx context.Context, in *RunExecutionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RunExecutionResponse], error)
-	GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error)
 	StopServer(ctx context.Context, in *StopServerRequest, opts ...grpc.CallOption) (*StopServerResponse, error)
 }
 
@@ -73,16 +70,6 @@ func (c *sessionServicerClient) RunExecution(ctx context.Context, in *RunExecuti
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SessionServicer_RunExecutionClient = grpc.ServerStreamingClient[RunExecutionResponse]
 
-func (c *sessionServicerClient) GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetExecutionResponse)
-	err := c.cc.Invoke(ctx, SessionServicer_GetExecution_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *sessionServicerClient) StopServer(ctx context.Context, in *StopServerRequest, opts ...grpc.CallOption) (*StopServerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StopServerResponse)
@@ -99,7 +86,6 @@ func (c *sessionServicerClient) StopServer(ctx context.Context, in *StopServerRe
 type SessionServicerServer interface {
 	CreateExecution(context.Context, *CreateExecutionRequest) (*CreateExecutionResponse, error)
 	RunExecution(*RunExecutionRequest, grpc.ServerStreamingServer[RunExecutionResponse]) error
-	GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error)
 	StopServer(context.Context, *StopServerRequest) (*StopServerResponse, error)
 	mustEmbedUnimplementedSessionServicerServer()
 }
@@ -116,9 +102,6 @@ func (UnimplementedSessionServicerServer) CreateExecution(context.Context, *Crea
 }
 func (UnimplementedSessionServicerServer) RunExecution(*RunExecutionRequest, grpc.ServerStreamingServer[RunExecutionResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method RunExecution not implemented")
-}
-func (UnimplementedSessionServicerServer) GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetExecution not implemented")
 }
 func (UnimplementedSessionServicerServer) StopServer(context.Context, *StopServerRequest) (*StopServerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopServer not implemented")
@@ -173,24 +156,6 @@ func _SessionServicer_RunExecution_Handler(srv interface{}, stream grpc.ServerSt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SessionServicer_RunExecutionServer = grpc.ServerStreamingServer[RunExecutionResponse]
 
-func _SessionServicer_GetExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetExecutionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SessionServicerServer).GetExecution(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SessionServicer_GetExecution_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SessionServicerServer).GetExecution(ctx, req.(*GetExecutionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _SessionServicer_StopServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StopServerRequest)
 	if err := dec(in); err != nil {
@@ -219,10 +184,6 @@ var SessionServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateExecution",
 			Handler:    _SessionServicer_CreateExecution_Handler,
-		},
-		{
-			MethodName: "GetExecution",
-			Handler:    _SessionServicer_GetExecution_Handler,
 		},
 		{
 			MethodName: "StopServer",

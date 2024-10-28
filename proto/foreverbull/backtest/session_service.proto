@@ -29,15 +29,6 @@ message RunExecutionResponse {
     foreverbull.finance.Portfolio portfolio = 2;
 }
 
-message GetExecutionRequest {
-    string execution_id = 1;
-}
-
-message GetExecutionResponse {
-    foreverbull.backtest.Execution execution = 1;
-    repeated Period periods = 2;
-}
-
 message StopServerRequest {
 }
 
@@ -47,6 +38,5 @@ message StopServerResponse {
 service SessionServicer {
     rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
     rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
-    rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
     rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
 }

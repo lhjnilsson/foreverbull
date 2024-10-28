@@ -10,7 +10,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Execution(_message.Message):
-    __slots__ = ("id", "session", "start_date", "end_date", "benchmark", "symbols", "statuses")
+    __slots__ = ("id", "session", "start_date", "end_date", "benchmark", "symbols", "statuses", "result")
     class Status(_message.Message):
         __slots__ = ("status", "error", "occurred_at")
         class Status(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
@@ -37,6 +37,7 @@ class Execution(_message.Message):
     BENCHMARK_FIELD_NUMBER: _ClassVar[int]
     SYMBOLS_FIELD_NUMBER: _ClassVar[int]
     STATUSES_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
     id: str
     session: str
     start_date: _common_pb2.Date
@@ -44,7 +45,8 @@ class Execution(_message.Message):
     benchmark: str
     symbols: _containers.RepeatedScalarFieldContainer[str]
     statuses: _containers.RepeatedCompositeFieldContainer[Execution.Status]
-    def __init__(self, id: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., benchmark: _Optional[str] = ..., symbols: _Optional[_Iterable[str]] = ..., statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ...) -> None: ...
+    result: Period
+    def __init__(self, id: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., benchmark: _Optional[str] = ..., symbols: _Optional[_Iterable[str]] = ..., statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ..., result: _Optional[_Union[Period, _Mapping]] = ...) -> None: ...
 
 class Period(_message.Message):
     __slots__ = ("date", "PNL", "returns", "portfolio_value", "longs_count", "shorts_count", "long_value", "short_value", "starting_exposure", "ending_exposure", "long_exposure", "short_exposure", "capital_used", "gross_leverage", "net_leverage", "starting_value", "ending_value", "starting_cash", "ending_cash", "max_drawdown", "max_leverage", "excess_return", "treasury_period_return", "algorithm_period_return", "algo_volatility", "sharpe", "sortino", "benchmark_period_return", "benchmark_volatility", "alpha", "beta", "positions")

@@ -117,3 +117,58 @@ func (bs *BacktestServer) GetSession(ctx context.Context,
 		Session: session,
 	}, nil
 }
+
+func (bs *BacktestServer) ListExecutions(ctx context.Context,
+	req *pb.ListExecutionsRequest,
+) (*pb.ListExecutionsResponse, error) {
+	storage := repository.Execution{Conn: bs.pgx}
+
+	if req.GetSessionId() != "" {
+		executions, err := storage.ListBySession(ctx, req.GetSessionId())
+		if err != nil {
+			return nil, fmt.Errorf("error listing executions: %w", err)
+		}
+
+		return &pb.ListExecutionsResponse{
+			Executions: executions,
+		}, nil
+	} else if req.GetBacktest() != "" {
+		executions, err := storage.ListByBacktest(ctx, req.GetBacktest())
+		if err != nil {
+			return nil, fmt.Errorf("error listing executions: %w", err)
+		}
+
+		return &pb.ListExecutionsResponse{
+			Executions: executions,
+		}, nil
+	}
+
+	executions, err := storage.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error listing executions: %w", err)
+	}
+
+	return &pb.ListExecutionsResponse{
+		Executions: executions,
+	}, nil
+}
+
+func (bs *BacktestServer) GetExecution(ctx context.Context,
+	req *pb.GetExecutionRequest,
+) (*pb.GetExecutionResponse, error) {
+	storage := repository.Execution{Conn: bs.pgx}
+
+	execution, err := storage.Get(ctx, req.GetExecutionId())
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution: %w", err)
+	}
+	periods, err := storage.GetPeriods(ctx, req.GetExecutionId())
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution periods: %w", err)
+	}
+
+	return &pb.GetExecutionResponse{
+		Execution: execution,
+		Periods:   periods,
+	}, nil
+}

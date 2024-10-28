@@ -96,9 +96,9 @@ class Algorithm(models.Algorithm):
                 yield message.portfolio
 
     def get_execution(self, execution_id: str) -> tuple[execution_pb2.Execution, pandas.DataFrame]:
-        if self._broker_session_stub is None:
+        if self._broker_stub is None:
             raise RuntimeError("No backtest session")
-        rsp = self._broker_session_stub.GetExecution(session_service_pb2.GetExecutionRequest(execution_id=execution_id))
+        rsp = self._broker_stub.GetExecution(backtest_service_pb2.GetExecutionRequest(execution_id=execution_id))
         periods = []
         for period in rsp.periods:
             periods.append(

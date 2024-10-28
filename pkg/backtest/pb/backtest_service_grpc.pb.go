@@ -8,7 +8,6 @@ package pb
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -25,6 +24,8 @@ const (
 	BacktestServicer_GetBacktest_FullMethodName    = "/foreverbull.backtest.BacktestServicer/GetBacktest"
 	BacktestServicer_CreateSession_FullMethodName  = "/foreverbull.backtest.BacktestServicer/CreateSession"
 	BacktestServicer_GetSession_FullMethodName     = "/foreverbull.backtest.BacktestServicer/GetSession"
+	BacktestServicer_ListExecutions_FullMethodName = "/foreverbull.backtest.BacktestServicer/ListExecutions"
+	BacktestServicer_GetExecution_FullMethodName   = "/foreverbull.backtest.BacktestServicer/GetExecution"
 )
 
 // BacktestServicerClient is the client API for BacktestServicer service.
@@ -36,6 +37,8 @@ type BacktestServicerClient interface {
 	GetBacktest(ctx context.Context, in *GetBacktestRequest, opts ...grpc.CallOption) (*GetBacktestResponse, error)
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
+	ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error)
+	GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error)
 }
 
 type backtestServicerClient struct {
@@ -96,6 +99,26 @@ func (c *backtestServicerClient) GetSession(ctx context.Context, in *GetSessionR
 	return out, nil
 }
 
+func (c *backtestServicerClient) ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListExecutionsResponse)
+	err := c.cc.Invoke(ctx, BacktestServicer_ListExecutions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *backtestServicerClient) GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetExecutionResponse)
+	err := c.cc.Invoke(ctx, BacktestServicer_GetExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BacktestServicerServer is the server API for BacktestServicer service.
 // All implementations must embed UnimplementedBacktestServicerServer
 // for forward compatibility.
@@ -105,6 +128,8 @@ type BacktestServicerServer interface {
 	GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error)
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
 	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
+	ListExecutions(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error)
+	GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error)
 	mustEmbedUnimplementedBacktestServicerServer()
 }
 
@@ -129,6 +154,12 @@ func (UnimplementedBacktestServicerServer) CreateSession(context.Context, *Creat
 }
 func (UnimplementedBacktestServicerServer) GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSession not implemented")
+}
+func (UnimplementedBacktestServicerServer) ListExecutions(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListExecutions not implemented")
+}
+func (UnimplementedBacktestServicerServer) GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetExecution not implemented")
 }
 func (UnimplementedBacktestServicerServer) mustEmbedUnimplementedBacktestServicerServer() {}
 func (UnimplementedBacktestServicerServer) testEmbeddedByValue()                          {}
@@ -241,6 +272,42 @@ func _BacktestServicer_GetSession_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BacktestServicer_ListExecutions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListExecutionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BacktestServicerServer).ListExecutions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BacktestServicer_ListExecutions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BacktestServicerServer).ListExecutions(ctx, req.(*ListExecutionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BacktestServicer_GetExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetExecutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BacktestServicerServer).GetExecution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BacktestServicer_GetExecution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BacktestServicerServer).GetExecution(ctx, req.(*GetExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BacktestServicer_ServiceDesc is the grpc.ServiceDesc for BacktestServicer service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -267,6 +334,14 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSession",
 			Handler:    _BacktestServicer_GetSession_Handler,
+		},
+		{
+			MethodName: "ListExecutions",
+			Handler:    _BacktestServicer_ListExecutions_Handler,
+		},
+		{
+			MethodName: "GetExecution",
+			Handler:    _BacktestServicer_GetExecution_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
