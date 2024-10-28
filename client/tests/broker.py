@@ -58,6 +58,11 @@ class Broker:
             )
         )
 
+    def ListExecutions(
+        self, request: backtest_service_pb2.ListExecutionsRequest, context
+    ) -> backtest_service_pb2.ListExecutionsResponse:
+        return backtest_service_pb2.ListExecutionsResponse()
+
     def GetExecution(
         self, request: backtest_service_pb2.GetExecutionRequest, context
     ) -> backtest_service_pb2.GetExecutionResponse:
