@@ -17,7 +17,7 @@ runner = CliRunner(mix_stderr=False)
 
 
 def test_backtest_list():
-    with patch("foreverbull.broker.backtest.list") as mock_list:
+    with patch("foreverbull.broker.backtest.list_backtests") as mock_list:
         mock_list.return_value = [
             backtest_pb2.Backtest(
                 name="test_name",
