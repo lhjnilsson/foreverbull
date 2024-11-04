@@ -44,6 +44,11 @@ class SessionServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionResponse.FromString,
                 _registered_method=True)
+        self.StoreResult = channel.unary_unary(
+                '/foreverbull.backtest.SessionServicer/StoreResult',
+                request_serializer=foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultResponse.FromString,
+                _registered_method=True)
         self.StopServer = channel.unary_unary(
                 '/foreverbull.backtest.SessionServicer/StopServer',
                 request_serializer=foreverbull_dot_backtest_dot_session__service__pb2.StopServerRequest.SerializeToString,
@@ -61,6 +66,12 @@ class SessionServicerServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def RunExecution(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StoreResult(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -84,6 +95,11 @@ def add_SessionServicerServicer_to_server(servicer, server):
                     servicer.RunExecution,
                     request_deserializer=foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionResponse.SerializeToString,
+            ),
+            'StoreResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.StoreResult,
+                    request_deserializer=foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultResponse.SerializeToString,
             ),
             'StopServer': grpc.unary_unary_rpc_method_handler(
                     servicer.StopServer,
@@ -145,6 +161,33 @@ class SessionServicer(object):
             '/foreverbull.backtest.SessionServicer/RunExecution',
             foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionRequest.SerializeToString,
             foreverbull_dot_backtest_dot_session__service__pb2.RunExecutionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StoreResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.backtest.SessionServicer/StoreResult',
+            foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_session__service__pb2.StoreExecutionResultResponse.FromString,
             options,
             channel_credentials,
             insecure,

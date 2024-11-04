@@ -237,6 +237,12 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		test.Require().NotNil(msg, "message is nil")
 	}
 
+	rspResult, err := sessionClient.StoreResult(context.TODO(), &pb.StoreExecutionResultRequest{
+		ExecutionId: excRep.Execution.Id,
+	})
+	test.Require().NoError(err, "failed to store result")
+	test.NotNil(rspResult, "response is nil")
+
 	rsp5, err := sessionClient.StopServer(context.TODO(), &pb.StopServerRequest{})
 	test.Require().NoError(err, "failed to stop server")
 	test.NotNil(rsp5, "response is nil")

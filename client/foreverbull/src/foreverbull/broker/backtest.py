@@ -9,6 +9,7 @@ import grpc
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2_grpc
@@ -55,11 +56,8 @@ def get_ingestion(
 
 
 @backtest_servicer
-def list(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> list[backtest_pb2.Backtest]:
-    rsp: backtest_service_pb2.ListBacktestsResponse = servicer.ListBacktests(
-        backtest_service_pb2.ListBacktestsRequest()
-    )
-    return [b for b in rsp.backtests]
+def list_backtests(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> list[backtest_pb2.Backtest]:
+    return servicer.ListBacktests(backtest_service_pb2.ListBacktestsRequest()).backtests
 
 
 @backtest_servicer
@@ -82,12 +80,6 @@ def get(servicer: backtest_service_pb2_grpc.BacktestServicerStub, name: str) -> 
     return rsp.backtest
 
 
-# @inject_session
-# def list_sessions(session: Session, backtest: str | None = None) -> List[entity.backtest.Session]:
-#     rsp = session.request("GET", "/backtest/api/sessions", params={"backtest": backtest})
-#     return [entity.backtest.Session.model_validate(s) for s in rsp.json()]
-
-
 @backtest_servicer
 def create_session(servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest_name: str) -> session_pb2.Session:
     req = backtest_service_pb2.CreateSessionRequest(
@@ -104,3 +96,23 @@ def get_session(servicer: backtest_service_pb2_grpc.BacktestServicerStub, sessio
     )
     rsp: backtest_service_pb2.GetSessionResponse = servicer.GetSession(req)
     return rsp.session
+
+
+@backtest_servicer
+def list_executions(
+    servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest: str | None = None, session_id: str | None = None
+) -> list[execution_pb2.Execution]:
+    return servicer.ListExecutions(
+        backtest_service_pb2.ListExecutionsRequest(backtest=backtest, session_id=session_id)
+    ).executions
+
+
+@backtest_servicer
+def get_execution(
+    servicer: backtest_service_pb2_grpc.BacktestServicerStub, execution_id: str
+) -> tuple[execution_pb2.Execution, list[execution_pb2.Period]]:
+    req = backtest_service_pb2.GetExecutionRequest(
+        execution_id=execution_id,
+    )
+    rsp = servicer.GetExecution(req)
+    return rsp.execution, rsp.periods

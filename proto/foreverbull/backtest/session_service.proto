@@ -29,6 +29,13 @@ message RunExecutionResponse {
     foreverbull.finance.Portfolio portfolio = 2;
 }
 
+message StoreExecutionResultRequest {
+    string execution_id = 1;
+}
+
+message StoreExecutionResultResponse {
+}
+
 message StopServerRequest {
 }
 
@@ -38,5 +45,6 @@ message StopServerResponse {
 service SessionServicer {
     rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
     rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
+    rpc StoreResult(StoreExecutionResultRequest) returns (StoreExecutionResultResponse) {}
     rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
 }

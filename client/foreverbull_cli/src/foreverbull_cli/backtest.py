@@ -36,7 +36,7 @@ def list():
     table.add_column("End")
     table.add_column("Symbols")
     table.add_column("Benchmark")
-    for backtest in broker.backtest.list():
+    for backtest in broker.backtest.list_backtests():
         table.add_row(
             backtest.name,
             (from_proto_date_to_pydate(backtest.start_date).isoformat()),
@@ -159,3 +159,21 @@ def run(
                 progress.update(task, advance=1)
                 current_month = period.timestamp.ToDatetime().month
         log.info(f"Execution completed for {backtest.name}")
+
+
+@backtest.command()
+def executions(
+    backtest: Annotated[str, typer.Option(help="name of the backtest")] | None = None,
+    session: Annotated[str, typer.Option(help="id of the session")] | None = None,
+):
+    executions = broker.backtest.list_executions(backtest, session)
+    print("EXECUTIONS: ", executions)
+
+
+@backtest.command()
+def execution(
+    id: Annotated[str, typer.Argument(help="id of the execution")],
+):
+    execution, periods = broker.backtest.get_execution(id)
+    print("EXECUTION: ", execution)
+    print("PERIODS: ", periods)

@@ -141,6 +141,20 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	return nil
 }
 
+func (s *grpcSessionServer) StoreResult(ctx context.Context, req *backtest_pb.StoreExecutionResultRequest) (*backtest_pb.StoreExecutionResultResponse, error) {
+	log.Debug().Any("request", req).Msg("store result")
+	rsp, err := s.backtest.GetResult(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting result: %w", err)
+	}
+	executions := repository.Execution{Conn: s.db}
+	err = executions.StorePeriods(ctx, req.ExecutionId, rsp.Periods)
+	if err != nil {
+		return nil, fmt.Errorf("error storing result: %w", err)
+	}
+	return &backtest_pb.StoreExecutionResultResponse{}, nil
+}
+
 func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.GetExecutionRequest) (*backtest_pb.GetExecutionResponse, error) {
 	log.Debug().Any("request", req).Msg("get execution")
 	select {
