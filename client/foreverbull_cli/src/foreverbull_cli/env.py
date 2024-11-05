@@ -158,12 +158,10 @@ def status():
     console.print(table)
 
 
-
-
 @env.command()
 def start(
     broker_image: Annotated[str, typer.Option(help="Docker image name of broker")] = BROKER_IMAGE,
-    backtest_image:  Annotated[str, typer.Option(help="Docker image name of backtest service")] = BACKTEST_IMAGE,
+    backtest_image: Annotated[str, typer.Option(help="Docker image name of backtest service")] = BACKTEST_IMAGE,
     log_level: Annotated[str, typer.Option(help="Log level")] = "INFO",
 ):
     d = docker.from_env()

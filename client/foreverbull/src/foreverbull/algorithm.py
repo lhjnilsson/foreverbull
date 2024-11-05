@@ -96,10 +96,13 @@ class Algorithm(models.Algorithm):
                 yield message.portfolio
 
             print("STORING: ", create.execution.id)
-            rsp = self._broker_session_stub.StoreResult(session_service_pb2.StoreExecutionResultRequest(
-                execution_id=create.execution.id,
-            ))
+            rsp = self._broker_session_stub.StoreResult(
+                session_service_pb2.StoreExecutionResultRequest(
+                    execution_id=create.execution.id,
+                )
+            )
             print("STORED: ", rsp)
+
     def get_execution(self, execution_id: str) -> tuple[execution_pb2.Execution, pandas.DataFrame]:
         if self._broker_stub is None:
             raise RuntimeError("No backtest session")
