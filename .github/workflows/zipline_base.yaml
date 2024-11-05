@@ -20,6 +20,6 @@ jobs:
         with:
           context: client/python
           platforms: linux/amd64,linux/arm64
-          file: ./client/python/zipline_base.Dockerfile
+          file: ./client/foreverbull_zipline/base.Dockerfile
           tags: lhjnilsson/zipline_base:latest
           push: true
