@@ -158,18 +158,13 @@ def status():
     console.print(table)
 
 
-ALPACA_KEY_OPT = Annotated[str, typer.Option(help="alpaca.markets api key")] | None
-ALPACA_SECRET_OPT = Annotated[str, typer.Option(help="alpaca.markets api secret")] | None
-BROKER_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of broker")]
-BACKTEST_IMAGE_OPT = Annotated[str, typer.Option(help="Docker image name of backtest service")]
 
 
 @env.command()
 def start(
-    alpaca_key: ALPACA_KEY_OPT = None,
-    alpaca_secret: ALPACA_SECRET_OPT = None,
-    broker_image: BROKER_IMAGE_OPT = BROKER_IMAGE,
-    backtest_image: BACKTEST_IMAGE_OPT = BACKTEST_IMAGE,
+    broker_image: Annotated[str, typer.Option(help="Docker image name of broker")] = BROKER_IMAGE,
+    backtest_image:  Annotated[str, typer.Option(help="Docker image name of backtest service")] = BACKTEST_IMAGE,
+    log_level: Annotated[str, typer.Option(help="Log level")] = "INFO",
 ):
     d = docker.from_env()
 
@@ -397,11 +392,8 @@ def start(
                         "NATS_URL": "nats://nats:4222",
                         "MINIO_URL": "minio:9000",
                         "DOCKER_NETWORK": NETWORK_NAME,
-                        "ALPACA_MARKETS_BASE_URL": "https://paper-api.alpaca.markets",
-                        "ALPACA_MARKETS_API_KEY": alpaca_key,
-                        "ALPACA_MARKETS_API_SECRET": alpaca_secret,
                         "BACKTEST_IMAGE": backtest_image,
-                        "LOG_LEVEL": "info",
+                        "LOG_LEVEL": log_level,
                     },  # type: ignore
                     volumes={
                         "/var/run/docker.sock": {

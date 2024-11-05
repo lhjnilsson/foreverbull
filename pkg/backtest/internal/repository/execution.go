@@ -232,6 +232,7 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 	defer rows.Close()
 	for rows.Next() {
 		period := pb.Period{}
+		periodDate := pgtype.Date{}
 		pnl := sql.NullFloat64{}
 		returns := sql.NullFloat64{}
 		portfolioValue := sql.NullFloat64{}
@@ -263,7 +264,7 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 		alpha := sql.NullFloat64{}
 		beta := sql.NullFloat64{}
 
-		err = rows.Scan(&period.Date, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
+		err = rows.Scan(&periodDate, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
 			&longValue, &shortValue, &startingExposure, &endingExposure, &longExposure, &shortExposure, &capitalUsed, &grossLeverage,
 			&netLeverage, &startingValue, &endingValue, &startingCash, &endingCash, &maxDrawdown,
 			&maxLeverage, &excessReturn, &treasuryPeriodReturn, &algorithmPeriodReturn,
@@ -272,6 +273,7 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
+		period.Date = internal_pb.GoTimeToDate(periodDate.Time)
 		if pnl.Valid {
 			period.PNL = pnl.Float64
 		}

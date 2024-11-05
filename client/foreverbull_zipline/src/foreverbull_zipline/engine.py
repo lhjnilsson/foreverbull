@@ -427,14 +427,17 @@ class EngineProcess(multiprocessing.Process, Engine):
         req = engine_service_pb2.PlaceOrdersAndContinueRequest()
         req.ParseFromString(data)
         for order in req.orders:
+            logging.info("Placing order: %s", order)
             asset = trading_algorithm.symbol(order.symbol)
-            trading_algorithm.order(asset=asset, amount=order.amount)
+            order_id = trading_algorithm.order(asset=asset, amount=order.amount)
+            logging.debug("Placed order: %s", order_id)
         return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
     def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
         req = engine_service_pb2.GetCurrentPeriodRequest()
         req.ParseFromString(data)
         p: Portfolio = trading_algorithm.portfolio
+        print("POSITIONS: ", p.positions, flush=True)
         return engine_service_pb2.GetCurrentPeriodResponse(
             is_running=True,
             portfolio=finance_pb2.Portfolio(
@@ -529,6 +532,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                             case "get_current_period":
                                 rsp.data = self._get_current_period(req.data, trading_algorithm)
                                 context_socket.send(rsp.SerializeToString())
+                                return
                             case "place_orders_and_continue":
                                 rsp.data = self._place_orders(req.data, trading_algorithm)
                                 context_socket.send(rsp.SerializeToString())
