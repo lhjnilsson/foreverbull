@@ -73,7 +73,7 @@ func (db *Session) Get(ctx context.Context, sessionID string) (*pb.Session, erro
 		ss.status, ss.error, ss.occurred_at
 		FROM session
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at DESC
 		) AS ss ON session.id=ss.id
 		WHERE session.id=$1`, sessionID)
 	if err != nil {
@@ -172,7 +172,7 @@ func (db *Session) List(ctx context.Context) ([]*pb.Session, error) {
 		ss.status, ss.error, ss.occurred_at
 		FROM session
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at DESC
 		) AS ss ON session.id=ss.id`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
@@ -190,7 +190,7 @@ func (db *Session) ListByBacktest(ctx context.Context, backtest string) ([]*pb.S
 		ss.status, ss.error, ss.occurred_at
 		FROM session
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM session_status ORDER BY occurred_at DESC
 		) AS ss ON session.id=ss.id
 		WHERE backtest=$1`, backtest)
 	if err != nil {

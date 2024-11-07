@@ -179,7 +179,7 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 		es.status, es.error, es.occurred_at
 		FROM execution
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
 		WHERE execution.id=$1`, executionId)
 	if err != nil {
@@ -589,7 +589,7 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 		FROM execution
 		INNER JOIN session ON execution.session=session.id
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
 		LEFT JOIN (
 			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
@@ -623,7 +623,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 		FROM execution
 		INNER JOIN session ON execution.session=session.id
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at ASC
+			SELECT id, status, error, occurred_at FROM execution_status ORDER BY occurred_at DESC
 		) AS es ON execution.id=es.id
 		LEFT JOIN (
 			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
