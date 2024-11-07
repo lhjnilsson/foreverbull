@@ -21,13 +21,14 @@ message Execution {
         google.protobuf.Timestamp occurred_at = 3;
     }
     string id = 1;
-    string session = 2;
-    foreverbull.common.Date start_date = 3;
-    foreverbull.common.Date end_date = 4;
-    optional string benchmark = 5;
-    repeated string symbols = 6;
-    repeated Status statuses = 7;
-    optional Period result = 8;
+    string backtest = 2;
+    string session = 3;
+    foreverbull.common.Date start_date = 4;
+    foreverbull.common.Date end_date = 5;
+    optional string benchmark = 6;
+    repeated string symbols = 7;
+    repeated Status statuses = 8;
+    optional Period result = 9;
 }
 
 message Period {

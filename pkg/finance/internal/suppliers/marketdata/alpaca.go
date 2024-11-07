@@ -83,7 +83,7 @@ func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) (
 			High:      bar.High,
 			Low:       bar.Low,
 			Close:     bar.Close,
-			Volume:    int32(bar.Volume),
+			Volume:    bar.Volume,
 			Timestamp: timestamppb.New(bar.Timestamp),
 		}
 

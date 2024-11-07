@@ -146,15 +146,15 @@ func (test *ExecutionTest) TestUpdateStatus() {
 	test.Require().NoError(err)
 	test.NotNil(execution.Id)
 	test.Len(execution.Statuses, 3)
-	test.Equal(pb.Execution_Status_FAILED.String(), execution.Statuses[0].Status.String())
-	test.Equal("test", *execution.Statuses[0].Error)
-	test.NotNil(execution.Statuses[0].OccurredAt)
+	test.Equal(pb.Execution_Status_FAILED.String(), execution.Statuses[2].Status.String())
+	test.Equal("test", *execution.Statuses[2].Error)
+	test.NotNil(execution.Statuses[2].OccurredAt)
 	test.Equal(pb.Execution_Status_RUNNING.String(), execution.Statuses[1].Status.String())
 	test.Nil(execution.Statuses[1].Error)
 	test.NotNil(execution.Statuses[1].OccurredAt)
-	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[2].Status.String())
-	test.Nil(execution.Statuses[2].Error)
-	test.NotNil(execution.Statuses[2].OccurredAt)
+	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
+	test.Nil(execution.Statuses[0].Error)
+	test.NotNil(execution.Statuses[0].OccurredAt)
 }
 
 func (test *ExecutionTest) TestList() {

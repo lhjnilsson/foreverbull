@@ -10,7 +10,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Execution(_message.Message):
-    __slots__ = ("id", "session", "start_date", "end_date", "benchmark", "symbols", "statuses", "result")
+    __slots__ = ("id", "backtest", "session", "start_date", "end_date", "benchmark", "symbols", "statuses", "result")
     class Status(_message.Message):
         __slots__ = ("status", "error", "occurred_at")
         class Status(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
@@ -31,6 +31,7 @@ class Execution(_message.Message):
         occurred_at: _timestamp_pb2.Timestamp
         def __init__(self, status: _Optional[_Union[Execution.Status.Status, str]] = ..., error: _Optional[str] = ..., occurred_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
     ID_FIELD_NUMBER: _ClassVar[int]
+    BACKTEST_FIELD_NUMBER: _ClassVar[int]
     SESSION_FIELD_NUMBER: _ClassVar[int]
     START_DATE_FIELD_NUMBER: _ClassVar[int]
     END_DATE_FIELD_NUMBER: _ClassVar[int]
@@ -39,6 +40,7 @@ class Execution(_message.Message):
     STATUSES_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
     id: str
+    backtest: str
     session: str
     start_date: _common_pb2.Date
     end_date: _common_pb2.Date
@@ -46,7 +48,7 @@ class Execution(_message.Message):
     symbols: _containers.RepeatedScalarFieldContainer[str]
     statuses: _containers.RepeatedCompositeFieldContainer[Execution.Status]
     result: Period
-    def __init__(self, id: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., benchmark: _Optional[str] = ..., symbols: _Optional[_Iterable[str]] = ..., statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ..., result: _Optional[_Union[Period, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., backtest: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., benchmark: _Optional[str] = ..., symbols: _Optional[_Iterable[str]] = ..., statuses: _Optional[_Iterable[_Union[Execution.Status, _Mapping]]] = ..., result: _Optional[_Union[Period, _Mapping]] = ...) -> None: ...
 
 class Period(_message.Message):
     __slots__ = ("date", "PNL", "returns", "portfolio_value", "longs_count", "shorts_count", "long_value", "short_value", "starting_exposure", "ending_exposure", "long_exposure", "short_exposure", "capital_used", "gross_leverage", "net_leverage", "starting_value", "ending_value", "starting_cash", "ending_cash", "max_drawdown", "max_leverage", "excess_return", "treasury_period_return", "algorithm_period_return", "algo_volatility", "sharpe", "sortino", "benchmark_period_return", "benchmark_volatility", "alpha", "beta", "positions")

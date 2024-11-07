@@ -187,9 +187,9 @@ func (db *Backtest) List(ctx context.Context) ([]*pb.Backtest, error) {
 		bs.status, bs.error, bs.occurred_at
 		FROM backtest
 		INNER JOIN (
-			SELECT name, status, error, occurred_at FROM backtest_status ORDER BY occurred_at DESC
+			SELECT name, status, error, occurred_at FROM backtest_status ORDER BY occurred_at ASC
 		) AS bs ON backtest.name=bs.name
-		ORDER BY bs.occurred_at DESC`)
+		ORDER BY bs.occurred_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list backtests: %w", err)
 	}

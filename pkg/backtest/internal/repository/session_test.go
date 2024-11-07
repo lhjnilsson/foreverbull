@@ -97,13 +97,13 @@ func (test *SessionTest) TestUpdateStatus() {
 	session2, err := sessions.Get(ctx, session1.Id)
 	test.Require().NoError(err)
 	test.Equal(session1.Id, session2.Id)
-	test.Equal(pb.Session_Status_FAILED.String(), session2.Statuses[0].Status.String())
-	test.NotNil(session2.Statuses[0].OccurredAt)
-	test.Equal("test", *session2.Statuses[0].Error)
+	test.Equal(pb.Session_Status_FAILED.String(), session2.Statuses[2].Status.String())
+	test.NotNil(session2.Statuses[2].OccurredAt)
+	test.Equal("test", *session2.Statuses[2].Error)
 	test.Equal(pb.Session_Status_RUNNING.String(), session2.Statuses[1].Status.String())
 	test.NotNil(session2.Statuses[1].OccurredAt)
-	test.Equal(pb.Session_Status_CREATED.String(), session2.Statuses[2].Status.String())
-	test.NotNil(session2.Statuses[2].OccurredAt)
+	test.Equal(pb.Session_Status_CREATED.String(), session2.Statuses[0].Status.String())
+	test.NotNil(session2.Statuses[0].OccurredAt)
 }
 
 func (test *SessionTest) TestUpdatePort() {
@@ -137,8 +137,8 @@ func (test *SessionTest) TestList() {
 	allSessions, err := sessions.List(ctx)
 	test.Require().NoError(err)
 	test.Len(allSessions, 2)
-	test.Equal(session2.Id, allSessions[0].Id)
-	test.Equal(session1.Id, allSessions[1].Id)
+	test.Equal(session2.Id, allSessions[1].Id)
+	test.Equal(session1.Id, allSessions[0].Id)
 }
 
 func (test *SessionTest) TestListByBacktest() {
@@ -164,6 +164,6 @@ func (test *SessionTest) TestListByBacktest() {
 	allSessions, err := sessions.ListByBacktest(ctx, "backtest")
 	test.Require().NoError(err)
 	test.Len(allSessions, 2)
-	test.Equal(session2.Id, allSessions[0].Id)
-	test.Equal(session1.Id, allSessions[1].Id)
+	test.Equal(session2.Id, allSessions[1].Id)
+	test.Equal(session1.Id, allSessions[0].Id)
 }
