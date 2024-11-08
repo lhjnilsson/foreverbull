@@ -15,7 +15,7 @@ open numeric,
 high numeric,
 low numeric,
 close numeric,
-volume integer,
+volume bigint,
 time timestamp,
 UNIQUE (symbol, time));
 `
