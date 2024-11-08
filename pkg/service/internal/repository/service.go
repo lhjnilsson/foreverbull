@@ -156,7 +156,7 @@ func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
 		INNER JOIN (
 			SELECT image, status, error, occurred_at FROM service_status ORDER BY occurred_at DESC
 		) ss ON service.image = ss.image
-		ORDER BY ss.occurred_at DESC`)
+		ORDER BY ss.occurred_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list services: %w", err)
 	}

@@ -18,6 +18,7 @@ from typing_extensions import Annotated
 from foreverbull import Algorithm
 from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
@@ -36,7 +37,7 @@ def list():
     table.add_column("End")
     table.add_column("Symbols")
     table.add_column("Benchmark")
-    for backtest in broker.backtest.list():
+    for backtest in broker.backtest.list_backtests():
         table.add_row(
             backtest.name,
             (from_proto_date_to_pydate(backtest.start_date).isoformat()),
@@ -159,3 +160,46 @@ def run(
                 progress.update(task, advance=1)
                 current_month = period.timestamp.ToDatetime().month
         log.info(f"Execution completed for {backtest.name}")
+
+
+@backtest.command()
+def executions(
+    backtest: Annotated[str, typer.Option(help="name of the backtest")] | None = None,
+    session: Annotated[str, typer.Option(help="id of the session")] | None = None,
+):
+    executions = broker.backtest.list_executions(backtest, session)
+
+    table = Table()
+    table.add_column("Date")
+    table.add_column("Status")
+    table.add_column("Backtest")
+    table.add_column("ID")
+
+    for execution in executions:
+        table.add_row(
+            execution.statuses[0].occurred_at.ToDatetime().strftime("%Y-%m-%d %H:%M:%S"),
+            execution_pb2.Execution.Status.Status.Name(execution.statuses[0].status),
+            execution.backtest,
+            execution.id,
+        )
+
+    console.print(table)
+
+
+@backtest.command()
+def execution(
+    id: Annotated[str, typer.Argument(help="id of the execution")],
+):
+    _, periods = broker.backtest.get_execution(id)
+
+    table = Table()
+    table.add_column("Date")
+    table.add_column("Portfolio Value")
+
+    for period in periods:
+        table.add_row(
+            from_proto_date_to_pydate(period.date).strftime("%Y-%m-%d"),
+            "{:.5f}".format(period.portfolio_value),
+        )
+
+    console.print(table)

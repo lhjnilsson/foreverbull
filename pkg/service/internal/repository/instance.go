@@ -74,7 +74,7 @@ func (db *Instance) Get(ctx context.Context, instanceID string) (*pb.Instance, e
 		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
+			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at ASC
 		) AS sis ON service_instance.id = sis.id
 		WHERE service_instance.id=$1`, instanceID)
 	if err != nil {
@@ -177,9 +177,9 @@ func (db *Instance) List(ctx context.Context) ([]*pb.Instance, error) {
 		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
+			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at ASC
 		) AS sis ON service_instance.id = sis.id
-		ORDER BY sis.occurred_at DESC`)
+		ORDER BY sis.occurred_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("error listing instances: %w", err)
 	}
@@ -194,10 +194,10 @@ func (db *Instance) ListByImage(ctx context.Context, image string) ([]*pb.Instan
 		`SELECT service_instance.id, image, host, port, sis.status, sis.error, sis.occurred_at
 		FROM service_instance
 		INNER JOIN (
-			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at DESC
+			SELECT id, status, error, occurred_at FROM service_instance_status ORDER BY occurred_at ASC
 		) AS sis ON service_instance.id = sis.id
 		WHERE image=$1
-		ORDER BY sis.occurred_at DESC`, image)
+		ORDER BY sis.occurred_at ASC`, image)
 	if err != nil {
 		return nil, fmt.Errorf("error listing instances by image: %w", err)
 	}

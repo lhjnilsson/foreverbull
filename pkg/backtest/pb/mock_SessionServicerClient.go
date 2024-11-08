@@ -126,6 +126,43 @@ func (_m *MockSessionServicerClient) StopServer(ctx context.Context, in *StopSer
 	return r0, r1
 }
 
+// StoreResult provides a mock function with given fields: ctx, in, opts
+func (_m *MockSessionServicerClient) StoreResult(ctx context.Context, in *StoreExecutionResultRequest, opts ...grpc.CallOption) (*StoreExecutionResultResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StoreResult")
+	}
+
+	var r0 *StoreExecutionResultResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *StoreExecutionResultRequest, ...grpc.CallOption) (*StoreExecutionResultResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *StoreExecutionResultRequest, ...grpc.CallOption) *StoreExecutionResultResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*StoreExecutionResultResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *StoreExecutionResultRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // NewMockSessionServicerClient creates a new instance of MockSessionServicerClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockSessionServicerClient(t interface {

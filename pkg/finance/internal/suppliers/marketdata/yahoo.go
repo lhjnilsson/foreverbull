@@ -205,10 +205,11 @@ type OHLCResponse struct {
 			Timestamp  []int64 `json:"timestamp"`
 			Indicators struct {
 				Quote []struct {
-					Open  []float64 `json:"open"`
-					High  []float64 `json:"high"`
-					Low   []float64 `json:"low"`
-					Close []float64 `json:"close"`
+					Open   []float64 `json:"open"`
+					High   []float64 `json:"high"`
+					Low    []float64 `json:"low"`
+					Close  []float64 `json:"close"`
+					Volume []uint64  `json:"volume"`
 				} `json:"quote"`
 			} `json:"indicators"`
 		} `json:"result"`
@@ -258,6 +259,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 			High:      data.Chart.Result[0].Indicators.Quote[0].High[index],
 			Low:       data.Chart.Result[0].Indicators.Quote[0].Low[index],
 			Close:     data.Chart.Result[0].Indicators.Quote[0].Close[index],
+			Volume:    data.Chart.Result[0].Indicators.Quote[0].Volume[index],
 		})
 	}
 

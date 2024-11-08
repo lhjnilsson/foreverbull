@@ -427,8 +427,11 @@ class EngineProcess(multiprocessing.Process, Engine):
         req = engine_service_pb2.PlaceOrdersAndContinueRequest()
         req.ParseFromString(data)
         for order in req.orders:
+            logging.info("Placing order: %s", order)
             asset = trading_algorithm.symbol(order.symbol)
-            trading_algorithm.order(asset=asset, amount=order.amount)
+            order_id = trading_algorithm.order(asset=asset, amount=order.amount)
+            logging.debug("Placed order: %s", order_id)
+
         return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
     def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
@@ -521,7 +524,7 @@ class EngineProcess(multiprocessing.Process, Engine):
                 with socket.new_context() as context_socket:
                     req = common_pb2.Request()
                     req.ParseFromString(context_socket.recv())
-                    self.log.debug(f"Received request {req.task}")
+                    self.log.debug(f"Received request {req.task}, {id(trading_algorithm)}")
                     rsp = common_pb2.Response(task=req.task)
                     data: bytes | None = None
                     try:

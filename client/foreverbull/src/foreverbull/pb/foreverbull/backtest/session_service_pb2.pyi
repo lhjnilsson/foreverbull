@@ -38,6 +38,16 @@ class RunExecutionResponse(_message.Message):
     portfolio: _finance_pb2.Portfolio
     def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., portfolio: _Optional[_Union[_finance_pb2.Portfolio, _Mapping]] = ...) -> None: ...
 
+class StoreExecutionResultRequest(_message.Message):
+    __slots__ = ("execution_id",)
+    EXECUTION_ID_FIELD_NUMBER: _ClassVar[int]
+    execution_id: str
+    def __init__(self, execution_id: _Optional[str] = ...) -> None: ...
+
+class StoreExecutionResultResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class StopServerRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...

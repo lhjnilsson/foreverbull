@@ -107,7 +107,7 @@ func (test *InstanceTest) TestUpdateStatus() {
 
 	instance, err := instances.Get(ctx, "instance")
 	test.Require().NoError(err)
-	test.Equal(pb.Instance_Status_RUNNING.String(), instance.Statuses[0].Status.String())
+	test.Equal(pb.Instance_Status_RUNNING.String(), instance.Statuses[1].Status.String())
 }
 
 func (test *InstanceTest) TestList() {

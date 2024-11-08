@@ -93,6 +93,36 @@ func (_m *MockSessionServicerServer) StopServer(_a0 context.Context, _a1 *StopSe
 	return r0, r1
 }
 
+// StoreResult provides a mock function with given fields: _a0, _a1
+func (_m *MockSessionServicerServer) StoreResult(_a0 context.Context, _a1 *StoreExecutionResultRequest) (*StoreExecutionResultResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StoreResult")
+	}
+
+	var r0 *StoreExecutionResultResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *StoreExecutionResultRequest) (*StoreExecutionResultResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *StoreExecutionResultRequest) *StoreExecutionResultResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*StoreExecutionResultResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *StoreExecutionResultRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // mustEmbedUnimplementedSessionServicerServer provides a mock function with given fields:
 func (_m *MockSessionServicerServer) mustEmbedUnimplementedSessionServicerServer() {
 	_m.Called()
