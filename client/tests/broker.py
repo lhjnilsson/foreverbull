@@ -129,6 +129,11 @@ class Broker:
                 portfolio=rsp.portfolio,
             )
 
+    def StoreResult(
+        self, request: session_service_pb2.StoreExecutionResultRequest, context
+    ) -> session_service_pb2.StoreExecutionResultResponse:
+        return session_service_pb2.StoreExecutionResultResponse()
+
     def StopServer(
         self, request: session_service_pb2.StopServerRequest, context
     ) -> session_service_pb2.StopServerResponse:
