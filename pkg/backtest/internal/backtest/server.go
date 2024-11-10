@@ -129,13 +129,29 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 		return fmt.Errorf("error running backtest: %w", err)
 	}
 
+	err = executions.UpdateStatus(context.Background(), req.ExecutionId, backtest_pb.Execution_Status_RUNNING, nil)
+	if err != nil {
+		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error updating status")
+		return fmt.Errorf("error updating status: %w", err)
+	}
+
 	for portfolio := range portfolioCh {
 		err := stream.Send(&backtest_pb.RunExecutionResponse{
 			Portfolio: portfolio,
 		})
 		if err != nil {
+			stErr := executions.UpdateStatus(context.Background(), req.ExecutionId, backtest_pb.Execution_Status_FAILED, err)
+			if stErr != nil {
+				log.Error().Err(stErr).Str("execution_id", req.ExecutionId).Msg("error updating status")
+			}
 			return fmt.Errorf("error sending portfolio: %w", err)
 		}
+	}
+
+	err = executions.UpdateStatus(context.Background(), req.ExecutionId, backtest_pb.Execution_Status_COMPLETED, nil)
+	if err != nil {
+		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error updating status")
+		return fmt.Errorf("error updating status: %w", err)
 	}
 
 	return nil

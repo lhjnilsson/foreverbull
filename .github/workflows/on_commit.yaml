@@ -348,7 +348,7 @@ jobs:
         run: |
           fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
       - name: create backtest
-        run: fbull backtest create /tmp/example_algorithms/dow_jones.json
+        run: fbull backtest create /tmp/example_algorithms/nasdaq.json
       - name: ingest
         run: fbull backtest ingest
       - name: Run backtest as pytest
@@ -428,7 +428,7 @@ jobs:
           run: |
             fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
         - name: create backtest
-          run: fbull backtest create /tmp/example_algorithms/dow_jones.json
+          run: fbull backtest create /tmp/example_algorithms/nasdaq.json
         - name: ingest
           run: fbull backtest ingest
         - name: Run backtest as pytest
@@ -436,7 +436,7 @@ jobs:
           env:
             PYTHONPATH: /tmp/example_algorithms/src
           run: |
-            fbull backtest run dow_jones /tmp/example_algorithms/src/example_algorithms/parallel.py
+            fbull backtest run nasdaq /tmp/example_algorithms/src/example_algorithms/parallel.py
         - name: Sleep for 20 seconds to make all containers stop
           run: sleep 20s
           shell: bash

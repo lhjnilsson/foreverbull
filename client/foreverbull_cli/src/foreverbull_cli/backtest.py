@@ -35,7 +35,7 @@ def list():
     table.add_column("Name")
     table.add_column("Start")
     table.add_column("End")
-    table.add_column("Symbols")
+    table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
     for backtest in broker.backtest.list_backtests():
         table.add_row(
@@ -76,7 +76,7 @@ def create(
     table.add_column("Name")
     table.add_column("Start")
     table.add_column("End")
-    table.add_column("Symbols")
+    table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
 
     table.add_row(
@@ -99,7 +99,7 @@ def get(
     table.add_column("Status")
     table.add_column("Start")
     table.add_column("End")
-    table.add_column("Symbols")
+    table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
     table.add_row(
         backtest.name,
