@@ -4,6 +4,7 @@ from typing import Any
 from typing import Generator
 from typing import Union
 
+import pandas as pd
 import yfinance as yf
 
 from pandas import DataFrame
@@ -81,6 +82,18 @@ class DateLimitedAssets(Assets):
         self._symbols = symbols
         self.metrics = {}
 
+        self._stock_data = DataFrame()
+        data = {}
+        for symbol in symbols:
+            ticker = yf.Ticker(symbol)
+            t = ticker.history(start=start, end=end, interval="1d")
+            t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
+            t["Symbol"] = symbol
+            data[symbol] = t
+        self._stock_data = pd.concat(data.values())
+        self._stock_data.set_index(["Symbol", self._stock_data.index], inplace=True)
+        self._stock_data.index.names = ["Symbol", "Date"]
+
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
         try:
             return self.metrics[key]
@@ -100,7 +113,7 @@ class DateLimitedAssets(Assets):
 
     @property
     def stock_data(self) -> DataFrame:
-        return DataFrame()
+        return self._stock_data
 
 
 class Assets(Assets):
