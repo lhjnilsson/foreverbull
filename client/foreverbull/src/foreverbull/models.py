@@ -20,6 +20,7 @@ from pandas import read_sql_query
 from sqlalchemy import Connection
 from sqlalchemy import create_engine
 from sqlalchemy import engine
+from sqlalchemy import text
 
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
@@ -174,6 +175,67 @@ class Assets:
     @property
     def stock_data(self) -> DataFrame:
         return DataFrame()  # TODO: Implement
+
+
+class Portfolio:
+    def __init__(self, pb: finance_pb2.Portfolio, db: engine.Connection):
+        self._pb = pb
+        self._db = db
+        self._orders: list[finance_pb2.Order] = []
+
+    def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
+        q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
+        q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
+        latest_close = self._db.execute(q).scalar()
+        assert latest_close is not None
+        return int(value / float(latest_close))
+
+    def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
+        value = self._pb.portfolio_value * percent
+        return self._calculate_order_value_amount(symbol, value)
+
+    def _calculate_order_target_amount(self, symbol: str, amount: int) -> int:
+        for pos in self._pb.positions:
+            if pos.symbol == symbol:
+                return amount - pos.amount
+        return amount
+
+    def order(self, symbol: str, amount: int) -> finance_pb2.Order:
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
+
+    def order_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
+        amount = self._calculate_order_percent_amount(symbol, percent)
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
+
+    def order_value(self, symbol: str, value: float) -> finance_pb2.Order:
+        amount = self._calculate_order_value_amount(symbol, value)
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
+
+    def order_target(self, symbol: str, amount: int) -> finance_pb2.Order:
+        amount = self._calculate_order_target_amount(symbol, amount)
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
+
+    def order_target_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
+        amount = self._calculate_order_percent_amount(symbol, percent)
+        amount = self._calculate_order_target_amount(symbol, amount)
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
+
+    def order_target_value(self, symbol: str, value: float) -> finance_pb2.Order:
+        amount = self._calculate_order_value_amount(symbol, value)
+        amount = self._calculate_order_target_amount(symbol, amount)
+        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        self._orders.append(order)
+        return order
 
 
 class Function:
