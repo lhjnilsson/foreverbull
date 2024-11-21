@@ -183,6 +183,10 @@ class Portfolio:
         self._db = db
         self._orders: list[finance_pb2.Order] = []
 
+    @property
+    def positions(self) -> list[finance_pb2.Position]:
+        return [p for p in self._pb.positions]
+
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))

@@ -2,7 +2,6 @@ from foreverbull import Algorithm
 from foreverbull import Asset
 from foreverbull import Assets
 from foreverbull import Function
-from foreverbull import Order
 from foreverbull import Portfolio
 
 
@@ -19,8 +18,7 @@ def measure_assets(asset: Asset, portfolio: Portfolio, low: int = 10, high: int 
     asset.set_metric("long_mean", long_mean)
 
 
-def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
-    orders = []
+def create_orders(assets: Assets, portfolio: Portfolio):
     for asset in assets:
         position = [p for p in portfolio.positions if p.symbol == asset.symbol]
         short_mean = asset.get_metric("short_mean")
@@ -28,10 +26,9 @@ def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
         if short_mean is None or long_mean is None:
             continue
         if short_mean > long_mean and not position:
-            orders.append(Order(symbol=asset.symbol, amount=10))
+            portfolio.order_target(asset.symbol, 10)
         elif short_mean < long_mean and position:
-            orders.append(Order(symbol=asset.symbol, amount=-10))
-    return orders
+            portfolio.order_target(asset.symbol, 0)
 
 
 algo = Algorithm(
