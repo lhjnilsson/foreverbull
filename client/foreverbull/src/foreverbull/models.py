@@ -380,19 +380,15 @@ class Algorithm:
         portfolio: finance_pb2.Portfolio,
         symbols: list[str],
     ) -> list[finance_pb2.Order]:
+        p = Portfolio(portfolio, db)
         if Algorithm._functions[function_name]["definition"].parallelExecution:
-            orders = []
             for symbol in symbols:
                 asset = Asset(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbol)
-                order = Algorithm._functions[function_name]["callable"](
+                Algorithm._functions[function_name]["callable"](
                     asset=asset,
-                    portfolio=portfolio,
+                    portfolio=p,
                 )
-                if order:
-                    orders.append(order)
         else:
             assets = Assets(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbols)
-            orders = Algorithm._functions[function_name]["callable"](assets=assets, portfolio=portfolio)
-            if not orders:
-                orders = []
-        return orders
+            Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
+        return p._orders
