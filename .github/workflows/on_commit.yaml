@@ -344,6 +344,9 @@ jobs:
           pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
           pip install /tmp/foreverbull_cli-0.0.1-py3-none-any.whl
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
+      - name: Install example algorithms dependencies
+        run: |
+          pip install ta-lib
       - name: Create environment
         run: |
           fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
