@@ -268,7 +268,7 @@ class Algorithm:
             parallel_execution: bool | None = None
 
             for key, value in signature(f.callable).parameters.items():
-                if value.annotation == finance_pb2.Portfolio:
+                if value.annotation == Portfolio:
                     portfolio_key = key
                     continue
                 if issubclass(value.annotation, Assets):
