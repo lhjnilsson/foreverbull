@@ -1,18 +1,19 @@
 import tempfile
 
 from datetime import datetime
+from datetime import timezone
 from unittest import mock
 
 import pandas
 import pytest
+
+from sqlalchemy import text
 
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Portfolio
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.foreverbull.service import worker_pb2
 
@@ -68,43 +69,60 @@ class TestAssets:
 class TestPortfolio:
     @pytest.fixture(scope="session")
     def db(self, fb_database):
-        # Backtest is to populate database
-        backtest = backtest_pb2.Backtest(
-            start_date=common_pb2.Date(year=2023, month=12, day=1),
-            end_date=common_pb2.Date(year=2023, month=12, day=31),
-            symbols=["AAPL"],
-        )
-        database, populate = fb_database
-        populate(backtest)
+        database, _ = fb_database
+        with database.connect() as conn:
+            conn.execute(
+                text(
+                    """INSERT INTO asset (symbol, name)
+                    VALUES (:symbol, :name) ON CONFLICT DO NOTHING"""
+                ),
+                {"symbol": "ptest", "name": "PortFolio Test"},
+            )
+            conn.execute(
+                text(
+                    """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)
+                    VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
+                ),
+                {
+                    "symbol": "ptest",
+                    "open": 10,
+                    "high": 20,
+                    "low": 5,
+                    "close": 193,  # We should use Close when calculating order value
+                    "volume": 100,
+                    "time": datetime(2023, 12, 29, tzinfo=timezone.utc),
+                },
+            )
+            conn.commit()
         yield database
 
     @pytest.fixture(scope="function")
     def uut(self, db):
         with db.connect() as conn:
             pb = finance_pb2.Portfolio(
-                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29)),
+                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
                 portfolio_value=1000000,
             )
             portfolio = Portfolio(pb, conn)
             yield portfolio
 
     def test_calculate_order_value_amount(self, uut: Portfolio):
-        close = uut._calculate_order_value_amount("AAPL", 100000)
+        close = uut._calculate_order_value_amount("ptest", 100000)
         assert close
         assert close == 518
 
     def test_order(self, uut: Portfolio):
-        order = uut.order("AAPL", 100)
+        order = uut.order("ptest", 100)
         assert order
         assert order.amount == 100
 
     def test_order_percent(self, uut: Portfolio):
-        order = uut.order_percent("AAPL", 0.5)
+        order = uut.order_percent("ptest", 0.5)
         assert order
         assert order.amount == 2590
 
     def test_order_value(self, uut: Portfolio):
-        order = uut.order_value("AAPL", 50000)
+        order = uut.order_value("ptest", 50000)
         assert order
         assert order.amount == 259
 
@@ -120,12 +138,12 @@ class TestPortfolio:
     def test_order_target(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
             position = finance_pb2.Position(
-                symbol="AAPL",
+                symbol="ptest",
                 amount=position_amount,
             )
             uut._pb.positions.append(position)
 
-        order = uut.order_target("AAPL", order_target_amount)
+        order = uut.order_target("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
 
@@ -136,12 +154,12 @@ class TestPortfolio:
     def test_order_target_percent(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
             position = finance_pb2.Position(
-                symbol="AAPL",
+                symbol="ptest",
                 amount=position_amount,
             )
             uut._pb.positions.append(position)
 
-        order = uut.order_target_percent("AAPL", order_target_amount)
+        order = uut.order_target_percent("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
 
@@ -151,12 +169,12 @@ class TestPortfolio:
     def test_order_target_value(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
             position = finance_pb2.Position(
-                symbol="AAPL",
+                symbol="ptest",
                 amount=position_amount,
             )
             uut._pb.positions.append(position)
 
-        order = uut.order_target_value("AAPL", order_target_amount)
+        order = uut.order_target_value("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
 
