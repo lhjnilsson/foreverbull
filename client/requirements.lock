@@ -75,6 +75,7 @@ numpy==1.26.4
     # via foreverbull
     # via numexpr
     # via pandas
+    # via ta-lib
     # via tables
     # via yfinance
 packaging==24.1
@@ -133,6 +134,8 @@ soupsieve==2.6
     # via beautifulsoup4
 sqlalchemy==2.0.31
     # via foreverbull
+ta-lib==0.4.32
+    # via example-algorithms
 tables==3.9.1
     # via foreverbull
 testcontainers==4.8.0

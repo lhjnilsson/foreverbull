@@ -179,11 +179,14 @@ def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_dat
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from random import choice
+import random
 from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
 def parallel_algo(asset: Asset, portfolio: Portfolio) -> Order:
-    return choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)])
+    if random.randint(0, 1):
+        portfolio.order(asset.symbol, 10)
+    else:
+        portfolio.order(asset.symbol, -10)
 
 Algorithm(
     functions=[
@@ -245,14 +248,15 @@ def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from random import choice
+import random
 from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
 def non_parallel_algo(assets: Assets, portfolio: Portfolio) -> list[Order]:
-    orders = []
     for asset in assets:
-        orders.append(choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)]))
-    return orders
+        if random.randint(0, 1):
+            portfolio.order(asset.symbol, 10)
+        else:
+            portfolio.order(asset.symbol, -10)
 
 Algorithm(
     functions=[
@@ -322,11 +326,14 @@ def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.E
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from random import choice
+import random
 from foreverbull import Algorithm, Function, Portfolio, Order, Asset
 
 def parallel_algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int, high: int) -> Order:
-    return choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)])
+    if random.randint(0, 1):
+        portfolio.order(asset.symbol, 10)
+    else:
+        portfolio.order(asset.symbol, -10)
 
 Algorithm(
     functions=[
@@ -395,14 +402,15 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_p
     with tempfile.NamedTemporaryFile(suffix=".py") as f:
         f.write(
             b"""
-from random import choice
+import random
 from foreverbull import Algorithm, Function, Portfolio, Order, Assets
 
 def non_parallel_algo_with_parameters(assets: Assets, portfolio: Portfolio, low: int, high: int) -> list[Order]:
-    orders = []
     for asset in assets:
-        orders.append(choice([Order(symbol=asset.symbol, amount=10), Order(symbol=asset.symbol, amount=-10)]))
-    return orders
+        if random.randint(0, 1):
+            portfolio.order(asset.symbol, 10)
+        else:
+            portfolio.order(asset.symbol, -10)
 
 Algorithm(
     functions=[

@@ -1,14 +1,20 @@
 import tempfile
 
 from datetime import datetime
+from datetime import timezone
 from unittest import mock
 
 import pandas
 import pytest
 
+from sqlalchemy import text
+
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
+from foreverbull.models import Portfolio
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.foreverbull.service import worker_pb2
 
 
@@ -61,7 +67,116 @@ class TestAssets:
 
 
 class TestPortfolio:
-    pass
+    @pytest.fixture(scope="session")
+    def db(self, fb_database):
+        database, _ = fb_database
+        with database.connect() as conn:
+            conn.execute(
+                text(
+                    """INSERT INTO asset (symbol, name)
+                    VALUES (:symbol, :name) ON CONFLICT DO NOTHING"""
+                ),
+                {"symbol": "ptest", "name": "PortFolio Test"},
+            )
+            conn.execute(
+                text(
+                    """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)
+                    VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
+                ),
+                {
+                    "symbol": "ptest",
+                    "open": 10,
+                    "high": 20,
+                    "low": 5,
+                    "close": 193,  # We should use Close when calculating order value
+                    "volume": 100,
+                    "time": datetime(2023, 12, 29, tzinfo=timezone.utc),
+                },
+            )
+            conn.commit()
+        yield database
+
+    @pytest.fixture(scope="function")
+    def uut(self, db):
+        with db.connect() as conn:
+            pb = finance_pb2.Portfolio(
+                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
+                portfolio_value=1000000,
+            )
+            portfolio = Portfolio(pb, conn)
+            yield portfolio
+
+    def test_calculate_order_value_amount(self, uut: Portfolio):
+        close = uut._calculate_order_value_amount("ptest", 100000)
+        assert close
+        assert close == 518
+
+    def test_order(self, uut: Portfolio):
+        order = uut.order("ptest", 100)
+        assert order
+        assert order.amount == 100
+
+    def test_order_percent(self, uut: Portfolio):
+        order = uut.order_percent("ptest", 0.5)
+        assert order
+        assert order.amount == 2590
+
+    def test_order_value(self, uut: Portfolio):
+        order = uut.order_value("ptest", 50000)
+        assert order
+        assert order.amount == 259
+
+    @pytest.mark.parametrize(
+        "position_amount,order_target_amount,expected_order_amount",
+        [
+            (0, 100, 100),
+            (50, 100, 50),
+            (100, 50, -50),
+            (50, 50, 0),
+        ],
+    )
+    def test_order_target(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
+        if position_amount:
+            position = finance_pb2.Position(
+                symbol="ptest",
+                amount=position_amount,
+            )
+            uut._pb.positions.append(position)
+
+        order = uut.order_target("ptest", order_target_amount)
+        assert order
+        assert order.amount == expected_order_amount
+
+    @pytest.mark.parametrize(
+        "position_amount,order_target_amount,expected_order_amount",
+        [(0, 0.10, 518), (100, 0.10, 418), (600, 0.10, -82)],
+    )
+    def test_order_target_percent(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
+        if position_amount:
+            position = finance_pb2.Position(
+                symbol="ptest",
+                amount=position_amount,
+            )
+            uut._pb.positions.append(position)
+
+        order = uut.order_target_percent("ptest", order_target_amount)
+        assert order
+        assert order.amount == expected_order_amount
+
+    @pytest.mark.parametrize(
+        "position_amount,order_target_amount,expected_order_amount", [(0, 10000, 51), (10, 10000, 41), (60, 10000, -9)]
+    )
+    def test_order_target_value(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
+        if position_amount:
+            position = finance_pb2.Position(
+                symbol="ptest",
+                amount=position_amount,
+            )
+            uut._pb.positions.append(position)
+
+        order = uut.order_target_value("ptest", order_target_amount)
+        assert order
+        assert order.amount == expected_order_amount
 
 
 class TestDefinitions:

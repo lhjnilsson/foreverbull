@@ -122,6 +122,7 @@ numpy==1.26.4
     # via patsy
     # via scipy
     # via statsmodels
+    # via ta-lib
     # via tables
     # via yfinance
     # via zipline-reloaded
@@ -218,6 +219,8 @@ sqlalchemy==2.0.31
     # via zipline-reloaded
 statsmodels==0.14.4
     # via zipline-reloaded
+ta-lib==0.4.32
+    # via example-algorithms
 tables==3.9.1
     # via foreverbull
     # via zipline-reloaded
