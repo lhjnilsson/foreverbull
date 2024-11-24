@@ -37,6 +37,9 @@ def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order]:
     latest_macd = df.groupby(level="Symbol", group_keys=False).apply(lambda x: x.iloc[-1]["macd"])
     sorted_macd = latest_macd.sort_values(ascending=False)  # type: ignore
 
+    for symbol, macd in sorted_macd.head(10).items():
+        if macd > 0:
+            portfolio.order_target_percent(symbol, 0.1)
     # Calculate size of position to take
     return sorted_macd
 
