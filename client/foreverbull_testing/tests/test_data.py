@@ -7,7 +7,7 @@ from foreverbull_testing.data import Assets
 @pytest.fixture(scope="session")
 def loaded_connection(fb_database):
     engine, ensure_data = fb_database
-    ensure_data("2023-01-01", "2023-02-01", ["AAPL", "MSFT"])
+    ensure_data(start="2023-01-01", end="2023-02-01", symbols=["AAPL", "MSFT"])
     with engine.connect() as conn:
         yield conn
 
@@ -30,8 +30,6 @@ def test_assets(loaded_connection):
     a = Assets(loaded_connection, "2023-01-01", "2023-02-01", ["AAPL", "MSFT"])
     assert a.symbols == ["AAPL", "MSFT"]
     assert a.stock_data is not None
-
-    print("DF: ", a.stock_data)
 
 
 def test_assets_metrics(loaded_connection):

@@ -51,6 +51,8 @@ class Assets(Assets):
             FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols)}""",
             db,
         )
+        self._stock_data.set_index(["symbol", "time"], inplace=True)
+        self._stock_data.sort_index(inplace=True)
         self.metrics = {}
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:

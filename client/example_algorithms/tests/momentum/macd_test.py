@@ -11,7 +11,7 @@ from foreverbull_testing.data import Assets
 @pytest.fixture(scope="session")
 def assets(fb_database):
     engine, ensure_data = fb_database
-    ensure_data()
+    ensure_data(start="2021-01-01", end="2021-03-31", symbols=["AAPL", "MSFT", "GOOGL"])
     with engine.connect() as conn:
         assets = Assets(conn, datetime(2021, 1, 1), datetime(2021, 3, 31), symbols=["AAPL", "MSFT", "GOOGL"])
         return assets

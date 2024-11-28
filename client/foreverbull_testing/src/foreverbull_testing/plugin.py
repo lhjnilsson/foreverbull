@@ -43,6 +43,11 @@ def fb_database():
         if entity is None and start is None and end is None and symbols is None:
             raise ValueError("At least one of entity or start, end, and symbols must be provided")
         if not entity:
+            if type(start) is str:
+                start = datetime.strptime(start, "%Y-%m-%d").date()
+            if type(end) is str:
+                end = datetime.strptime(end, "%Y-%m-%d").date()
+
             assert start and end and symbols
             entity = backtest_pb2.Backtest(
                 start_date=pb_utils.from_pydate_to_proto_date(start),
