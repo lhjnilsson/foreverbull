@@ -1,61 +1,26 @@
-from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
-from typing import Generator
 from typing import Union
 
-import pandas as pd
-import yfinance as yf
-
 from pandas import DataFrame
+from pandas import read_sql_query
+from sqlalchemy import Connection
 
 from foreverbull import Asset  # type: ignore
 from foreverbull import Assets  # type: ignore
 
 
-class DateLimitedAsset(Asset):
-    def __init__(self, symbol: str, df: DataFrame):
-        self._symbol = symbol
-        self._stock_data = df
-        self.metrics = {}
-
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
-        try:
-            return self.metrics[key]
-        except KeyError:
-            return None
-
-    def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
-        self.metrics[key] = value
-
-    @property
-    def symbol(self) -> str:
-        return self._symbol
-
-    @property
-    def stock_data(self) -> DataFrame:
-        return self._stock_data
-
-
 class Asset(Asset):
-    def __init__(self, start: str | datetime, end: str | datetime, symbol: str):
+    def __init__(self, db: Connection, start: str | datetime, end: str | datetime, symbol: str):
         self._start = start
         self._end = end
         self._symbol = symbol
-        ticker = yf.Ticker(symbol)
-        t = ticker.history(start=start, end=end, interval="1d")
-        t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
-        t.rename(
-            columns={"High": "high", "Low": "low", "Open": "open", "Close": "close", "Volume": "volume"}, inplace=True
+        self._stock_data = read_sql_query(
+            f"""Select symbol, time, high, low, open, close, volume
+            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}'
+            AND symbol='{symbol}'""",
+            db,
         )
-        t.index.name = "date"
-        self._stock_data = t
         self.metrics = {}
-
-    @contextmanager
-    def with_end_date(self, end: str | datetime) -> Generator[DateLimitedAsset, Any, Any]:
-        a = DateLimitedAsset(self._symbol, self._stock_data.loc[:end])
-        yield a
 
     def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
         try:
@@ -69,47 +34,6 @@ class Asset(Asset):
     @property
     def symbol(self) -> str:
         return self._symbol
-
-    @property
-    def stock_data(self) -> DataFrame:
-        return self._stock_data
-
-
-class DateLimitedAssets(Assets):
-    def __init__(self, start: str | datetime, end: str | datetime, symbols: list[str]):
-        self._start = start
-        self._end = end
-        self._symbols = symbols
-        self.metrics = {}
-
-        self._stock_data = DataFrame()
-        data = {}
-        for symbol in symbols:
-            ticker = yf.Ticker(symbol)
-            t = ticker.history(start=start, end=end, interval="1d")
-            t.drop(columns=["Dividends", "Stock Splits"], inplace=True)
-            t["Symbol"] = symbol
-            data[symbol] = t
-        self._stock_data = pd.concat(data.values())
-        self._stock_data.set_index(["Symbol", self._stock_data.index], inplace=True)
-        self._stock_data.index.names = ["Symbol", "Date"]
-
-    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
-        try:
-            return self.metrics[key]
-        except KeyError:
-            return {}
-
-    def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
-        self.metrics[key] = value
-
-    @property
-    def symbols(self) -> list[str]:
-        return self._symbols
-
-    def __iter__(self):
-        for symbol in self._symbols:
-            yield Asset(self._start, self._end, symbol)
 
     @property
     def stock_data(self) -> DataFrame:
@@ -117,16 +41,19 @@ class DateLimitedAssets(Assets):
 
 
 class Assets(Assets):
-    def __init__(self, start: str, end: str, symbols: list[str]):
+    def __init__(self, db: Connection, start: str | datetime, end: str | datetime, symbols: list[str]):
+        self._db = db
         self._start = start
         self._end = end
         self._symbols = symbols
+        self._stock_data = read_sql_query(
+            f"""Select symbol, time, high, low, open, close, volume
+            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols)}""",
+            db,
+        )
+        self._stock_data.set_index(["symbol", "time"], inplace=True)
+        self._stock_data.sort_index(inplace=True)
         self.metrics = {}
-
-    @contextmanager
-    def with_end_date(self, end: str | datetime) -> Generator[DateLimitedAssets, Any, Any]:
-        a = DateLimitedAssets(self._start, end, self._symbols)
-        yield a
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
         try:
@@ -143,8 +70,8 @@ class Assets(Assets):
 
     def __iter__(self):
         for symbol in self._symbols:
-            yield Asset(self._start, self._end, symbol)
+            yield Asset(self._db, self._start, self._end, symbol)
 
     @property
     def stock_data(self) -> DataFrame:
-        return DataFrame()
+        return self._stock_data

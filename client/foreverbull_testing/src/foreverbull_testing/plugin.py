@@ -1,5 +1,8 @@
 import os
 
+from datetime import date
+from datetime import datetime
+
 import pytest
 
 from docker.models.containers import Container
@@ -7,6 +10,7 @@ from sqlalchemy import create_engine
 from testcontainers.core.config import testcontainers_config
 from testcontainers.postgres import PostgresContainer
 
+from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 
 from . import database
@@ -30,8 +34,27 @@ def fb_database():
 
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
 
-    def verify_or_populate(backtest_entity: backtest_pb2.Backtest):
-        if not database.verify(engine, backtest_entity):
-            database.populate(engine, backtest_entity)
+    def verify_or_populate(
+        entity: backtest_pb2.Backtest | None = None,
+        start: date | None = None,
+        end: datetime | None = None,
+        symbols: list[str] | None = None,
+    ):
+        if entity is None and start is None and end is None and symbols is None:
+            raise ValueError("At least one of entity or start, end, and symbols must be provided")
+        if not entity:
+            if type(start) is str:
+                start = datetime.strptime(start, "%Y-%m-%d").date()
+            if type(end) is str:
+                end = datetime.strptime(end, "%Y-%m-%d").date()
+
+            assert start and end and symbols
+            entity = backtest_pb2.Backtest(
+                start_date=pb_utils.from_pydate_to_proto_date(start),
+                end_date=pb_utils.from_pydate_to_proto_date(end),
+                symbols=symbols,
+            )
+        if not database.verify(engine, entity):
+            database.populate(engine, entity)
 
     yield engine, verify_or_populate
