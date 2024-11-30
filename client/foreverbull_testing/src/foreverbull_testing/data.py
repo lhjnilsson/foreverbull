@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Union
 
@@ -7,6 +8,54 @@ from sqlalchemy import Connection
 
 from foreverbull import Asset  # type: ignore
 from foreverbull import Assets  # type: ignore
+from foreverbull import Portfolio
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.finance import finance_pb2
+
+
+@dataclass
+class Position:
+    symbol: str
+    amount: int
+
+
+class AssetManager:
+    def __init__(self, db: Connection, vop):
+        self._db = db
+        self._vop = vop
+
+    def get_asset(self, start: str | datetime, end: str | datetime, symbol: str) -> Asset:
+        self._vop(None, start, end, [symbol])
+        return Asset(self._db, start, end, symbol)
+
+    def get_assets(self, start: str | datetime, end: str | datetime, symbols: list[str]) -> Assets:
+        self._vop(None, start, end, symbols)
+        return Assets(self._db, start, end, symbols)
+
+
+class PortfolioManager:
+    def __init__(self, db: Connection):
+        self._db = db
+
+    def get_portfolio(
+        self, dt: datetime | None = None, portfolio_value: float = 100_000, positions: list[Position] = []
+    ) -> Portfolio:
+        proto_positions = []
+        for position in positions:
+            proto_positions.append(
+                finance_pb2.Position(
+                    symbol=position.symbol,
+                    amount=position.amount,
+                )
+            )
+        return Portfolio(
+            finance_pb2.Portfolio(
+                timestamp=pb_utils.to_proto_timestamp(dt) if dt else None,
+                positions=proto_positions,
+                portfolio_value=portfolio_value,
+            ),
+            self._db,
+        )
 
 
 class Asset(Asset):
@@ -48,7 +97,7 @@ class Assets(Assets):
         self._symbols = symbols
         self._stock_data = read_sql_query(
             f"""Select symbol, time, high, low, open, close, volume
-            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols)}""",
+            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols) if len(symbols) > 1 else f"('{symbols[0]}')" }""",
             db,
         )
         self._stock_data.set_index(["symbol", "time"], inplace=True)

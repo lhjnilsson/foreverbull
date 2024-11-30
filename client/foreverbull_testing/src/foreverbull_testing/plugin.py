@@ -12,6 +12,8 @@ from testcontainers.postgres import PostgresContainer
 
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull_testing.data import AssetManager
+from foreverbull_testing.data import PortfolioManager
 
 from . import database
 
@@ -58,3 +60,17 @@ def fb_database():
             database.populate(engine, entity)
 
     yield engine, verify_or_populate
+
+
+@pytest.fixture
+def asset_manager(fb_database):
+    engine, vop = fb_database
+    with engine.connect() as conn:
+        yield AssetManager(conn, vop)
+
+
+@pytest.fixture
+def portfolio_manager(fb_database):
+    engine, _ = fb_database
+    with engine.connect() as conn:
+        yield PortfolioManager(conn)

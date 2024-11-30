@@ -1,30 +1,20 @@
 from datetime import datetime
 
-import pytest
-
 from example_algorithms.momentum.macd import handle_data
-from foreverbull import Portfolio
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull_testing.data import Assets
+from foreverbull_testing.data import AssetManager
+from foreverbull_testing.data import PortfolioManager
+from foreverbull_testing.data import Position
 
 
-@pytest.fixture(scope="session")
-def assets(fb_database):
-    engine, ensure_data = fb_database
-    ensure_data(start="2021-01-01", end="2021-03-31", symbols=["AAPL", "MSFT", "GOOGL"])
-    with engine.connect() as conn:
-        assets = Assets(conn, datetime(2021, 1, 1), datetime(2021, 3, 31), symbols=["AAPL", "MSFT", "GOOGL"])
-        return assets
+def test_handle_data(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
+    # AAPL has negative MACD, MSFT has positive MACD
 
+    portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
+    assets = asset_manager.get_assets(datetime(2021, 1, 1), datetime(2021, 3, 31), ["AAPL", "MSFT"])
 
-@pytest.fixture(scope="function")
-def portfolio(fb_database):
-    engine, _ = fb_database
-    with engine.connect() as conn:
-        p = Portfolio(finance_pb2.Portfolio(), conn)
-        yield p
+    handle_data(assets, portfolio)
 
-
-def test_handle_data(assets, portfolio):
-    res = handle_data(assets, portfolio)
-    print("RES: ", res)
+    assert len(portfolio.pending_orders) == 2
+    assert finance_pb2.Order(symbol="AAPL", amount=-10) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="MSFT", amount=44) in portfolio.pending_orders
