@@ -5,7 +5,6 @@ import talib
 from foreverbull import Algorithm
 from foreverbull import Assets
 from foreverbull import Function
-from foreverbull import Order
 from foreverbull import Portfolio
 
 
@@ -26,7 +25,7 @@ def calculate_volatility(df):
     return volatility
 
 
-def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order]:
+def handle_data(assets: Assets, portfolio: Portfolio):
     # orders: list[Order] = []
     df = assets.stock_data
     # Calculate MACD
@@ -36,11 +35,16 @@ def handle_data(assets: Assets, portfolio: Portfolio) -> list[Order]:
     latest_macd = df.groupby(level="symbol", group_keys=False).apply(lambda x: x.iloc[-1]["macd"])
     sorted_macd = latest_macd.sort_values(ascending=False)  # type: ignore
 
-    for symbol, macd in sorted_macd.head(10).items():
-        if macd > 0:
+    to_hold = [symbol for symbol, macd in sorted_macd.head(10).items() if macd > 0]
+    to_not_hold = [s for s in assets.symbols if s not in to_hold]
+
+    for symbol in to_hold:
+        if symbol not in portfolio.positions:
             portfolio.order_target_percent(symbol, 0.1)
-    # Calculate size of position to take
-    return sorted_macd
+
+    for symbol in to_not_hold:
+        if symbol in portfolio.positions:
+            portfolio.order_target(symbol, 0)
 
 
 algo = Algorithm(functions=[Function(callable=handle_data)])

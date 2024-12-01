@@ -12,8 +12,10 @@ from inspect import signature
 from typing import Callable
 from typing import Iterator
 
+import pandas
 import pynng
 
+from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame
 from pandas import read_sql_query
@@ -134,7 +136,7 @@ class Assets:
         self._db = db
         self._symbols = symbols
 
-    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
+    def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
         with namespace_socket() as s:
             request = worker_service_pb2.NamespaceRequest(
                 key=key,
@@ -145,7 +147,7 @@ class Assets:
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return pb_utils.protobuf_struct_to_dict(response.value)
+            return pandas.Series(pb_utils.protobuf_struct_to_dict(response.value))
 
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
         with namespace_socket() as s:
@@ -177,21 +179,46 @@ class Assets:
         return DataFrame()  # TODO: Implement
 
 
+class Positions:
+    def __init__(self, positions: RepeatedCompositeFieldContainer[finance_pb2.Position]):
+        self._positions = positions
+        self._positions_index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> finance_pb2.Position:
+        if self._positions_index >= len(self._positions):
+            raise StopIteration
+        value = self._positions[self._positions_index]
+        self._positions_index += 1
+        return value
+
+    def __getitem__(self, symbol: str) -> finance_pb2.Position | None:
+        for p in self._positions:
+            if p.symbol == symbol:
+                return p
+        return None
+
+    def __contains__(self, symbol: str) -> bool:
+        return self[symbol] is not None
+
+
 class Portfolio:
     def __init__(self, pb: finance_pb2.Portfolio, db: engine.Connection):
         self._pb = pb
         self._db = db
-        self._orders: list[finance_pb2.Order] = []
+        self.pending_orders: list[finance_pb2.Order] = []
 
     @property
-    def positions(self) -> list[finance_pb2.Position]:
-        return [p for p in self._pb.positions]
+    def positions(self) -> Positions:
+        return Positions(self._pb.positions)
 
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
         latest_close = self._db.execute(q).scalar()
-        assert latest_close is not None
+        assert latest_close is not None, f"unable to find latest close price for {symbol}"
         return int(value / float(latest_close))
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
@@ -206,39 +233,39 @@ class Portfolio:
 
     def order(self, symbol: str, amount: int) -> finance_pb2.Order:
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
     def order_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
     def order_value(self, symbol: str, value: float) -> finance_pb2.Order:
         amount = self._calculate_order_value_amount(symbol, value)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
     def order_target(self, symbol: str, amount: int) -> finance_pb2.Order:
         amount = self._calculate_order_target_amount(symbol, amount)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
     def order_target_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         amount = self._calculate_order_target_amount(symbol, amount)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
     def order_target_value(self, symbol: str, value: float) -> finance_pb2.Order:
         amount = self._calculate_order_value_amount(symbol, value)
         amount = self._calculate_order_target_amount(symbol, amount)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
-        self._orders.append(order)
+        self.pending_orders.append(order)
         return order
 
 
@@ -395,4 +422,4 @@ class Algorithm:
         else:
             assets = Assets(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbols)
             Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
-        return p._orders
+        return p.pending_orders

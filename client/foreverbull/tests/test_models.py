@@ -63,7 +63,7 @@ class TestAssets:
             assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
 
             namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
-            assert assets.get_metrics("pe") == {"AAPL": 12.3, "MSFT": 23.4}
+            assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
 
 
 class TestPortfolio:
