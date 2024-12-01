@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from typing import Union
+
+import pandas
 
 from pandas import DataFrame
 from pandas import read_sql_query
@@ -19,6 +22,83 @@ class Position:
     amount: int
 
 
+class Asset(Asset):
+    def __init__(
+        self, db: Connection, start: str | datetime, end: str | datetime, symbol: str, metrics: dict[str, Any] = {}
+    ):
+        self._start = start
+        self._end = end
+        self._symbol = symbol
+        self._stock_data = read_sql_query(
+            f"""Select symbol, time, high, low, open, close, volume
+            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}'
+            AND symbol='{symbol}'""",
+            db,
+        )
+        self.metrics = metrics
+
+    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
+        try:
+            return self.metrics[key]
+        except KeyError:
+            return None
+
+    def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
+        self.metrics[key] = value
+
+    @property
+    def symbol(self) -> str:
+        return self._symbol
+
+    @property
+    def stock_data(self) -> DataFrame:
+        return self._stock_data
+
+
+class Assets(Assets):
+    def __init__(
+        self,
+        db: Connection,
+        start: str | datetime,
+        end: str | datetime,
+        symbols: list[str],
+        metrics: dict[str, Any] = {},
+    ):
+        self._db = db
+        self._start = start
+        self._end = end
+        self._symbols = symbols
+        self._stock_data = read_sql_query(
+            f"""Select symbol, time, high, low, open, close, volume
+            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols) if len(symbols) > 1 else f"('{symbols[0]}')" }""",
+            db,
+        )
+        self._stock_data.set_index(["symbol", "time"], inplace=True)
+        self._stock_data.sort_index(inplace=True)
+        self.metrics = metrics
+
+    def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
+        try:
+            return pandas.Series(self.metrics[key])
+        except KeyError:
+            return pandas.Series()
+
+    def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
+        self.metrics[key] = value
+
+    @property
+    def symbols(self) -> list[str]:
+        return self._symbols
+
+    def __iter__(self):
+        for symbol in self._symbols:
+            yield Asset(self._db, self._start, self._end, symbol)
+
+    @property
+    def stock_data(self) -> DataFrame:
+        return self._stock_data
+
+
 class AssetManager:
     def __init__(self, db: Connection, vop):
         self._db = db
@@ -28,9 +108,11 @@ class AssetManager:
         self._vop(None, start, end, [symbol])
         return Asset(self._db, start, end, symbol)
 
-    def get_assets(self, start: str | datetime, end: str | datetime, symbols: list[str]) -> Assets:
+    def get_assets(
+        self, start: str | datetime, end: str | datetime, symbols: list[str], metrics: dict[str, Any] = {}
+    ) -> Assets:
         self._vop(None, start, end, symbols)
-        return Assets(self._db, start, end, symbols)
+        return Assets(self._db, start, end, symbols, metrics)
 
 
 class PortfolioManager:
@@ -56,71 +138,3 @@ class PortfolioManager:
             ),
             self._db,
         )
-
-
-class Asset(Asset):
-    def __init__(self, db: Connection, start: str | datetime, end: str | datetime, symbol: str):
-        self._start = start
-        self._end = end
-        self._symbol = symbol
-        self._stock_data = read_sql_query(
-            f"""Select symbol, time, high, low, open, close, volume
-            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}'
-            AND symbol='{symbol}'""",
-            db,
-        )
-        self.metrics = {}
-
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
-        try:
-            return self.metrics[key]
-        except KeyError:
-            return None
-
-    def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
-        self.metrics[key] = value
-
-    @property
-    def symbol(self) -> str:
-        return self._symbol
-
-    @property
-    def stock_data(self) -> DataFrame:
-        return self._stock_data
-
-
-class Assets(Assets):
-    def __init__(self, db: Connection, start: str | datetime, end: str | datetime, symbols: list[str]):
-        self._db = db
-        self._start = start
-        self._end = end
-        self._symbols = symbols
-        self._stock_data = read_sql_query(
-            f"""Select symbol, time, high, low, open, close, volume
-            FROM ohlc WHERE time BETWEEN '{start}' AND '{end}' AND symbol IN {tuple(symbols) if len(symbols) > 1 else f"('{symbols[0]}')" }""",
-            db,
-        )
-        self._stock_data.set_index(["symbol", "time"], inplace=True)
-        self._stock_data.sort_index(inplace=True)
-        self.metrics = {}
-
-    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
-        try:
-            return self.metrics[key]
-        except KeyError:
-            return {}
-
-    def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
-        self.metrics[key] = value
-
-    @property
-    def symbols(self) -> list[str]:
-        return self._symbols
-
-    def __iter__(self):
-        for symbol in self._symbols:
-            yield Asset(self._db, self._start, self._end, symbol)
-
-    @property
-    def stock_data(self) -> DataFrame:
-        return self._stock_data

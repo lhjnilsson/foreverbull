@@ -12,6 +12,7 @@ from inspect import signature
 from typing import Callable
 from typing import Iterator
 
+import pandas
 import pynng
 
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
@@ -135,7 +136,7 @@ class Assets:
         self._db = db
         self._symbols = symbols
 
-    def get_metrics[T: (int, float, bool, str)](self, key: str) -> dict[str, T]:
+    def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
         with namespace_socket() as s:
             request = worker_service_pb2.NamespaceRequest(
                 key=key,
@@ -146,7 +147,7 @@ class Assets:
             response.ParseFromString(s.recv())
             if response.HasField("error"):
                 raise Exception(response.error)
-            return pb_utils.protobuf_struct_to_dict(response.value)
+            return pandas.Series(pb_utils.protobuf_struct_to_dict(response.value))
 
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
         with namespace_socket() as s:
@@ -217,7 +218,7 @@ class Portfolio:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
         latest_close = self._db.execute(q).scalar()
-        assert latest_close is not None
+        assert latest_close is not None, f"unable to find latest close price for {symbol}"
         return int(value / float(latest_close))
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
