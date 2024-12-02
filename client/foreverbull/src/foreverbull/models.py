@@ -176,7 +176,14 @@ class Assets:
 
     @property
     def stock_data(self) -> DataFrame:
-        return DataFrame()  # TODO: Implement
+        df = read_sql_query(
+            f"""Select symbol, time, high, low, open, close, volume
+            FROM ohlc WHERE time <= '{self._as_of}' AND symbol IN {tuple(self.symbols) if len(self.symbols) > 1 else f"('{self.symbols[0]}')" }""",
+            self._db,
+        )
+        df.set_index(["symbol", "time"], inplace=True)
+        df.sort_index(inplace=True)
+        return df
 
 
 class Positions:

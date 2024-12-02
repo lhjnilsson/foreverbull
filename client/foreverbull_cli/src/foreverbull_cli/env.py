@@ -94,7 +94,11 @@ BACKTEST_IMAGE = f"lhjnilsson/zipline:{version}"
 
 @env.command()
 def status():
-    d = docker.from_env()
+    try:
+        d = docker.from_env()
+    except docker.errors.DockerException as e:
+        console.print(f"[red]Failed to connect to Docker: [yellow]{e}")
+        return
 
     try:
         postgres_container = d.containers.get("foreverbull_postgres")
@@ -164,7 +168,11 @@ def start(
     backtest_image: Annotated[str, typer.Option(help="Docker image name of backtest service")] = BACKTEST_IMAGE,
     log_level: Annotated[str, typer.Option(help="Log level")] = "INFO",
 ):
-    d = docker.from_env()
+    try:
+        d = docker.from_env()
+    except docker.errors.DockerException as e:
+        console.print(f"[red]Failed to connect to Docker: [yellow]{e}")
+        return
 
     def get_or_pull_image(image_name):
         try:
@@ -413,7 +421,11 @@ def start(
 
 @env.command()
 def stop():
-    d = docker.from_env()
+    try:
+        d = docker.from_env()
+    except docker.errors.DockerException as e:
+        console.print(f"[red]Failed to connect to Docker: [yellow]{e}")
+        return
     with FBProgress() as progress:
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
