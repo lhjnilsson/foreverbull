@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"github.com/lhjnilsson/foreverbull/internal/pb"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -71,15 +73,28 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() *grpc.Server {
 			logger := zap.NewExample()
+
+			allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
+				return pb.Health_ServiceDesc.ServiceName != callMeta.Service
+			}
+
 			opts := []logging.Option{
 				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 			}
+			selector.MatchFunc(allButHealthZ)
+
 			return grpc.NewServer(
 				grpc.ChainUnaryInterceptor(
-					logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
+					selector.UnaryServerInterceptor(
+						logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
+						selector.MatchFunc(allButHealthZ),
+					),
 				),
 				grpc.ChainStreamInterceptor(
-					logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
+					selector.StreamServerInterceptor(
+						logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
+						selector.MatchFunc(allButHealthZ),
+					),
 				),
 			)
 		},
