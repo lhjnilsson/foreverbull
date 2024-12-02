@@ -130,6 +130,8 @@ def ingest():
 def run(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     file_path: Annotated[str, typer.Argument(help="name of the backtest")],
+    start: Annotated[str, typer.Option(help="start date of the backtest")] | None = None,
+    end: Annotated[str, typer.Option(help="end date of the backtest")] | None = None,
 ):
     progress = Progress(
         SpinnerColumn(),
@@ -142,18 +144,30 @@ def run(
 
     with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
-        log.info(f"Execution for {backtest.name}")
-        total_months = (
-            (backtest.end_date.year - backtest.start_date.year) * 12
-            + backtest.end_date.month
-            - backtest.start_date.month
-        )
+
+        start_date = backtest.start_date
+        if start:
+            try:
+                start_date = from_pydate_to_proto_date(date.fromisoformat(start))
+            except Exception:
+                console.print(f"[red]Invalid start date: [yellow]{start}")
+                return
+
+        end_date = backtest.end_date
+        if end:
+            try:
+                end_date = from_pydate_to_proto_date(date.fromisoformat(end))
+            except Exception:
+                console.print(f"[red]Invalid end date: [yellow]{end}")
+                return
+
+        total_months = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
 
         task = progress.add_task(f"{backtest.name}", total=total_months)
-        current_month = backtest.start_date.month
+        current_month = start_date.month
         for period in session.run_execution(
-            backtest.start_date,
-            backtest.end_date,
+            start_date,
+            end_date,
             [s for s in backtest.symbols],
         ):
             if period.timestamp.ToDatetime().month != current_month:
