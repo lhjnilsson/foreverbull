@@ -59,6 +59,7 @@ class WorkerInstance(Worker):
                 recv_timeout=500,
                 send_timeout=500,
             )
+            self.logger.info(f"connected to broker socket: tcp://{_hostname}:{req.brokerPort}")
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
         try:
@@ -68,6 +69,7 @@ class WorkerInstance(Worker):
                 recv_timeout=500,
                 send_timeout=500,
             )
+            self.logger.info(f"connected to namespace socket: tcp://{_hostname}:{req.namespacePort}")
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to connect to namespace: {e}")
 
@@ -82,6 +84,9 @@ class WorkerInstance(Worker):
         for function in req.functions:
             for parameter in function.parameters:
                 self._algo.configure(function.name, parameter.key, parameter.value)
+                self.logger.info(
+                    f"configured function {function.name} with parameter {parameter.key}={parameter.value}"
+                )
 
         self.logger.info("worker configured correctly")
 
@@ -92,6 +97,7 @@ class WorkerInstance(Worker):
         )
 
     def run_execution(self, stop_event: Event | threading.Event) -> None:
+        self.logger.info("running execution")
         if not self._database_engine or not self._broker_socket or not self._namespace_socket:
             raise exceptions.ConfigurationError("Worker not configured")
         while not stop_event.is_set():
@@ -102,7 +108,7 @@ class WorkerInstance(Worker):
                 request = worker_service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
                 response = worker_service_pb2.WorkerResponse(task=request.task, error=None)
-                self.logger.debug("Processing symbols: %s", request.symbols)
+                self.logger.debug(f"Processing {request.portfolio.timestamp} symbols: {request.symbols}")
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
                         request.task,

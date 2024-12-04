@@ -21,7 +21,7 @@ def setup_logging(
     ctx: typer.Context,
     verbose: bool = typer.Option(False, "--verbose", "-v"),
     very_verbose: bool = typer.Option(False, "--very-verbose", "-vv"),
-    debug: bool = typer.Option(False, "--vvv"),
+    debug: bool = typer.Option(False, "-vvv"),
 ):
     if verbose:
         level = "WARNING"

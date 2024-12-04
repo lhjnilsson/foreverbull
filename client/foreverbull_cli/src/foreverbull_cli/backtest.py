@@ -162,6 +162,7 @@ def run(
                 return
 
         total_months = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+        log.info(f"Running backtest {backtest.name} from. Total Months: {total_months}")
 
         task = progress.add_task(f"{backtest.name}", total=total_months)
         current_month = start_date.month
@@ -209,11 +210,22 @@ def execution(
     table = Table()
     table.add_column("Date")
     table.add_column("Portfolio Value")
+    table.add_column("Benchmark Period Return")
+    table.add_column("Benchmark Volatility")
+    table.add_column("Alpha")
+    table.add_column("Beta")
+    table.add_column("Sharpe")
+    table.add_column("Sortino")
 
     for period in periods:
         table.add_row(
             from_proto_date_to_pydate(period.date).strftime("%Y-%m-%d"),
             "{:.5f}".format(period.portfolio_value),
+            "{:.5f}".format(period.benchmark_period_return),
+            "{:.5f}".format(period.benchmark_volatility),
+            "{:.5f}".format(period.alpha),
+            "{:.5f}".format(period.beta),
+            "{:.5f}".format(period.sharpe),
+            "{:.5f}".format(period.sortino),
         )
-
     console.print(table)

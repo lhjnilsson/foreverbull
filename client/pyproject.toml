@@ -1,7 +1,10 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
-dependencies = ["grpcio>=1.66.1"]
+dependencies = [
+    "grpcio>=1.66.1",
+    "textual-plotext>=1.0.1",
+]
 
 [tool.rye]
 managed = true
