@@ -13,6 +13,7 @@
 
 .go-protoc-gen:
 	#find pkg/ -type f -name "pb.go" -delete
+	find pkg/ -type f -name "*.pb.go" -delete
 	protoc -Iproto --go_out=pkg/finance/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/finance/pb --go-grpc_out=pkg/finance/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/finance/pb proto/foreverbull/finance/*.proto
 	protoc -Iproto --go_out=pkg/backtest/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/backtest/pb --go-grpc_out=pkg/backtest/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/backtest/pb proto/foreverbull/backtest/*.proto
 	protoc -Iproto --go_out=pkg/service/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/service/pb --go-grpc_out=pkg/service/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/service/pb proto/foreverbull/service/*.proto

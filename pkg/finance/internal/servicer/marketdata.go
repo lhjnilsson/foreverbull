@@ -13,21 +13,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type FinanceServer struct {
-	pb.UnimplementedFinanceServer
+type MarketdataServer struct {
+	pb.UnimplementedMarketdataServer
 
 	pgx        *pgxpool.Pool
 	marketdata supplier.Marketdata
 }
 
-func NewFinanceServer(pgx *pgxpool.Pool, md supplier.Marketdata) *FinanceServer {
-	return &FinanceServer{
+func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataServer {
+	return &MarketdataServer{
 		pgx:        pgx,
 		marketdata: md,
 	}
 }
 
-func (fs *FinanceServer) GetAsset(ctx context.Context, req *pb.GetAssetRequest) (*pb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(ctx context.Context, req *pb.GetAssetRequest) (*pb.GetAssetResponse, error) {
 	asset, err := fs.marketdata.GetAsset(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting asset: %w", err)
@@ -38,7 +38,7 @@ func (fs *FinanceServer) GetAsset(ctx context.Context, req *pb.GetAssetRequest) 
 	}, nil
 }
 
-func (fs *FinanceServer) GetIndex(ctx context.Context, req *pb.GetIndexRequest) (*pb.GetIndexResponse, error) {
+func (fs *MarketdataServer) GetIndex(ctx context.Context, req *pb.GetIndexRequest) (*pb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", err)
@@ -49,7 +49,7 @@ func (fs *FinanceServer) GetIndex(ctx context.Context, req *pb.GetIndexRequest) 
 	}, nil
 }
 
-func (fs *FinanceServer) DownloadHistoricalData(ctx context.Context, req *pb.DownloadHistoricalDataRequest) (*pb.DownloadHistoricalDataResponse, error) {
+func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *pb.DownloadHistoricalDataRequest) (*pb.DownloadHistoricalDataResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", err)

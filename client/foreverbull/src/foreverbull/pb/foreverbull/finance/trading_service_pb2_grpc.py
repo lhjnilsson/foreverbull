@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from foreverbull.pb.foreverbull.finance import finance_service_pb2 as foreverbull_dot_finance_dot_finance__service__pb2
+from foreverbull.pb.foreverbull.finance import trading_service_pb2 as foreverbull_dot_finance_dot_trading__service__pb2
 
 GRPC_GENERATED_VERSION = '1.66.1'
 GRPC_VERSION = grpc.__version__
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in foreverbull/finance/finance_service_pb2_grpc.py depends on'
+        + f' but the generated code in foreverbull/finance/trading_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class FinanceStub(object):
+class TradingStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -34,75 +34,75 @@ class FinanceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetAsset = channel.unary_unary(
-                '/foreverbull.finance.Finance/GetAsset',
-                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.FromString,
+        self.GetPortfolio = channel.unary_unary(
+                '/foreverbull.finance.Trading/GetPortfolio',
+                request_serializer=foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioResponse.FromString,
                 _registered_method=True)
-        self.GetIndex = channel.unary_unary(
-                '/foreverbull.finance.Finance/GetIndex',
-                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.FromString,
+        self.GetOrders = channel.unary_unary(
+                '/foreverbull.finance.Trading/GetOrders',
+                request_serializer=foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersResponse.FromString,
                 _registered_method=True)
-        self.DownloadHistoricalData = channel.unary_unary(
-                '/foreverbull.finance.Finance/DownloadHistoricalData',
-                request_serializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.FromString,
+        self.PlaceOrder = channel.unary_unary(
+                '/foreverbull.finance.Trading/PlaceOrder',
+                request_serializer=foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderResponse.FromString,
                 _registered_method=True)
 
 
-class FinanceServicer(object):
+class TradingServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def GetAsset(self, request, context):
+    def GetPortfolio(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetIndex(self, request, context):
+    def GetOrders(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DownloadHistoricalData(self, request, context):
+    def PlaceOrder(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_FinanceServicer_to_server(servicer, server):
+def add_TradingServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetAsset': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetAsset,
-                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.FromString,
-                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.SerializeToString,
+            'GetPortfolio': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPortfolio,
+                    request_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioResponse.SerializeToString,
             ),
-            'GetIndex': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetIndex,
-                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.FromString,
-                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.SerializeToString,
+            'GetOrders': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetOrders,
+                    request_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersResponse.SerializeToString,
             ),
-            'DownloadHistoricalData': grpc.unary_unary_rpc_method_handler(
-                    servicer.DownloadHistoricalData,
-                    request_deserializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.FromString,
-                    response_serializer=foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.SerializeToString,
+            'PlaceOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.PlaceOrder,
+                    request_deserializer=foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderRequest.FromString,
+                    response_serializer=foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'foreverbull.finance.Finance', rpc_method_handlers)
+            'foreverbull.finance.Trading', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('foreverbull.finance.Finance', rpc_method_handlers)
+    server.add_registered_method_handlers('foreverbull.finance.Trading', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class Finance(object):
+class Trading(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def GetAsset(request,
+    def GetPortfolio(request,
             target,
             options=(),
             channel_credentials=None,
@@ -115,9 +115,9 @@ class Finance(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.finance.Finance/GetAsset',
-            foreverbull_dot_finance_dot_finance__service__pb2.GetAssetRequest.SerializeToString,
-            foreverbull_dot_finance_dot_finance__service__pb2.GetAssetResponse.FromString,
+            '/foreverbull.finance.Trading/GetPortfolio',
+            foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioRequest.SerializeToString,
+            foreverbull_dot_finance_dot_trading__service__pb2.GetPortfolioResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -129,7 +129,7 @@ class Finance(object):
             _registered_method=True)
 
     @staticmethod
-    def GetIndex(request,
+    def GetOrders(request,
             target,
             options=(),
             channel_credentials=None,
@@ -142,9 +142,9 @@ class Finance(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.finance.Finance/GetIndex',
-            foreverbull_dot_finance_dot_finance__service__pb2.GetIndexRequest.SerializeToString,
-            foreverbull_dot_finance_dot_finance__service__pb2.GetIndexResponse.FromString,
+            '/foreverbull.finance.Trading/GetOrders',
+            foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersRequest.SerializeToString,
+            foreverbull_dot_finance_dot_trading__service__pb2.GetOrdersResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -156,7 +156,7 @@ class Finance(object):
             _registered_method=True)
 
     @staticmethod
-    def DownloadHistoricalData(request,
+    def PlaceOrder(request,
             target,
             options=(),
             channel_credentials=None,
@@ -169,9 +169,9 @@ class Finance(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.finance.Finance/DownloadHistoricalData',
-            foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataRequest.SerializeToString,
-            foreverbull_dot_finance_dot_finance__service__pb2.DownloadHistoricalDataResponse.FromString,
+            '/foreverbull.finance.Trading/PlaceOrder',
+            foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderRequest.SerializeToString,
+            foreverbull_dot_finance_dot_trading__service__pb2.PlaceOrderResponse.FromString,
             options,
             channel_credentials,
             insecure,

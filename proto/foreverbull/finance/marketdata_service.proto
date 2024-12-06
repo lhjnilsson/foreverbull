@@ -34,7 +34,7 @@ message DownloadHistoricalDataResponse {
 }
 
 
-service Finance {
+service Marketdata {
     rpc GetAsset(GetAssetRequest) returns (GetAssetResponse) {}
     rpc GetIndex(GetIndexRequest) returns (GetIndexResponse) {}
     rpc DownloadHistoricalData(DownloadHistoricalDataRequest) returns (DownloadHistoricalDataResponse) {}

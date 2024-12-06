@@ -57,8 +57,8 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	),
 	fx.Invoke(
 		func(s *grpc.Server, pgx *pgxpool.Pool, md supplier.Marketdata) error {
-			server := servicer.NewFinanceServer(pgx, md)
-			pb.RegisterFinanceServer(s, server)
+			marketdata := servicer.NewMarketdataServer(pgx, md)
+			pb.RegisterMarketdataServer(s, marketdata)
 			return nil
 		},
 		func(conn *pgxpool.Pool) error {
