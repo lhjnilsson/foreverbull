@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package foreverbull.strategy;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/strategy/pb";
+
+message RunStrategyRequest {
+}
+
+message RunStrategyResponse {
+}
+
+service StrategyServicer {
+    rpc RunStrategy(RunStrategyRequest) returns (RunStrategyResponse);
+}
