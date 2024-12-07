@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package foreverbull.finance;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/finance/pb";
+
+import "foreverbull/finance/finance.proto";
+
+
+message GetPortfolioRequest {
+}
+
+message GetPortfolioResponse {
+    foreverbull.finance.Portfolio portfolio = 1;
+}
+
+message GetOrdersRequest {
+}
+
+message GetOrdersResponse {
+    repeated foreverbull.finance.Order orders = 1;
+}
+
+message PlaceOrderRequest {
+    foreverbull.finance.Order order = 1;
+}
+
+message PlaceOrderResponse {
+}
+
+service Trading {
+    rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse) {}
+    rpc GetOrders(GetOrdersRequest) returns (GetOrdersResponse) {}
+    rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse) {}
+}

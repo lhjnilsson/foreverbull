@@ -30,7 +30,7 @@ type FinanceServerTest struct {
 
 	listener *bufconn.Listener
 	server   *grpc.Server
-	client   pb.FinanceClient
+	client   pb.MarketdataClient
 }
 
 func TestFinanceServerTest(t *testing.T) {
@@ -56,8 +56,8 @@ func (suite *FinanceServerTest) SetupTest() {
 
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server = grpc.NewServer()
-	server := servicer.NewFinanceServer(suite.pgx, suite.marketdata)
-	pb.RegisterFinanceServer(suite.server, server)
+	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
+	pb.RegisterMarketdataServer(suite.server, server)
 
 	go func() {
 		suite.NoError(suite.server.Serve(suite.listener))
@@ -75,7 +75,7 @@ func (suite *FinanceServerTest) SetupTest() {
 		log.Printf("error connecting to server: %v", err)
 	}
 
-	suite.client = pb.NewFinanceClient(conn)
+	suite.client = pb.NewMarketdataClient(conn)
 }
 
 func (suite *FinanceServerTest) TestGetAsset() {

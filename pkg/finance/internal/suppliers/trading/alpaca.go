@@ -7,6 +7,7 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	"github.com/shopspring/decimal"
 )
 
 type AlpacaClient struct {
@@ -61,6 +62,27 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 		PortfolioValue: acc.PortfolioValue.InexactFloat64(),
 		Positions:      positions,
 	}, nil
+}
+
+func (c *AlpacaClient) PlaceOrder(order *pb.Order) (*pb.Order, error) {
+	qty := decimal.NewFromInt32(order.Amount)
+	var side alpaca.Side
+	if qty.IsNegative() {
+		side = alpaca.Sell
+	} else {
+		side = alpaca.Buy
+	}
+
+	_, err := c.client.PlaceOrder(alpaca.PlaceOrderRequest{
+		Symbol: order.Symbol,
+		Qty:    &qty,
+		Side:   side,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to place order: %w", err)
+	}
+
+	return order, nil
 }
 
 func (c *AlpacaClient) GetOrders() ([]*pb.Order, error) {
