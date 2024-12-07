@@ -6,10 +6,12 @@ import (
 	"net"
 	"testing"
 
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/pb"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,6 +21,8 @@ import (
 
 type StrategyServerTest struct {
 	suite.Suite
+
+	marketdata *finance_pb.MockMarketdataClient
 
 	listener *bufconn.Listener
 	server   *grpc.Server
@@ -36,7 +40,10 @@ func (test *StrategyServerTest) SetupSuite() {
 func (test *StrategyServerTest) SetupTest() {
 	test.listener = bufconn.Listen(1024 * 1024)
 	test.server = grpc.NewServer()
-	server := NewStrategyServer()
+
+	test.marketdata = finance_pb.NewMockMarketdataClient(test.T())
+
+	server := NewStrategyServer(test.marketdata)
 	pb.RegisterStrategyServicerServer(test.server, server)
 
 	go func() {
@@ -58,6 +65,8 @@ func (test *StrategyServerTest) SetupTest() {
 }
 
 func (test *StrategyServerTest) TestRunStrategy() {
+	test.marketdata.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(nil, nil)
+
 	req := &pb.RunStrategyRequest{
 		Algorithm: &service_pb.Algorithm{},
 	}
