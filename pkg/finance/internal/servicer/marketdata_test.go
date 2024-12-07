@@ -97,9 +97,28 @@ func (suite *FinanceServerTest) TestGetIndex() {
 
 func (suite *FinanceServerTest) TestDownloadHistoricalData() {
 	req := &pb.DownloadHistoricalDataRequest{
-		Symbol:    "^GDAXI",
+		Symbols:   []string{"^GDAXI"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
-		EndDate:   &internal_pb.Date{Year: 2024, Month: 0o6, Day: 30},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
+	}
+	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+}
+
+func (suite *FinanceServerTest) TestDownloadAssets() {
+	req := &pb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "FB", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
+		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
+	}
+	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+}
+
+func (suite *FinanceServerTest) TestDownloadAssetsNoEndDate() {
+	req := &pb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "FB", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
+		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 	}
 	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)

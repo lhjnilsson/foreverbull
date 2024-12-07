@@ -25,7 +25,7 @@ message GetIndexResponse {
 }
 
 message DownloadHistoricalDataRequest {
-    string symbol = 1;
+    repeated string symbols = 1;
     foreverbull.common.Date start_date = 2;
     foreverbull.common.Date end_date = 3;
 }

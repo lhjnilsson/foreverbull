@@ -8,7 +8,7 @@ import "foreverbull/service/worker.proto";
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/strategy/pb";
 
 message RunStrategyRequest {
-    string symbol = 1;
+    repeated string symbols = 1;
     foreverbull.common.Date start_date = 2;
     foreverbull.service.Algorithm algorithm = 3;
 }

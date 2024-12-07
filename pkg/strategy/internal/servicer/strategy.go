@@ -34,7 +34,7 @@ func (ss *StrategyServer) RunStrategy(req *pb.RunStrategyRequest, stream pb.Stra
 		return fmt.Errorf("error sending response: %w", err)
 	}
 	_, err = ss.marketdata.DownloadHistoricalData(ctx, &finance_pb.DownloadHistoricalDataRequest{
-		Symbol:    req.GetSymbol(),
+		Symbols:   req.GetSymbols(),
 		StartDate: req.GetStartDate(),
 	})
 	if err != nil {
