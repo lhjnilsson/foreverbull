@@ -50,10 +50,6 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *pb.GetIndexReques
 }
 
 func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *pb.DownloadHistoricalDataRequest) (*pb.DownloadHistoricalDataResponse, error) {
-	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
-	if err != nil {
-		return nil, fmt.Errorf("error getting index: %w", err)
-	}
 
 	start := internal_pb.DateToTime(req.GetStartDate())
 
@@ -68,29 +64,29 @@ func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *pb.
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
 	group, gctx := errgroup.WithContext(ctx)
-
-	for _, asset := range assets {
+	for _, symbol := range req.GetSymbols() {
 		group.Go(func() error {
-			ohlcs, err := fs.marketdata.GetOHLC(asset.Symbol, start, end)
+			asset, err := fs.marketdata.GetAsset(symbol)
 			if err != nil {
-				return fmt.Errorf("error getting ohlc: %w", err)
+				return fmt.Errorf("error getting asset: %w", err)
 			}
-
 			if err := assetRepo.Store(gctx, asset.Symbol, asset.Name); err != nil {
 				return fmt.Errorf("error creating asset: %w", err)
 			}
 
+			ohlcs, err := fs.marketdata.GetOHLC(asset.Symbol, start, end)
+			if err != nil {
+				return fmt.Errorf("error getting ohlc: %w", err)
+			}
 			for _, ohlc := range ohlcs {
 				if err := ohlcRepo.Store(gctx, asset.Symbol, ohlc.Timestamp.AsTime(),
 					ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
 					return fmt.Errorf("error creating ohlc: %w", err)
 				}
 			}
-
 			return nil
 		})
 	}
-
 	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("error downloading historical data: %w", err)
 	}
