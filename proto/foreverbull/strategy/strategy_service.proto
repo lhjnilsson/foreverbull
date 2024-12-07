@@ -2,14 +2,34 @@ syntax = "proto3";
 
 package foreverbull.strategy;
 
+import "foreverbull/common.proto";
+import "foreverbull/service/worker.proto";
+
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/strategy/pb";
 
 message RunStrategyRequest {
+    repeated string symbols = 1;
+    foreverbull.common.Date start_date = 2;
+    foreverbull.service.Algorithm algorithm = 3;
 }
 
 message RunStrategyResponse {
+    message Status {
+        enum Status {
+            CREATED = 0;
+            READY = 1;
+            RUNNING = 2;
+            COMPLETED = 3;
+            FAILED = 4;
+        }
+        Status status = 1;
+        optional string error = 2;
+    }
+
+    Status status = 1;
+    foreverbull.service.ExecutionConfiguration configuration = 2;
 }
 
 service StrategyServicer {
-    rpc RunStrategy(RunStrategyRequest) returns (RunStrategyResponse);
+    rpc RunStrategy(RunStrategyRequest) returns (stream RunStrategyResponse);
 }

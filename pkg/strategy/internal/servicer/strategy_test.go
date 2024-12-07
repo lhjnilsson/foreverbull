@@ -6,6 +6,9 @@ import (
 	"net"
 	"testing"
 
+	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
+
+	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/pb"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -24,6 +27,10 @@ type StrategyServerTest struct {
 
 func TestStrategyServer(t *testing.T) {
 	suite.Run(t, new(StrategyServerTest))
+}
+
+func (test *StrategyServerTest) SetupSuite() {
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
 }
 
 func (test *StrategyServerTest) SetupTest() {
@@ -51,9 +58,17 @@ func (test *StrategyServerTest) SetupTest() {
 }
 
 func (test *StrategyServerTest) TestRunStrategy() {
-	req := &pb.RunStrategyRequest{}
+	req := &pb.RunStrategyRequest{
+		Algorithm: &service_pb.Algorithm{},
+	}
 
-	rsp, err := test.client.RunStrategy(context.Background(), req)
+	stream, err := test.client.RunStrategy(context.Background(), req)
 	test.Require().NoError(err)
-	test.Require().NotNil(rsp)
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		test.T().Log(msg)
+	}
 }

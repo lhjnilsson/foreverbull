@@ -34,7 +34,7 @@ class StrategyServicerStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.RunStrategy = channel.unary_unary(
+        self.RunStrategy = channel.unary_stream(
                 '/foreverbull.strategy.StrategyServicer/RunStrategy',
                 request_serializer=foreverbull_dot_strategy_dot_strategy__service__pb2.RunStrategyRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_strategy_dot_strategy__service__pb2.RunStrategyResponse.FromString,
@@ -53,7 +53,7 @@ class StrategyServicerServicer(object):
 
 def add_StrategyServicerServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'RunStrategy': grpc.unary_unary_rpc_method_handler(
+            'RunStrategy': grpc.unary_stream_rpc_method_handler(
                     servicer.RunStrategy,
                     request_deserializer=foreverbull_dot_strategy_dot_strategy__service__pb2.RunStrategyRequest.FromString,
                     response_serializer=foreverbull_dot_strategy_dot_strategy__service__pb2.RunStrategyResponse.SerializeToString,
@@ -80,7 +80,7 @@ class StrategyServicer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/foreverbull.strategy.StrategyServicer/RunStrategy',

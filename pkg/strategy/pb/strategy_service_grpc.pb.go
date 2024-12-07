@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type StrategyServicerClient interface {
-	RunStrategy(ctx context.Context, in *RunStrategyRequest, opts ...grpc.CallOption) (*RunStrategyResponse, error)
+	RunStrategy(ctx context.Context, in *RunStrategyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RunStrategyResponse], error)
 }
 
 type strategyServicerClient struct {
@@ -37,21 +37,30 @@ func NewStrategyServicerClient(cc grpc.ClientConnInterface) StrategyServicerClie
 	return &strategyServicerClient{cc}
 }
 
-func (c *strategyServicerClient) RunStrategy(ctx context.Context, in *RunStrategyRequest, opts ...grpc.CallOption) (*RunStrategyResponse, error) {
+func (c *strategyServicerClient) RunStrategy(ctx context.Context, in *RunStrategyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RunStrategyResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RunStrategyResponse)
-	err := c.cc.Invoke(ctx, StrategyServicer_RunStrategy_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StrategyServicer_ServiceDesc.Streams[0], StrategyServicer_RunStrategy_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[RunStrategyRequest, RunStrategyResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StrategyServicer_RunStrategyClient = grpc.ServerStreamingClient[RunStrategyResponse]
 
 // StrategyServicerServer is the server API for StrategyServicer service.
 // All implementations must embed UnimplementedStrategyServicerServer
 // for forward compatibility.
 type StrategyServicerServer interface {
-	RunStrategy(context.Context, *RunStrategyRequest) (*RunStrategyResponse, error)
+	RunStrategy(*RunStrategyRequest, grpc.ServerStreamingServer[RunStrategyResponse]) error
 	mustEmbedUnimplementedStrategyServicerServer()
 }
 
@@ -62,8 +71,8 @@ type StrategyServicerServer interface {
 // pointer dereference when methods are called.
 type UnimplementedStrategyServicerServer struct{}
 
-func (UnimplementedStrategyServicerServer) RunStrategy(context.Context, *RunStrategyRequest) (*RunStrategyResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RunStrategy not implemented")
+func (UnimplementedStrategyServicerServer) RunStrategy(*RunStrategyRequest, grpc.ServerStreamingServer[RunStrategyResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method RunStrategy not implemented")
 }
 func (UnimplementedStrategyServicerServer) mustEmbedUnimplementedStrategyServicerServer() {}
 func (UnimplementedStrategyServicerServer) testEmbeddedByValue()                          {}
@@ -86,23 +95,16 @@ func RegisterStrategyServicerServer(s grpc.ServiceRegistrar, srv StrategyService
 	s.RegisterService(&StrategyServicer_ServiceDesc, srv)
 }
 
-func _StrategyServicer_RunStrategy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RunStrategyRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _StrategyServicer_RunStrategy_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RunStrategyRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(StrategyServicerServer).RunStrategy(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StrategyServicer_RunStrategy_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StrategyServicerServer).RunStrategy(ctx, req.(*RunStrategyRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(StrategyServicerServer).RunStrategy(m, &grpc.GenericServerStream[RunStrategyRequest, RunStrategyResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StrategyServicer_RunStrategyServer = grpc.ServerStreamingServer[RunStrategyResponse]
 
 // StrategyServicer_ServiceDesc is the grpc.ServiceDesc for StrategyServicer service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -110,12 +112,13 @@ func _StrategyServicer_RunStrategy_Handler(srv interface{}, ctx context.Context,
 var StrategyServicer_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "foreverbull.strategy.StrategyServicer",
 	HandlerType: (*StrategyServicerServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "RunStrategy",
-			Handler:    _StrategyServicer_RunStrategy_Handler,
+			StreamName:    "RunStrategy",
+			Handler:       _StrategyServicer_RunStrategy_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "foreverbull/strategy/strategy_service.proto",
 }
