@@ -116,9 +116,6 @@ jobs:
   publish_python_client:
     needs: [version_tag, build_push_zipline, build_push_foreverbull]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
     steps:
       - uses: actions/checkout@v4
       - name: Download foreverbull pypi package
@@ -132,6 +129,12 @@ jobs:
           python-version: "3.12"
       - name: Install rye
         uses: eifinger/setup-rye@v4
+
+      - name: list files and folders
+        run: |
+          ls -la
+          ls -la dist
+
       - name: Build and publish Python client
         run: |
           rye publish -y --token ${{ secrets.PYPI_TOKEN }} foreverbull-*
