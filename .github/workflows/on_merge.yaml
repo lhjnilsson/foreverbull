@@ -1,8 +1,11 @@
 name: release
 on:
   push:
-    branches:
+    branches-ignore:
       - main
+
+    #branches:
+    #  - main
 
 permissions: read-all
 
@@ -12,7 +15,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Get the version
         id: version
         run: echo "version=0.0.$(date +"%y%m%d%H%M")" >> "$GITHUB_OUTPUT"
@@ -24,9 +27,9 @@ jobs:
       run:
         working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install rye
@@ -55,7 +58,7 @@ jobs:
       run:
         working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
@@ -70,8 +73,19 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: find location
+        run: |
+          echo $GITHUB_WORKSPACE
+          pwd
+          ls -la
+          ls -la client
+          ls -la client/foreverbull_zipline
+          ls -la client/foreverbull_zipline/dist
+          ls -la client/foreverbull_zipline/dist/foreverbull-0.0.2203030000-py3-none-any.whl
+
       - name: Build and push Zipline
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: client
           platforms: linux/amd64,linux/arm64
@@ -85,7 +99,7 @@ jobs:
     needs: version_tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -110,14 +124,14 @@ jobs:
       run:
         working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install rye
@@ -135,7 +149,7 @@ jobs:
       contents: write
     steps:
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2@v1
         with:
           name: ${{needs.version_tag.outputs.version}}
           tag_name: ${{needs.version_tag.outputs.version}}
