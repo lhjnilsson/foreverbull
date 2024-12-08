@@ -149,7 +149,7 @@ jobs:
       contents: write
     steps:
       - name: Create Release
-        uses: softprops/action-gh-release@v2@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{needs.version_tag.outputs.version}}
           tag_name: ${{needs.version_tag.outputs.version}}
