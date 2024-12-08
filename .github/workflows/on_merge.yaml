@@ -79,10 +79,6 @@ jobs:
           echo $GITHUB_WORKSPACE
           pwd
           ls -la
-          ls -la client
-          ls -la client/foreverbull_zipline
-          ls -la client/foreverbull_zipline/dist
-          ls -la client/foreverbull_zipline/dist/foreverbull-0.0.2203030000-py3-none-any.whl
 
       - name: Build and push Zipline
         uses: docker/build-push-action@v6
@@ -92,7 +88,7 @@ jobs:
           file: ./client/foreverbull_zipline/Dockerfile
           tags: lhjnilsson/zipline:${{needs.version_tag.outputs.version}}
           build-args: |
-            FB_WHEEL=dist/foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
+            FB_WHEEL=foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
           push: true
 
   build_push_foreverbull:
