@@ -42,6 +42,11 @@ jobs:
         working-directory: ./client/foreverbull_testing
         run: |
           rye version ${{needs.version_tag.outputs.version}}
+      - name: Set foreverbull cli version
+        working-directory: ./client/foreverbull_cli
+        run: |
+          rye version ${{needs.version_tag.outputs.version}}
+
       - name: build packages
         run: |
           rye build -a
@@ -137,7 +142,9 @@ jobs:
 
       - name: Build and publish Python client
         run: |
-          rye publish -y --token ${{ secrets.PYPI_TOKEN }} foreverbull-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull_testing-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull_cli-*
 
   create_release:
     needs: [version_tag, publish_python_client]
