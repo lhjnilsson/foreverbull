@@ -134,7 +134,7 @@ jobs:
         uses: eifinger/setup-rye@v4
       - name: Build and publish Python client
         run: |
-          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} foreverbull-*
 
   create_release:
     needs: [version_tag, publish_python_client]
