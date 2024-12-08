@@ -35,6 +35,6 @@ def test_assets(loaded_connection):
 def test_assets_metrics(loaded_connection):
     a = Assets(loaded_connection, "2023-01-01", "2023-02-01", ["AAPL", "MSFT"])
     a.set_metrics("test", {"AAPL": 1, "MSFT": 2})
-    assert a.get_metrics("test") == {"AAPL": 1, "MSFT": 2}
-    assert a.get_metrics("test2") == {}
+    assert a.get_metrics("test").to_dict() == {"AAPL": 1, "MSFT": 2}
+    assert a.get_metrics("test2").to_dict() == {}
     assert a.metrics == {"test": {"AAPL": 1, "MSFT": 2}}

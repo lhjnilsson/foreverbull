@@ -12,7 +12,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Get the version
         id: version
         run: echo "version=0.0.$(date +"%y%m%d%H%M")" >> "$GITHUB_OUTPUT"
@@ -24,9 +24,9 @@ jobs:
       run:
         working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install rye
@@ -39,6 +39,11 @@ jobs:
         working-directory: ./client/foreverbull_testing
         run: |
           rye version ${{needs.version_tag.outputs.version}}
+      - name: Set foreverbull cli version
+        working-directory: ./client/foreverbull_cli
+        run: |
+          rye version ${{needs.version_tag.outputs.version}}
+
       - name: build packages
         run: |
           rye build -a
@@ -55,7 +60,7 @@ jobs:
       run:
         working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
@@ -70,22 +75,29 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: find location
+        run: |
+          echo $GITHUB_WORKSPACE
+          pwd
+          ls -la
+
       - name: Build and push Zipline
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: client
           platforms: linux/amd64,linux/arm64
           file: ./client/foreverbull_zipline/Dockerfile
           tags: lhjnilsson/zipline:${{needs.version_tag.outputs.version}}
           build-args: |
-            FB_WHEEL=dist/foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
+            FB_WHEEL=foreverbull-${{needs.version_tag.outputs.version}}-py3-none-any.whl
           push: true
 
   build_push_foreverbull:
     needs: version_tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -106,25 +118,24 @@ jobs:
   publish_python_client:
     needs: [version_tag, build_push_zipline, build_push_foreverbull]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install rye
         uses: eifinger/setup-rye@v4
       - name: Build and publish Python client
         run: |
-          rye publish -y --token ${{ secrets.PYPI_TOKEN }}
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull_testing-*
+          rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull_cli-*
 
   create_release:
     needs: [version_tag, publish_python_client]
@@ -135,7 +146,7 @@ jobs:
       contents: write
     steps:
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{needs.version_tag.outputs.version}}
           tag_name: ${{needs.version_tag.outputs.version}}
