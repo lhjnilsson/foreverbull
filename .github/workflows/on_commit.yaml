@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
-        uses: docker/build-push-action@v6
+        uses: docker/setup-buildx-action@v3
       - name: Build Foreverbull
         uses: docker/build-push-action@v6
         with:
@@ -162,7 +162,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
-        uses: docker/build-push-action@v6
+        uses: docker/setup-buildx-action@v3
       # - name: Download Parallel Example
       #   uses: actions/download-artifact@v4
       #   with:
@@ -268,7 +268,7 @@ jobs:
           name: foreverbull-0.0.1-py3-none-any.whl
           path: client
       - name: Set up Docker Buildx
-        uses: docker/build-push-action@v6
+        uses: docker/setup-buildx-action@v3
       - name: Build Zipline
         uses: docker/build-push-action@v6
         with:
@@ -300,7 +300,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
-        uses: docker/build-push-action@v6
+        uses: docker/setup-buildx-action@v3
       - name: Download foreverbull
         uses: actions/download-artifact@v4
         with:
@@ -389,7 +389,7 @@ jobs:
       steps:
         - uses: actions/checkout@v4
         - name: Set up Docker Buildx
-          uses: docker/build-push-action@v6
+          uses: docker/setup-buildx-action@v3
         - name: Download foreverbull
           uses: actions/download-artifact@v4
           with:
