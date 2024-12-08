@@ -1,11 +1,8 @@
 name: release
 on:
   push:
-    branches-ignore:
+    branches:
       - main
-
-    #branches:
-    #  - main
 
 permissions: read-all
 
@@ -134,12 +131,6 @@ jobs:
           python-version: "3.12"
       - name: Install rye
         uses: eifinger/setup-rye@v4
-
-      - name: list files and folders
-        run: |
-          ls -la
-          ls -la dist
-
       - name: Build and publish Python client
         run: |
           rye publish -y --token ${{ secrets.PYPI_TOKEN }} dist/foreverbull-*
