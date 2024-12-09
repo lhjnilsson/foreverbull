@@ -14,7 +14,7 @@ import (
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() (finance_pb.MarketdataClient, error) {
-			conn, err := grpc.NewClient("localhost:50555", grpc.WithTransportCredentials(
+			conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(
 				insecure.NewCredentials(),
 			))
 			if err != nil {

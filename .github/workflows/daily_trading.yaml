@@ -13,20 +13,16 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
-      - name: create-json
-        id: create-json
-        uses: jsdaniell/create-json@v1.2.3
-        with:
-          name: "new-json-file.json"
-          json: ${{ vars.UNIVERSE }}
 
       - name: Install latest foreverbull
         run: |
-          pip install foreverbull
-          pip install foreverbull-cli
-      - name: Setup environment
+          pip install --upgrade foreverbull foreverbull-cli
+
+      - name: Run
+        working-directory: ./client/example_algorithms/
         run: |
-          foreverbull setup
-          foreverbull-cli setup
+          foreverbull env start
+          fbull strategy run ./src/example_algorithms/parallel.py nasdaq.json

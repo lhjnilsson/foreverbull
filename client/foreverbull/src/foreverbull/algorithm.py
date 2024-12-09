@@ -61,7 +61,6 @@ class Algorithm(models.Algorithm):
         self._broker_session_stub.StopServer(session_service_pb2.StopServerRequest())
         channel.close()
 
-    @contextmanager
     def run_strategy(
         self,
         from_date: common_pb2.Date,
@@ -71,16 +70,25 @@ class Algorithm(models.Algorithm):
     ):
         with WorkerPool(self._file_path) as wp:
             channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
-            channel.close()
+
             stub = strategy_service_pb2_grpc.StrategyServicerStub(channel)
-            run_channel = stub.RunStrategy(strategy_service_pb2.RunStrategyRequest())
+            run_channel = stub.RunStrategy(
+                strategy_service_pb2.RunStrategyRequest(
+                    symbols=symbols,
+                    start_date=from_date,
+                    algorithm=self.get_definition(),
+                )
+            )
             msg: strategy_service_pb2.RunStrategyResponse
             for msg in run_channel:
-                yield msg.status
-                match msg.status.Status:
+                match msg.status.status:
                     case strategy_service_pb2.RunStrategyResponse.Status.Status.READY:
                         wp.configure_execution(msg.configuration)
                         wp.run_execution(Event())
+                        print("DONE")  # TODO: Actual trading and return results
+                    case strategy_service_pb2.RunStrategyResponse.Status.Status.FAILED:
+                        channel.close()
+                        raise Exception(f"Strategy failed: {msg.status.error}")
 
     def get_default(self) -> backtest_pb2.Backtest:
         if self._broker_stub is None or self._backtest_session is None:
