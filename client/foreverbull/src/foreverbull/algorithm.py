@@ -17,6 +17,8 @@ from foreverbull.pb.foreverbull.backtest import session_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
+from foreverbull.pb.foreverbull.strategy import strategy_service_pb2
+from foreverbull.pb.foreverbull.strategy import strategy_service_pb2_grpc
 from foreverbull.worker import WorkerPool
 
 
@@ -58,6 +60,35 @@ class Algorithm(models.Algorithm):
         yield self
         self._broker_session_stub.StopServer(session_service_pb2.StopServerRequest())
         channel.close()
+
+    def run_strategy(
+        self,
+        from_date: common_pb2.Date,
+        symbols: list[str],
+        broker_hostname: str = "localhost",
+        broker_port: int = 50055,
+    ):
+        with WorkerPool(self._file_path) as wp:
+            channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
+
+            stub = strategy_service_pb2_grpc.StrategyServicerStub(channel)
+            run_channel = stub.RunStrategy(
+                strategy_service_pb2.RunStrategyRequest(
+                    symbols=symbols,
+                    start_date=from_date,
+                    algorithm=self.get_definition(),
+                )
+            )
+            msg: strategy_service_pb2.RunStrategyResponse
+            for msg in run_channel:
+                match msg.status.status:
+                    case strategy_service_pb2.RunStrategyResponse.Status.Status.READY:
+                        wp.configure_execution(msg.configuration)
+                        wp.run_execution(Event())
+                        print("DONE")  # TODO: Actual trading and return results
+                    case strategy_service_pb2.RunStrategyResponse.Status.Status.FAILED:
+                        channel.close()
+                        raise Exception(f"Strategy failed: {msg.status.error}")
 
     def get_default(self) -> backtest_pb2.Backtest:
         if self._broker_stub is None or self._backtest_session is None:

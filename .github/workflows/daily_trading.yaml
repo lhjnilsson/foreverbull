@@ -1,0 +1,28 @@
+name: "Weekday trading"
+
+on:
+  schedule:
+    - cron: "0 20 * * 1-5" # Runs at 20:00 UTC on every weekday
+
+jobs:
+  place-orders-to-alpaca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+
+      - name: Install latest foreverbull
+        run: |
+          pip install --upgrade foreverbull foreverbull-cli
+
+      - name: Run
+        working-directory: ./client/example_algorithms/
+        run: |
+          foreverbull env start
+          fbull strategy run ./src/example_algorithms/parallel.py nasdaq.json
