@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internal_grpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -55,7 +56,8 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.Require().NoError(err)
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = grpc.NewServer()
+	suite.server, err = internal_grpc.NewServer()
+	suite.Require().NoError(err)
 	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
 	pb.RegisterMarketdataServer(suite.server, server)
 
@@ -119,6 +121,14 @@ func (suite *FinanceServerTest) TestDownloadAssetsNoEndDate() {
 	req := &pb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
+	}
+	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+}
+
+func (suite *FinanceServerTest) TestDownloadAssetsNoStartDate() {
+	req := &pb.DownloadHistoricalDataRequest{
+		Symbols: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 	}
 	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)

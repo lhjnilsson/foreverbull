@@ -72,42 +72,44 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	})
 }
 
+func NewServer() (*grpc.Server, error) {
+	logger := zap.NewExample()
+
+	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
+		return pb.Health_ServiceDesc.ServiceName != callMeta.Service
+	}
+
+	validator, err := protovalidate.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create validator: %w", err)
+	}
+
+	opts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+	}
+	selector.MatchFunc(allButHealthZ)
+
+	return grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
+				selector.MatchFunc(allButHealthZ),
+			),
+			protovalidate_middleware.UnaryServerInterceptor(validator),
+		),
+		grpc.ChainStreamInterceptor(
+			selector.StreamServerInterceptor(
+				logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
+				selector.MatchFunc(allButHealthZ),
+			),
+			protovalidate_middleware.StreamServerInterceptor(validator),
+		),
+	), nil
+}
+
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() (*grpc.Server, error) {
-			logger := zap.NewExample()
-
-			allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
-				return pb.Health_ServiceDesc.ServiceName != callMeta.Service
-			}
-
-			validator, err := protovalidate.New()
-			if err != nil {
-				return nil, fmt.Errorf("failed to create validator: %w", err)
-			}
-
-			opts := []logging.Option{
-				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
-			}
-			selector.MatchFunc(allButHealthZ)
-
-			return grpc.NewServer(
-				grpc.ChainUnaryInterceptor(
-					selector.UnaryServerInterceptor(
-						logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
-						selector.MatchFunc(allButHealthZ),
-					),
-					protovalidate_middleware.UnaryServerInterceptor(validator),
-				),
-				grpc.ChainStreamInterceptor(
-					selector.StreamServerInterceptor(
-						logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
-						selector.MatchFunc(allButHealthZ),
-					),
-					protovalidate_middleware.StreamServerInterceptor(validator),
-				),
-			), nil
-		},
+		NewServer(),
 	),
 	fx.Invoke(
 		func(lc fx.Lifecycle, grpcServer *grpc.Server) error {

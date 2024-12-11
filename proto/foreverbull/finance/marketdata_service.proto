@@ -6,7 +6,7 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/finance/pb";
 
 import "foreverbull/common.proto";
 import "foreverbull/finance/finance.proto";
-
+import "buf/validate/validate.proto";
 
 message GetAssetRequest {
     string symbol = 1;
@@ -26,7 +26,13 @@ message GetIndexResponse {
 
 message DownloadHistoricalDataRequest {
     repeated string symbols = 1;
-    foreverbull.common.Date start_date = 2;
+    foreverbull.common.Date start_date = 2 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "date_required",
+                expression: "this != null"
+            }
+        }];
     foreverbull.common.Date end_date = 3;
 }
 
