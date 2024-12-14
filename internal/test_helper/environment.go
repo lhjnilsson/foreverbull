@@ -3,11 +3,20 @@ package test_helper //nolint:stylecheck,revive
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
+	dockerNetwork "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
+
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/testcontainers/testcontainers-go/network"
+	"github.com/testcontainers/testcontainers-go"
+
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	NetworkID = "foreverbull-testing-network"
 )
 
 type Containers struct {
@@ -15,6 +24,28 @@ type Containers struct {
 	NATS     bool
 	Minio    bool
 	Loki     bool
+}
+
+func getOrCreateNetwork() error {
+	c, err := client.NewClientWithOpts(
+		client.FromEnv,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.NetworkInspect(context.TODO(), NetworkID, dockerNetwork.InspectOptions{})
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		nc := dockerNetwork.CreateOptions{
+			Driver: "bridge",
+			Labels: testcontainers.GenericLabels(),
+		}
+		_, err := c.NetworkCreate(context.TODO(), NetworkID, nc)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SetupEnvironment(t *testing.T, containers *Containers) {
@@ -29,31 +60,26 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	ctx := context.TODO()
 	group, _ := errgroup.WithContext(ctx)
 
+	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Disable ryuk that cleans up containers
 	if containers.Postgres || containers.NATS || containers.Minio {
-		network, err := network.New(context.TODO())
+		err := getOrCreateNetwork()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		os.Setenv(environment.DockerNetwork, network.Name)
-
-		t.Cleanup(func() {
-			if err := network.Remove(context.TODO()); err != nil {
-				t.Fatal(err)
-			}
-		})
+		os.Setenv(environment.DockerNetwork, NetworkID)
 	}
 
 	if containers.Postgres {
 		group.Go(func() error {
-			os.Setenv(environment.PostgresURL, PostgresContainer(t, environment.GetDockerNetworkName()))
+			os.Setenv(environment.PostgresURL, PostgresContainer(t, NetworkID))
 			return nil
 		})
 	}
 
 	if containers.NATS {
 		group.Go(func() error {
-			os.Setenv(environment.NatsURL, NATSContainer(t, environment.GetDockerNetworkName()))
+			os.Setenv(environment.NatsURL, NATSContainer(t, NetworkID))
 			os.Setenv(environment.NatsDeliveryPolicy, "all")
 
 			return nil
@@ -62,7 +88,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 
 	if containers.Minio {
 		group.Go(func() error {
-			uri, accessKey, secretKey := MinioContainer(t, environment.GetDockerNetworkName())
+			uri, accessKey, secretKey := MinioContainer(t, NetworkID)
 			os.Setenv(environment.MinioURL, uri)
 			os.Setenv(environment.MinioAccessKey, accessKey)
 			os.Setenv(environment.MinioSecretKey, secretKey)
