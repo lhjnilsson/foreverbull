@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -53,7 +54,7 @@ func (suite *BacktestServerTest) SetupTest() {
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = grpc.NewServer()
+	suite.server = internalGrpc.NewServer()
 
 	suite.stream = new(stream.MockStream)
 	server := servicer.NewBacktestServer(suite.pgx, suite.stream)
@@ -94,7 +95,6 @@ func (suite *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{"AAPL"}, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(backtest)
-
 	return backtest
 }
 
@@ -143,6 +143,10 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	}
 
 	resp, err := suite.client.CreateBacktest(context.Background(), req)
+	suite.Require().NoError(err)
+	suite.NotNil(resp)
+
+	resp, err = suite.client.CreateBacktest(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.NotNil(resp)
 }
