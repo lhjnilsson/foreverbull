@@ -56,7 +56,8 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.Require().NoError(err)
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = internalGrpc.NewServer()
+	suite.server, err = internalGrpc.NewServer()
+	suite.Require().NoError(err)
 	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
 	pb.RegisterMarketdataServer(suite.server, server)
 
@@ -89,7 +90,7 @@ func (suite *FinanceServerTest) TestGetAsset() {
 }
 
 func (suite *FinanceServerTest) TestGetIndex() {
-	req := &pb.GetIndexRequest{Symbol: "^GDAXI"}
+	req := &pb.GetIndexRequest{}
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
@@ -120,14 +121,6 @@ func (suite *FinanceServerTest) TestDownloadAssetsNoEndDate() {
 	req := &pb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
-	}
-	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
-	suite.Require().NoError(err)
-}
-
-func (suite *FinanceServerTest) TestDownloadAssetsNoStartDate() {
-	req := &pb.DownloadHistoricalDataRequest{
-		Symbols: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 	}
 	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)

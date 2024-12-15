@@ -7,6 +7,7 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/service/pb";
 import "google/protobuf/struct.proto";
 import "foreverbull/finance/finance.proto";
 import "foreverbull/service/worker.proto";
+import "buf/validate/validate.proto";
 
 message GetServiceInfoRequest {
 }
@@ -16,7 +17,13 @@ message GetServiceInfoResponse {
 }
 
 message ConfigureExecutionRequest {
-    ExecutionConfiguration configuration = 1;
+    ExecutionConfiguration configuration = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != null"
+            }
+        }];;
 }
 
 message ConfigureExecutionResponse {

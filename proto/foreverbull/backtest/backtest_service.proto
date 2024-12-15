@@ -7,6 +7,7 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
 import "foreverbull/backtest/backtest.proto";
 import "foreverbull/backtest/session.proto";
 import "foreverbull/backtest/execution.proto";
+import "buf/validate/validate.proto";
 
 
 message ListBacktestsRequest {}
@@ -16,7 +17,13 @@ message ListBacktestsResponse {
 }
 
 message CreateBacktestRequest {
-    Backtest backtest = 1;
+    Backtest backtest = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != null"
+            }
+        }];
 }
 
 message CreateBacktestResponse {
@@ -24,7 +31,13 @@ message CreateBacktestResponse {
 }
 
 message GetBacktestRequest {
-    string name = 1;
+    string name = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != ''"
+            }
+        }];;
 }
 
 message GetBacktestResponse {
@@ -33,7 +46,13 @@ message GetBacktestResponse {
 }
 
 message CreateSessionRequest {
-    string backtest_name = 1;
+    string backtest_name = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != ''"
+            }
+        }];;
 }
 
 message CreateSessionResponse {
@@ -41,7 +60,13 @@ message CreateSessionResponse {
 }
 
 message GetSessionRequest {
-    string session_id = 1;
+    string session_id = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != ''"
+            }
+        }];;
 }
 
 message GetSessionResponse {
@@ -58,7 +83,13 @@ message ListExecutionsResponse {
 }
 
 message GetExecutionRequest {
-    string execution_id = 1;
+    string execution_id = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != ''"
+            }
+        }];;
 }
 
 message GetExecutionResponse {

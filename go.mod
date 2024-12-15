@@ -3,6 +3,7 @@ module github.com/lhjnilsson/foreverbull
 go 1.22
 
 require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.2-20240920164238-5a7b106cbb87.1
 	github.com/bufbuild/protovalidate-go v0.7.3
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/google/uuid v1.6.0
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.2-20240920164238-5a7b106cbb87.1 // indirect
 	cel.dev/expr v0.18.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect

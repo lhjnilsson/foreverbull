@@ -17,7 +17,13 @@ message GetAssetResponse {
 }
 
 message GetIndexRequest {
-    string symbol = 1;
+    string symbol = 1 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "symbol_required",
+                expression: "this != ''"
+            }
+        }];
 }
 
 message GetIndexResponse {

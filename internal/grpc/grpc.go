@@ -125,8 +125,7 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	})
 }
 
-
-func NewServer() *grpc.Server {
+func NewServer() (*grpc.Server, error) {
 	logger := zap.NewExample()
 
 	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
@@ -158,15 +157,14 @@ func NewServer() *grpc.Server {
 				selector.MatchFunc(allButHealthZ),
 			),
 			protovalidate_middleware.StreamServerInterceptor(validator),
-		),
 			pgxStreamErrorInterceptor,
 		),
-	)
+	), nil
 }
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() *grpc.Server {
+		func() (*grpc.Server, error) {
 			return NewServer()
 		},
 	),

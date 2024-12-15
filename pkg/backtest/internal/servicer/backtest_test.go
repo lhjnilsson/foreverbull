@@ -54,7 +54,8 @@ func (suite *BacktestServerTest) SetupTest() {
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = internalGrpc.NewServer()
+	suite.server, err = internalGrpc.NewServer()
+	suite.Require().NoError(err)
 
 	suite.stream = new(stream.MockStream)
 	server := servicer.NewBacktestServer(suite.pgx, suite.stream)
