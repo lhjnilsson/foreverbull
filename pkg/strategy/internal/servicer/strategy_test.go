@@ -39,8 +39,10 @@ func (test *StrategyServerTest) SetupSuite() {
 }
 
 func (test *StrategyServerTest) SetupTest() {
+	var err error
 	test.listener = bufconn.Listen(1024 * 1024)
-	test.server = internalGrpc.NewServer()
+	test.server, err = internalGrpc.NewServer()
+	test.Require().NoError(err)
 
 	test.marketdata = finance_pb.NewMockMarketdataClient(test.T())
 

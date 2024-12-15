@@ -4,13 +4,28 @@ package foreverbull.strategy;
 
 import "foreverbull/common.proto";
 import "foreverbull/service/worker.proto";
+import "buf/validate/validate.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/strategy/pb";
 
 message RunStrategyRequest {
-    repeated string symbols = 1;
-    foreverbull.common.Date start_date = 2;
-    foreverbull.service.Algorithm algorithm = 3;
+    repeated string symbols = 1 [(buf.validate.field).repeated = {
+        min_items: 1
+      }];
+    foreverbull.common.Date start_date = 2 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != null"
+            }
+        }];;
+    foreverbull.service.Algorithm algorithm = 3 [(buf.validate.field) = {
+            required: true,
+            cel: {
+                id: "required",
+                expression: "this != null"
+            }
+        }];;
 }
 
 message RunStrategyResponse {

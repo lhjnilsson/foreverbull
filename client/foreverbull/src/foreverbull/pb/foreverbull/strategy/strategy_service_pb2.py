@@ -24,9 +24,10 @@ _sym_db = _symbol_database.Default()
 
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 from foreverbull.pb.foreverbull.service import worker_pb2 as foreverbull_dot_service_dot_worker__pb2
+from buf.validate import validate_pb2 as buf_dot_validate_dot_validate__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n+foreverbull/strategy/strategy_service.proto\x12\x14\x66oreverbull.strategy\x1a\x18\x66oreverbull/common.proto\x1a foreverbull/service/worker.proto\"\x86\x01\n\x12RunStrategyRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x31\n\talgorithm\x18\x03 \x01(\x0b\x32\x1e.foreverbull.service.Algorithm\"\xfd\x02\n\x13RunStrategyResponse\x12@\n\x06status\x18\x01 \x01(\x0b\x32\x30.foreverbull.strategy.RunStrategyResponse.Status\x12\x42\n\rconfiguration\x18\x02 \x01(\x0b\x32+.foreverbull.service.ExecutionConfiguration\x1a\xdf\x01\n\x06Status\x12G\n\x06status\x18\x01 \x01(\x0e\x32\x37.foreverbull.strategy.RunStrategyResponse.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\"n\n\x06Status\x12\x17\n\x13UPDATING_MARKETDATA\x10\x00\x12\x18\n\x14\x43REATING_WORKER_POOL\x10\x01\x12\t\n\x05READY\x10\x02\x12\x0b\n\x07RUNNING\x10\x03\x12\r\n\tCOMPLETED\x10\x04\x12\n\n\x06\x46\x41ILED\x10\x05\x42\x08\n\x06_error2x\n\x10StrategyServicer\x12\x64\n\x0bRunStrategy\x12(.foreverbull.strategy.RunStrategyRequest\x1a).foreverbull.strategy.RunStrategyResponse0\x01\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/strategy/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n+foreverbull/strategy/strategy_service.proto\x12\x14\x66oreverbull.strategy\x1a\x18\x66oreverbull/common.proto\x1a foreverbull/service/worker.proto\x1a\x1b\x62uf/validate/validate.proto\"\xd6\x01\n\x12RunStrategyRequest\x12\x19\n\x07symbols\x18\x01 \x03(\tB\x08\xbaH\x05\x92\x01\x02\x08\x01\x12O\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.DateB!\xbaH\x1e\xba\x01\x18\n\x08required\x1a\x0cthis != null\xc8\x01\x01\x12T\n\talgorithm\x18\x03 \x01(\x0b\x32\x1e.foreverbull.service.AlgorithmB!\xbaH\x1e\xba\x01\x18\n\x08required\x1a\x0cthis != null\xc8\x01\x01\"\xfd\x02\n\x13RunStrategyResponse\x12@\n\x06status\x18\x01 \x01(\x0b\x32\x30.foreverbull.strategy.RunStrategyResponse.Status\x12\x42\n\rconfiguration\x18\x02 \x01(\x0b\x32+.foreverbull.service.ExecutionConfiguration\x1a\xdf\x01\n\x06Status\x12G\n\x06status\x18\x01 \x01(\x0e\x32\x37.foreverbull.strategy.RunStrategyResponse.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\"n\n\x06Status\x12\x17\n\x13UPDATING_MARKETDATA\x10\x00\x12\x18\n\x14\x43REATING_WORKER_POOL\x10\x01\x12\t\n\x05READY\x10\x02\x12\x0b\n\x07RUNNING\x10\x03\x12\r\n\tCOMPLETED\x10\x04\x12\n\n\x06\x46\x41ILED\x10\x05\x42\x08\n\x06_error2x\n\x10StrategyServicer\x12\x64\n\x0bRunStrategy\x12(.foreverbull.strategy.RunStrategyRequest\x1a).foreverbull.strategy.RunStrategyResponse0\x01\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/strategy/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,14 +35,20 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.strategy.strate
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/strategy/pb'
-  _globals['_RUNSTRATEGYREQUEST']._serialized_start=130
-  _globals['_RUNSTRATEGYREQUEST']._serialized_end=264
-  _globals['_RUNSTRATEGYRESPONSE']._serialized_start=267
-  _globals['_RUNSTRATEGYRESPONSE']._serialized_end=648
-  _globals['_RUNSTRATEGYRESPONSE_STATUS']._serialized_start=425
-  _globals['_RUNSTRATEGYRESPONSE_STATUS']._serialized_end=648
-  _globals['_RUNSTRATEGYRESPONSE_STATUS_STATUS']._serialized_start=528
-  _globals['_RUNSTRATEGYRESPONSE_STATUS_STATUS']._serialized_end=638
-  _globals['_STRATEGYSERVICER']._serialized_start=650
-  _globals['_STRATEGYSERVICER']._serialized_end=770
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['symbols']._loaded_options = None
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['symbols']._serialized_options = b'\272H\005\222\001\002\010\001'
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['start_date']._loaded_options = None
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['start_date']._serialized_options = b'\272H\036\272\001\030\n\010required\032\014this != null\310\001\001'
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['algorithm']._loaded_options = None
+  _globals['_RUNSTRATEGYREQUEST'].fields_by_name['algorithm']._serialized_options = b'\272H\036\272\001\030\n\010required\032\014this != null\310\001\001'
+  _globals['_RUNSTRATEGYREQUEST']._serialized_start=159
+  _globals['_RUNSTRATEGYREQUEST']._serialized_end=373
+  _globals['_RUNSTRATEGYRESPONSE']._serialized_start=376
+  _globals['_RUNSTRATEGYRESPONSE']._serialized_end=757
+  _globals['_RUNSTRATEGYRESPONSE_STATUS']._serialized_start=534
+  _globals['_RUNSTRATEGYRESPONSE_STATUS']._serialized_end=757
+  _globals['_RUNSTRATEGYRESPONSE_STATUS_STATUS']._serialized_start=637
+  _globals['_RUNSTRATEGYRESPONSE_STATUS_STATUS']._serialized_end=747
+  _globals['_STRATEGYSERVICER']._serialized_start=759
+  _globals['_STRATEGYSERVICER']._serialized_end=879
 # @@protoc_insertion_point(module_scope)

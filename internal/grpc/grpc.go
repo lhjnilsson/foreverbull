@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/bufbuild/protovalidate-go"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
+
 	"github.com/lhjnilsson/foreverbull/internal/pb"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -122,11 +125,16 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	})
 }
 
-func NewServer() *grpc.Server {
+func NewServer() (*grpc.Server, error) {
 	logger := zap.NewExample()
 
 	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
 		return pb.Health_ServiceDesc.ServiceName != callMeta.Service
+	}
+
+	validator, err := protovalidate.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create validator: %w", err)
 	}
 
 	opts := []logging.Option{
@@ -140,6 +148,7 @@ func NewServer() *grpc.Server {
 				logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
 				selector.MatchFunc(allButHealthZ),
 			),
+			protovalidate_middleware.UnaryServerInterceptor(validator),
 			pgxErrorInterceptor,
 		),
 		grpc.ChainStreamInterceptor(
@@ -147,14 +156,15 @@ func NewServer() *grpc.Server {
 				logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
 				selector.MatchFunc(allButHealthZ),
 			),
+			protovalidate_middleware.StreamServerInterceptor(validator),
 			pgxStreamErrorInterceptor,
 		),
-	)
+	), nil
 }
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() *grpc.Server {
+		func() (*grpc.Server, error) {
 			return NewServer()
 		},
 	),

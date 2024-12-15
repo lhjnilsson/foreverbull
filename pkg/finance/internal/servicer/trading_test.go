@@ -56,7 +56,8 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.trading = supplier.NewMockTrading(suite.T())
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = internalGrpc.NewServer()
+	suite.server, err = internalGrpc.NewServer()
+	suite.Require().NoError(err)
 	server := NewTradingServer(suite.pgx, suite.trading)
 	pb.RegisterTradingServer(suite.server, server)
 

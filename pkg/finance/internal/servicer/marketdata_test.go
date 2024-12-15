@@ -56,7 +56,8 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.Require().NoError(err)
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = internalGrpc.NewServer()
+	suite.server, err = internalGrpc.NewServer()
+	suite.Require().NoError(err)
 	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
 	pb.RegisterMarketdataServer(suite.server, server)
 
