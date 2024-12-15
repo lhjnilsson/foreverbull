@@ -90,7 +90,7 @@ func (suite *FinanceServerTest) TestGetAsset() {
 }
 
 func (suite *FinanceServerTest) TestGetIndex() {
-	req := &pb.GetIndexRequest{}
+	req := &pb.GetIndexRequest{Symbol: "^GDAXI"}
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
