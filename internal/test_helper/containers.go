@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -77,10 +78,17 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	// Disable logging, its very verbose otherwise
 	// testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
 
-	dbName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-postgres"
+			return nil
+		},
+	)
+
 	container, err := postgres.Run(context.TODO(),
 		PostgresImage,
-		postgres.WithDatabase(dbName),
+		postgres.WithDatabase("to_be_substituted"),
 		testcontainers.WithEndpointSettingsModifier(func(settings map[string]*network.EndpointSettings) {
 			settings[networkID] = &network.EndpointSettings{
 				Aliases:   []string{"postgres"},
@@ -90,23 +98,36 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).WithStartupTimeout(time.Minute)),
+		reuse,
 	)
 	require.NoError(t, err)
 
 	connectionString, err := container.ConnectionString(context.TODO(), "sslmode=disable")
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		if err := container.Terminate(context.TODO()); err != nil {
-			t.Fatal(err)
-		}
-	})
+	dbName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
 
-	return connectionString
+	conn, err := pgxpool.New(context.TODO(), connectionString)
+	require.NoError(t, err)
+	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName))
+	require.NoError(t, err)
+
+	_, err = conn.Exec(context.TODO(), fmt.Sprintf("CREATE DATABASE  %s", dbName))
+	require.NoError(t, err)
+
+	return strings.Replace(connectionString, "to_be_substituted", dbName, 1)
 }
 
 func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	t.Helper()
+
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-nats"
+			return nil
+		},
+	)
 
 	container, err := nats.Run(context.TODO(),
 		NatsImage,
@@ -116,6 +137,7 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 				NetworkID: networkID,
 			}
 		}),
+		reuse,
 	)
 	require.NoError(t, err, "Failed to start NATS container")
 
@@ -148,6 +170,14 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey, SecretKey string) {
 	t.Helper()
 
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-nats"
+			return nil
+		},
+	)
+
 	container, err := minio.Run(context.TODO(),
 		MinioImage,
 		minio.WithUsername("minioadmin"),
@@ -158,6 +188,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 				NetworkID: networkID,
 			}
 		}),
+		reuse,
 	)
 	require.NoError(t, err)
 

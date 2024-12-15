@@ -6,6 +6,7 @@ import (
 	"net"
 	"testing"
 
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 
@@ -39,7 +40,7 @@ func (test *StrategyServerTest) SetupSuite() {
 
 func (test *StrategyServerTest) SetupTest() {
 	test.listener = bufconn.Listen(1024 * 1024)
-	test.server = grpc.NewServer()
+	test.server = internalGrpc.NewServer()
 
 	test.marketdata = finance_pb.NewMockMarketdataClient(test.T())
 

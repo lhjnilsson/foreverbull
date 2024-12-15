@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -57,7 +58,7 @@ func (suite *IngestionServerTest) SetupSubTest() {
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
 
 	suite.listner = bufconn.Listen(1024 * 1024)
-	suite.server = grpc.NewServer()
+	suite.server = internalGrpc.NewServer()
 
 	suite.stream = new(stream.MockStream)
 	suite.storage = new(storage.MockStorage)

@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	internal_grpc "github.com/lhjnilsson/foreverbull/internal/grpc"
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -56,8 +56,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.Require().NoError(err)
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server, err = internal_grpc.NewServer()
-	suite.Require().NoError(err)
+	suite.server = internalGrpc.NewServer()
 	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
 	pb.RegisterMarketdataServer(suite.server, server)
 
