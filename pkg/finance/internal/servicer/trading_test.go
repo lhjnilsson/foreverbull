@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -54,7 +56,7 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.trading = supplier.NewMockTrading(suite.T())
 
 	suite.listener = bufconn.Listen(1024 * 1024)
-	suite.server = grpc.NewServer()
+	suite.server = internalGrpc.NewServer()
 	server := NewTradingServer(suite.pgx, suite.trading)
 	pb.RegisterTradingServer(suite.server, server)
 
