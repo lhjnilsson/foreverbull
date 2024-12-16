@@ -1,7 +1,7 @@
 from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
 from foreverbull.pb.foreverbull.backtest import session_pb2 as _session_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
-from buf.validate import validate_pb2 as _validate_pb2
+from foreverbull.pb.buf.validate import validate_pb2 as _validate_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message

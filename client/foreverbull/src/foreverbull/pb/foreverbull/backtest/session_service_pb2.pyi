@@ -2,7 +2,7 @@ from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
 from foreverbull.pb.foreverbull.service import worker_pb2 as _worker_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2 as _finance_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
-from buf.validate import validate_pb2 as _validate_pb2
+from foreverbull.pb.buf.validate import validate_pb2 as _validate_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Optional, Union as _Union
