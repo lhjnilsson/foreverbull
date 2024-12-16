@@ -6,6 +6,8 @@ import (
 	"net"
 	"testing"
 
+	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
+
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
@@ -71,6 +73,8 @@ func (test *StrategyServerTest) TestRunStrategy() {
 	test.marketdata.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(nil, nil)
 
 	req := &pb.RunStrategyRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 		Algorithm: &service_pb.Algorithm{},
 	}
 
