@@ -110,7 +110,9 @@ func (test *TradingServerTest) TestPlaceOrder() {
 	test.Run("error placing order", func() {
 		test.trading.On("PlaceOrder", mock.Anything, mock.Anything).Return(nil, errors.New("error placing order"))
 
-		req := &pb.PlaceOrderRequest{}
+		req := &pb.PlaceOrderRequest{
+			Order: &pb.Order{},
+		}
 		rsp, err := test.client.PlaceOrder(context.Background(), req)
 		test.Require().Error(err)
 		test.Require().Nil(rsp)
@@ -118,7 +120,9 @@ func (test *TradingServerTest) TestPlaceOrder() {
 	test.Run("normal", func() {
 		test.trading.On("PlaceOrder", mock.Anything, mock.Anything).Return(&pb.Order{}, nil)
 
-		req := &pb.PlaceOrderRequest{}
+		req := &pb.PlaceOrderRequest{
+			Order: &pb.Order{},
+		}
 		rsp, err := test.client.PlaceOrder(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)

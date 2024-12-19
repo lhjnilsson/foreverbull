@@ -157,13 +157,6 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	}
 
 	require.NoError(t, err, "Failed to get NATS connection string")
-
-	t.Cleanup(func() {
-		if err := container.Terminate(context.TODO()); err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	return connectionString
 }
 
@@ -173,7 +166,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 	reuse := testcontainers.CustomizeRequestOption(
 		func(req *testcontainers.GenericContainerRequest) error {
 			req.Reuse = true
-			req.Name = "foreverbull-testing-nats"
+			req.Name = "foreverbull-testing-minio"
 			return nil
 		},
 	)
@@ -194,12 +187,6 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 
 	connectionString, err := container.ConnectionString(context.TODO())
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		if err := container.Terminate(context.TODO()); err != nil {
-			t.Fatal(err)
-		}
-	})
 
 	return connectionString, "minioadmin", "minioadmin"
 }

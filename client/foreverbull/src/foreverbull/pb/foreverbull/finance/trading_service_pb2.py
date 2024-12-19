@@ -23,7 +23,7 @@ _sym_db = _symbol_database.Default()
 
 
 from foreverbull.pb.foreverbull.finance import finance_pb2 as foreverbull_dot_finance_dot_finance__pb2
-from buf.validate import validate_pb2 as buf_dot_validate_dot_validate__pb2
+from foreverbull.pb.buf.validate import validate_pb2 as buf_dot_validate_dot_validate__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n)foreverbull/finance/trading_service.proto\x12\x13\x66oreverbull.finance\x1a!foreverbull/finance/finance.proto\x1a\x1b\x62uf/validate/validate.proto\"\x15\n\x13GetPortfolioRequest\"I\n\x14GetPortfolioResponse\x12\x31\n\tportfolio\x18\x01 \x01(\x0b\x32\x1e.foreverbull.finance.Portfolio\"\x12\n\x10GetOrdersRequest\"?\n\x11GetOrdersResponse\x12*\n\x06orders\x18\x01 \x03(\x0b\x32\x1a.foreverbull.finance.Order\"g\n\x11PlaceOrderRequest\x12R\n\x05order\x18\x01 \x01(\x0b\x32\x1a.foreverbull.finance.OrderB\'\xbaH$\xba\x01\x1e\n\x0eorder_required\x1a\x0cthis != null\xc8\x01\x01\"\x14\n\x12PlaceOrderResponse2\xaf\x02\n\x07Trading\x12\x65\n\x0cGetPortfolio\x12(.foreverbull.finance.GetPortfolioRequest\x1a).foreverbull.finance.GetPortfolioResponse\"\x00\x12\\\n\tGetOrders\x12%.foreverbull.finance.GetOrdersRequest\x1a&.foreverbull.finance.GetOrdersResponse\"\x00\x12_\n\nPlaceOrder\x12&.foreverbull.finance.PlaceOrderRequest\x1a\'.foreverbull.finance.PlaceOrderResponse\"\x00\x42\x32Z0github.com/lhjnilsson/foreverbull/pkg/finance/pbb\x06proto3')

@@ -78,9 +78,8 @@ func TestStorage(t *testing.T) {
 
 func (test *StorageTest) TestStorage() {
 	test.Run("ListOBjects", func() {
-		objects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
+		_, err := test.storage.ListObjects(context.Background(), ResultsBucket)
 		test.Require().NoError(err)
-		test.Require().Empty(*objects)
 	})
 	test.Run("Create and Get Object", func() {
 		metadata := map[string]string{

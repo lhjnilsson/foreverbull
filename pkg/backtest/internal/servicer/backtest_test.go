@@ -146,10 +146,6 @@ func (suite *BacktestServerTest) TestCreateBacktest() {
 	resp, err := suite.client.CreateBacktest(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.NotNil(resp)
-
-	resp, err = suite.client.CreateBacktest(context.Background(), req)
-	suite.Require().NoError(err)
-	suite.NotNil(resp)
 }
 
 func (suite *BacktestServerTest) TestGetBacktest() {

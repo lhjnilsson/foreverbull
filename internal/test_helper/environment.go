@@ -8,6 +8,7 @@ import (
 
 	dockerNetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/testcontainers/testcontainers-go"
@@ -29,6 +30,7 @@ type Containers struct {
 func getOrCreateNetwork() error {
 	c, err := client.NewClientWithOpts(
 		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		return err
@@ -42,6 +44,9 @@ func getOrCreateNetwork() error {
 		}
 		_, err := c.NetworkCreate(context.TODO(), NetworkID, nc)
 		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				return nil
+			}
 			return err
 		}
 	}
@@ -61,14 +66,12 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	group, _ := errgroup.WithContext(ctx)
 
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Disable ryuk that cleans up containers
-	if containers.Postgres || containers.NATS || containers.Minio {
-		err := getOrCreateNetwork()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		os.Setenv(environment.DockerNetwork, NetworkID)
+	err := getOrCreateNetwork()
+	if err != nil {
+		require.NoError(t, err, "fail to create network")
 	}
+
+	os.Setenv(environment.DockerNetwork, NetworkID)
 
 	if containers.Postgres {
 		group.Go(func() error {
@@ -106,9 +109,9 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 		})
 	}
 
-	err := group.Wait()
+	err = group.Wait()
 	if err != nil {
-		t.Fatal(err)
+		require.NoError(t, err, "fail to create environment")
 	}
 
 	t.Setenv(environment.ServerAddress, "host.docker.internal")
