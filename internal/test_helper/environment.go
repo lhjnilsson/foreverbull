@@ -31,6 +31,7 @@ type Containers struct {
 func getOrCreateNetwork() error {
 	c, err := client.NewClientWithOpts(
 		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		fmt.Println("---FAIL TO GET CLIEBNT FOR DOCKER")
