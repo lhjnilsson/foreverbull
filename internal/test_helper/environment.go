@@ -108,7 +108,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 		})
 	}
 
-	err := group.Wait()
+	err = group.Wait()
 	if err != nil {
 		require.NoError(t, err, "fail to create environment")
 	}
