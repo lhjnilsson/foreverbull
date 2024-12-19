@@ -65,14 +65,12 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	group, _ := errgroup.WithContext(ctx)
 
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Disable ryuk that cleans up containers
-	if containers.Postgres || containers.NATS || containers.Minio {
-		err := getOrCreateNetwork()
-		if err != nil {
-			require.NoError(t, err, "fail to create network")
-		}
-
-		os.Setenv(environment.DockerNetwork, NetworkID)
+	err := getOrCreateNetwork()
+	if err != nil {
+		require.NoError(t, err, "fail to create network")
 	}
+
+	os.Setenv(environment.DockerNetwork, NetworkID)
 
 	if containers.Postgres {
 		group.Go(func() error {
