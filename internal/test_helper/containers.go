@@ -166,7 +166,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 	reuse := testcontainers.CustomizeRequestOption(
 		func(req *testcontainers.GenericContainerRequest) error {
 			req.Reuse = true
-			req.Name = "foreverbull-testing-nats"
+			req.Name = "foreverbull-testing-minio"
 			return nil
 		},
 	)
