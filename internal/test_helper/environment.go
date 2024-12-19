@@ -33,6 +33,7 @@ func getOrCreateNetwork() error {
 		client.FromEnv,
 	)
 	if err != nil {
+		fmt.Println("---FAIL TO GET CLIEBNT FOR DOCKER")
 		return err
 	}
 
@@ -47,8 +48,9 @@ func getOrCreateNetwork() error {
 			fmt.Println("----FAIL TO CREATE NETWORK: ", err)
 			return err
 		}
-		fmt.Println("OK TO CREATE NETWORK")
+		fmt.Println("----OK TO CREATE NETWORK")
 	}
+	fmt.Println("----Got network")
 	return nil
 }
 
