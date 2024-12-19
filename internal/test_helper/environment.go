@@ -2,7 +2,6 @@ package test_helper //nolint:stylecheck,revive
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -34,7 +33,6 @@ func getOrCreateNetwork() error {
 		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
-		fmt.Println("---FAIL TO GET CLIEBNT FOR DOCKER")
 		return err
 	}
 
@@ -46,12 +44,12 @@ func getOrCreateNetwork() error {
 		}
 		_, err := c.NetworkCreate(context.TODO(), NetworkID, nc)
 		if err != nil {
-			fmt.Println("----FAIL TO CREATE NETWORK: ", err)
+			if strings.Contains(err.Error(), "already exists") {
+				return nil
+			}
 			return err
 		}
-		fmt.Println("----OK TO CREATE NETWORK")
 	}
-	fmt.Println("----Got network")
 	return nil
 }
 
