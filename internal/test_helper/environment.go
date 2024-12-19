@@ -2,12 +2,14 @@ package test_helper //nolint:stylecheck,revive
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	dockerNetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/testcontainers/testcontainers-go"
@@ -42,8 +44,10 @@ func getOrCreateNetwork() error {
 		}
 		_, err := c.NetworkCreate(context.TODO(), NetworkID, nc)
 		if err != nil {
+			fmt.Println("----FAIL TO CREATE NETWORK: ", err)
 			return err
 		}
+		fmt.Println("OK TO CREATE NETWORK")
 	}
 	return nil
 }
@@ -64,7 +68,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	if containers.Postgres || containers.NATS || containers.Minio {
 		err := getOrCreateNetwork()
 		if err != nil {
-			t.Fatal(err)
+			require.NoError(t, err, "fail to create network")
 		}
 
 		os.Setenv(environment.DockerNetwork, NetworkID)
@@ -108,7 +112,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 
 	err := group.Wait()
 	if err != nil {
-		t.Fatal(err)
+		require.NoError(t, err, "fail to create environment")
 	}
 
 	t.Setenv(environment.ServerAddress, "host.docker.internal")
