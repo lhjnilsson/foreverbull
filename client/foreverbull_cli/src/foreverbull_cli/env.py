@@ -379,6 +379,9 @@ def start(
                     environment={
                         "GF_AUTH_ANONYMOUS_ENABLED": "true",
                         "GF_AUTH_DISABLE_LOGIN_FORM": "true",
+                        "GF_AUTH_ANONYMOUS_ORG_ROLE": "Admin",
+                        "GF_AUTH_BASIC_ENABLED": "false",
+                        "GF_AUTH_DISABLE_SIGNOUT_MENU": "true",
                     },
                     volumes={
                         str((_environment.grafana_location / "data").absolute()): {

@@ -56,8 +56,6 @@ exchange-calendars==4.5.6
     # via zipline-reloaded
 frozendict==2.4.4
     # via yfinance
-greenlet==3.0.3
-    # via sqlalchemy
 grpcio==1.66.1
     # via foreverbull
     # via grpcio-testing

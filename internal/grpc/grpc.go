@@ -20,6 +20,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
 
@@ -142,7 +143,7 @@ func NewServer() (*grpc.Server, error) {
 	}
 	selector.MatchFunc(allButHealthZ)
 
-	return grpc.NewServer(
+	server := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			selector.UnaryServerInterceptor(
 				logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
@@ -159,7 +160,9 @@ func NewServer() (*grpc.Server, error) {
 			protovalidate_middleware.StreamServerInterceptor(validator),
 			pgxStreamErrorInterceptor,
 		),
-	), nil
+	)
+	reflection.Register(server)
+	return server, nil
 }
 
 var Module = fx.Options( //nolint: gochecknoglobals
