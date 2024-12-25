@@ -1,12 +1,33 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/lhjnilsson/foreverbull/pkg/plugin"
 )
+
+const (
+	GetExecutionMetric = "GetExecutionMetric"
+)
+
+type PluginSettings struct {
+}
+
+type SecretPluginSettings struct {
+}
+
+func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
+	settings := PluginSettings{}
+	err := json.Unmarshal(source.JSONData, &settings)
+	if err != nil {
+		return nil, fmt.Errorf("could not unmarshal PluginSettings json: %w", err)
+	}
+	return &settings, nil
+}
 
 func main() {
 	// Start listening to requests sent from Grafana. This call is blocking so
@@ -17,7 +38,7 @@ func main() {
 	// from Grafana to create different instances of SampleDatasource (per datasource
 	// ID). When datasource configuration changed Dispose method will be called and
 	// new datasource instance created using NewSampleDatasource factory.
-	if err := datasource.Manage("lhjnilsson-foreverbull-datasource", plugin.NewDatasource, datasource.ManageOpts{}); err != nil {
+	if err := datasource.Manage("lhjnilsson-foreverbull-datasource", NewDatasource, datasource.ManageOpts{}); err != nil {
 		log.DefaultLogger.Error(err.Error())
 		os.Exit(1)
 	}

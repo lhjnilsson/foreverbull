@@ -1,56 +1,27 @@
 import React, { ChangeEvent, useState } from 'react';
-import { InlineField, Input, Stack } from '@grafana/ui';
-import { QueryEditorProps } from '@grafana/data';
+import { InlineField, Input, Stack, Select, AsyncMultiSelect } from '@grafana/ui';
+import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery, DEFAULT_QUERY } from '../types';
-
-/*
-MYSTUFF
-*/
-import { SelectableValue } from '@grafana/data';
-import { Select } from '@grafana/ui';
+import { MyDataSourceOptions, MyQuery, DEFAULT_QUERY, QueryType } from '../types';
 import defaults from 'lodash/defaults';
 
-export enum QueryType {
-  GetMetricValue = 'GetMetricValue',
-  GetMetricHistory = 'GetMetricHistory',
-  GetMetricAggregate = 'GetMetricAggregate',
-}
-
 export interface QueryTypeInfo extends SelectableValue<QueryType> {
-  value: QueryType; // not optional
+  value: QueryType;
 }
 
 export const queryTypeInfos: QueryTypeInfo[] = [
   {
-    label: 'Get metric history',
-    value: QueryType.GetMetricHistory,
-    description: `Gets the history of a metric.`,
-  },
-  {
-    label: 'Get metric value',
-    value: QueryType.GetMetricValue,
-    description: `Gets a metrics current value.`,
-  },
-  {
-    label: 'Get metric aggregate',
-    value: QueryType.GetMetricAggregate,
-    description: `Gets a metrics aggregate value.`,
+    label: 'Get Execution Metric',
+    value: QueryType.GetExecutionMetric,
+    description: ``,
   },
 ];
 
-/*
-END
-*/
-
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const { queryText, constant } = query;
-
-  // MY
+export function QueryEditor({ datasource, query, onChange, onRunQuery }: Props) {
   const [queryType, setQueryType] = useState(query.queryType);
-  const [_query, setQuery] = useState(defaults(query, DEFAULT_QUERY));
+  const [q, setQuery] = useState(defaults(query, DEFAULT_QUERY));
 
   const updateAndRunQuery = (q: MyQuery) => {
     onChange(q);
@@ -58,27 +29,65 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onRunQuery();
   };
 
+  const loadExecutions = (): Promise<Array<SelectableValue<string>>> => {
+    return datasource.getExecutions();
+  };
+
+  const loadMetrics = (): Promise<Array<SelectableValue<string>>> => {
+    return datasource.getMetrics();
+  };
+
+  const selectedExecutions = q.executionIds?.map((x) => ({ label: x.label, value: x.value }));
+  const selectedMetrics = q.metrics?.map((x) => ({ label: x.label, value: x.value }));
+
+  const onExecutionChange = (evt: Array<SelectableValue<string>>) => {
+    const m = evt.map((x) => ({ value: x.value, label: x.label }));
+    updateAndRunQuery({ ...q, executionIds: m });
+  };
+  const onMetricChange = (evt: Array<SelectableValue<string>>) => {
+    const m = evt.map((x) => ({ value: x.value, label: x.label }));
+    updateAndRunQuery({ ...q, metrics: m });
+  };
+
+  const executionKey = q.executionIds?.map((x) => x.key).join();
+  // END
+
+  const currentQueryType = queryTypeInfos.find((v) => v.value === query.queryType);
   const onQueryTypeChange = async (queryType: QueryType) => {
     setQueryType(queryType);
-    updateAndRunQuery({ ...query, queryType: queryType, queryOptions: {} });
+    updateAndRunQuery({ ...query, queryType: queryType });
   };
-  const currentQueryType = queryTypeInfos.find((v) => v.value === query.queryType);
-
-  // END
+  console.log('HELLOOOOOOOOO');
 
   return (
     <Stack gap={0}>
-      <InlineField labelWidth={24} label="Query Type">
-        <Select
-          options={queryTypeInfos}
-          value={currentQueryType}
-          onChange={(x) => onQueryTypeChange(x.value || QueryType.GetMetricAggregate)}
-          width={32}
-        />
-      </InlineField>
-      {queryType === QueryType.GetMetricValue && (
-        <Input placeholder="Temperature threshold" type="number" onChange={() => console.log('hello')} />
-      )}
+      <Select
+        defaultValue={queryTypeInfos[0]}
+        options={queryTypeInfos}
+        value={currentQueryType}
+        onChange={(x) => onQueryTypeChange(x.value || QueryType.GetExecutionMetric)}
+        width={32}
+        required={true}
+      />
+      <AsyncMultiSelect
+        width={96}
+        defaultOptions={true}
+        key={executionKey}
+        value={selectedExecutions}
+        loadOptions={loadExecutions}
+        onChange={(evt) => onExecutionChange(evt)}
+        allowCustomValue={true}
+        isSearchable={true}
+      ></AsyncMultiSelect>
+      <AsyncMultiSelect
+        width={96}
+        defaultOptions={true}
+        value={selectedMetrics}
+        loadOptions={loadMetrics}
+        onChange={(evt) => onMetricChange(evt)}
+        allowCustomValue={true}
+        isSearchable={true}
+      ></AsyncMultiSelect>
     </Stack>
   );
 }

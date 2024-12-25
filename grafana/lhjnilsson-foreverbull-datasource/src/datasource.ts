@@ -1,7 +1,13 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
+import { DataSourceInstanceSettings, CoreApp, ScopedVars, SelectableValue } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
+
+export interface ResourceDefinition {
+  value?: string;
+  label?: string;
+  description?: string;
+}
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
@@ -15,14 +21,22 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      queryText: getTemplateSrv().replace(query.queryText, scopedVars),
+      queryText: getTemplateSrv().replace(query.queryType, scopedVars),
     };
   }
 
-  /*
-  filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
+  async getExecutions(): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>('executions');
   }
-  */
+
+  async getMetrics(): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>('metrics');
+  }
+
+  filterQuery(query: MyQuery): boolean {
+    if (!!query.QueryType) {
+      return false;
+    }
+    return true;
+  }
 }

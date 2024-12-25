@@ -1,4 +1,4 @@
-package plugin
+package main
 
 import (
 	"context"
@@ -8,7 +8,17 @@ import (
 )
 
 func TestQueryData(t *testing.T) {
-	ds := Datasource{}
+	settings := backend.DataSourceInstanceSettings{}
+
+	dsInstance, err := NewDatasource(context.Background(), settings)
+	if err != nil {
+		t.Error(err)
+	}
+
+	ds, isDataSource := dsInstance.(*Datasource)
+	if !isDataSource {
+		t.Fatal("Datasource must be an instance of Datasource")
+	}
 
 	resp, err := ds.QueryData(
 		context.Background(),

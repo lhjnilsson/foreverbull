@@ -1,12 +1,15 @@
-package plugin
+package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/lhjnilsson/foreverbull/pkg/models"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -20,17 +23,13 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-// NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	mux := datasource.NewQueryTypeMux()
 	ds := &Datasource{
 		queryMux: mux,
 	}
-
-	mux.HandleFunc(models.QueryMetricAggregate, ds.HandleQueryMetricAggregate)
-	mux.HandleFunc(models.QueryMetricHistory, ds.HandleQueryMetricHistory)
-	mux.HandleFunc(models.QueryMetricValue, ds.HandleGetMetricValue)
-
+	ds.registerResources()
+	mux.HandleFunc(GetExecutionMetric, ds.HandleGetExecutionMetric)
 	return ds, nil
 }
 
@@ -52,36 +51,22 @@ func processQueries(ctx context.Context, req *backend.QueryDataRequest, handler 
 	}
 }
 
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
 type Datasource struct {
 	queryMux *datasource.QueryTypeMux
+	backend.CallResourceHandler
 }
 
-// Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
-// created. As soon as datasource settings change detected by SDK old datasource instance will
-// be disposed and a new one will be created using NewSampleDatasource factory function.
 func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
 }
 
-// QueryData handles multiple queries and returns multiple responses.
-// req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
-// The QueryDataResponse contains a map of RefID to the response for each query, and each response
-// contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	return d.queryMux.QueryData(ctx, req)
 }
 
-type queryModel struct{}
-
-// CheckHealth handles health checks sent from Grafana to the plugin.
-// The main use case for these health checks is the test button on the
-// datasource configuration page which allows users to verify that
-// a datasource is working as expected.
 func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	res := &backend.CheckHealthResult{}
-	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
+	_, err := LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
 	if err != nil {
 		res.Status = backend.HealthStatusError
@@ -89,14 +74,44 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		return res, nil
 	}
 
-	if config.Secrets.ApiKey == "" {
-		res.Status = backend.HealthStatusError
-		res.Message = "API key is missing"
-		return res, nil
-	}
-
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
 		Message: "Data source is working",
 	}, nil
+}
+
+func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	return processQueries(ctx, req, d.handleGetExecutionMetric), nil
+}
+
+type queryModel struct{}
+
+func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req backend.QueryDataRequest, q backend.DataQuery) backend.DataResponse {
+	var response backend.DataResponse
+
+	// Unmarshal the JSON into our queryModel.
+	var qm queryModel
+
+	req.Queries[0].JSON = []byte(`{"key": "value"}`)
+
+	err := json.Unmarshal(q.JSON, &qm)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+	}
+
+	// create data frame response.
+	// For an overview on data frames and how grafana handles them:
+	// https://grafana.com/developers/plugin-tools/introduction/data-frames
+	frame := data.NewFrame("response")
+
+	// add fields.
+	frame.Fields = append(frame.Fields,
+		data.NewField("time", nil, []time.Time{q.TimeRange.From, q.TimeRange.To}),
+		data.NewField("values", nil, []int64{13, 23}),
+	)
+
+	// add the frames to the response.
+	response.Frames = append(response.Frames, frame)
+
+	return response
 }
