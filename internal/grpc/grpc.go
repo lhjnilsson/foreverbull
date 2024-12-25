@@ -12,23 +12,26 @@ import (
 	protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 
-	"github.com/lhjnilsson/foreverbull/internal/pb"
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-
-	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
 type HealthCheck struct {
-	pb.UnimplementedHealthServer
+	healthgrpc.UnimplementedHealthServer
 }
 
-func (h *HealthCheck) Check(_ context.Context, _ *emptypb.Empty) (*pb.HealthCheckResponse, error) {
-	return &pb.HealthCheckResponse{Status: pb.HealthCheckResponse_SERVING}, nil
+func (h *HealthCheck) Check(_ context.Context, _ *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+}
+
+func (h *HealthCheck) Watch(_ *healthpb.HealthCheckRequest, _ healthgrpc.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
 const (
@@ -129,7 +132,7 @@ func NewServer() (*grpc.Server, error) {
 	logger := zap.NewExample()
 
 	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
-		return pb.Health_ServiceDesc.ServiceName != callMeta.Service
+		return healthpb.Health_ServiceDesc.ServiceName != callMeta.Service
 	}
 
 	validator, err := protovalidate.New()
@@ -178,7 +181,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 							return fmt.Errorf("failed to listen: %w", err)
 						}
 						server := &HealthCheck{}
-						pb.RegisterHealthServer(grpcServer, server)
+						healthpb.RegisterHealthServer(grpcServer, server)
 						go func() {
 							if err := grpcServer.Serve(listener); err != nil {
 								panic(err)
