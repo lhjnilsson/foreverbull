@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -18,27 +22,37 @@ import (
 // backend.CheckHealthHandler interfaces. Plugin should not implement all these
 // interfaces - only those which are required for a particular task.
 var (
-	_ backend.QueryDataHandler      = (*Datasource)(nil)
-	_ backend.CheckHealthHandler    = (*Datasource)(nil)
+	_ grafana.QueryDataHandler      = (*Datasource)(nil)
+	_ grafana.CheckHealthHandler    = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewBacktestServicerClient(conn)
+
 	mux := datasource.NewQueryTypeMux()
 	ds := &Datasource{
 		queryMux: mux,
+		backend:  client,
 	}
 	ds.registerResources()
 	mux.HandleFunc(GetExecutionMetric, ds.HandleGetExecutionMetric)
+
 	return ds, nil
 }
 
-type QueryHandlerFunc func(context.Context, backend.QueryDataRequest, backend.DataQuery) backend.DataResponse
+type QueryHandlerFunc func(context.Context, grafana.QueryDataRequest, grafana.DataQuery) grafana.DataResponse
 
-func processQueries(ctx context.Context, req *backend.QueryDataRequest, handler QueryHandlerFunc) *backend.QueryDataResponse {
-	res := backend.Responses{}
+func processQueries(ctx context.Context, req *grafana.QueryDataRequest, handler QueryHandlerFunc) *grafana.QueryDataResponse {
+	res := grafana.Responses{}
 	if req == nil || req.Queries == nil {
-		return &backend.QueryDataResponse{
+		return &grafana.QueryDataResponse{
 			Responses: res,
 		}
 	}
@@ -46,48 +60,49 @@ func processQueries(ctx context.Context, req *backend.QueryDataRequest, handler 
 		res[v.RefID] = handler(ctx, *req, v)
 	}
 
-	return &backend.QueryDataResponse{
+	return &grafana.QueryDataResponse{
 		Responses: res,
 	}
 }
 
 type Datasource struct {
 	queryMux *datasource.QueryTypeMux
-	backend.CallResourceHandler
+	backend  pb.BacktestServicerClient
+	grafana.CallResourceHandler
 }
 
 func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
 }
 
-func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+func (d *Datasource) QueryData(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
 	return d.queryMux.QueryData(ctx, req)
 }
 
-func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	res := &backend.CheckHealthResult{}
+func (d *Datasource) CheckHealth(_ context.Context, req *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {
+	res := &grafana.CheckHealthResult{}
 	_, err := LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
 	if err != nil {
-		res.Status = backend.HealthStatusError
+		res.Status = grafana.HealthStatusError
 		res.Message = "Unable to load settings"
 		return res, nil
 	}
 
-	return &backend.CheckHealthResult{
-		Status:  backend.HealthStatusOk,
+	return &grafana.CheckHealthResult{
+		Status:  grafana.HealthStatusOk,
 		Message: "Data source is working",
 	}, nil
 }
 
-func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
 	return processQueries(ctx, req, d.handleGetExecutionMetric), nil
 }
 
 type queryModel struct{}
 
-func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req backend.QueryDataRequest, q backend.DataQuery) backend.DataResponse {
-	var response backend.DataResponse
+func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
+	var response grafana.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
@@ -96,7 +111,7 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req backend.Q
 
 	err := json.Unmarshal(q.JSON, &qm)
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
 	// create data frame response.

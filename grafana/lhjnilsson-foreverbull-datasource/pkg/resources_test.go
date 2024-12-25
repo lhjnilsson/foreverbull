@@ -6,66 +6,50 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/stretchr/testify/suite"
 )
 
 type mockCallResourceResponseSender struct {
-	response *backend.CallResourceResponse
+	response *grafana.CallResourceResponse
 }
 
-func (s *mockCallResourceResponseSender) Send(response *backend.CallResourceResponse) error {
+func (s *mockCallResourceResponseSender) Send(response *grafana.CallResourceResponse) error {
 	s.response = response
 	return nil
 }
 
-func TestListExecutions(t *testing.T) {
-	settings := backend.DataSourceInstanceSettings{}
+func TestResources(t *testing.T) {
+	suite.Run(t, new(ResourceTest))
+}
+
+type ResourceTest struct {
+	suite.Suite
+
+	uut *Datasource
+}
+
+func (test *ResourceTest) SetupTest() {
+	fmt.Println("SETUP")
+
+	settings := grafana.DataSourceInstanceSettings{}
 
 	dsInstance, err := NewDatasource(context.Background(), settings)
-	if err != nil {
-		t.Error(err)
-	}
+	test.Require().NoError(err, "fail to create datasource")
 
 	ds, isDataSource := dsInstance.(*Datasource)
-	if !isDataSource {
-		t.Fatal("Datasource must be an instance of Datasource")
-	}
+	test.Require().True(isDataSource, "Datasource must be an instance of Datasource")
 
-	req := &backend.CallResourceRequest{
+	test.uut = ds
+}
+
+func (test *ResourceTest) TestListExecutions() {
+	req := &grafana.CallResourceRequest{
 		Method: http.MethodGet,
 		Path:   "executions",
 	}
+
 	var r mockCallResourceResponseSender
-	err = ds.CallResource(context.Background(), req, &r)
-	if err != nil {
-		t.Error(err)
-	}
-
-	fmt.Println(string(r.response.Body))
-}
-
-func TestListMetrics(t *testing.T) {
-	settings := backend.DataSourceInstanceSettings{}
-
-	dsInstance, err := NewDatasource(context.Background(), settings)
-	if err != nil {
-		t.Error(err)
-	}
-
-	ds, isDataSource := dsInstance.(*Datasource)
-	if !isDataSource {
-		t.Fatal("Datasource must be an instance of Datasource")
-	}
-
-	req := &backend.CallResourceRequest{
-		Method: http.MethodGet,
-		Path:   "metrics",
-	}
-	var r mockCallResourceResponseSender
-	err = ds.CallResource(context.Background(), req, &r)
-	if err != nil {
-		t.Error(err)
-	}
-
-	fmt.Println(string(r.response.Body))
+	err := test.uut.CallResource(context.Background(), req, &r)
+	test.Require().NoError(err, "fail to call resource")
 }

@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 func TestQueryData(t *testing.T) {
-	settings := backend.DataSourceInstanceSettings{}
+	settings := grafana.DataSourceInstanceSettings{}
 
 	dsInstance, err := NewDatasource(context.Background(), settings)
 	if err != nil {
@@ -22,8 +22,8 @@ func TestQueryData(t *testing.T) {
 
 	resp, err := ds.QueryData(
 		context.Background(),
-		&backend.QueryDataRequest{
-			Queries: []backend.DataQuery{
+		&grafana.QueryDataRequest{
+			Queries: []grafana.DataQuery{
 				{RefID: "A"},
 			},
 		},
