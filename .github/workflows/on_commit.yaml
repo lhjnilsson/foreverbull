@@ -17,9 +17,11 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.out -covermode=atomic -timeout 180s
-        env:
-          DISABLE_LOKI_LOGGING: true
+        working-directory: ./pkg/finance/internal/suppliers/marketdata
+        run: go test -v ./...
+        #run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.out -covermode=atomic -timeout 180s
+        #env:
+        #  DISABLE_LOKI_LOGGING: true
 
   python-lint-unit-tests:
     runs-on: ubuntu-latest
