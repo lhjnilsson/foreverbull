@@ -3,8 +3,9 @@ from contextlib import contextmanager
 
 import grpc
 
-from foreverbull.pb import health_pb2
-from foreverbull.pb import health_pb2_grpc
+from grpc_health.v1 import health_pb2
+from grpc_health.v1 import health_pb2_grpc
+
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
 from foreverbull_zipline.engine import Engine
 
@@ -38,6 +39,9 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer):
 class BacktestServiceWithHealthCheck(BacktestService, health_pb2_grpc.HealthServicer):
     def Check(self, request, context):
         return health_pb2.HealthCheckResponse(status=health_pb2.HealthCheckResponse.SERVING)
+
+    def Watch(self, request, context):
+        return self.Check(request, context)
 
 
 @contextmanager

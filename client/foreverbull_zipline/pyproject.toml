@@ -1,7 +1,7 @@
 [project]
 name = "foreverbull_zipline"
 version = "0.0.0"
-dependencies = ["foreverbull"]
+dependencies = ["foreverbull", "grpcio-health-checking==1.66.1"]
 
 [tool.rye]
 managed = true
