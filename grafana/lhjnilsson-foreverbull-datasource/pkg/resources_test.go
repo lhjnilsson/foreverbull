@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
 
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 type mockCallResourceResponseSender struct {
@@ -26,12 +29,13 @@ func TestResources(t *testing.T) {
 type ResourceTest struct {
 	suite.Suite
 
-	uut *Datasource
+	listener *bufconn.Listener
+	server   *grpc.Server
+	backend  *pb.MockBacktestServicerClient
+	uut      *Datasource
 }
 
 func (test *ResourceTest) SetupTest() {
-	fmt.Println("SETUP")
-
 	settings := grafana.DataSourceInstanceSettings{}
 
 	dsInstance, err := NewDatasource(context.Background(), settings)
@@ -40,10 +44,19 @@ func (test *ResourceTest) SetupTest() {
 	ds, isDataSource := dsInstance.(*Datasource)
 	test.Require().True(isDataSource, "Datasource must be an instance of Datasource")
 
+	test.listener = bufconn.Listen(1024 * 1024)
+	test.server = grpc.NewServer()
+	test.Require().NoError(err)
+
+	test.backend = pb.NewMockBacktestServicerClient(test.T())
+	ds.backend = test.backend
+
 	test.uut = ds
 }
 
 func (test *ResourceTest) TestListExecutions() {
+	test.backend.On("ListExecutions", mock.Anything, mock.Anything).Return(&pb.ListExecutionsResponse{}, nil)
+
 	req := &grafana.CallResourceRequest{
 		Method: http.MethodGet,
 		Path:   "executions",
