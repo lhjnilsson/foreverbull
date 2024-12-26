@@ -374,16 +374,16 @@ jobs:
         if: failure()
         uses: jwalton/gh-docker-logs@v2
         with:
-          dest: './logs'
+          dest: '/tmp/docker_logs'
       - name: Tar logs
         if: failure()
-        run: tar cvzf ./logs.tgz ./logs
+        run: tar cvzf /tmp/docker_logs.tgz /tmp/docker_logs
       - name: Upload logs to GitHub
         if: failure()
         uses: actions/upload-artifact@master
         with:
           name: end_to_end.tgz
-          path: ./logs.tgz
+          path: /tmp/docker_logs.tgz
 
       - name: Stop Environment
         run: foreverbull env stop
