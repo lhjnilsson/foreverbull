@@ -467,16 +467,16 @@ jobs:
           if: failure()
           uses: jwalton/gh-docker-logs@v2
           with:
-            dest: './logs'
+            dest: '/tmp/manual_backtest_logs'
         - name: Tar logs
           if: failure()
-          run: tar cvzf ./logs.tgz ./logs
+          run: tar cvzf /tmp/manual_backtest_logs.tgz /tmp/manual_backtest_logs
         - name: Upload logs to GitHub
           if: failure()
           uses: actions/upload-artifact@master
           with:
             name: run_manual_backtest.tgz
-            path: ./logs.tgz
+            path: /tmp/manual_backtest_logs.tgz
 
         - name: Sleep for 20 seconds to make all containers stop
           run: sleep 20s
