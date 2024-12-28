@@ -5,7 +5,6 @@ import multiprocessing
 import multiprocessing.queues
 import os
 
-
 import pandas as pd
 import pynng
 import pytz
@@ -136,7 +135,6 @@ class Engine(multiprocessing.Process):
         ) as socket:
             request = common_pb2.Request(task="stop")
             socket.send(request.SerializeToString())
-
 
     def run(self):
         if self._logging_queue is not None:
@@ -425,14 +423,14 @@ class Engine(multiprocessing.Process):
                             return
                     case "stop":
                         context_socket.send(rsp.SerializeToString())
-                        if trading_algorithm:
-                            raise StopExcecution()
-                        return
+                        raise StopExcecution()
                     case "get_result":
                         rsp.data = self._get_execution_result(req.data)
                         context_socket.send(rsp.SerializeToString())
                     case _:
                         raise Exception(f"Unknown task {req.task}")
+            except StopExcecution as e:
+                raise e
             except Exception as e:
                 self.log.error(f"Error processing request {req.task}: {e}")
                 rsp.error = str(e)

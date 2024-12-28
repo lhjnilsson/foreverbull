@@ -1,18 +1,16 @@
-from concurrent import futures
-from contextlib import contextmanager
 import logging
-import grpc
-
-from grpc_health.v1 import health_pb2
-from grpc_health.v1 import health_pb2_grpc
-
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc, engine_service_pb2
-from foreverbull_zipline.engine import Engine
 import os
 import tarfile
 
+from concurrent import futures
+from contextlib import contextmanager
+from dataclasses import dataclass
+
+import grpc
 import pandas as pd
 
+from grpc_health.v1 import health_pb2
+from grpc_health.v1 import health_pb2_grpc
 from zipline.data import bundles
 from zipline.data.bundles.core import BundleData
 from zipline.utils.paths import data_path
@@ -20,10 +18,14 @@ from zipline.utils.paths import data_root
 
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2
+from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
-from dataclasses import dataclass
+from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
+
 
 @dataclass
 class Session:
@@ -34,10 +36,8 @@ class Session:
 
 
 class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.HealthServicer):
-    def __init__(self, engine: Engine):
+    def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.engine = engine
-
         self.sessions: list[Session] = []
 
     @property
@@ -50,7 +50,14 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         return [a.symbol for a in assets], start, end
 
     def GetIngestion(self, request, context):
-        pass
+        symbols, start, end = self.ingestion
+        return engine_service_pb2.GetIngestionResponse(
+            ingestion=ingestion_pb2.Ingestion(
+                start_date=pb_utils.from_pydate_to_proto_date(start),
+                end_date=pb_utils.from_pydate_to_proto_date(end),
+                symbols=symbols,
+            )
+        )
 
     def DownloadIngestion(self, request: engine_service_pb2.DownloadIngestionRequest, context):
         storage = Storage.from_environment()
@@ -83,7 +90,9 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         engine = Engine(
             socket_file_path=f"/tmp/fb_{request.id}.sock",
         )
-
+        engine.start()
+        if not engine.is_ready.wait(5.0):
+            raise Exception("Timeout when creating engine")
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = SessionServiceServicer(engine)
         engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)
@@ -99,16 +108,19 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         return self.Check(request, context)
 
     def stop(self):
+        print("STOPPING")
         for session in self.sessions:
             session.server.stop(None)
+            print("STOPPING ENGINE")
             session.engine.stop()
+            print("JOINING _ENGINE")
             session.engine.join()
 
 
 @contextmanager
-def grpc_server(engine: Engine, port=50055):
+def grpc_server(port=50055):
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
-    bs = BacktestService(engine)
+    bs = BacktestService()
     engine_service_pb2_grpc.add_EngineServicer_to_server(bs, server)
     health_pb2_grpc.add_HealthServicer_to_server(bs, server)
     server.add_insecure_port(f"[::]:{port}")
