@@ -30,7 +30,8 @@ def stub(servicer):
 
 
 def test_get_ingestion(stub: engine_service_pb2_grpc.EngineStub):
-    pass
+    response = stub.GetIngestion(engine_service_pb2.GetIngestionRequest())
+    assert response
 
 
 def test_ingest(

@@ -9,8 +9,10 @@ import pytest
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.service import BacktestService
 
 
 def test_start_stop(spawn_process):
@@ -30,8 +32,24 @@ def logging_thread(q: Queue):
         logger.handle(record)
 
 
+@pytest.fixture(scope="session")
+def ensure_ingestion(backtest_entity):
+    service = BacktestService()
+    try:
+        service.ingestion
+    except ValueError:
+        ingest_request = engine_service_pb2.IngestRequest(
+            ingestion=ingestion_pb2.Ingestion(
+                start_date=backtest_entity.start_date,
+                end_date=backtest_entity.end_date,
+                symbols=backtest_entity.symbols,
+            )
+        )
+        service.Ingest(ingest_request, None)
+
+
 @pytest.fixture(scope="function")
-def engine():
+def engine(ensure_ingestion):
     log_queue = multiprocessing.Queue()
     log_thread = Thread(target=logging_thread, args=(log_queue,))
     log_thread.start()
@@ -43,24 +61,6 @@ def engine():
     execution.join(3.0)
     log_queue.put_nowait(None)
     log_thread.join(3.0)
-
-
-def _no_test_ingest(
-    fb_database,
-    engine: Engine,
-    backtest_entity: backtest_pb2.Backtest,
-):
-    _, ingest = fb_database
-    ingest(backtest_entity)
-    # ingest_request = engine_service_pb2.IngestRequest(
-    #    ingestion=ingestion_pb2.Ingestion(
-    #        start_date=backtest_entity.start_date,
-    #        end_date=backtest_entity.end_date,
-    #        symbols=backtest_entity.symbols,
-    #    )
-    # )
-    # response = engine.ingest(ingest_request)
-    # assert response
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])

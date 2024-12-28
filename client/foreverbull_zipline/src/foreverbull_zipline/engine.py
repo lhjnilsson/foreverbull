@@ -165,6 +165,7 @@ class Engine(multiprocessing.Process):
     def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
         req = engine_service_pb2.RunBacktestRequest()
         req.ParseFromString(data)
+        bundles.register("foreverbull", None, calendar_name="XNYS")
         bundle = bundles.load("foreverbull", os.environ, None)
 
         def find_last_traded_dt(bundle: BundleData, *symbols):
@@ -389,48 +390,52 @@ class Engine(multiprocessing.Process):
         bar_data: BarData | None,
         socket: pynng.Socket,
     ):
-        with socket.new_context() as context_socket:
-            req = common_pb2.Request()
-            req.ParseFromString(context_socket.recv())
-            self.log.debug(f"Received request {req.task}, {id(trading_algorithm)}")
-            rsp = common_pb2.Response(task=req.task)
-            data: bytes | None = None
-            try:
-                match req.task:
-                    case "run":
-                        if trading_algorithm is not None:
-                            rsp.error = "Execution already running"
-                        else:
-                            ta, data = self._run(req.data, socket)
-                            rsp.data = data
+        while True:
+            with socket.new_context() as context_socket:
+                req = common_pb2.Request()
+                req.ParseFromString(context_socket.recv())
+                self.log.debug(f"Received request {req.task}, {id(trading_algorithm)}")
+                rsp = common_pb2.Response(task=req.task)
+                data: bytes | None = None
+                try:
+                    match req.task:
+                        case "run":
+                            if trading_algorithm is not None:
+                                rsp.error = "Execution already running"
+                                context_socket.send(rsp.SerializeToString())
+                            else:
+                                ta, data = self._run(req.data, socket)
+                                rsp.data = data
+                                context_socket.send(rsp.SerializeToString())
+                                ta.run()
+                                return
+                        case "get_current_period":
+                            if trading_algorithm is None:
+                                rsp.data = engine_service_pb2.GetCurrentPeriodResponse(
+                                    is_running=False
+                                ).SerializeToString()
+                                context_socket.send(rsp.SerializeToString())
+                            else:
+                                rsp.data = self._get_current_period(req.data, trading_algorithm)
+                                context_socket.send(rsp.SerializeToString())
+                        case "place_orders_and_continue":
+                            if trading_algorithm is None:
+                                rsp.error = "Execution not running"
+                                context_socket.send(rsp.SerializeToString())
+                            else:
+                                rsp.data = self._place_orders(req.data, trading_algorithm)
+                                context_socket.send(rsp.SerializeToString())
+                                return
+                        case "stop":
                             context_socket.send(rsp.SerializeToString())
-                            ta.run()
-                            return
-                    case "get_current_period":
-                        if trading_algorithm is None:
-                            rsp.error = "Execution not running"
+                            raise StopExcecution()
+                        case "get_result":
+                            rsp.data = self._get_execution_result(req.data)
                             context_socket.send(rsp.SerializeToString())
-                        else:
-                            rsp.data = self._get_current_period(req.data, trading_algorithm)
-                            context_socket.send(rsp.SerializeToString())
-                    case "place_orders_and_continue":
-                        if trading_algorithm is None:
-                            rsp.error = "Execution not running"
-                            context_socket.send(rsp.SerializeToString())
-                        else:
-                            rsp.data = self._place_orders(req.data, trading_algorithm)
-                            context_socket.send(rsp.SerializeToString())
-                            return
-                    case "stop":
-                        context_socket.send(rsp.SerializeToString())
-                        raise StopExcecution()
-                    case "get_result":
-                        rsp.data = self._get_execution_result(req.data)
-                        context_socket.send(rsp.SerializeToString())
-                    case _:
-                        raise Exception(f"Unknown task {req.task}")
-            except StopExcecution as e:
-                raise e
-            except Exception as e:
-                self.log.error(f"Error processing request {req.task}: {e}")
-                rsp.error = str(e)
+                        case _:
+                            raise Exception(f"Unknown task {req.task}")
+                except StopExcecution as e:
+                    raise e
+                except Exception as e:
+                    self.log.error(f"Error processing request {req.task}: {e}")
+                    rsp.error = str(e)

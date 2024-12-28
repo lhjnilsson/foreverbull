@@ -12,7 +12,6 @@ import pandas as pd
 from grpc_health.v1 import health_pb2
 from grpc_health.v1 import health_pb2_grpc
 from zipline.data import bundles
-from zipline.data.bundles.core import BundleData
 from zipline.utils.paths import data_path
 from zipline.utils.paths import data_root
 
@@ -39,11 +38,16 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.sessions: list[Session] = []
+        bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
+        try:
+            self.bundle = bundles.load("foreverbull", os.environ, None)
+        except ValueError:
+            self.bundle = None
 
     @property
     def ingestion(self) -> tuple[list[str], pd.Timestamp, pd.Timestamp]:
         if self.bundle is None:
-            raise LookupError("Bundle is not loaded")
+            raise LookupError("no ingestion avaible")
         assets = self.bundle.asset_finder.retrieve_all(self.bundle.asset_finder.sids)
         start = assets[0].start_date.tz_localize("UTC")
         end = assets[0].end_date.tz_localize("UTC")
@@ -68,13 +72,12 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         return engine_service_pb2.DownloadIngestionResponse()
 
     def Ingest(self, request: engine_service_pb2.IngestRequest, context):
-        bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
         SQLIngester.engine = DatabaseEngine()
         SQLIngester.from_date = pb_utils.from_proto_date_to_pydate(request.ingestion.start_date)
         SQLIngester.to_date = pb_utils.from_proto_date_to_pydate(request.ingestion.end_date)
         SQLIngester.symbols = [s for s in request.ingestion.symbols]
         bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
-        self.bundle: BundleData = bundles.load("foreverbull", os.environ, None)
+        self.bundle = bundles.load("foreverbull", os.environ, None)
         self.logger.debug("ingestion completed")
         symbols, start, end = self.ingestion
         if request.HasField("bucket") and request.HasField("object"):
