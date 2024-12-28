@@ -19,7 +19,7 @@ def servicer(fb_database):
     engine_service_pb2_grpc.add_EngineServicer_to_server(servicer, server)
     server.add_insecure_port("[::]:60066")
     server.start()
-    time.sleep(1)  # wait for server to start, abit hacky
+    time.sleep(1)
     yield server
     servicer.stop()
 
@@ -55,4 +55,3 @@ def test_new_session(
 ):
     response = stub.NewSession(engine_service_pb2.NewSessionRequest(id="test123"))
     assert response.port
-    print("RESPONSE ", response)
