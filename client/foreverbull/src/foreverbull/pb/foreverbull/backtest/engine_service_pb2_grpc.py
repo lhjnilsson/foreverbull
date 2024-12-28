@@ -34,6 +34,11 @@ class EngineStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.GetIngestion = channel.unary_unary(
+                '/foreverbull.backtest.Engine/GetIngestion',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionResponse.FromString,
+                _registered_method=True)
         self.DownloadIngestion = channel.unary_unary(
                 '/foreverbull.backtest.Engine/DownloadIngestion',
                 request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.DownloadIngestionRequest.SerializeToString,
@@ -44,35 +49,21 @@ class EngineStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.IngestRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.IngestResponse.FromString,
                 _registered_method=True)
-        self.RunBacktest = channel.unary_unary(
-                '/foreverbull.backtest.Engine/RunBacktest',
-                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunResponse.FromString,
-                _registered_method=True)
-        self.GetCurrentPeriod = channel.unary_unary(
-                '/foreverbull.backtest.Engine/GetCurrentPeriod',
-                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodResponse.FromString,
-                _registered_method=True)
-        self.PlaceOrdersAndContinue = channel.unary_unary(
-                '/foreverbull.backtest.Engine/PlaceOrdersAndContinue',
-                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueResponse.FromString,
-                _registered_method=True)
-        self.GetResult = channel.unary_unary(
-                '/foreverbull.backtest.Engine/GetResult',
-                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultResponse.FromString,
-                _registered_method=True)
-        self.Stop = channel.unary_unary(
-                '/foreverbull.backtest.Engine/Stop',
-                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.StopRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.StopResponse.FromString,
+        self.NewSession = channel.unary_unary(
+                '/foreverbull.backtest.Engine/NewSession',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionResponse.FromString,
                 _registered_method=True)
 
 
 class EngineServicer(object):
     """Missing associated documentation comment in .proto file."""
+
+    def GetIngestion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def DownloadIngestion(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -86,31 +77,7 @@ class EngineServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RunBacktest(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetCurrentPeriod(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def PlaceOrdersAndContinue(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetResult(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def Stop(self, request, context):
+    def NewSession(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -119,6 +86,11 @@ class EngineServicer(object):
 
 def add_EngineServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'GetIngestion': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetIngestion,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionResponse.SerializeToString,
+            ),
             'DownloadIngestion': grpc.unary_unary_rpc_method_handler(
                     servicer.DownloadIngestion,
                     request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.DownloadIngestionRequest.FromString,
@@ -129,30 +101,10 @@ def add_EngineServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.IngestRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.IngestResponse.SerializeToString,
             ),
-            'RunBacktest': grpc.unary_unary_rpc_method_handler(
-                    servicer.RunBacktest,
-                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunResponse.SerializeToString,
-            ),
-            'GetCurrentPeriod': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetCurrentPeriod,
-                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodResponse.SerializeToString,
-            ),
-            'PlaceOrdersAndContinue': grpc.unary_unary_rpc_method_handler(
-                    servicer.PlaceOrdersAndContinue,
-                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueResponse.SerializeToString,
-            ),
-            'GetResult': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetResult,
-                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultResponse.SerializeToString,
-            ),
-            'Stop': grpc.unary_unary_rpc_method_handler(
-                    servicer.Stop,
-                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.StopRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.StopResponse.SerializeToString,
+            'NewSession': grpc.unary_unary_rpc_method_handler(
+                    servicer.NewSession,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -164,6 +116,33 @@ def add_EngineServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Engine(object):
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def GetIngestion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.backtest.Engine/GetIngestion',
+            foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_engine__service__pb2.GetIngestionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def DownloadIngestion(request,
@@ -220,6 +199,126 @@ class Engine(object):
             _registered_method=True)
 
     @staticmethod
+    def NewSession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.backtest.Engine/NewSession',
+            foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_engine__service__pb2.NewSessionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class EngineSessionStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.RunBacktest = channel.unary_unary(
+                '/foreverbull.backtest.EngineSession/RunBacktest',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestResponse.FromString,
+                _registered_method=True)
+        self.GetCurrentPeriod = channel.unary_unary(
+                '/foreverbull.backtest.EngineSession/GetCurrentPeriod',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodResponse.FromString,
+                _registered_method=True)
+        self.PlaceOrdersAndContinue = channel.unary_unary(
+                '/foreverbull.backtest.EngineSession/PlaceOrdersAndContinue',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueResponse.FromString,
+                _registered_method=True)
+        self.GetResult = channel.unary_unary(
+                '/foreverbull.backtest.EngineSession/GetResult',
+                request_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultResponse.FromString,
+                _registered_method=True)
+
+
+class EngineSessionServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def RunBacktest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCurrentPeriod(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PlaceOrdersAndContinue(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetResult(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_EngineSessionServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'RunBacktest': grpc.unary_unary_rpc_method_handler(
+                    servicer.RunBacktest,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestResponse.SerializeToString,
+            ),
+            'GetCurrentPeriod': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCurrentPeriod,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodResponse.SerializeToString,
+            ),
+            'PlaceOrdersAndContinue': grpc.unary_unary_rpc_method_handler(
+                    servicer.PlaceOrdersAndContinue,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueResponse.SerializeToString,
+            ),
+            'GetResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResult,
+                    request_deserializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_engine__service__pb2.GetResultResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'foreverbull.backtest.EngineSession', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('foreverbull.backtest.EngineSession', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class EngineSession(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
     def RunBacktest(request,
             target,
             options=(),
@@ -233,9 +332,9 @@ class Engine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.Engine/RunBacktest',
-            foreverbull_dot_backtest_dot_engine__service__pb2.RunRequest.SerializeToString,
-            foreverbull_dot_backtest_dot_engine__service__pb2.RunResponse.FromString,
+            '/foreverbull.backtest.EngineSession/RunBacktest',
+            foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_engine__service__pb2.RunBacktestResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -260,7 +359,7 @@ class Engine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.Engine/GetCurrentPeriod',
+            '/foreverbull.backtest.EngineSession/GetCurrentPeriod',
             foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodRequest.SerializeToString,
             foreverbull_dot_backtest_dot_engine__service__pb2.GetCurrentPeriodResponse.FromString,
             options,
@@ -287,7 +386,7 @@ class Engine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.Engine/PlaceOrdersAndContinue',
+            '/foreverbull.backtest.EngineSession/PlaceOrdersAndContinue',
             foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueRequest.SerializeToString,
             foreverbull_dot_backtest_dot_engine__service__pb2.PlaceOrdersAndContinueResponse.FromString,
             options,
@@ -314,36 +413,9 @@ class Engine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/foreverbull.backtest.Engine/GetResult',
+            '/foreverbull.backtest.EngineSession/GetResult',
             foreverbull_dot_backtest_dot_engine__service__pb2.GetResultRequest.SerializeToString,
             foreverbull_dot_backtest_dot_engine__service__pb2.GetResultResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def Stop(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/foreverbull.backtest.Engine/Stop',
-            foreverbull_dot_backtest_dot_engine__service__pb2.StopRequest.SerializeToString,
-            foreverbull_dot_backtest_dot_engine__service__pb2.StopResponse.FromString,
             options,
             channel_credentials,
             insecure,

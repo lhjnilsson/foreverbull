@@ -11,9 +11,14 @@ def from_proto_date_to_pydate(d: common_pb2.Date) -> date:
     return date(year=d.year, month=d.month, day=d.day)
 
 
-def from_proto_date_to_pandas_timestamp(d: common_pb2.Date) -> Any:
-    return pandas.Timestamp(year=d.year, month=d.month, day=d.day).normalize()  # type: ignore
-
+def from_proto_date_to_pandas_timestamp(d: common_pb2.Date, normalize=True, tz_localize: bool | None =False) -> Any:
+    timestamp = pandas.Timestamp(year=d.year, month=d.month, day=d.day)
+    assert type(timestamp) is pandas.Timestamp, f"Expected pandas.Timestamp, got {type(timestamp)}"
+    if normalize:
+       timestamp = timestamp.normalize()
+    if tz_localize or tz_localize is None:
+        timestamp = timestamp.tz_localize(tz_localize)
+    return timestamp
 
 def from_pydate_to_proto_date(d: date | datetime) -> common_pb2.Date:
     return common_pb2.Date(year=d.year, month=d.month, day=d.day)
