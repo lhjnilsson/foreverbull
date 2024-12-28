@@ -18,10 +18,11 @@ type grpcSessionServer struct {
 
 	session *backtest_pb.Session
 
-	db       postgres.Query
-	backtest engine.Engine
-	wp       worker.Pool
-	server   *grpc.Server
+	db              postgres.Query
+	backtest        engine.Engine
+	backtestSession engine.EngineSession
+	wp              worker.Pool
+	server          *grpc.Server
 
 	activity chan bool
 }
@@ -35,13 +36,20 @@ func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
 ) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
 
+	backtestSession, err := backtest.NewSession(context.TODO(), session)
+	if err != nil {
+		log.Error().Err(err).Msg("fail to create zipline session")
+		return nil, nil, fmt.Errorf("error creating session: %w", err)
+	}
+
 	activity := make(chan bool, ActivityBufferSize)
 	server := &grpcSessionServer{
-		session:  session,
-		db:       database,
-		backtest: backtest,
-		server:   grpcServer,
-		activity: activity,
+		session:         session,
+		db:              database,
+		backtest:        backtest,
+		backtestSession: backtestSession,
+		server:          grpcServer,
+		activity:        activity,
 	}
 	backtest_pb.RegisterSessionServicerServer(grpcServer, server)
 
@@ -123,7 +131,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 		Benchmark: execution.Benchmark,
 	}
 
-	portfolioCh, err := s.backtest.RunBacktest(context.Background(), &backtest, s.wp)
+	portfolioCh, err := s.backtestSession.RunBacktest(context.Background(), &backtest, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
 		return fmt.Errorf("error running backtest: %w", err)
@@ -159,7 +167,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 
 func (s *grpcSessionServer) StoreResult(ctx context.Context, req *backtest_pb.StoreExecutionResultRequest) (*backtest_pb.StoreExecutionResultResponse, error) {
 	log.Debug().Any("request", req).Msg("store result")
-	rsp, err := s.backtest.GetResult(ctx)
+	rsp, err := s.backtestSession.GetResult(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting result: %w", err)
 	}

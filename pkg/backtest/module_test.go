@@ -216,7 +216,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	workerSocket, err := rep.NewSocket()
 	test.Require().NoError(err)
 	err = workerSocket.Dial(fmt.Sprintf("tcp://127.0.0.1:%d", excRep.Configuration.GetBrokerPort()))
-	test.Require().NoError(err, fmt.Sprintf("Failed to connect to broker port %d", excRep.Configuration.GetBrokerPort()))
+	test.Require().NoError(err, "Failed to connect to broker port ", excRep.Configuration.GetBrokerPort())
 
 	go runner(workerSocket)
 	defer workerSocket.Close()

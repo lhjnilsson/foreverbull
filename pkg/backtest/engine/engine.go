@@ -12,7 +12,10 @@ import (
 type Engine interface {
 	Ingest(ctx context.Context, ingestion *pb.Ingestion, object *storage.Object) error
 	DownloadIngestion(ctx context.Context, object *storage.Object) error
+	NewSession(ctx context.Context, session *pb.Session) (EngineSession, error)
+}
+
+type EngineSession interface {
 	RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *finance_pb.Portfolio, error)
 	GetResult(ctx context.Context) (*pb.GetResultResponse, error)
-	Stop(ctx context.Context) error
 }

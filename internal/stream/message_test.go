@@ -42,7 +42,7 @@ func (test *MessageTest) TestNewMessage() {
 		test.Equal("component", parsed.Component)
 		test.Equal("method", parsed.Method)
 		test.Nil(parsed.Error)
-		test.Equal([]byte(`{"key":"key","value":1}`), parsed.Payload)
+		test.JSONEq(`{"key":"key","value":1}`, string(parsed.Payload))
 		test.Nil(parsed.StatusHistory)
 		test.Nil(parsed.dependencyContainer)
 	})
