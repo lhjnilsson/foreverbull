@@ -15,7 +15,7 @@ from foreverbull.pb.foreverbull.service import worker_service_pb2
 
 
 class Broker:
-    def __init__(self, engine: engine_service_pb2_grpc.EngineStub):
+    def __init__(self, engine: engine_service_pb2_grpc.EngineSessionStub):
         self.engine = engine
         self._broker_port = 7878
         self._namespace_port = 7879
@@ -98,7 +98,7 @@ class Broker:
             raise Exception("Session not created")
 
         rsp = self.engine.RunBacktest(
-            engine_service_pb2.RunRequest(
+            engine_service_pb2.RunBacktestRequest(
                 backtest=backtest_pb2.Backtest(
                     start_date=self._execution.start_date,
                     end_date=self._execution.end_date,

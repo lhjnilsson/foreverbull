@@ -1,3 +1,5 @@
+import time
+
 from concurrent import futures
 from multiprocessing import get_start_method
 from multiprocessing import set_start_method
@@ -10,8 +12,8 @@ from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
-from foreverbull_zipline import grpc_servicer
-from foreverbull_zipline.engine import EngineProcess
+from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.session_service import SessionServiceServicer
 from tests.broker import Broker
 
 
@@ -24,18 +26,23 @@ def spawn_process():
 
 @pytest.fixture
 def engine_stub():
-    ep = EngineProcess()
-    ep.start()
-    if not ep.is_ready.wait(5.0):
-        raise Exception("Engine not ready")
-    with grpc_servicer.grpc_server(ep, port=6066):
-        yield engine_service_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:6066"))
-    ep.stop()
-    ep.join(3.0)
+    engine = Engine()
+    engine.start()
+    assert engine.is_ready.wait(5.0), "engine never became ready"
+    server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
+    servicer = SessionServiceServicer(engine)
+    engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)
+    server.add_insecure_port("[::]:60066")
+    server.start()
+    time.sleep(1)
+    yield engine_service_pb2_grpc.EngineSessionStub(grpc.insecure_channel("localhost:60066"))
+    server.stop(None)
+    engine.stop()
+    engine.join()
 
 
 @pytest.fixture
-def broker_session_stub(engine_stub):
+def broker_session_stub(engine_stub: engine_service_pb2_grpc.EngineSessionStub):
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
     bs = Broker(engine_stub)
     backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(bs, server)
