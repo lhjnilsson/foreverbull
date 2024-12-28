@@ -111,12 +111,9 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         return self.Check(request, context)
 
     def stop(self):
-        print("STOPPING")
         for session in self.sessions:
             session.server.stop(None)
-            print("STOPPING ENGINE")
             session.engine.stop()
-            print("JOINING _ENGINE")
             session.engine.join()
 
 
