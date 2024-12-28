@@ -33,11 +33,14 @@ def logging_thread(q: Queue):
 
 
 @pytest.fixture(scope="session")
-def ensure_ingestion(backtest_entity):
+def ensure_ingestion(backtest_entity, fb_database):
+    _, verify = fb_database
+    verify(backtest_entity)
+
     service = BacktestService()
     try:
         service.ingestion
-    except ValueError:
+    except LookupError:
         ingest_request = engine_service_pb2.IngestRequest(
             ingestion=ingestion_pb2.Ingestion(
                 start_date=backtest_entity.start_date,
@@ -108,8 +111,6 @@ def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
             break
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
-
-    engine.stop()
 
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])

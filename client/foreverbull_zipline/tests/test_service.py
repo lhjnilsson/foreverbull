@@ -13,7 +13,10 @@ from foreverbull_zipline import service
 
 
 @pytest.fixture
-def servicer(fb_database):
+def servicer(backtest_entity, fb_database):
+    _, verify = fb_database
+    verify(backtest_entity)
+
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
     servicer = service.BacktestService()
     engine_service_pb2_grpc.add_EngineServicer_to_server(servicer, server)

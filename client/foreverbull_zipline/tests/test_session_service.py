@@ -13,7 +13,10 @@ from foreverbull_zipline.session_service import SessionServiceServicer
 
 
 @pytest.fixture
-def uut():
+def uut(fb_database, backtest_entity):
+    _, verify = fb_database
+    verify(backtest_entity)
+
     engine = Engine()
     engine.start()
     assert engine.is_ready.wait(5.0), "engine was never ready"
