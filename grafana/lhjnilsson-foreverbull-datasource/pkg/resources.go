@@ -22,8 +22,11 @@ func (ds *Datasource) registerResources() {
 }
 
 func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
+	log := ds.log.With("method", "ListExecutions")
+
 	rsp, err := ds.backend.ListExecutions(r.Context(), &pb.ListExecutionsRequest{})
 	if err != nil {
+		log.Error("fail to list executions", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

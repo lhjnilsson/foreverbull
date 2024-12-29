@@ -57,7 +57,6 @@ export function QueryEditor({ datasource, query, onChange, onRunQuery }: Props) 
     setQueryType(queryType);
     updateAndRunQuery({ ...query, queryType: queryType });
   };
-  console.log('HELLOOOOOOOOO');
 
   return (
     <Stack gap={0}>
