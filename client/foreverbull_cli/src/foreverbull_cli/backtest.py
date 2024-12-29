@@ -115,7 +115,7 @@ def get(
 @backtest.command()
 def ingest():
     broker.backtest.ingest()
-    for _ in range(60):
+    for _ in range(90):
         _, ingestion_status = broker.backtest.get_ingestion()
         if ingestion_status == ingestion_pb2.IngestionStatus.READY:
             console.print("Ingestion completed")
