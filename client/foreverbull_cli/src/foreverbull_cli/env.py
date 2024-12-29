@@ -47,10 +47,6 @@ class Environment:
         return self.path / "minio"
 
     @property
-    def grafana_location(self) -> Path:
-        return self.path / "grafana"
-
-    @property
     def nats_location(self) -> Path:
         return self.path / "nats"
 
@@ -94,7 +90,6 @@ NATS_IMAGE = "nats:2.10-alpine"
 MINIO_IMAGE = "minio/minio:latest"
 BROKER_IMAGE = f"lhjnilsson/foreverbull:{version}"
 BACKTEST_IMAGE = f"lhjnilsson/zipline:{version}"
-GRAFANA_IMAGE = "grafana/grafana-oss:latest"
 
 
 @env.command()
@@ -118,10 +113,6 @@ def status():
     except docker.errors.NotFound:
         minio_container = None
     try:
-        grafana_container = d.containers.get("foreverbull_grafana")
-    except docker.errors.NotFound:
-        grafana_container = None
-    try:
         foreverbull_container = d.containers.get("foreverbull_foreverbull")
     except docker.errors.NotFound:
         foreverbull_container = None
@@ -138,12 +129,6 @@ def status():
         minio_image = d.images.get(MINIO_IMAGE)
     except docker.errors.ImageNotFound:
         minio_image = None
-
-    try:
-        grafana_image = d.images.get(GRAFANA_IMAGE)
-    except docker.errors.ImageNotFound:
-        grafana_image = None
-
     try:
         foreverbull_image = d.images.get(BROKER_IMAGE)  # type: ignore
     except docker.errors.ImageNotFound:
@@ -168,11 +153,6 @@ def status():
         minio_container.status if minio_container else "Not Found",
         "Minio",
         minio_image.short_id if minio_image else "Not found",
-    )
-    table.add_row(
-        grafana_container.status if grafana_container else "Not Found",
-        "Grafana",
-        grafana_image.short_id if grafana_image else "Not found",
     )
     table.add_row(
         foreverbull_container.status if foreverbull_container else "Not Found",
@@ -212,7 +192,6 @@ def start(
         postgres_task_id = progress.add_task("Postgres", total=2)
         nats_task_id = progress.add_task("NATS", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
-        grafana_task_id = progress.add_task("Grafana", total=2)
         health_task_id = progress.add_task("Waiting for services to start", total=2)
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
 
@@ -223,7 +202,6 @@ def start(
                 POSTGRES_IMAGE,
                 NATS_IMAGE,
                 MINIO_IMAGE,
-                GRAFANA_IMAGE,
                 broker_image,
                 backtest_image,
             ]:
@@ -364,41 +342,6 @@ def start(
                 exit(1)
         progress.update(minio_task_id, completed=2)
 
-        progress.update(grafana_task_id, completed=1)
-        try:
-            d.containers.get("foreverbull_grafana")
-        except docker.errors.NotFound:
-            try:
-                d.containers.run(
-                    GRAFANA_IMAGE,
-                    name="foreverbull_grafana",
-                    detach=True,
-                    network=NETWORK_NAME,
-                    hostname="grafana",
-                    ports={"3000/tcp": 3000},
-                    environment={
-                        "GF_AUTH_ANONYMOUS_ENABLED": "true",
-                        "GF_AUTH_DISABLE_LOGIN_FORM": "true",
-                        "GF_AUTH_ANONYMOUS_ORG_ROLE": "Admin",
-                        "GF_AUTH_BASIC_ENABLED": "false",
-                        "GF_AUTH_DISABLE_SIGNOUT_MENU": "true",
-                    },
-                    volumes={
-                        str((_environment.grafana_location / "data").absolute()): {
-                            "bind": "/var/lib/grafana",
-                            "mode": "rw",
-                        },
-                    },
-                )
-            except Exception as e:
-                progress.update(
-                    grafana_task_id,
-                    description=f"[red]Failed to start minio: {e}",
-                    completed=2,
-                )
-                exit(1)
-        progress.update(grafana_task_id, completed=2)
-
         progress.update(health_task_id, completed=1)
         for _ in range(100):
             time.sleep(0.2)
@@ -485,7 +428,6 @@ def stop():
         return
     with FBProgress() as progress:
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
-        grafana_task_id = progress.add_task("Grafana", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
         nats_task_id = progress.add_task("NATS", total=2)
         postgres_task_id = progress.add_task("Postgres", total=2)
@@ -498,14 +440,6 @@ def stop():
         except docker.errors.NotFound:
             pass
         progress.update(foreverbull_task_id, completed=2)
-
-        progress.update(grafana_task_id, completed=1)
-        try:
-            d.containers.get("foreverbull_grafana").stop()
-            d.containers.get("foreverbull_grafana").remove()
-        except docker.errors.NotFound:
-            pass
-        progress.update(grafana_task_id, completed=2)
 
         progress.update(minio_task_id, completed=1)
         try:
