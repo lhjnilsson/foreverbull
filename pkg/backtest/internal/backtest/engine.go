@@ -7,10 +7,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -82,81 +80,15 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object)
 	return nil
 }
 
-func (z *Zipline) RunBacktest(ctx context.Context, backtest *backtest_pb.Backtest,
-	workers worker.Pool,
-) (chan *finance_pb.Portfolio, error) {
-	req := backtest_pb.RunRequest{
-		Backtest: backtest,
-	}
-
-	rsp, err := z.client.RunBacktest(ctx, &req)
+func (z *Zipline) NewSession(ctx context.Context, session *pb.Session) (engine.EngineSession, error) {
+	rsp, err := z.client.NewSession(ctx, &backtest_pb.NewSessionRequest{Id: session.Id})
 	if err != nil {
-		return nil, fmt.Errorf("error running: %w", err)
+		return nil, err
 	}
-
-	log.Debug().Any("response", rsp).Msg("run backtest sent")
-
-	portfolioCh := make(chan *finance_pb.Portfolio)
-
-	runner := func() {
-		for {
-			period, err := z.client.GetCurrentPeriod(ctx, &backtest_pb.GetCurrentPeriodRequest{})
-			if err != nil {
-				close(portfolioCh)
-				return
-			}
-
-			if !period.IsRunning {
-				close(portfolioCh)
-				return
-			}
-			select {
-			case portfolioCh <- period.Portfolio:
-			default:
-			}
-			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
-			if err != nil {
-				log.Error().Err(err).Msg("error processing orders")
-				close(portfolioCh)
-				return
-			}
-
-			_, err = z.client.PlaceOrdersAndContinue(ctx,
-				&backtest_pb.PlaceOrdersAndContinueRequest{
-					Orders: orders,
-				},
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("error placing orders")
-				close(portfolioCh)
-
-				return
-			}
-		}
-	}
-	go runner()
-
-	return portfolioCh, nil
-}
-
-func (z *Zipline) GetResult(ctx context.Context) (*backtest_pb.GetResultResponse, error) {
-	req := backtest_pb.GetResultRequest{}
-
-	rsp, err := z.client.GetResult(ctx, &req)
+	ip, err := z.container.GetIpAddress()
 	if err != nil {
-		return nil, fmt.Errorf("error getting result: %w", err)
+		return nil, err
 	}
-
-	return rsp, nil
-}
-
-func (z *Zipline) Stop(ctx context.Context) error {
-	req := backtest_pb.StopRequest{}
-
-	_, err := z.client.Stop(ctx, &req)
-	if err != nil {
-		return fmt.Errorf("error stopping: %w", err)
-	}
-
-	return nil
+	connectionStr := fmt.Sprintf("%s:%d", ip, rsp.Port)
+	return NewZiplineEngineSession(ctx, connectionStr)
 }

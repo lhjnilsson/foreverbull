@@ -56,12 +56,15 @@ exchange-calendars==4.5.6
     # via zipline-reloaded
 frozendict==2.4.4
     # via yfinance
-grpcio==1.66.1
+grpcio==1.68.1
     # via foreverbull
+    # via grpcio-health-checking
     # via grpcio-testing
     # via grpcio-tools
-grpcio-testing==1.66.1
-grpcio-tools==1.66.1
+grpcio-health-checking==1.68.1
+    # via foreverbull-zipline
+grpcio-testing==1.68.1
+grpcio-tools==1.68.1
 h5py==3.12.1
     # via zipline-reloaded
 html5lib==1.1
@@ -160,6 +163,7 @@ pluggy==1.5.0
     # via pytest
 protobuf==5.27.2
     # via foreverbull
+    # via grpcio-health-checking
     # via grpcio-testing
     # via grpcio-tools
 psycopg2-binary==2.9.9

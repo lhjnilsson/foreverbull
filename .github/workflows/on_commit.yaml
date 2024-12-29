@@ -365,10 +365,26 @@ jobs:
         env:
           PYTHONPATH: /tmp/example_algorithms/src
         run: |
-          python -m pytest
+          python -m pytest -vs
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
+
+      - name: Collect docker logs on failure
+        if: failure()
+        uses: jwalton/gh-docker-logs@v2
+        with:
+          dest: '/tmp/docker_logs'
+      - name: Tar logs
+        if: failure()
+        run: tar cvzf /tmp/docker_logs.tgz /tmp/docker_logs
+      - name: Upload logs to GitHub
+        if: failure()
+        uses: actions/upload-artifact@master
+        with:
+          name: end_to_end.tgz
+          path: /tmp/docker_logs.tgz
+
       - name: Stop Environment
         run: foreverbull env stop
         continue-on-error: true
@@ -446,6 +462,22 @@ jobs:
             PYTHONPATH: /tmp/example_algorithms/src
           run: |
             fbull backtest run nasdaq /tmp/example_algorithms/src/example_algorithms/parallel.py
+
+        - name: Collect docker logs on failure
+          if: failure()
+          uses: jwalton/gh-docker-logs@v2
+          with:
+            dest: '/tmp/manual_backtest_logs'
+        - name: Tar logs
+          if: failure()
+          run: tar cvzf /tmp/manual_backtest_logs.tgz /tmp/manual_backtest_logs
+        - name: Upload logs to GitHub
+          if: failure()
+          uses: actions/upload-artifact@master
+          with:
+            name: run_manual_backtest.tgz
+            path: /tmp/manual_backtest_logs.tgz
+
         - name: Sleep for 20 seconds to make all containers stop
           run: sleep 20s
           shell: bash

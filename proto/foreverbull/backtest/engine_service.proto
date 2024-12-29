@@ -9,6 +9,12 @@ import "foreverbull/finance/finance.proto";
 import "foreverbull/backtest/execution.proto";
 import "foreverbull/backtest/ingestion.proto";
 
+message GetIngestionRequest {
+}
+
+message GetIngestionResponse {
+    Ingestion ingestion = 1;
+}
 
 message DownloadIngestionRequest {
     string bucket = 1;
@@ -28,11 +34,19 @@ message IngestRequest {
 message IngestResponse {
 }
 
-message RunRequest {
+message NewSessionRequest {
+    string id = 1;
+}
+
+message NewSessionResponse {
+    int64 port = 1;
+}
+
+message RunBacktestRequest {
     Backtest backtest = 1;
 }
 
-message RunResponse {
+message RunBacktestResponse {
     Backtest backtest = 1;
 }
 
@@ -60,18 +74,17 @@ message GetResultResponse {
     repeated foreverbull.backtest.Period periods = 1;
 }
 
-message StopRequest {
-}
-
-message StopResponse {
-}
 
 service Engine {
+    rpc GetIngestion(GetIngestionRequest) returns (GetIngestionResponse) {}
     rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
     rpc Ingest(IngestRequest) returns (IngestResponse) {}
-    rpc RunBacktest(RunRequest) returns (RunResponse) {}
+    rpc NewSession(NewSessionRequest) returns (NewSessionResponse) {}
+}
+
+service EngineSession {
+    rpc RunBacktest(RunBacktestRequest) returns (RunBacktestResponse) {}
     rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {}
     rpc PlaceOrdersAndContinue(PlaceOrdersAndContinueRequest) returns (PlaceOrdersAndContinueResponse) {}
     rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
-    rpc Stop(StopRequest) returns (StopResponse) {}
 }

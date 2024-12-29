@@ -5,6 +5,7 @@ COPY foreverbull_zipline/src /app
 ARG FB_WHEEL
 COPY ${FB_WHEEL} /foreverbull-0.0.1-py3-none-any.whl
 RUN pip install /foreverbull-0.0.1-py3-none-any.whl
+RUN pip install grpcio-health-checking==1.66.1
 
 RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
 WORKDIR /app

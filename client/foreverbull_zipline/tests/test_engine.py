@@ -12,11 +12,11 @@ from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.engine import Engine
-from foreverbull_zipline.engine import EngineProcess
+from foreverbull_zipline.service import BacktestService
 
 
 def test_start_stop(spawn_process):
-    execution = EngineProcess()
+    execution = Engine()
     execution.start()
     execution.is_ready.wait(3.0)
     execution.stop()
@@ -32,12 +32,31 @@ def logging_thread(q: Queue):
         logger.handle(record)
 
 
+@pytest.fixture(scope="session")
+def ensure_ingestion(backtest_entity, fb_database):
+    _, verify = fb_database
+    verify(backtest_entity)
+
+    service = BacktestService()
+    try:
+        service.ingestion
+    except LookupError:
+        ingest_request = engine_service_pb2.IngestRequest(
+            ingestion=ingestion_pb2.Ingestion(
+                start_date=backtest_entity.start_date,
+                end_date=backtest_entity.end_date,
+                symbols=backtest_entity.symbols,
+            )
+        )
+        service.Ingest(ingest_request, None)
+
+
 @pytest.fixture(scope="function")
-def engine():
+def engine(ensure_ingestion):
     log_queue = multiprocessing.Queue()
     log_thread = Thread(target=logging_thread, args=(log_queue,))
     log_thread.start()
-    execution = EngineProcess(logging_queue=log_queue)
+    execution = Engine(logging_queue=log_queue)
     execution.start()
     execution.is_ready.wait(3.0)
     yield execution
@@ -47,27 +66,9 @@ def engine():
     log_thread.join(3.0)
 
 
-def test_ingest(
-    fb_database,
-    engine: Engine,
-    backtest_entity: backtest_pb2.Backtest,
-):
-    _, ingest = fb_database
-    ingest(backtest_entity)
-    ingest_request = engine_service_pb2.IngestRequest(
-        ingestion=ingestion_pb2.Ingestion(
-            start_date=backtest_entity.start_date,
-            end_date=backtest_entity.end_date,
-            symbols=backtest_entity.symbols,
-        )
-    )
-    response = engine.ingest(ingest_request)
-    assert response
-
-
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_run_benchmark(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
@@ -93,7 +94,7 @@ def test_run_benchmark(execution: execution_pb2.Execution, engine: Engine, bench
 
 
 def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
@@ -111,12 +112,10 @@ def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
-    engine.stop()
-
 
 @pytest.mark.parametrize("symbols", [["AAPL"], ["AAPL", "MSFT"], ["TSLA"]])
 def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, engine: Engine, symbols):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
@@ -137,7 +136,7 @@ def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, eng
 
 
 def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=None,
@@ -159,7 +158,7 @@ def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmark):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
@@ -187,7 +186,7 @@ def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmar
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
 def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: str | None):
-    request = engine_service_pb2.RunRequest(
+    request = engine_service_pb2.RunBacktestRequest(
         backtest=backtest_pb2.Backtest(
             start_date=execution.start_date,
             end_date=execution.end_date,
