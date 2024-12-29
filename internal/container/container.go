@@ -23,6 +23,7 @@ const (
 type Container interface {
 	GetStatus() (string, error)
 	GetHealth() (string, error)
+	GetIpAddress() (string, error)
 	GetConnectionString() (string, error)
 	Stop() error
 }
@@ -67,6 +68,14 @@ func (c *container) GetHealth() (string, error) {
 	}
 
 	return container.State.Health.Status, nil
+}
+
+func (c *container) GetIpAddress() (string, error) {
+	container, err := c.client.ContainerInspect(context.Background(), c.container.ID)
+	if err != nil {
+		return "", fmt.Errorf("error inspecting container: %w", err)
+	}
+	return container.NetworkSettings.Networks[environment.GetDockerNetworkName()].IPAddress, nil
 }
 
 func (c *container) GetConnectionString() (string, error) {

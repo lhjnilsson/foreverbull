@@ -36,8 +36,9 @@ type SessionTest struct {
 	baseServer *grpc.Server
 	activity   <-chan bool
 
-	mockEngine *engine.MockEngine
-	client     backtest_pb.SessionServicerClient
+	mockEngine        *engine.MockEngine
+	mockEngineSession *engine.MockEngineSession
+	client            backtest_pb.SessionServicerClient
 
 	backtest *backtest_pb.Backtest
 	session  *backtest_pb.Session
@@ -74,6 +75,9 @@ func (s *SessionTest) SetupTest() {
 	s.listener = bufconn.Listen(1024 * 1024)
 
 	s.mockEngine = new(engine.MockEngine)
+	s.mockEngineSession = new(engine.MockEngineSession)
+	s.mockEngine.On("NewSession", mock.Anything, mock.Anything).Return(s.mockEngineSession, nil)
+
 	s.baseServer, s.activity, err = backtest.NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
 	s.Require().NoError(err)
 
@@ -154,7 +158,7 @@ func (s *SessionTest) TestRunExecution() {
 	portfolioCh <- &finance_pb.Portfolio{}
 	portfolioCh <- &finance_pb.Portfolio{}
 	close(portfolioCh)
-	s.mockEngine.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(portfolioCh, nil)
+	s.mockEngineSession.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(portfolioCh, nil)
 
 	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{
 		ExecutionId: execution.Id,

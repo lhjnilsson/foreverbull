@@ -9,6 +9,16 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class GetIngestionRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetIngestionResponse(_message.Message):
+    __slots__ = ("ingestion",)
+    INGESTION_FIELD_NUMBER: _ClassVar[int]
+    ingestion: _ingestion_pb2.Ingestion
+    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...) -> None: ...
+
 class DownloadIngestionRequest(_message.Message):
     __slots__ = ("bucket", "object")
     BUCKET_FIELD_NUMBER: _ClassVar[int]
@@ -37,13 +47,25 @@ class IngestResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class RunRequest(_message.Message):
+class NewSessionRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class NewSessionResponse(_message.Message):
+    __slots__ = ("port",)
+    PORT_FIELD_NUMBER: _ClassVar[int]
+    port: int
+    def __init__(self, port: _Optional[int] = ...) -> None: ...
+
+class RunBacktestRequest(_message.Message):
     __slots__ = ("backtest",)
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
     def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
-class RunResponse(_message.Message):
+class RunBacktestResponse(_message.Message):
     __slots__ = ("backtest",)
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
@@ -84,11 +106,3 @@ class GetResultResponse(_message.Message):
     PERIODS_FIELD_NUMBER: _ClassVar[int]
     periods: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Period]
     def __init__(self, periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...) -> None: ...
-
-class StopRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class StopResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...

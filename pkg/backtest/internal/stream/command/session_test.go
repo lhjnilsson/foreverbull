@@ -123,7 +123,9 @@ func (test *CommandSessionTest) TestSessionRun() {
 	})
 	test.Run("successful", func() {
 		message := new(stream.MockMessage)
+		engineSession := new(engine.MockEngineSession)
 		engine := new(engine.MockEngine)
+		engine.On("NewSession", mock.Anything, mock.Anything).Return(engineSession, nil)
 		engine.On("DownloadIngestion", mock.Anything, mock.Anything).Return(nil)
 		engine.On("Stop", mock.Anything).Return(nil)
 		message.On("MustGet", stream.DBDep).Return(test.db)
@@ -162,7 +164,6 @@ func (test *CommandSessionTest) TestSessionRun() {
 			),
 		)
 		test.Require().NoError(err)
-
 		client := pb.NewSessionServicerClient(conn)
 		rsp, err := client.StopServer(context.TODO(), &pb.StopServerRequest{})
 		test.Require().NoError(err)

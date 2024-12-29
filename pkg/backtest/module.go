@@ -103,9 +103,6 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					if err := backtestEngine.Stop(ctx); err != nil {
-						return fmt.Errorf("error stopping zipline engine: %w", err)
-					}
 					if err := backtestContainer.Stop(); err != nil {
 						return fmt.Errorf("error stopping container: %w", err)
 					}

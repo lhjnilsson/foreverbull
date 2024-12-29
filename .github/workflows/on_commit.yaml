@@ -365,7 +365,7 @@ jobs:
         env:
           PYTHONPATH: /tmp/example_algorithms/src
         run: |
-          python -m pytest
+          python -m pytest -vs
       - name: Sleep for 20 seconds to make all containers stop
         run: sleep 20s
         shell: bash
