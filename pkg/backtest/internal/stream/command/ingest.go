@@ -70,7 +70,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		"Start_date": command.Start,
 		"End_date":   command.End,
 		"Symbols":    strings.Join(command.Symbols, ","),
-		"Status":     pb.IngestionStatus_READY.String(),
+		"Status":     pb.IngestionStatus_COMPLETED.String(),
 	}
 
 	err = object.SetMetadata(ctx, metadata)

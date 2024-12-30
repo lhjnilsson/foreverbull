@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -22,17 +23,20 @@ func DateStringToDate(date string) *Date {
 
 	year, err := strconv.Atoi(splitted[0])
 	if err != nil {
-		panic(err)
+		log.Err(err).Msg("Fail to parse year")
+		return &Date{Year: 0, Month: 0, Day: 0}
 	}
 
 	month, err := strconv.Atoi(splitted[1])
 	if err != nil {
-		panic(err)
+		log.Err(err).Msg("Fail to parse month")
+		return &Date{Year: 0, Month: 0, Day: 0}
 	}
 
 	day, err := strconv.Atoi(splitted[2])
 	if err != nil {
-		panic(err)
+		log.Err(err).Msg("Fail to parse day")
+		return &Date{Year: 0, Month: 0, Day: 0}
 	}
 
 	return &Date{

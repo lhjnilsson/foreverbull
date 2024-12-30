@@ -8,8 +8,10 @@ import "foreverbull/common.proto";
 
 enum IngestionStatus {
     CREATED = 0;
-    INGESTING = 1;
-    READY = 2;
+    DOWNLOADING = 1;
+    INGESTING = 2;
+    COMPLETED = 3;
+    ERROR = 4;
 }
 
 message Ingestion {

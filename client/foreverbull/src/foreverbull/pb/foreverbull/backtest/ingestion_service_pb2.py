@@ -26,7 +26,7 @@ from foreverbull.pb.foreverbull.backtest import ingestion_pb2 as foreverbull_dot
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n,foreverbull/backtest/ingestion_service.proto\x12\x14\x66oreverbull.backtest\x1a$foreverbull/backtest/ingestion.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x1aGetCurrentIngestionRequest\"\x96\x01\n\x1bGetCurrentIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus\x12\x0c\n\x04size\x18\x03 \x01(\x03\"\x18\n\x16UpdateIngestionRequest\"\x84\x01\n\x17UpdateIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus2\xff\x01\n\x11IngestionServicer\x12z\n\x13GetCurrentIngestion\x12\x30.foreverbull.backtest.GetCurrentIngestionRequest\x1a\x31.foreverbull.backtest.GetCurrentIngestionResponse\x12n\n\x0fUpdateIngestion\x12,.foreverbull.backtest.UpdateIngestionRequest\x1a-.foreverbull.backtest.UpdateIngestionResponseB3Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n,foreverbull/backtest/ingestion_service.proto\x12\x14\x66oreverbull.backtest\x1a$foreverbull/backtest/ingestion.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x1aGetCurrentIngestionRequest\"\x96\x01\n\x1bGetCurrentIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus\x12\x0c\n\x04size\x18\x03 \x01(\x03\"\x18\n\x16UpdateIngestionRequest\"\x9a\x01\n\x17UpdateIngestionResponse\x12\x32\n\tingestion\x18\x01 \x01(\x0b\x32\x1f.foreverbull.backtest.Ingestion\x12\x35\n\x06status\x18\x02 \x01(\x0e\x32%.foreverbull.backtest.IngestionStatus\x12\x14\n\x0c\x65rrorMessage\x18\x03 \x01(\t2\x81\x02\n\x11IngestionServicer\x12z\n\x13GetCurrentIngestion\x12\x30.foreverbull.backtest.GetCurrentIngestionRequest\x1a\x31.foreverbull.backtest.GetCurrentIngestionResponse\x12p\n\x0fUpdateIngestion\x12,.foreverbull.backtest.UpdateIngestionRequest\x1a-.foreverbull.backtest.UpdateIngestionResponse0\x01\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,7 +41,7 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_UPDATEINGESTIONREQUEST']._serialized_start=324
   _globals['_UPDATEINGESTIONREQUEST']._serialized_end=348
   _globals['_UPDATEINGESTIONRESPONSE']._serialized_start=351
-  _globals['_UPDATEINGESTIONRESPONSE']._serialized_end=483
-  _globals['_INGESTIONSERVICER']._serialized_start=486
-  _globals['_INGESTIONSERVICER']._serialized_end=741
+  _globals['_UPDATEINGESTIONRESPONSE']._serialized_end=505
+  _globals['_INGESTIONSERVICER']._serialized_start=508
+  _globals['_INGESTIONSERVICER']._serialized_end=765
 # @@protoc_insertion_point(module_scope)

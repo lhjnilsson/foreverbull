@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
@@ -30,14 +31,29 @@ func NewIngestionServer(stream stream.Stream, storage storage.Storage, pgx *pgxp
 	}
 }
 
-func (is *IngestionServer) UpdateIngestion(ctx context.Context,
-	_ *pb.UpdateIngestionRequest,
-) (*pb.UpdateIngestionResponse, error) {
+func statusToPbStatus(status string) pb.IngestionStatus {
+	var pbStatus pb.IngestionStatus
+	switch status {
+	case pb.IngestionStatus_CREATED.String():
+		pbStatus = pb.IngestionStatus_CREATED
+	case pb.IngestionStatus_DOWNLOADING.String():
+		pbStatus = pb.IngestionStatus_DOWNLOADING
+	case pb.IngestionStatus_INGESTING.String():
+		pbStatus = pb.IngestionStatus_INGESTING
+	case pb.IngestionStatus_COMPLETED.String():
+		pbStatus = pb.IngestionStatus_COMPLETED
+	}
+	return pbStatus
+}
+
+func (is *IngestionServer) UpdateIngestion(req *pb.UpdateIngestionRequest,
+	stream pb.IngestionServicer_UpdateIngestionServer,
+) error {
 	backtests := repository.Backtest{Conn: is.pgx}
 
-	start, end, symbols, err := backtests.GetUniverse(ctx)
+	start, end, symbols, err := backtests.GetUniverse(stream.Context())
 	if err != nil {
-		return nil, fmt.Errorf("error getting universe: %w", err)
+		return fmt.Errorf("error getting universe: %w", err)
 	}
 
 	metadata := map[string]string{
@@ -48,23 +64,59 @@ func (is *IngestionServer) UpdateIngestion(ctx context.Context,
 	}
 	name := fmt.Sprintf("%s-%s", pb_internal.DateToDateString(start), pb_internal.DateToDateString(end))
 
-	_, err = is.storage.CreateObject(ctx, storage.IngestionsBucket, name, storage.WithMetadata(metadata))
+	_, err = is.storage.CreateObject(stream.Context(), storage.IngestionsBucket, name, storage.WithMetadata(metadata))
 	if err != nil {
-		return nil, fmt.Errorf("error creating ingestion: %w", err)
+		return fmt.Errorf("error creating ingestion: %w", err)
 	}
 
 	orchestration, err := bs.NewIngestOrchestration(name, symbols,
 		pb_internal.DateToDateString(start), pb_internal.DateToDateString(end))
 	if err != nil {
-		return nil, fmt.Errorf("error creating orchestration: %w", err)
+		return fmt.Errorf("error creating orchestration: %w", err)
 	}
 
-	err = is.stream.RunOrchestration(ctx, orchestration)
+	err = is.stream.RunOrchestration(stream.Context(), orchestration)
 	if err != nil {
-		return nil, fmt.Errorf("error sending orchestration: %w", err)
+		return fmt.Errorf("error sending orchestration: %w", err)
 	}
 
-	return &pb.UpdateIngestionResponse{}, nil
+	err = stream.Send(&pb.UpdateIngestionResponse{
+		Ingestion: &pb.Ingestion{},
+		Status:    pb.IngestionStatus_CREATED,
+	})
+	if err != nil {
+		return fmt.Errorf("Error sending: %w", err)
+	}
+
+	var latestStatus = pb.IngestionStatus_CREATED
+
+	for {
+		ingestion, err := is.storage.GetObject(stream.Context(), storage.IngestionsBucket, name)
+		if err != nil {
+			return fmt.Errorf("Error getting ingestion: %w", err)
+		}
+		status := statusToPbStatus(ingestion.Metadata["Status"])
+		if status == latestStatus {
+			time.Sleep(time.Second)
+			continue
+		}
+		err = stream.Send(&pb.UpdateIngestionResponse{
+			Ingestion: &pb.Ingestion{
+				StartDate: pb_internal.DateStringToDate(ingestion.Metadata["Start_date"]),
+				EndDate:   pb_internal.DateStringToDate(ingestion.Metadata["End_date"]),
+				Symbols:   strings.Split(ingestion.Metadata["Symbols"], ","),
+			},
+			Status:       status,
+			ErrorMessage: ingestion.Metadata["Symbols"],
+		})
+		if err != nil {
+			return fmt.Errorf("Error sending: %w", err)
+		}
+		if status == pb.IngestionStatus_COMPLETED || status == pb.IngestionStatus_ERROR {
+			break
+		}
+	}
+	return nil
 }
 
 func (is *IngestionServer) GetCurrentIngestion(ctx context.Context,
@@ -97,26 +149,13 @@ func (is *IngestionServer) GetCurrentIngestion(ctx context.Context,
 		}
 	}
 
-	symbols := strings.Split(ingestion.Metadata["Symbols"], ",")
-
-	var status pb.IngestionStatus
-
-	switch ingestion.Metadata["Status"] {
-	case pb.IngestionStatus_CREATED.String():
-		status = pb.IngestionStatus_CREATED
-	case pb.IngestionStatus_INGESTING.String():
-		status = pb.IngestionStatus_INGESTING
-	case pb.IngestionStatus_READY.String():
-		status = pb.IngestionStatus_READY
-	}
-
 	return &pb.GetCurrentIngestionResponse{
 		Ingestion: &pb.Ingestion{
 			StartDate: pb_internal.DateStringToDate(ingestion.Metadata["Start_date"]),
 			EndDate:   pb_internal.DateStringToDate(ingestion.Metadata["End_date"]),
-			Symbols:   symbols,
+			Symbols:   strings.Split(ingestion.Metadata["Symbols"], ","),
 		},
-		Status: status,
+		Status: statusToPbStatus(ingestion.Metadata["Status"]),
 		Size:   ingestion.Size,
 	}, nil
 }
