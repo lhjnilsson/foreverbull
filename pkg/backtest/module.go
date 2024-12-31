@@ -100,6 +100,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
+					err = backtestStream.CommandSubscriber("status", "update", command.UpdateIngestionStatus)
+					if err != nil {
+						return fmt.Errorf("error subscribing to ingestion.update: %w", err)
+					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {

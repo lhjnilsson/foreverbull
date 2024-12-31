@@ -100,6 +100,7 @@ func (is *IngestionServer) UpdateIngestion(req *pb.UpdateIngestionRequest,
 			time.Sleep(time.Second)
 			continue
 		}
+		latestStatus = status
 		err = stream.Send(&pb.UpdateIngestionResponse{
 			Ingestion: &pb.Ingestion{
 				StartDate: pb_internal.DateStringToDate(ingestion.Metadata["Start_date"]),

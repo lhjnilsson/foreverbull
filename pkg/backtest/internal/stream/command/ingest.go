@@ -13,6 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/rs/zerolog/log"
 )
 
 func Ingest(ctx context.Context, msg stream.Message) error {
@@ -33,12 +34,15 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting object from storage: %w", err)
 	}
 
-	object.Metadata["Status"] = pb.IngestionStatus_INGESTING.String()
-
-	err = object.SetMetadata(ctx, object.Metadata)
-	if err != nil {
-		return fmt.Errorf("error setting object metadata: %w", err)
+	setMetadata := func(ctx context.Context, status pb.IngestionStatus) {
+		object.Metadata["Status"] = status.String()
+		err = object.SetMetadata(ctx, object.Metadata)
+		if err != nil {
+			log.Err(err).Msg("error updating metadata")
+		}
 	}
+
+	setMetadata(ctx, pb.IngestionStatus_INGESTING)
 
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
@@ -47,6 +51,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	engine, isEngine := ze.(engine.Engine)
 	if !isEngine {
+		setMetadata(ctx, pb.IngestionStatus_ERROR)
 		return errors.New("error casting zipline engine")
 	}
 
@@ -58,6 +63,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	err = engine.Ingest(ctx, &ingestion, object)
 	if err != nil {
+		setMetadata(ctx, pb.IngestionStatus_ERROR)
 		return fmt.Errorf("error ingesting data: %w", err)
 	}
 
@@ -78,5 +84,31 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error setting object metadata: %w", err)
 	}
 
+	return nil
+}
+
+func UpdateIngestionStatus(ctx context.Context, msg stream.Message) error {
+	command := ss.UpdateStatusCommand{}
+
+	err := msg.ParsePayload(&command)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling Ingest payload: %w", err)
+	}
+
+	store, isStorage := msg.MustGet(stream.StorageDep).(storage.Storage)
+	if !isStorage {
+		return errors.New("error casting storage")
+	}
+
+	object, err := store.GetObject(ctx, storage.IngestionsBucket, command.Name)
+	if err != nil {
+		return fmt.Errorf("error getting object from storage: %w", err)
+	}
+
+	object.Metadata["Status"] = command.Status.String()
+	err = object.SetMetadata(ctx, object.Metadata)
+	if err != nil {
+		return fmt.Errorf("error setting object metadata: %w", err)
+	}
 	return nil
 }

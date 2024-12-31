@@ -1,6 +1,5 @@
 import json
 import logging
-import time
 
 from datetime import date
 from pathlib import Path
@@ -20,6 +19,7 @@ from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
+from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import console
@@ -114,16 +114,10 @@ def get(
 
 @backtest.command()
 def ingest():
-    broker.backtest.ingest()
-    for _ in range(90):
-        _, ingestion_status = broker.backtest.get_ingestion()
-        if ingestion_status == ingestion_pb2.IngestionStatus.READY:
-            console.print("Ingestion completed")
-            break
-        time.sleep(1)
-    else:
-        log.error("[red]Ingestion failed")
-        exit(1)
+    rsp: ingestion_service_pb2.UpdateIngestionResponse
+    ingestion = broker.backtest.ingest()
+    for rsp in ingestion:
+        console.print(f"Status: {ingestion_pb2.IngestionStatus.Name(rsp.status)}")
 
 
 @backtest.command()
