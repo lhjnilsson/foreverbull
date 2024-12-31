@@ -10,7 +10,6 @@ import pytest
 
 from typer.testing import CliRunner
 
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull_cli.env import env
 
 
@@ -130,14 +129,10 @@ def test_env_start():
         patch("docker.client.DockerClient.containers", new_callable=PropertyMock) as mock_containers,
         patch("docker.client.DockerClient.images", new_callable=PropertyMock) as mock_images,
         patch("docker.client.DockerClient.networks", new_callable=PropertyMock) as mock_network,
-        patch("foreverbull.broker.backtest.ingest") as mock_ingest,
-        patch("foreverbull.broker.backtest.get_ingestion") as mock_get_ingestion,
     ):
         mock_containers.return_value = MockedDockerProperty({})
         mock_images.return_value = MockedDockerProperty({}, on_not_found=docker.errors.ImageNotFound(""))
         mock_network.return_value = MockedDockerProperty({})
-        mock_ingest.return_value = None
-        mock_get_ingestion.return_value = (None, ingestion_pb2.IngestionStatus.READY)
         result = runner.invoke(env, ["start"])
 
         if result.exception and result.exc_info:
