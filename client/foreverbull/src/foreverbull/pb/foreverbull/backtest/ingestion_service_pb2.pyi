@@ -25,9 +25,11 @@ class UpdateIngestionRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class UpdateIngestionResponse(_message.Message):
-    __slots__ = ("ingestion", "status")
+    __slots__ = ("ingestion", "status", "errorMessage")
     INGESTION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
+    ERRORMESSAGE_FIELD_NUMBER: _ClassVar[int]
     ingestion: _ingestion_pb2.Ingestion
     status: _ingestion_pb2.IngestionStatus
-    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ..., status: _Optional[_Union[_ingestion_pb2.IngestionStatus, str]] = ...) -> None: ...
+    errorMessage: str
+    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ..., status: _Optional[_Union[_ingestion_pb2.IngestionStatus, str]] = ..., errorMessage: _Optional[str] = ...) -> None: ...

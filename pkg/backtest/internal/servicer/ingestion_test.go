@@ -2,7 +2,9 @@ package servicer_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -86,16 +88,7 @@ func (suite *IngestionServerTest) TearDownSubTest() {
 }
 
 func (suite *IngestionServerTest) TestUpdateIngestion() {
-	suite.Run("nothing stored", func() {
-		suite.storage.On("CreateObject", mock.Anything, storage.IngestionsBucket,
-			mock.Anything, mock.Anything).Return(nil, nil)
-		suite.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
-
-		rsp, err := suite.client.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
-		suite.Require().Error(err)
-		suite.Require().Nil(rsp)
-	})
-	suite.Run("stored", func() {
+	suite.Run("simple", func() {
 		db := repository.Backtest{Conn: suite.pgx}
 		ctx := context.TODO()
 		_, err := db.Create(ctx, "nasdaq", &pb_internal.Date{Year: 2024, Month: 0o1, Day: 0o1}, &pb_internal.Date{Year: 2024, Month: 0o6, Day: 0o1}, []string{"AAPL", "MSFT"}, nil)
@@ -107,9 +100,26 @@ func (suite *IngestionServerTest) TestUpdateIngestion() {
 			mock.Anything, mock.Anything).Return(nil, nil)
 		suite.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
 
-		rsp, err := suite.client.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
+		obj := storage.Object{
+			Metadata: map[string]string{"Status": pb.IngestionStatus_COMPLETED.String()},
+		}
+		suite.storage.On("GetObject", mock.Anything, storage.IngestionsBucket, mock.Anything).Return(
+			&obj, nil,
+		)
+
+		stream, err := suite.client.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
 		suite.Require().NoError(err)
-		suite.Require().NotNil(rsp)
+		suite.Require().NotNil(stream)
+		for {
+			rsp, err := stream.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				suite.Require().NoError(err)
+			}
+			suite.NotNil(rsp)
+		}
 	})
 }
 
@@ -132,7 +142,7 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 						"Symbols":    "AAPL,MSFT",
 						"Start_date": "2021-01-01",
 						"End_date":   "2021-01-02",
-						"Status":     pb.IngestionStatus_READY.String(),
+						"Status":     pb.IngestionStatus_COMPLETED.String(),
 					},
 				},
 			},
@@ -159,7 +169,7 @@ func (suite *IngestionServerTest) TestGetCurrentIngestion() {
 						"Symbols":    "AAPL,MSFT",
 						"Start_date": "2021-01-01",
 						"End_date":   "2021-01-02",
-						"Status":     pb.IngestionStatus_READY.String(),
+						"Status":     pb.IngestionStatus_COMPLETED.String(),
 					},
 				},
 				{

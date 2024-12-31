@@ -22,9 +22,10 @@ message UpdateIngestionRequest {
 message UpdateIngestionResponse {
     Ingestion ingestion = 1;
     IngestionStatus status = 2;
+    string errorMessage = 3;
 }
 
 service IngestionServicer {
     rpc GetCurrentIngestion(GetCurrentIngestionRequest) returns (GetCurrentIngestionResponse);
-    rpc UpdateIngestion(UpdateIngestionRequest) returns (UpdateIngestionResponse);
+    rpc UpdateIngestion(UpdateIngestionRequest) returns (stream UpdateIngestionResponse);
 }

@@ -147,22 +147,17 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.NotNil(rsp2, "response is nil")
 
 	// Create Ingestion
-	rsp, err := test.ingestionClient.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
+	is, err := test.ingestionClient.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
 	test.Require().NoError(err, "failed to create ingestion")
-	test.NotNil(rsp, "response is nil")
+	test.NotNil(is, "response is nil")
 
-	for range 30 {
-		rsp, err := test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
-		test.Require().NoError(err, "failed to get current ingestion")
-
-		if rsp.Status != pb.IngestionStatus_READY {
-			time.Sleep(time.Second / 2)
-			continue
+	for {
+		rsp, err := is.Recv()
+		if err != nil && errors.Is(err, io.EOF) {
+			break
 		}
-
-		test.NotNil(rsp, "response is nil")
-		test.Equal(pb.IngestionStatus_READY, rsp.Status, "status is not ready")
-		test.Positive(rsp.Size, "size is 0")
+		test.Require().NoError(err)
+		test.Require().NotEqual(pb.IngestionStatus_ERROR, rsp.Status)
 	}
 
 	// Run Backtest

@@ -10,11 +10,15 @@ DESCRIPTOR: _descriptor.FileDescriptor
 class IngestionStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     CREATED: _ClassVar[IngestionStatus]
+    DOWNLOADING: _ClassVar[IngestionStatus]
     INGESTING: _ClassVar[IngestionStatus]
-    READY: _ClassVar[IngestionStatus]
+    COMPLETED: _ClassVar[IngestionStatus]
+    ERROR: _ClassVar[IngestionStatus]
 CREATED: IngestionStatus
+DOWNLOADING: IngestionStatus
 INGESTING: IngestionStatus
-READY: IngestionStatus
+COMPLETED: IngestionStatus
+ERROR: IngestionStatus
 
 class Ingestion(_message.Message):
     __slots__ = ("start_date", "end_date", "symbols")

@@ -39,7 +39,7 @@ class IngestionServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionResponse.FromString,
                 _registered_method=True)
-        self.UpdateIngestion = channel.unary_unary(
+        self.UpdateIngestion = channel.unary_stream(
                 '/foreverbull.backtest.IngestionServicer/UpdateIngestion',
                 request_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionResponse.FromString,
@@ -69,7 +69,7 @@ def add_IngestionServicerServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.GetCurrentIngestionResponse.SerializeToString,
             ),
-            'UpdateIngestion': grpc.unary_unary_rpc_method_handler(
+            'UpdateIngestion': grpc.unary_stream_rpc_method_handler(
                     servicer.UpdateIngestion,
                     request_deserializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_ingestion__service__pb2.UpdateIngestionResponse.SerializeToString,
@@ -123,7 +123,7 @@ class IngestionServicer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/foreverbull.backtest.IngestionServicer/UpdateIngestion',

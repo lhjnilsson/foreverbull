@@ -28,7 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type IngestionServicerClient interface {
 	GetCurrentIngestion(ctx context.Context, in *GetCurrentIngestionRequest, opts ...grpc.CallOption) (*GetCurrentIngestionResponse, error)
-	UpdateIngestion(ctx context.Context, in *UpdateIngestionRequest, opts ...grpc.CallOption) (*UpdateIngestionResponse, error)
+	UpdateIngestion(ctx context.Context, in *UpdateIngestionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[UpdateIngestionResponse], error)
 }
 
 type ingestionServicerClient struct {
@@ -49,22 +49,31 @@ func (c *ingestionServicerClient) GetCurrentIngestion(ctx context.Context, in *G
 	return out, nil
 }
 
-func (c *ingestionServicerClient) UpdateIngestion(ctx context.Context, in *UpdateIngestionRequest, opts ...grpc.CallOption) (*UpdateIngestionResponse, error) {
+func (c *ingestionServicerClient) UpdateIngestion(ctx context.Context, in *UpdateIngestionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[UpdateIngestionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UpdateIngestionResponse)
-	err := c.cc.Invoke(ctx, IngestionServicer_UpdateIngestion_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &IngestionServicer_ServiceDesc.Streams[0], IngestionServicer_UpdateIngestion_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[UpdateIngestionRequest, UpdateIngestionResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IngestionServicer_UpdateIngestionClient = grpc.ServerStreamingClient[UpdateIngestionResponse]
 
 // IngestionServicerServer is the server API for IngestionServicer service.
 // All implementations must embed UnimplementedIngestionServicerServer
 // for forward compatibility.
 type IngestionServicerServer interface {
 	GetCurrentIngestion(context.Context, *GetCurrentIngestionRequest) (*GetCurrentIngestionResponse, error)
-	UpdateIngestion(context.Context, *UpdateIngestionRequest) (*UpdateIngestionResponse, error)
+	UpdateIngestion(*UpdateIngestionRequest, grpc.ServerStreamingServer[UpdateIngestionResponse]) error
 	mustEmbedUnimplementedIngestionServicerServer()
 }
 
@@ -78,8 +87,8 @@ type UnimplementedIngestionServicerServer struct{}
 func (UnimplementedIngestionServicerServer) GetCurrentIngestion(context.Context, *GetCurrentIngestionRequest) (*GetCurrentIngestionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCurrentIngestion not implemented")
 }
-func (UnimplementedIngestionServicerServer) UpdateIngestion(context.Context, *UpdateIngestionRequest) (*UpdateIngestionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateIngestion not implemented")
+func (UnimplementedIngestionServicerServer) UpdateIngestion(*UpdateIngestionRequest, grpc.ServerStreamingServer[UpdateIngestionResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method UpdateIngestion not implemented")
 }
 func (UnimplementedIngestionServicerServer) mustEmbedUnimplementedIngestionServicerServer() {}
 func (UnimplementedIngestionServicerServer) testEmbeddedByValue()                           {}
@@ -120,23 +129,16 @@ func _IngestionServicer_GetCurrentIngestion_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _IngestionServicer_UpdateIngestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateIngestionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _IngestionServicer_UpdateIngestion_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(UpdateIngestionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(IngestionServicerServer).UpdateIngestion(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IngestionServicer_UpdateIngestion_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IngestionServicerServer).UpdateIngestion(ctx, req.(*UpdateIngestionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(IngestionServicerServer).UpdateIngestion(m, &grpc.GenericServerStream[UpdateIngestionRequest, UpdateIngestionResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IngestionServicer_UpdateIngestionServer = grpc.ServerStreamingServer[UpdateIngestionResponse]
 
 // IngestionServicer_ServiceDesc is the grpc.ServiceDesc for IngestionServicer service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -149,11 +151,13 @@ var IngestionServicer_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetCurrentIngestion",
 			Handler:    _IngestionServicer_GetCurrentIngestion_Handler,
 		},
+	},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "UpdateIngestion",
-			Handler:    _IngestionServicer_UpdateIngestion_Handler,
+			StreamName:    "UpdateIngestion",
+			Handler:       _IngestionServicer_UpdateIngestion_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "foreverbull/backtest/ingestion_service.proto",
 }
