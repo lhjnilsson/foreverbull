@@ -95,11 +95,23 @@ jobs:
       - name: Pytest coverage comment
         uses: MishaKav/pytest-coverage-comment@main
         with:
-          multiple-files: |
-            Python Client(Zipline), /tmp/pytest_coverage_foreverbull_zipline.txt, /tmp/pytest_coverage_foreverbull_zipline.xml
-            Python Client(Testing), /tmp/pytest_coverage_foreverbull_testing.txt, /tmp/pytest_coverage_foreverbull_testing.xml
-            Python Client(CLI), /tmp/pytest_coverage_foreverbull_cli.txt, /tmp/pytest_coverage_foreverbull_cli.xml
+          title: "Python Client(Zipline)"
+          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_zipline.txt
+          junitxml-path: /tmp/pytest_coverage_foreverbull_zipline.xml
 
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          title: "Python Client(Testing)"
+          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_testing.txt
+          junitxml-path: /tmp/pytest_coverage_foreverbull_testing.xml
+
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          title: "Python Client(CLI)"
+          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_cli.txt
+          junitxml-path: /tmp/pytest_coverage_foreverbull_cli.xml
 
 
   build-docker-foreverbull:
