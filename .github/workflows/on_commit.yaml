@@ -17,9 +17,25 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.out -covermode=atomic -timeout 180s
+        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.txt -covermode=atomic -timeout 180s
         env:
           DISABLE_LOKI_LOGGING: true
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage
+          path: coverage.txt
+
+  code_coverage:
+    name: "Go Code coverage report"
+    runs-on: ubuntu-latest
+    needs: lint-unit-tests # Depends on the artifact uploaded by the "unit_tests" job
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fgrosse/go-coverage-report@v1.2.0 # Consider using a Git revision for maximum security
+        with:
+          coverage-artifact-name: "code-coverage" # can be omitted if you used this default value
+          coverage-file-name: "coverage.txt" # can be omitted if you used this default value
 
   python-lint-unit-tests:
     runs-on: ubuntu-latest
@@ -55,19 +71,36 @@ jobs:
           rye lint
       - name: Unittest foreverbull
         run: |
-          rye test -- foreverbull/
+          rye test -- foreverbull/ --junitxml=/tmp/pytest_coverage_foreverbull.xml --cov-report=term-missing:skip-covered --cov=foreverbull/src foreverbull/tests/ | tee /tmp/pytest_coverage_foreverbull.txt
       - name: Unittest foreverbull_zipline
         run: |
-          rye test -- foreverbull_zipline/
+          rye test -- foreverbull_zipline/ --junitxml=/tmp/pytest_coverage_foreverbull_zipline.xml --cov-report=term-missing:skip-covered --cov=foreverbull_zipline/src foreverbull_zipline/tests/ | tee /tmp/pytest_coverage_foreverbull_zipline.txt
       - name: Unittest foreverbull_testing
         run: |
-          rye test -- foreverbull_testing/
+          rye test -- foreverbull_testing/ --junitxml=/tmp/pytest_coverage_foreverbull_testing.xml --cov-report=term-missing:skip-covered --cov=foreverbull_testing/src foreverbull_testing/tests/  | tee /tmp/pytest_coverage_foreverbull_testing.txt
       - name: Unittest foreverbull_cli
         run: |
-          rye test -- foreverbull_cli/
+          rye test -- foreverbull_cli/ --junitxml=/tmp/pytest_coverage_foreverbull_cli.xml --cov-report=term-missing:skip-covered --cov=foreverbull_cli/src foreverbull_cli/tests/ | tee /tmp/pytest_coverage_foreverbull_cli.txt
       - name: Integration Tests foreverbull
         run: |
           rye test -- tests/integration/
+
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          title: "Python Client"
+          pytest-coverage-path: /tmp/pytest_coverage_foreverbull.txt
+          junitxml-path: /tmp/pytest_coverage_foreverbull.xml
+
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          multiple-files: |
+            Python Client(Zipline), /tmp/pytest_coverage_foreverbull_zipline.txt, /tmp/pytest_coverage_foreverbull_zipline.xml
+            Python Client(Testing), /tmp/pytest_coverage_foreverbull_testing.txt, /tmp/pytest_coverage_foreverbull_testing.xml
+            Python Client(CLI), /tmp/pytest_coverage_foreverbull_cli.txt, /tmp/pytest_coverage_foreverbull_cli.xml
+
+
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
