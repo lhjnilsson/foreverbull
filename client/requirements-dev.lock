@@ -44,6 +44,8 @@ click==8.1.7
     # via foreverbull
     # via typer
     # via zipline-reloaded
+coverage==7.6.10
+    # via pytest-cov
 cython==3.0.10
     # via foreverbull
 docker==7.1.0
@@ -185,7 +187,9 @@ pynng==0.8.0
     # via foreverbull
 pytest==6.2.5
     # via foreverbull-testing
+    # via pytest-cov
     # via pytest-repeat
+pytest-cov==6.0.0
 pytest-repeat==0.9.3
 python-dateutil==2.9.0.post0
     # via pandas
