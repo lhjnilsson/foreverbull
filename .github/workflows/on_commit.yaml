@@ -73,7 +73,7 @@ jobs:
         uses: MishaKav/pytest-coverage-comment@main
         with:
           multiple-files: |
-            Python Client, /tmp/pytest-coverage_foreverbull.txt, /tmp/pytest_coverage_foreverbull.xml
+            Python Client, /tmp/pytest_coverage_foreverbull.txt, /tmp/pytest_coverage_foreverbull.xml
             Python Client(Zipline), /tmp/pytest_coverage_foreverbull_zipline.txt, /tmp/pytest_coverage_foreverbull_zipline.xml
             Python Client(Testing), /tmp/pytest_coverage_foreverbull_testing.txt, /tmp/pytest_coverage_foreverbull_testing.xml
             Python Client(CLI), /tmp/pytest_coverage_foreverbull_cli.txt, /tmp/pytest_coverage_foreverbull_cli.xml
