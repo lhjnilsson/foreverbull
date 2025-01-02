@@ -203,7 +203,7 @@ class WorkerDaemon(WorkerInstance):
 
 
 class WorkerPool(Worker):
-    def __init__(self, file_path: str, executors: int = 2):
+    def __init__(self, file_path: str, executors: int = multiprocessing.cpu_count()):
         self._file_path = file_path
         self._executors = executors
 
