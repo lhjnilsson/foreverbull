@@ -11,6 +11,7 @@ from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import session_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
@@ -68,12 +69,12 @@ class TestAlgorithm:
     def test_run_execution_no_session(self, parallel_algo_file):
         algorithm, _, _ = parallel_algo_file
         with pytest.raises(RuntimeError, match="No backtest session"):
-            for period in algorithm.run_execution(
+            for _ in algorithm.run_execution(
                 pb_utils.from_pydate_to_proto_date(date.today()),
                 pb_utils.from_pydate_to_proto_date(date.today()),
                 [],
             ):
-                assert period
+                pass
 
     def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
@@ -111,3 +112,47 @@ class TestAlgorithm:
             )
             assert periods is not None
             assert len(list(periods)) == 10
+
+    def test_get_execution_no_session(self, parallel_algo_file):
+        algorithm, _, _ = parallel_algo_file
+        with pytest.raises(RuntimeError, match="No backtest session"):
+            algorithm.get_execution("test")
+
+    def test_get_execution(self, parallel_algo_file, start_grpc_server):
+        mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
+        algorithm, _, _ = parallel_algo_file
+        mock_server.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
+            session=session_pb2.Session(
+                port=None,
+            )
+        )
+        mock_server.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
+            session=session_pb2.Session(
+                port=7877,
+            )
+        )
+        mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
+        mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
+        mock_server.GetExecution.return_value = backtest_service_pb2.GetExecutionResponse(
+            execution=execution_pb2.Execution(),
+            periods=[
+                execution_pb2.Period(
+                    portfolio_value=1000,
+                    returns=0.1,
+                    alpha=0.1,
+                    beta=0.1,
+                    sharpe=0.1,
+                )
+            ],
+        )
+        port = start_grpc_server(mock_server, mocked_sesion_servicer)
+        with algorithm.backtest_session("test", broker_port=port) as algo:
+            execution, periods = algo.get_execution("test")
+            assert execution is not None
+            assert periods is not None
+            assert len(periods) == 1
+            assert periods["portfolio_value"].iloc[0] == 1000
+            assert periods["returns"].iloc[0] == 0.1
+            assert periods["alpha"].iloc[0] == 0.1
+            assert periods["beta"].iloc[0] == 0.1
+            assert periods["sharpe"].iloc[0] == 0.1
