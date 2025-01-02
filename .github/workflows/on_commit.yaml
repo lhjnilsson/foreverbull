@@ -294,7 +294,7 @@ jobs:
         run: |
           wget https://github.com/ta-lib/ta-lib/releases/download/v0.6.2/ta-lib-0.6.2-src.tar.gz
           tar xvfz ta-lib-0.6.2-src.tar.gz
-          cd ta-lib
+          cd ta-lib-0.6.2
           ./configure
           make
           sudo make install
