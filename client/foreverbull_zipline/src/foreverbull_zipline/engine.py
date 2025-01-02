@@ -381,7 +381,8 @@ class Engine(multiprocessing.Process):
             )
         if req.upload:
             storage = Storage.from_environment()
-            storage.backtest.upload_backtest_result(req.execution, self.result)
+            self.result.to_pick("/tmp/result.pkl")
+            storage.upload_object("backtest-results", req.execution, "/tmp/result.pkl")
         return rsp.SerializeToString()
 
     def _process_request(

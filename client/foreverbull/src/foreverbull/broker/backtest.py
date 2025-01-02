@@ -42,7 +42,7 @@ def backtest_servicer[R, **P](
 
 
 @backtest_ingestion_servicer
-def ingest(servicer: ingestion_service_pb2_grpc.IngestionServicerStub):
+def ingest(servicer: ingestion_service_pb2_grpc.IngestionServicerStub) -> ingestion_service_pb2.UpdateIngestionResponse:
     req = ingestion_service_pb2.UpdateIngestionRequest()
     return servicer.UpdateIngestion(req)
 
