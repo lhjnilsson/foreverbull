@@ -6,21 +6,18 @@ export enum QueryType {
 }
 
 export interface ResourceDefinition {
-  value?: string;
-  label?: string;
-  description?: string;
+  value: string;
+  label: string;
+  description: string;
 }
 
 export interface MyQuery extends DataQuery {
   queryType: QueryType;
-  executionIds?: ResourceDefinition[];
-  metrics?: ResourceDefinition[];
+  executionId?: string;
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
   queryType: QueryType.GetExecutionMetric,
-  executionIds: [],
-  metrics: [],
 };
 
 export interface MyDataSourceOptions extends DataSourceJsonData {}
