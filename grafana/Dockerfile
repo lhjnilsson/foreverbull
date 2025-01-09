@@ -8,40 +8,38 @@ RUN apk add --no-cache git make
 WORKDIR /app
 
 # Copy Go module files
-COPY . .
+COPY lhjnilsson-foreverbull-datasource/ .
 RUN go mod download
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o foreverbull_linux_arm64 .
+RUN go install github.com/magefile/mage@latest
+RUN mage
 
 # Build frontend
 FROM node:18 AS js-builder
 WORKDIR /app
-COPY package.json .
-COPY tsconfig.json .
-COPY src/ src/
-COPY README.md .
+COPY lhjnilsson-foreverbull-datasource/ .
 RUN npm install
 RUN npm run build
 
 # Second stage: Setup Grafana with the plugin
-FROM grafana/grafana-oss:latest
+FROM grafana/grafana-oss:11.3.2
 
 # Create plugin directory
-RUN mkdir -p /var/lib/grafana/plugins/foreverbull
+RUN mkdir -p /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
 
 # Copy binary from builder
-COPY --from=builder /app/foreverbull_linux_arm64 /var/lib/grafana/plugins/foreverbull/
-COPY --from=js-builder /app/dist /var/lib/grafana/plugins/foreverbull/
-COPY src/plugin.json /var/lib/grafana/plugins/foreverbull/
-
+COPY --from=builder /app/dist/* /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
+COPY --from=js-builder /app/dist/* /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
+COPY lhjnilsson-foreverbull-datasource/dist/ /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource
+COPY lhjnilsson-foreverbull-datasource/provisioning/ /etc/grafana/provisioning
 
 # Set permissions for Grafana user (uid 472)
 #RUN chown -R 472:472 /var/lib/grafana/plugins/foreverbull \
 #    && chmod +x /var/lib/grafana/plugins/foreverbull/foreverbull
 
 # Enable unsigned plugins
-ENV GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=foreverbull
+ENV GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource
 ENV GF_AUTH_ANONYMOUS_ENABLED=true
 ENV GF_AUTH_DISABLE_LOGIN_FORM=true
 ENV GF_AUTH_ANONYMOUS_ORG_ROLE=Admin

@@ -54,7 +54,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      queryText: getTemplateSrv().replace(query.queryType, scopedVars),
+      executionId: getTemplateSrv().replace(query.executionId, scopedVars),
     };
   }
 

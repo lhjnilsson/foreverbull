@@ -122,6 +122,27 @@ jobs:
           path: /tmp/foreverbull.tar
           retention-days: 1
 
+  build-docker-grafana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Grafana
+        uses: docker/build-push-action@v6
+        with:
+          context: grafana
+          file: ./grafana/Dockerfile
+          tags: lhjnilsson/fb-grafana:on_commit
+          outputs: type=docker,dest=/tmp/fb_grafana.tar
+      - name: Upload Grafana
+        uses: actions/upload-artifact@v4
+        with:
+          name: fb-grafana
+          path: /tmp/fb_grafana.tar
+          retention-days: 1
+
   go-module-tests:
     needs: [build-docker-foreverbull, build-docker-zipline]
     runs-on: ubuntu-latest
@@ -257,10 +278,17 @@ jobs:
         with:
           name: zipline
           path: /tmp
+      - name: Download Grafana
+        uses: actions/download-artifact@v4
+        with:
+          name: fb-grafana
+          path: /tmp
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: load foreverbull
         run: docker load -i /tmp/foreverbull.tar
+      - name: load fb-grafana
+        run: docker load -i /tmp/fb_grafana.tar
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
@@ -301,7 +329,7 @@ jobs:
           pip install ta-lib
       - name: Create environment
         run: |
-          fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
+          fbull env start --version on_commit
       - name: create backtest
         run: fbull backtest create /tmp/example_algorithms/nasdaq.json
       - name: ingest
@@ -396,7 +424,7 @@ jobs:
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          fbull env start --broker-image lhjnilsson/foreverbull:on_commit --backtest-image lhjnilsson/zipline:on_commit
+          fbull env start --version on_commit
       - name: create backtest
         run: fbull backtest create /tmp/example_algorithms/nasdaq.json
       - name: ingest
