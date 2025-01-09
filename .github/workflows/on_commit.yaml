@@ -125,6 +125,9 @@ jobs:
   build-docker-grafana:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./grafana
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
