@@ -392,10 +392,17 @@ jobs:
         with:
           name: zipline
           path: /tmp
+      - name: Download Grafana
+        uses: actions/download-artifact@v4
+        with:
+          name: fb-grafana
+          path: /tmp
       - name: Load zipline
         run: docker load -i /tmp/zipline.tar
       - name: load foreverbull
         run: docker load -i /tmp/foreverbull.tar
+      - name: load grafana
+        run: docker load -i /tmp/fb_grafana.tar
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
