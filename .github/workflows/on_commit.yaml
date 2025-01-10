@@ -257,7 +257,12 @@ jobs:
 
   end-to-end-tests:
     needs:
-      [build-docker-foreverbull, build-docker-zipline, build-python-packages]
+      [
+        build-docker-foreverbull,
+        build-docker-zipline,
+        build-python-packages,
+        build-docker-grafana,
+      ]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -368,7 +373,12 @@ jobs:
 
   run-manual-backtest:
     needs:
-      [build-docker-foreverbull, build-docker-zipline, build-python-packages]
+      [
+        build-docker-foreverbull,
+        build-docker-zipline,
+        build-python-packages,
+        build-docker-grafana,
+      ]
     runs-on: ubuntu-latest
     defaults:
       run:
