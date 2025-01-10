@@ -31,7 +31,6 @@ RUN mkdir -p /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
 # Copy binary from builder
 COPY --from=builder /app/dist/* /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
 COPY --from=js-builder /app/dist/* /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
-COPY lhjnilsson-foreverbull-datasource/dist/ /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource
 COPY lhjnilsson-foreverbull-datasource/provisioning/ /etc/grafana/provisioning
 
 # Set permissions for Grafana user (uid 472)
