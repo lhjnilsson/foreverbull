@@ -17,8 +17,6 @@ from foreverbull_cli.output import FBProgress
 from foreverbull_cli.output import console
 
 
-version = "0.1.0"
-
 env = typer.Typer()
 
 
@@ -88,8 +86,9 @@ NETWORK_NAME = "foreverbull"
 POSTGRES_IMAGE = "postgres:13.3-alpine"
 NATS_IMAGE = "nats:2.10-alpine"
 MINIO_IMAGE = "minio/minio:latest"
-BROKER_IMAGE = f"lhjnilsson/foreverbull:{version}"
-BACKTEST_IMAGE = f"lhjnilsson/zipline:{version}"
+BROKER_IMAGE = "lhjnilsson/foreverbull:{}"
+BACKTEST_IMAGE = "lhjnilsson/zipline:{}"
+GRAFANA_IMAGE = "lhjnilsson/fb-grafana:{}"
 
 
 @env.command()
@@ -116,6 +115,10 @@ def status():
         foreverbull_container = d.containers.get("foreverbull_foreverbull")
     except docker.errors.NotFound:
         foreverbull_container = None
+    try:
+        grafana_container = d.containers.get("foreverbull_grafana")
+    except docker.errors.NotFound:
+        grafana_container = None
 
     try:
         postgres_image = d.images.get(POSTGRES_IMAGE)
@@ -129,6 +132,11 @@ def status():
         minio_image = d.images.get(MINIO_IMAGE)
     except docker.errors.ImageNotFound:
         minio_image = None
+    try:
+        grafana_image = d.images.get(GRAFANA_IMAGE)
+    except docker.errors.ImageNotFound:
+        grafana_image = None
+
     try:
         foreverbull_image = d.images.get(BROKER_IMAGE)  # type: ignore
     except docker.errors.ImageNotFound:
@@ -155,6 +163,11 @@ def status():
         minio_image.short_id if minio_image else "Not found",
     )
     table.add_row(
+        grafana_container.status if grafana_container else "Not Found",
+        "Grafana",
+        grafana_image.short_id if grafana_image else "Not found",
+    )
+    table.add_row(
         foreverbull_container.status if foreverbull_container else "Not Found",
         "Foreverbull",
         foreverbull_image.short_id if foreverbull_image else "Not found",
@@ -164,8 +177,7 @@ def status():
 
 @env.command()
 def start(
-    broker_image: Annotated[str, typer.Option(help="Docker image name of broker")] = BROKER_IMAGE,
-    backtest_image: Annotated[str, typer.Option(help="Docker image name of backtest service")] = BACKTEST_IMAGE,
+    version: Annotated[str, typer.Option(help="Version of images to use")] = "latest",
     log_level: Annotated[str, typer.Option(help="Log level")] = "INFO",
 ):
     try:
@@ -192,6 +204,7 @@ def start(
         postgres_task_id = progress.add_task("Postgres", total=2)
         nats_task_id = progress.add_task("NATS", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
+        grafana_task_id = progress.add_task("Grafana", total=2)
         health_task_id = progress.add_task("Waiting for services to start", total=2)
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
 
@@ -202,8 +215,9 @@ def start(
                 POSTGRES_IMAGE,
                 NATS_IMAGE,
                 MINIO_IMAGE,
-                broker_image,
-                backtest_image,
+                GRAFANA_IMAGE.format(version),
+                BROKER_IMAGE.format(version),
+                BACKTEST_IMAGE.format(version),
             ]:
                 futures.append(executor.submit(get_or_pull_image, image))
                 wait(futures)
@@ -369,7 +383,7 @@ def start(
         except docker.errors.NotFound:
             try:
                 d.containers.run(
-                    broker_image,
+                    BROKER_IMAGE.format(version),
                     name="foreverbull_foreverbull",
                     detach=True,
                     network=NETWORK_NAME,
@@ -398,7 +412,7 @@ def start(
                         "NATS_URL": "nats://nats:4222",
                         "MINIO_URL": "minio:9000",
                         "DOCKER_NETWORK": NETWORK_NAME,
-                        "BACKTEST_IMAGE": backtest_image,
+                        "BACKTEST_IMAGE": BACKTEST_IMAGE.format(version),
                         "LOG_LEVEL": log_level,
                     },  # type: ignore
                     volumes={
@@ -415,8 +429,30 @@ def start(
                     completed=100,
                 )
                 exit(1)
-            time.sleep(2)
         progress.update(foreverbull_task_id, completed=2)
+
+        progress.update(grafana_task_id, completed=1)
+        try:
+            d.containers.get("foreverbull_grafana")
+        except docker.errors.NotFound:
+            try:
+                d.containers.run(
+                    GRAFANA_IMAGE.format(version),
+                    name="foreverbull_grafana",
+                    detach=True,
+                    network=NETWORK_NAME,
+                    hostname="grafana",
+                    ports={"3000/tcp": 3000},
+                    environment={"BROKER_URL": "foreverbull:50055"},
+                )
+            except Exception as e:
+                progress.update(
+                    grafana_task_id,
+                    description=f"[red]Failed to start grafana: {e}",
+                    completed=2,
+                )
+                exit(1)
+        progress.update(grafana_task_id, completed=2)
 
 
 @env.command()
