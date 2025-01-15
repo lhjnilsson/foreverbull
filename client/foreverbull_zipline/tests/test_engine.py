@@ -1,18 +1,77 @@
 import logging
 import multiprocessing
+import os
 
 from multiprocessing.queues import Queue
 from threading import Thread
 
+import pandas as pd
 import pytest
 
+from zipline.data import bundles
+
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.engine import find_end_timestamp
+from foreverbull_zipline.engine import find_start_timestamp
 from foreverbull_zipline.service import BacktestService
+
+
+@pytest.mark.parametrize(
+    "start_date,expected_start_date",
+    [
+        (common_pb2.Date(year=2022, month=1, day=3), pd.Timestamp(year=2022, month=1, day=3)),
+        (common_pb2.Date(year=2023, month=1, day=3), pd.Timestamp(year=2023, month=1, day=3)),
+        (common_pb2.Date(year=2021, month=1, day=3), pd.Timestamp(year=2022, month=1, day=3)),
+        (None, pd.Timestamp(year=2022, month=1, day=3)),
+    ],
+)
+def test_find_start_timestamp(execution: execution_pb2.Execution, start_date, expected_start_date):
+    bundle = bundles.load("foreverbull", os.environ, None)
+
+    request = engine_service_pb2.RunBacktestRequest(
+        backtest=backtest_pb2.Backtest(
+            start_date=start_date,
+            end_date=execution.end_date,
+            symbols=execution.symbols,
+            benchmark=None,
+        )
+    )
+
+    start_date = find_start_timestamp(bundle, request)
+    assert start_date
+    assert start_date == expected_start_date
+
+
+@pytest.mark.parametrize(
+    "end_date,expected_end_date",
+    [
+        (common_pb2.Date(year=2023, month=12, day=29), pd.Timestamp(year=2023, month=12, day=29)),
+        (common_pb2.Date(year=2023, month=6, day=1), pd.Timestamp(year=2023, month=6, day=1)),
+        (common_pb2.Date(year=2025, month=1, day=3), pd.Timestamp(year=2023, month=12, day=29)),
+        (None, pd.Timestamp(year=2023, month=12, day=29)),
+    ],
+)
+def test_find_end_timestamp(execution: execution_pb2.Execution, end_date, expected_end_date):
+    bundle = bundles.load("foreverbull", os.environ, None)
+
+    request = engine_service_pb2.RunBacktestRequest(
+        backtest=backtest_pb2.Backtest(
+            start_date=execution.start_date,
+            end_date=end_date,
+            symbols=execution.symbols,
+            benchmark=None,
+        )
+    )
+
+    end_date = find_end_timestamp(bundle, request)
+    assert end_date
+    assert end_date == expected_end_date
 
 
 def test_start_stop(spawn_process):
