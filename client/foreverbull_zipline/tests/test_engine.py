@@ -16,6 +16,7 @@ from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.engine import find_end_timestamp
 from foreverbull_zipline.engine import find_start_timestamp
@@ -72,6 +73,25 @@ def test_find_end_timestamp(execution: execution_pb2.Execution, end_date, expect
     end_date = find_end_timestamp(bundle, request)
     assert end_date
     assert end_date == expected_end_date
+
+
+def test_timestamp_no_symbols(execution: execution_pb2.Execution):
+    bundle = bundles.load("foreverbull", os.environ, None)
+
+    request = engine_service_pb2.RunBacktestRequest(
+        backtest=backtest_pb2.Backtest(
+            start_date=execution.start_date,
+            end_date=execution.end_date,
+            symbols=[],
+            benchmark=None,
+        )
+    )
+
+    with pytest.raises(ConfigError, match="no bundle start_date found"):
+        find_start_timestamp(bundle, request)
+
+    with pytest.raises(ConfigError, match="no bundle end_date found"):
+        find_end_timestamp(bundle, request)
 
 
 def test_start_stop(spawn_process):

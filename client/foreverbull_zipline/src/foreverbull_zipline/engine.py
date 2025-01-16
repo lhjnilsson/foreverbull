@@ -44,7 +44,7 @@ def find_start_timestamp(bundle: BundleData, request: engine_service_pb2.RunBack
         asset_start = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).start_date
         bundle_start = asset_start if bundle_start is None else max(bundle_start, asset_start)
     if type(bundle_start) is not pd.Timestamp:
-        raise ConfigError("No bundle start_date found")
+        raise ConfigError("no bundle start_date found")
 
     if not request.backtest.HasField("start_date"):
         return bundle_start
@@ -61,7 +61,7 @@ def find_end_timestamp(bundle: BundleData, request: engine_service_pb2.RunBackte
         asset_end = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).end_date
         bundle_end = asset_end if bundle_end is None else min(bundle_end, asset_end)
     if type(bundle_end) is not pd.Timestamp:
-        raise ConfigError("No bundle end_date found")
+        raise ConfigError("no bundle end_date found")
 
     if not request.backtest.HasField("end_date"):
         return bundle_end
@@ -411,8 +411,6 @@ class Engine(multiprocessing.Process):
                         case "get_result":
                             rsp.data = self._get_execution_result(req.data)
                             context_socket.send(rsp.SerializeToString())
-                        case _:
-                            raise Exception(f"Unknown task {req.task}")
                 except StopExcecution as e:
                     raise e
                 except Exception as e:
