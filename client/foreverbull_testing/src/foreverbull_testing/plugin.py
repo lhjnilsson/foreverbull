@@ -35,7 +35,6 @@ def fb_database():
         database.Base.metadata.create_all(engine)
 
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
-    print("CONN STR: ", postgres.get_connection_url())
 
     def verify_or_populate(
         entity: backtest_pb2.Backtest | None = None,
