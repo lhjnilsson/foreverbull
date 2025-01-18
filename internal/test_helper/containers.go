@@ -280,10 +280,22 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 		Networks: []string{networkID},
 	}
 
-	cont, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	genericReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: container,
 		Started:          true,
-	})
+	}
+
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-grafana-loki"
+			return nil
+		},
+	)
+	err := reuse.Customize(&genericReq)
+	require.NoError(t, err)
+
+	cont, err := testcontainers.GenericContainer(ctx, genericReq)
 	require.NoError(t, err)
 	host, err := cont.Host(ctx)
 	require.NoError(t, err)
