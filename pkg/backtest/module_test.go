@@ -78,7 +78,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 			func(lc fx.Lifecycle, gServer *grpc.Server) error {
 				lc.Append(fx.Hook{
 					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", ":50055") //nolint: gosec
+						listener, err := net.Listen("tcp", fmt.Sprintf(":%s", environment.GetGRPCPort()))
 						if err != nil {
 							return fmt.Errorf("failed to listen: %w", err)
 						}
@@ -108,7 +108,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 func (test *BacktestModuleTest) SetupTest() {
 	test.Require().NoError(test.app.Start(context.Background()), "failed to start app")
 
-	conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	test.Require().NoError(err, "failed to create grpc client")
 	test.backtestClient = pb.NewBacktestServicerClient(conn)
 	test.ingestionClient = pb.NewIngestionServicerClient(conn)
@@ -139,7 +139,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
 			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
-			EndDate:   nil,
+			EndDate:   common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24)),
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})

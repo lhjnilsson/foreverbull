@@ -11,6 +11,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/fx"
@@ -176,7 +177,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			lc.Append(
 				fx.Hook{
 					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", ":50055") //nolint: gosec
+						listener, err := net.Listen("tcp", fmt.Sprintf(":%s", environment.GetGRPCPort()))
 						if err != nil {
 							return fmt.Errorf("failed to listen: %w", err)
 						}

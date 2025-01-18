@@ -109,7 +109,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 
 	conn, err := pgxpool.New(context.TODO(), connectionString)
 	require.NoError(t, err)
-	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName))
+	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE) ", dbName))
 	require.NoError(t, err)
 
 	_, err = conn.Exec(context.TODO(), fmt.Sprintf("CREATE DATABASE  %s", dbName))
