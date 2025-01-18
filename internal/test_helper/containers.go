@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"runtime"
@@ -241,18 +242,23 @@ func (l *LokiLogger) Publish(t *testing.T) {
 		t.Fatalf("failed to create request: %v", err)
 		return
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to push logs to loki: %v", err)
 		return
 	}
 
-	require.NoError(t, resp.Body.Close())
-
 	if resp.StatusCode >= http.StatusBadRequest {
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read error response: %v", err)
+			return
+		}
+		t.Logf("Error response: %s", string(body))
 		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)
 		return
 	}
