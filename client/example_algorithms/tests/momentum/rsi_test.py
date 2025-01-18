@@ -73,6 +73,12 @@ def test_place_orders(asset_manager: AssetManager, portfolio_manager: PortfolioM
     assert len(portfolio.pending_orders) == 5
     assert finance_pb2.Order(symbol="AAPL", amount=-10) in portfolio.pending_orders
     assert finance_pb2.Order(symbol="MCD", amount=48) in portfolio.pending_orders
+
+    import pandas as pd
+
+    with pd.option_context("display.max_rows", None, "display.max_columns", None):  # more options can be specified also
+        print(assets.stock_data.loc["VZ"])
+
     assert finance_pb2.Order(symbol="VZ", amount=212) in portfolio.pending_orders
     assert finance_pb2.Order(symbol="TSM", amount=92) in portfolio.pending_orders
     assert finance_pb2.Order(symbol="MMM", amount=71) in portfolio.pending_orders
