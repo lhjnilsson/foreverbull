@@ -242,3 +242,115 @@ UPDATE message set status='ERROR' WHERE orchestration_step_number=2;`,
 		})
 	}
 }
+
+func (test *RepositoryTest) TestOrchestrationIsComplete() {
+
+	createBaseOrchestration := func(_ *testing.T) *MessageOrchestration {
+		baseOrchestration := NewMessageOrchestration("repository_test")
+
+		msg1, err := NewMessage("service", "service", "start", nil)
+		test.Require().NoError(err)
+		baseOrchestration.AddStep("start", []Message{msg1})
+
+		msg1, err = NewMessage("backtest", "session", "run", nil)
+		test.Require().NoError(err)
+		baseOrchestration.AddStep("run", []Message{msg1})
+
+		msg1, err = NewMessage("service", "instance", "stop", nil)
+		test.Require().NoError(err)
+		baseOrchestration.AddStep("stop", []Message{msg1})
+
+		msg1, err = NewMessage("service", "instance", "stop", nil)
+		test.Require().NoError(err)
+		baseOrchestration.SettFallback([]Message{msg1})
+
+		for _, step := range baseOrchestration.Steps {
+			for _, cmd := range step.Commands {
+				msg := cmd.(*message)
+				err := test.repository.CreateMessage(context.TODO(), msg)
+				test.Require().NoError(err)
+			}
+		}
+
+		for _, cmd := range baseOrchestration.FallbackStep.Commands {
+			msg := cmd.(*message)
+			err := test.repository.CreateMessage(context.TODO(), msg)
+			test.Require().NoError(err)
+		}
+
+		return baseOrchestration
+	}
+
+	type TestCase struct {
+		Name       string
+		StoredData string
+		IsComplete bool
+	}
+	testCases := []TestCase{
+		{
+			Name:       "Initial",
+			StoredData: ``,
+			IsComplete: false,
+		},
+		{
+			Name: "first step complete",
+			StoredData: `
+UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
+			`,
+			IsComplete: false,
+		},
+		{
+			Name: "second step complete",
+			StoredData: `
+UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
+UPDATE message set status='COMPLETE' WHERE orchestration_step_number=1;
+			`,
+			IsComplete: false,
+		},
+		{
+			Name: "third step complete",
+			StoredData: `
+UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
+UPDATE message set status='COMPLETE' WHERE orchestration_step_number=1;
+UPDATE message set status='COMPLETE' WHERE orchestration_step_number=2;
+			`,
+			IsComplete: true,
+		},
+		{
+			Name: "first step error",
+			StoredData: `
+UPDATE message SET status='ERROR' WHERE orchestration_step_number=0;
+			`,
+			IsComplete: false,
+		},
+		{
+			Name: "second step error",
+			StoredData: `
+UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
+UPDATE message set status='ERROR' WHERE orchestration_step_number=1;
+			`,
+			IsComplete: false,
+		},
+		{
+			Name: "third step error",
+			StoredData: `
+UPDATE message SET status='COMPLETE' WHERE orchestration_step_number=0;
+UPDATE message set status='COMPLETE' WHERE orchestration_step_number=1;
+UPDATE message set status='ERROR' WHERE orchestration_step_number=2;
+			`,
+			IsComplete: false,
+		},
+	}
+	for _, tc := range testCases {
+		test.Run(tc.Name, func() {
+			baseOrchestration := createBaseOrchestration(test.T())
+
+			_, err := test.db.Exec(context.TODO(), tc.StoredData)
+			test.Require().NoError(err)
+
+			complete, err := test.repository.OrchestrationIsComplete(context.TODO(), baseOrchestration.OrchestrationID)
+			test.Require().NoError(err)
+			test.Equal(tc.IsComplete, complete)
+		})
+	}
+}

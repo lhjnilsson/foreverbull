@@ -228,9 +228,11 @@ func (r *repository) OrchestrationIsComplete(ctx context.Context, orchestrationI
 	var count int
 
 	err := r.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1 AND message.status IN ($2, $3, $4)
+		`SELECT COUNT(*) FROM message WHERE message.orchestration_id=$1
+		AND message.status IN ($2, $3, $4, $5)
 		AND message.orchestration_fallback_step=false`,
-		orchestrationID, MessageStatusCreated, MessageStatusPublished, MessageStatusReceived).Scan(&count)
+		orchestrationID, MessageStatusCreated, MessageStatusPublished, MessageStatusError,
+		MessageStatusReceived).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to query orchestration status: %w", err)
 	}
