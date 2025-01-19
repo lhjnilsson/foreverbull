@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"runtime"
@@ -109,7 +110,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 
 	conn, err := pgxpool.New(context.TODO(), connectionString)
 	require.NoError(t, err)
-	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName))
+	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE) ", dbName))
 	require.NoError(t, err)
 
 	_, err = conn.Exec(context.TODO(), fmt.Sprintf("CREATE DATABASE  %s", dbName))
@@ -241,18 +242,23 @@ func (l *LokiLogger) Publish(t *testing.T) {
 		t.Fatalf("failed to create request: %v", err)
 		return
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("failed to push logs to loki: %v", err)
 		return
 	}
 
-	require.NoError(t, resp.Body.Close())
-
 	if resp.StatusCode >= http.StatusBadRequest {
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read error response: %v", err)
+			return
+		}
+		t.Logf("Error response: %s", string(body))
 		t.Fatalf("failed to push logs to loki: %d", resp.StatusCode)
 		return
 	}
@@ -280,10 +286,22 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 		Networks: []string{networkID},
 	}
 
-	cont, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	genericReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: container,
 		Started:          true,
-	})
+	}
+
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-grafana-loki"
+			return nil
+		},
+	)
+	err := reuse.Customize(&genericReq)
+	require.NoError(t, err)
+
+	cont, err := testcontainers.GenericContainer(ctx, genericReq)
 	require.NoError(t, err)
 	host, err := cont.Host(ctx)
 	require.NoError(t, err)

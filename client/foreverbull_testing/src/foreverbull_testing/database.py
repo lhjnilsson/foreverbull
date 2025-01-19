@@ -11,6 +11,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy import engine
 from sqlalchemy import text
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.types import Numeric
 
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
@@ -30,10 +31,10 @@ class OHLC(Base):
     __tablename__ = "ohlc"
     id = Column(Integer, primary_key=True)
     symbol = Column(String())
-    open = Column(Integer())
-    high = Column(Integer())
-    low = Column(Integer())
-    close = Column(Integer())
+    open = Column(Numeric())
+    high = Column(Numeric())
+    low = Column(Numeric())
+    close = Column(Numeric())
     volume = Column(Integer())
     time = Column(DateTime())
 

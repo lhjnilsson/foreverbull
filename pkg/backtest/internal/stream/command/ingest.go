@@ -51,7 +51,6 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	engine, isEngine := ze.(engine.Engine)
 	if !isEngine {
-		setMetadata(ctx, pb.IngestionStatus_ERROR)
 		return errors.New("error casting zipline engine")
 	}
 
@@ -63,7 +62,6 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	err = engine.Ingest(ctx, &ingestion, object)
 	if err != nil {
-		setMetadata(ctx, pb.IngestionStatus_ERROR)
 		return fmt.Errorf("error ingesting data: %w", err)
 	}
 

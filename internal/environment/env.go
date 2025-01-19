@@ -16,6 +16,9 @@ const (
 	HTTPPort        = "HTTP_PORT"
 	HTTPPortDefault = "8080"
 
+	GRPCPort        = "GRPC_PORT"
+	GRPCPortDefault = "50055"
+
 	DockerNetwork        = "DOCKER_NETWORK"
 	DockerNetworkDefault = "foreverbull"
 
@@ -65,6 +68,7 @@ type envVar struct {
 var envVars = []envVar{ //nolint: gochecknoglobals
 	{ServerAddress, func() (string, error) { return ServerAddressDefault, nil }},
 	{HTTPPort, func() (string, error) { return HTTPPortDefault, nil }},
+	{GRPCPort, func() (string, error) { return GRPCPortDefault, nil }},
 	{BacktestIngestionDefaultName, func() (string, error) { return BacktestIngestionDefaultNameDefault, nil }},
 	{BacktestImage, func() (string, error) { return BacktestImageDefault, nil }},
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
@@ -123,6 +127,14 @@ func GetServerAddress() string {
 
 func GetHTTPPort() string {
 	return os.Getenv(HTTPPort)
+}
+
+func GetGRPCPort() string {
+	return os.Getenv(GRPCPort)
+}
+
+func GetServerGRPCURL() string {
+	return fmt.Sprintf("localhost:%s", GetGRPCPort())
 }
 
 func GetDockerNetworkName() string {

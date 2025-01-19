@@ -62,7 +62,6 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 			data, err := proto.Marshal(rsp)
 			require.NoError(t, err, "failed to marshal response data")
 			require.NoError(t, socket.Send(data), "failed to send response")
-			t.Log("Sent response")
 		}
 	}
 

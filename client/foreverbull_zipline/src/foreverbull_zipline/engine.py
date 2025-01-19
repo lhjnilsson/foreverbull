@@ -7,7 +7,6 @@ import os
 
 import pandas as pd
 import pynng
-import pytz
 import six
 
 from zipline import TradingAlgorithm
@@ -37,6 +36,40 @@ class ConfigError(Exception):
 
 class StopExcecution(Exception):
     pass
+
+
+def find_start_timestamp(bundle: BundleData, request: engine_service_pb2.RunBacktestRequest) -> pd.Timestamp:
+    bundle_start = None
+    for symbol in request.backtest.symbols:
+        asset_start = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).start_date
+        bundle_start = asset_start if bundle_start is None else max(bundle_start, asset_start)
+    if type(bundle_start) is not pd.Timestamp:
+        raise ConfigError("no bundle start_date found")
+
+    if not request.backtest.HasField("start_date"):
+        return bundle_start
+    request_start = pd.Timestamp(pb_utils.from_proto_date_to_pydate(request.backtest.start_date))
+    assert type(request_start) is pd.Timestamp
+    if request_start < bundle_start:
+        return bundle_start
+    return request_start
+
+
+def find_end_timestamp(bundle: BundleData, request: engine_service_pb2.RunBacktestRequest) -> pd.Timestamp:
+    bundle_end = None
+    for symbol in request.backtest.symbols:
+        asset_end = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).end_date
+        bundle_end = asset_end if bundle_end is None else min(bundle_end, asset_end)
+    if type(bundle_end) is not pd.Timestamp:
+        raise ConfigError("no bundle end_date found")
+
+    if not request.backtest.HasField("end_date"):
+        return bundle_end
+    request_end = pd.Timestamp(pb_utils.from_proto_date_to_pydate(request.backtest.end_date))
+    assert type(request_end) is pd.Timestamp
+    if request_end > bundle_end:
+        return bundle_end
+    return request_end
 
 
 class Engine(multiprocessing.Process):
@@ -168,68 +201,13 @@ class Engine(multiprocessing.Process):
         bundles.register("foreverbull", None, calendar_name="XNYS")
         bundle = bundles.load("foreverbull", os.environ, None)
 
-        def find_last_traded_dt(bundle: BundleData, *symbols):
-            last_traded = None
-            for symbol in symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
-                if asset is None:
-                    continue
-                if last_traded is None:
-                    last_traded = asset.end_date
-                else:
-                    last_traded = max(last_traded, asset.end_date)
-            return last_traded
-
-        def find_first_traded_dt(bundle: BundleData, *symbols):
-            first_traded = None
-            for symbol in symbols:
-                asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
-                if asset is None:
-                    continue
-                if first_traded is None:
-                    first_traded = asset.start_date
-                else:
-                    first_traded = min(first_traded, asset.start_date)
-            return first_traded
-
         for symbol in req.backtest.symbols:
             asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
             if asset is None:
                 raise ConfigError(f"Unknown symbol: {symbol}")
-        try:
-            if req.backtest.start_date:
-                start = pd.Timestamp(pb_utils.from_proto_date_to_pydate(req.backtest.start_date))
-                if type(start) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid start date: {req.backtest.start_date}")
-                start_date = start.normalize().tz_localize(None)
-                first_traded_date = find_first_traded_dt(bundle, *req.backtest.symbols)
-                if first_traded_date is None:
-                    raise ConfigError("unable to determine first traded date")
-                if start_date < first_traded_date:
-                    start_date = first_traded_date
-            else:
-                start_date = find_first_traded_dt(bundle, *req.backtest.symbols)
-            if not isinstance(start_date, pd.Timestamp):
-                raise ConfigError(f"expected start_date to be a pd.Timestamp, is: {type(start_date)}")
 
-            if req.backtest.HasField("end_date"):
-                end = pd.Timestamp(pb_utils.from_proto_date_to_pydate(req.backtest.end_date))
-                if type(end) is not pd.Timestamp:
-                    raise ConfigError(f"Invalid end date: {req.backtest.end_date}")
-                end_date = end.normalize().tz_localize(None)
-                last_traded_date = find_last_traded_dt(bundle, *req.backtest.symbols)
-                if last_traded_date is None:
-                    raise ConfigError("unable to determine last traded date")
-                if end_date > last_traded_date:
-                    end_date = last_traded_date
-            else:
-                end_date = find_last_traded_dt(bundle, *req.backtest.symbols)
-            if not isinstance(end_date, pd.Timestamp):
-                raise ConfigError(f"expected end_date to be a pd.Timestamp, is: {type(end_date)}")
-
-        except pytz.exceptions.UnknownTimeZoneError as e:
-            self.logger.error("Unknown time zone: %s", repr(e))
-            raise ConfigError(repr(e))
+        start_date = find_start_timestamp(bundle, req)
+        end_date = find_end_timestamp(bundle, req)
 
         if req.backtest.benchmark:
             benchmark_returns = None
@@ -433,8 +411,6 @@ class Engine(multiprocessing.Process):
                         case "get_result":
                             rsp.data = self._get_execution_result(req.data)
                             context_socket.send(rsp.SerializeToString())
-                        case _:
-                            raise Exception(f"Unknown task {req.task}")
                 except StopExcecution as e:
                     raise e
                 except Exception as e:

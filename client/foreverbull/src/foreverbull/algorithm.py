@@ -85,7 +85,6 @@ class Algorithm(models.Algorithm):
                     case strategy_service_pb2.RunStrategyResponse.Status.Status.READY:
                         wp.configure_execution(msg.configuration)
                         wp.run_execution(Event())
-                        print("DONE")  # TODO: Actual trading and return results
                     case strategy_service_pb2.RunStrategyResponse.Status.Status.FAILED:
                         channel.close()
                         raise Exception(f"Strategy failed: {msg.status.error}")

@@ -42,6 +42,8 @@ func statusToPbStatus(status string) pb.IngestionStatus {
 		pbStatus = pb.IngestionStatus_INGESTING
 	case pb.IngestionStatus_COMPLETED.String():
 		pbStatus = pb.IngestionStatus_COMPLETED
+	case pb.IngestionStatus_ERROR.String():
+		pbStatus = pb.IngestionStatus_ERROR
 	}
 	return pbStatus
 }
@@ -97,7 +99,7 @@ func (is *IngestionServer) UpdateIngestion(req *pb.UpdateIngestionRequest,
 		}
 		status := statusToPbStatus(ingestion.Metadata["Status"])
 		if status == latestStatus {
-			time.Sleep(time.Second)
+			time.Sleep(time.Second / 2)
 			continue
 		}
 		latestStatus = status

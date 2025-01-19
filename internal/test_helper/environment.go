@@ -74,6 +74,7 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	os.Setenv(environment.DockerNetwork, NetworkID)
 	os.Setenv(environment.BacktestPortRangeStart, "37000")
 	os.Setenv(environment.BacktestPortRangeEnd, "37100")
+	os.Setenv(environment.GRPCPort, "60066")
 
 	if containers.Postgres {
 		group.Go(func() error {

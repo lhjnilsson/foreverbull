@@ -17,4 +17,4 @@ def test_handle_data(asset_manager: AssetManager, portfolio_manager: PortfolioMa
 
     assert len(portfolio.pending_orders) == 2
     assert finance_pb2.Order(symbol="AAPL", amount=-10) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="MSFT", amount=44) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="MSFT", amount=43) in portfolio.pending_orders

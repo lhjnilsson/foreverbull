@@ -77,4 +77,8 @@ def test_baseline_performance(
         result, df = algorithm.get_execution("demo")
 
         baseline_performance = baseline_performance[df.columns]
+        if not baseline_performance.equals(df):
+            baseline_performance.to_json("baseline.json")
+            df.to_json("result.json")
+
         assert baseline_performance.equals(df), "Baseline performance does not match."

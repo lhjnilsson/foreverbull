@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC
 from datetime import datetime
 from typing import Any
 from typing import Union
@@ -130,6 +131,9 @@ class PortfolioManager:
                     amount=position.amount,
                 )
             )
+
+        if dt is not None:
+            dt = dt.replace(tzinfo=UTC)  # Make sure its UTC, TODO: Replace datetime with date
         return Portfolio(
             finance_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(dt) if dt else None,

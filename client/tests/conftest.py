@@ -20,7 +20,7 @@ from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_pb2
-from foreverbull_zipline import engine
+from foreverbull_zipline import service
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 
 
@@ -81,19 +81,17 @@ def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
 
             backtest_start = pb_utils.from_proto_date_to_pandas_timestamp(execution.start_date)
             if backtest_start < stored_asset.start_date:
-                print("Start date is not correct", backtest_start, stored_asset.start_date)
                 raise ValueError("Start date is not correct")
 
             backtest_end = pb_utils.from_proto_date_to_pandas_timestamp(execution.end_date)
             if backtest_end > stored_asset.end_date:
-                print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
 
     bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
     try:
         sanity_check(bundles.load("foreverbull", os.environ, None))
     except (ValueError, LookupError):
-        e = engine.EngineProcess()
+        s = service.BacktestService()
         req = engine_service_pb2.IngestRequest(
             ingestion=ingestion_pb2.Ingestion(
                 start_date=backtest_entity.start_date,
@@ -101,7 +99,7 @@ def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
                 symbols=backtest_entity.symbols,
             )
         )
-        e._ingest(req.SerializeToString())
+        s.Ingest(req, None)
 
 
 def baseline_performance_initialize(context):
