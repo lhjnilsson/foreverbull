@@ -223,6 +223,7 @@ class Portfolio:
 
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
+        print("DATE: ", symbol, self._pb.timestamp.ToDatetime())
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
         latest_close = self._db.execute(q).scalar()
         assert latest_close is not None, f"unable to find latest close price for {symbol}"
