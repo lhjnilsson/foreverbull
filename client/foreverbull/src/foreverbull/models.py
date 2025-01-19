@@ -226,12 +226,14 @@ class Portfolio:
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
         latest_close = self._db.execute(q).scalar()
         assert latest_close is not None, f"unable to find latest close price for {symbol}"
+        print("LATEST CLOSE: ", symbol, latest_close)
+        print("CAL: ", symbol, int(value / float(latest_close)))
         return int(value / float(latest_close))
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
         value = self._pb.portfolio_value * percent
-        print("PERCENT: ", percent)
-        print("VALUE: ", value)
+        print("PERCENT: ", symbol, percent)
+        print("VALUE: ", symbol, value)
         return self._calculate_order_value_amount(symbol, value)
 
     def _calculate_order_target_amount(self, symbol: str, amount: int) -> int:
