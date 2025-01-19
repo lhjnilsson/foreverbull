@@ -81,12 +81,10 @@ def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
 
             backtest_start = pb_utils.from_proto_date_to_pandas_timestamp(execution.start_date)
             if backtest_start < stored_asset.start_date:
-                print("Start date is not correct", backtest_start, stored_asset.start_date)
                 raise ValueError("Start date is not correct")
 
             backtest_end = pb_utils.from_proto_date_to_pandas_timestamp(execution.end_date)
             if backtest_end > stored_asset.end_date:
-                print("End date is not correct", backtest_end, stored_asset.end_date)
                 raise ValueError("End date is not correct")
 
     bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")

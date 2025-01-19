@@ -223,18 +223,13 @@ class Portfolio:
 
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
-        print("DATE: ", symbol, self._pb.timestamp.ToDatetime())
         q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
         latest_close = self._db.execute(q).scalar()
         assert latest_close is not None, f"unable to find latest close price for {symbol}"
-        print("LATEST CLOSE: ", symbol, latest_close)
-        print("CAL: ", symbol, int(value / float(latest_close)))
         return int(value / float(latest_close))
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
         value = self._pb.portfolio_value * percent
-        print("PERCENT: ", symbol, percent)
-        print("VALUE: ", symbol, value)
         return self._calculate_order_value_amount(symbol, value)
 
     def _calculate_order_target_amount(self, symbol: str, amount: int) -> int:
@@ -269,7 +264,6 @@ class Portfolio:
     def order_target_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         amount = self._calculate_order_target_amount(symbol, amount)
-        print("ORDER AMOUNT: ", symbol, amount)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
