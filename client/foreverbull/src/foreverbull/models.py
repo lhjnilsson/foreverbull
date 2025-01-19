@@ -230,6 +230,8 @@ class Portfolio:
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
         value = self._pb.portfolio_value * percent
+        print("PERCENT: ", percent)
+        print("VALUE: ", value)
         return self._calculate_order_value_amount(symbol, value)
 
     def _calculate_order_target_amount(self, symbol: str, amount: int) -> int:
@@ -264,6 +266,7 @@ class Portfolio:
     def order_target_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         amount = self._calculate_order_target_amount(symbol, amount)
+        print("ORDER AMOUNT: ", symbol, amount)
         order = finance_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
