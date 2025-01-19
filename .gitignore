@@ -183,3 +183,6 @@ internal/test_helper/metrics/
 client/baseline_performance.pickle
 
 .foreverbull
+
+client/result.json
+client/baseline.json
