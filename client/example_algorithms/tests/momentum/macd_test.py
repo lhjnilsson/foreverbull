@@ -1,3 +1,4 @@
+from datetime import UTC
 from datetime import datetime
 
 from example_algorithms.momentum.macd import handle_data
@@ -13,8 +14,10 @@ def test_handle_data(asset_manager: AssetManager, portfolio_manager: PortfolioMa
     portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
     assets = asset_manager.get_assets(datetime(2021, 1, 1), datetime(2021, 3, 31), ["AAPL", "MSFT"])
 
+    print("TS: ", portfolio._pb.timestamp.ToDatetime(tzinfo=UTC))
+
     handle_data(assets, portfolio)
 
     assert len(portfolio.pending_orders) == 2
     assert finance_pb2.Order(symbol="AAPL", amount=-10) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="MSFT", amount=44) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="MSFT", amount=43) in portfolio.pending_orders

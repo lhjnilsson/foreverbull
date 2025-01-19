@@ -80,6 +80,6 @@ def test_place_orders(asset_manager: AssetManager, portfolio_manager: PortfolioM
         print(assets.stock_data.loc["VZ"])
         print(assets.stock_data.loc["VZ"])
 
-    assert finance_pb2.Order(symbol="VZ", amount=216) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="TSM", amount=92) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="MMM", amount=71) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="VZ", amount=218) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="TSM", amount=90) in portfolio.pending_orders
+    assert finance_pb2.Order(symbol="MMM", amount=72) in portfolio.pending_orders

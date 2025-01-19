@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from typing import Any
 
 import pandas
