@@ -35,13 +35,13 @@ FOREVERBULL_NAME=lhjnilsson/foreverbull:$(TAG)
 GRAFANA_NAME=lhjnilsson/fb-grafana:$(TAG)
 
 docker-images: py-dist
-	docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f foreverbull_zipline/Dockerfile client/
+	docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f client/foreverbull_zipline/Dockerfile client/
 	docker build -t $(FOREVERBULL_NAME) -f docker/Dockerfile .
 	docker build -t $(GRAFANA_NAME) -f grafana/Dockerfile grafana/
 
 env: docker-images
-	cd client && rye sync && source .venv/bin/activate.fish && .. # TODO shell sensative
-	fbull env stop
-	fbull env start --version
+	(cd client && rye sync)
+	(cd client && rye run fbull env stop)
+	(cd client && rye run fbull env start --version $(TAG))
 
 .PHONY: proto-gen, mock-gen
