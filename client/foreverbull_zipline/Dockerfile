@@ -2,7 +2,7 @@ FROM lhjnilsson/zipline_base:latest
 
 COPY foreverbull_zipline/src /app
 
-ARG FB_WHEEL
+ARG FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
 COPY ${FB_WHEEL} /foreverbull-0.0.1-py3-none-any.whl
 RUN pip install /foreverbull-0.0.1-py3-none-any.whl
 RUN pip install grpcio-health-checking==1.66.1

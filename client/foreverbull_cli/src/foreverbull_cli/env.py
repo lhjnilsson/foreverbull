@@ -463,11 +463,20 @@ def stop():
         console.print(f"[red]Failed to connect to Docker: [yellow]{e}")
         return
     with FBProgress() as progress:
+        grafana_task_id = progress.add_task("Grafana", total=2)
         foreverbull_task_id = progress.add_task("Foreverbull", total=2)
         minio_task_id = progress.add_task("Minio", total=2)
         nats_task_id = progress.add_task("NATS", total=2)
         postgres_task_id = progress.add_task("Postgres", total=2)
         net_task_id = progress.add_task("Removing Environment", total=2)
+
+        progress.update(grafana_task_id, completed=1)
+        try:
+            d.containers.get("foreverbull_grafana").stop()
+            d.containers.get("foreverbull_grafana").remove()
+        except docker.errors.NotFound:
+            pass
+        progress.update(grafana_task_id, completed=2)
 
         progress.update(foreverbull_task_id, completed=1)
         try:
