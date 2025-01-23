@@ -34,23 +34,27 @@ FOREVERBULL_NAME=lhjnilsson/foreverbull:$(TAG)
 GRAFANA_NAME=lhjnilsson/fb-grafana:$(TAG)
 
 py-dist:
-	cd client/foreverbull && rye build && cd ../..
+	@if [ ! -f "client/dist/foreverbull-0.0.1-py3-none-any.whl" ] || [ -n "$$(git status --porcelain client/foreverbull)" ]; then \
+	    echo "Building Python distribution..."; \
+	    cd client/foreverbull && rye build && cd ../..; \
+	else \
+	    echo "No changes detected. Skipping Python distribution build."; \
+	fi
 
 define build_docker_image
     @if [ -z "$$(docker images -q $(1) 2> /dev/null)" ]; then \
         echo "Docker image $(1) does not exist. Building..."; \
-        docker build --no-cache -t $(1) -f $(2) $(3); \
+        docker build -t $(1) -f $(2) $(3); \
     elif [ -n "$$(git status --porcelain $(3))" ]; then \
         echo "Unstaged changes detected in $(3). Rebuilding Docker container."; \
-        docker build -t $(1) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f $(2) $(3); \
+        docker build -t $(1) -f $(2) $(3); \
     else \
         echo "No unstaged changes in $(3). Using cached Docker image."; \
-        docker build -t $(1) -f $(2) $(3); \
     fi
 endef
 
 zipline-image:
-	$(call build_docker_image,$(ZIPLINE_NAME),client/foreverbull_zipline/Dockerfile,client/)
+	$(call build_docker_image,$(ZIPLINE_NAME),client/foreverbull_zipline/Dockerfile,client/foreverbull_zipline)
 
 foreverbull-image:
 	$(call build_docker_image,$(FOREVERBULL_NAME),docker/Dockerfile,.)
