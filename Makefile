@@ -26,20 +26,53 @@ mock-gen:
 	find pkg/ -type f -name "mock_*.go" -delete
 	mockery --all --inpackage
 
-py-dist:
-	cd client/foreverbull && rye build && cd ../..
 
-TAG=latest
+TAG=local
 ZIPLINE_NAME=lhjnilsson/zipline:$(TAG)
 FOREVERBULL_NAME=lhjnilsson/foreverbull:$(TAG)
 GRAFANA_NAME=lhjnilsson/fb-grafana:$(TAG)
 
-docker-images: py-dist
-	docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f client/foreverbull_zipline/Dockerfile client/
+py-dist:
+	cd client/foreverbull && rye build && cd ../..
+
+zipline-image:
+	@if [ -z "$$(docker images -q $(ZIPLINE_NAME) 2> /dev/null)" ]; then
+	    echo "Docker image $(ZIPLINE_NAME) does not exist. Building...";
+	    docker build --no-cache -t $(2) .;
+	elif [ -n "$$(git status --porcelain $(1))" ]; then
+	    echo "Unstaged changes detected in $(1). Rebuilding Docker container.";
+	    docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f client/foreverbull_zipline/Dockerfile client/
+	else
+	    echo "No unstaged changes in $(ZIPLINE_NAME). Using stored Docker image.";
+	fi
+
+foreverbull-image:
+	@if [ -z "$$(docker images -q $(ZIPLINE_NAME) 2> /dev/null)" ]; then
+	      echo "Docker image $(ZIPLINE_NAME) does not exist. Building...";
+	      docker build --no-cache -t $(2) .;
+	elif [ -n "$$(git status --porcelain $(1))" ]; then
+	    echo "Unstaged changes detected in $(1). Rebuilding Docker container.";
+	    docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f client/foreverbull_zipline/Dockerfile client/
+	else
+	    echo "No unstaged changes in $(ZIPLINE_NAME). Using stored Docker image.";
+	fi
+
+grafana-image:
+	@if [ -z "$$(docker images -q $(ZIPLINE_NAME) 2> /dev/null)" ]; then
+	    echo "Docker image $(ZIPLINE_NAME) does not exist. Building...";
+	    docker build --no-cache -t $(2) .;
+	elif [ -n "$$(git status --porcelain $(1))" ]; then
+	   echo "Unstaged changes detected in $(1). Rebuilding Docker container.";
+	   docker build -t $(ZIPLINE_NAME) --build-arg FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl -f client/foreverbull_zipline/Dockerfile client/
+	else
+	   echo "No unstaged changes in $(ZIPLINE_NAME). Using stored Docker image.";
+	fi
+
+docker-images:
 	docker build -t $(FOREVERBULL_NAME) -f docker/Dockerfile .
 	docker build -t $(GRAFANA_NAME) -f grafana/Dockerfile grafana/
 
-env: docker-images
+env: py-dist zipline-image foreverbull-image grafana-image
 	(cd client && rye sync)
 	(cd client && rye run fbull env stop)
 	(cd client && rye run fbull env start --version $(TAG))
