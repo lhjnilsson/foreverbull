@@ -3,9 +3,9 @@ package strategy
 import (
 	"fmt"
 
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/servicer"
-	"github.com/lhjnilsson/foreverbull/pkg/strategy/pb"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

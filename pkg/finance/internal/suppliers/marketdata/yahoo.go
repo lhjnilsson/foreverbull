@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

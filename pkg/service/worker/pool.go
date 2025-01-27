@@ -9,8 +9,8 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	worker_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	worker_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )

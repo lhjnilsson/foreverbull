@@ -9,8 +9,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/suite"
 )
 

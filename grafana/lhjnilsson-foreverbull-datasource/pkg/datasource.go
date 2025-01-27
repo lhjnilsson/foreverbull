@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

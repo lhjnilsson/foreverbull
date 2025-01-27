@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package foreverbull.service;
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/service/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/service";
 
 import "google/protobuf/struct.proto";
 import "foreverbull/finance/finance.proto";

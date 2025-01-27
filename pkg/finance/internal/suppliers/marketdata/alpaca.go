@@ -9,7 +9,7 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

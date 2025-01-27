@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
 type TradingServer struct {

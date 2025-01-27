@@ -6,7 +6,7 @@ import "foreverbull/common.proto";
 import "foreverbull/service/worker.proto";
 import "buf/validate/validate.proto";
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/strategy/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/strategy";
 
 message RunStrategyRequest {
     repeated string symbols = 1 [(buf.validate.field).repeated = {

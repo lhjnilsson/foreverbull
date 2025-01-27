@@ -9,11 +9,11 @@ import (
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	service_pb "github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/strategy/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"

@@ -10,9 +10,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type IngestionServer struct {

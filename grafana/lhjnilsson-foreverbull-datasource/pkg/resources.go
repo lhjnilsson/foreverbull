@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type ResourceDefinition struct {

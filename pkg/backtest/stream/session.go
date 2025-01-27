@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type UpdateSessionStatusCommand struct {

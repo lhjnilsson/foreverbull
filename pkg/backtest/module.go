@@ -18,7 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"

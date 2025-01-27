@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 )
 
 const InstanceTable = `CREATE TABLE IF NOT EXISTS service_instance (

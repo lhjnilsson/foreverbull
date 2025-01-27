@@ -3,7 +3,7 @@ package test_helper //nolint:stylecheck,revive
 import (
 	"testing"
 
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"

@@ -7,7 +7,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"

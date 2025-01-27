@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/lhjnilsson/foreverbull/internal/storage"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 )
 

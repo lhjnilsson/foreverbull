@@ -4,7 +4,7 @@ package foreverbull.backtest;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
 message Session {
     message Status {

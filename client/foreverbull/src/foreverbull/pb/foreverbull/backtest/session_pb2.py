@@ -25,14 +25,14 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"foreverbull/backtest/session.proto\x12\x14\x66oreverbull.backtest\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe5\x02\n\x07Session\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08\x62\x61\x63ktest\x18\x02 \x01(\t\x12\x36\n\x08statuses\x18\x03 \x03(\x0b\x32$.foreverbull.backtest.Session.Status\x12\x12\n\nexecutions\x18\x04 \x01(\x03\x12\x11\n\x04port\x18\x05 \x01(\x03H\x00\x88\x01\x01\x1a\xd3\x01\n\x06Status\x12;\n\x06status\x18\x01 \x01(\x0e\x32+.foreverbull.backtest.Session.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\x12/\n\x0boccurred_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x06Status\x12\x0b\n\x07\x43REATED\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\r\n\tCOMPLETED\x10\x02\x12\n\n\x06\x46\x41ILED\x10\x03\x42\x08\n\x06_errorB\x07\n\x05_portB3Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"foreverbull/backtest/session.proto\x12\x14\x66oreverbull.backtest\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe5\x02\n\x07Session\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08\x62\x61\x63ktest\x18\x02 \x01(\t\x12\x36\n\x08statuses\x18\x03 \x03(\x0b\x32$.foreverbull.backtest.Session.Status\x12\x12\n\nexecutions\x18\x04 \x01(\x03\x12\x11\n\x04port\x18\x05 \x01(\x03H\x00\x88\x01\x01\x1a\xd3\x01\n\x06Status\x12;\n\x06status\x18\x01 \x01(\x0e\x32+.foreverbull.backtest.Session.Status.Status\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\x12/\n\x0boccurred_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"=\n\x06Status\x12\x0b\n\x07\x43REATED\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\r\n\tCOMPLETED\x10\x02\x12\n\n\x06\x46\x41ILED\x10\x03\x42\x08\n\x06_errorB\x07\n\x05_portB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.backtest.session_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/backtest/pb'
+  _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtest'
   _globals['_SESSION']._serialized_start=94
   _globals['_SESSION']._serialized_end=451
   _globals['_SESSION_STATUS']._serialized_start=231

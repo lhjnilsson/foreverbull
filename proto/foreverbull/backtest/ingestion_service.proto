@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package foreverbull.backtest;
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
 import "foreverbull/backtest/ingestion.proto";
 import "google/protobuf/timestamp.proto";
