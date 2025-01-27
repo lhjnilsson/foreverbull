@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
+	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"

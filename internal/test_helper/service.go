@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
+	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/rep"

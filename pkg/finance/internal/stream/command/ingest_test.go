@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -16,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/timestamppb"

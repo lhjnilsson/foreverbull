@@ -3,8 +3,8 @@ package socket
 import (
 	"testing"
 
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
 )

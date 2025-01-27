@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
 )
 
 type IngestionServer struct {

@@ -7,7 +7,7 @@
 package pb
 
 import (
-	pb "github.com/lhjnilsson/foreverbull/internal/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"

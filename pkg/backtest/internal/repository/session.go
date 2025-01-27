@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 )
 
 const SessionTable = `CREATE TABLE IF NOT EXISTS session (

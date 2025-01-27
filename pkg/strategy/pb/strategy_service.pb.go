@@ -8,7 +8,7 @@ package pb
 
 import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
-	pb "github.com/lhjnilsson/foreverbull/internal/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb1 "github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

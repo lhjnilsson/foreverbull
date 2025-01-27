@@ -9,7 +9,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	common_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -19,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 )
 
 const OHLCTable = `CREATE TABLE IF NOT EXISTS ohlc (
