@@ -1,7 +1,7 @@
 services:
   grafana:
     user: root
-    container_name: 'lhjnilsson-foreverbull-datasource'
+    container_name: 'demo-demo-datasource'
 
     build:
       context: ./.config
@@ -11,7 +11,7 @@ services:
         development: ${DEVELOPMENT:-false}
         anonymous_auth_enabled: ${ANONYMOUS_AUTH_ENABLED:-true}
     ports:
-      - 3001:3000/tcp
+      - 3000:3000/tcp
       - 2345:2345/tcp # delve
     security_opt:
       - 'apparmor:unconfined'
@@ -19,22 +19,13 @@ services:
     cap_add:
       - SYS_PTRACE
     volumes:
-      - ./dist:/var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource
+      - ./dist:/var/lib/grafana/plugins/demo-demo-datasource
       - ./provisioning:/etc/grafana/provisioning
-      - .:/root/lhjnilsson-foreverbull-datasource
+      - .:/root/demo-demo-datasource
 
     environment:
       NODE_ENV: development
-      GF_LOG_FILTERS: plugin.lhjnilsson-foreverbull-datasource:debug
+      GF_LOG_FILTERS: plugin.demo-demo-datasource:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: lhjnilsson-foreverbull-datasource
-      BROKER_URL: foreverbull:50055
-
-    networks:
-      - foreverbull
-
-networks:
-  foreverbull:
-    name: foreverbull
-    external: true
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: demo-demo-datasource
