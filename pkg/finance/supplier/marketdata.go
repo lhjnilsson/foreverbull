@@ -3,7 +3,7 @@ package supplier
 import (
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
 type Marketdata interface {

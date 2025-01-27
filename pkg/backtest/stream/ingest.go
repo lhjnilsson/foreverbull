@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type IngestCommand struct {

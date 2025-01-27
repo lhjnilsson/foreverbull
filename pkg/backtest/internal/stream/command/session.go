@@ -16,8 +16,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/rs/zerolog/log"
 )
 

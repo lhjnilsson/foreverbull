@@ -8,12 +8,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 )

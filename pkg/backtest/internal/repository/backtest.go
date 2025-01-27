@@ -7,9 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (

@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	pb_internal "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/rs/zerolog/log"
 )
 

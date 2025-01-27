@@ -6,7 +6,7 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/shopspring/decimal"
 )
 

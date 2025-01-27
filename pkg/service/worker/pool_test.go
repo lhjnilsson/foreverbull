@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"

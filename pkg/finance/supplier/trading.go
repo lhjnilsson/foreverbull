@@ -1,6 +1,8 @@
 package supplier
 
-import "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+import (
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+)
 
 type Trading interface {
 	GetPortfolio() (*pb.Portfolio, error)

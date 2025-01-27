@@ -6,7 +6,7 @@ import "google/protobuf/timestamp.proto";
 import "foreverbull/finance/finance.proto";
 import "foreverbull/common.proto";
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/backtest/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
 message Execution {
     message Status {

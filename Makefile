@@ -17,11 +17,11 @@ proto-gen:
 	# Go
 	find pkg/ -type f -name "*.pb.go" -delete
 	find internal/ -type f -name "*.pb.go" -delete
-	protoc -Iproto --go_out=pkg/finance/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/finance/pb --go-grpc_out=pkg/finance/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/finance/pb proto/foreverbull/finance/*.proto
-	protoc -Iproto --go_out=pkg/backtest/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/backtest/pb --go-grpc_out=pkg/backtest/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/backtest/pb proto/foreverbull/backtest/*.proto
-	protoc -Iproto --go_out=pkg/service/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/service/pb --go-grpc_out=pkg/service/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/service/pb proto/foreverbull/service/*.proto
-	protoc -Iproto --go_out=pkg/strategy/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/strategy/pb --go-grpc_out=pkg/strategy/pb --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/strategy/pb proto/foreverbull/strategy/*.proto
-	protoc -Iproto --go_out=internal/pb --go_opt=module=github.com/lhjnilsson/foreverbull/internal/pb proto/foreverbull/common.proto
+	protoc -Iproto --go_out=pkg/pb/finance --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance --go-grpc_out=pkg/pb/finance --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance proto/foreverbull/finance/*.proto
+	protoc -Iproto --go_out=pkg/pb/backtest --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest --go-grpc_out=pkg/pb/backtest --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest proto/foreverbull/backtest/*.proto
+	protoc -Iproto --go_out=pkg/pb/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service --go-grpc_out=pkg/pb/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service proto/foreverbull/service/*.proto
+	protoc -Iproto --go_out=pkg/pb/strategy --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy --go-grpc_out=pkg/pb/strategy --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy proto/foreverbull/strategy/*.proto
+	protoc -Iproto --go_out=pkg/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb proto/foreverbull/common.proto
 	@echo "Generated protobuf files"
 
 mock-gen:

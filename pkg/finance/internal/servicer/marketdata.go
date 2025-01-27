@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"golang.org/x/sync/errgroup"
 )
 

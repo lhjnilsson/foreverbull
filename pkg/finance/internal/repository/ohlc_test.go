@@ -7,10 +7,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/suite"
 )
 

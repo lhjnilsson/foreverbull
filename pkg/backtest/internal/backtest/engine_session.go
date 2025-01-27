@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"

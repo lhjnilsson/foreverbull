@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
 const AssetTable = `CREATE TABLE IF NOT EXISTS asset (

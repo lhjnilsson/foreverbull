@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package foreverbull.common;
-option go_package = "github.com/lhjnilsson/foreverbull/internal/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb";
 
 message Request {
     string task = 1;

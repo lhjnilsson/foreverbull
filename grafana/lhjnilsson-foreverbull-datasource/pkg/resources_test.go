@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"

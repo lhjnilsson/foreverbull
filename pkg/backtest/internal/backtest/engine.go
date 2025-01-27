@@ -7,8 +7,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

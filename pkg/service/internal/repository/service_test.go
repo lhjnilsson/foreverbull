@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
 	"github.com/stretchr/testify/suite"
 )
 

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package foreverbull.finance;
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/finance/pb";
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance";
 
 import "foreverbull/finance/finance.proto";
 import "buf/validate/validate.proto";

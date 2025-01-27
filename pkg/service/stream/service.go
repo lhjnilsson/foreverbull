@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 )
 
 type UpdateServiceStatusCommand struct {

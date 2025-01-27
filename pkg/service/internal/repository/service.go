@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	internal_pb "github.com/lhjnilsson/foreverbull/internal/pb"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	"github.com/lhjnilsson/foreverbull/pkg/service/pb"
+	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 )
 
 const ServiceTable = `CREATE TABLE IF NOT EXISTS service (

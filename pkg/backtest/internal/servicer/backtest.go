@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type BacktestServer struct {
