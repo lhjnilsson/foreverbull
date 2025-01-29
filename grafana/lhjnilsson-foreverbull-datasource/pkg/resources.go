@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type ResourceDefinition struct {
@@ -24,7 +24,7 @@ func (ds *Datasource) registerResources() {
 func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 	log := ds.log.With("method", "ListExecutions")
 
-	rsp, err := ds.backend.ListExecutions(r.Context(), &pb.ListExecutionsRequest{})
+	rsp, err := ds.backend.ListExecutions(r.Context(), &backtestPb.ListExecutionsRequest{})
 	if err != nil {
 		log.Error("fail to list executions", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -50,6 +50,20 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {
+	definitions := []ResourceDefinition{
+		{Value: string(Returns), Label: string(Returns)},
+		{Value: string(Alpha), Label: string(Alpha)},
+		{Value: string(Beta), Label: string(Beta)},
+		{Value: string(Sharpe), Label: string(Sharpe)},
+		{Value: string(Sortino), Label: string(Sortino)},
+	}
+
+	data, err := json.Marshal(definitions)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Add("Content-Type", "application/json")
-	w.Write([]byte(`[{"value": "metric1", "label": "metric1"}, {"value": "metric2", "label": "metric2"}]`))
+	w.Write(data)
 }

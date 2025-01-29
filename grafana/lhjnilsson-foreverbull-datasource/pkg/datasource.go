@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -128,7 +128,6 @@ type queryModel struct {
 }
 
 func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
-	var response grafana.DataResponse
 	log := d.log.With("GetExecutionMetric")
 
 	// Unmarshal the JSON into our queryModel.
@@ -187,7 +186,9 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortio))
 		}
 	}
-	fmt.Println("REturning ", frame)
-	response.Frames = append(response.Frames, frame)
-	return response
+
+	return grafana.DataResponse{
+		Frames: []*data.Frame{frame},
+		Status: grafana.StatusOK,
+	}
 }

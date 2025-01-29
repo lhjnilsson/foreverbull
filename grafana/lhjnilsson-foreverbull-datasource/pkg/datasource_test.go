@@ -8,8 +8,8 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
 	fbPb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -19,12 +19,15 @@ import (
 var exc1 = pb.GetExecutionResponse{
 	Periods: []*pb.Period{
 		{
-			Date:    fbPb.Date{},
+			Date:    &fbPb.Date{},
 			Returns: 1.0,
+			Alpha:   func() *float64 { x := 2.0; return &x }(),
+			Beta:    func() *float64 { x := 3.0; return &x }(),
+			Sharpe:  func() *float64 { x := 4.0; return &x }(),
+			Sortino: func() *float64 { x := 5.0; return &x }(),
 		},
 	},
 }
-var exc2 = pb.GetBacktestResponse{}
 
 type DatasouceTest struct {
 	suite.Suite
@@ -53,7 +56,6 @@ func (test *DatasouceTest) SetupSuite() {
 
 	getExcMock := test.backend.On("GetExecution", mock.Anything, mock.Anything)
 	getExcMock.RunFn = func(args mock.Arguments) {
-		fmt.Println("ARGS: ", args.Get(1))
 		getExcMock.ReturnArguments = mock.Arguments{&exc1, nil}
 	}
 
@@ -65,16 +67,42 @@ func TestDatasource(t *testing.T) {
 }
 
 func (test *DatasouceTest) TestHandleExecutionMetric() {
+	type TestCase struct {
+		ExecutionID    string
+		Metrics        []string
+		ExpectedFields []string
+	}
 
-	msg := json.RawMessage(`{"queryType": "executionMetric", "executionId": "123", "metrics": ["returns"]}`)
+	testCases := []TestCase{
+		{"123", []string{"returns"}, []string{"time", "returns"}},
+		{"123", []string{"returns", "alpha"}, []string{"time", "returns", "alpha"}},
+		{"123", []string{"returns", "alpha", "beta"}, []string{"time", "returns", "alpha", "beta"}},
+		{"123", []string{"returns", "alpha", "beta", "sharpe"}, []string{"time", "returns", "alpha", "beta", "sharpe"}},
+		{"123", []string{"returns", "alpha", "beta", "sharpe", "sortino"}, []string{"time", "returns", "alpha", "beta", "sharpe", "sortino"}},
+	}
+	for i, tc := range testCases {
+		test.Run(fmt.Sprintf("Test_%d", i), func() {
+			metrics, _ := json.Marshal(tc.Metrics)
+			msg := json.RawMessage(fmt.Sprintf(`{"queryType": "executionMetric", "executionId": "%s", "metrics": %s}`, tc.ExecutionID, metrics))
+			resp, err := test.uut.QueryData(context.Background(), &grafana.QueryDataRequest{
+				Queries: []backend.DataQuery{
+					{RefID: "A", QueryType: GetExecutionMetric, JSON: msg},
+				},
+			})
+			test.Require().NoError(err)
+			test.Require().NotNil(resp)
+			test.Require().Equal(grafana.StatusOK, resp.Responses["A"].Status)
 
-	resp, err := test.uut.QueryData(context.Background(), &grafana.QueryDataRequest{
-		Queries: []backend.DataQuery{
-			{RefID: "A", QueryType: GetExecutionMetric, JSON: msg},
-		},
-	})
+			test.Len(resp.Responses["A"].Frames, 1)
+			test.Len(resp.Responses["A"].Frames[0].Fields, len(tc.ExpectedFields))
+			test.Equal(tc.ExpectedFields, func() []string {
+				var fields []string
+				for _, f := range resp.Responses["A"].Frames[0].Fields {
+					fields = append(fields, f.Name)
+				}
+				return fields
+			}())
+		})
 
-	test.Require().NoError(err)
-
-	fmt.Println("RESP: Resp", resp)
+	}
 }
