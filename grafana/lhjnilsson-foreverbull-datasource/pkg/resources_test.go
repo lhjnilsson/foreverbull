@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
+	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -55,7 +56,7 @@ func (test *ResourceTest) SetupTest() {
 }
 
 func (test *ResourceTest) TestListExecutions() {
-	test.backend.On("ListExecutions", mock.Anything, mock.Anything).Return(&pb.ListExecutionsResponse{}, nil)
+	test.backend.On("ListExecutions", mock.Anything, mock.Anything).Return(&backtestPb.ListExecutionsResponse{}, nil)
 
 	req := &grafana.CallResourceRequest{
 		Method: http.MethodGet,
@@ -65,4 +66,19 @@ func (test *ResourceTest) TestListExecutions() {
 	var r mockCallResourceResponseSender
 	err := test.uut.CallResource(context.Background(), req, &r)
 	test.Require().NoError(err, "fail to call resource")
+
+	test.Equal(http.StatusOK, r.response.Status, "unexpected status")
+}
+
+func (test *ResourceTest) TestListMetrics() {
+	req := &grafana.CallResourceRequest{
+		Method: http.MethodGet,
+		Path:   "metrics",
+	}
+
+	var r mockCallResourceResponseSender
+	err := test.uut.CallResource(context.Background(), req, &r)
+	test.Require().NoError(err, "fail to call resource")
+
+	test.Equal(http.StatusOK, r.response.Status, "unexpected status")
 }

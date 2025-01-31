@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -109,12 +109,35 @@ func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *grafana.
 	return processQueries(ctx, req, d.handleGetExecutionMetric), nil
 }
 
+type QueryMetric string
+
+const (
+	PortfolioValue QueryMetric = "portfolio_value"
+	Alpha          QueryMetric = "alpha"
+	Beta           QueryMetric = "beta"
+	Sharpe         QueryMetric = "sharpe"
+	Sortino        QueryMetric = "sortino"
+	CapitalUsed    QueryMetric = "capital_used"
+	LongCount      QueryMetric = "long_count"
+	ShortCount     QueryMetric = "short_count"
+	LongValue      QueryMetric = "long_value"
+	ShortValue     QueryMetric = "short_value"
+)
+
+type Execution struct {
+	ID string `json:"id"`
+}
+
+type Metric struct {
+	Name QueryMetric `json:"name"`
+}
+
 type queryModel struct {
-	ExecutionId string `json:"executionId"`
+	ExecutionId *Execution `json:"execution"`
+	Metrics     []Metric   `json:"metrics"`
 }
 
 func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
-	var response grafana.DataResponse
 	log := d.log.With("GetExecutionMetric")
 
 	// Unmarshal the JSON into our queryModel.
@@ -126,56 +149,77 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionId})
+	if qm.ExecutionId == nil || qm.ExecutionId.ID == "" {
+		log.Error("executionId is missing")
+		return grafana.ErrDataResponse(grafana.StatusBadRequest, "executionId is missing")
+	}
+
+	if len(qm.Metrics) == 0 {
+		log.Error("metrics is missing")
+		return grafana.ErrDataResponse(grafana.StatusBadRequest, "metrics is missing")
+	}
+
+	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionId.ID})
 	if err != nil {
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
-	times := make([]time.Time, len(execution.Periods))
 
-	pnl := make([]float64, len(execution.Periods))
-	returns := make([]float64, len(execution.Periods))
+	times := make([]time.Time, len(execution.Periods))
 	portfolio_value := make([]float64, len(execution.Periods))
-	longs_count := make([]int32, len(execution.Periods))
-	shorts_count := make([]int32, len(execution.Periods))
-	long_value := make([]float64, len(execution.Periods))
-	short_value := make([]float64, len(execution.Periods))
+	alpha := make([]*float64, len(execution.Periods))
+	beta := make([]*float64, len(execution.Periods))
 	sharpe := make([]*float64, len(execution.Periods))
 	sortio := make([]*float64, len(execution.Periods))
+	capital_used := make([]float64, len(execution.Periods))
+	long_count := make([]int32, len(execution.Periods))
+	short_count := make([]int32, len(execution.Periods))
+	long_value := make([]float64, len(execution.Periods))
+	short_value := make([]float64, len(execution.Periods))
 
 	for i, period := range execution.Periods {
 		times[i] = time.Date(int(period.Date.Year), time.Month(int(period.Date.Month)), int(period.Date.Day), 0, 0, 0, 0, time.UTC)
-		pnl[i] = period.PNL
-		returns[i] = period.Returns
 		portfolio_value[i] = period.PortfolioValue
-		longs_count[i] = period.LongsCount
-		shorts_count[i] = period.ShortsCount
-		long_value[i] = period.LongValue
-		short_value[i] = period.ShortValue
+		alpha[i] = period.Alpha
+		beta[i] = period.Beta
 		sharpe[i] = period.Sharpe
 		sortio[i] = period.Sortino
+		capital_used[i] = period.CapitalUsed
+		long_count[i] = period.LongsCount
+		short_count[i] = period.ShortsCount
+		long_value[i] = period.LongValue
+		short_value[i] = period.ShortValue
+
 	}
 
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
 	frame := data.NewFrame("response")
+	frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
+	for _, metric := range qm.Metrics {
+		switch metric.Name {
+		case PortfolioValue:
+			frame.Fields = append(frame.Fields, data.NewField(string(PortfolioValue), nil, portfolio_value))
+		case Alpha:
+			frame.Fields = append(frame.Fields, data.NewField(string(Alpha), nil, alpha))
+		case Beta:
+			frame.Fields = append(frame.Fields, data.NewField(string(Beta), nil, beta))
+		case Sharpe:
+			frame.Fields = append(frame.Fields, data.NewField(string(Sharpe), nil, sharpe))
+		case Sortino:
+			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortio))
+		case CapitalUsed:
+			frame.Fields = append(frame.Fields, data.NewField(string(CapitalUsed), nil, capital_used))
+		case LongCount:
+			frame.Fields = append(frame.Fields, data.NewField(string(LongCount), nil, long_count))
+		case ShortCount:
+			frame.Fields = append(frame.Fields, data.NewField(string(ShortCount), nil, short_count))
+		case LongValue:
+			frame.Fields = append(frame.Fields, data.NewField(string(LongValue), nil, long_value))
+		case ShortValue:
+			frame.Fields = append(frame.Fields, data.NewField(string(ShortValue), nil, short_value))
+		}
+	}
 
-	// add fields.
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, times),
-		data.NewField("profit & loss", nil, pnl),
-		data.NewField("returns", nil, portfolio_value),
-		data.NewField("portfolio value", nil, portfolio_value),
-		data.NewField("longs count", nil, longs_count),
-		data.NewField("shorts count", nil, shorts_count),
-		data.NewField("long value", nil, long_value),
-		data.NewField("short value", nil, short_value),
-		data.NewField("sharpe", nil, sharpe),
-		data.NewField("sortio", nil, sortio),
-	)
-
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
-
-	return response
+	return grafana.DataResponse{
+		Frames: []*data.Frame{frame},
+		Status: grafana.StatusOK,
+	}
 }
