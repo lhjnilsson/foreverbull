@@ -54,7 +54,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      executionId: getTemplateSrv().replace(query.executionId, scopedVars),
+      execution: { ID: getTemplateSrv().replace(query.execution?.ID, scopedVars) },
     };
   }
 
@@ -67,6 +67,6 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   filterQuery(query: MyQuery): boolean {
-    return !!query.executionId;
+    return !!query.execution;
   }
 }

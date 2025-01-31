@@ -51,11 +51,16 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {
 	definitions := []ResourceDefinition{
-		{Value: string(Returns), Label: string(Returns)},
+		{Value: string(PortfolioValue), Label: string(PortfolioValue)},
 		{Value: string(Alpha), Label: string(Alpha)},
 		{Value: string(Beta), Label: string(Beta)},
 		{Value: string(Sharpe), Label: string(Sharpe)},
 		{Value: string(Sortino), Label: string(Sortino)},
+		{Value: string(CapitalUsed), Label: string(CapitalUsed)},
+		{Value: string(LongCount), Label: string(LongCount)},
+		{Value: string(ShortCount), Label: string(ShortCount)},
+		{Value: string(LongValue), Label: string(LongValue)},
+		{Value: string(ShortValue), Label: string(ShortValue)},
 	}
 
 	data, err := json.Marshal(definitions)
