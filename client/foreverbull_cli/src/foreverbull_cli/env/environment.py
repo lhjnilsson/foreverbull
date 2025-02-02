@@ -121,6 +121,12 @@ class BaseContainer:
             return "not known"
         return container.image.tags[0]
 
+    def get_or_download_image(self) -> None:
+        try:
+            _docker.images.get(self.image)
+        except docker.errors.ImageNotFound:
+            _docker.images.pull(self.image)
+
     def create(self, *args, **kwargs) -> ContainerStatus:
         container = _docker.containers.create(
             image=self.image,
@@ -308,6 +314,10 @@ class ContainerManager:
         self.foreverbull = ForeverbullContainer(config, environment)
         self.grafana = GrafanaContainer(config, environment)
         self.containers = [self.postgres, self.minio, self.nats, self.foreverbull, self.grafana]
+
+    def verify_images(self):
+        for container in self.containers:
+            container.get_or_download_image()
 
     def create(self):
         for container in self.containers:

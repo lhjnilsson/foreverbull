@@ -51,11 +51,16 @@ def create(ctx: typer.Context, start: bool = True, version: str = "latest"):
 
     os.environ["version"] = version
     with FBProgress() as progress:
+        verify_images = progress.add_task("Verifying images", total=2)
         create = progress.add_task("Creating environment", total=2)
         if start:
             start_task = progress.add_task("Starting environment", total=2)
         else:
             start_task = None
+
+        progress.update(verify_images, completed=1)
+        cm.verify_images()
+        progress.update(verify_images, completed=2)
 
         progress.update(create, completed=1)
         cm.create()
