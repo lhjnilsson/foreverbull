@@ -320,6 +320,7 @@ class ContainerManager:
             container.get_or_download_image()
 
     def create(self):
+        _docker.networks.create(self.config.network_name, driver="bridge")
         for container in self.containers:
             container.create()
 
@@ -334,3 +335,4 @@ class ContainerManager:
     def remove(self):
         for container in self.containers:
             container.remove()
+        _docker.networks.get(self.config.network_name).remove()
