@@ -1,5 +1,3 @@
-import os
-
 import typer
 
 from rich.table import Table
@@ -46,10 +44,9 @@ def status(ctx: typer.Context):
 
 
 @cli.command(help="create new environment")
-def create(ctx: typer.Context, start: bool = True, version: str = "latest"):
+def create(ctx: typer.Context, start: bool = True):
     cm: ContainerManager = ctx.obj
 
-    os.environ["version"] = version
     with FBProgress() as progress:
         verify_images = progress.add_task("Verifying images", total=2)
         create = progress.add_task("Creating environment", total=2)
