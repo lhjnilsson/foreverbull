@@ -325,8 +325,31 @@ class ContainerManager:
             container.create()
 
     def start(self):
-        for container in self.containers:
+        for container in [self.postgres, self.minio, self.nats]:
             container.start()
+        for _ in range(200):
+            # TODO: Refactor
+            import time
+
+            time.sleep(0.1)
+            if _docker.containers.get(self.postgres.name).health != "healthy":
+                continue
+            if _docker.containers.get(self.nats.name).health != "healthy":
+                continue
+            break
+        else:
+            raise TimeoutError("Fail to get Postgres or Nats Healthy")
+
+        for container in [self.foreverbull, self.grafana]:
+            container.start()
+        for _ in range(100):
+            import time
+
+            time.sleep(0.1)
+            if _docker.containers.get(self.foreverbull.name).health != "healthy":
+                continue
+            break
+        # TODO Fix healthcheck in foreverbull
 
     def stop(self):
         for container in self.containers:
