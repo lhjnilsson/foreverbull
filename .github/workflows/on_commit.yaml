@@ -337,7 +337,9 @@ jobs:
           pip install ta-lib
       - name: Create environment
         run: |
-          fbull env start --version on_commit
+          fbenv create
+        env:
+          VERSION: on_commit
       - name: create backtest
         run: fbull backtest create /tmp/example_algorithms/nasdaq.json
       - name: ingest
@@ -444,7 +446,9 @@ jobs:
           pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
       - name: Create environment
         run: |
-          fbull env start --version on_commit
+          fbenv create
+        env:
+          VERSION: on_commit
       - name: create backtest
         run: fbull backtest create /tmp/example_algorithms/nasdaq.json
       - name: ingest
