@@ -3,6 +3,7 @@ import os
 from functools import wraps
 from typing import Callable
 from typing import Concatenate
+from typing import Generator
 
 import grpc
 
@@ -42,7 +43,9 @@ def backtest_servicer[R, **P](
 
 
 @backtest_ingestion_servicer
-def ingest(servicer: ingestion_service_pb2_grpc.IngestionServicerStub) -> ingestion_service_pb2.UpdateIngestionResponse:
+def ingest(
+    servicer: ingestion_service_pb2_grpc.IngestionServicerStub,
+) -> Generator[ingestion_service_pb2.UpdateIngestionResponse, None, None]:
     req = ingestion_service_pb2.UpdateIngestionRequest()
     return servicer.UpdateIngestion(req)
 

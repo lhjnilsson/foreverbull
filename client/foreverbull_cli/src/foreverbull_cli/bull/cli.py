@@ -5,17 +5,13 @@ import typer
 
 from rich.logging import RichHandler
 
-from foreverbull_cli.backtest import backtest
-
-# from foreverbull_cli.env import env
+from foreverbull_cli.bull.backtest import backtest
 from foreverbull_cli.output import console
-from foreverbull_cli.strategy import strategy
 
 
 cli = typer.Typer()
 
 cli.add_typer(backtest, name="backtest")
-cli.add_typer(strategy, name="strategy")
 
 
 @cli.callback()
@@ -43,7 +39,3 @@ def setup_logging(
         datefmt="[%X]",
         handlers=[RichHandler(markup=True, console=console)],
     )
-
-
-def main():
-    cli()
