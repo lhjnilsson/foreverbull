@@ -22,6 +22,7 @@ from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
+from foreverbull_cli.output import FBProgress
 from foreverbull_cli.output import console
 
 
@@ -51,7 +52,8 @@ def list():
 @backtest.command()
 def create(
     config: Annotated[str, typer.Argument(help="path to the config file")],
-    name: Annotated[str, typer.Option(help="name of the backtest, filename if None")] | None = None,
+    name: Annotated[str, typer.Option(help="name of the backtest, filename if None")] = "",
+    ingest: Annotated[bool, typer.Option(help="Auotmaticlly ingest after creation")] = True,
 ):
     config_file = Path(config)
     with open(config_file, "r") as f:
@@ -59,7 +61,7 @@ def create(
 
     assert "start_date" in cfg, "start_date is required in config"
     assert "symbols" in cfg, "symbols is required in config"
-    if name is None:
+    if not name:
         name = config_file.stem
     start = date.fromisoformat(cfg["start_date"])
     end = date.fromisoformat(cfg.get("end_date")) if "end_date" in cfg else None
@@ -71,14 +73,32 @@ def create(
         symbols=cfg["symbols"],
         benchmark=cfg.get("benchmark"),
     )
-    backtest = broker.backtest.create(backtest)
-    table = Table(title="Created Backtest")
+    with FBProgress() as progress:
+        create_task = progress.add_task("Creating Backtest", total=2)
+        if ingest:
+            ingest_task = progress.add_task("Ingesting Backtest", total=2)
+        else:
+            ingest_task = None
+
+        progress.update(create_task, completed=1)
+        backtest = broker.backtest.create(backtest)
+        progress.update(create_task, completed=2)
+
+        if ingest_task:
+            progress.update(ingest_task, completed=1)
+            rsp: ingestion_service_pb2.UpdateIngestionResponse
+            ingestion = broker.backtest.ingest()
+            for rsp in ingestion:
+                progress.update(
+                    ingest_task, description=f"Ingesting Backtest: {ingestion_pb2.IngestionStatus.Name(rsp.status)}"
+                )
+            progress.update(ingest_task, completed=2)
+    table = Table(title="Created Backtest", expand=True)
     table.add_column("Name")
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
-
     table.add_row(
         backtest.name,
         (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
@@ -94,14 +114,14 @@ def get(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
 ):
     backtest = broker.backtest.get(name)
-    table = Table(title="Backtest")
-    table.add_column("Name")
-    table.add_column("Status")
-    table.add_column("Start")
-    table.add_column("End")
-    table.add_column("Symbols", overflow="fold")
-    table.add_column("Benchmark")
-    table.add_row(
+    backtest_table = Table(title="Backtest", expand=True)
+    backtest_table.add_column("Name")
+    backtest_table.add_column("Status")
+    backtest_table.add_column("Start")
+    backtest_table.add_column("End")
+    backtest_table.add_column("Symbols", overflow="fold")
+    backtest_table.add_column("Benchmark")
+    backtest_table.add_row(
         backtest.name,
         (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         from_proto_date_to_pydate(backtest.start_date).isoformat(),
@@ -109,15 +129,23 @@ def get(
         ",".join(backtest.symbols),
         backtest.benchmark,
     )
-    console.print(table)
+    executions = broker.backtest.list_executions(name, None)
+    executions_table = Table(title="executions", expand=True)
+    executions_table.add_column("Date")
+    executions_table.add_column("Status")
+    executions_table.add_column("Start")
+    executions_table.add_column("End")
+    executions_table.add_column("Link")
+    for execution in executions:
+        executions_table.add_row(
+            execution.statuses[0].occurred_at.ToDatetime().strftime("%Y-%m-%d %H:%M:%S"),
+            execution_pb2.Execution.Status.Status.Name(execution.statuses[0].status),
+            execution.backtest,
+            execution.id,
+        )
 
-
-@backtest.command()
-def ingest():
-    rsp: ingestion_service_pb2.UpdateIngestionResponse
-    ingestion = broker.backtest.ingest()
-    for rsp in ingestion:
-        console.print(f"Status: {ingestion_pb2.IngestionStatus.Name(rsp.status)}")
+    console.print(backtest_table)
+    console.print(executions_table)
 
 
 @backtest.command()
@@ -135,10 +163,8 @@ def run(
         TextColumn("[progress.completed]"),
     )
     live = Live(progress, console=console, refresh_per_second=120)
-
     with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
         backtest = session.get_default()
-
         start_date = backtest.start_date
         if start:
             try:
@@ -171,6 +197,7 @@ def run(
         log.info(f"Execution completed for {backtest.name}")
 
 
+"""
 @backtest.command()
 def executions(
     backtest: Annotated[str, typer.Option(help="name of the backtest")] | None = None,
@@ -223,3 +250,4 @@ def execution(
             "{:.5f}".format(period.sortino),
         )
     console.print(table)
+"""

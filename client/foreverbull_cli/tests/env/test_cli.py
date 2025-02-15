@@ -1,8 +1,11 @@
+import os
+
 from unittest.mock import MagicMock
 
 import pytest
 import typer
 
+from click.testing import Result
 from typer.testing import CliRunner
 
 from foreverbull_cli.env import cli
@@ -12,6 +15,22 @@ from foreverbull_cli.env.environment import GrafanaContainer
 from foreverbull_cli.env.environment import MinioContainer
 from foreverbull_cli.env.environment import NatsContainer
 from foreverbull_cli.env.environment import PostgresContainer
+
+
+@pytest.fixture
+def runner():
+    runner = CliRunner()
+
+    def invoke(app: typer.Typer, args: list[str]) -> Result:
+        result = runner.invoke(app, args)
+        echo_stdout = os.environ.get("ECHO", False)
+        if echo_stdout:
+            print("")
+            print(result.stdout)
+
+        return result
+
+    return invoke
 
 
 @pytest.fixture
@@ -62,36 +81,26 @@ def mocked_container_manager():
     cli.cli.registered_callback.callback = initialize
 
 
-def test_status(mocked_container_manager: MagicMock):
-    runner = CliRunner()
-
-    result = runner.invoke(cli.cli, "status")
+def test_status(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "status")
     assert result.exit_code == 0
 
 
-def test_create(mocked_container_manager: MagicMock):
-    runner = CliRunner()
-
-    result = runner.invoke(cli.cli, "create")
+def test_create(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "create")
     assert result.exit_code == 0
 
 
-def test_start(mocked_container_manager: MagicMock):
-    runner = CliRunner()
-
-    result = runner.invoke(cli.cli, "start")
+def test_start(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "start")
     assert result.exit_code == 0
 
 
-def test_stop(mocked_container_manager: MagicMock):
-    runner = CliRunner()
-
-    result = runner.invoke(cli.cli, "stop")
+def test_stop(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "stop")
     assert result.exit_code == 0
 
 
-def test_update(mocked_container_manager: MagicMock):
-    runner = CliRunner()
-
-    result = runner.invoke(cli.cli, "update")
+def test_update(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "update")
     assert result.exit_code == 0

@@ -124,7 +124,3 @@ def initialize(ctx: typer.Context):
     config = Config()
     environment = Environment()
     ctx.obj = ContainerManager(environment, config)
-
-
-if __name__ == "__main__":
-    cli()

@@ -9,7 +9,7 @@ dependencies = ["typer[all]>=0.9.0,<1.0.0", "docker>=7.0.0,<8.0.0"]
 foreverbull = { path = "../foreverbull" }
 
 [project.scripts]
-fbull = "foreverbull_cli.main:main"
+fbull = "foreverbull_cli.bull.cli:cli"
 fbenv = "foreverbull_cli.env.cli:cli"
 
 [tool.hatch.build.targets.wheel]
