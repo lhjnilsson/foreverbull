@@ -8,7 +8,6 @@ import pytest
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull_zipline import service
 
 
@@ -43,7 +42,7 @@ def test_ingest(
 ):
     response = stub.Ingest(
         engine_service_pb2.IngestRequest(
-            ingestion=ingestion_pb2.Ingestion(
+            ingestion=engine_service_pb2.Ingestion(
                 start_date=backtest_entity.start_date,
                 end_date=backtest_entity.end_date,
                 symbols=backtest_entity.symbols,
