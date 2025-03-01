@@ -44,4 +44,3 @@ class FBProgress(Progress):
                 self.update(task.id, completed=-1)
 
         super().__exit__(exc_type, exc_val, exc_tb)
-        exit(1)
