@@ -67,7 +67,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	req.Header.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'")
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 	if y.cookie != "" {
 		req.Header.Add("Cookie", y.cookie)
