@@ -5,6 +5,8 @@ package backtest
 import (
 	context "context"
 
+	grpc "google.golang.org/grpc"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -14,33 +16,21 @@ type MockBacktestServicerServer struct {
 }
 
 // CreateBacktest provides a mock function with given fields: _a0, _a1
-func (_m *MockBacktestServicerServer) CreateBacktest(_a0 context.Context, _a1 *CreateBacktestRequest) (*CreateBacktestResponse, error) {
+func (_m *MockBacktestServicerServer) CreateBacktest(_a0 *CreateBacktestRequest, _a1 grpc.ServerStreamingServer[CreateBacktestResponse]) error {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateBacktest")
 	}
 
-	var r0 *CreateBacktestResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest) (*CreateBacktestResponse, error)); ok {
-		return rf(_a0, _a1)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest) *CreateBacktestResponse); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*CreateBacktestRequest, grpc.ServerStreamingServer[CreateBacktestResponse]) error); ok {
 		r0 = rf(_a0, _a1)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateBacktestResponse)
-		}
+		r0 = ret.Error(0)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *CreateBacktestRequest) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // CreateSession provides a mock function with given fields: _a0, _a1

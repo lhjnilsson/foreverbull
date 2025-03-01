@@ -1,13 +1,23 @@
 from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2 as _finance_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2 as _ingestion_pb2
+from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
+
+class Ingestion(_message.Message):
+    __slots__ = ("start_date", "end_date", "symbols")
+    START_DATE_FIELD_NUMBER: _ClassVar[int]
+    END_DATE_FIELD_NUMBER: _ClassVar[int]
+    SYMBOLS_FIELD_NUMBER: _ClassVar[int]
+    start_date: _common_pb2.Date
+    end_date: _common_pb2.Date
+    symbols: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., symbols: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class GetIngestionRequest(_message.Message):
     __slots__ = ()
@@ -16,8 +26,8 @@ class GetIngestionRequest(_message.Message):
 class GetIngestionResponse(_message.Message):
     __slots__ = ("ingestion",)
     INGESTION_FIELD_NUMBER: _ClassVar[int]
-    ingestion: _ingestion_pb2.Ingestion
-    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...) -> None: ...
+    ingestion: Ingestion
+    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ...) -> None: ...
 
 class DownloadIngestionRequest(_message.Message):
     __slots__ = ("bucket", "object")
@@ -28,20 +38,18 @@ class DownloadIngestionRequest(_message.Message):
     def __init__(self, bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
 
 class DownloadIngestionResponse(_message.Message):
-    __slots__ = ("ingestion",)
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
-    ingestion: _ingestion_pb2.Ingestion
-    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ...) -> None: ...
+    __slots__ = ()
+    def __init__(self) -> None: ...
 
 class IngestRequest(_message.Message):
     __slots__ = ("ingestion", "bucket", "object")
     INGESTION_FIELD_NUMBER: _ClassVar[int]
     BUCKET_FIELD_NUMBER: _ClassVar[int]
     OBJECT_FIELD_NUMBER: _ClassVar[int]
-    ingestion: _ingestion_pb2.Ingestion
+    ingestion: Ingestion
     bucket: str
     object: str
-    def __init__(self, ingestion: _Optional[_Union[_ingestion_pb2.Ingestion, _Mapping]] = ..., bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
+    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ..., bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
 
 class IngestResponse(_message.Message):
     __slots__ = ()

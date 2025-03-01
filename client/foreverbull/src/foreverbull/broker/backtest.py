@@ -1,5 +1,3 @@
-import os
-
 from functools import wraps
 from typing import Callable
 from typing import Concatenate
@@ -11,23 +9,7 @@ from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import session_pb2
-
-
-def backtest_ingestion_servicer[R, **P](
-    f: Callable[Concatenate[ingestion_service_pb2_grpc.IngestionServicerStub, P], R],
-) -> Callable[P, R]:
-    port = os.getenv("BROKER_PORT", "50055")
-    servicer = ingestion_service_pb2_grpc.IngestionServicerStub(grpc.insecure_channel(f"localhost:{port}"))
-
-    @wraps(f)
-    def wrapper(*args: P.args, **kwargs: P.kwargs):
-        return f(servicer, *args, **kwargs)
-
-    return wrapper
 
 
 def backtest_servicer[R, **P](
@@ -42,22 +24,6 @@ def backtest_servicer[R, **P](
     return wrapper
 
 
-@backtest_ingestion_servicer
-def ingest(
-    servicer: ingestion_service_pb2_grpc.IngestionServicerStub,
-) -> Generator[ingestion_service_pb2.UpdateIngestionResponse, None, None]:
-    req = ingestion_service_pb2.UpdateIngestionRequest()
-    return servicer.UpdateIngestion(req)
-
-
-@backtest_ingestion_servicer
-def get_ingestion(
-    servicer: ingestion_service_pb2_grpc.IngestionServicerStub,
-) -> tuple[ingestion_pb2.Ingestion, ingestion_pb2.IngestionStatus]:
-    rsp = servicer.GetCurrentIngestion(ingestion_service_pb2.GetCurrentIngestionRequest())
-    return rsp.ingestion, rsp.status
-
-
 @backtest_servicer
 def list_backtests(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> list[backtest_pb2.Backtest]:
     return servicer.ListBacktests(backtest_service_pb2.ListBacktestsRequest()).backtests
@@ -66,12 +32,11 @@ def list_backtests(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> 
 @backtest_servicer
 def create(
     servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest: backtest_pb2.Backtest
-) -> backtest_pb2.Backtest:
+) -> Generator[backtest_pb2.Backtest, None, None]:
     req = backtest_service_pb2.CreateBacktestRequest(
         backtest=backtest,
     )
-    rsp = servicer.CreateBacktest(req)
-    return rsp.backtest
+    return servicer.CreateBacktest(req)
 
 
 @backtest_servicer

@@ -7,7 +7,13 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 import "foreverbull/backtest/backtest.proto";
 import "foreverbull/finance/finance.proto";
 import "foreverbull/backtest/execution.proto";
-import "foreverbull/backtest/ingestion.proto";
+import "foreverbull/common.proto";
+
+message Ingestion {
+    foreverbull.common.Date start_date = 1;
+    foreverbull.common.Date end_date = 2;
+    repeated string symbols = 3;
+}
 
 message GetIngestionRequest {
 }
@@ -22,7 +28,6 @@ message DownloadIngestionRequest {
 }
 
 message DownloadIngestionResponse {
-    Ingestion ingestion = 1;
 }
 
 message IngestRequest {

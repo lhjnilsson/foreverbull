@@ -33,10 +33,10 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end string) 
 
 type UpdateStatusCommand struct {
 	Name   string
-	Status pb.IngestionStatus
+	Status pb.BacktestStatus
 }
 
-func NewUpdateIngestionStatusCommand(name string, status pb.IngestionStatus) (stream.Message, error) {
+func NewUpdateBacktestStatusCommand(name string, status pb.BacktestStatus) (stream.Message, error) {
 	cmd := &UpdateStatusCommand{
 		Name:   name,
 		Status: status,
@@ -49,30 +49,44 @@ func NewUpdateIngestionStatusCommand(name string, status pb.IngestionStatus) (st
 	return msg, nil
 }
 
-func NewIngestOrchestration(name string, symbols []string, start, end string) (*stream.MessageOrchestration, error) {
-	orchestration := stream.NewMessageOrchestration("ingest backtest")
+func NewCreateBacktestOrchestration(name string, symbols []string, start, end string) (*stream.MessageOrchestration, error) {
+	orchestration := stream.NewMessageOrchestration("create backtest")
 
+	// Ingest financial data
 	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	msg1, err := NewUpdateIngestionStatusCommand(name, pb.IngestionStatus_DOWNLOADING)
+	statusMsg, err := NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_DOWNLOADING)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	orchestration.AddStep("ingest financial data", []stream.Message{msg, msg1})
+	orchestration.AddStep("ingest financial data", []stream.Message{msg, statusMsg})
 
+	// Ingest into backtest engine
 	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	orchestration.AddStep("ingest into backtest", []stream.Message{msg})
-
-	msg, err = NewUpdateIngestionStatusCommand(name, pb.IngestionStatus_ERROR)
+	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_INGESTING)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	orchestration.SettFallback([]stream.Message{msg})
+	orchestration.AddStep("ingest into backtest", []stream.Message{msg, statusMsg})
+
+	// Update backtest status
+	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_READY)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	orchestration.AddStep("mark as ready", []stream.Message{statusMsg})
+
+	// Fallback
+	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_ERROR)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	orchestration.SettFallback([]stream.Message{statusMsg})
 
 	return orchestration, nil
 }

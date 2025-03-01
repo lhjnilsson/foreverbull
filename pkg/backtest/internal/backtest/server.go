@@ -115,7 +115,6 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	case s.activity <- true:
 	default:
 	}
-
 	executions := repository.Execution{Conn: s.db}
 
 	execution, err := executions.Get(context.Background(), req.ExecutionId)

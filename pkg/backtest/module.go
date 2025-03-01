@@ -53,8 +53,6 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(g *grpc.Server, pgx *pgxpool.Pool, s Stream, st storage.Storage) error {
 			backtestServer := servicer.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
-			ingestionServer := servicer.NewIngestionServer(s, st, pgx)
-			pb.RegisterIngestionServicerServer(g, ingestionServer)
 			return nil
 		},
 		func(conn *pgxpool.Pool) error {
@@ -99,10 +97,6 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					err = backtestStream.CommandSubscriber("session", "run", command.SessionRun)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
-					}
-					err = backtestStream.CommandSubscriber("status", "update", command.UpdateIngestionStatus)
-					if err != nil {
-						return fmt.Errorf("error subscribing to ingestion.update: %w", err)
 					}
 					return nil
 				},

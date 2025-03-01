@@ -26,7 +26,9 @@ proto-gen:
 
 mock-gen:
 	find pkg/ -type f -name "mock_*.go" -delete
-	mockery --all --inpackage
+	mockery --dir pkg --all --inpackage
+	find internal/ -type f -name "mock_*.go" -delete
+	mockery --dir internal --all --inpackage
 
 TAG=local
 ZIPLINE_NAME=lhjnilsson/zipline:$(TAG)

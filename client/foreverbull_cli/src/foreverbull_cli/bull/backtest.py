@@ -18,8 +18,6 @@ from foreverbull import Algorithm
 from foreverbull import broker
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import FBProgress
@@ -53,7 +51,6 @@ def list():
 def create(
     config: Annotated[str, typer.Argument(help="path to the config file")],
     name: Annotated[str, typer.Option(help="name of the backtest, filename if None")] = "",
-    ingest: Annotated[bool, typer.Option(help="Auotmaticlly ingest after creation")] = True,
 ):
     config_file = Path(config)
     with open(config_file, "r") as f:
@@ -75,24 +72,15 @@ def create(
     )
     with FBProgress() as progress:
         create_task = progress.add_task("Creating Backtest", total=2)
-        if ingest:
-            ingest_task = progress.add_task("Ingesting Backtest", total=2)
-        else:
-            ingest_task = None
 
         progress.update(create_task, completed=1)
-        backtest = broker.backtest.create(backtest)
+        rsp = broker.backtest.create(backtest)
+        for backtest in rsp:
+            progress.update(
+                create_task,
+                description=f"Creating Backtest: {backtest_pb2.BacktestStatus.Name(backtest.statuses[0].status)}",
+            )
         progress.update(create_task, completed=2)
-
-        if ingest_task:
-            progress.update(ingest_task, completed=1)
-            rsp: ingestion_service_pb2.UpdateIngestionResponse
-            ingestion = broker.backtest.ingest()
-            for rsp in ingestion:
-                progress.update(
-                    ingest_task, description=f"Ingesting Backtest: {ingestion_pb2.IngestionStatus.Name(rsp.status)}"
-                )
-            progress.update(ingest_task, completed=2)
     table = Table(title="Created Backtest", expand=True)
     table.add_column("Name")
     table.add_column("Start")
@@ -123,7 +111,7 @@ def get(
     backtest_table.add_column("Benchmark")
     backtest_table.add_row(
         backtest.name,
-        (backtest_pb2.Backtest.Status.Status.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
+        (backtest_pb2.BacktestStatus.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         from_proto_date_to_pydate(backtest.start_date).isoformat(),
         (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
         ",".join(backtest.symbols),

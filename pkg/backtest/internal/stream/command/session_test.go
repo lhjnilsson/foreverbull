@@ -134,7 +134,6 @@ func (test *CommandSessionTest) TestSessionRun() {
 		ingestions := []storage.Object{
 			{
 				LastModified: time.Now(),
-				Metadata:     map[string]string{"Status": pb.IngestionStatus_COMPLETED.String()},
 			},
 		}
 		test.storage.On("ListObjects", mock.Anything, storage.IngestionsBucket).Return(&ingestions, nil)
