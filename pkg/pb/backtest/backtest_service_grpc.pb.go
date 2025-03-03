@@ -33,7 +33,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BacktestServicerClient interface {
 	ListBacktests(ctx context.Context, in *ListBacktestsRequest, opts ...grpc.CallOption) (*ListBacktestsResponse, error)
-	CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (*CreateBacktestResponse, error)
+	CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error)
 	GetBacktest(ctx context.Context, in *GetBacktestRequest, opts ...grpc.CallOption) (*GetBacktestResponse, error)
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
@@ -59,15 +59,24 @@ func (c *backtestServicerClient) ListBacktests(ctx context.Context, in *ListBack
 	return out, nil
 }
 
-func (c *backtestServicerClient) CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (*CreateBacktestResponse, error) {
+func (c *backtestServicerClient) CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateBacktestResponse)
-	err := c.cc.Invoke(ctx, BacktestServicer_CreateBacktest_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BacktestServicer_ServiceDesc.Streams[0], BacktestServicer_CreateBacktest_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[CreateBacktestRequest, CreateBacktestResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_CreateBacktestClient = grpc.ServerStreamingClient[CreateBacktestResponse]
 
 func (c *backtestServicerClient) GetBacktest(ctx context.Context, in *GetBacktestRequest, opts ...grpc.CallOption) (*GetBacktestResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -124,7 +133,7 @@ func (c *backtestServicerClient) GetExecution(ctx context.Context, in *GetExecut
 // for forward compatibility.
 type BacktestServicerServer interface {
 	ListBacktests(context.Context, *ListBacktestsRequest) (*ListBacktestsResponse, error)
-	CreateBacktest(context.Context, *CreateBacktestRequest) (*CreateBacktestResponse, error)
+	CreateBacktest(*CreateBacktestRequest, grpc.ServerStreamingServer[CreateBacktestResponse]) error
 	GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error)
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
 	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
@@ -143,8 +152,8 @@ type UnimplementedBacktestServicerServer struct{}
 func (UnimplementedBacktestServicerServer) ListBacktests(context.Context, *ListBacktestsRequest) (*ListBacktestsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListBacktests not implemented")
 }
-func (UnimplementedBacktestServicerServer) CreateBacktest(context.Context, *CreateBacktestRequest) (*CreateBacktestResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateBacktest not implemented")
+func (UnimplementedBacktestServicerServer) CreateBacktest(*CreateBacktestRequest, grpc.ServerStreamingServer[CreateBacktestResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method CreateBacktest not implemented")
 }
 func (UnimplementedBacktestServicerServer) GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBacktest not implemented")
@@ -200,23 +209,16 @@ func _BacktestServicer_ListBacktests_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BacktestServicer_CreateBacktest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateBacktestRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _BacktestServicer_CreateBacktest_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CreateBacktestRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(BacktestServicerServer).CreateBacktest(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BacktestServicer_CreateBacktest_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BacktestServicerServer).CreateBacktest(ctx, req.(*CreateBacktestRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(BacktestServicerServer).CreateBacktest(m, &grpc.GenericServerStream[CreateBacktestRequest, CreateBacktestResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_CreateBacktestServer = grpc.ServerStreamingServer[CreateBacktestResponse]
 
 func _BacktestServicer_GetBacktest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetBacktestRequest)
@@ -320,10 +322,6 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BacktestServicer_ListBacktests_Handler,
 		},
 		{
-			MethodName: "CreateBacktest",
-			Handler:    _BacktestServicer_CreateBacktest_Handler,
-		},
-		{
 			MethodName: "GetBacktest",
 			Handler:    _BacktestServicer_GetBacktest_Handler,
 		},
@@ -344,6 +342,12 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BacktestServicer_GetExecution_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "CreateBacktest",
+			Handler:       _BacktestServicer_CreateBacktest_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "foreverbull/backtest/backtest_service.proto",
 }

@@ -167,7 +167,7 @@ func (db *Backtest) Update(ctx context.Context, name string,
 	return db.Get(ctx, name)
 }
 
-func (db *Backtest) UpdateStatus(ctx context.Context, name string, status pb.Backtest_Status_Status, err error) error {
+func (db *Backtest) UpdateStatus(ctx context.Context, name string, status pb.BacktestStatus, err error) error {
 	if err != nil {
 		_, err = db.Conn.Exec(ctx, `UPDATE backtest SET status=$2, error=$3 WHERE name=$1`, name, status, err.Error())
 	} else {

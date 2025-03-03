@@ -34,8 +34,7 @@ type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
 
-	backtestClient  pb.BacktestServicerClient
-	ingestionClient pb.IngestionServicerClient
+	backtestClient pb.BacktestServicerClient
 }
 
 func TestModuleBacktest(t *testing.T) {
@@ -111,7 +110,6 @@ func (test *BacktestModuleTest) SetupTest() {
 	conn, err := grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	test.Require().NoError(err, "failed to create grpc client")
 	test.backtestClient = pb.NewBacktestServicerClient(conn)
-	test.ingestionClient = pb.NewIngestionServicerClient(conn)
 }
 
 func (test *BacktestModuleTest) TearDownTest() {
@@ -129,13 +127,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		test.T().Skip("IMAGES not set")
 	}
 
-	_, err := test.backtestClient.ListBacktests(context.Background(), &pb.ListBacktestsRequest{})
-	test.Require().NoError(err, "failed to list backtests")
-	_, err = test.ingestionClient.GetCurrentIngestion(context.TODO(), &pb.GetCurrentIngestionRequest{})
-	test.Require().NoError(err, "failed to get current ingestion")
-
 	// Create Backtest
-	rsp2, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
+	createResponse, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
 			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
@@ -144,25 +137,24 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		},
 	})
 	test.Require().NoError(err, "failed to create backtest")
-	test.NotNil(rsp2, "response is nil")
-
-	// Create Ingestion
-	is, err := test.ingestionClient.UpdateIngestion(context.TODO(), &pb.UpdateIngestionRequest{})
-	test.Require().NoError(err, "failed to create ingestion")
-	test.NotNil(is, "response is nil")
+	test.NotNil(createResponse, "response is nil")
 
 	for {
-		rsp, err := is.Recv()
+		rsp, err := createResponse.Recv()
 		if err != nil && errors.Is(err, io.EOF) {
 			break
 		}
 		test.Require().NoError(err)
-		test.Require().NotEqual(pb.IngestionStatus_ERROR, rsp.Status)
+		test.Require().NotEqual(pb.BacktestStatus_ERROR, rsp.Backtest.Statuses[0].Status)
 	}
+
+	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &pb.GetBacktestRequest{Name: "Test Backtest"})
+	test.Require().NoError(err, "failed to get backtest")
+	test.NotNil(getResponse, "response is nil")
 
 	// Run Backtest
 	rsp3, err := test.backtestClient.CreateSession(context.TODO(),
-		&pb.CreateSessionRequest{BacktestName: rsp2.Backtest.Name})
+		&pb.CreateSessionRequest{BacktestName: getResponse.GetName()})
 	test.Require().NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
 
@@ -203,7 +195,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
 
 	excRep, err := sessionClient.CreateExecution(context.TODO(), &pb.CreateExecutionRequest{
-		Backtest:  rsp2.Backtest,
+		Backtest:  getResponse.GetBacktest(),
 		Algorithm: algo,
 	})
 	test.Require().NoError(err, "failed to create execution")

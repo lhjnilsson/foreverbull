@@ -14,7 +14,6 @@ from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
@@ -121,7 +120,7 @@ def ensure_ingestion(backtest_entity, fb_database):
         service.ingestion
     except LookupError:
         ingest_request = engine_service_pb2.IngestRequest(
-            ingestion=ingestion_pb2.Ingestion(
+            ingestion=engine_service_pb2.Ingestion(
                 start_date=backtest_entity.start_date,
                 end_date=backtest_entity.end_date,
                 symbols=backtest_entity.symbols,

@@ -16,7 +16,7 @@ type MockBacktestServicerClient struct {
 }
 
 // CreateBacktest provides a mock function with given fields: ctx, in, opts
-func (_m *MockBacktestServicerClient) CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (*CreateBacktestResponse, error) {
+func (_m *MockBacktestServicerClient) CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -30,16 +30,16 @@ func (_m *MockBacktestServicerClient) CreateBacktest(ctx context.Context, in *Cr
 		panic("no return value specified for CreateBacktest")
 	}
 
-	var r0 *CreateBacktestResponse
+	var r0 grpc.ServerStreamingClient[CreateBacktestResponse]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest, ...grpc.CallOption) (*CreateBacktestResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest, ...grpc.CallOption) *CreateBacktestResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateBacktestRequest, ...grpc.CallOption) grpc.ServerStreamingClient[CreateBacktestResponse]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateBacktestResponse)
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[CreateBacktestResponse])
 		}
 	}
 

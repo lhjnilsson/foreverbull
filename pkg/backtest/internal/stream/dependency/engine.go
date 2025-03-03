@@ -14,6 +14,7 @@ import (
 )
 
 const GetEngineKey stream.Dependency = "get_engine"
+const GetIngestionKey stream.Dependency = "get_ingestions"
 
 const (
 	NumberOfTries = 30

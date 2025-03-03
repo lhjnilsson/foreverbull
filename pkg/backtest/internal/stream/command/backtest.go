@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	"github.com/rs/zerolog/log"
 )
 
 func Ingest(ctx context.Context, msg stream.Message) error {
@@ -29,20 +30,17 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting storage")
 	}
 
-	object, err := store.GetObject(ctx, storage.IngestionsBucket, command.Name)
+	metadata := map[string]string{
+		"Start_date": command.Start,
+		"End_date":   command.End,
+		"Symbols":    strings.Join(command.Symbols, ","),
+	}
+	name := fmt.Sprintf("%s-%s", command.Start, command.End)
+
+	object, err := store.CreateObject(ctx, storage.IngestionsBucket, name, storage.WithMetadata(metadata))
 	if err != nil {
-		return fmt.Errorf("error getting object from storage: %w", err)
+		return fmt.Errorf("error creating ingestion: %w", err)
 	}
-
-	setMetadata := func(ctx context.Context, status pb.IngestionStatus) {
-		object.Metadata["Status"] = status.String()
-		err = object.SetMetadata(ctx, object.Metadata)
-		if err != nil {
-			log.Err(err).Msg("error updating metadata")
-		}
-	}
-
-	setMetadata(ctx, pb.IngestionStatus_INGESTING)
 
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
@@ -64,28 +62,10 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error ingesting data: %w", err)
 	}
-
-	err = object.Refresh()
-	if err != nil {
-		return fmt.Errorf("error refreshing object: %w", err)
-	}
-
-	metadata := map[string]string{
-		"Start_date": command.Start,
-		"End_date":   command.End,
-		"Symbols":    strings.Join(command.Symbols, ","),
-		"Status":     pb.IngestionStatus_COMPLETED.String(),
-	}
-
-	err = object.SetMetadata(ctx, metadata)
-	if err != nil {
-		return fmt.Errorf("error setting object metadata: %w", err)
-	}
-
 	return nil
 }
 
-func UpdateIngestionStatus(ctx context.Context, msg stream.Message) error {
+func UpdateBacktestStatus(ctx context.Context, msg stream.Message) error {
 	command := ss.UpdateStatusCommand{}
 
 	err := msg.ParsePayload(&command)
@@ -93,20 +73,12 @@ func UpdateIngestionStatus(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error unmarshalling Ingest payload: %w", err)
 	}
 
-	store, isStorage := msg.MustGet(stream.StorageDep).(storage.Storage)
-	if !isStorage {
-		return errors.New("error casting storage")
-	}
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	backtests := repository.Backtest{Conn: db}
 
-	object, err := store.GetObject(ctx, storage.IngestionsBucket, command.Name)
+	err = backtests.UpdateStatus(ctx, command.Name, command.Status, nil)
 	if err != nil {
-		return fmt.Errorf("error getting object from storage: %w", err)
-	}
-
-	object.Metadata["Status"] = command.Status.String()
-	err = object.SetMetadata(ctx, object.Metadata)
-	if err != nil {
-		return fmt.Errorf("error setting object metadata: %w", err)
+		return fmt.Errorf("error updating backtest status: %w", err)
 	}
 	return nil
 }

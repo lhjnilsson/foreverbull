@@ -300,6 +300,7 @@ func (ns *NATSStream) RunOrchestration(ctx context.Context, orchestration *Messa
 	}
 
 	for _, cmd := range *commands {
+		log.Info().Str("CmdID", *cmd.ID).Str("CmdComponent", cmd.Component).Str("CmdMethod", cmd.Method).Msg("publishing command")
 		err = ns.Publish(ctx, &cmd)
 		if err != nil {
 			return fmt.Errorf("error publishing command: %w", err)

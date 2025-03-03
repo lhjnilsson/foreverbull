@@ -84,11 +84,10 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	for _, stored := range *ingestions {
 		stored.Refresh() //nolint: errcheck
-		if ingestion == nil && stored.Metadata["Status"] == pb.IngestionStatus_COMPLETED.String() {
-			ingestion = &stored
-		} else if ingestion != nil && stored.LastModified.After(ingestion.LastModified) && stored.Metadata["Status"] == pb.IngestionStatus_COMPLETED.String() {
+		if ingestion == nil || stored.LastModified.After(ingestion.LastModified) {
 			ingestion = &stored
 		}
+
 	}
 
 	if ingestion == nil {

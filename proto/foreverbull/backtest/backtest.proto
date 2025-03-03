@@ -7,14 +7,17 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 import "foreverbull/common.proto";
 import "google/protobuf/timestamp.proto";
 
+enum BacktestStatus {
+    CREATED = 0;
+    DOWNLOADING = 1;
+    INGESTING = 2;
+    READY = 3;
+    ERROR = 4;
+}
+
 message Backtest {
     message Status {
-        enum Status {
-            CREATED = 0;
-            READY = 1;
-            ERROR = 2;
-        }
-        Status status = 1;
+        BacktestStatus status = 1;
         optional string error = 2;
         google.protobuf.Timestamp occurred_at = 3;
     }

@@ -21,8 +21,6 @@ from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_service_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
@@ -56,7 +54,7 @@ def test_backtest_list(runner):
                 symbols=["AAPL", "MSFT"],
                 statuses=[
                     backtest_pb2.Backtest.Status(
-                        status=backtest_pb2.Backtest.Status.Status.READY,
+                        status=backtest_pb2.BacktestStatus.READY,
                         error=None,
                         occurred_at=to_proto_timestamp(datetime.now()),
                     )
@@ -74,26 +72,22 @@ def test_backtest_list(runner):
 def test_backtest_create(runner):
     with (
         patch("foreverbull.broker.backtest.create") as mock_create,
-        patch("foreverbull.broker.backtest.ingest") as mock_ingest,
         tempfile.NamedTemporaryFile() as cfg_file,
     ):
-        mock_create.return_value = backtest_pb2.Backtest(
-            name="test_name",
-            start_date=from_pydate_to_proto_date(date.today()),
-            end_date=from_pydate_to_proto_date(date.today()),
-            symbols=["AAPL", "MSFT"],
-            statuses=[
-                backtest_pb2.Backtest.Status(
-                    status=backtest_pb2.Backtest.Status.Status.CREATED,
-                    error=None,
-                    occurred_at=to_proto_timestamp(datetime.now()),
-                )
-            ],
-        )
-        mock_ingest.return_value = iter(
+        mock_create.return_value = iter(
             [
-                ingestion_service_pb2.UpdateIngestionResponse(
-                    status=ingestion_pb2.IngestionStatus.COMPLETED,
+                backtest_pb2.Backtest(
+                    name="test_name",
+                    start_date=from_pydate_to_proto_date(date.today()),
+                    end_date=from_pydate_to_proto_date(date.today()),
+                    symbols=["AAPL", "MSFT"],
+                    statuses=[
+                        backtest_pb2.Backtest.Status(
+                            status=backtest_pb2.BacktestStatus.CREATED,
+                            error=None,
+                            occurred_at=to_proto_timestamp(datetime.now()),
+                        )
+                    ],
                 )
             ]
         )
@@ -124,7 +118,7 @@ def test_backtest_get(runner):
             symbols=["AAPL", "MSFT"],
             statuses=[
                 backtest_pb2.Backtest.Status(
-                    status=backtest_pb2.Backtest.Status.Status.READY,
+                    status=backtest_pb2.BacktestStatus.READY,
                     error=None,
                     occurred_at=to_proto_timestamp(datetime.now()),
                 )

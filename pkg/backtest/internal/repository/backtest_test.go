@@ -59,7 +59,7 @@ func (test *BacktestTest) TestCreate() {
 		test.Require().NoError(err)
 		test.Equal(fmt.Sprintf("backtest_%d", index), backtest.Name)
 		test.Len(backtest.Statuses, 1)
-		test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+		test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
 		test.Equal(end, backtest.EndDate)
 	}
 }
@@ -75,7 +75,7 @@ func (test *BacktestTest) TestGet() {
 	test.Require().NoError(err)
 	test.Equal("backtest", backtest.Name)
 	test.Len(backtest.Statuses, 1)
-	test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[0].Status.String())
+	test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
 }
 
 func (test *BacktestTest) TestGetUniverse() {
@@ -152,17 +152,17 @@ func (test *BacktestTest) TestUpdateStatus() {
 	_, err := backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
 	test.Require().NoError(err)
 
-	err = backtests.UpdateStatus(ctx, "backtest", pb.Backtest_Status_ERROR, errors.New("test"))
+	err = backtests.UpdateStatus(ctx, "backtest", pb.BacktestStatus_ERROR, errors.New("test"))
 	test.Require().NoError(err)
 
 	backtest, err := backtests.Get(ctx, "backtest")
 	test.Require().NoError(err)
 	test.Equal("backtest", backtest.Name)
 	test.Len(backtest.Statuses, 2)
-	test.Equal(pb.Backtest_Status_ERROR.String(), backtest.Statuses[0].Status.String())
+	test.Equal(pb.BacktestStatus_ERROR.String(), backtest.Statuses[0].Status.String())
 	test.NotNil(backtest.Statuses[0].OccurredAt)
 	test.Equal("test", *backtest.Statuses[0].Error)
-	test.Equal(pb.Backtest_Status_CREATED.String(), backtest.Statuses[1].Status.String())
+	test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[1].Status.String())
 	test.NotNil(backtest.Statuses[1].OccurredAt)
 }
 

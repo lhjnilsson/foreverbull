@@ -2,13 +2,15 @@ package servicer
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
@@ -41,25 +43,61 @@ func (bs *BacktestServer) ListBacktests(ctx context.Context,
 	}, nil
 }
 
-func (bs *BacktestServer) CreateBacktest(ctx context.Context,
-	req *pb.CreateBacktestRequest,
-) (*pb.CreateBacktestResponse, error) {
+func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
+	stream pb.BacktestServicer_CreateBacktestServer,
+) error {
+	ctx := stream.Context()
 	backtests := repository.Backtest{Conn: bs.pgx}
 
-	reqBacktest := req.GetBacktest()
-	if reqBacktest == nil {
-		return nil, errors.New("backtest is required")
-	}
-
-	backtest, err := backtests.Create(ctx, reqBacktest.GetName(), reqBacktest.StartDate,
-		reqBacktest.EndDate, reqBacktest.Symbols, reqBacktest.Benchmark)
+	backtest, err := backtests.Create(ctx, req.GetBacktest().GetName(), req.GetBacktest().StartDate,
+		req.GetBacktest().EndDate, req.GetBacktest().Symbols, req.GetBacktest().Benchmark)
 	if err != nil {
-		return nil, fmt.Errorf("error creating backtest: %w", err)
+		return fmt.Errorf("error creating backtest: %w", err)
 	}
 
-	return &pb.CreateBacktestResponse{
-		Backtest: backtest,
-	}, nil
+	o, err := backtestStream.NewCreateBacktestOrchestration(req.GetBacktest().GetName(),
+		req.GetBacktest().GetSymbols(), pbInternal.DateToDateString(req.GetBacktest().GetStartDate()),
+		pbInternal.DateToDateString(req.GetBacktest().GetEndDate()),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating backtest orchestration: %w", err)
+	}
+	err = bs.stream.RunOrchestration(ctx, o)
+	if err != nil {
+		return fmt.Errorf("error running backtest orchestration: %w", err)
+	}
+
+	err = stream.Send(
+		&pb.CreateBacktestResponse{
+			Backtest: backtest,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error sending backtest response: %w", err)
+	}
+
+	lastStatus := backtest.Statuses[0].Status
+	for {
+		time.Sleep(time.Second / 4)
+		backtest, err = backtests.Get(ctx, backtest.Name)
+		if err != nil {
+			return fmt.Errorf("error getting backtest: %w", err)
+		}
+		if backtest.Statuses[0].Status == lastStatus {
+			continue
+		}
+		lastStatus = backtest.Statuses[0].Status
+		err = stream.Send(&pb.CreateBacktestResponse{
+			Backtest: backtest,
+		})
+		if err != nil {
+			return fmt.Errorf("error sending backtest response: %w", err)
+		}
+		if lastStatus == pb.BacktestStatus_READY {
+			break
+		}
+	}
+	return nil
 }
 
 func (bs *BacktestServer) GetBacktest(ctx context.Context,

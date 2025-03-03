@@ -39,7 +39,7 @@ class BacktestServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListBacktestsRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListBacktestsResponse.FromString,
                 _registered_method=True)
-        self.CreateBacktest = channel.unary_unary(
+        self.CreateBacktest = channel.unary_stream(
                 '/foreverbull.backtest.BacktestServicer/CreateBacktest',
                 request_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.CreateBacktestRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.CreateBacktestResponse.FromString,
@@ -124,7 +124,7 @@ def add_BacktestServicerServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListBacktestsRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.ListBacktestsResponse.SerializeToString,
             ),
-            'CreateBacktest': grpc.unary_unary_rpc_method_handler(
+            'CreateBacktest': grpc.unary_stream_rpc_method_handler(
                     servicer.CreateBacktest,
                     request_deserializer=foreverbull_dot_backtest_dot_backtest__service__pb2.CreateBacktestRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_backtest__service__pb2.CreateBacktestResponse.SerializeToString,
@@ -203,7 +203,7 @@ class BacktestServicer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/foreverbull.backtest.BacktestServicer/CreateBacktest',

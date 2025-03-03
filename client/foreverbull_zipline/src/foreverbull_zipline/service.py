@@ -19,7 +19,6 @@ from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine
@@ -56,7 +55,7 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
     def GetIngestion(self, request, context):
         symbols, start, end = self.ingestion
         return engine_service_pb2.GetIngestionResponse(
-            ingestion=ingestion_pb2.Ingestion(
+            ingestion=engine_service_pb2.Ingestion(
                 start_date=pb_utils.from_pydate_to_proto_date(start),
                 end_date=pb_utils.from_pydate_to_proto_date(end),
                 symbols=symbols,
