@@ -36,6 +36,9 @@ FOREVERBULL_NAME=lhjnilsson/foreverbull:$(TAG)
 GRAFANA_NAME=lhjnilsson/fb-grafana:$(TAG)
 
 py-dist:
+	cd client/foreverbull && rye build && cd ../..; \
+
+py-dist_cached:
 	@if [ ! -f "client/dist/foreverbull-0.0.1-py3-none-any.whl" ] || [ -n "$$(git status --porcelain client/foreverbull)" ]; then \
 	    echo "Building Python distribution..."; \
 	    cd client/foreverbull && rye build && cd ../..; \
@@ -44,6 +47,10 @@ py-dist:
 	fi
 
 define build_docker_image
+	docker build -t $(1) -f $(2) $(3);
+endef
+
+define build_docker_image_cached
     @if [ -z "$$(docker images -q $(1) 2> /dev/null)" ]; then \
         echo "Docker image $(1) does not exist. Building..."; \
         docker build -t $(1) -f $(2) $(3); \
@@ -56,7 +63,7 @@ define build_docker_image
 endef
 
 zipline-image:
-	$(call build_docker_image,$(ZIPLINE_NAME),client/foreverbull_zipline/Dockerfile,client/foreverbull_zipline)
+	$(call build_docker_image,$(ZIPLINE_NAME),client/foreverbull_zipline/Dockerfile,client)
 
 foreverbull-image:
 	$(call build_docker_image,$(FOREVERBULL_NAME),docker/Dockerfile,.)
@@ -64,9 +71,9 @@ foreverbull-image:
 grafana-image:
 	$(call build_docker_image,$(GRAFANA_NAME),grafana/Dockerfile,grafana/)
 
-docker-images: foreverbull-image grafana-image
+docker-images: py-dist zipline-image foreverbull-image grafana-image
 
-env: py-dist zipline-image foreverbull-image grafana-image
+env:
 	(cd client && rye sync)
-	(cd client && rye run fbull env stop)
-	(cd client && rye run fbull env start --version $(TAG))
+	(cd client && rye run fbenv stop --remove)
+	(cd client && VERSION=$(TAG) rye run fbenv create)

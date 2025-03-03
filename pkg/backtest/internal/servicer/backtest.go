@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
@@ -55,8 +56,8 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 	}
 
 	o, err := backtestStream.NewCreateBacktestOrchestration(req.GetBacktest().GetName(),
-		req.GetBacktest().GetSymbols(), req.GetBacktest().StartDate.String(),
-		req.GetBacktest().EndDate.String(),
+		req.GetBacktest().GetSymbols(), pbInternal.DateToDateString(req.GetBacktest().GetStartDate()),
+		pbInternal.DateToDateString(req.GetBacktest().GetEndDate()),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating backtest orchestration: %w", err)

@@ -93,7 +93,7 @@ func (c *container) Stop() error {
 		return fmt.Errorf("error stopping container: %w", err)
 	}
 
-	err = c.client.ContainerRemove(context.Background(), c.container.ID, cType.RemoveOptions{})
+	err = c.client.ContainerRemove(context.Background(), c.container.ID, cType.RemoveOptions{Force: true})
 	if err != nil {
 		return fmt.Errorf("error removing container: %w", err)
 	}

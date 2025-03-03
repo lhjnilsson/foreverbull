@@ -233,7 +233,7 @@ class NatsContainer(BaseContainer):
         }
         kwargs["volumes"] = {
             str((self.environment.nats_location / "data").absolute()): {
-                "bind": "/data",
+                "bind": "/var/lib/nats/data",
                 "mode": "rw",
             },
         }
@@ -358,4 +358,7 @@ class ContainerManager:
     def remove(self):
         for container in self.containers:
             container.remove()
-        _docker.networks.get(self.config.network_name).remove()
+        try:
+            _docker.networks.get(self.config.network_name).remove()
+        except docker.errors.NotFound:
+            pass
