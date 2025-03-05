@@ -184,3 +184,5 @@ client/baseline_performance.pickle
 
 client/result.json
 client/baseline.json
+
+.task/

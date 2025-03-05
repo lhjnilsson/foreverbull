@@ -1,0 +1,30 @@
+version: "3"
+
+includes:
+  client:
+    taskfile: ./client/taskfile.yaml
+    dir: client/
+  grafana:
+    taskfile: ./grafana/taskfile.yaml
+    dir: grafana/
+
+tasks:
+  build:docker:
+    sources:
+      - pkg/**/*.go
+      - internal/**/*.go
+      - cmd/**/*.go
+      - docker/Dockerfile
+    cmds:
+      - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
+
+  env:
+    dir: client/
+    deps:
+      - client:docker:zipline
+      - grafana:build:docker
+      - build:docker
+    cmds:
+      - rye sync
+      - rye run fbenv stop --remove
+      - VERSION=local rye run fbenv create

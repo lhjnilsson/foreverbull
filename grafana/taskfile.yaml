@@ -1,0 +1,10 @@
+version: "3"
+
+tasks:
+  build:docker:
+    sources:
+      - pkg/**/*.go
+      - cmd/**/*.go
+      - docker/Dockerfile
+    cmds:
+      - docker build -t lhjnilsson/fb-grafana:local -f Dockerfile .

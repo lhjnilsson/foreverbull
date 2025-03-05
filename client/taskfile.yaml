@@ -1,0 +1,29 @@
+version: "3"
+
+tasks:
+  lint:
+    cmds:
+      - rye lint
+
+  format:
+    cmds:
+      - rye format
+
+  test:
+    cmds:
+      - rye test -- {{.CLI_ARGS}}
+
+  build:foreverbull:
+    dir: foreverbull
+    sources:
+      - src/foreverbull/**/*.py
+    generates:
+      - ../dist/foreverbull-0.0.1.tar.gz
+    cmds:
+      - rye build
+
+  docker:zipline:
+    sources:
+      - src/foreverbull_zipline/**/*.py
+    cmds:
+      - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
