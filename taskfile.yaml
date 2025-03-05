@@ -9,6 +9,35 @@ includes:
     dir: grafana/
 
 tasks:
+  proto:clean:
+    cmds:
+      - find client/foreverbull/src/foreverbull/pb/ -type f -name "*_pb2*" -delete
+      - find pkg/ -type f -name "*.pb.go" -delete
+      - find internal/ -type f -name "*.pb.go" -delete
+
+  proto:generate:
+    cmds:
+      - protoc -Iproto --go_out=pkg/pb/finance --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance --go-grpc_out=pkg/pb/finance --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance proto/foreverbull/finance/*.proto
+      - protoc -Iproto --go_out=pkg/pb/backtest --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest --go-grpc_out=pkg/pb/backtest --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest proto/foreverbull/backtest/*.proto
+      - protoc -Iproto --go_out=pkg/pb/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service --go-grpc_out=pkg/pb/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service proto/foreverbull/service/*.proto
+      - protoc -Iproto --go_out=pkg/pb/strategy --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy --go-grpc_out=pkg/pb/strategy --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy proto/foreverbull/strategy/*.proto
+      - protoc -Iproto --go_out=pkg/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb proto/foreverbull/common.proto
+
+  proto:
+    deps:
+      - proto:generate
+      - client:proto:generate
+
+  mock:clean:
+    cmds:
+      - find pkg/ -type f -name "mock_*.go" -delete
+      - find internal/ -type f -name "mock_*.go" -delete
+
+  mock:generate:
+    cmds:
+      - mockery --dir pkg --all --inpackage
+      - mockery --dir internal --all --inpackage
+
   build:docker:
     sources:
       - pkg/**/*.go
