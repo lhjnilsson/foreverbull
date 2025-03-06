@@ -28,6 +28,40 @@ tasks:
       - proto:generate
       - client:proto:generate
 
+  backtest:test:integration:
+    dir: ./pkg/backtest
+    deps:
+      - client:docker:zipline
+    cmds:
+      - BACKTEST_IMAGE=lhjnilsson/zipline:latest go test {{.CLI_ARGS}}
+
+  backtest:test:unit:
+    dir: ./pkg/backtest
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  finance:test:unit:
+    dir: ./pkg/finance
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  service:test:unit:
+    dir: ./pkg/service
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  strategy:test:unit:
+    dir: ./pkg/strategy
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  test:unit:
+    deps:
+      - backtest:test:unit
+      - finance:test:unit
+      - service:test:unit
+      - strategy:test:unit
+
   mock:clean:
     cmds:
       - find pkg/ -type f -name "mock_*.go" -delete
