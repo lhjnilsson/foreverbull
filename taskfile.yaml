@@ -1,0 +1,93 @@
+version: "3"
+
+includes:
+  client:
+    taskfile: ./client/taskfile.yaml
+    dir: client/
+  grafana:
+    taskfile: ./grafana/taskfile.yaml
+    dir: grafana/
+
+tasks:
+  proto:clean:
+    cmds:
+      - find client/foreverbull/src/foreverbull/pb/ -type f -name "*_pb2*" -delete
+      - find pkg/ -type f -name "*.pb.go" -delete
+      - find internal/ -type f -name "*.pb.go" -delete
+
+  proto:generate:
+    cmds:
+      - protoc -Iproto --go_out=pkg/pb/finance --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance --go-grpc_out=pkg/pb/finance --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance proto/foreverbull/finance/*.proto
+      - protoc -Iproto --go_out=pkg/pb/backtest --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest --go-grpc_out=pkg/pb/backtest --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest proto/foreverbull/backtest/*.proto
+      - protoc -Iproto --go_out=pkg/pb/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service --go-grpc_out=pkg/pb/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service proto/foreverbull/service/*.proto
+      - protoc -Iproto --go_out=pkg/pb/strategy --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy --go-grpc_out=pkg/pb/strategy --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy proto/foreverbull/strategy/*.proto
+      - protoc -Iproto --go_out=pkg/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb proto/foreverbull/common.proto
+
+  proto:
+    deps:
+      - proto:generate
+      - client:proto:generate
+
+  backtest:test:integration:
+    dir: ./pkg/backtest
+    deps:
+      - client:docker:zipline
+    cmds:
+      - BACKTEST_IMAGE=lhjnilsson/zipline:latest go test {{.CLI_ARGS}}
+
+  backtest:test:unit:
+    dir: ./pkg/backtest
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  finance:test:unit:
+    dir: ./pkg/finance
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  service:test:unit:
+    dir: ./pkg/service
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  strategy:test:unit:
+    dir: ./pkg/strategy
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  test:unit:
+    deps:
+      - backtest:test:unit
+      - finance:test:unit
+      - service:test:unit
+      - strategy:test:unit
+
+  mock:clean:
+    cmds:
+      - find pkg/ -type f -name "mock_*.go" -delete
+      - find internal/ -type f -name "mock_*.go" -delete
+
+  mock:generate:
+    cmds:
+      - mockery --dir pkg --all --inpackage
+      - mockery --dir internal --all --inpackage
+
+  build:docker:
+    sources:
+      - pkg/**/*.go
+      - internal/**/*.go
+      - cmd/**/*.go
+      - docker/Dockerfile
+    cmds:
+      - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
+
+  env:
+    dir: client/
+    deps:
+      - client:docker:zipline
+      - grafana:build:docker
+      - build:docker
+    cmds:
+      - rye sync
+      - rye run fbenv stop --remove
+      - VERSION=local rye run fbenv create

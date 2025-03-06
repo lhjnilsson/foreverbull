@@ -1,0 +1,48 @@
+version: "3"
+
+tasks:
+  venv:
+    cmds:
+      - rye sync
+      - . .venv/bin/activate
+      - defer deactivate
+
+  lint:
+    cmds:
+      - rye lint
+
+  format:
+    cmds:
+      - rye format
+
+  test:
+    cmds:
+      - rye test -- {{.CLI_ARGS}}
+
+  build:foreverbull:
+    dir: foreverbull
+    sources:
+      - src/foreverbull/**/*.py
+    generates:
+      - ../dist/foreverbull-0.0.1.tar.gz
+    cmds:
+      - rye build
+
+  docker:zipline:
+    sources:
+      - src/foreverbull_zipline/**/*.py
+    cmds:
+      - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
+
+  proto:generate:
+    cmds:
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/finance/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/backtest/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/service/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/strategy/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/common.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/buf/validate/validate.proto
+      # Update imports, could maybe be solved by organizing the proto files in a better way
+      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
+      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
+      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;

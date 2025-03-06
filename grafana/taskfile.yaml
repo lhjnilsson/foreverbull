@@ -1,0 +1,11 @@
+version: "3"
+
+tasks:
+  build:docker:
+    sources:
+      - lhjnilsson-foreverbull-datasource/pkg/**/*.go
+      - lhjnilsson-foreverbull-datasource/src/**/*.tsx
+      - lhjnilsson-foreverbull-datasource/src/*.ts
+      - Dockerfile
+    cmds:
+      - docker build -t lhjnilsson/fb-grafana:local -f Dockerfile .
