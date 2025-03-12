@@ -13,7 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
@@ -110,7 +110,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
-	server, activity, err := backtest.NewGRPCSessionServer(session, db, engine)
+	server, activity, err := api.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
 

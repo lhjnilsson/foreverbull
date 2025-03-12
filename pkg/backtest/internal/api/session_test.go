@@ -1,4 +1,4 @@
-package backtest_test
+package api_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -78,7 +78,7 @@ func (s *SessionTest) SetupTest() {
 	s.mockEngineSession = new(engine.MockEngineSession)
 	s.mockEngine.On("NewSession", mock.Anything, mock.Anything).Return(s.mockEngineSession, nil)
 
-	s.baseServer, s.activity, err = backtest.NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
+	s.baseServer, s.activity, err = api.NewGRPCSessionServer(s.session, s.conn, s.mockEngine)
 	s.Require().NoError(err)
 
 	go func() {

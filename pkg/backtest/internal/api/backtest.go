@@ -1,4 +1,4 @@
-package servicer
+package api
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/rs/zerolog/log"
 )
 
 type BacktestServer struct {
@@ -64,6 +65,7 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 	}
 	err = bs.stream.RunOrchestration(ctx, o)
 	if err != nil {
+		log.Err(err).Msg("error running backtest orchestration")
 		return fmt.Errorf("error running backtest orchestration: %w", err)
 	}
 
@@ -93,7 +95,7 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 		if err != nil {
 			return fmt.Errorf("error sending backtest response: %w", err)
 		}
-		if lastStatus == pb.BacktestStatus_READY {
+		if lastStatus == pb.BacktestStatus_READY || lastStatus == pb.BacktestStatus_ERROR {
 			break
 		}
 	}

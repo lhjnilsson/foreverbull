@@ -1,4 +1,4 @@
-package backtest
+package api
 
 import (
 	"context"
@@ -84,23 +84,6 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 	}
 
 	configuration := s.wp.Configure()
-
-	/*
-		exf := make([]*service_pb.ExecutionConfiguration_Function, 0)
-		for name, parameters := range functions {
-			fp := make([]*service_pb.ExecutionConfiguration_FunctionParameter, 0)
-			for k, v := range parameters.Parameters {
-				fp = append(fp, &service_pb.ExecutionConfiguration_FunctionParameter{
-					Key:   k,
-					Value: v,
-				})
-			}
-			exf = append(exf, &service_pb.ExecutionConfiguration_Function{
-				Name:       name,
-				Parameters: fp,
-			})
-		}
-	*/
 	log.Debug().Any("execution", execution).Any("configuration", configuration).Msg("execution created")
 
 	return &backtest_pb.CreateExecutionResponse{

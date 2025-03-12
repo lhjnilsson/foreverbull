@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -57,9 +57,9 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	),
 	fx.Invoke(
 		func(s *grpc.Server, pgx *pgxpool.Pool, md supplier.Marketdata, t supplier.Trading) error {
-			marketdata := servicer.NewMarketdataServer(pgx, md)
+			marketdata := api.NewMarketdataServer(pgx, md)
 			pb.RegisterMarketdataServer(s, marketdata)
-			trading := servicer.NewTradingServer(pgx, t)
+			trading := api.NewTradingServer(pgx, t)
 			pb.RegisterTradingServer(s, trading)
 			return nil
 		},

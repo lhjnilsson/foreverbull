@@ -13,9 +13,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -51,7 +51,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	),
 	fx.Invoke(
 		func(g *grpc.Server, pgx *pgxpool.Pool, s Stream, st storage.Storage) error {
-			backtestServer := servicer.NewBacktestServer(pgx, s)
+			backtestServer := api.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
 			return nil
 		},

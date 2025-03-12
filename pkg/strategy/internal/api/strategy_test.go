@@ -1,4 +1,4 @@
-package servicer
+package api_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -48,7 +49,7 @@ func (test *StrategyServerTest) SetupTest() {
 
 	test.marketdata = finance_pb.NewMockMarketdataClient(test.T())
 
-	server := NewStrategyServer(test.marketdata)
+	server := api.NewStrategyServer(test.marketdata)
 	pb.RegisterStrategyServicerServer(test.server, server)
 
 	go func() {
