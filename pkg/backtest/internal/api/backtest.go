@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -12,7 +11,6 @@ import (
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	"github.com/rs/zerolog/log"
 )
 
 type BacktestServer struct {
@@ -49,7 +47,6 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 ) error {
 	ctx := stream.Context()
 	backtests := repository.Backtest{Conn: bs.pgx}
-
 	backtest, err := backtests.Create(ctx, req.GetBacktest().GetName(), req.GetBacktest().StartDate,
 		req.GetBacktest().EndDate, req.GetBacktest().Symbols, req.GetBacktest().Benchmark)
 	if err != nil {
@@ -63,40 +60,19 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 	if err != nil {
 		return fmt.Errorf("error creating backtest orchestration: %w", err)
 	}
-	err = bs.stream.RunOrchestration(ctx, o)
-	if err != nil {
-		log.Err(err).Msg("error running backtest orchestration")
-		return fmt.Errorf("error running backtest orchestration: %w", err)
-	}
 
-	err = stream.Send(
-		&pb.CreateBacktestResponse{
-			Backtest: backtest,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("error sending backtest response: %w", err)
-	}
-
-	lastStatus := backtest.Statuses[0].Status
-	for {
-		time.Sleep(time.Second / 4)
-		backtest, err = backtests.Get(ctx, backtest.Name)
+	steps := bs.stream.RunOrchestration(ctx, o)
+	for step := range steps {
+		err = stream.Send(
+			&pb.CreateBacktestResponse{
+				Backtest: backtest,
+				Status: &pb.CreateBacktestResponse_Status{
+					Status: pb.BacktestStatus(step.Status),
+					State:  step.State,
+				},
+			})
 		if err != nil {
-			return fmt.Errorf("error getting backtest: %w", err)
-		}
-		if backtest.Statuses[0].Status == lastStatus {
-			continue
-		}
-		lastStatus = backtest.Statuses[0].Status
-		err = stream.Send(&pb.CreateBacktestResponse{
-			Backtest: backtest,
-		})
-		if err != nil {
-			return fmt.Errorf("error sending backtest response: %w", err)
-		}
-		if lastStatus == pb.BacktestStatus_READY || lastStatus == pb.BacktestStatus_ERROR {
-			break
+			return fmt.Errorf("error sending response: %w", err)
 		}
 	}
 	return nil

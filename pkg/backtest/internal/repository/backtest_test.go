@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -62,8 +60,6 @@ func (test *BacktestTest) TestCreate() {
 			} else {
 				test.Require().NoError(err)
 				test.Equal(fmt.Sprintf("backtest_start_%d", index), backtest.Name)
-				test.Len(backtest.Statuses, 1)
-				test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
 				test.Equal(start, backtest.StartDate)
 			}
 		})
@@ -81,8 +77,6 @@ func (test *BacktestTest) TestCreate() {
 			)
 			test.Require().NoError(err)
 			test.Equal(fmt.Sprintf("backtest_end_%d", index), backtest.Name)
-			test.Len(backtest.Statuses, 1)
-			test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
 			test.Equal(end, backtest.EndDate)
 		})
 	}
@@ -125,8 +119,6 @@ func (test *BacktestTest) TestGet() {
 		backtest, err := backtests.Get(ctx, "backtest")
 		test.Require().NoError(err)
 		test.Equal("backtest", backtest.Name)
-		test.Len(backtest.Statuses, 1)
-		test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
 	})
 }
 
@@ -145,27 +137,6 @@ func (test *BacktestTest) TestUpdate() {
 	test.Equal("backtest", backtest.Name)
 	test.Equal([]string{"AAPL"}, backtest.Symbols)
 	test.Nil(backtest.Benchmark)
-}
-
-func (test *BacktestTest) TestUpdateStatus() {
-	ctx := context.Background()
-
-	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
-	test.Require().NoError(err)
-
-	err = backtests.UpdateStatus(ctx, "backtest", pb.BacktestStatus_ERROR, errors.New("test"))
-	test.Require().NoError(err)
-
-	backtest, err := backtests.Get(ctx, "backtest")
-	test.Require().NoError(err)
-	test.Equal("backtest", backtest.Name)
-	test.Len(backtest.Statuses, 2)
-	test.Equal(pb.BacktestStatus_ERROR.String(), backtest.Statuses[0].Status.String())
-	test.NotNil(backtest.Statuses[0].OccurredAt)
-	test.Equal("test", *backtest.Statuses[0].Error)
-	test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[1].Status.String())
-	test.NotNil(backtest.Statuses[1].OccurredAt)
 }
 
 func (test *BacktestTest) TestList() {

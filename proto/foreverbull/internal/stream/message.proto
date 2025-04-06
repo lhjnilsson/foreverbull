@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package foreverbull.internal.stream;
+
+import "foreverbull/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/internal/stream/pb";
+
+message Message {
+  string id = 1;
+  string module = 2;
+  string component = 3;
+  string method = 4;
+  bytes payload = 5;
+
+  optional string orchestration_name = 6;
+  optional string orchestration_id = 7;
+  optional string orchestration_step = 8;
+  optional int32 orchestration_step_number = 9;
+  optional bool orchestration_fallback_step = 10;
+}
+
+message State {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_CREATED = 1;
+    STATE_PUBLISHED = 2;
+    STATE_RECEIVED = 3;
+    STATE_COMPLETED = 4;
+    STATE_ERROR = 5;
+    STATE_CANCELED = 6;
+  }
+  State state = 1;
+  optional string error = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message Orchestration {
+  message Step {
+    int32 status = 1;
+    repeated Message messages = 2;
+    foreverbull.common.State state = 3;
+    optional string error = 4;
+  }
+  repeated Step steps = 1;
+}

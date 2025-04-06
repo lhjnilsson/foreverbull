@@ -46,12 +46,11 @@ func (test *ServiceModuleTest) SetupTest() {
 	test.Require().NoError(err)
 	test.app = fx.New(
 		fx.Provide(
-			stream.New,
 			func() *pgxpool.Pool {
 				return pool
 			},
 		),
-		stream.OrchestrationLifecycle,
+		stream.Module,
 		finance.Module,
 		service.Module,
 	)

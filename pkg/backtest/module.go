@@ -19,7 +19,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 )
@@ -27,30 +26,27 @@ import (
 const StreamName = "backtest"
 
 type (
-	Stream             stream.Stream
+	Subscriber         stream.Subscriber
 	DependecyContainer stream.DependencyContainer
 )
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine) (DependecyContainer, error) {
+		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine, _stream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(stream.StorageDep, st)
 			dc.AddSingleton(stream.ContainerEngineDep, ce)
-			// dc.AddMethod(dependency.GetEngineKey, dependency.GetEngine)
-			return dc, nil
-		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, dc DependecyContainer) (Stream, error) {
-			s, err := stream.NewNATSStream(jt, StreamName, dc, conn)
+
+			sub, err := _stream.NewSubscriber(StreamName, dc)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create stream: %w", err)
+				return nil, fmt.Errorf("failed to create subscriber: %w", err)
 			}
-			return s, nil
+			return sub, nil
 		},
 	),
 	fx.Invoke(
-		func(g *grpc.Server, pgx *pgxpool.Pool, s Stream, st storage.Storage) error {
+		func(g *grpc.Server, pgx *pgxpool.Pool, s stream.Stream, st storage.Storage) error {
 			backtestServer := api.NewBacktestServer(pgx, s)
 			pb.RegisterBacktestServicerServer(g, backtestServer)
 			return nil
@@ -58,7 +54,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle, backtestStream Stream, containers container.Engine, dependencies DependecyContainer) error {
+		func(lc fx.Lifecycle, sub Subscriber, containers container.Engine, dependencies DependecyContainer) error {
 			var backtestContainer container.Container
 			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
@@ -90,26 +86,21 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					}
 					dependencies.AddMethod(dependency.GetEngineKey, returnEngine)
 
-					err = backtestStream.CommandSubscriber("ingest", "ingest", command.Ingest)
+					err = sub.Subscribe("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
-					err = backtestStream.CommandSubscriber("session", "run", command.SessionRun)
+					err = sub.Subscribe("session", "run", command.SessionRun)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
-					err = backtestStream.CommandSubscriber("status", "update", command.UpdateBacktestStatus)
-					if err != nil {
-						return fmt.Errorf("error subscribing to backtest.status: %w", err)
-					}
-
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
 					if err := backtestContainer.Stop(); err != nil {
 						return fmt.Errorf("error stopping container: %w", err)
 					}
-					return backtestStream.Unsubscribe()
+					return sub.Unsubscribe()
 				},
 			})
 			return nil

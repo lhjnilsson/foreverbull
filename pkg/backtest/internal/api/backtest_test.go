@@ -12,6 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -134,79 +135,49 @@ func (test *BacktestServerTest) TestListBacktests() {
 }
 
 func (test *BacktestServerTest) TestCreateBacktest() {
-	updateBacktestStatus := func(name string, status pb.BacktestStatus) {
-		backtests := repository.Backtest{Conn: test.pgx}
-		err := backtests.UpdateStatus(context.Background(), name, status, nil)
-		test.Require().NoError(err)
-	}
-	runTest := func(req *pb.CreateBacktestRequest, statuses []pb.BacktestStatus) error {
-		resp, err := test.client.CreateBacktest(context.Background(), req)
+	test.Run("Create", func() {
+
+		statuses := []*streamPb.Orchestration_Step{
+			{Status: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_RUNNING},
+			{Status: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_COMPLETED},
+		}
+
+		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
+		for _, status := range statuses {
+			statusCh <- status
+		}
+		close(statusCh)
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+		req := &pb.CreateBacktestRequest{
+			Backtest: &pb.Backtest{
+				Name:      "Test Backtest",
+				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+				EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+				Symbols:   []string{"AAPL", "MSFT"},
+			},
+		}
+
+		resp, err := test.client.CreateBacktest(context.TODO(), req)
 		test.Require().NoError(err)
 		test.NotNil(resp)
-		defer func() {
-			test.Require().NoError(resp.CloseSend())
-		}()
-		msg, err := resp.Recv()
-		if err != nil {
-			return err
-		}
-		test.Require().NotNil(msg)
-		test.Require().Equal(pb.BacktestStatus_CREATED, msg.GetBacktest().GetStatuses()[0].GetStatus())
 
-		for _, status := range statuses {
-			updateBacktestStatus(req.GetBacktest().GetName(), status)
+		responses := []*pb.CreateBacktestResponse{}
+
+		for {
 			msg, err := resp.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			test.Require().NoError(err)
 			test.Require().NotNil(msg)
-			test.Require().Equal(status, msg.GetBacktest().GetStatuses()[0].GetStatus())
+			responses = append(responses, msg)
 		}
-		_, err = resp.Recv()
-		test.Require().Error(err)
-		test.Require().Equal(io.EOF, err)
-		return nil
-	}
-
-	test.Run("Ready", func() {
-		req := &pb.CreateBacktestRequest{
-			Backtest: &pb.Backtest{
-				Name:      "test_1",
-				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				Symbols:   []string{"AAPL"},
-				Benchmark: nil,
-			},
-		}
-
-		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
-		test.Require().NoError(runTest(req, []pb.BacktestStatus{pb.BacktestStatus_READY}))
-		test.stream.AssertCalled(test.T(), "RunOrchestration", mock.Anything, mock.Anything)
-	})
-	test.Run("Error", func() {
-		req := &pb.CreateBacktestRequest{
-			Backtest: &pb.Backtest{
-				Name:      "test_3",
-				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				Symbols:   []string{"AAPL"},
-				Benchmark: nil,
-			},
-		}
-		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(nil)
-		test.Require().NoError(runTest(req, []pb.BacktestStatus{pb.BacktestStatus_ERROR}))
-		test.stream.AssertCalled(test.T(), "RunOrchestration", mock.Anything, mock.Anything)
-	})
-	test.Run("Fail to create orchestration", func() {
-		req := &pb.CreateBacktestRequest{
-			Backtest: &pb.Backtest{
-				Name:      "test_2",
-				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				Symbols:   []string{"AAPL"},
-				Benchmark: nil,
-			},
-		}
-		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return(errors.New("fail_to_create_orchestration"))
-		test.ErrorContains(runTest(req, []pb.BacktestStatus{}), "fail_to_create_orchestration")
+		test.Require().Len(responses, 2)
+		test.Require().Equal(pb.BacktestStatus_INGESTING, responses[0].Status.Status)
+		test.Require().Equal(common_pb.State_STATE_RUNNING, responses[0].Status.State)
+		test.Require().Equal(pb.BacktestStatus_INGESTING, responses[1].Status.Status)
+		test.Require().Equal(common_pb.State_STATE_COMPLETED, responses[1].Status.State)
 	})
 }
 

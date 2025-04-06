@@ -5,6 +5,7 @@ package stream
 import (
 	context "context"
 
+	pb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -43,55 +44,21 @@ func (_m *MockMessage) Call(ctx context.Context, key Dependency) (interface{}, e
 	return r0, r1
 }
 
-// GetID provides a mock function with given fields:
-func (_m *MockMessage) GetID() string {
+// GetMsg provides a mock function with given fields:
+func (_m *MockMessage) GetMsg() *pb.Message {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetID")
+		panic("no return value specified for GetMsg")
 	}
 
-	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
+	var r0 *pb.Message
+	if rf, ok := ret.Get(0).(func() *pb.Message); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
-// GetOrchestrationID provides a mock function with given fields:
-func (_m *MockMessage) GetOrchestrationID() string {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetOrchestrationID")
-	}
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
-// GetOrchestrationStep provides a mock function with given fields:
-func (_m *MockMessage) GetOrchestrationStep() string {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetOrchestrationStep")
-	}
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*pb.Message)
+		}
 	}
 
 	return r0
@@ -150,6 +117,60 @@ func (_m *MockMessage) RawPayload() []byte {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
+	}
+
+	return r0
+}
+
+// TaskAbortTopic provides a mock function with given fields:
+func (_m *MockMessage) TaskAbortTopic() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TaskAbortTopic")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// TaskStateTopic provides a mock function with given fields:
+func (_m *MockMessage) TaskStateTopic() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TaskStateTopic")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// TaskTopic provides a mock function with given fields:
+func (_m *MockMessage) TaskTopic() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TaskTopic")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
 	}
 
 	return r0

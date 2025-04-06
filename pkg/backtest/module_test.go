@@ -61,7 +61,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	test.app = fx.New(
 		fx.Provide(
-			stream.New,
 			func() *pgxpool.Pool {
 				return pool
 			},
@@ -97,7 +96,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 				return nil
 			},
 		),
-		stream.OrchestrationLifecycle,
+		stream.Module,
 		service.Module,
 		finance.Module,
 		backtest.Module,
@@ -136,17 +135,21 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})
-	test.Require().NoError(err, "failed to create backtest")
-	test.NotNil(createResponse, "response is nil")
+	test.Require().NoError(err, "failed to create backtest: %v", err)
 
+	var latestStatus *pb.CreateBacktestResponse_Status
 	for {
 		rsp, err := createResponse.Recv()
 		if err != nil && errors.Is(err, io.EOF) {
 			break
 		}
 		test.Require().NoError(err)
-		test.Require().NotEqual(pb.BacktestStatus_ERROR, rsp.Backtest.Statuses[0].Status)
+		latestStatus = rsp.Status
 	}
+
+	test.Require().NotNil(latestStatus)
+	test.Require().Equal(pb.BacktestStatus_STORING, latestStatus.Status)
+	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &pb.GetBacktestRequest{Name: "Test Backtest"})
 	test.Require().NoError(err, "failed to get backtest")

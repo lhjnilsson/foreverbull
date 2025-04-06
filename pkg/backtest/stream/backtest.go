@@ -4,8 +4,9 @@ import (
 	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 type IngestCommand struct {
@@ -31,62 +32,20 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end string) 
 	return msg, nil
 }
 
-type UpdateStatusCommand struct {
-	Name   string
-	Status pb.BacktestStatus
-}
+func NewCreateBacktestOrchestration(name string, symbols []string, start, end string) (*streamPb.Orchestration, error) {
+	o := streamPb.Orchestration{}
 
-func NewUpdateBacktestStatusCommand(name string, status pb.BacktestStatus) (stream.Message, error) {
-	cmd := &UpdateStatusCommand{
-		Name:   name,
-		Status: status,
-	}
-
-	msg, err := stream.NewMessage("backtest", "status", "update", cmd)
-	if err != nil {
-		return nil, fmt.Errorf("error creating message: %w", err)
-	}
-	return msg, nil
-}
-
-func NewCreateBacktestOrchestration(name string, symbols []string, start, end string) (*stream.MessageOrchestration, error) {
-	orchestration := stream.NewMessageOrchestration("create backtest")
-
-	// Ingest financial data
 	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	statusMsg, err := NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_DOWNLOADING)
-	if err != nil {
-		return nil, fmt.Errorf("error creating message: %w", err)
-	}
-	orchestration.AddStep("ingest financial data", []stream.Message{msg, statusMsg})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Status: int32(backtestPb.BacktestStatus_DOWNLOADING), Messages: []*streamPb.Message{msg.GetMsg()}})
 
-	// Ingest into backtest engine
 	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_INGESTING)
-	if err != nil {
-		return nil, fmt.Errorf("error creating message: %w", err)
-	}
-	orchestration.AddStep("ingest into backtest", []stream.Message{msg, statusMsg})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Status: int32(backtestPb.BacktestStatus_INGESTING), Messages: []*streamPb.Message{msg.GetMsg()}})
 
-	// Update backtest status
-	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_READY)
-	if err != nil {
-		return nil, fmt.Errorf("error creating message: %w", err)
-	}
-	orchestration.AddStep("mark as ready", []stream.Message{statusMsg})
-
-	// Fallback
-	statusMsg, err = NewUpdateBacktestStatusCommand(name, pb.BacktestStatus_ERROR)
-	if err != nil {
-		return nil, fmt.Errorf("error creating message: %w", err)
-	}
-	orchestration.SettFallback([]stream.Message{statusMsg})
-
-	return orchestration, nil
+	return &o, nil
 }

@@ -22,7 +22,7 @@ import (
 
 const StreamName = "finance"
 
-type Stream stream.Stream
+type Subscriber stream.Subscriber
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
@@ -44,15 +44,15 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 			return marketData, t, nil
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata) (Stream, error) {
+		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata, _stream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.MarketDataDep, marketData)
-			s, err := stream.NewNATSStream(jt, StreamName, dc, conn)
+			sub, err := _stream.NewSubscriber(StreamName, dc)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create stream: %w", err)
+				return nil, fmt.Errorf("failed to create subscriber: %w", err)
 			}
-			return s, nil
+			return sub, nil
 		},
 	),
 	fx.Invoke(
@@ -66,17 +66,17 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
-		func(lc fx.Lifecycle, stream Stream) error {
+		func(lc fx.Lifecycle, sub Subscriber) error {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					err := stream.CommandSubscriber("marketdata", "ingest", command.Ingest)
+					err := sub.Subscribe("marketdata", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("failed to subscribe to ingest command: %w", err)
 					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					return stream.Unsubscribe()
+					return sub.Unsubscribe()
 				},
 			})
 			return nil

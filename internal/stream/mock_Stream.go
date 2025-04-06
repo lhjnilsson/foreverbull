@@ -5,6 +5,7 @@ package stream
 import (
 	context "context"
 
+	pb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,35 +14,54 @@ type MockStream struct {
 	mock.Mock
 }
 
-// CommandSubscriber provides a mock function with given fields: component, method, cb
-func (_m *MockStream) CommandSubscriber(component string, method string, cb func(context.Context, Message) error) error {
-	ret := _m.Called(component, method, cb)
+// NewSubscriber provides a mock function with given fields: module, dc
+func (_m *MockStream) NewSubscriber(module string, dc DependencyContainer) (Subscriber, error) {
+	ret := _m.Called(module, dc)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CommandSubscriber")
+		panic("no return value specified for NewSubscriber")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, func(context.Context, Message) error) error); ok {
-		r0 = rf(component, method, cb)
+	var r0 Subscriber
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string, DependencyContainer) (Subscriber, error)); ok {
+		return rf(module, dc)
+	}
+	if rf, ok := ret.Get(0).(func(string, DependencyContainer) Subscriber); ok {
+		r0 = rf(module, dc)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(Subscriber)
+		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(string, DependencyContainer) error); ok {
+		r1 = rf(module, dc)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
-// Publish provides a mock function with given fields: ctx, message
-func (_m *MockStream) Publish(ctx context.Context, message Message) error {
-	ret := _m.Called(ctx, message)
+// Publish provides a mock function with given fields: ctx, message, opts
+func (_m *MockStream) Publish(ctx context.Context, message Message, opts ...PublishOpt) error {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, message)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Publish")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, Message) error); ok {
-		r0 = rf(ctx, message)
+	if rf, ok := ret.Get(0).(func(context.Context, Message, ...PublishOpt) error); ok {
+		r0 = rf(ctx, message, opts...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -50,36 +70,20 @@ func (_m *MockStream) Publish(ctx context.Context, message Message) error {
 }
 
 // RunOrchestration provides a mock function with given fields: ctx, orchestration
-func (_m *MockStream) RunOrchestration(ctx context.Context, orchestration *MessageOrchestration) error {
+func (_m *MockStream) RunOrchestration(ctx context.Context, orchestration *pb.Orchestration) <-chan *pb.Orchestration_Step {
 	ret := _m.Called(ctx, orchestration)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RunOrchestration")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *MessageOrchestration) error); ok {
+	var r0 <-chan *pb.Orchestration_Step
+	if rf, ok := ret.Get(0).(func(context.Context, *pb.Orchestration) <-chan *pb.Orchestration_Step); ok {
 		r0 = rf(ctx, orchestration)
 	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// Unsubscribe provides a mock function with given fields:
-func (_m *MockStream) Unsubscribe() error {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Unsubscribe")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan *pb.Orchestration_Step)
+		}
 	}
 
 	return r0

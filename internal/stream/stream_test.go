@@ -1,4 +1,4 @@
-package stream
+package stream_test
 
 import (
 	"context"
@@ -8,170 +8,242 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	common "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/fx"
+	"google.golang.org/protobuf/proto"
 )
 
-type NatsStreamTest struct {
-	suite.Suite
-
-	nc     *nats.Conn
-	jt     nats.JetStreamContext
-	stream NATSStream
-}
-
-func (test *NatsStreamTest) SetupTest() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
-		Postgres: true,
-		NATS:     true,
-	})
-
-	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.Require().NoError(err)
-
-	err = RecreateTables(context.Background(), pool)
-	test.Require().NoError(err)
-
-	test.nc, test.jt, err = New()
-	test.Require().NoError(err)
-
-	stream, err := NewNATSStream(test.jt, "test", NewDependencyContainer(), pool)
-	test.Require().NoError(err)
-	test.stream = *stream.(*NATSStream)
-
-	test.Require().NoError(test.stream.CommandSubscriber("return", "nil", ReturnNil))
-	test.Require().NoError(test.stream.CommandSubscriber("return", "err", ReturnErr))
-}
-
-func (test *NatsStreamTest) TearDownTest() {
-	test.NoError(test.stream.Unsubscribe())
-	test.nc.Close()
-}
-
-func TestNatStream(t *testing.T) {
-	suite.Run(t, new(NatsStreamTest))
-}
-
-type TestPayload struct {
-	Name   string `json:"name"`
-	Number int    `json:"number"`
-	Object struct {
-		At time.Time `json:"at"`
-	} `json:"object"`
-}
-
-func ReturnNil(ctx context.Context, message Message) error {
+func ReturnNil(ctx context.Context, message stream.Message) error {
 	return nil
 }
 
-func ReturnErr(ctx context.Context, message Message) error {
+func ReturnErr(ctx context.Context, message stream.Message) error {
 	return errors.New("test error")
 }
 
-func (test *NatsStreamTest) TestPubSub() {
-	type TestCase struct {
-		name           string
-		message        message
-		expectedStatus MessageStatus
-	}
+func Timeout(ctx context.Context, message stream.Message) error {
+	done := make(chan bool)
+	go func() {
+		time.Sleep(time.Second * 3)
+		done <- true
+	}()
 
-	testCases := []TestCase{
-		{
-			name:           "nil",
-			message:        message{Module: "test", Component: "return", Method: "nil"},
-			expectedStatus: MessageStatusComplete,
-		},
-		{
-			name:           "err",
-			message:        message{Module: "test", Component: "return", Method: "err"},
-			expectedStatus: MessageStatusError,
-		},
-	}
-	for _, testCase := range testCases {
-		test.Run(testCase.name, func() {
-			err := test.stream.Publish(context.Background(), &testCase.message)
-			test.Require().NoError(err)
-			time.Sleep(time.Second / 2)
-
-			message, err := test.stream.repository.GetMessage(context.Background(), *testCase.message.ID)
-			test.Require().NoError(err)
-			test.Equal(testCase.expectedStatus, message.StatusHistory[0].Status)
-		})
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-func (test *NatsStreamTest) TestRunOrchestration() {
-	app := fx.New(
-		fx.Provide(
-			func() nats.JetStreamContext {
-				return test.jt
-			},
-			func() *pgxpool.Pool {
-				return test.stream.repository.db
-			},
-		),
-		OrchestrationLifecycle,
-	)
-	test.Require().NoError(app.Start(context.Background()))
+type StreamTest struct {
+	suite.Suite
 
-	test.Run("normal orchestration", func() {
-		msg1, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 1})
-		test.Require().NoError(err)
-		msg2, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 2})
-		test.Require().NoError(err)
-		msg3, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 3})
-		test.Require().NoError(err)
+	subscriber stream.Subscriber
 
-		orchestration := NewMessageOrchestration("test orchestration")
-		orchestration.AddStep("step1", []Message{msg1})
-		orchestration.AddStep("step2", []Message{msg2})
-		orchestration.SettFallback([]Message{msg3})
+	uut stream.NATSStream
+}
 
-		err = test.stream.RunOrchestration(context.Background(), orchestration)
-		test.Require().NoError(err)
-
-		time.Sleep(time.Second / 2)
-
-		message, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
-		message, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusComplete, message.StatusHistory[0].Status)
-		message, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusCanceled, message.StatusHistory[0].Status)
+func (test *StreamTest) SetupSuite() {
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
+		NATS:     true,
+		Postgres: true,
 	})
-	test.Run("error orchestration", func() {
-		msg1, err := NewMessage("test", "return", "err", TestPayload{Name: "test", Number: 1})
+}
+
+func (test *StreamTest) SetupTest() {
+	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+
+	err = stream.RecreateTables(context.Background(), pool)
+	test.Require().NoError(err)
+
+	s, err := stream.NewNATSStream()
+	test.Require().NoError(err)
+	test.uut = *s.(*stream.NATSStream)
+
+	test.subscriber, err = test.uut.NewSubscriber("test", stream.NewDependencyContainer())
+	test.Require().NoError(err)
+
+	test.Require().NoError(test.subscriber.Subscribe("return", "nil", ReturnNil))
+	test.Require().NoError(test.subscriber.Subscribe("return", "err", ReturnErr))
+	test.Require().NoError(test.subscriber.Subscribe("return", "timeout", Timeout))
+}
+
+func (test *StreamTest) TearDownTest() {
+	test.NoError(test.subscriber.Unsubscribe())
+}
+
+func (test *StreamTest) parseStates(t *testing.T, msg stream.Message) []*pb.State {
+	t.Helper()
+
+	natsConnect, err := nats.Connect(environment.GetNATSURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jetstream, err := natsConnect.JetStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := jetstream.PullSubscribe(msg.TaskStateTopic(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := sub.Fetch(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := []*pb.State{}
+	for _, msg := range msgs {
+		state := &pb.State{}
+		err := proto.Unmarshal(msg.Data, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		states = append(states, state)
+	}
+	return states
+}
+
+func TestStream(t *testing.T) {
+	suite.Run(t, new(StreamTest))
+}
+
+func (test *StreamTest) TestPublish() {
+	test.Run("WaitForCompletion", func() {
+		msg, err := stream.NewMessage("test", "return", "nil", struct{}{})
 		test.Require().NoError(err)
-		msg2, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 2})
-		test.Require().NoError(err)
-		msg3, err := NewMessage("test", "return", "nil", TestPayload{Name: "test", Number: 3})
+		err = test.uut.Publish(context.Background(), msg, stream.WaitForCompletion())
 		test.Require().NoError(err)
 
-		orchestration := NewMessageOrchestration("test orchestration")
-		orchestration.AddStep("step1", []Message{msg1})
-		orchestration.AddStep("step2", []Message{msg2})
-		orchestration.SettFallback([]Message{msg3})
-
-		err = test.stream.RunOrchestration(context.Background(), orchestration)
-		test.Require().NoError(err)
-
-		time.Sleep(time.Second / 2)
-
-		msg, err := test.stream.repository.GetMessage(context.Background(), msg1.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusError, msg.StatusHistory[0].Status)
-		msg, err = test.stream.repository.GetMessage(context.Background(), msg2.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusCanceled, msg.StatusHistory[0].Status)
-		msg, err = test.stream.repository.GetMessage(context.Background(), msg3.GetID())
-		test.Require().NoError(err)
-		test.Equal(MessageStatusComplete, msg.StatusHistory[0].Status)
+		time.Sleep(time.Second)
+		states := test.parseStates(test.T(), msg)
+		test.Require().Len(states, 3)
+		test.Require().Contains([]pb.State_State{pb.State_STATE_RECEIVED, pb.State_STATE_PUBLISHED}, states[0].State)
+		test.Require().Contains([]pb.State_State{pb.State_STATE_RECEIVED, pb.State_STATE_PUBLISHED}, states[1].State)
+		test.Require().Equal(pb.State_STATE_COMPLETED, states[2].State)
 	})
+	test.Run("Timeout", func() {
+		msg, err := stream.NewMessage("test", "return", "timeout", struct{}{})
+		test.Require().NoError(err)
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		errCh := make(chan error)
+		go func() {
+			errCh <- test.uut.Publish(ctx, msg, stream.WaitForCompletion())
+		}()
+		time.Sleep(time.Second)
+		cancel()
+		err = <-errCh
+		test.Require().Error(err)
+		test.Require().ErrorContains(err, "canceled")
+		time.Sleep(time.Second)
+		states := test.parseStates(test.T(), msg)
 
-	test.NoError(app.Stop(context.Background()))
+		test.Require().Len(states, 3)
+		test.Require().Contains([]pb.State_State{pb.State_STATE_RECEIVED, pb.State_STATE_PUBLISHED}, states[0].State)
+		test.Require().Contains([]pb.State_State{pb.State_STATE_RECEIVED, pb.State_STATE_PUBLISHED}, states[1].State)
+		test.Require().Equal(pb.State_STATE_CANCELED, states[2].State)
+	})
+}
+
+func (test *StreamTest) TestRunOrchestration() {
+	successfulMsg, err := stream.NewMessage("test", "return", "nil", struct{}{})
+	test.Require().NoError(err)
+	errorMsg, err := stream.NewMessage("test", "return", "err", struct{}{})
+	test.Require().NoError(err)
+	timeoutMsg, err := stream.NewMessage("test", "return", "timeout", struct{}{})
+	test.Require().NoError(err)
+
+	test.Run("Successful", func() {
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{
+					Status: int32(1),
+					Messages: []*pb.Message{
+						successfulMsg.GetMsg(), successfulMsg.GetMsg(),
+					},
+				},
+			},
+		}
+
+		stepCh := test.uut.RunOrchestration(context.Background(), &o)
+		steps := []*pb.Orchestration_Step{}
+		for st := range stepCh {
+			steps = append(steps, st)
+		}
+		test.Require().Len(steps, 2)
+		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
+		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
+	})
+	test.Run("Error", func() {
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{
+					Status: int32(1),
+					Messages: []*pb.Message{
+						successfulMsg.GetMsg(), errorMsg.GetMsg(),
+					},
+				},
+				{
+					Status: int32(2),
+					Messages: []*pb.Message{
+						successfulMsg.GetMsg(),
+					},
+				},
+			},
+		}
+
+		stepCh := test.uut.RunOrchestration(context.Background(), &o)
+		steps := []*pb.Orchestration_Step{}
+		for st := range stepCh {
+			steps = append(steps, st)
+		}
+		test.Require().Len(steps, 2)
+		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
+		test.Require().Equal(common.State_STATE_FAILED, steps[1].State)
+		test.Require().Contains(*steps[1].Error, "test error")
+	})
+	test.Run("Cancel", func() {
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{
+					Status: int32(1),
+					Messages: []*pb.Message{
+						successfulMsg.GetMsg(), timeoutMsg.GetMsg(),
+					},
+				},
+				{
+					Status: int32(2),
+					Messages: []*pb.Message{
+						successfulMsg.GetMsg(),
+					},
+				},
+			},
+		}
+
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+
+		steps := []*pb.Orchestration_Step{}
+
+		go func() {
+			statusCh := test.uut.RunOrchestration(ctx, &o)
+			for st := range statusCh {
+				steps = append(steps, st)
+			}
+		}()
+		time.Sleep(time.Second)
+		cancel()
+		time.Sleep(time.Second / 2) // Wait for channel to retrieve status
+		test.Require().Len(steps, 2)
+		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
+		test.Require().Equal(common.State_STATE_FAILED, steps[1].State)
+		test.Require().Contains(*steps[1].Error, "canceled")
+	})
 }

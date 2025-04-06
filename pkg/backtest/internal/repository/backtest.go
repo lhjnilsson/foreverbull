@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -14,40 +13,10 @@ import (
 
 const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (
 name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-status int NOT NULL DEFAULT 0,
-error text,
 start_date date NOT NULL,
 end_date date,
 benchmark text,
 symbols text[]);
-
-CREATE TABLE IF NOT EXISTS backtest_status (
-	name text REFERENCES backtest(name) ON DELETE CASCADE,
-	status int NOT NULL,
-	error text,
-	occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE OR REPLACE FUNCTION notify_backtest_status() RETURNS TRIGGER AS $$
-BEGIN
-	-- Only update backtest_status if the status column is updated
-	IF (TG_OP = 'UPDATE' AND OLD.status <> NEW.status) OR TG_OP = 'INSERT' THEN
-		INSERT INTO backtest_status (name, status, error)
-		VALUES (NEW.name, NEW.status, NEW.error);
-		PERFORM pg_notify('backtest_status', NEW.name);
-	END IF;
-	RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DO
-$$BEGIN
-	CREATE TRIGGER backtest_status_trigger AFTER INSERT OR UPDATE ON backtest
-	FOR EACH ROW EXECUTE PROCEDURE notify_backtest_status();
-EXCEPTION
-	WHEN duplicate_object THEN
-		NULL;
-END$$;
 `
 
 type Backtest struct {
@@ -80,47 +49,18 @@ func (db *Backtest) Create(ctx context.Context, name string,
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
 	b := backtest.Backtest{}
+	startDate := time.Time{}
+	endDate := time.Time{}
 
-	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, start_date, end_date, benchmark, symbols,
-		bs.status, bs.error, bs.occurred_at
+	err := db.Conn.QueryRow(ctx,
+		`SELECT backtest.name, start_date, end_date, benchmark, symbols
 		FROM backtest
-		INNER JOIN (
-			SELECT name, status, error, occurred_at FROM backtest_status ORDER BY occurred_at DESC
-		) AS bs ON backtest.name=bs.name
-		WHERE backtest.name=$1`, name)
+		WHERE backtest.name=$1`, name).Scan(&b.Name, &startDate, &endDate, &b.Benchmark, &b.Symbols)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}
-
-	defer rows.Close()
-
-	for rows.Next() {
-		status := backtest.Backtest_Status{}
-		occurredAt := time.Time{}
-		start := time.Time{}
-		endDate := pgtype.Date{}
-
-		err = rows.Scan(
-			&b.Name, &start, &endDate, &b.Benchmark, &b.Symbols,
-			&status.Status, &status.Error, &occurredAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan backtest: %w", err)
-		}
-
-		b.StartDate = pb_internal.GoTimeToDate(start)
-		if endDate.Valid {
-			b.EndDate = pb_internal.GoTimeToDate(endDate.Time)
-		}
-
-		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurredAt)
-		b.Statuses = append(b.Statuses, &status)
-	}
-
-	if b.Name == "" {
-		return nil, pgx.ErrNoRows
-	}
+	b.StartDate = pb_internal.GoTimeToDate(startDate)
+	b.EndDate = pb_internal.GoTimeToDate(endDate)
 
 	return &b, nil
 }
@@ -140,29 +80,8 @@ func (db *Backtest) Update(ctx context.Context, name string,
 	return db.Get(ctx, name)
 }
 
-func (db *Backtest) UpdateStatus(ctx context.Context, name string, status backtest.BacktestStatus, err error) error {
-	if err != nil {
-		_, err = db.Conn.Exec(ctx, `UPDATE backtest SET status=$2, error=$3 WHERE name=$1`, name, status, err.Error())
-	} else {
-		_, err = db.Conn.Exec(ctx, `UPDATE backtest SET status=$2 WHERE name=$1`, name, status)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to update backtest status: %w", err)
-	}
-
-	return nil
-}
-
 func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
-	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest.name, start_date, end_date, benchmark, symbols,
-		bs.status, bs.error, bs.occurred_at
-		FROM backtest
-		INNER JOIN (
-			SELECT name, status, error, occurred_at FROM backtest_status ORDER BY occurred_at ASC
-		) AS bs ON backtest.name=bs.name
-		ORDER BY bs.occurred_at ASC`)
+	rows, err := db.Conn.Query(ctx, `SELECT name, start_date, end_date, benchmark, symbols FROM backtest`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list backtests: %w", err)
 	}
@@ -170,19 +89,14 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 
 	backtests := make([]*backtest.Backtest, 0)
 
-	var inReturnSlice bool
-
 	for rows.Next() {
-		status := backtest.Backtest_Status{}
 		backtest := backtest.Backtest{}
 		start := time.Time{}
 		end := pgtype.Date{}
-		occurredAt := time.Time{}
 
 		err = rows.Scan(
 			&backtest.Name, &start, &end, &backtest.Benchmark,
 			&backtest.Symbols,
-			&status.Status, &status.Error, &occurredAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backtest: %w", err)
@@ -191,21 +105,6 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 		backtest.StartDate = pb_internal.GoTimeToDate(start)
 		if end.Valid {
 			backtest.EndDate = pb_internal.GoTimeToDate(end.Time)
-		}
-
-		status.OccurredAt = pb_internal.TimeToProtoTimestamp(occurredAt)
-		inReturnSlice = false
-
-		for i := range backtests {
-			if backtests[i].Name == backtest.Name {
-				backtests[i].Statuses = append(backtests[i].Statuses, &status)
-				inReturnSlice = true
-			}
-		}
-
-		if !inReturnSlice {
-			backtest.Statuses = append(backtest.Statuses, &status)
-			backtests = append(backtests, &backtest)
 		}
 	}
 
