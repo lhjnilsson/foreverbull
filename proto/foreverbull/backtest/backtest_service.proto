@@ -62,7 +62,12 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
+  message Status {
+    SessionStatus status = 1;
+    foreverbull.common.State state = 2;
+  }
   foreverbull.backtest.Session session = 1;
+  Status status = 2;
 }
 
 message GetSessionRequest {
@@ -107,7 +112,7 @@ service BacktestServicer {
   rpc ListBacktests(ListBacktestsRequest) returns (ListBacktestsResponse) {}
   rpc CreateBacktest(CreateBacktestRequest) returns (stream CreateBacktestResponse) {}
   rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
-  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
+  rpc CreateSession(CreateSessionRequest) returns (stream CreateSessionResponse) {}
   rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {}
   rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}

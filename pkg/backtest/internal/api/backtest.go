@@ -94,29 +94,28 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 	}, nil
 }
 
-func (bs *BacktestServer) CreateSession(ctx context.Context,
-	req *pb.CreateSessionRequest,
-) (*pb.CreateSessionResponse, error) {
+func (bs *BacktestServer) CreateSession(
+	req *pb.CreateSessionRequest, stream pb.BacktestServicer_CreateSessionServer,
+) error {
 	sessions := repository.Session{Conn: bs.pgx}
+	ctx := stream.Context()
 
 	session, err := sessions.Create(ctx, req.GetBacktestName())
 	if err != nil {
-		return nil, fmt.Errorf("error creating session: %w", err)
+		return fmt.Errorf("error creating session: %w", err)
 	}
 
 	msg, err := msg.NewSessionRunCommand(session.Backtest, session.Id)
 	if err != nil {
-		return nil, fmt.Errorf("error creating session run command: %w", err)
+		return fmt.Errorf("error creating session run command: %w", err)
 	}
 
 	err = bs.stream.Publish(ctx, msg)
 	if err != nil {
-		return nil, fmt.Errorf("error publishing session run command: %w", err)
+		return fmt.Errorf("error publishing session run command: %w", err)
 	}
 
-	return &pb.CreateSessionResponse{
-		Session: session,
-	}, nil
+	return nil
 }
 
 func (bs *BacktestServer) GetSession(ctx context.Context,

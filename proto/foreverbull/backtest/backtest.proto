@@ -3,7 +3,6 @@ syntax = "proto3";
 package foreverbull.backtest;
 
 import "foreverbull/common.proto";
-import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
