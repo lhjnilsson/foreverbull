@@ -11,12 +11,13 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
-const BacktestTable = `CREATE TABLE IF NOT EXISTS backtest (
-name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-start_date date NOT NULL,
-end_date date,
-benchmark text,
-symbols text[]);
+const BacktestTable = `
+CREATE TABLE IF NOT EXISTS backtest (
+	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
+	start_date date NOT NULL,
+	end_date date,
+	benchmark text,
+	symbols text[]);
 `
 
 type Backtest struct {
@@ -50,7 +51,7 @@ func (db *Backtest) Create(ctx context.Context, name string,
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
 	b := backtest.Backtest{}
 	startDate := time.Time{}
-	endDate := time.Time{}
+	endDate := pgtype.Date{}
 
 	err := db.Conn.QueryRow(ctx,
 		`SELECT backtest.name, start_date, end_date, benchmark, symbols
@@ -60,7 +61,9 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}
 	b.StartDate = pb_internal.GoTimeToDate(startDate)
-	b.EndDate = pb_internal.GoTimeToDate(endDate)
+	if endDate.Valid {
+		b.EndDate = pb_internal.GoTimeToDate(endDate.Time)
+	}
 
 	return &b, nil
 }
@@ -106,6 +109,7 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 		if end.Valid {
 			backtest.EndDate = pb_internal.GoTimeToDate(end.Time)
 		}
+		backtests = append(backtests, &backtest)
 	}
 
 	return backtests, nil

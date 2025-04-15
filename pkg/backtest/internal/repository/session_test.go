@@ -106,8 +106,8 @@ func (test *SessionTest) TestList() {
 	allSessions, err := sessions.List(ctx)
 	test.Require().NoError(err)
 	test.Len(allSessions, 2)
-	test.Equal(session2.Id, allSessions[0].Id)
-	test.Equal(session1.Id, allSessions[1].Id)
+	test.Equal(session1.Id, allSessions[0].Id)
+	test.Equal(session2.Id, allSessions[1].Id)
 }
 
 func (test *SessionTest) TestListByBacktest() {
@@ -133,6 +133,6 @@ func (test *SessionTest) TestListByBacktest() {
 	allSessions, err := sessions.ListByBacktest(ctx, "backtest")
 	test.Require().NoError(err)
 	test.Len(allSessions, 2)
-	test.Equal(session2.Id, allSessions[0].Id)
-	test.Equal(session1.Id, allSessions[1].Id)
+	test.Equal(session1.Id, allSessions[0].Id)
+	test.Equal(session2.Id, allSessions[1].Id)
 }

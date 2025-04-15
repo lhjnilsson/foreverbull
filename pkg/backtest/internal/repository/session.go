@@ -9,7 +9,8 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
-const SessionTable = `CREATE TABLE IF NOT EXISTS session (
+const SessionTable = `
+CREATE TABLE IF NOT EXISTS session (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 	backtest text REFERENCES backtest(name) ON DELETE CASCADE,
 	port integer);
@@ -34,7 +35,7 @@ func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, er
 func (db *Session) Get(ctx context.Context, sessionID string) (*pb.Session, error) {
 	session := pb.Session{}
 	err := db.Conn.QueryRow(ctx,
-		`SELECT id, backtest, port WHERE session.id=$1`, sessionID).Scan(
+		`SELECT id, backtest, port FROM session WHERE id=$1`, sessionID).Scan(
 		&session.Id, &session.Backtest, &session.Port,
 	)
 	if err != nil {
@@ -62,14 +63,14 @@ func (db *Session) parseRows(rows pgx.Rows) ([]*pb.Session, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan: %w", err)
 		}
+		sessions = append(sessions, &session)
 	}
-
 	return sessions, nil
 }
 
 func (db *Session) List(ctx context.Context) ([]*pb.Session, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT id, backtest, port,
+		`SELECT id, backtest, port
 		FROM session`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
@@ -82,7 +83,7 @@ func (db *Session) List(ctx context.Context) ([]*pb.Session, error) {
 
 func (db *Session) ListByBacktest(ctx context.Context, backtest string) ([]*pb.Session, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT session.id, backtest, port,
+		`SELECT id, backtest, port
 		FROM session
 		WHERE backtest=$1`, backtest)
 	if err != nil {

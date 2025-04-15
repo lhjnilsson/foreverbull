@@ -109,7 +109,7 @@ func (test *BacktestTest) TestGet() {
 		backtest, err := backtests.Get(ctx, "backtest")
 		test.Require().Error(err)
 		test.Nil(backtest)
-		test.Equal(pgx.ErrNoRows, err)
+		test.ErrorContains(err, pgx.ErrNoRows.Error())
 	})
 	test.Run("found", func() {
 		backtests := &repository.Backtest{Conn: test.conn}
