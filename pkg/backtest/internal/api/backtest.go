@@ -95,14 +95,24 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 }
 
 func (bs *BacktestServer) CreateSession(
-	req *pb.CreateSessionRequest, stream pb.BacktestServicer_CreateSessionServer,
+	req *pb.CreateSessionRequest, _stream pb.BacktestServicer_CreateSessionServer,
 ) error {
 	sessions := repository.Session{Conn: bs.pgx}
-	ctx := stream.Context()
+	ctx := _stream.Context()
 
 	session, err := sessions.Create(ctx, req.GetBacktestName())
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
+	}
+	err = _stream.Send(&pb.CreateSessionResponse{
+		Session: session,
+		Status: &pb.CreateSessionResponse_Status{
+			Status: pb.SessionStatus_CREATED,
+			State:  pbInternal.State_STATE_COMPLETED,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	msg, err := msg.NewSessionRunCommand(session.Backtest, session.Id)
@@ -110,9 +120,26 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error creating session run command: %w", err)
 	}
 
-	err = bs.stream.Publish(ctx, msg)
+	err = bs.stream.Publish(ctx, msg, stream.WaitForCompletion())
 	if err != nil {
 		return fmt.Errorf("error publishing session run command: %w", err)
+	}
+
+	// Refetch session to get port
+	session, err = sessions.Get(ctx, session.Id)
+	if err != nil {
+		return fmt.Errorf("error getting session: %w", err)
+	}
+
+	err = _stream.Send(&pb.CreateSessionResponse{
+		Session: session,
+		Status: &pb.CreateSessionResponse_Status{
+			Status: pb.SessionStatus_RUNNING,
+			State:  pbInternal.State_STATE_RUNNING,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	return nil

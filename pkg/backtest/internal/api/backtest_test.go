@@ -206,31 +206,24 @@ func (test *BacktestServerTest) TestGetBacktest() {
 
 func (test *BacktestServerTest) TestCreateSession() {
 	test.Run("backtest not found", func() {
+
 		req := &pb.CreateSessionRequest{
 			BacktestName: "backtest",
 		}
 
-		resp, err := test.client.CreateSession(context.Background(), req)
+		resp, err := test.client.CreateSession(context.TODO(), req)
+		test.Require().NoError(err)
+		test.Require().NotNil(resp)
+
+		msg, err := resp.Recv()
 		test.Require().Error(err)
-		test.Nil(resp)
+		test.Require().Nil(msg)
 	})
-	test.Run("fail to publish", func() {
-		backtest := test.createBacktest("test_1")
 
-		test.stream.On("Publish", mock.Anything, mock.Anything).Return(errors.New("fail_to_publish"))
-
-		req := &pb.CreateSessionRequest{
-			BacktestName: backtest.Name,
-		}
-
-		resp, err := test.client.CreateSession(context.Background(), req)
-		test.Require().Error(err)
-		test.Nil(resp)
-	})
 	test.Run("normal", func() {
 		backtest := test.createBacktest("test_1")
 
-		test.stream.On("Publish", mock.Anything, mock.Anything).Return(nil)
+		test.stream.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		req := &pb.CreateSessionRequest{
 			BacktestName: backtest.Name,
@@ -239,6 +232,20 @@ func (test *BacktestServerTest) TestCreateSession() {
 		resp, err := test.client.CreateSession(context.Background(), req)
 		test.Require().NoError(err)
 		test.NotNil(resp)
+
+		responses := []*pb.CreateSessionResponse{}
+		for {
+			msg, err := resp.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			test.Require().NoError(err)
+			test.Require().NotNil(msg)
+			responses = append(responses, msg)
+		}
+		test.Require().Len(responses, 2)
+		test.Require().Equal(pb.SessionStatus_CREATED, responses[0].Status.Status)
+		test.Require().Equal(pb.SessionStatus_RUNNING, responses[1].Status.Status)
 	})
 }
 
