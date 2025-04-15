@@ -1,7 +1,8 @@
-from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
-from foreverbull.pb.foreverbull.backtest import session_pb2 as _session_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
 from foreverbull.pb.buf.validate import validate_pb2 as _validate_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
+from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
+from foreverbull.pb.foreverbull.backtest import session_pb2 as _session_pb2
+from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -26,10 +27,19 @@ class CreateBacktestRequest(_message.Message):
     def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class CreateBacktestResponse(_message.Message):
-    __slots__ = ("backtest",)
+    __slots__ = ("backtest", "status")
+    class Status(_message.Message):
+        __slots__ = ("status", "state")
+        STATUS_FIELD_NUMBER: _ClassVar[int]
+        STATE_FIELD_NUMBER: _ClassVar[int]
+        status: _backtest_pb2.BacktestStatus
+        state: _common_pb2.State
+        def __init__(self, status: _Optional[_Union[_backtest_pb2.BacktestStatus, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
-    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
+    status: CreateBacktestResponse.Status
+    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ..., status: _Optional[_Union[CreateBacktestResponse.Status, _Mapping]] = ...) -> None: ...
 
 class GetBacktestRequest(_message.Message):
     __slots__ = ("name",)
@@ -52,10 +62,19 @@ class CreateSessionRequest(_message.Message):
     def __init__(self, backtest_name: _Optional[str] = ...) -> None: ...
 
 class CreateSessionResponse(_message.Message):
-    __slots__ = ("session",)
+    __slots__ = ("session", "status")
+    class Status(_message.Message):
+        __slots__ = ("status", "state")
+        STATUS_FIELD_NUMBER: _ClassVar[int]
+        STATE_FIELD_NUMBER: _ClassVar[int]
+        status: _session_pb2.SessionStatus
+        state: _common_pb2.State
+        def __init__(self, status: _Optional[_Union[_session_pb2.SessionStatus, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
     SESSION_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
     session: _session_pb2.Session
-    def __init__(self, session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ...) -> None: ...
+    status: CreateSessionResponse.Status
+    def __init__(self, session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ..., status: _Optional[_Union[CreateSessionResponse.Status, _Mapping]] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ("session_id",)

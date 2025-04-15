@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x66oreverbull/common.proto\x12\x12\x66oreverbull.common\"3\n\x07Request\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x42\x07\n\x05_data\"R\n\x08Response\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x01\x88\x01\x01\x42\x07\n\x05_dataB\x08\n\x06_error\"0\n\x04\x44\x61te\x12\x0c\n\x04year\x18\x01 \x01(\x05\x12\r\n\x05month\x18\x02 \x01(\x05\x12\x0b\n\x03\x64\x61y\x18\x03 \x01(\x05\x42*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x66oreverbull/common.proto\x12\x12\x66oreverbull.common\"3\n\x07Request\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x42\x07\n\x05_data\"R\n\x08Response\x12\x0c\n\x04task\x18\x01 \x01(\t\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0cH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x03 \x01(\tH\x01\x88\x01\x01\x42\x07\n\x05_dataB\x08\n\x06_error\"0\n\x04\x44\x61te\x12\x0c\n\x04year\x18\x01 \x01(\x05\x12\r\n\x05month\x18\x02 \x01(\x05\x12\x0b\n\x03\x64\x61y\x18\x03 \x01(\x05*X\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n\rSTATE_RUNNING\x10\x01\x12\x13\n\x0fSTATE_COMPLETED\x10\x02\x12\x10\n\x0cSTATE_FAILED\x10\x03\x42*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,6 +32,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.common_pb2', _g
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z(github.com/lhjnilsson/foreverbull/pkg/pb'
+  _globals['_STATE']._serialized_start=235
+  _globals['_STATE']._serialized_end=323
   _globals['_REQUEST']._serialized_start=48
   _globals['_REQUEST']._serialized_end=99
   _globals['_RESPONSE']._serialized_start=101

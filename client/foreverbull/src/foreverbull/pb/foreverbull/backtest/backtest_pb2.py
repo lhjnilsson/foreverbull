@@ -23,10 +23,9 @@ _sym_db = _symbol_database.Default()
 
 
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n#foreverbull/backtest/backtest.proto\x12\x14\x66oreverbull.backtest\x1a\x18\x66oreverbull/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf2\x02\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x04 \x03(\t\x12\x16\n\tbenchmark\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\x37\n\x08statuses\x18\x06 \x03(\x0b\x32%.foreverbull.backtest.Backtest.Status\x1a\x8d\x01\n\x06Status\x12\x34\n\x06status\x18\x01 \x01(\x0e\x32$.foreverbull.backtest.BacktestStatus\x12\x12\n\x05\x65rror\x18\x02 \x01(\tH\x00\x88\x01\x01\x12/\n\x0boccurred_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x08\n\x06_errorB\x0c\n\n_benchmark*S\n\x0e\x42\x61\x63ktestStatus\x12\x0b\n\x07\x43REATED\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\r\n\tINGESTING\x10\x02\x12\t\n\x05READY\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n#foreverbull/backtest/backtest.proto\x12\x14\x66oreverbull.backtest\x1a\x18\x66oreverbull/common.proto\"\xa9\x01\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x04 \x03(\t\x12\x16\n\tbenchmark\x18\x05 \x01(\tH\x00\x88\x01\x01\x42\x0c\n\n_benchmark*H\n\x0e\x42\x61\x63ktestStatus\x12\x0f\n\x0b\x44OWNLOADING\x10\x00\x12\r\n\tINGESTING\x10\x01\x12\x0b\n\x07STORING\x10\x02\x12\t\n\x05\x45RROR\x10\x03\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,10 +33,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.backtest.backte
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtest'
-  _globals['_BACKTESTSTATUS']._serialized_start=493
-  _globals['_BACKTESTSTATUS']._serialized_end=576
-  _globals['_BACKTEST']._serialized_start=121
-  _globals['_BACKTEST']._serialized_end=491
-  _globals['_BACKTEST_STATUS']._serialized_start=336
-  _globals['_BACKTEST_STATUS']._serialized_end=477
+  _globals['_BACKTESTSTATUS']._serialized_start=259
+  _globals['_BACKTESTSTATUS']._serialized_end=331
+  _globals['_BACKTEST']._serialized_start=88
+  _globals['_BACKTEST']._serialized_end=257
 # @@protoc_insertion_point(module_scope)
