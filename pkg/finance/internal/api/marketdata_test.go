@@ -1,4 +1,4 @@
-package servicer_test
+package api_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/servicer"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -58,7 +58,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
 	suite.Require().NoError(err)
-	server := servicer.NewMarketdataServer(suite.pgx, suite.marketdata)
+	server := api.NewMarketdataServer(suite.pgx, suite.marketdata)
 	pb.RegisterMarketdataServer(suite.server, server)
 
 	go func() {

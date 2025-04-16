@@ -37,7 +37,7 @@ func (test *YahooTest) TestGetAsset() {
 		{"GOOGL", "Alphabet Inc.", nil},
 		{"MSFT", "Microsoft Corporation", nil},
 		{"^DJI", "Dow Jones Industrial Average", nil},
-		{"---", "", errors.New("Quote not found for ticker symbol: ---")},
+		{"---", "", errors.New("Quote not found for symbol: ---")},
 	}
 
 	for _, testCase := range testCases {

@@ -52,6 +52,7 @@ func NewServiceStartCommand(image, instanceID string) (stream.Message, error) {
 	return msg, nil
 }
 
+/*
 func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestration, error) {
 	orchestration := stream.NewMessageOrchestration("service interview")
 
@@ -109,3 +110,4 @@ func NewServiceInterviewOrchestration(image string) (*stream.MessageOrchestratio
 
 	return orchestration, nil
 }
+*/

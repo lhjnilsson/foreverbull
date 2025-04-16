@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -71,10 +70,6 @@ func (test *ExecutionTest) TestCreate() {
 		test.NotNil(execution.Id)
 		test.Equal(test.storedSession.Id, execution.Session)
 		test.Equal(test.storedBacktest.Symbols, execution.Symbols)
-		test.Len(execution.Statuses, 1)
-		test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
-		test.Nil(execution.Statuses[0].Error)
-		test.NotNil(execution.Statuses[0].OccurredAt)
 		test.Equal(end, execution.EndDate)
 	}
 }
@@ -92,10 +87,6 @@ func (test *ExecutionTest) TestGet() {
 	test.Equal(test.storedBacktest.StartDate, execution.StartDate)
 	test.Equal(test.storedBacktest.EndDate, execution.EndDate)
 	test.Equal(test.storedBacktest.Symbols, execution.Symbols)
-	test.Len(execution.Statuses, 1)
-	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
-	test.Nil(execution.Statuses[0].Error)
-	test.NotNil(execution.Statuses[0].OccurredAt)
 }
 
 func (test *ExecutionTest) TestGetPeriods() {
@@ -125,36 +116,6 @@ func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	test.Require().NoError(err)
 	test.NotNil(execution.Id)
 	test.Equal(test.storedSession.Id, execution.Session)
-	test.Len(execution.Statuses, 1)
-	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[0].Status.String())
-	test.Nil(execution.Statuses[0].Error)
-	test.NotNil(execution.Statuses[0].OccurredAt)
-}
-
-func (test *ExecutionTest) TestUpdateStatus() {
-	executions := repository.Execution{Conn: test.conn}
-	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
-	test.Require().NoError(err)
-	err = executions.UpdateStatus(ctx, execution.Id, pb.Execution_Status_RUNNING, nil)
-	test.Require().NoError(err)
-	err = executions.UpdateStatus(ctx, execution.Id, pb.Execution_Status_FAILED, errors.New("test"))
-	test.Require().NoError(err)
-
-	execution, err = executions.Get(ctx, execution.Id)
-	test.Require().NoError(err)
-	test.NotNil(execution.Id)
-	test.Len(execution.Statuses, 3)
-	test.Equal(pb.Execution_Status_FAILED.String(), execution.Statuses[0].Status.String())
-	test.Equal("test", *execution.Statuses[0].Error)
-	test.NotNil(execution.Statuses[0].OccurredAt)
-	test.Equal(pb.Execution_Status_RUNNING.String(), execution.Statuses[1].Status.String())
-	test.Nil(execution.Statuses[1].Error)
-	test.NotNil(execution.Statuses[1].OccurredAt)
-	test.Equal(pb.Execution_Status_CREATED.String(), execution.Statuses[2].Status.String())
-	test.Nil(execution.Statuses[2].Error)
-	test.NotNil(execution.Statuses[2].OccurredAt)
 }
 
 func (test *ExecutionTest) TestList() {

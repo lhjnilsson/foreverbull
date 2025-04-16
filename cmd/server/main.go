@@ -51,7 +51,7 @@ var CoreModules = fx.Options( //nolint: gochecknoglobals
 			}
 			return client, nil
 		},
-		stream.New,
+		//stream.New,
 	),
 )
 
@@ -63,7 +63,7 @@ func app() *fx.App {
 		finance.Module,
 		service.Module,
 		strategy.Module,
-		stream.OrchestrationLifecycle,
+		stream.Module,
 	)
 }
 

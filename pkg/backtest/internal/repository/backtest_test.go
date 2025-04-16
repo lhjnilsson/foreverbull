@@ -2,17 +2,15 @@ package repository_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
-	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -46,85 +44,81 @@ func TestBacktests(t *testing.T) {
 
 func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
+	for index, start := range []*common_pb.Date{nil, {Year: 2024, Month: 0o1, Day: 0o1}} {
+		test.Run(fmt.Sprintf("create backtest %d with start date", index), func() {
+			backtests := &repository.Backtest{Conn: test.conn}
+			backtest, err := backtests.Create(ctx,
+				fmt.Sprintf("backtest_start_%d", index),
+				start,
+				nil,
+				[]string{},
+				nil,
+			)
+			if start == nil {
+				test.Require().Error(err)
+				test.Equal("failed to create backtest: start date is nil", err.Error())
+			} else {
+				test.Require().NoError(err)
+				test.Equal(fmt.Sprintf("backtest_start_%d", index), backtest.Name)
+				test.Equal(start, backtest.StartDate)
+			}
+		})
+	}
 
 	for index, end := range []*common_pb.Date{nil, {Year: 2024, Month: 0o1, Day: 0o1}} {
-		backtests := &repository.Backtest{Conn: test.conn}
-		backtest, err := backtests.Create(ctx,
-			fmt.Sprintf("backtest_%d", index),
-			&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-			end,
-			[]string{},
-			nil,
-		)
-		test.Require().NoError(err)
-		test.Equal(fmt.Sprintf("backtest_%d", index), backtest.Name)
-		test.Len(backtest.Statuses, 1)
-		test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
-		test.Equal(end, backtest.EndDate)
+		test.Run(fmt.Sprintf("create backtest %d with end date", index), func() {
+			backtests := &repository.Backtest{Conn: test.conn}
+			backtest, err := backtests.Create(ctx,
+				fmt.Sprintf("backtest_end_%d", index),
+				&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+				end,
+				[]string{},
+				nil,
+			)
+			test.Require().NoError(err)
+			test.Equal(fmt.Sprintf("backtest_end_%d", index), backtest.Name)
+			test.Equal(end, backtest.EndDate)
+		})
+	}
+	for index, benchmark := range []*string{nil, func() *string { s := "benchmark"; return &s }()} {
+		test.Run(fmt.Sprintf("create backtest %d with benchmark %v", index, benchmark), func() {
+			backtests := &repository.Backtest{Conn: test.conn}
+			backtest, err := backtests.Create(ctx,
+				fmt.Sprintf("backtest_bench_%d", index),
+				&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+				nil,
+				[]string{},
+				benchmark,
+			)
+			test.Require().NoError(err)
+			test.Equal(fmt.Sprintf("backtest_bench_%d", index), backtest.Name)
+			if benchmark == nil {
+				test.Nil(backtest.Benchmark)
+			} else {
+				test.Equal(*benchmark, *backtest.Benchmark)
+			}
+		})
 	}
 }
 
 func (test *BacktestTest) TestGet() {
 	ctx := context.Background()
 
-	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
-	test.Require().NoError(err)
-
-	backtest, err := backtests.Get(ctx, "backtest")
-	test.Require().NoError(err)
-	test.Equal("backtest", backtest.Name)
-	test.Len(backtest.Statuses, 1)
-	test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[0].Status.String())
-}
-
-func (test *BacktestTest) TestGetUniverse() {
-	ctx := context.Background()
-
-	backtests := &repository.Backtest{Conn: test.conn}
-	test.Run("without stored data", func() {
-		start, end, symbols, err := backtests.GetUniverse(ctx)
+	test.Run("not found", func() {
+		backtests := &repository.Backtest{Conn: test.conn}
+		backtest, err := backtests.Get(ctx, "backtest")
 		test.Require().Error(err)
-		test.Nil(start)
-		test.Nil(end)
-		test.Nil(symbols)
+		test.Nil(backtest)
+		test.ErrorContains(err, pgx.ErrNoRows.Error())
 	})
-	test.Run("with stored data", func() {
-		_, err := backtests.Create(ctx, "nasdaq", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o6, Day: 0o1}, []string{"AAPL", "MSFT"}, nil)
-		test.Require().NoError(err)
-		_, err = backtests.Create(ctx, "nyse", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o4, Day: 0o1}, []string{"IBM", "GE"}, nil)
-		test.Require().NoError(err)
-
-		start, end, symbols, err := backtests.GetUniverse(ctx)
-		test.Require().NoError(err)
-		test.Equal(&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, start)
-		test.Equal(&common_pb.Date{Year: 2024, Month: 0o6, Day: 0o1}, end)
-		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
-	})
-	test.Run("with None as end", func() {
-		_, err := backtests.Create(ctx, "none", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, nil, []string{"AAPL", "MSFT"}, nil)
+	test.Run("found", func() {
+		backtests := &repository.Backtest{Conn: test.conn}
+		_, err := backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
 		test.Require().NoError(err)
 
-		start, end, symbols, err := backtests.GetUniverse(ctx)
-		expectedEnd := common_pb.GoTimeToDate(time.Now())
-
+		backtest, err := backtests.Get(ctx, "backtest")
 		test.Require().NoError(err)
-		test.Equal(&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, start)
-		test.Equal(expectedEnd, end)
-		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE"}, symbols)
-	})
-	test.Run("with benchmark", func() {
-		benchmark := "^DJI"
-		_, err := backtests.Create(ctx, "bench", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, nil, []string{"AAPL", "MSFT"}, &benchmark)
-		test.Require().NoError(err)
-
-		start, end, symbols, err := backtests.GetUniverse(ctx)
-		expectedEnd := common_pb.GoTimeToDate(time.Now())
-
-		test.Require().NoError(err)
-		test.Equal(&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, start)
-		test.Equal(expectedEnd, end)
-		test.ElementsMatch([]string{"AAPL", "MSFT", "IBM", "GE", "^DJI"}, symbols)
+		test.Equal("backtest", backtest.Name)
 	})
 }
 
@@ -143,27 +137,6 @@ func (test *BacktestTest) TestUpdate() {
 	test.Equal("backtest", backtest.Name)
 	test.Equal([]string{"AAPL"}, backtest.Symbols)
 	test.Nil(backtest.Benchmark)
-}
-
-func (test *BacktestTest) TestUpdateStatus() {
-	ctx := context.Background()
-
-	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
-	test.Require().NoError(err)
-
-	err = backtests.UpdateStatus(ctx, "backtest", pb.BacktestStatus_ERROR, errors.New("test"))
-	test.Require().NoError(err)
-
-	backtest, err := backtests.Get(ctx, "backtest")
-	test.Require().NoError(err)
-	test.Equal("backtest", backtest.Name)
-	test.Len(backtest.Statuses, 2)
-	test.Equal(pb.BacktestStatus_ERROR.String(), backtest.Statuses[0].Status.String())
-	test.NotNil(backtest.Statuses[0].OccurredAt)
-	test.Equal("test", *backtest.Statuses[0].Error)
-	test.Equal(pb.BacktestStatus_CREATED.String(), backtest.Statuses[1].Status.String())
-	test.NotNil(backtest.Statuses[1].OccurredAt)
 }
 
 func (test *BacktestTest) TestList() {

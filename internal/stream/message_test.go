@@ -31,19 +31,17 @@ func (test *MessageTest) TestNewMessage() {
 
 		parsed, ok := msg.(*message)
 		test.True(ok)
-		test.Nil(parsed.ID)
-		test.Nil(parsed.OrchestrationName)
-		test.Nil(parsed.OrchestrationID)
-		test.Nil(parsed.OrchestrationStep)
-		test.Nil(parsed.OrchestrationStepNumber)
-		test.Nil(parsed.OrchestrationFallbackStep)
+		test.Nil(parsed.msg.Id)
+		test.Nil(parsed.msg.OrchestrationName)
+		test.Nil(parsed.msg.OrchestrationId)
+		test.Nil(parsed.msg.OrchestrationStep)
+		test.Nil(parsed.msg.OrchestrationStepNumber)
+		test.Nil(parsed.msg.OrchestrationFallbackStep)
 
-		test.Equal("module", parsed.Module)
-		test.Equal("component", parsed.Component)
-		test.Equal("method", parsed.Method)
-		test.Nil(parsed.Error)
-		test.JSONEq(`{"key":"key","value":1}`, string(parsed.Payload))
-		test.Nil(parsed.StatusHistory)
+		test.Equal("module", parsed.msg.Module)
+		test.Equal("component", parsed.msg.Component)
+		test.Equal("method", parsed.msg.Method)
+		test.JSONEq(`{"key":"key","value":1}`, string(parsed.msg.Payload))
 		test.Nil(parsed.dependencyContainer)
 	})
 	test.Run("bad entity", func() {
@@ -124,59 +122,4 @@ type MessageOrchestrationTest struct {
 }
 
 func (test *MessageOrchestrationTest) SetupTest() {
-}
-
-func TestMessageOrchestration(t *testing.T) {
-	suite.Run(t, new(MessageOrchestrationTest))
-}
-
-func (test *MessageOrchestrationTest) TestNewMessageOrchestration() {
-	test.Run("creation", func() {
-		orchestration := NewMessageOrchestration("test")
-		test.NotNil(orchestration)
-		test.Equal("test", orchestration.Name)
-		test.NotNil(orchestration.Steps)
-		test.Empty(orchestration.Steps)
-		test.Nil(orchestration.FallbackStep)
-	})
-	test.Run("add step", func() {
-		orchestration := NewMessageOrchestration("test orchestration")
-		test.NotNil(orchestration)
-		test.Equal("test orchestration", orchestration.Name)
-		test.NotNil(orchestration.Steps)
-		test.Empty(orchestration.Steps)
-		test.Nil(orchestration.FallbackStep)
-
-		m, err := NewMessage("module", "component", "method", DemoEntity{Key: "key", Value: 1})
-		test.Require().NoError(err)
-
-		orchestration.AddStep("test step", []Message{m})
-		test.Len(orchestration.Steps, 1)
-		test.Equal("test step", orchestration.Steps[0].Name)
-		test.Len(orchestration.Steps[0].Commands, 1)
-		test.NotEmpty(orchestration.Steps[0].Commands[0].(*message).OrchestrationID)
-		test.NotEmpty(orchestration.Steps[0].Commands[0].(*message).OrchestrationName)
-		test.Equal("test step", *orchestration.Steps[0].Commands[0].(*message).OrchestrationStep)
-		test.Equal(0, *orchestration.Steps[0].Commands[0].(*message).OrchestrationStepNumber)
-		test.False(*orchestration.Steps[0].Commands[0].(*message).OrchestrationFallbackStep)
-	})
-	test.Run("set fallback", func() {
-		orchestration := NewMessageOrchestration("test")
-		test.NotNil(orchestration)
-		test.Equal("test", orchestration.Name)
-		test.NotNil(orchestration.Steps)
-		test.Empty(orchestration.Steps)
-		test.Nil(orchestration.FallbackStep)
-
-		m, err := NewMessage("module", "component", "method", DemoEntity{Key: "key", Value: 1})
-		test.Require().NoError(err)
-
-		orchestration.SettFallback([]Message{m})
-		test.NotNil(orchestration.FallbackStep)
-		test.Equal("fallback", orchestration.FallbackStep.Name)
-		test.Len(orchestration.FallbackStep.Commands, 1)
-		test.NotEmpty(orchestration.FallbackStep.Commands[0].(*message).OrchestrationID)
-		test.NotEmpty(orchestration.FallbackStep.Commands[0].(*message).OrchestrationName)
-		test.Equal("fallback", *orchestration.FallbackStep.Commands[0].(*message).OrchestrationStep)
-	})
 }

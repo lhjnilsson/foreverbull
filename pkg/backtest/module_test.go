@@ -61,7 +61,6 @@ func (test *BacktestModuleTest) SetupSuite() {
 
 	test.app = fx.New(
 		fx.Provide(
-			stream.New,
 			func() *pgxpool.Pool {
 				return pool
 			},
@@ -97,7 +96,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 				return nil
 			},
 		),
-		stream.OrchestrationLifecycle,
+		stream.Module,
 		service.Module,
 		finance.Module,
 		backtest.Module,
@@ -136,17 +135,21 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 			Symbols:   []string{"AAPL", "MSFT"},
 		},
 	})
-	test.Require().NoError(err, "failed to create backtest")
-	test.NotNil(createResponse, "response is nil")
+	test.Require().NoError(err, "failed to create backtest: %v", err)
 
+	var latestStatus *pb.CreateBacktestResponse_Status
 	for {
 		rsp, err := createResponse.Recv()
 		if err != nil && errors.Is(err, io.EOF) {
 			break
 		}
 		test.Require().NoError(err)
-		test.Require().NotEqual(pb.BacktestStatus_ERROR, rsp.Backtest.Statuses[0].Status)
+		latestStatus = rsp.Status
 	}
+
+	test.Require().NotNil(latestStatus)
+	test.Require().Equal(pb.BacktestStatus_INGESTING, latestStatus.Status)
+	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &pb.GetBacktestRequest{Name: "Test Backtest"})
 	test.Require().NoError(err, "failed to get backtest")
@@ -158,22 +161,23 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
 
-	var port int64
+	var latestSessionRsp *pb.CreateSessionResponse
 
-	for range 30 {
-		rsp, err := test.backtestClient.GetSession(context.TODO(), &pb.GetSessionRequest{SessionId: rsp3.Session.Id})
-		test.Require().NoError(err, "failed to get session")
-		test.NotNil(rsp, "response is nil")
-
-		if rsp.Session.Statuses[0].Status != pb.Session_Status_RUNNING {
-			time.Sleep(time.Second / 2)
-			continue
+	for {
+		rsp, err := rsp3.Recv()
+		if err != nil && errors.Is(err, io.EOF) {
+			break
 		}
-
-		port = rsp.Session.GetPort()
-
-		break
+		test.Require().NoError(err, "failed to receive response")
+		latestSessionRsp = rsp
 	}
+
+	test.Require().NotNil(latestSessionRsp, "response is nil")
+	test.Require().NotNil(latestSessionRsp.Session, "session is nil")
+	test.Require().Equal(pb.SessionStatus_RUNNING, latestSessionRsp.Status.Status)
+
+	test.Require().NotNil(latestSessionRsp.Session.Port)
+	port := *latestSessionRsp.Session.Port
 
 	var gClient *grpc.ClientConn
 	gClient, err = grpc.NewClient(fmt.Sprintf("localhost:%d", port),

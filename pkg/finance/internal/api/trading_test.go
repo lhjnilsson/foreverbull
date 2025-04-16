@@ -1,4 +1,4 @@
-package servicer
+package api_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -58,7 +59,7 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
 	suite.Require().NoError(err)
-	server := NewTradingServer(suite.pgx, suite.trading)
+	server := api.NewTradingServer(suite.pgx, suite.trading)
 	pb.RegisterTradingServer(suite.server, server)
 
 	go func() {

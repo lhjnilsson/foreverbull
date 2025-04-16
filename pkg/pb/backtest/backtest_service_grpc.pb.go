@@ -35,7 +35,7 @@ type BacktestServicerClient interface {
 	ListBacktests(ctx context.Context, in *ListBacktestsRequest, opts ...grpc.CallOption) (*ListBacktestsResponse, error)
 	CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error)
 	GetBacktest(ctx context.Context, in *GetBacktestRequest, opts ...grpc.CallOption) (*GetBacktestResponse, error)
-	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
+	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateSessionResponse], error)
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
 	ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error)
 	GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error)
@@ -88,15 +88,24 @@ func (c *backtestServicerClient) GetBacktest(ctx context.Context, in *GetBacktes
 	return out, nil
 }
 
-func (c *backtestServicerClient) CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error) {
+func (c *backtestServicerClient) CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateSessionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateSessionResponse)
-	err := c.cc.Invoke(ctx, BacktestServicer_CreateSession_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BacktestServicer_ServiceDesc.Streams[1], BacktestServicer_CreateSession_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[CreateSessionRequest, CreateSessionResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_CreateSessionClient = grpc.ServerStreamingClient[CreateSessionResponse]
 
 func (c *backtestServicerClient) GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -135,7 +144,7 @@ type BacktestServicerServer interface {
 	ListBacktests(context.Context, *ListBacktestsRequest) (*ListBacktestsResponse, error)
 	CreateBacktest(*CreateBacktestRequest, grpc.ServerStreamingServer[CreateBacktestResponse]) error
 	GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error)
-	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
+	CreateSession(*CreateSessionRequest, grpc.ServerStreamingServer[CreateSessionResponse]) error
 	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
 	ListExecutions(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error)
 	GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error)
@@ -158,8 +167,8 @@ func (UnimplementedBacktestServicerServer) CreateBacktest(*CreateBacktestRequest
 func (UnimplementedBacktestServicerServer) GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBacktest not implemented")
 }
-func (UnimplementedBacktestServicerServer) CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateSession not implemented")
+func (UnimplementedBacktestServicerServer) CreateSession(*CreateSessionRequest, grpc.ServerStreamingServer[CreateSessionResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method CreateSession not implemented")
 }
 func (UnimplementedBacktestServicerServer) GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSession not implemented")
@@ -238,23 +247,16 @@ func _BacktestServicer_GetBacktest_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BacktestServicer_CreateSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _BacktestServicer_CreateSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CreateSessionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(BacktestServicerServer).CreateSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BacktestServicer_CreateSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BacktestServicerServer).CreateSession(ctx, req.(*CreateSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(BacktestServicerServer).CreateSession(m, &grpc.GenericServerStream[CreateSessionRequest, CreateSessionResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_CreateSessionServer = grpc.ServerStreamingServer[CreateSessionResponse]
 
 func _BacktestServicer_GetSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSessionRequest)
@@ -326,10 +328,6 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BacktestServicer_GetBacktest_Handler,
 		},
 		{
-			MethodName: "CreateSession",
-			Handler:    _BacktestServicer_CreateSession_Handler,
-		},
-		{
 			MethodName: "GetSession",
 			Handler:    _BacktestServicer_GetSession_Handler,
 		},
@@ -346,6 +344,11 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "CreateBacktest",
 			Handler:       _BacktestServicer_CreateBacktest_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "CreateSession",
+			Handler:       _BacktestServicer_CreateSession_Handler,
 			ServerStreams: true,
 		},
 	},

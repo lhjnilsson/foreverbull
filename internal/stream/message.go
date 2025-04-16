@@ -4,19 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
 )
 
 type Message interface {
-	GetID() string
-	GetOrchestrationID() string
-	GetOrchestrationStep() string
+	GetMsg() *pb.Message
 	RawPayload() []byte
 	ParsePayload(payload interface{}) error
 	Call(ctx context.Context, key Dependency) (interface{}, error)
 	MustGet(key Dependency) interface{}
+
+	TaskTopic() string
+	TaskAbortTopic() string
+	TaskStateTopic() string
 }
 
 func NewMessage(module, component, method string, entity any) (Message, error) {
@@ -25,67 +27,35 @@ func NewMessage(module, component, method string, entity any) (Message, error) {
 		return nil, fmt.Errorf("error marshalling payload: %w", err)
 	}
 
-	return &message{
+	msg := &pb.Message{
+		Id:        uuid.New().String(),
 		Module:    module,
 		Component: component,
 		Method:    method,
 		Payload:   payload,
+	}
+
+	return &message{
+		msg: msg,
 	}, nil
 }
 
-type messageStatus struct {
-	Status     MessageStatus
-	Error      *string
-	OccurredAt time.Time
-}
-
 type message struct {
-	ID                        *string
-	OrchestrationName         *string
-	OrchestrationID           *string
-	OrchestrationStep         *string
-	OrchestrationStepNumber   *int
-	OrchestrationFallbackStep *bool
+	msg *pb.Message
 
-	Module              string
-	Component           string
-	Method              string
-	Error               *string
-	Payload             []byte
-	StatusHistory       []messageStatus
 	dependencyContainer *dependencyContainer
 }
 
-func (m *message) GetID() string {
-	if m.ID == nil {
-		return ""
-	}
-
-	return *m.ID
-}
-
-func (m *message) GetOrchestrationID() string {
-	if m.OrchestrationID == nil {
-		return ""
-	}
-
-	return *m.OrchestrationID
-}
-
-func (m *message) GetOrchestrationStep() string {
-	if m.OrchestrationStep == nil {
-		return ""
-	}
-
-	return *m.OrchestrationStep
+func (m *message) GetMsg() *pb.Message {
+	return m.msg
 }
 
 func (m *message) RawPayload() []byte {
-	return m.Payload
+	return m.msg.Payload
 }
 
 func (m *message) ParsePayload(v interface{}) error {
-	if err := json.Unmarshal(m.Payload, v); err != nil {
+	if err := json.Unmarshal(m.msg.Payload, v); err != nil {
 		return fmt.Errorf("error unmarshalling payload: %w", err)
 	}
 
@@ -110,95 +80,14 @@ func (m *message) MustGet(key Dependency) interface{} {
 	return v
 }
 
-type DependencyContainer interface {
-	AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error))
-	AddSingleton(key Dependency, v interface{})
+func (m *message) TaskTopic() string {
+	return fmt.Sprintf(TOPIC_TASK, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod())
 }
 
-type dependencyContainer struct {
-	methods    map[Dependency]func(context.Context, Message) (interface{}, error)
-	singeltons map[Dependency]interface{}
+func (m *message) TaskAbortTopic() string {
+	return fmt.Sprintf(TOPIC_TASK_ABORT, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod(), m.msg.GetId())
 }
 
-func (d *dependencyContainer) AddMethod(key Dependency, f func(context.Context, Message) (interface{}, error)) {
-	d.methods[key] = f
-}
-
-func (d *dependencyContainer) AddSingleton(key Dependency, v interface{}) {
-	d.singeltons[key] = v
-}
-
-func NewDependencyContainer() DependencyContainer {
-	return &dependencyContainer{
-		methods:    make(map[Dependency]func(context.Context, Message) (interface{}, error)),
-		singeltons: make(map[Dependency]interface{}),
-	}
-}
-
-func NewMessageOrchestration(name string) *MessageOrchestration {
-	return &MessageOrchestration{
-		Name:            name,
-		OrchestrationID: uuid.New().String(),
-		Steps:           []MessageOrchestrationStep{},
-	}
-}
-
-type MessageOrchestration struct {
-	Name            string
-	OrchestrationID string
-	Steps           []MessageOrchestrationStep
-	FallbackStep    *MessageOrchestrationStep
-}
-
-func (mo *MessageOrchestration) AddStep(name string, commands []Message) {
-	step := MessageOrchestrationStep{
-		OrchestrationName: mo.Name,
-		OrchestrationID:   mo.OrchestrationID,
-		OrchestrationStep: name,
-		Name:              name,
-		Commands:          commands,
-	}
-	fallbackStep := false
-	stepNumber := len(mo.Steps)
-
-	for _, cmd := range step.Commands {
-		msg := cmd.(*message)
-		msg.OrchestrationID = &step.OrchestrationID
-		msg.OrchestrationName = &step.OrchestrationName
-		msg.OrchestrationStep = &step.OrchestrationStep
-		msg.OrchestrationStepNumber = &stepNumber
-		msg.OrchestrationFallbackStep = &fallbackStep
-	}
-
-	mo.Steps = append(mo.Steps, step)
-}
-
-func (mo *MessageOrchestration) SettFallback(commands []Message) {
-	step := MessageOrchestrationStep{
-		OrchestrationName: mo.Name,
-		OrchestrationID:   mo.OrchestrationID,
-		OrchestrationStep: "fallback",
-		Name:              "fallback",
-		Commands:          commands,
-	}
-	fallbackStep := true
-
-	for _, cmd := range step.Commands {
-		msg := cmd.(*message)
-		msg.OrchestrationID = &step.OrchestrationID
-		msg.OrchestrationName = &step.OrchestrationName
-		msg.OrchestrationStep = &step.OrchestrationStep
-		msg.OrchestrationFallbackStep = &fallbackStep
-	}
-
-	mo.FallbackStep = &step
-}
-
-type MessageOrchestrationStep struct {
-	Name string
-
-	OrchestrationID   string
-	OrchestrationName string
-	OrchestrationStep string
-	Commands          []Message
+func (m *message) TaskStateTopic() string {
+	return fmt.Sprintf(TOPIC_TASK_STATE, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod(), m.msg.GetId())
 }

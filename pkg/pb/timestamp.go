@@ -15,6 +15,9 @@ func TimeToProtoTimestamp(t time.Time) *timestamppb.Timestamp {
 }
 
 func DateToDateString(date *Date) string {
+	if date == nil {
+		return ""
+	}
 	return fmt.Sprintf("%d-%02d-%02d", date.Year, date.Month, date.Day)
 }
 

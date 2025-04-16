@@ -1,4 +1,4 @@
-package servicer
+package api
 
 import (
 	"fmt"

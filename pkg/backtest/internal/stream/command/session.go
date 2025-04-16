@@ -13,11 +13,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/rs/zerolog/log"
 )
 
@@ -46,11 +45,6 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	depEngine, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
 		log.Err(err).Msg("error getting zipline engine")
-
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
 		return fmt.Errorf("error getting zipline engine: %w", err)
 	}
 
@@ -61,22 +55,10 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
 	if err != nil {
 		log.Err(err).Msg("error listing ingestions")
-
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
 		return fmt.Errorf("error listing ingestions: %w", err)
 	}
 
 	if len(*ingestions) == 0 {
-		err = errors.New("no ingestions found")
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
-		log.Err(err).Msg("no ingestions found")
-
 		return errors.New("no ingestions found")
 	}
 
@@ -92,32 +74,18 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	if ingestion == nil {
 		err = errors.New("no completed ingestions found, create one before running a session")
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
 		return err
 	}
 
 	err = engine.DownloadIngestion(ctx, ingestion)
 	if err != nil {
 		log.Err(err).Msg("error downloading ingestion")
-
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
 		return fmt.Errorf("error downloading ingestion: %w", err)
 	}
 
-	server, activity, err := backtest.NewGRPCSessionServer(session, db, engine)
+	server, activity, err := api.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
-
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_FAILED, err); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
 		return fmt.Errorf("error creating grpc session server: %w", err)
 	}
 
@@ -154,16 +122,6 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		defer func() {
 			log.Info().Msg("closing session server")
 			server.Stop()
-		}()
-
-		if inErr := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_RUNNING, nil); inErr != nil {
-			log.Err(inErr).Msg("error updating session status")
-		}
-
-		defer func() {
-			if err := sessions.UpdateStatus(ctx, command.SessionID, pb.Session_Status_COMPLETED, nil); err != nil {
-				log.Err(err).Msg("error updating session status")
-			}
 		}()
 
 		for {

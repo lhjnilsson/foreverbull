@@ -1,22 +1,29 @@
 syntax = "proto3";
 
 package foreverbull.common;
+
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb";
 
 message Request {
-    string task = 1;
-    optional bytes data = 2;
+  string task = 1;
+  optional bytes data = 2;
 }
 
-
 message Response {
-    string task = 1;
-    optional bytes data = 2;
-    optional string error = 3;
+  string task = 1;
+  optional bytes data = 2;
+  optional string error = 3;
 }
 
 message Date {
-    int32 year = 1;
-    int32 month = 2;
-    int32 day = 3;
+  int32 year = 1;
+  int32 month = 2;
+  int32 day = 3;
+}
+
+enum State {
+  STATE_UNSPECIFIED = 0;
+  STATE_RUNNING = 1;
+  STATE_COMPLETED = 2;
+  STATE_FAILED = 3;
 }

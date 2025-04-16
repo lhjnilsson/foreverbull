@@ -5,7 +5,7 @@ import (
 
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
-	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/servicer"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -26,7 +26,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		}),
 	fx.Invoke(
 		func(g *grpc.Server, md finance_pb.MarketdataClient) error {
-			srv := servicer.NewStrategyServer(md)
+			srv := api.NewStrategyServer(md)
 			pb.RegisterStrategyServicerServer(g, srv)
 			return nil
 		}),

@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -61,24 +59,6 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	err = engine.Ingest(ctx, &ingestion, object)
 	if err != nil {
 		return fmt.Errorf("error ingesting data: %w", err)
-	}
-	return nil
-}
-
-func UpdateBacktestStatus(ctx context.Context, msg stream.Message) error {
-	command := ss.UpdateStatusCommand{}
-
-	err := msg.ParsePayload(&command)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling Ingest payload: %w", err)
-	}
-
-	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
-	backtests := repository.Backtest{Conn: db}
-
-	err = backtests.UpdateStatus(ctx, command.Name, command.Status, nil)
-	if err != nil {
-		return fmt.Errorf("error updating backtest status: %w", err)
 	}
 	return nil
 }
