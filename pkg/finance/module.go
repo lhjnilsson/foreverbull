@@ -15,7 +15,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 )
@@ -44,7 +43,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 			return marketData, t, nil
 		},
-		func(jt nats.JetStreamContext, conn *pgxpool.Pool, marketData supplier.Marketdata, _stream stream.Stream) (Subscriber, error) {
+		func(conn *pgxpool.Pool, marketData supplier.Marketdata, _stream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.MarketDataDep, marketData)

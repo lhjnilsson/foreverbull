@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
@@ -51,19 +52,20 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 	jtCb := func(natsMsg *nats.Msg) {
 		defer func() {
 			if r := recover(); r != nil {
+				fmt.Println(string(debug.Stack())) // nolint: forbidigo
 				log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
 			}
 		}()
 
 		msg := &message{
-			msg: &pb.Message{},
+			msg:                 &pb.Message{},
+			dependencyContainer: ns.deps,
 		}
 		err := proto.Unmarshal(natsMsg.Data, msg.msg)
 		if err != nil {
 			log.Err(err).Any("data", string(natsMsg.Data)).Msg("error unmarshalling message")
 			return
 		}
-
 		err = publishState(msg, pb.State_STATE_RECEIVED, nil)
 		if err != nil {
 			log.Err(err).Msg("error publishing state")

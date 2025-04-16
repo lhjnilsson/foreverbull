@@ -148,7 +148,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	test.Require().NotNil(latestStatus)
-	test.Require().Equal(pb.BacktestStatus_STORING, latestStatus.Status)
+	test.Require().Equal(pb.BacktestStatus_INGESTING, latestStatus.Status)
 	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &pb.GetBacktestRequest{Name: "Test Backtest"})
@@ -176,7 +176,8 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NotNil(latestSessionRsp.Session, "session is nil")
 	test.Require().Equal(pb.SessionStatus_RUNNING, latestSessionRsp.Status.Status)
 
-	var port int64
+	test.Require().NotNil(latestSessionRsp.Session.Port)
+	port := *latestSessionRsp.Session.Port
 
 	var gClient *grpc.ClientConn
 	gClient, err = grpc.NewClient(fmt.Sprintf("localhost:%d", port),

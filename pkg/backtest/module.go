@@ -32,7 +32,7 @@ type (
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine, _stream stream.Stream) (Subscriber, error) {
+		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine, _stream stream.Stream) (Subscriber, DependecyContainer, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(stream.StorageDep, st)
@@ -40,9 +40,9 @@ var Module = fx.Options( //nolint: gochecknoglobals
 
 			sub, err := _stream.NewSubscriber(StreamName, dc)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create subscriber: %w", err)
+				return nil, nil, fmt.Errorf("failed to create subscriber: %w", err)
 			}
-			return sub, nil
+			return sub, dc, nil
 		},
 	),
 	fx.Invoke(
