@@ -32,7 +32,7 @@ def list_backtests(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> 
 @backtest_servicer
 def create(
     servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest: backtest_pb2.Backtest
-) -> Generator[backtest_pb2.Backtest, None, None]:
+) -> Generator[backtest_service_pb2.CreateBacktestResponse, None, None]:
     req = backtest_service_pb2.CreateBacktestRequest(
         backtest=backtest,
     )
@@ -49,12 +49,13 @@ def get(servicer: backtest_service_pb2_grpc.BacktestServicerStub, name: str) -> 
 
 
 @backtest_servicer
-def create_session(servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest_name: str) -> session_pb2.Session:
+def create_session(
+    servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest_name: str
+) -> Generator[backtest_service_pb2.CreateSessionResponse, None, None]:
     req = backtest_service_pb2.CreateSessionRequest(
         backtest_name=backtest_name,
     )
-    rsp: backtest_service_pb2.CreateSessionResponse = servicer.CreateSession(req)
-    return rsp.session
+    return servicer.CreateSession(req)
 
 
 @backtest_servicer

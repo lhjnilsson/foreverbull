@@ -1,5 +1,3 @@
-import time
-
 from contextlib import contextmanager
 from multiprocessing import Event
 from typing import Generator
@@ -48,12 +46,11 @@ class Algorithm(models.Algorithm):
         self._broker_stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
         self._backtest_session: session_pb2.Session | None = None
         rsp = self._broker_stub.CreateSession(backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name))
-        while not rsp.session.HasField("port"):
-            rsp = self._broker_stub.GetSession(backtest_service_pb2.GetSessionRequest(session_id=rsp.session.id))
-            if rsp.session.statuses and rsp.session.statuses[0].status == session_pb2.Session.Status.Status.FAILED:
-                raise Exception(f"Session failed: {rsp.session.statuses[-1].error}")
-            time.sleep(0.5)
-        self._backtest_session = rsp.session
+        for _rsp in rsp:
+            _rsp: backtest_service_pb2.CreateSessionResponse
+            if _rsp.status == session_pb2.SessionStatus.FAILED:
+                raise Exception(f"Session failed: {_rsp.status.status}")
+            self._backtest_session = _rsp.session
         self._broker_session_stub = session_service_pb2_grpc.SessionServicerStub(
             grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
         )
