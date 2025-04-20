@@ -42,8 +42,6 @@ docker==7.1.0
     # via testcontainers
 frozendict==2.4.4
     # via yfinance
-greenlet==3.1.1
-    # via sqlalchemy
 grpcio==1.68.1
     # via foreverbull
     # via grpcio-health-checking
@@ -150,7 +148,7 @@ sqlalchemy==2.0.31
     # via foreverbull
 ta-lib==0.4.32
     # via example-algorithms
-tables==3.9.1
+tables==3.10.2
     # via foreverbull
 testcontainers==4.8.0
     # via foreverbull-testing
@@ -164,6 +162,7 @@ types-protobuf==5.27.0.20240626
 typing-extensions==4.12.2
     # via minio
     # via sqlalchemy
+    # via tables
     # via testcontainers
     # via textual
     # via typer
