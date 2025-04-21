@@ -17,6 +17,14 @@ from foreverbull.pb.foreverbull.backtest import session_service_pb2
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 
 
+def demo():
+    yield backtest_service_pb2.CreateSessionResponse()
+    yield backtest_service_pb2.CreateSessionResponse()
+    yield backtest_service_pb2.CreateSessionResponse()
+    yield backtest_service_pb2.CreateSessionResponse()
+    yield backtest_service_pb2.CreateSessionResponse()
+
+
 class TestAlgorithm:
     @pytest.fixture
     def start_grpc_server(self):
@@ -50,16 +58,16 @@ class TestAlgorithm:
                 symbols=["AAPL", "MSFT"],
             ),
         )
-        mocked_servicer.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
-                port=None,
+
+        def create_session(req, ctx):
+            yield backtest_service_pb2.CreateSessionResponse(
+                session=session_pb2.Session(
+                    port=7877,
+                )
             )
-        )
-        mocked_servicer.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
-            session=session_pb2.Session(
-                port=7877,
-            )
-        )
+
+        mocked_servicer.CreateSession = create_session
+
         mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
         algorithm, _, _ = parallel_algo_file
         port = start_grpc_server(mocked_servicer, mocked_sesion_servicer)
@@ -81,16 +89,14 @@ class TestAlgorithm:
         mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
         algorithm, configuration, _ = parallel_algo_file
 
-        mock_server.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
-                port=None,
+        def create_session(req, ctx):
+            yield backtest_service_pb2.CreateSessionResponse(
+                session=session_pb2.Session(
+                    port=7877,
+                )
             )
-        )
-        mock_server.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
-            session=session_pb2.Session(
-                port=7877,
-            )
-        )
+
+        mock_server.CreateSession = create_session
         mocked_sesion_servicer.CreateExecution.return_value = session_service_pb2.CreateExecutionResponse(
             configuration=configuration,
         )
@@ -121,16 +127,15 @@ class TestAlgorithm:
     def test_get_execution(self, parallel_algo_file, start_grpc_server):
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
         algorithm, _, _ = parallel_algo_file
-        mock_server.CreateSession.return_value = backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
-                port=None,
+
+        def create_session(req, ctx):
+            yield backtest_service_pb2.CreateSessionResponse(
+                session=session_pb2.Session(
+                    port=7877,
+                )
             )
-        )
-        mock_server.GetSession.return_value = backtest_service_pb2.GetSessionResponse(
-            session=session_pb2.Session(
-                port=7877,
-            )
-        )
+
+        mock_server.CreateSession = create_session
         mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
         mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
         mock_server.GetExecution.return_value = backtest_service_pb2.GetExecutionResponse(

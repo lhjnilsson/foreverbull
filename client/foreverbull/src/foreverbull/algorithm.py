@@ -45,12 +45,15 @@ class Algorithm(models.Algorithm):
         channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
         self._broker_stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
         self._backtest_session: session_pb2.Session | None = None
-        rsp = self._broker_stub.CreateSession(backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name))
-        for _rsp in rsp:
-            _rsp: backtest_service_pb2.CreateSessionResponse
-            if _rsp.status == session_pb2.SessionStatus.FAILED:
-                raise Exception(f"Session failed: {_rsp.status.status}")
-            self._backtest_session = _rsp.session
+
+        create_rsp = self._broker_stub.CreateSession(
+            backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name)
+        )
+        rsp = backtest_service_pb2.CreateSessionResponse()
+        for rsp in create_rsp:
+            if rsp.status == session_pb2.SessionStatus.FAILED:
+                raise Exception(f"Session failed: {rsp.status.status}")
+            self._backtest_session = rsp.session
         self._broker_session_stub = session_service_pb2_grpc.SessionServicerStub(
             grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
         )
