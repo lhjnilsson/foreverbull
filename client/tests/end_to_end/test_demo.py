@@ -27,7 +27,7 @@ def runner():
 
 
 def test_start_stop(runner):
-    result = runner(env_cli.cli, "stop --remove")
+    result = runner(env_cli.cli, "stop --remove --purge")
     assert result.exit_code == 0
 
     result = runner(env_cli.cli, "create", env={"VERSION": "local"})
