@@ -19,7 +19,6 @@ from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import ingestion_pb2
 from foreverbull_zipline import service
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 
@@ -93,7 +92,7 @@ def foreverbull_bundle(execution: execution_pb2.Execution, fb_database):
     except (ValueError, LookupError):
         s = service.BacktestService()
         req = engine_service_pb2.IngestRequest(
-            ingestion=ingestion_pb2.Ingestion(
+            ingestion=engine_service_pb2.Ingestion(
                 start_date=backtest_entity.start_date,
                 end_date=backtest_entity.end_date,
                 symbols=backtest_entity.symbols,

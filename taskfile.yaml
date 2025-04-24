@@ -63,6 +63,27 @@ tasks:
       - service:test:unit
       - strategy:test:unit
 
+  test:demo:
+    vars:
+      RECIPIENT: '{{default "World" .RECIPIENT}}'
+    cmds:
+      - echo "Hello, {{.RECIPIENT}}!"
+
+  test:demo2:
+    - echo "Hello!"
+    - task: test:demo
+      vars: { RECIPIENT: "Cruel World" }
+
+  test:integration:
+    dir: client/
+    deps:
+      - build:docker
+      - client:docker:zipline
+      - grafana:build:docker
+    cmds:
+      - rye sync
+      - VERSION=local ECHO=true rye test -- tests/end_to_end/test_demo.py -vs
+
   mock:clean:
     cmds:
       - find pkg/ -type f -name "mock_*.go" -delete

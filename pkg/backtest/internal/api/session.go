@@ -113,16 +113,14 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 		Benchmark: execution.Benchmark,
 	}
 
-	portfolioCh, err := s.backtestSession.RunBacktest(context.Background(), &backtest, s.wp)
+	periods, err := s.backtestSession.RunBacktest(context.Background(), &backtest, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
 		return fmt.Errorf("error running backtest: %w", err)
 	}
 
-	for portfolio := range portfolioCh {
-		err := stream.Send(&backtest_pb.RunExecutionResponse{
-			Portfolio: portfolio,
-		})
+	for period := range periods {
+		err := stream.Send(period)
 		if err != nil {
 			return fmt.Errorf("error sending portfolio: %w", err)
 		}

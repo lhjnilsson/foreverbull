@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from enum import StrEnum
 from pathlib import Path
@@ -173,6 +174,7 @@ class PostgresContainer(BaseContainer):
         self.name = "foreverbull_postgres"
         self.hostname = "postgres"
         self.image = config.postgres_image
+        self.data_location = self.environment.postgres_location
 
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {"5432/tcp": 5432}
@@ -203,6 +205,7 @@ class MinioContainer(BaseContainer):
         self.name = "foreverbull_minio"
         self.hostname = "minio"
         self.image = config.minio_image
+        self.data_location = self.environment.minio_location
 
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {"9000/tcp": 9000}
@@ -222,6 +225,7 @@ class NatsContainer(BaseContainer):
         self.name = "foreverbull_nats"
         self.hostname = "nats"
         self.image = config.nats_image
+        self.data_location = self.environment.nats_location
 
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {"4222/tcp": 4222}
@@ -247,6 +251,7 @@ class ForeverbullContainer(BaseContainer):
         self.name = "foreverbull_foreverbull"
         self.hostname = "foreverbull"
         self.image = config.foreverbull_image
+        self.data_location = None
 
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {
@@ -297,6 +302,7 @@ class GrafanaContainer(BaseContainer):
         self.name = "foreverbull_grafana"
         self.hostname = "grafana"
         self.image = config.grafana_image
+        self.data_location = None
 
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {"3000/tcp": 3000}
@@ -355,10 +361,18 @@ class ContainerManager:
         for container in self.containers:
             container.stop()
 
-    def remove(self):
+    def remove(self, purge: bool = False):
         for container in self.containers:
             container.remove()
         try:
             _docker.networks.get(self.config.network_name).remove()
         except docker.errors.NotFound:
             pass
+
+        if purge:
+            for container in self.containers:
+                if container.data_location is None:
+                    continue
+
+                if container.data_location.exists():
+                    shutil.rmtree(str(container.data_location))

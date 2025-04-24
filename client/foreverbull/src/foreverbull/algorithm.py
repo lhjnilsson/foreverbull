@@ -1,5 +1,3 @@
-import time
-
 from contextlib import contextmanager
 from multiprocessing import Event
 from typing import Generator
@@ -47,13 +45,15 @@ class Algorithm(models.Algorithm):
         channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
         self._broker_stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
         self._backtest_session: session_pb2.Session | None = None
-        rsp = self._broker_stub.CreateSession(backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name))
-        while not rsp.session.HasField("port"):
-            rsp = self._broker_stub.GetSession(backtest_service_pb2.GetSessionRequest(session_id=rsp.session.id))
-            if rsp.session.statuses and rsp.session.statuses[0].status == session_pb2.Session.Status.Status.FAILED:
-                raise Exception(f"Session failed: {rsp.session.statuses[-1].error}")
-            time.sleep(0.5)
-        self._backtest_session = rsp.session
+
+        create_rsp = self._broker_stub.CreateSession(
+            backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name)
+        )
+        rsp = backtest_service_pb2.CreateSessionResponse()
+        for rsp in create_rsp:
+            if rsp.status == session_pb2.SessionStatus.FAILED:
+                raise Exception(f"Session failed: {rsp.status.status}")
+            self._backtest_session = rsp.session
         self._broker_session_stub = session_service_pb2_grpc.SessionServicerStub(
             grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
         )
@@ -103,7 +103,7 @@ class Algorithm(models.Algorithm):
         end: common_pb2.Date,
         symbols: list[str],
         benchmark=None,
-    ) -> Generator[finance_pb2.Portfolio, None, None]:
+    ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
@@ -123,7 +123,7 @@ class Algorithm(models.Algorithm):
                 session_service_pb2.RunExecutionRequest(execution_id=create.execution.id)
             )
             for message in rsp:
-                yield message.portfolio
+                yield message
 
             rsp = self._broker_session_stub.StoreResult(
                 session_service_pb2.StoreExecutionResultRequest(

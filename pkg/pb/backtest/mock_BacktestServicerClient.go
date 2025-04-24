@@ -53,7 +53,7 @@ func (_m *MockBacktestServicerClient) CreateBacktest(ctx context.Context, in *Cr
 }
 
 // CreateSession provides a mock function with given fields: ctx, in, opts
-func (_m *MockBacktestServicerClient) CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error) {
+func (_m *MockBacktestServicerClient) CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateSessionResponse], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -67,16 +67,16 @@ func (_m *MockBacktestServicerClient) CreateSession(ctx context.Context, in *Cre
 		panic("no return value specified for CreateSession")
 	}
 
-	var r0 *CreateSessionResponse
+	var r0 grpc.ServerStreamingClient[CreateSessionResponse]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest, ...grpc.CallOption) (*CreateSessionResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[CreateSessionResponse], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest, ...grpc.CallOption) *CreateSessionResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest, ...grpc.CallOption) grpc.ServerStreamingClient[CreateSessionResponse]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateSessionResponse)
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[CreateSessionResponse])
 		}
 	}
 

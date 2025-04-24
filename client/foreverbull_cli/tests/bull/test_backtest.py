@@ -5,7 +5,6 @@ import traceback
 
 from concurrent import futures
 from datetime import date
-from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -20,11 +19,11 @@ from typer.testing import CliRunner
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
-from foreverbull.pb.pb_utils import to_proto_timestamp
 from foreverbull_cli.bull.backtest import backtest
 
 
@@ -52,13 +51,6 @@ def test_backtest_list(runner):
                 start_date=from_pydate_to_proto_date(date.today()),
                 end_date=from_pydate_to_proto_date(date.today()),
                 symbols=["AAPL", "MSFT"],
-                statuses=[
-                    backtest_pb2.Backtest.Status(
-                        status=backtest_pb2.BacktestStatus.READY,
-                        error=None,
-                        occurred_at=to_proto_timestamp(datetime.now()),
-                    )
-                ],
             )
         ]
         result = runner(backtest, ["list"])
@@ -76,18 +68,13 @@ def test_backtest_create(runner):
     ):
         mock_create.return_value = iter(
             [
-                backtest_pb2.Backtest(
-                    name="test_name",
-                    start_date=from_pydate_to_proto_date(date.today()),
-                    end_date=from_pydate_to_proto_date(date.today()),
-                    symbols=["AAPL", "MSFT"],
-                    statuses=[
-                        backtest_pb2.Backtest.Status(
-                            status=backtest_pb2.BacktestStatus.CREATED,
-                            error=None,
-                            occurred_at=to_proto_timestamp(datetime.now()),
-                        )
-                    ],
+                backtest_service_pb2.CreateBacktestResponse(
+                    backtest=backtest_pb2.Backtest(
+                        name="test_name",
+                        start_date=from_pydate_to_proto_date(date.today()),
+                        end_date=from_pydate_to_proto_date(date.today()),
+                        symbols=["AAPL", "MSFT"],
+                    )
                 )
             ]
         )
@@ -116,20 +103,12 @@ def test_backtest_get(runner):
             start_date=from_pydate_to_proto_date(date.today()),
             end_date=from_pydate_to_proto_date(date.today()),
             symbols=["AAPL", "MSFT"],
-            statuses=[
-                backtest_pb2.Backtest.Status(
-                    status=backtest_pb2.BacktestStatus.READY,
-                    error=None,
-                    occurred_at=to_proto_timestamp(datetime.now()),
-                )
-            ],
         )
         result = runner(backtest, ["get", "test"])
 
         if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test" in result.stdout
-        assert "READY" in result.stdout
         assert "AAPL,MSFT" in result.stdout
 
 

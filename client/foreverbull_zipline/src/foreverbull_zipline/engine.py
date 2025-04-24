@@ -206,8 +206,8 @@ class Engine(multiprocessing.Process):
             if asset is None:
                 raise ConfigError(f"Unknown symbol: {symbol}")
 
-        start_date = find_start_timestamp(bundle, req)
-        end_date = find_end_timestamp(bundle, req)
+        start_date = find_start_timestamp(bundle, req).normalize()
+        end_date = find_end_timestamp(bundle, req).normalize()
 
         if req.backtest.benchmark:
             benchmark_returns = None
@@ -231,6 +231,7 @@ class Engine(multiprocessing.Process):
             trading_calendar=trading_calendar,
             data_frequency="daily",
         )
+        num_periods = trading_calendar.sessions_in_range(start_date, end_date).size
         metrics_set = "default"
         blotter = "default"
         if isinstance(metrics_set, six.string_types):
@@ -268,7 +269,8 @@ class Engine(multiprocessing.Process):
                     end_date=pb_utils.from_pydate_to_proto_date(trading_algorithm.sim_params.end_session),
                     symbols=req.backtest.symbols,
                     benchmark=(req.backtest.benchmark if req.backtest.benchmark else None),
-                )
+                ),
+                num_periods=num_periods,
             ).SerializeToString(),
         )
 

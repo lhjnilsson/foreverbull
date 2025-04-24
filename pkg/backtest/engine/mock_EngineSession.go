@@ -7,8 +7,6 @@ import (
 
 	backtest "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 
-	finance "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-
 	mock "github.com/stretchr/testify/mock"
 
 	worker "github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -50,23 +48,23 @@ func (_m *MockEngineSession) GetResult(ctx context.Context) (*backtest.GetResult
 }
 
 // RunBacktest provides a mock function with given fields: ctx, _a1, workers
-func (_m *MockEngineSession) RunBacktest(ctx context.Context, _a1 *backtest.Backtest, workers worker.Pool) (chan *finance.Portfolio, error) {
+func (_m *MockEngineSession) RunBacktest(ctx context.Context, _a1 *backtest.Backtest, workers worker.Pool) (chan *backtest.RunExecutionResponse, error) {
 	ret := _m.Called(ctx, _a1, workers)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RunBacktest")
 	}
 
-	var r0 chan *finance.Portfolio
+	var r0 chan *backtest.RunExecutionResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) (chan *finance.Portfolio, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) (chan *backtest.RunExecutionResponse, error)); ok {
 		return rf(ctx, _a1, workers)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) chan *finance.Portfolio); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) chan *backtest.RunExecutionResponse); ok {
 		r0 = rf(ctx, _a1, workers)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(chan *finance.Portfolio)
+			r0 = ret.Get(0).(chan *backtest.RunExecutionResponse)
 		}
 	}
 

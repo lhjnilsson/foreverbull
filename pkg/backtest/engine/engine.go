@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/lhjnilsson/foreverbull/internal/storage"
+	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 )
 
@@ -16,6 +16,6 @@ type Engine interface {
 }
 
 type EngineSession interface {
-	RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *finance_pb.Portfolio, error)
+	RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *backtest_pb.RunExecutionResponse, error)
 	GetResult(ctx context.Context) (*pb.GetResultResponse, error)
 }

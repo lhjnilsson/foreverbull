@@ -2,6 +2,7 @@ from datetime import datetime
 from datetime import timedelta
 
 import yfinance
+import yfinance.data
 
 from sqlalchemy import Column
 from sqlalchemy import DateTime
@@ -62,6 +63,9 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
 
 
 def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
+    yfinance.data.YfData.user_agent_headers["User-Agent"] = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
     with database.connect() as conn:
         for symbol in backtest.symbols:
             feed = yfinance.Ticker(symbol)

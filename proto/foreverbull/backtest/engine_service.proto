@@ -2,94 +2,89 @@ syntax = "proto3";
 
 package foreverbull.backtest;
 
-option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
-
 import "foreverbull/backtest/backtest.proto";
-import "foreverbull/finance/finance.proto";
 import "foreverbull/backtest/execution.proto";
 import "foreverbull/common.proto";
+import "foreverbull/finance/finance.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
 message Ingestion {
-    foreverbull.common.Date start_date = 1;
-    foreverbull.common.Date end_date = 2;
-    repeated string symbols = 3;
+  foreverbull.common.Date start_date = 1;
+  foreverbull.common.Date end_date = 2;
+  repeated string symbols = 3;
 }
 
-message GetIngestionRequest {
-}
+message GetIngestionRequest {}
 
 message GetIngestionResponse {
-    Ingestion ingestion = 1;
+  Ingestion ingestion = 1;
 }
 
 message DownloadIngestionRequest {
-    string bucket = 1;
-    string object = 2;
+  string bucket = 1;
+  string object = 2;
 }
 
-message DownloadIngestionResponse {
-}
+message DownloadIngestionResponse {}
 
 message IngestRequest {
-    Ingestion ingestion = 1;
-    optional string bucket = 2;
-    optional string object = 3;
+  Ingestion ingestion = 1;
+  optional string bucket = 2;
+  optional string object = 3;
 }
 
-message IngestResponse {
-}
+message IngestResponse {}
 
 message NewSessionRequest {
-    string id = 1;
+  string id = 1;
 }
 
 message NewSessionResponse {
-    int64 port = 1;
+  int64 port = 1;
 }
 
 message RunBacktestRequest {
-    Backtest backtest = 1;
+  Backtest backtest = 1;
 }
 
 message RunBacktestResponse {
-    Backtest backtest = 1;
+  Backtest backtest = 1;
+  int64 num_periods = 2;
 }
 
-message GetCurrentPeriodRequest {
-}
+message GetCurrentPeriodRequest {}
 
 message GetCurrentPeriodResponse {
-    bool is_running = 1;
-    optional foreverbull.finance.Portfolio portfolio = 2;
+  bool is_running = 1;
+  optional foreverbull.finance.Portfolio portfolio = 2;
 }
 
 message PlaceOrdersAndContinueRequest {
-    repeated foreverbull.finance.Order orders = 1;
+  repeated foreverbull.finance.Order orders = 1;
 }
 
-message PlaceOrdersAndContinueResponse {
-}
+message PlaceOrdersAndContinueResponse {}
 
 message GetResultRequest {
-    string execution = 1;
-    bool upload = 2;
+  string execution = 1;
+  bool upload = 2;
 }
 
 message GetResultResponse {
-    repeated foreverbull.backtest.Period periods = 1;
+  repeated foreverbull.backtest.Period periods = 1;
 }
 
-
 service Engine {
-    rpc GetIngestion(GetIngestionRequest) returns (GetIngestionResponse) {}
-    rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
-    rpc Ingest(IngestRequest) returns (IngestResponse) {}
-    rpc NewSession(NewSessionRequest) returns (NewSessionResponse) {}
+  rpc GetIngestion(GetIngestionRequest) returns (GetIngestionResponse) {}
+  rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
+  rpc Ingest(IngestRequest) returns (IngestResponse) {}
+  rpc NewSession(NewSessionRequest) returns (NewSessionResponse) {}
 }
 
 service EngineSession {
-    rpc RunBacktest(RunBacktestRequest) returns (RunBacktestResponse) {}
-    rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {}
-    rpc PlaceOrdersAndContinue(PlaceOrdersAndContinueRequest) returns (PlaceOrdersAndContinueResponse) {}
-    rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
+  rpc RunBacktest(RunBacktestRequest) returns (RunBacktestResponse) {}
+  rpc GetCurrentPeriod(GetCurrentPeriodRequest) returns (GetCurrentPeriodResponse) {}
+  rpc PlaceOrdersAndContinue(PlaceOrdersAndContinueRequest) returns (PlaceOrdersAndContinueResponse) {}
+  rpc GetResult(GetResultRequest) returns (GetResultResponse) {}
 }

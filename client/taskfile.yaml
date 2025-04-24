@@ -29,8 +29,10 @@ tasks:
       - rye build
 
   docker:zipline:
+    deps:
+    - build:foreverbull
     sources:
-      - src/foreverbull_zipline/**/*.py
+      - foreverbull_zipline/src/foreverbull_zipline/**/*.py
     cmds:
       - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
 
@@ -43,6 +45,6 @@ tasks:
       - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/common.proto
       - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/buf/validate/validate.proto
       # Update imports, could maybe be solved by organizing the proto files in a better way
-      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
-      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
-      - find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;
+      - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
+      - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
+      - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;

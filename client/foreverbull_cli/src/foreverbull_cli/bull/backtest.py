@@ -16,8 +16,9 @@ from typing_extensions import Annotated
 
 from foreverbull import Algorithm
 from foreverbull import broker
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import FBProgress
@@ -70,17 +71,21 @@ def create(
         symbols=cfg["symbols"],
         benchmark=cfg.get("benchmark"),
     )
+    backtest_rsp = backtest_service_pb2.CreateBacktestResponse()
     with FBProgress() as progress:
         create_task = progress.add_task("Creating Backtest", total=2)
 
         progress.update(create_task, completed=1)
         rsp = broker.backtest.create(backtest)
-        for backtest in rsp:
+        for backtest_rsp in rsp:
+            status = backtest_pb2.BacktestStatus.Name(backtest_rsp.status.status)
+            state = common_pb2.State.Name(backtest_rsp.status.state)
             progress.update(
                 create_task,
-                description=f"Creating Backtest: {backtest_pb2.BacktestStatus.Name(backtest.statuses[0].status)}",
+                description=f"Creating Backtest: {status} - {state}",
             )
         progress.update(create_task, completed=2)
+
     table = Table(title="Created Backtest", expand=True)
     table.add_column("Name")
     table.add_column("Start")
@@ -88,11 +93,19 @@ def create(
     table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
     table.add_row(
-        backtest.name,
-        (from_proto_date_to_pydate(backtest.start_date).isoformat() if backtest.start_date else ""),
-        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.end_date else ""),
-        ",".join(backtest.symbols),
-        backtest.benchmark,
+        backtest_rsp.backtest.name,
+        (
+            from_proto_date_to_pydate(backtest_rsp.backtest.start_date).isoformat()
+            if backtest_rsp.backtest.start_date
+            else ""
+        ),
+        (
+            from_proto_date_to_pydate(backtest_rsp.backtest.end_date).isoformat()
+            if backtest_rsp.backtest.end_date
+            else ""
+        ),
+        ",".join(backtest_rsp.backtest.symbols),
+        backtest_rsp.backtest.benchmark,
     )
     console.print(table)
 
@@ -104,14 +117,12 @@ def get(
     backtest = broker.backtest.get(name)
     backtest_table = Table(title="Backtest", expand=True)
     backtest_table.add_column("Name")
-    backtest_table.add_column("Status")
     backtest_table.add_column("Start")
     backtest_table.add_column("End")
     backtest_table.add_column("Symbols", overflow="fold")
     backtest_table.add_column("Benchmark")
     backtest_table.add_row(
         backtest.name,
-        (backtest_pb2.BacktestStatus.Name(backtest.statuses[0].status) if backtest.statuses else "Unknown"),
         from_proto_date_to_pydate(backtest.start_date).isoformat(),
         (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
         ",".join(backtest.symbols),
@@ -119,15 +130,11 @@ def get(
     )
     executions = broker.backtest.list_executions(name, None)
     executions_table = Table(title="executions", expand=True)
-    executions_table.add_column("Date")
-    executions_table.add_column("Status")
     executions_table.add_column("Start")
     executions_table.add_column("End")
     executions_table.add_column("Link")
     for execution in executions:
         executions_table.add_row(
-            execution.statuses[0].occurred_at.ToDatetime().strftime("%Y-%m-%d %H:%M:%S"),
-            execution_pb2.Execution.Status.Status.Name(execution.statuses[0].status),
             execution.backtest,
             execution.id,
         )
@@ -169,19 +176,13 @@ def run(
                 console.print(f"[red]Invalid end date: [yellow]{end}")
                 return
 
-        total_months = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
-        log.info(f"Running backtest {backtest.name} from. Total Months: {total_months}")
-
-        task = progress.add_task(f"{backtest.name}", total=total_months)
-        current_month = start_date.month
+        task = progress.add_task(f"{backtest.name}")
         for period in session.run_execution(
             start_date,
             end_date,
             [s for s in backtest.symbols],
         ):
-            if period.timestamp.ToDatetime().month != current_month:
-                progress.update(task, advance=1)
-                current_month = period.timestamp.ToDatetime().month
+            progress.update(task, total=period.num_total_periods, completed=period.num_current_period)
         log.info(f"Execution completed for {backtest.name}")
 
 

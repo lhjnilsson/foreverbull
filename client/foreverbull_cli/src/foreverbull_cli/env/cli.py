@@ -85,7 +85,7 @@ def start(ctx: typer.Context):
 
 
 @cli.command(help="stop environment")
-def stop(ctx: typer.Context, remove: bool = False):
+def stop(ctx: typer.Context, remove: bool = False, purge: bool = False):
     cm: ContainerManager = ctx.obj
 
     with FBProgress() as progress:
@@ -94,15 +94,15 @@ def stop(ctx: typer.Context, remove: bool = False):
             remove_task = progress.add_task("Removing environment", total=2)
         else:
             remove_task = None
+
         progress.update(stop, completed=1)
         cm.stop()
         progress.update(stop, completed=2)
 
         if remove_task:
             progress.update(remove_task, completed=1)
-            cm.remove()
+            cm.remove(purge)
             progress.update(remove_task, completed=2)
-
     print_status(cm)
 
 

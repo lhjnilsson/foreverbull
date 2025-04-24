@@ -1,7 +1,7 @@
 from foreverbull.pb.foreverbull.backtest import backtest_pb2 as _backtest_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2 as _finance_pb2
 from foreverbull.pb.foreverbull.backtest import execution_pb2 as _execution_pb2
 from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
+from foreverbull.pb.foreverbull.finance import finance_pb2 as _finance_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -74,10 +74,12 @@ class RunBacktestRequest(_message.Message):
     def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class RunBacktestResponse(_message.Message):
-    __slots__ = ("backtest",)
+    __slots__ = ("backtest", "num_periods")
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    NUM_PERIODS_FIELD_NUMBER: _ClassVar[int]
     backtest: _backtest_pb2.Backtest
-    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
+    num_periods: int
+    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ..., num_periods: _Optional[int] = ...) -> None: ...
 
 class GetCurrentPeriodRequest(_message.Message):
     __slots__ = ()

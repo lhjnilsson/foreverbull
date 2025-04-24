@@ -17,7 +17,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -151,14 +150,14 @@ func (s *SessionTest) TestRunExecution() {
 		s.backtest.StartDate, s.backtest.EndDate, []string{"AAPL"}, nil)
 	s.Require().NoError(err)
 
-	portfolioCh := make(chan *finance_pb.Portfolio, 5)
-	portfolioCh <- &finance_pb.Portfolio{}
-	portfolioCh <- &finance_pb.Portfolio{}
-	portfolioCh <- &finance_pb.Portfolio{}
-	portfolioCh <- &finance_pb.Portfolio{}
-	portfolioCh <- &finance_pb.Portfolio{}
-	close(portfolioCh)
-	s.mockEngineSession.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(portfolioCh, nil)
+	ch := make(chan *backtest_pb.RunExecutionResponse, 5)
+	ch <- &backtest_pb.RunExecutionResponse{}
+	ch <- &backtest_pb.RunExecutionResponse{}
+	ch <- &backtest_pb.RunExecutionResponse{}
+	ch <- &backtest_pb.RunExecutionResponse{}
+	ch <- &backtest_pb.RunExecutionResponse{}
+	close(ch)
+	s.mockEngineSession.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(ch, nil)
 
 	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{
 		ExecutionId: execution.Id,
