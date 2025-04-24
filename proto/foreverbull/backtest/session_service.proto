@@ -2,74 +2,72 @@ syntax = "proto3";
 
 package foreverbull.backtest;
 
+import "buf/validate/validate.proto";
+import "foreverbull/backtest/backtest.proto";
+import "foreverbull/backtest/execution.proto";
+import "foreverbull/finance/finance.proto";
+import "foreverbull/service/worker.proto";
+
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
-import "foreverbull/backtest/backtest.proto";
-import "foreverbull/service/worker.proto";
-import "foreverbull/finance/finance.proto";
-import "foreverbull/backtest/execution.proto";
-import "buf/validate/validate.proto";
-
-
 message CreateExecutionRequest {
-    foreverbull.backtest.Backtest backtest = 1 [(buf.validate.field) = {
-            required: true,
-            cel: {
-                id: "required_backtest",
-                expression: "this != null"
-            }
-        }];;
-    foreverbull.service.Algorithm algorithm = 2 [(buf.validate.field) = {
-            required: true,
-            cel: {
-                id: "required_algo",
-                expression: "this != null"
-            }
-        }];;
+  foreverbull.backtest.Backtest backtest = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required_backtest"
+      expression: "this != null"
+    }
+  }];
+  foreverbull.service.Algorithm algorithm = 2 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required_algo"
+      expression: "this != null"
+    }
+  }];
 }
 
 message CreateExecutionResponse {
-    foreverbull.backtest.Execution execution = 1;
-    foreverbull.service.ExecutionConfiguration configuration = 2;
+  foreverbull.backtest.Execution execution = 1;
+  foreverbull.service.ExecutionConfiguration configuration = 2;
 }
 
 message RunExecutionRequest {
-    string execution_id = 1 [(buf.validate.field) = {
-            required: true,
-            cel: {
-                id: "required",
-                expression: "this != ''"
-            }
-        }];;
+  string execution_id = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
 }
 
 message RunExecutionResponse {
-    foreverbull.backtest.Execution execution = 1;
-    foreverbull.finance.Portfolio portfolio = 2;
+  foreverbull.backtest.Backtest backtest = 1;
+  foreverbull.finance.Portfolio portfolio = 2;
+  int64 num_total_periods = 3;
+  int64 num_current_period = 4;
 }
 
 message StoreExecutionResultRequest {
-    string execution_id = 1 [(buf.validate.field) = {
-            required: true,
-            cel: {
-                id: "required",
-                expression: "this != ''"
-            }
-        }];;
+  string execution_id = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
 }
 
-message StoreExecutionResultResponse {
-}
+message StoreExecutionResultResponse {}
 
-message StopServerRequest {
-}
+message StopServerRequest {}
 
-message StopServerResponse {
-}
+message StopServerResponse {}
 
 service SessionServicer {
-    rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
-    rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
-    rpc StoreResult(StoreExecutionResultRequest) returns (StoreExecutionResultResponse) {}
-    rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
+  rpc CreateExecution(CreateExecutionRequest) returns (CreateExecutionResponse) {}
+  rpc RunExecution(RunExecutionRequest) returns (stream RunExecutionResponse) {}
+  rpc StoreResult(StoreExecutionResultRequest) returns (StoreExecutionResultResponse) {}
+  rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
 }

@@ -34,33 +34,21 @@ func (_m *MockBacktestServicerServer) CreateBacktest(_a0 *CreateBacktestRequest,
 }
 
 // CreateSession provides a mock function with given fields: _a0, _a1
-func (_m *MockBacktestServicerServer) CreateSession(_a0 context.Context, _a1 *CreateSessionRequest) (*CreateSessionResponse, error) {
+func (_m *MockBacktestServicerServer) CreateSession(_a0 *CreateSessionRequest, _a1 grpc.ServerStreamingServer[CreateSessionResponse]) error {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateSession")
 	}
 
-	var r0 *CreateSessionResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)); ok {
-		return rf(_a0, _a1)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *CreateSessionRequest) *CreateSessionResponse); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*CreateSessionRequest, grpc.ServerStreamingServer[CreateSessionResponse]) error); ok {
 		r0 = rf(_a0, _a1)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*CreateSessionResponse)
-		}
+		r0 = ret.Error(0)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *CreateSessionRequest) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // GetBacktest provides a mock function with given fields: _a0, _a1

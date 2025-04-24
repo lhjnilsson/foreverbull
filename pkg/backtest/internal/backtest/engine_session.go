@@ -7,7 +7,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -32,7 +31,7 @@ type ZipelineSession struct {
 	client pb.EngineSessionClient
 }
 
-func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *finance_pb.Portfolio, error) {
+func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *backtest_pb.RunExecutionResponse, error) {
 	req := backtest_pb.RunBacktestRequest{
 		Backtest: backtest,
 	}
@@ -41,31 +40,40 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 	if err != nil {
 		return nil, fmt.Errorf("error running: %w", err)
 	}
+	totalPeriods := rsp.NumPeriods
 
 	log.Debug().Any("response", rsp).Msg("run backtest sent")
 
-	portfolioCh := make(chan *finance_pb.Portfolio)
+	ch := make(chan *backtest_pb.RunExecutionResponse)
 
 	runner := func() {
+		var currentPeriod int64 = 0
 		for {
 			period, err := z.client.GetCurrentPeriod(ctx, &backtest_pb.GetCurrentPeriodRequest{})
 			if err != nil {
-				close(portfolioCh)
+				close(ch)
 				return
+			}
+			if !period.IsRunning {
+				close(ch)
+				return
+			}
+			currentPeriod++
+			excRsp := backtest_pb.RunExecutionResponse{
+				Backtest:         backtest,
+				Portfolio:        period.Portfolio,
+				NumTotalPeriods:  totalPeriods,
+				NumCurrentPeriod: currentPeriod,
 			}
 
-			if !period.IsRunning {
-				close(portfolioCh)
-				return
-			}
 			select {
-			case portfolioCh <- period.Portfolio:
+			case ch <- &excRsp:
 			default:
 			}
 			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
-				close(portfolioCh)
+				close(ch)
 				return
 			}
 
@@ -76,7 +84,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 			)
 			if err != nil {
 				log.Error().Err(err).Msg("error placing orders")
-				close(portfolioCh)
+				close(ch)
 
 				return
 			}
@@ -84,7 +92,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 	}
 	go runner()
 
-	return portfolioCh, nil
+	return ch, nil
 }
 
 func (z *ZipelineSession) GetResult(ctx context.Context) (*backtest_pb.GetResultResponse, error) {
