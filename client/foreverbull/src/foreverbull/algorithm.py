@@ -103,7 +103,7 @@ class Algorithm(models.Algorithm):
         end: common_pb2.Date,
         symbols: list[str],
         benchmark=None,
-    ) -> Generator[finance_pb2.Portfolio, None, None]:
+    ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         with WorkerPool(self._file_path) as wp:
@@ -123,7 +123,7 @@ class Algorithm(models.Algorithm):
                 session_service_pb2.RunExecutionRequest(execution_id=create.execution.id)
             )
             for message in rsp:
-                yield message.portfolio
+                yield message
 
             rsp = self._broker_session_stub.StoreResult(
                 session_service_pb2.StoreExecutionResultRequest(

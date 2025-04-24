@@ -27,6 +27,12 @@ def runner():
 
 
 def test_start_stop(runner):
+    import pathlib
+
+    # Get directory of the current script
+    client_directory = pathlib.Path(__file__).parent.parent.parent.resolve()
+    non_parallel = client_directory / "example_algorithms" / "src" / "example_algorithms" / "non_parallel.py"
+
     result = runner(env_cli.cli, "stop --remove --purge")
     assert result.exit_code == 0
 
@@ -38,5 +44,7 @@ def test_start_stop(runner):
     assert result.exit_code == 0
 
     # Run Backtest
+    result = runner(backtest_cli, f"run nasdaq {str(non_parallel)}")
+    assert result.exit_code == 0
 
     # List Backtest Results

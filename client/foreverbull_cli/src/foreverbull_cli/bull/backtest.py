@@ -176,19 +176,13 @@ def run(
                 console.print(f"[red]Invalid end date: [yellow]{end}")
                 return
 
-        total_months = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
-        log.info(f"Running backtest {backtest.name} from. Total Months: {total_months}")
-
-        task = progress.add_task(f"{backtest.name}", total=total_months)
-        current_month = start_date.month
+        task = progress.add_task(f"{backtest.name}")
         for period in session.run_execution(
             start_date,
             end_date,
             [s for s in backtest.symbols],
         ):
-            if period.timestamp.ToDatetime().month != current_month:
-                progress.update(task, advance=1)
-                current_month = period.timestamp.ToDatetime().month
+            progress.update(task, total=period.num_total_periods, completed=period.num_current_period)
         log.info(f"Execution completed for {backtest.name}")
 
 
