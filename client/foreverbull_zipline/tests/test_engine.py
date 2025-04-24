@@ -155,6 +155,7 @@ def test_run_benchmark(execution: execution_pb2.Execution, engine: Engine, bench
         )
     )
     response = engine.run_backtest(request)
+    expected_periods = response.num_periods
     assert response.backtest.start_date == execution.start_date
     assert response.backtest.end_date == execution.end_date
     assert response.backtest.symbols == execution.symbols
@@ -163,12 +164,15 @@ def test_run_benchmark(execution: execution_pb2.Execution, engine: Engine, bench
     else:
         assert response.backtest.benchmark == ""
 
+    periods = 0
     while True:
         response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
+        periods += 1
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
+    assert periods == expected_periods
 
 
 def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
@@ -204,13 +208,16 @@ def test_multiple_runs_different_symbols(execution: execution_pb2.Execution, eng
     response = engine.run_backtest(request)
     assert response.backtest
     assert response.backtest.symbols == symbols
-
+    expected_periods = response.num_periods
+    periods = 0
     while True:
         response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
+        periods += 1
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
+    assert periods == expected_periods
 
 
 def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
@@ -225,13 +232,16 @@ def test_run_end_date_none(execution: execution_pb2.Execution, engine: Engine):
     response = engine.run_backtest(request)
     assert response.backtest
     assert response.backtest.end_date == execution.end_date
-
+    expected_periods = response.num_periods
+    periods = 0
     while True:
         response = engine.get_current_period(engine_service_pb2.GetCurrentPeriodRequest())
         if response.is_running is False:
             break
+        periods += 1
         assert response.portfolio
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
+    assert periods == expected_periods
 
 
 @pytest.mark.parametrize("benchmark", ["AAPL", None])
