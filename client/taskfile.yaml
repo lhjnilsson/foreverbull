@@ -29,8 +29,10 @@ tasks:
       - rye build
 
   docker:zipline:
+    deps:
+    - build:foreverbull
     sources:
-      - src/foreverbull_zipline/**/*.py
+      - foreverbull_zipline/src/foreverbull_zipline/**/*.py
     cmds:
       - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
 

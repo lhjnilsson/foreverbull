@@ -206,8 +206,8 @@ class Engine(multiprocessing.Process):
             if asset is None:
                 raise ConfigError(f"Unknown symbol: {symbol}")
 
-        start_date = find_start_timestamp(bundle, req)
-        end_date = find_end_timestamp(bundle, req)
+        start_date = find_start_timestamp(bundle, req).normalize()
+        end_date = find_end_timestamp(bundle, req).normalize()
 
         if req.backtest.benchmark:
             benchmark_returns = None
