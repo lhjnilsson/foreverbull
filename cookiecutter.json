@@ -1,0 +1,14 @@
+{
+    "templates": {
+      "directory1": {
+        "path": "./directory1",
+        "title": "Directory 1 Template",
+        "description": "Description for template 1"
+      },
+      "directory2": {
+        "path": "./directory2",
+        "title": "Directory 2 Template",
+        "description": "Description for template 2"
+      }
+    }
+  }
