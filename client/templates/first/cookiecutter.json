@@ -1,5 +1,5 @@
 {
     "project_name": "My Project",
-    "initialize_git": ["y", "n"],
+    "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '_').replace('-', '_') }}",
     "create_virtualenv": true
   }
