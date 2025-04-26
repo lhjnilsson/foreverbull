@@ -5,5 +5,5 @@ if "{{ cookiecutter.initialize_git }}" == "y":
     print("Git repository initialized with initial commit")
 
 # Create virtual environment if selected
-if "{{ cookiecutter.create_virtualenv }}" == "y":
+if "{{ cookiecutter.create_virtualenv }}":
     print("Creating virtual environment...")
