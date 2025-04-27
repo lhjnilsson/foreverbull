@@ -1,14 +1,13 @@
 {
     "templates": {
-      "directory1": {
-        "path": "./client/templates/first",
-        "title": "Directory 1 Template",
-        "description": "Description for template 1"
-      },
-      "directory2": {
-        "path": "./client/templates/second",
-        "title": "Directory 2 Template",
-        "description": "Description for template 2"
+      "simple": {
+        "path": "./client/templates/simple",
+        "title": "Simple Setup without TALib",
+        "description": "Intended for PoC and demo purposes"
+        },
+      "advanced": {
+        "path": "./client/templates/advanced",
+        "title": "More Advanced Setup with TALib and mix of parallelism"
       }
     }
   }
