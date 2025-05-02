@@ -1,5 +1,6 @@
 {
     "project_name": "My Project",
     "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '_').replace('-', '_') }}",
-    "create_virtualenv": true
+    "install_dependencies": true,
+    "run_setup": true
   }

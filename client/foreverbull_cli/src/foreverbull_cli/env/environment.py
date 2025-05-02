@@ -12,6 +12,10 @@ import docker.models.containers
 _docker = docker.from_env()
 
 
+class EnvironmentExists(Exception):
+    pass
+
+
 class ContainerStatus(StrEnum):
     NOT_FOUND = "not_found"
     RUNNING = "running"
@@ -326,7 +330,12 @@ class ContainerManager:
             container.get_or_download_image()
 
     def create(self):
-        _docker.networks.create(self.config.network_name, driver="bridge")
+        try:
+            _docker.networks.create(self.config.network_name, driver="bridge")
+        except docker.errors.APIError as e:
+            if e.status_code == 409:
+                raise EnvironmentExists(f"Environment {self.config.network_name} already exists")
+            raise e
         for container in self.containers:
             container.create()
 
