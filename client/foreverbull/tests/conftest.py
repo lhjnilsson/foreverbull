@@ -1,4 +1,3 @@
-import importlib.util
 import os
 import tempfile
 
@@ -12,9 +11,7 @@ import pynng
 import pytest
 
 from foreverbull import Algorithm
-from foreverbull import Function
 from foreverbull import Order
-from foreverbull import models
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
@@ -117,18 +114,7 @@ def namespace_server():
 
 
 def get_algo(file_path: str) -> Algorithm:
-    spec = importlib.util.spec_from_file_location(
-        "",
-        file_path,
-    )
-    if spec is None or spec.loader is None:
-        raise Exception(f"Failed to load {file_path}")
-    source = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(source)
-    return Algorithm(
-        [Function(callable=models.Algorithm._functions["parallel_algo"]["callable"])],
-        models.Algorithm._namespaces,
-    )
+    return Algorithm.from_file_path(file_path)
 
 
 @pytest.fixture(scope="function")
@@ -188,7 +174,7 @@ def parallel_algo(asset: Asset, portfolio: Portfolio) -> Order:
     else:
         portfolio.order(asset.symbol, -10)
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=parallel_algo)
     ]
@@ -258,7 +244,7 @@ def non_parallel_algo(assets: Assets, portfolio: Portfolio) -> list[Order]:
         else:
             portfolio.order(asset.symbol, -10)
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=non_parallel_algo)
     ]
@@ -335,7 +321,7 @@ def parallel_algo_with_parameters(asset: Asset, portfolio: Portfolio, low: int, 
     else:
         portfolio.order(asset.symbol, -10)
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=parallel_algo_with_parameters)
     ]
@@ -412,7 +398,7 @@ def non_parallel_algo_with_parameters(assets: Assets, portfolio: Portfolio, low:
         else:
             portfolio.order(asset.symbol, -10)
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=non_parallel_algo_with_parameters)
     ]
@@ -516,7 +502,7 @@ def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
 def filter_assets(assets: Assets, portfolio: Portfolio) -> None:
     pass
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=measure_assets),
         Function(callable=create_orders, run_last=True),

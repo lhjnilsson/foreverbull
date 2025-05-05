@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import grpc
 import pytest
 
+from foreverbull.algorithm import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
@@ -42,7 +43,8 @@ class TestAlgorithm:
         grpc_server.stop(None)
 
     def test_get_default_no_session(self, parallel_algo_file):
-        algorithm, _, _ = parallel_algo_file
+        model, _, _ = parallel_algo_file
+        algorithm = Algorithm(model)
         with pytest.raises(RuntimeError, match="No backtest session"):
             algorithm.get_default()
 
@@ -69,13 +71,16 @@ class TestAlgorithm:
         mocked_servicer.CreateSession = create_session
 
         mocked_sesion_servicer.StopServer.return_value = session_service_pb2.StopServerResponse()
-        algorithm, _, _ = parallel_algo_file
+        model, _, _ = parallel_algo_file
+        algorithm = Algorithm(model)
+
         port = start_grpc_server(mocked_servicer, mocked_sesion_servicer)
         with algorithm.backtest_session("test", broker_port=port) as algo:
             assert algo
 
     def test_run_execution_no_session(self, parallel_algo_file):
-        algorithm, _, _ = parallel_algo_file
+        model, _, _ = parallel_algo_file
+        algorithm = Algorithm(model)
         with pytest.raises(RuntimeError, match="No backtest session"):
             for _ in algorithm.run_execution(
                 pb_utils.from_pydate_to_proto_date(date.today()),
@@ -87,7 +92,8 @@ class TestAlgorithm:
     def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
         mocked_sesion_servicer = MagicMock(spec=session_service_pb2_grpc.SessionServicerServicer)
-        algorithm, configuration, _ = parallel_algo_file
+        model, configuration, _ = parallel_algo_file
+        algorithm = Algorithm(model)
 
         def create_session(req, ctx):
             yield backtest_service_pb2.CreateSessionResponse(
@@ -120,13 +126,15 @@ class TestAlgorithm:
             assert len(list(periods)) == 10
 
     def test_get_execution_no_session(self, parallel_algo_file):
-        algorithm, _, _ = parallel_algo_file
+        model, _, _ = parallel_algo_file
+        algorithm = Algorithm(model)
         with pytest.raises(RuntimeError, match="No backtest session"):
             algorithm.get_execution("test")
 
     def test_get_execution(self, parallel_algo_file, start_grpc_server):
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
-        algorithm, _, _ = parallel_algo_file
+        model, _, _ = parallel_algo_file
+        algorithm = Algorithm(model)
 
         def create_session(req, ctx):
             yield backtest_service_pb2.CreateSessionResponse(

@@ -284,16 +284,11 @@ class Function:
 
 
 class Algorithm:
-    _algo: "Algorithm | None"
-    _file_path: str
-    _functions: dict
-    _namespaces: list[str]
-
     def __init__(self, functions: list[Function], namespaces: list[str] = []):
-        Algorithm._algo = None
-        Algorithm._file_path = getabsfile(functions[0].callable)
-        Algorithm._functions = {}
-        Algorithm._namespaces = namespaces
+        self._algo = None
+        self._file_path = getabsfile(functions[0].callable)
+        self._functions = {}
+        self._namespaces = namespaces
 
         for f in functions:
             parameters = []
@@ -334,17 +329,16 @@ class Algorithm:
                 ),
             }
 
-            Algorithm._functions[f.callable.__name__] = function
-        Algorithm._algo = self
+            self._functions[f.callable.__name__] = function
 
     def get_definition(self) -> worker_pb2.Algorithm:
         functions: list[worker_pb2.Algorithm.Function] = []
-        for name, function in Algorithm._functions.items():
+        for name, function in self._functions.items():
             functions.append(function["definition"])
         return worker_pb2.Algorithm(
-            file_path=Algorithm._file_path,
+            file_path=self._file_path,
             functions=functions,
-            namespaces=Algorithm._namespaces,
+            namespaces=self._namespaces,
         )
 
     @staticmethod
@@ -373,9 +367,17 @@ class Algorithm:
             raise Exception("No loader found in {}".format(file_path))
         source = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(source)
-        if Algorithm._algo is None:
-            raise Exception("No algo found in {}".format(file_path))
-        return Algorithm._algo
+        import inspect
+
+        declared_variables = {
+            name: obj
+            for name, obj in source.__dict__.items()
+            if not name.startswith("__") and not inspect.isfunction(obj)
+        }
+        for name, obj in declared_variables.items():
+            if isinstance(obj, Algorithm):
+                return obj
+        raise Exception("No algorithm found in {}".format(file_path))
 
     def configure(self, function_name: str, param_key: str, param_value: str) -> None:
         def _eval_param(type: str, val: str):
@@ -391,7 +393,7 @@ class Algorithm:
                 raise TypeError(f"Unknown parameter type: {type}")
 
         param_type: str = ""
-        for f in Algorithm._functions.values():
+        for f in self._functions.values():
             if f["definition"].name == function_name:
                 function_name = f["definition"].name
                 for p in f["definition"].parameters:
@@ -405,8 +407,8 @@ class Algorithm:
                 break
 
         value = _eval_param(param_type, param_value)
-        function = Algorithm._functions[function_name]
-        Algorithm._functions[function_name]["callable"] = partial(
+        function = self._functions[function_name]
+        self._functions[function_name]["callable"] = partial(
             function["callable"],
             **{param_key: value},
         )
@@ -419,14 +421,14 @@ class Algorithm:
         symbols: list[str],
     ) -> list[finance_pb2.Order]:
         p = Portfolio(portfolio, db)
-        if Algorithm._functions[function_name]["definition"].parallelExecution:
+        if self._functions[function_name]["definition"].parallelExecution:
             for symbol in symbols:
                 asset = Asset(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbol)
-                Algorithm._functions[function_name]["callable"](
+                self._functions[function_name]["callable"](
                     asset=asset,
                     portfolio=p,
                 )
         else:
             assets = Assets(pb_utils.from_proto_timestamp(portfolio.timestamp), db, symbols)
-            Algorithm._functions[function_name]["callable"](assets=assets, portfolio=p)
+            self._functions[function_name]["callable"](assets=assets, portfolio=p)
         return p.pending_orders

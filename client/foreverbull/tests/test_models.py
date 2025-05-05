@@ -188,7 +188,7 @@ from foreverbull import Algorithm, Function, Assets, Portfolio, Order
 def handle_data(low: int, high: int, assets: Assets, portfolio: Portfolio) -> list[Order]:
     pass
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=handle_data)
     ]
@@ -198,6 +198,9 @@ Algorithm(
             f.write(example)
             f.flush()
             yield Algorithm.from_file_path(f.name)
+
+    def test_new(self, non_parallel_algo: Algorithm):
+        pass
 
     def test_non_parallel(self, non_parallel_algo: Algorithm):
         assert non_parallel_algo._file_path is not None
@@ -237,7 +240,7 @@ from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 def handle_data(asset: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=handle_data)
     ]
@@ -288,7 +291,7 @@ from foreverbull import Algorithm, Function, Asset, Portfolio, Order
 def handle_data(asset: Asset, portfolio: Portfolio, low: int = 5, high: int = 10) -> Order:
     pass
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=handle_data)
     ],
@@ -350,7 +353,7 @@ def create_orders(assets: Assets, portfolio: Portfolio) -> list[Order]:
 def filter_assets(assets: Assets) -> None:
     pass
 
-Algorithm(
+algo = Algorithm(
     functions=[
         Function(callable=measure_assets),
         Function(callable=create_orders, run_last=True),
