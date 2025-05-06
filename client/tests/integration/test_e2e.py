@@ -7,6 +7,7 @@ from multiprocessing import set_start_method
 import grpc
 import pytest
 
+from foreverbull import models
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
@@ -62,7 +63,7 @@ def test_baseline_performance(
     foreverbull_bundle,
     baseline_performance,
 ):
-    algorithm = Algorithm.from_file_path(file_path)
+    algorithm = Algorithm(models.Algorithm.from_file_path(file_path))
     with algorithm.backtest_session("demo", broker_port=6067) as backtest:
         periods = [
             p

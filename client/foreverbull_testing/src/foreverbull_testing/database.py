@@ -64,7 +64,7 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
 
 def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
     yfinance.data.YfData.user_agent_headers["User-Agent"] = (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
     )
     with database.connect() as conn:
         for symbol in backtest.symbols:

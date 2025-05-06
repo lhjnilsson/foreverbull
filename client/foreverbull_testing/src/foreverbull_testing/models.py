@@ -10,10 +10,13 @@ from pandas import DataFrame
 from pandas import read_sql_query
 from sqlalchemy import Connection
 
-from foreverbull import Asset  # type: ignore
-from foreverbull import Assets  # type: ignore
+from foreverbull import Asset as BaseAsset
+from foreverbull import Assets as BaseAssets
 from foreverbull import Portfolio
+from foreverbull import models
+from foreverbull.algorithm import Algorithm
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
 
 
@@ -23,7 +26,7 @@ class Position:
     amount: int
 
 
-class Asset(Asset):
+class Asset(BaseAsset):
     def __init__(
         self, db: Connection, start: str | datetime, end: str | datetime, symbol: str, metrics: dict[str, Any] = {}
     ):
@@ -56,7 +59,7 @@ class Asset(Asset):
         return self._stock_data
 
 
-class Assets(Assets):
+class Assets(BaseAssets):
     def __init__(
         self,
         db: Connection,
@@ -142,3 +145,21 @@ class PortfolioManager:
             ),
             self._db,
         )
+
+
+class Backtest:
+    def __init__(self, algorithm: Algorithm):
+        self._algorithm = algorithm
+
+    def get_default(self) -> backtest_pb2.Backtest:
+        return self._algorithm.get_default()
+
+    def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb2.Backtest):
+        self._algorithm._model = algorithm
+        periods = []
+        for period in self._algorithm.run_execution(
+            backtest.start_date,
+            backtest.end_date,
+            [s for s in backtest.symbols],
+        ):
+            periods.append(period)

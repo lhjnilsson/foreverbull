@@ -1,0 +1,13 @@
+{
+    "templates": {
+      "simple": {
+        "path": "./client/templates/simple",
+        "title": "Simple Setup without TALib",
+        "description": "Intended for PoC and demo purposes"
+        },
+      "advanced": {
+        "path": "./client/templates/advanced",
+        "title": "More Advanced Setup with TALib and mix of parallelism"
+      }
+    }
+  }

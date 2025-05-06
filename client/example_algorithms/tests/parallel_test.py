@@ -1,6 +1,7 @@
 from multiprocessing import set_start_method
 
 from example_algorithms.parallel import algo
+from foreverbull_testing.models import Backtest
 
 
 try:
@@ -9,12 +10,5 @@ except RuntimeError:
     pass
 
 
-def test_positive_returns():
-    with algo.backtest_session("nasdaq") as session:
-        backtest = session.get_default()
-        for period in session.run_execution(
-            backtest.start_date,
-            backtest.end_date,
-            [s for s in backtest.symbols],
-        ):
-            assert period
+def test_positive_returns(backtest: Backtest):
+    backtest.run_execution(algo, backtest.get_default())

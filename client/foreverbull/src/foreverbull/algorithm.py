@@ -20,20 +20,12 @@ from foreverbull.pb.foreverbull.strategy import strategy_service_pb2_grpc
 from foreverbull.worker import WorkerPool
 
 
-class Algorithm(models.Algorithm):
-    def __init__(self, functions: list[models.Function], namespaces: list[str] = []):
+class Algorithm:
+    def __init__(self, model: models.Algorithm | None):
         self._broker_stub = None
         self._broker_session_stub = None
         self._backtest_session = None
-        super().__init__(functions, namespaces)
-
-    @classmethod
-    def from_file_path(cls, file_path: str) -> "Algorithm":
-        super().from_file_path(file_path)
-        functions = []
-        for k, v in models.Algorithm._functions.items():
-            functions.append(models.Function(callable=v["callable"]))
-        return cls(functions, models.Algorithm._namespaces)
+        self._model = model
 
     @contextmanager
     def backtest_session(
@@ -68,7 +60,9 @@ class Algorithm(models.Algorithm):
         broker_hostname: str = "localhost",
         broker_port: int = 50055,
     ):
-        with WorkerPool(self._file_path) as wp:
+        if self._model is None:
+            raise RuntimeError("No algorithm")
+        with WorkerPool(self._model._file_path) as wp:
             channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
 
             stub = strategy_service_pb2_grpc.StrategyServicerStub(channel)
@@ -76,7 +70,7 @@ class Algorithm(models.Algorithm):
                 strategy_service_pb2.RunStrategyRequest(
                     symbols=symbols,
                     start_date=from_date,
-                    algorithm=self.get_definition(),
+                    algorithm=self._model.get_definition(),
                 )
             )
             msg: strategy_service_pb2.RunStrategyResponse
@@ -106,7 +100,9 @@ class Algorithm(models.Algorithm):
     ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
-        with WorkerPool(self._file_path) as wp:
+        if self._model is None:
+            raise RuntimeError("No algorithm")
+        with WorkerPool(self._model._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
                     start_date=start,
@@ -114,7 +110,7 @@ class Algorithm(models.Algorithm):
                     symbols=symbols,
                     benchmark=benchmark,
                 ),
-                algorithm=self.get_definition(),
+                algorithm=self._model.get_definition(),
             )
             create: session_service_pb2.CreateExecutionResponse = self._broker_session_stub.CreateExecution(req)
             wp.configure_execution(create.configuration)
