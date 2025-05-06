@@ -5,7 +5,6 @@ import traceback
 
 from concurrent import futures
 from datetime import date
-from unittest import mock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -33,6 +32,9 @@ def runner():
 
     def invoke(app: typer.Typer, args: list[str]) -> Result:
         result = runner.invoke(app, args)
+        if result.exception:
+            raise result.exception
+
         echo_stdout = os.environ.get("ECHO", False)
         if echo_stdout:
             print("")
@@ -140,8 +142,9 @@ def test_backtest_run(runner, start_grpc_server):
     )
     mock_algorithm.run_execution.return_value = iter([finance_pb2.Portfolio()])
 
-    with mock.patch("foreverbull.algorithm.Algorithm.from_file_path") as inn:
-        inn.return_value = mock_algorithm
+    with patch("foreverbull.algorithm.Algorithm.backtest_session", new_callable=lambda: mock_algorithm):
+        with patch("foreverbull.models.Algorithm.from_file_path") as from_file_path:
+            from_file_path.return_value = True
 
-        result = runner(backtest, ["run", "test", "demo"])
-        assert result.exit_code == 0
+            result = runner(backtest, ["run", "test", "demo"])
+            assert result.exit_code == 0
