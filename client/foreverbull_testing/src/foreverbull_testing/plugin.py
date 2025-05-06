@@ -10,12 +10,29 @@ from sqlalchemy import create_engine
 from testcontainers.core.config import testcontainers_config
 from testcontainers.postgres import PostgresContainer
 
+from foreverbull.algorithm import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull_testing.data import AssetManager
-from foreverbull_testing.data import PortfolioManager
+from foreverbull_testing.models import AssetManager
+from foreverbull_testing.models import Backtest
+from foreverbull_testing.models import PortfolioManager
 
 from . import database
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--backtest", action="store", default=None, help="Environment to run tests against (e.g. dev, staging, prod)"
+    )
+
+
+@pytest.fixture(scope="session")
+def backtest(request):
+    backtest_name = request.config.getoption("--backtest")
+    assert backtest_name is not None, "No backtest name provided"
+    algo = Algorithm(None)
+    with algo.backtest_session(backtest_name) as session:
+        yield Backtest(session)
 
 
 @pytest.fixture(scope="session")

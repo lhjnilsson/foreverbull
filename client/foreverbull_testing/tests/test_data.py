@@ -1,7 +1,7 @@
 import pytest
 
-from foreverbull_testing.data import Asset
-from foreverbull_testing.data import Assets
+from foreverbull_testing.models import Asset
+from foreverbull_testing.models import Assets
 
 
 @pytest.fixture(scope="session")

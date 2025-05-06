@@ -19,10 +19,13 @@ repos:
       - id: ruff
         name: lint with ruff
         args: [--fix]
+        exclude: '^client/templates/.*'
       - id: ruff
         name: sort imports with ruff
         args: [--select, I, --fix]
+        exclude: '^client/templates/.*'
       - id: ruff-format
+        exclude: '^client/templates/.*'
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.4.20

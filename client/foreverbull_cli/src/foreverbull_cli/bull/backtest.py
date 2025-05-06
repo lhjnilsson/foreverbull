@@ -14,8 +14,9 @@ from rich.progress import TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
 
-from foreverbull import Algorithm
 from foreverbull import broker
+from foreverbull import models
+from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
@@ -158,7 +159,7 @@ def run(
         TextColumn("[progress.completed]"),
     )
     live = Live(progress, console=console, refresh_per_second=120)
-    with Algorithm.from_file_path(file_path).backtest_session(name) as session, live:
+    with Algorithm(models.Algorithm.from_file_path(file_path)).backtest_session(name) as session, live:
         backtest = session.get_default()
         start_date = backtest.start_date
         if start:

@@ -2,9 +2,9 @@ from datetime import datetime
 
 from example_algorithms.momentum.macd import handle_data
 from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull_testing.data import AssetManager
-from foreverbull_testing.data import PortfolioManager
-from foreverbull_testing.data import Position
+from foreverbull_testing.models import AssetManager
+from foreverbull_testing.models import PortfolioManager
+from foreverbull_testing.models import Position
 
 
 def test_handle_data(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
