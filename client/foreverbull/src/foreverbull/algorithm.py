@@ -21,7 +21,7 @@ from foreverbull.worker import WorkerPool
 
 
 class Algorithm:
-    def __init__(self, model: models.Algorithm):
+    def __init__(self, model: models.Algorithm | None):
         self._broker_stub = None
         self._broker_session_stub = None
         self._backtest_session = None
@@ -60,6 +60,8 @@ class Algorithm:
         broker_hostname: str = "localhost",
         broker_port: int = 50055,
     ):
+        if self._model is None:
+            raise RuntimeError("No algorithm")
         with WorkerPool(self._model._file_path) as wp:
             channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
 
@@ -98,6 +100,8 @@ class Algorithm:
     ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
+        if self._model is None:
+            raise RuntimeError("No algorithm")
         with WorkerPool(self._model._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
                 backtest=backtest_pb2.Backtest(
