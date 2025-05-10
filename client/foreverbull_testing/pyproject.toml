@@ -7,7 +7,6 @@ dependencies = [
     "pytest",
     "testcontainers",
     "yfinance",
-    "pyfolio-reloaded>=0.9.8",
 ]
 
 [tool.rye.dependencies]
