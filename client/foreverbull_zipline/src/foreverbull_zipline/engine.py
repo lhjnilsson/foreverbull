@@ -149,7 +149,7 @@ class Engine(multiprocessing.Process):
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            request = common_pb2.Request(task="get_result")
+            request = common_pb2.Request(task="get_result", data=req.SerializeToString())
             socket.send(request.SerializeToString())
             response = common_pb2.Response()
             response.ParseFromString(socket.recv())
@@ -317,6 +317,8 @@ class Engine(multiprocessing.Process):
     def _get_execution_result(self, data: bytes) -> bytes:
         req = engine_service_pb2.GetResultRequest()
         req.ParseFromString(data)
+        assert self.result is not None, "no result"
+        assert type(self.result) is pd.DataFrame, "result is not a dataframe"
         rsp = engine_service_pb2.GetResultResponse()
         for row in self.result.index:
             period = self.result.loc[row]
@@ -359,10 +361,10 @@ class Engine(multiprocessing.Process):
                     beta=(None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]),
                 )
             )
-        if req.upload:
+        if req.HasField("upload"):
             storage = Storage.from_environment()
-            self.result.to_pick("/tmp/result.pkl")
-            storage.upload_object("backtest-results", req.execution, "/tmp/result.pkl")
+            self.result.to_pickle("/tmp/result.pkl")
+            storage.upload_object(req.upload.bucket, req.upload.object, "/tmp/result.pkl")
         return rsp.SerializeToString()
 
     def _process_request(
@@ -418,3 +420,4 @@ class Engine(multiprocessing.Process):
                 except Exception as e:
                     self.log.error(f"Error processing request {req.task}: {e}")
                     rsp.error = str(e)
+                    context_socket.send(rsp.SerializeToString())

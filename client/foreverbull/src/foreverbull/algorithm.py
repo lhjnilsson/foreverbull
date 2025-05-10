@@ -97,7 +97,7 @@ class Algorithm:
         end: common_pb2.Date,
         symbols: list[str],
         benchmark=None,
-    ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
+    ) -> Generator[tuple[str, session_service_pb2.RunExecutionResponse], None, None]:
         if self._broker_session_stub is None or self._backtest_session is None:
             raise RuntimeError("No backtest session")
         if self._model is None:
@@ -119,7 +119,7 @@ class Algorithm:
                 session_service_pb2.RunExecutionRequest(execution_id=create.execution.id)
             )
             for message in rsp:
-                yield message
+                yield create.execution.id, message
 
             rsp = self._broker_session_stub.StoreResult(
                 session_service_pb2.StoreExecutionResultRequest(

@@ -1,3 +1,5 @@
+import tempfile
+
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -15,6 +17,7 @@ from foreverbull import Assets as BaseAssets
 from foreverbull import Portfolio
 from foreverbull import models
 from foreverbull.algorithm import Algorithm
+from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest import backtest_pb2
 from foreverbull.pb.foreverbull.finance import finance_pb2
@@ -147,6 +150,26 @@ class PortfolioManager:
         )
 
 
+class BacktestResult:
+    def __init__(self, algorithm: Algorithm, backtest: backtest_pb2.Backtest, execution_id: str):
+        self._algorithm = algorithm
+        self._backtest = backtest
+        self._execution_id = execution_id
+        self.__df = None
+
+    @property
+    def dataframe(self) -> pandas.DataFrame:
+        if self.__df is not None:
+            return self.__df
+        storage = Storage.from_environment()
+        with tempfile.NamedTemporaryFile() as tmp:
+            storage.download_object("results", self._execution_id, tmp.name)
+            df = pandas.read_pickle(tmp.name)
+            assert type(df) is pandas.DataFrame, "result is not a dataframe"
+        self.__df = df
+        return df
+
+
 class Backtest:
     def __init__(self, algorithm: Algorithm):
         self._algorithm = algorithm
@@ -154,12 +177,15 @@ class Backtest:
     def get_default(self) -> backtest_pb2.Backtest:
         return self._algorithm.get_default()
 
-    def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb2.Backtest):
+    def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb2.Backtest) -> BacktestResult:
         self._algorithm._model = algorithm
         periods = []
-        for period in self._algorithm.run_execution(
+        exc_id: str | None = None
+        for exc_id, period in self._algorithm.run_execution(
             backtest.start_date,
             backtest.end_date,
             [s for s in backtest.symbols],
         ):
             periods.append(period)
+        assert exc_id is not None, "no execution id"
+        return BacktestResult(self._algorithm, backtest, exc_id)

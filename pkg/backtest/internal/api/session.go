@@ -130,7 +130,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 
 func (s *grpcSessionServer) StoreResult(ctx context.Context, req *backtest_pb.StoreExecutionResultRequest) (*backtest_pb.StoreExecutionResultResponse, error) {
 	log.Debug().Any("request", req).Msg("store result")
-	rsp, err := s.backtestSession.GetResult(ctx)
+	rsp, err := s.backtestSession.GetResult(ctx, req.ExecutionId)
 	if err != nil {
 		return nil, fmt.Errorf("error getting result: %w", err)
 	}

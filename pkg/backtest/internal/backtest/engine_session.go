@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -95,13 +96,17 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 	return ch, nil
 }
 
-func (z *ZipelineSession) GetResult(ctx context.Context) (*backtest_pb.GetResultResponse, error) {
-	req := backtest_pb.GetResultRequest{}
-
+func (z *ZipelineSession) GetResult(ctx context.Context, executionId string) (*backtest_pb.GetResultResponse, error) {
+	req := backtest_pb.GetResultRequest{
+		Execution: executionId,
+		Upload: &backtest_pb.GetResultRequest_Upload{
+			Bucket: string(storage.ResultsBucket),
+			Object: executionId,
+		},
+	}
 	rsp, err := z.client.GetResult(ctx, &req)
 	if err != nil {
 		return nil, fmt.Errorf("error getting result: %w", err)
 	}
-
 	return rsp, nil
 }

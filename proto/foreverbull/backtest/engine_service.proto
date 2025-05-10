@@ -67,8 +67,12 @@ message PlaceOrdersAndContinueRequest {
 message PlaceOrdersAndContinueResponse {}
 
 message GetResultRequest {
+  message Upload {
+    string bucket = 1;
+    string object = 2;
+  }
   string execution = 1;
-  bool upload = 2;
+  optional Upload upload = 2;
 }
 
 message GetResultResponse {
