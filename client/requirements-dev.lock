@@ -21,8 +21,6 @@ argon2-cffi==23.1.0
     # via minio
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-asttokens==3.0.0
-    # via stack-data
 attrs==23.2.0
     # via pytest
 bcolz-zipline==1.2.12
@@ -46,29 +44,18 @@ click==8.1.7
     # via foreverbull
     # via typer
     # via zipline-reloaded
-contourpy==1.3.2
-    # via matplotlib
 coverage==7.6.10
     # via pytest-cov
-cycler==0.12.1
-    # via matplotlib
 cython==3.0.10
     # via foreverbull
-decorator==5.2.1
-    # via ipython
 docker==7.1.0
     # via foreverbull
     # via foreverbull-cli
     # via testcontainers
 empyrical-reloaded==0.5.11
-    # via pyfolio-reloaded
     # via zipline-reloaded
 exchange-calendars==4.5.6
     # via zipline-reloaded
-executing==2.2.0
-    # via stack-data
-fonttools==4.57.0
-    # via matplotlib
 frozendict==2.4.4
     # via yfinance
 grpcio==1.68.1
@@ -90,20 +77,10 @@ iniconfig==2.0.0
     # via pytest
 intervaltree==3.1.0
     # via zipline-reloaded
-ipython==9.2.0
-    # via pyfolio-reloaded
-ipython-pygments-lexers==1.1.1
-    # via ipython
 iso3166==2.1.1
     # via zipline-reloaded
 iso4217==1.12.20240625
     # via zipline-reloaded
-jedi==0.19.2
-    # via ipython
-joblib==1.5.0
-    # via scikit-learn
-kiwisolver==1.4.8
-    # via matplotlib
 korean-lunar-calendar==0.3.1
     # via exchange-calendars
 linkify-it-py==2.0.3
@@ -121,11 +98,6 @@ markdown-it-py==3.0.0
     # via textual
 markupsafe==3.0.1
     # via mako
-matplotlib==3.10.3
-    # via pyfolio-reloaded
-    # via seaborn
-matplotlib-inline==0.1.7
-    # via ipython
 mdit-py-plugins==0.4.2
     # via markdown-it-py
 mdurl==0.1.2
@@ -150,19 +122,14 @@ numpy==1.26.4
     # via bcolz-zipline
     # via blosc2
     # via bottleneck
-    # via contourpy
     # via empyrical-reloaded
     # via exchange-calendars
     # via foreverbull
     # via h5py
-    # via matplotlib
     # via numexpr
     # via pandas
     # via patsy
-    # via pyfolio-reloaded
-    # via scikit-learn
     # via scipy
-    # via seaborn
     # via statsmodels
     # via ta-lib
     # via tables
@@ -170,7 +137,6 @@ numpy==1.26.4
     # via zipline-reloaded
 packaging==24.1
     # via bcolz-zipline
-    # via matplotlib
     # via pytest
     # via statsmodels
     # via tables
@@ -179,25 +145,17 @@ pandas==2.2.2
     # via exchange-calendars
     # via foreverbull
     # via pandas-datareader
-    # via pyfolio-reloaded
-    # via seaborn
     # via statsmodels
     # via yfinance
     # via zipline-reloaded
 pandas-datareader==0.10.0
     # via foreverbull
-parso==0.8.4
-    # via jedi
 patsy==0.5.6
     # via statsmodels
     # via zipline-reloaded
 peewee==3.17.3
     # via empyrical-reloaded
     # via yfinance
-pexpect==4.9.0
-    # via ipython
-pillow==11.2.1
-    # via matplotlib
 platformdirs==4.2.2
     # via textual
     # via yfinance
@@ -205,8 +163,6 @@ plotext==5.3.2
     # via textual-plotext
 pluggy==1.5.0
     # via pytest
-prompt-toolkit==3.0.51
-    # via ipython
 protobuf==5.27.2
     # via foreverbull
     # via grpcio-health-checking
@@ -214,10 +170,6 @@ protobuf==5.27.2
     # via grpcio-tools
 psycopg2-binary==2.9.9
     # via foreverbull
-ptyprocess==0.7.0
-    # via pexpect
-pure-eval==0.2.3
-    # via stack-data
 py==1.11.0
     # via pytest
 py-cpuinfo==9.0.0
@@ -227,18 +179,12 @@ pycparser==2.22
     # via cffi
 pycryptodome==3.20.0
     # via minio
-pyfolio-reloaded==0.9.8
-    # via foreverbull-testing
 pygments==2.18.0
-    # via ipython
-    # via ipython-pygments-lexers
     # via rich
 pyluach==2.2.0
     # via exchange-calendars
 pynng==0.8.0
     # via foreverbull
-pyparsing==3.2.3
-    # via matplotlib
 pytest==6.2.5
     # via foreverbull-testing
     # via pytest-cov
@@ -246,14 +192,12 @@ pytest==6.2.5
 pytest-cov==6.0.0
 pytest-repeat==0.9.3
 python-dateutil==2.9.0.post0
-    # via matplotlib
     # via pandas
     # via zipline-reloaded
 python-interface==1.6.1
     # via zipline-reloaded
 pytz==2024.1
     # via pandas
-    # via pyfolio-reloaded
     # via yfinance
     # via zipline-reloaded
 requests==2.31.0
@@ -264,16 +208,10 @@ requests==2.31.0
 rich==13.7.1
     # via textual
     # via typer
-scikit-learn==1.6.1
-    # via pyfolio-reloaded
 scipy==1.14.1
     # via empyrical-reloaded
-    # via pyfolio-reloaded
-    # via scikit-learn
     # via statsmodels
     # via zipline-reloaded
-seaborn==0.13.2
-    # via pyfolio-reloaded
 setuptools==70.2.0
     # via foreverbull
     # via grpcio-tools
@@ -295,8 +233,6 @@ sqlalchemy==2.0.31
     # via alembic
     # via foreverbull
     # via zipline-reloaded
-stack-data==0.6.3
-    # via ipython
 statsmodels==0.14.4
     # via zipline-reloaded
 ta-lib==0.4.32
@@ -309,16 +245,11 @@ testcontainers==4.6.0
 textual==0.88.1
     # via textual-plotext
 textual-plotext==1.0.1
-threadpoolctl==3.6.0
-    # via scikit-learn
 toml==0.10.2
     # via pytest
 toolz==1.0.0
     # via exchange-calendars
     # via zipline-reloaded
-traitlets==5.14.3
-    # via ipython
-    # via matplotlib-inline
 typer==0.12.3
     # via foreverbull-cli
 types-protobuf==5.27.0.20240626
@@ -341,8 +272,6 @@ urllib3==2.2.2
     # via minio
     # via requests
     # via testcontainers
-wcwidth==0.2.13
-    # via prompt-toolkit
 webencodings==0.5.1
     # via html5lib
 wrapt==1.16.0
