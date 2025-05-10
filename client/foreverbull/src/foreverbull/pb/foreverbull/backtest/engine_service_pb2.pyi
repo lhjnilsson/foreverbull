@@ -105,11 +105,18 @@ class PlaceOrdersAndContinueResponse(_message.Message):
 
 class GetResultRequest(_message.Message):
     __slots__ = ("execution", "upload")
+    class Upload(_message.Message):
+        __slots__ = ("bucket", "object")
+        BUCKET_FIELD_NUMBER: _ClassVar[int]
+        OBJECT_FIELD_NUMBER: _ClassVar[int]
+        bucket: str
+        object: str
+        def __init__(self, bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
     EXECUTION_FIELD_NUMBER: _ClassVar[int]
     UPLOAD_FIELD_NUMBER: _ClassVar[int]
     execution: str
-    upload: bool
-    def __init__(self, execution: _Optional[str] = ..., upload: bool = ...) -> None: ...
+    upload: GetResultRequest.Upload
+    def __init__(self, execution: _Optional[str] = ..., upload: _Optional[_Union[GetResultRequest.Upload, _Mapping]] = ...) -> None: ...
 
 class GetResultResponse(_message.Message):
     __slots__ = ("periods",)

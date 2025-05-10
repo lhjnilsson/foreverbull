@@ -10,8 +10,6 @@ from urllib3.exceptions import NewConnectionError
 class Storage:
     def __init__(self, address, access_key, secret_key, secure=False):
         self.client = minio.Minio(address, access_key=access_key, secret_key=secret_key, secure=secure)
-        self.client.bucket_exists("backtest-results")
-        self.client.bucket_exists("backtest-ingestions")
 
     @classmethod
     def from_environment(cls, env=os.environ):
