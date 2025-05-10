@@ -27,10 +27,6 @@ class Storage:
             secure=bool(env.get("STORAGE_SECURE", False)),
         )
 
-    def get_object(self, bucket: str, remote_name: str) -> bytes:
-        rsp = self.client.get_object(bucket, remote_name)
-        return rsp.data
-
     def upload_object(self, bucket: str, remote_name: str, local_name: str) -> None:
         self.client.fput_object(bucket, remote_name, local_name)
 
