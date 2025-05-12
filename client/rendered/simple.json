@@ -1,0 +1,8 @@
+{
+    "cookiecutter": {
+        "project_name": "simple",
+        "project_slug": "simple",
+        "install_dependencies": false,
+        "run_setup": false
+    }
+  }

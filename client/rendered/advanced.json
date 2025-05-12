@@ -1,0 +1,8 @@
+{
+    "cookiecutter": {
+        "project_name": "advanced",
+        "project_slug": "advanced",
+        "install_dependencies": false,
+        "run_setup": false
+    }
+  }
