@@ -5,4 +5,6 @@ dependencies = ["ta-lib"]
 
 [tool.rye]
 managed = true
-dev-dependencies = []
+dev-dependencies = [
+    "ta-lib>=0.6.3",
+]

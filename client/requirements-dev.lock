@@ -233,6 +233,7 @@ scipy==1.14.1
 setuptools==70.2.0
     # via foreverbull
     # via grpcio-tools
+    # via ta-lib
 shellingham==1.5.4
     # via typer
 six==1.16.0
@@ -253,7 +254,7 @@ sqlalchemy==2.0.31
     # via zipline-reloaded
 statsmodels==0.14.4
     # via zipline-reloaded
-ta-lib==0.4.32
+ta-lib==0.6.3
     # via example-algorithms
 tables==3.10.2
     # via foreverbull

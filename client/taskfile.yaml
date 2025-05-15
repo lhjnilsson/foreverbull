@@ -53,14 +53,26 @@ tasks:
     sources:
       - templates/**/*
     cmds:
-      - rye run cookiecutter --output-dir rendered/simple templates/advanced/ --replay-file rendered/advanced.json -f
+      - rye run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file rendered/advanced.json -f
       - rye run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file rendered/simple.json -f
 
-  template:test:
+  template:test:simple:
     deps:
     - template:generate
     env:
       PYTHONPATH: rendered/simple/simple
     cmds:
       - rye test -- rendered/simple/simple/tests/crossover_test.py -m unit
-  
+
+  template:test:advanced:
+    deps: 
+    - template:generate
+    env:
+      PYTHONPATH: rendered/advanced/advanced
+    cmds:
+      - rye test -- rendered/advanced/advanced/tests -m unit
+
+  template:test:
+    deps:
+    - template:test:simple
+    - template:test:advanced
