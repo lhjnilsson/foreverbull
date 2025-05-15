@@ -129,7 +129,7 @@ numexpr==2.10.1
     # via blosc2
     # via tables
     # via zipline-reloaded
-numpy==1.26.4
+numpy==2.2.5
     # via bcolz-zipline
     # via blosc2
     # via bottleneck

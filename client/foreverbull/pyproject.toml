@@ -14,7 +14,7 @@ dependencies = [
   "docker>=7.0.0,<8.0.0",
   "pandas-datareader>=0.10.0,<1.0.0",
   "tables",
-  "numpy<2.0.0",
+  "numpy",
   "setuptools>=70.2.0,<71.0.0",
   "protobuf==5.27.2",
   "types-protobuf>=5.27.0.20240626",

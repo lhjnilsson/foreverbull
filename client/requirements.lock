@@ -77,7 +77,7 @@ ndindex==1.8
 numexpr==2.10.1
     # via blosc2
     # via tables
-numpy==1.26.4
+numpy==2.2.5
     # via blosc2
     # via foreverbull
     # via numexpr
