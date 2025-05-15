@@ -88,7 +88,7 @@ numpy==2.2.5
 packaging==24.1
     # via pytest
     # via tables
-pandas==2.2.2
+pandas==2.2.3
     # via foreverbull
     # via pandas-datareader
     # via yfinance
