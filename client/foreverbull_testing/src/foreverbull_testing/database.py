@@ -63,9 +63,10 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
 
 
 def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
-    yfinance.data.YfData.user_agent_headers["User-Agent"] = (
-        "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
-    )
+    # Latest yfinance claims to have fixed the too-many-request issue, keep until verified
+    # yfinance.data.YfData.user_agent_headers["User-Agent"] = (
+    #    "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
+    # )
     with database.connect() as conn:
         for symbol in backtest.symbols:
             feed = yfinance.Ticker(symbol)
