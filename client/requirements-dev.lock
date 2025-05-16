@@ -9,44 +9,53 @@
 #   generate-hashes: false
 #   universal: false
 
--e file:example_algorithms
 -e file:foreverbull
     # via foreverbull-zipline
 -e file:foreverbull_cli
 -e file:foreverbull_testing
 -e file:foreverbull_zipline
-alembic==1.13.3
+alembic==1.15.2
     # via zipline-reloaded
 argon2-cffi==23.1.0
     # via minio
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-attrs==23.2.0
-    # via pytest
+arrow==1.3.0
+    # via cookiecutter
 bcolz-zipline==1.2.12
     # via zipline-reloaded
-beautifulsoup4==4.12.3
+beautifulsoup4==4.13.4
     # via yfinance
-blosc2==2.7.0
+binaryornot==0.4.4
+    # via cookiecutter
+blosc2==3.3.3
     # via tables
-bottleneck==1.4.0
+bottleneck==1.5.0
     # via empyrical-reloaded
     # via zipline-reloaded
-certifi==2024.6.2
+certifi==2025.4.26
+    # via curl-cffi
     # via minio
     # via requests
-cffi==1.16.0
+cffi==1.17.1
     # via argon2-cffi-bindings
+    # via curl-cffi
     # via pynng
-charset-normalizer==3.3.2
+chardet==5.2.0
+    # via binaryornot
+charset-normalizer==3.4.2
     # via requests
-click==8.1.7
+click==8.1.8
+    # via cookiecutter
     # via foreverbull
     # via typer
     # via zipline-reloaded
-coverage==7.6.10
+cookiecutter==2.6.0
+coverage==7.8.0
     # via pytest-cov
-cython==3.0.10
+curl-cffi==0.11.1
+    # via yfinance
+cython==3.1.0
     # via foreverbull
 docker==7.1.0
     # via foreverbull
@@ -54,26 +63,24 @@ docker==7.1.0
     # via testcontainers
 empyrical-reloaded==0.5.11
     # via zipline-reloaded
-exchange-calendars==4.5.6
+exchange-calendars==4.10.1
     # via zipline-reloaded
-frozendict==2.4.4
+frozendict==2.4.6
     # via yfinance
-grpcio==1.68.1
+grpcio==1.71.0
     # via foreverbull
     # via grpcio-health-checking
     # via grpcio-testing
     # via grpcio-tools
 grpcio-health-checking==1.66.1
     # via foreverbull-zipline
-grpcio-testing==1.66.1
-grpcio-tools==1.66.1
-h5py==3.12.1
+grpcio-testing==1.71.0
+grpcio-tools==1.71.0
+h5py==3.13.0
     # via zipline-reloaded
-html5lib==1.1
-    # via yfinance
-idna==3.7
+idna==3.10
     # via requests
-iniconfig==2.0.0
+iniconfig==2.1.0
     # via pytest
 intervaltree==3.1.0
     # via zipline-reloaded
@@ -81,44 +88,46 @@ iso3166==2.1.1
     # via zipline-reloaded
 iso4217==1.12.20240625
     # via zipline-reloaded
+jinja2==3.1.6
+    # via cookiecutter
 korean-lunar-calendar==0.3.1
     # via exchange-calendars
 linkify-it-py==2.0.3
     # via markdown-it-py
 lru-dict==1.3.0
     # via zipline-reloaded
-lxml==5.2.2
+lxml==5.4.0
     # via pandas-datareader
-    # via yfinance
-mako==1.3.5
+mako==1.3.10
     # via alembic
 markdown-it-py==3.0.0
     # via mdit-py-plugins
     # via rich
     # via textual
-markupsafe==3.0.1
+markupsafe==3.0.2
+    # via jinja2
     # via mako
 mdit-py-plugins==0.4.2
     # via markdown-it-py
 mdurl==0.1.2
     # via markdown-it-py
-minio==7.2.7
+minio==7.2.15
     # via foreverbull
-msgpack==1.0.8
+msgpack==1.1.0
     # via blosc2
 multipledispatch==1.0.0
     # via zipline-reloaded
 multitasking==0.0.11
     # via yfinance
-ndindex==1.8
+ndindex==1.9.2
     # via blosc2
-networkx==3.3
+networkx==3.4.2
     # via zipline-reloaded
-numexpr==2.10.1
+numexpr==2.10.2
     # via blosc2
     # via tables
     # via zipline-reloaded
-numpy==1.26.4
+numpy==2.2.5
     # via bcolz-zipline
     # via blosc2
     # via bottleneck
@@ -135,12 +144,12 @@ numpy==1.26.4
     # via tables
     # via yfinance
     # via zipline-reloaded
-packaging==24.1
+packaging==25.0
     # via bcolz-zipline
     # via pytest
     # via statsmodels
     # via tables
-pandas==2.2.2
+pandas==2.2.3
     # via empyrical-reloaded
     # via exchange-calendars
     # via foreverbull
@@ -150,76 +159,85 @@ pandas==2.2.2
     # via zipline-reloaded
 pandas-datareader==0.10.0
     # via foreverbull
-patsy==0.5.6
+patsy==1.0.1
     # via statsmodels
     # via zipline-reloaded
 peewee==3.17.3
     # via empyrical-reloaded
     # via yfinance
-platformdirs==4.2.2
+platformdirs==4.3.8
+    # via blosc2
     # via textual
     # via yfinance
 plotext==5.3.2
     # via textual-plotext
-pluggy==1.5.0
+pluggy==1.6.0
     # via pytest
 protobuf==5.27.2
     # via foreverbull
     # via grpcio-health-checking
     # via grpcio-testing
     # via grpcio-tools
-psycopg2-binary==2.9.9
+    # via yfinance
+psycopg2-binary==2.9.10
     # via foreverbull
-py==1.11.0
-    # via pytest
 py-cpuinfo==9.0.0
     # via blosc2
     # via tables
 pycparser==2.22
     # via cffi
-pycryptodome==3.20.0
+pycryptodome==3.22.0
     # via minio
-pygments==2.18.0
+pygments==2.19.1
     # via rich
 pyluach==2.2.0
     # via exchange-calendars
-pynng==0.8.0
+pynng==0.8.1
     # via foreverbull
-pytest==6.2.5
+pytest==8.3.5
     # via foreverbull-testing
     # via pytest-cov
     # via pytest-repeat
-pytest-cov==6.0.0
-pytest-repeat==0.9.3
+pytest-cov==6.1.1
+pytest-repeat==0.9.4
 python-dateutil==2.9.0.post0
+    # via arrow
     # via pandas
     # via zipline-reloaded
+python-dotenv==1.1.0
+    # via testcontainers
 python-interface==1.6.1
     # via zipline-reloaded
-pytz==2024.1
+python-slugify==8.0.4
+    # via cookiecutter
+pytz==2025.2
     # via pandas
     # via yfinance
     # via zipline-reloaded
-requests==2.31.0
+pyyaml==6.0.2
+    # via cookiecutter
+requests==2.32.3
+    # via blosc2
+    # via cookiecutter
     # via docker
     # via pandas-datareader
     # via yfinance
     # via zipline-reloaded
-rich==13.7.1
+rich==14.0.0
+    # via cookiecutter
     # via textual
     # via typer
-scipy==1.14.1
+scipy==1.15.3
     # via empyrical-reloaded
     # via statsmodels
     # via zipline-reloaded
-setuptools==70.2.0
+setuptools==80.7.1
     # via foreverbull
     # via grpcio-tools
+    # via ta-lib
 shellingham==1.5.4
     # via typer
-six==1.16.0
-    # via html5lib
-    # via patsy
+six==1.17.0
     # via python-dateutil
     # via python-interface
     # via zipline-reloaded
@@ -227,55 +245,57 @@ sniffio==1.3.1
     # via pynng
 sortedcontainers==2.4.0
     # via intervaltree
-soupsieve==2.5
+soupsieve==2.7
     # via beautifulsoup4
-sqlalchemy==2.0.31
+sqlalchemy==2.0.41
     # via alembic
     # via foreverbull
     # via zipline-reloaded
 statsmodels==0.14.4
     # via zipline-reloaded
-ta-lib==0.4.32
-    # via example-algorithms
+ta-lib==0.6.3
 tables==3.10.2
     # via foreverbull
     # via zipline-reloaded
-testcontainers==4.6.0
+testcontainers==4.10.0
     # via foreverbull-testing
-textual==0.88.1
+text-unidecode==1.3
+    # via python-slugify
+textual==3.2.0
     # via textual-plotext
 textual-plotext==1.0.1
-toml==0.10.2
-    # via pytest
 toolz==1.0.0
     # via exchange-calendars
     # via zipline-reloaded
-typer==0.12.3
+typer==0.15.4
     # via foreverbull-cli
-types-protobuf==5.27.0.20240626
+types-protobuf==6.30.2.20250516
     # via foreverbull
-typing-extensions==4.12.2
+types-python-dateutil==2.9.0.20250516
+    # via arrow
+typing-extensions==4.13.2
     # via alembic
+    # via beautifulsoup4
     # via minio
     # via sqlalchemy
     # via tables
     # via testcontainers
     # via textual
     # via typer
-tzdata==2024.1
+tzdata==2025.2
     # via exchange-calendars
     # via pandas
 uc-micro-py==1.0.3
     # via linkify-it-py
-urllib3==2.2.2
+urllib3==2.4.0
     # via docker
     # via minio
     # via requests
     # via testcontainers
-webencodings==0.5.1
-    # via html5lib
-wrapt==1.16.0
+websockets==15.0.1
+    # via yfinance
+wrapt==1.17.2
     # via testcontainers
-yfinance==0.2.40
+yfinance==0.2.61
     # via foreverbull-testing
 zipline-reloaded==3.1

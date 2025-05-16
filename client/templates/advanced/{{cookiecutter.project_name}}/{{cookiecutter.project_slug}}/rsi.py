@@ -10,7 +10,7 @@ from foreverbull import Portfolio
 
 def calculate_rsi(asset: Asset, portfolio: Portfolio):
     rsi = talib.RSI(asset.stock_data["close"], timeperiod=14)  # type: ignore
-    asset.set_metric("rsi", rsi.iat[-1])
+    asset.set_metric("rsi", rsi.iat[-1]) # type: ignore
 
 
 # Find assets with RSI value under 30

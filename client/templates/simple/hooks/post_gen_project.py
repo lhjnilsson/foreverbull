@@ -4,7 +4,7 @@ import sys
 
 
 # Create virtual environment if selected
-if "{{ cookiecutter.install_dependencies }}":
+if eval("{{ cookiecutter.install_dependencies }}"):
     base_repo = "git+https://github.com/lhjnilsson/foreverbull.git@main#egg={pkg}&subdirectory=client/{pkg}"
     foreverbull = base_repo.format(pkg="foreverbull")
     foreverbull_testing = base_repo.format(pkg="foreverbull_testing")
@@ -16,7 +16,7 @@ if "{{ cookiecutter.install_dependencies }}":
 
     importlib.invalidate_caches()
 
-if "{{ cookiecutter.run_setup }}":
+if eval("{{ cookiecutter.run_setup }}"):
     try:
         from foreverbull_cli.setup import setup
     except ImportError:

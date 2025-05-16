@@ -48,3 +48,31 @@ tasks:
       - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
       - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
       - LC_ALL=C find foreverbull/src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;
+
+  template:generate:
+    sources:
+      - templates/**/*
+    cmds:
+      - rye run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file rendered/advanced.json -f
+      - rye run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file rendered/simple.json -f
+
+  template:test:simple:
+    deps:
+    - template:generate
+    env:
+      PYTHONPATH: rendered/simple/simple
+    cmds:
+      - rye test -- rendered/simple/simple
+
+  template:test:advanced:
+    deps: 
+    - template:generate
+    env:
+      PYTHONPATH: rendered/advanced/advanced
+    cmds:
+      - rye test -- rendered/advanced/advanced
+
+  template:test:
+    deps:
+    - template:test:simple
+    - template:test:advanced

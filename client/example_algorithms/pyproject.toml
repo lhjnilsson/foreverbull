@@ -1,8 +1,0 @@
-[project]
-name = "example_algorithms"
-version = "0.0.0"
-dependencies = ["ta-lib"]
-
-[tool.rye]
-managed = true
-dev-dependencies = []

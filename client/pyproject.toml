@@ -2,18 +2,20 @@
 name = "foreverbull"
 version = "0.0.0"
 dependencies = [
-    "grpcio>=1.66.1",
-    "textual-plotext>=1.0.1",
+    "grpcio",
+    "textual-plotext",
 ]
 
 [tool.rye]
 managed = true
 virtual = true
 dev-dependencies = [
-    "pytest-repeat>=0.9.3",
-    "grpcio-tools>=1.66.1",
-    "grpcio-testing>=1.66.1",
-    "pytest-cov>=6.0.0",
+    "pytest-repeat",
+    "grpcio-tools",
+    "grpcio-testing",
+    "pytest-cov",
+    "cookiecutter",
+    "ta-lib",
 ]
 
 
@@ -23,7 +25,6 @@ packages = [
     "foreverbull_cli",
     "foreverbull_testing",
     "foreverbull_zipline",
-    "example_algorithms",
 ]
 
 [tool.ruff.lint]

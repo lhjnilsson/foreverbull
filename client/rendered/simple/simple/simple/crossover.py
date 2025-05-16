@@ -1,6 +1,7 @@
 import logging
 
 from foreverbull import Algorithm
+from foreverbull import Asset
 from foreverbull import Assets
 from foreverbull import Function
 from foreverbull import Portfolio
@@ -9,24 +10,29 @@ from foreverbull import Portfolio
 logger = logging.getLogger("non_parallel")
 
 
+def get_means(asset: Asset):
+    return asset.stock_data["close"].tail(10).mean(), asset.stock_data["close"].tail(30).mean()
+
+
+def should_buy(asset: Asset, portfolio: Portfolio):
+    short_mean = asset.stock_data["close"].tail(10).mean()
+    long_mean = asset.stock_data["close"].tail(30).mean()
+    position = [p for p in portfolio.positions if p.symbol == asset.symbol]
+    return short_mean > long_mean and not position
+
+
 def handle_data(assets: Assets, portfolio: Portfolio):
     for asset in assets:
-        logger.debug(f"Handling data for {asset.symbol}")
-        stock_data = asset.stock_data
+        if len(asset.stock_data) < 30:
+            continue
+        short_mean, long_mean = get_means(asset)
         position = [p for p in portfolio.positions if p.symbol == asset.symbol]
-        if len(stock_data) < 30:
-            logger.debug(f"Insufficient data for {asset.symbol}")
-            return
-        short_mean = stock_data["close"].tail(10).mean()
-        long_mean = stock_data["close"].tail(30).mean()
         if short_mean > long_mean and not position:
             logger.debug(f"Buying {asset.symbol}")
             portfolio.order_target(asset.symbol, 10)
         elif short_mean < long_mean and position:
             logger.debug(f"Selling {asset.symbol}")
             portfolio.order_target(asset.symbol, 0)
-        else:
-            logger.debug(f"No action for {asset.symbol}")
 
 
 algo = Algorithm(functions=[Function(callable=handle_data)])

@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from example_algorithms.momentum.rsi import calculate_rsi
-from example_algorithms.momentum.rsi import place_orders
+from advanced.rsi import calculate_rsi
+from advanced.rsi import place_orders
+
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
