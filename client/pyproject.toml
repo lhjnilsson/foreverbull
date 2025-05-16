@@ -25,7 +25,6 @@ packages = [
     "foreverbull_cli",
     "foreverbull_testing",
     "foreverbull_zipline",
-    "example_algorithms",
 ]
 
 [tool.ruff.lint]
