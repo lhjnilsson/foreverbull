@@ -62,7 +62,7 @@ tasks:
     env:
       PYTHONPATH: rendered/simple/simple
     cmds:
-      - rye test -- rendered/simple/simple/tests/crossover_test.py -m unit
+      - rye test -- rendered/simple/simple
 
   template:test:advanced:
     deps: 
@@ -70,7 +70,7 @@ tasks:
     env:
       PYTHONPATH: rendered/advanced/advanced
     cmds:
-      - rye test -- rendered/advanced/advanced/tests -m unit
+      - rye test -- rendered/advanced/advanced
 
   template:test:
     deps:

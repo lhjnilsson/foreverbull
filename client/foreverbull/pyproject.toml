@@ -15,7 +15,7 @@ dependencies = [
   "pandas-datareader>=0.10.0,<1.0.0",
   "tables",
   "numpy",
-  "setuptools>=70.2.0,<71.0.0",
+  "setuptools",
   "protobuf==5.27.2",
   "types-protobuf>=5.27.0.20240626",
   "grpcio>=1.66.1",

@@ -29,7 +29,8 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def backtest(request):
     backtest_name = request.config.getoption("--backtest")
-    assert backtest_name is not None, "No backtest name provided"
+    if backtest_name is None:
+        pytest.skip("Skipping backtest, no backtest name provided")
     algo = Algorithm(None)
     with algo.backtest_session(backtest_name) as session:
         yield Backtest(session)

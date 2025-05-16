@@ -133,7 +133,7 @@ requests==2.31.0
 rich==13.7.1
     # via textual
     # via typer
-setuptools==70.2.0
+setuptools==80.7.1
     # via foreverbull
 shellingham==1.5.4
     # via typer

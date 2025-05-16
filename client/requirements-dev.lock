@@ -230,7 +230,7 @@ scipy==1.14.1
     # via empyrical-reloaded
     # via statsmodels
     # via zipline-reloaded
-setuptools==70.2.0
+setuptools==80.7.1
     # via foreverbull
     # via grpcio-tools
     # via ta-lib
