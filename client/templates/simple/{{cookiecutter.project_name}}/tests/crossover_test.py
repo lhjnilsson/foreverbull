@@ -1,12 +1,17 @@
-from {{cookiecutter.project_slug}}.crossover import algo, get_means, should_buy
+from datetime import datetime
 from multiprocessing import set_start_method
-from foreverbull_testing.models import Backtest
+
+import numpy
+import pytest
+
+from {{cookiecutter.project_slug}}.crossover import algo
+from {{cookiecutter.project_slug}}.crossover import get_means
+from {{cookiecutter.project_slug}}.crossover import should_buy
+
 from foreverbull_testing.models import AssetManager
+from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.models import Position
-import pytest
-from datetime import datetime
-import numpy
 
 try:
     set_start_method("spawn")
