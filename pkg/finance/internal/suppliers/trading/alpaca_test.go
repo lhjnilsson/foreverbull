@@ -18,7 +18,7 @@ type AlpacaClientTest struct {
 func (test *AlpacaClientTest) SetupTest() {
 	_, found := os.LookupEnv(environment.AlpacaBaseURL)
 	if !found {
-		test.T().Skip("Skipping test because no Alpaca base URL is set")
+		test.T().Skip("Skipping test because no Alpaca environment is not set")
 	}
 	client, err := trading.NewAlpacaClient()
 	test.Require().NoError(err)
