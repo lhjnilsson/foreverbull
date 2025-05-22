@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 )

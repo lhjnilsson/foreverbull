@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	worker_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
@@ -59,8 +60,8 @@ type pool struct {
 
 func (p *pool) startNamespaceListener() {
 	for {
-		request := worker_pb.NamespaceRequest{}
-		response := worker_pb.NamespaceResponse{}
+		request := servicePb.NamespaceRequest{}
+		response := servicePb.NamespaceResponse{}
 
 		sock, err := p.NamespaceSocket.Receive(&request)
 		if err != nil {
@@ -75,10 +76,10 @@ func (p *pool) startNamespaceListener() {
 		}
 
 		switch request.Type {
-		case worker_pb.NamespaceRequestType_GET:
+		case servicePb.NamespaceRequestType_GET:
 			value := p.namespace.Get(request.Key)
 			response.Value = value
-		case worker_pb.NamespaceRequestType_SET:
+		case servicePb.NamespaceRequestType_SET:
 			err := p.namespace.Set(request.Key, request.Value)
 			if err != nil {
 				setError := err.Error()
@@ -162,12 +163,12 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				s := symbol
 
 				group.Go(func() error {
-					request := worker_pb.WorkerRequest{
+					request := servicePb.WorkerRequest{
 						Task:      function.Name,
 						Symbols:   []string{s},
 						Portfolio: portfolio,
 					}
-					response := worker_pb.WorkerResponse{}
+					response := servicePb.WorkerResponse{}
 
 					err := p.Socket.Request(&request, &response)
 					if err != nil {
@@ -188,12 +189,12 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
 		} else {
-			request := worker_pb.WorkerRequest{
+			request := servicePb.WorkerRequest{
 				Task:      function.Name,
 				Symbols:   symbols,
 				Portfolio: portfolio,
 			}
-			response := worker_pb.WorkerResponse{}
+			response := servicePb.WorkerResponse{}
 
 			err := p.Socket.Request(&request, &response)
 			if err != nil {

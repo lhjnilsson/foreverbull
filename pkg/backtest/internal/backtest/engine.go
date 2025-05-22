@@ -7,8 +7,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -31,9 +31,9 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 		return nil, fmt.Errorf("error getting grpc client: %w", err)
 	}
 
-	client := backtest_pb.NewEngineClient(conn)
+	client := servicePb.NewEngineClient(conn)
 	if ingestionURL != nil {
-		_, err = client.DownloadIngestion(ctx, &backtest_pb.DownloadIngestionRequest{})
+		_, err = client.DownloadIngestion(ctx, &servicePb.DownloadIngestionRequest{})
 		if err != nil {
 			return nil, fmt.Errorf("error downloading ingestion: %w", err)
 		}
@@ -45,13 +45,13 @@ func NewZiplineEngine(ctx context.Context, container container.Container, ingest
 }
 
 type Zipline struct {
-	client    backtest_pb.EngineClient
+	client    servicePb.EngineClient
 	container container.Container
 }
 
-func (z *Zipline) Ingest(ctx context.Context, ingestion *backtest_pb.Ingestion, object *storage.Object) error {
+func (z *Zipline) Ingest(ctx context.Context, ingestion *servicePb.Ingestion, object *storage.Object) error {
 	bucket := string(object.Bucket)
-	req := backtest_pb.IngestRequest{
+	req := servicePb.IngestRequest{
 		Ingestion: ingestion,
 		Bucket:    &bucket,
 		Object:    &object.Name,
@@ -67,7 +67,7 @@ func (z *Zipline) Ingest(ctx context.Context, ingestion *backtest_pb.Ingestion, 
 
 func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object) error {
 	bucket := string(object.Bucket)
-	req := backtest_pb.DownloadIngestionRequest{
+	req := servicePb.DownloadIngestionRequest{
 		Bucket: bucket,
 		Object: object.Name,
 	}
@@ -81,7 +81,7 @@ func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object)
 }
 
 func (z *Zipline) NewSession(ctx context.Context, session *pb.Session) (engine.EngineSession, error) {
-	rsp, err := z.client.NewSession(ctx, &backtest_pb.NewSessionRequest{Id: session.Id})
+	rsp, err := z.client.NewSession(ctx, &servicePb.NewSessionRequest{Id: session.Id})
 	if err != nil {
 		return nil, err
 	}

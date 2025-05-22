@@ -16,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -32,7 +33,7 @@ type TradingServerTest struct {
 
 	listener *bufconn.Listener
 	server   *grpc.Server
-	client   pb.TradingClient
+	client   servicePb.TradingServicerClient
 }
 
 func TestTradingServerTest(t *testing.T) {
@@ -60,7 +61,7 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.server, err = internalGrpc.NewServer()
 	suite.Require().NoError(err)
 	server := api.NewTradingServer(suite.pgx, suite.trading)
-	pb.RegisterTradingServer(suite.server, server)
+	servicePb.RegisterTradingServicerServer(suite.server, server)
 
 	go func() {
 		suite.NoError(suite.server.Serve(suite.listener))
@@ -78,14 +79,14 @@ func (suite *TradingServerTest) SetupSubTest() {
 		log.Printf("error connecting to server: %v", err)
 	}
 
-	suite.client = pb.NewTradingClient(conn)
+	suite.client = servicePb.NewTradingServicerClient(conn)
 }
 
 func (test *TradingServerTest) TestGetOrders() {
 	test.Run("error getting orders", func() {
 		test.trading.On("GetOrders", mock.Anything, mock.Anything).Return(nil, errors.New("error getting orders"))
 
-		req := &pb.GetOrdersRequest{}
+		req := &servicePb.GetOrdersRequest{}
 		rsp, err := test.client.GetOrders(context.Background(), req)
 		test.Require().Error(err)
 		test.Require().Nil(rsp)
@@ -99,7 +100,7 @@ func (test *TradingServerTest) TestGetOrders() {
 		}
 		test.trading.On("GetOrders", mock.Anything, mock.Anything).Return(orders, nil)
 
-		req := &pb.GetOrdersRequest{}
+		req := &servicePb.GetOrdersRequest{}
 		rsp, err := test.client.GetOrders(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)
@@ -107,34 +108,11 @@ func (test *TradingServerTest) TestGetOrders() {
 	})
 }
 
-func (test *TradingServerTest) TestPlaceOrder() {
-	test.Run("error placing order", func() {
-		test.trading.On("PlaceOrder", mock.Anything, mock.Anything).Return(nil, errors.New("error placing order"))
-
-		req := &pb.PlaceOrderRequest{
-			Order: &pb.Order{},
-		}
-		rsp, err := test.client.PlaceOrder(context.Background(), req)
-		test.Require().Error(err)
-		test.Require().Nil(rsp)
-	})
-	test.Run("normal", func() {
-		test.trading.On("PlaceOrder", mock.Anything, mock.Anything).Return(&pb.Order{}, nil)
-
-		req := &pb.PlaceOrderRequest{
-			Order: &pb.Order{},
-		}
-		rsp, err := test.client.PlaceOrder(context.Background(), req)
-		test.Require().NoError(err)
-		test.Require().NotNil(rsp)
-	})
-}
-
 func (test *TradingServerTest) TestGetPortfolio() {
 	test.Run("error getting portfolio", func() {
 		test.trading.On("GetPortfolio", mock.Anything, mock.Anything).Return(nil, errors.New("error getting portfolio"))
 
-		req := &pb.GetPortfolioRequest{}
+		req := &servicePb.GetPortfolioRequest{}
 		rsp, err := test.client.GetPortfolio(context.Background(), req)
 		test.Require().Error(err)
 		test.Require().Nil(rsp)
@@ -143,7 +121,7 @@ func (test *TradingServerTest) TestGetPortfolio() {
 		portfolio := &pb.Portfolio{}
 		test.trading.On("GetPortfolio", mock.Anything, mock.Anything).Return(portfolio, nil)
 
-		req := &pb.GetPortfolioRequest{}
+		req := &servicePb.GetPortfolioRequest{}
 		rsp, err := test.client.GetPortfolio(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)

@@ -8,7 +8,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3"
@@ -30,8 +30,8 @@ func TestPool(t *testing.T) {
 }
 
 func (test *PoolTest) TestSimple() {
-	cb := func(_ *pb.WorkerRequest) *pb.WorkerResponse {
-		return &pb.WorkerResponse{}
+	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		return &servicePb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{
 		{

@@ -14,7 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 )
@@ -57,9 +57,9 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Invoke(
 		func(s *grpc.Server, pgx *pgxpool.Pool, md supplier.Marketdata, t supplier.Trading) error {
 			marketdata := api.NewMarketdataServer(pgx, md)
-			pb.RegisterMarketdataServer(s, marketdata)
+			servicePb.RegisterMarketdataServer(s, marketdata)
 			trading := api.NewTradingServer(pgx, t)
-			pb.RegisterTradingServer(s, trading)
+			servicePb.RegisterTradingServicerServer(s, trading)
 			return nil
 		},
 		func(conn *pgxpool.Pool) error {

@@ -18,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -34,7 +35,7 @@ type BacktestServerTest struct {
 
 	listener *bufconn.Listener
 	server   *grpc.Server
-	client   pb.BacktestServicerClient
+	client   servicePb.BacktestServicerClient
 }
 
 func TestBacktestServerTest(t *testing.T) {
@@ -59,7 +60,7 @@ func (test *BacktestServerTest) SetupSubTest() {
 
 	test.stream = new(stream.MockStream)
 	server := api.NewBacktestServer(test.pgx, test.stream)
-	pb.RegisterBacktestServicerServer(test.server, server)
+	servicePb.RegisterBacktestServicerServer(test.server, server)
 
 	go func() {
 		test.server.Serve(test.listener) // nolint:errcheck
@@ -77,7 +78,7 @@ func (test *BacktestServerTest) SetupSubTest() {
 		log.Printf("error connecting to server: %v", err)
 	}
 
-	test.client = pb.NewBacktestServicerClient(conn)
+	test.client = servicePb.NewBacktestServicerClient(conn)
 }
 
 func (test *BacktestServerTest) TearDownSubTest() {
@@ -126,7 +127,7 @@ func (test *BacktestServerTest) createExecution(session string) *pb.Execution {
 
 func (test *BacktestServerTest) TestListBacktests() {
 	test.Run("List", func() {
-		req := &pb.ListBacktestsRequest{}
+		req := &servicePb.ListBacktestsRequest{}
 
 		resp, err := test.client.ListBacktests(context.Background(), req)
 		test.Require().NoError(err)
@@ -149,7 +150,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		close(statusCh)
 		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
-		req := &pb.CreateBacktestRequest{
+		req := &servicePb.CreateBacktestRequest{
 			Backtest: &pb.Backtest{
 				Name:      "Test Backtest",
 				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
@@ -162,7 +163,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		test.Require().NoError(err)
 		test.NotNil(resp)
 
-		responses := []*pb.CreateBacktestResponse{}
+		responses := []*servicePb.CreateBacktestResponse{}
 
 		for {
 			msg, err := resp.Recv()
@@ -183,7 +184,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 
 func (test *BacktestServerTest) TestGetBacktest() {
 	test.Run("not found", func() {
-		req := &pb.GetBacktestRequest{
+		req := &servicePb.GetBacktestRequest{
 			Name: "not_found",
 		}
 		resp, err := test.client.GetBacktest(context.Background(), req)
@@ -193,7 +194,7 @@ func (test *BacktestServerTest) TestGetBacktest() {
 	test.Run("found", func() {
 		backtest := test.createBacktest("test_1")
 
-		req := &pb.GetBacktestRequest{
+		req := &servicePb.GetBacktestRequest{
 			Name: backtest.Name,
 		}
 
@@ -207,7 +208,7 @@ func (test *BacktestServerTest) TestGetBacktest() {
 func (test *BacktestServerTest) TestCreateSession() {
 	test.Run("backtest not found", func() {
 
-		req := &pb.CreateSessionRequest{
+		req := &servicePb.CreateSessionRequest{
 			BacktestName: "backtest",
 		}
 
@@ -225,7 +226,7 @@ func (test *BacktestServerTest) TestCreateSession() {
 
 		test.stream.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		req := &pb.CreateSessionRequest{
+		req := &servicePb.CreateSessionRequest{
 			BacktestName: backtest.Name,
 		}
 
@@ -233,7 +234,7 @@ func (test *BacktestServerTest) TestCreateSession() {
 		test.Require().NoError(err)
 		test.NotNil(resp)
 
-		responses := []*pb.CreateSessionResponse{}
+		responses := []*servicePb.CreateSessionResponse{}
 		for {
 			msg, err := resp.Recv()
 			if errors.Is(err, io.EOF) {
@@ -251,7 +252,7 @@ func (test *BacktestServerTest) TestCreateSession() {
 
 func (test *BacktestServerTest) TestGetSession() {
 	test.Run("not found", func() {
-		req := &pb.GetSessionRequest{
+		req := &servicePb.GetSessionRequest{
 			SessionId: "not_found",
 		}
 		resp, err := test.client.GetSession(context.Background(), req)
@@ -262,7 +263,7 @@ func (test *BacktestServerTest) TestGetSession() {
 		backtest := test.createBacktest("test_1")
 		session := test.createSession(backtest.Name)
 
-		req := &pb.GetSessionRequest{
+		req := &servicePb.GetSessionRequest{
 			SessionId: session.Id,
 		}
 
@@ -278,7 +279,7 @@ func (test *BacktestServerTest) TestListExecutions() {
 		session := test.createSession(backtest.Name)
 		execution := test.createExecution(session.Id)
 
-		req := &pb.ListExecutionsRequest{
+		req := &servicePb.ListExecutionsRequest{
 			SessionId: session.Id,
 		}
 		resp, err := test.client.ListExecutions(context.Background(), req)
@@ -292,7 +293,7 @@ func (test *BacktestServerTest) TestListExecutions() {
 		session := test.createSession(backtest.Name)
 		execution := test.createExecution(session.Id)
 
-		req := &pb.ListExecutionsRequest{
+		req := &servicePb.ListExecutionsRequest{
 			Backtest: backtest.Name,
 		}
 		resp, err := test.client.ListExecutions(context.Background(), req)
@@ -306,7 +307,7 @@ func (test *BacktestServerTest) TestListExecutions() {
 		session := test.createSession(backtest.Name)
 		execution := test.createExecution(session.Id)
 
-		req := &pb.ListExecutionsRequest{}
+		req := &servicePb.ListExecutionsRequest{}
 		resp, err := test.client.ListExecutions(context.Background(), req)
 		test.Require().NoError(err)
 		test.NotNil(resp)
@@ -317,7 +318,7 @@ func (test *BacktestServerTest) TestListExecutions() {
 
 func (test *BacktestServerTest) TestGetExecution() {
 	test.Run("not found", func() {
-		req := &pb.GetExecutionRequest{
+		req := &servicePb.GetExecutionRequest{
 			ExecutionId: "not_found",
 		}
 		resp, err := test.client.GetExecution(context.Background(), req)
@@ -329,7 +330,7 @@ func (test *BacktestServerTest) TestGetExecution() {
 		session := test.createSession(backtest.Name)
 		execution := test.createExecution(session.Id)
 
-		req := &pb.GetExecutionRequest{
+		req := &servicePb.GetExecutionRequest{
 			ExecutionId: execution.Id,
 		}
 		resp, err := test.client.GetExecution(context.Background(), req)

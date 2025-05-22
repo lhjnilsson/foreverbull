@@ -1,21 +1,25 @@
 import logging
 
 from foreverbull import Algorithm
-from foreverbull import Assets, Asset, Portfolio
+from foreverbull import Asset
+from foreverbull import Assets
 from foreverbull import Function
 from foreverbull import Portfolio
 
 
 logger = logging.getLogger("non_parallel")
 
+
 def get_means(asset: Asset):
     return asset.stock_data["close"].tail(10).mean(), asset.stock_data["close"].tail(30).mean()
+
 
 def should_buy(asset: Asset, portfolio: Portfolio):
     short_mean = asset.stock_data["close"].tail(10).mean()
     long_mean = asset.stock_data["close"].tail(30).mean()
-    position = [p for p in portfolio.positions if p.symbol == asset.symbol] 
+    position = [p for p in portfolio.positions if p.symbol == asset.symbol]
     return short_mean > long_mean and not position
+
 
 def handle_data(assets: Assets, portfolio: Portfolio):
     for asset in assets:

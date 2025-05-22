@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package foreverbull.strategy;
+
+import "buf/validate/validate.proto";
+import "foreverbull/common.proto";
+import "foreverbull/service/v1/worker.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service";
+
+message RunStrategyRequest {
+  repeated string symbols = 1 [(buf.validate.field).repeated = {min_items: 1}];
+  foreverbull.common.Date start_date = 2 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != null"
+    }
+  }];
+  foreverbull.service.v1.Algorithm algorithm = 3 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != null"
+    }
+  }];
+}
+
+message RunStrategyResponse {
+  message Status {
+    enum Status {
+      UPDATING_MARKETDATA = 0;
+      CREATING_WORKER_POOL = 1;
+      READY = 2;
+      RUNNING = 3;
+      COMPLETED = 4;
+      FAILED = 5;
+    }
+    Status status = 1;
+    optional string error = 2;
+  }
+
+  Status status = 1;
+  foreverbull.service.v1.ExecutionConfiguration configuration = 2;
+}
+
+service StrategyServicer {
+  rpc RunStrategy(RunStrategyRequest) returns (stream RunStrategyResponse);
+}

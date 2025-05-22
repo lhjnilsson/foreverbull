@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -37,7 +38,7 @@ type SessionTest struct {
 
 	mockEngine        *engine.MockEngine
 	mockEngineSession *engine.MockEngineSession
-	client            backtest_pb.SessionServicerClient
+	client            servicePb.SessionServicerClient
 
 	backtest *backtest_pb.Backtest
 	session  *backtest_pb.Session
@@ -98,7 +99,7 @@ func (s *SessionTest) SetupTest() {
 		log.Printf("error connecting to server: %v", err)
 	}
 
-	s.client = backtest_pb.NewSessionServicerClient(conn)
+	s.client = servicePb.NewSessionServicerClient(conn)
 }
 
 func (s *SessionTest) TearDownTest() {
@@ -111,7 +112,7 @@ func (s *SessionTest) TearDownTest() {
 }
 
 func (s *SessionTest) TestCreateExecution() {
-	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
+	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
 			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
@@ -129,7 +130,7 @@ func (s *SessionTest) TestCreateExecution() {
 }
 
 func (s *SessionTest) TestRunExecution() {
-	rsp, err := s.client.CreateExecution(context.Background(), &backtest_pb.CreateExecutionRequest{
+	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
 		Backtest: &backtest_pb.Backtest{
 			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
 			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
@@ -150,16 +151,16 @@ func (s *SessionTest) TestRunExecution() {
 		s.backtest.StartDate, s.backtest.EndDate, []string{"AAPL"}, nil)
 	s.Require().NoError(err)
 
-	ch := make(chan *backtest_pb.RunExecutionResponse, 5)
-	ch <- &backtest_pb.RunExecutionResponse{}
-	ch <- &backtest_pb.RunExecutionResponse{}
-	ch <- &backtest_pb.RunExecutionResponse{}
-	ch <- &backtest_pb.RunExecutionResponse{}
-	ch <- &backtest_pb.RunExecutionResponse{}
+	ch := make(chan *servicePb.RunExecutionResponse, 5)
+	ch <- &servicePb.RunExecutionResponse{}
+	ch <- &servicePb.RunExecutionResponse{}
+	ch <- &servicePb.RunExecutionResponse{}
+	ch <- &servicePb.RunExecutionResponse{}
+	ch <- &servicePb.RunExecutionResponse{}
 	close(ch)
 	s.mockEngineSession.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(ch, nil)
 
-	stream, err := s.client.RunExecution(context.Background(), &backtest_pb.RunExecutionRequest{
+	stream, err := s.client.RunExecution(context.Background(), &servicePb.RunExecutionRequest{
 		ExecutionId: execution.Id,
 	})
 	s.Require().NoError(err)
@@ -182,7 +183,7 @@ func (s *SessionTest) TestRunExecution() {
 }
 
 func (s *SessionTest) TestStopServer() {
-	rsp, err := s.client.StopServer(context.Background(), &backtest_pb.StopServerRequest{})
+	rsp, err := s.client.StopServer(context.Background(), &servicePb.StopServerRequest{})
 	s.Require().NoError(err)
 	s.Require().NotNil(rsp)
 	select {

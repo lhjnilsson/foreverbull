@@ -6,8 +6,8 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -23,17 +23,17 @@ func NewZiplineEngineSession(ctx context.Context, connStr string) (engine.Engine
 		return nil, fmt.Errorf("error getting grpc client: %w", err)
 	}
 
-	client := pb.NewEngineSessionClient(conn)
+	client := servicePb.NewEngineSessionClient(conn)
 
 	return &ZipelineSession{client: client}, nil
 }
 
 type ZipelineSession struct {
-	client pb.EngineSessionClient
+	client servicePb.EngineSessionClient
 }
 
-func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *backtest_pb.RunExecutionResponse, error) {
-	req := backtest_pb.RunBacktestRequest{
+func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error) {
+	req := servicePb.RunBacktestRequest{
 		Backtest: backtest,
 	}
 
@@ -45,12 +45,12 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 
 	log.Debug().Any("response", rsp).Msg("run backtest sent")
 
-	ch := make(chan *backtest_pb.RunExecutionResponse)
+	ch := make(chan *servicePb.RunExecutionResponse)
 
 	runner := func() {
 		var currentPeriod int64 = 0
 		for {
-			period, err := z.client.GetCurrentPeriod(ctx, &backtest_pb.GetCurrentPeriodRequest{})
+			period, err := z.client.GetCurrentPeriod(ctx, &servicePb.GetCurrentPeriodRequest{})
 			if err != nil {
 				close(ch)
 				return
@@ -60,7 +60,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 				return
 			}
 			currentPeriod++
-			excRsp := backtest_pb.RunExecutionResponse{
+			excRsp := servicePb.RunExecutionResponse{
 				Backtest:         backtest,
 				Portfolio:        period.Portfolio,
 				NumTotalPeriods:  totalPeriods,
@@ -79,7 +79,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 			}
 
 			_, err = z.client.PlaceOrdersAndContinue(ctx,
-				&backtest_pb.PlaceOrdersAndContinueRequest{
+				&servicePb.PlaceOrdersAndContinueRequest{
 					Orders: orders,
 				},
 			)
@@ -96,10 +96,10 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 	return ch, nil
 }
 
-func (z *ZipelineSession) GetResult(ctx context.Context, executionId string) (*backtest_pb.GetResultResponse, error) {
-	req := backtest_pb.GetResultRequest{
+func (z *ZipelineSession) GetResult(ctx context.Context, executionId string) (*servicePb.GetResultResponse, error) {
+	req := servicePb.GetResultRequest{
 		Execution: executionId,
-		Upload: &backtest_pb.GetResultRequest_Upload{
+		Upload: &servicePb.GetResultRequest_Upload{
 			Bucket: string(storage.ResultsBucket),
 			Object: executionId,
 		},

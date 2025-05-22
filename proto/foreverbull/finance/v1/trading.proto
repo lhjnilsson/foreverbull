@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package foreverbull.finance.v1;
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance";
+
+message Session {
+  string id = 1;
+  optional int64 port = 2;
+}

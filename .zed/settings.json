@@ -1,0 +1,23 @@
+{
+  "lsp": {
+    "pyright": {
+      "settings": {
+        "python": {
+          "pythonPath": "client/.venv/bin/python"
+        }
+      }
+    }
+  },
+  "terminal": {
+    "detect_venv": {
+      "on": {
+        // Default directories to search for virtual environments, relative
+        // to the current working directory. We recommend overriding this
+        // in your project's settings, rather than globally.
+        "directories": ["client/.venv"],
+        // Can also be `csh`, `fish`, and `nushell`
+        "activate_script": "default"
+      }
+    }
+  }
+}
