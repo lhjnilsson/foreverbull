@@ -11,10 +11,11 @@ import (
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
 type BacktestServer struct {
-	pb.UnimplementedBacktestServicerServer
+	servicePb.UnimplementedBacktestServicerServer
 
 	pgx    *pgxpool.Pool
 	stream stream.Stream
@@ -28,8 +29,8 @@ func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer 
 }
 
 func (bs *BacktestServer) ListBacktests(ctx context.Context,
-	req *pb.ListBacktestsRequest,
-) (*pb.ListBacktestsResponse, error) {
+	req *servicePb.ListBacktestsRequest,
+) (*servicePb.ListBacktestsResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	list, err := backtests.List(ctx)
@@ -37,13 +38,13 @@ func (bs *BacktestServer) ListBacktests(ctx context.Context,
 		return nil, fmt.Errorf("error listing backtests: %w", err)
 	}
 
-	return &pb.ListBacktestsResponse{
+	return &servicePb.ListBacktestsResponse{
 		Backtests: list,
 	}, nil
 }
 
-func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
-	stream pb.BacktestServicer_CreateBacktestServer,
+func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
+	stream servicePb.BacktestServicer_CreateBacktestServer,
 ) error {
 	ctx := stream.Context()
 	backtests := repository.Backtest{Conn: bs.pgx}
@@ -64,9 +65,9 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 	steps := bs.stream.RunOrchestration(ctx, o)
 	for step := range steps {
 		err = stream.Send(
-			&pb.CreateBacktestResponse{
+			&servicePb.CreateBacktestResponse{
 				Backtest: backtest,
-				Status: &pb.CreateBacktestResponse_Status{
+				Status: &servicePb.CreateBacktestResponse_Status{
 					Status: pb.BacktestStatus(step.Status),
 					State:  step.State,
 				},
@@ -79,8 +80,8 @@ func (bs *BacktestServer) CreateBacktest(req *pb.CreateBacktestRequest,
 }
 
 func (bs *BacktestServer) GetBacktest(ctx context.Context,
-	req *pb.GetBacktestRequest,
-) (*pb.GetBacktestResponse, error) {
+	req *servicePb.GetBacktestRequest,
+) (*servicePb.GetBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	backtest, err := backtests.Get(ctx, req.GetName())
@@ -88,14 +89,14 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 		return nil, fmt.Errorf("error getting backtest: %w", err)
 	}
 
-	return &pb.GetBacktestResponse{
+	return &servicePb.GetBacktestResponse{
 		Name:     backtest.Name,
 		Backtest: backtest,
 	}, nil
 }
 
 func (bs *BacktestServer) CreateSession(
-	req *pb.CreateSessionRequest, _stream pb.BacktestServicer_CreateSessionServer,
+	req *servicePb.CreateSessionRequest, _stream servicePb.BacktestServicer_CreateSessionServer,
 ) error {
 	sessions := repository.Session{Conn: bs.pgx}
 	ctx := _stream.Context()
@@ -104,9 +105,9 @@ func (bs *BacktestServer) CreateSession(
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
-	err = _stream.Send(&pb.CreateSessionResponse{
+	err = _stream.Send(&servicePb.CreateSessionResponse{
 		Session: session,
-		Status: &pb.CreateSessionResponse_Status{
+		Status: &servicePb.CreateSessionResponse_Status{
 			Status: pb.SessionStatus_CREATED,
 			State:  pbInternal.State_STATE_COMPLETED,
 		},
@@ -131,9 +132,9 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error getting session: %w", err)
 	}
 
-	err = _stream.Send(&pb.CreateSessionResponse{
+	err = _stream.Send(&servicePb.CreateSessionResponse{
 		Session: session,
-		Status: &pb.CreateSessionResponse_Status{
+		Status: &servicePb.CreateSessionResponse_Status{
 			Status: pb.SessionStatus_RUNNING,
 			State:  pbInternal.State_STATE_RUNNING,
 		},
@@ -146,8 +147,8 @@ func (bs *BacktestServer) CreateSession(
 }
 
 func (bs *BacktestServer) GetSession(ctx context.Context,
-	req *pb.GetSessionRequest,
-) (*pb.GetSessionResponse, error) {
+	req *servicePb.GetSessionRequest,
+) (*servicePb.GetSessionResponse, error) {
 	sessions := repository.Session{Conn: bs.pgx}
 
 	session, err := sessions.Get(ctx, req.GetSessionId())
@@ -155,14 +156,14 @@ func (bs *BacktestServer) GetSession(ctx context.Context,
 		return nil, fmt.Errorf("error getting session: %w", err)
 	}
 
-	return &pb.GetSessionResponse{
+	return &servicePb.GetSessionResponse{
 		Session: session,
 	}, nil
 }
 
 func (bs *BacktestServer) ListExecutions(ctx context.Context,
-	req *pb.ListExecutionsRequest,
-) (*pb.ListExecutionsResponse, error) {
+	req *servicePb.ListExecutionsRequest,
+) (*servicePb.ListExecutionsResponse, error) {
 	storage := repository.Execution{Conn: bs.pgx}
 
 	if req.GetSessionId() != "" {
@@ -171,7 +172,7 @@ func (bs *BacktestServer) ListExecutions(ctx context.Context,
 			return nil, fmt.Errorf("error listing executions: %w", err)
 		}
 
-		return &pb.ListExecutionsResponse{
+		return &servicePb.ListExecutionsResponse{
 			Executions: executions,
 		}, nil
 	} else if req.GetBacktest() != "" {
@@ -180,7 +181,7 @@ func (bs *BacktestServer) ListExecutions(ctx context.Context,
 			return nil, fmt.Errorf("error listing executions: %w", err)
 		}
 
-		return &pb.ListExecutionsResponse{
+		return &servicePb.ListExecutionsResponse{
 			Executions: executions,
 		}, nil
 	}
@@ -190,14 +191,14 @@ func (bs *BacktestServer) ListExecutions(ctx context.Context,
 		return nil, fmt.Errorf("error listing executions: %w", err)
 	}
 
-	return &pb.ListExecutionsResponse{
+	return &servicePb.ListExecutionsResponse{
 		Executions: executions,
 	}, nil
 }
 
 func (bs *BacktestServer) GetExecution(ctx context.Context,
-	req *pb.GetExecutionRequest,
-) (*pb.GetExecutionResponse, error) {
+	req *servicePb.GetExecutionRequest,
+) (*servicePb.GetExecutionResponse, error) {
 	storage := repository.Execution{Conn: bs.pgx}
 
 	execution, err := storage.Get(ctx, req.GetExecutionId())
@@ -209,7 +210,7 @@ func (bs *BacktestServer) GetExecution(ctx context.Context,
 		return nil, fmt.Errorf("error getting execution periods: %w", err)
 	}
 
-	return &pb.GetExecutionResponse{
+	return &servicePb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   periods,
 	}, nil

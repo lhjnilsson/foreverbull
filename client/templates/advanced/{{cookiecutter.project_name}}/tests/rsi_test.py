@@ -1,11 +1,13 @@
 from datetime import datetime
 
+from {{cookiecutter.project_slug}}.rsi import calculate_rsi
+from {{cookiecutter.project_slug}}.rsi import place_orders
+
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.models import Position
 
-from {{cookiecutter.project_slug}}.rsi import calculate_rsi, place_orders
 
 def test_calculate_rsi(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
     portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])

@@ -3,8 +3,8 @@ package strategy
 import (
 	"fmt"
 
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
+	financeServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
@@ -13,7 +13,7 @@ import (
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() (finance_pb.MarketdataClient, error) {
+		func() (financeServicePb.MarketdataClient, error) {
 			conn, err := grpc.NewClient("localhost:50055", grpc.WithTransportCredentials(
 				insecure.NewCredentials(),
 			))
@@ -22,10 +22,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 
 			// TO-DO: refactor so we properly can close the connection
-			return finance_pb.NewMarketdataClient(conn), nil
+			return financeServicePb.NewMarketdataClient(conn), nil
 		}),
 	fx.Invoke(
-		func(g *grpc.Server, md finance_pb.MarketdataClient) error {
+		func(g *grpc.Server, md financeServicePb.MarketdataClient) error {
 			srv := api.NewStrategyServer(md)
 			pb.RegisterStrategyServicerServer(g, srv)
 			return nil

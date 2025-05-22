@@ -8,13 +8,14 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
 
 type grpcSessionServer struct {
-	backtest_pb.UnimplementedSessionServicerServer
+	servicePb.UnimplementedSessionServicerServer
 
 	session *backtest_pb.Session
 
@@ -51,12 +52,12 @@ func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
 		server:          grpcServer,
 		activity:        activity,
 	}
-	backtest_pb.RegisterSessionServicerServer(grpcServer, server)
+	servicePb.RegisterSessionServicerServer(grpcServer, server)
 
 	return grpcServer, activity, nil
 }
 
-func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_pb.CreateExecutionRequest) (*backtest_pb.CreateExecutionResponse, error) {
+func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.CreateExecutionRequest) (*servicePb.CreateExecutionResponse, error) {
 	log.Debug().Msg("create execution")
 	select {
 	case s.activity <- true:
@@ -86,13 +87,13 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *backtest_p
 	configuration := s.wp.Configure()
 	log.Debug().Any("execution", execution).Any("configuration", configuration).Msg("execution created")
 
-	return &backtest_pb.CreateExecutionResponse{
+	return &servicePb.CreateExecutionResponse{
 		Execution:     execution,
 		Configuration: configuration,
 	}, nil
 }
 
-func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, stream backtest_pb.SessionServicer_RunExecutionServer) error {
+func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, stream servicePb.SessionServicer_RunExecutionServer) error {
 	log.Debug().Any("request", req).Msg("run execution")
 	select {
 	case s.activity <- true:
@@ -128,7 +129,7 @@ func (s *grpcSessionServer) RunExecution(req *backtest_pb.RunExecutionRequest, s
 	return nil
 }
 
-func (s *grpcSessionServer) StoreResult(ctx context.Context, req *backtest_pb.StoreExecutionResultRequest) (*backtest_pb.StoreExecutionResultResponse, error) {
+func (s *grpcSessionServer) StoreResult(ctx context.Context, req *servicePb.StoreExecutionResultRequest) (*servicePb.StoreExecutionResultResponse, error) {
 	log.Debug().Any("request", req).Msg("store result")
 	rsp, err := s.backtestSession.GetResult(ctx, req.ExecutionId)
 	if err != nil {
@@ -139,10 +140,10 @@ func (s *grpcSessionServer) StoreResult(ctx context.Context, req *backtest_pb.St
 	if err != nil {
 		return nil, fmt.Errorf("error storing result: %w", err)
 	}
-	return &backtest_pb.StoreExecutionResultResponse{}, nil
+	return &servicePb.StoreExecutionResultResponse{}, nil
 }
 
-func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.GetExecutionRequest) (*backtest_pb.GetExecutionResponse, error) {
+func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.GetExecutionRequest) (*servicePb.GetExecutionResponse, error) {
 	log.Debug().Any("request", req).Msg("get execution")
 	select {
 	case s.activity <- true:
@@ -156,13 +157,13 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *backtest_pb.G
 		return nil, fmt.Errorf("error getting execution: %w", err)
 	}
 
-	return &backtest_pb.GetExecutionResponse{
+	return &servicePb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   []*backtest_pb.Period{},
 	}, nil
 }
 
-func (s *grpcSessionServer) StopServer(ctx context.Context, req *backtest_pb.StopServerRequest) (*backtest_pb.StopServerResponse, error) {
+func (s *grpcSessionServer) StopServer(ctx context.Context, req *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {
 	log.Debug().Any("request", req).Msg("stop server")
 	if s.wp != nil {
 		if err := s.wp.Close(); err != nil {
@@ -170,5 +171,5 @@ func (s *grpcSessionServer) StopServer(ctx context.Context, req *backtest_pb.Sto
 		}
 	}
 	close(s.activity)
-	return &backtest_pb.StopServerResponse{}, nil
+	return &servicePb.StopServerResponse{}, nil
 }

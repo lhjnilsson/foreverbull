@@ -21,7 +21,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	service_servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/stretchr/testify/suite"
 	"go.nanomsg.org/mangos/v3/protocol/rep"
@@ -34,7 +35,7 @@ type BacktestModuleTest struct {
 	suite.Suite
 	app *fx.App
 
-	backtestClient pb.BacktestServicerClient
+	backtestClient servicePb.BacktestServicerClient
 }
 
 func TestModuleBacktest(t *testing.T) {
@@ -108,7 +109,7 @@ func (test *BacktestModuleTest) SetupTest() {
 
 	conn, err := grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	test.Require().NoError(err, "failed to create grpc client")
-	test.backtestClient = pb.NewBacktestServicerClient(conn)
+	test.backtestClient = servicePb.NewBacktestServicerClient(conn)
 }
 
 func (test *BacktestModuleTest) TearDownTest() {
@@ -127,7 +128,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	// Create Backtest
-	createResponse, err := test.backtestClient.CreateBacktest(context.TODO(), &pb.CreateBacktestRequest{
+	createResponse, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
 			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
@@ -137,7 +138,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	})
 	test.Require().NoError(err, "failed to create backtest: %v", err)
 
-	var latestStatus *pb.CreateBacktestResponse_Status
+	var latestStatus *servicePb.CreateBacktestResponse_Status
 	for {
 		rsp, err := createResponse.Recv()
 		if err != nil && errors.Is(err, io.EOF) {
@@ -151,17 +152,17 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().Equal(pb.BacktestStatus_INGESTING, latestStatus.Status)
 	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
 
-	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &pb.GetBacktestRequest{Name: "Test Backtest"})
+	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &servicePb.GetBacktestRequest{Name: "Test Backtest"})
 	test.Require().NoError(err, "failed to get backtest")
 	test.NotNil(getResponse, "response is nil")
 
 	// Run Backtest
 	rsp3, err := test.backtestClient.CreateSession(context.TODO(),
-		&pb.CreateSessionRequest{BacktestName: getResponse.GetName()})
+		&servicePb.CreateSessionRequest{BacktestName: getResponse.GetName()})
 	test.Require().NoError(err, "failed to create session")
 	test.NotNil(rsp3, "response is nil")
 
-	var latestSessionRsp *pb.CreateSessionResponse
+	var latestSessionRsp *servicePb.CreateSessionResponse
 
 	for {
 		rsp, err := rsp3.Recv()
@@ -182,12 +183,12 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	var gClient *grpc.ClientConn
 	gClient, err = grpc.NewClient(fmt.Sprintf("localhost:%d", port),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	sessionClient := pb.NewSessionServicerClient(gClient)
+	sessionClient := servicePb.NewSessionServicerClient(gClient)
 
 	test.Require().NoError(err)
 
-	cb := func(_ *service_pb.WorkerRequest) *service_pb.WorkerResponse {
-		return &service_pb.WorkerResponse{}
+	cb := func(_ *service_servicePb.WorkerRequest) *service_servicePb.WorkerResponse {
+		return &service_servicePb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{
 		{
@@ -198,7 +199,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
 
-	excRep, err := sessionClient.CreateExecution(context.TODO(), &pb.CreateExecutionRequest{
+	excRep, err := sessionClient.CreateExecution(context.TODO(), &servicePb.CreateExecutionRequest{
 		Backtest:  getResponse.GetBacktest(),
 		Algorithm: algo,
 	})
@@ -212,7 +213,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	go runner(workerSocket)
 	defer workerSocket.Close()
 
-	stream, err := sessionClient.RunExecution(context.TODO(), &pb.RunExecutionRequest{
+	stream, err := sessionClient.RunExecution(context.TODO(), &servicePb.RunExecutionRequest{
 		ExecutionId: excRep.Execution.Id,
 	})
 	test.Require().NoError(err, "failed to run execution")
@@ -228,13 +229,13 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 		test.Require().NotNil(msg, "message is nil")
 	}
 
-	rspResult, err := sessionClient.StoreResult(context.TODO(), &pb.StoreExecutionResultRequest{
+	rspResult, err := sessionClient.StoreResult(context.TODO(), &servicePb.StoreExecutionResultRequest{
 		ExecutionId: excRep.Execution.Id,
 	})
 	test.Require().NoError(err, "failed to store result")
 	test.NotNil(rspResult, "response is nil")
 
-	rsp5, err := sessionClient.StopServer(context.TODO(), &pb.StopServerRequest{})
+	rsp5, err := sessionClient.StopServer(context.TODO(), &servicePb.StopServerRequest{})
 	test.Require().NoError(err, "failed to stop server")
 	test.NotNil(rsp5, "response is nil")
 }

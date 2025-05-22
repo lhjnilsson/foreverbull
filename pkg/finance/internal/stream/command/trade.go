@@ -1,0 +1,89 @@
+package command
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
+)
+
+func SessionRun(ctx context.Context, msg stream.Message) error {
+	cmd := fs.StartTradingSessionCommand{}
+
+	err := msg.ParsePayload(&cmd)
+	if err != nil {
+		return fmt.Errorf("error parsing payload: %w", err)
+	}
+
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	repository := repository.Trading{Conn: db}
+
+	_, err = repository.Get(ctx, cmd.Id)
+	if err != nil {
+		return fmt.Errorf("error getting session: %w", err)
+	}
+
+	server, activity, err := api.NewGRPCSessionServer()
+	if err != nil {
+		return fmt.Errorf("error creating grpc session server: %w", err)
+	}
+
+	var listener net.Listener
+
+	var port int
+
+	portRangeEnd := environment.GetBacktestPortRangeEnd()
+
+	for port = environment.GetBacktestPortRangeStart(); port < portRangeEnd; port++ {
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			break
+		}
+
+		opErr := &net.OpError{}
+		if errors.As(err, &opErr) && errors.Is(opErr, syscall.EADDRINUSE) {
+			continue
+		}
+		return fmt.Errorf("error creating listener: %w", err)
+	}
+	if listener == nil {
+		return fmt.Errorf("listener is nil")
+	}
+
+	go func() {
+		err := server.Serve(listener)
+		if err != nil {
+			return
+		}
+	}()
+	go func() {
+		defer func() {
+			server.Stop()
+		}()
+		for {
+			select {
+			case _, active := <-activity:
+				if !active {
+					time.Sleep(time.Second / 4) // make sure reply is sent
+					return
+				}
+			case <-time.After(10 * time.Minute):
+				return
+			}
+		}
+	}()
+
+	if inErr := repository.UpdatePort(ctx, cmd.Id, port); inErr != nil {
+		return fmt.Errorf("error updating session status: %w", inErr)
+	}
+	return nil
+}

@@ -18,7 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 )
@@ -48,7 +48,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Invoke(
 		func(g *grpc.Server, pgx *pgxpool.Pool, s stream.Stream, st storage.Storage) error {
 			backtestServer := api.NewBacktestServer(pgx, s)
-			pb.RegisterBacktestServicerServer(g, backtestServer)
+			servicePb.RegisterBacktestServicerServer(g, backtestServer)
 			return nil
 		},
 		func(conn *pgxpool.Pool) error {

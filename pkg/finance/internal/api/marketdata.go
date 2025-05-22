@@ -9,12 +9,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"golang.org/x/sync/errgroup"
 )
 
 type MarketdataServer struct {
-	pb.UnimplementedMarketdataServer
+	servicePb.UnimplementedMarketdataServer
 
 	pgx        *pgxpool.Pool
 	marketdata supplier.Marketdata
@@ -27,29 +27,29 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 	}
 }
 
-func (fs *MarketdataServer) GetAsset(ctx context.Context, req *pb.GetAssetRequest) (*pb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
 	asset, err := fs.marketdata.GetAsset(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting asset: %w", err)
 	}
 
-	return &pb.GetAssetResponse{
+	return &servicePb.GetAssetResponse{
 		Asset: asset,
 	}, nil
 }
 
-func (fs *MarketdataServer) GetIndex(ctx context.Context, req *pb.GetIndexRequest) (*pb.GetIndexResponse, error) {
+func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", err)
 	}
 
-	return &pb.GetIndexResponse{
+	return &servicePb.GetIndexResponse{
 		Assets: assets,
 	}, nil
 }
 
-func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *pb.DownloadHistoricalDataRequest) (*pb.DownloadHistoricalDataResponse, error) {
+func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *servicePb.DownloadHistoricalDataRequest) (*servicePb.DownloadHistoricalDataResponse, error) {
 
 	start := internal_pb.DateToTime(req.GetStartDate())
 
@@ -91,5 +91,5 @@ func (fs *MarketdataServer) DownloadHistoricalData(ctx context.Context, req *pb.
 		return nil, fmt.Errorf("error downloading historical data: %w", err)
 	}
 
-	return &pb.DownloadHistoricalDataResponse{}, nil
+	return &servicePb.DownloadHistoricalDataResponse{}, nil
 }

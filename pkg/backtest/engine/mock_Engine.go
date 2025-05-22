@@ -9,6 +9,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	service "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+
 	storage "github.com/lhjnilsson/foreverbull/internal/storage"
 )
 
@@ -36,7 +38,7 @@ func (_m *MockEngine) DownloadIngestion(ctx context.Context, object *storage.Obj
 }
 
 // Ingest provides a mock function with given fields: ctx, ingestion, object
-func (_m *MockEngine) Ingest(ctx context.Context, ingestion *backtest.Ingestion, object *storage.Object) error {
+func (_m *MockEngine) Ingest(ctx context.Context, ingestion *service.Ingestion, object *storage.Object) error {
 	ret := _m.Called(ctx, ingestion, object)
 
 	if len(ret) == 0 {
@@ -44,7 +46,7 @@ func (_m *MockEngine) Ingest(ctx context.Context, ingestion *backtest.Ingestion,
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Ingestion, *storage.Object) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *service.Ingestion, *storage.Object) error); ok {
 		r0 = rf(ctx, ingestion, object)
 	} else {
 		r0 = ret.Error(0)

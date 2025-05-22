@@ -16,24 +16,44 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to drop asset table: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS trading_session`); err != nil {
+		return fmt.Errorf("failed to drop trading_session table: %w", err)
+	}
+
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
+		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, OHLCTable); err != nil {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, TradingTable); err != nil {
+		return fmt.Errorf("failed to create trading table: %w", err)
 	}
 
 	return nil
 }
 
 func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
+		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, OHLCTable); err != nil {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, TradingTable); err != nil {
+		return fmt.Errorf("failed to create trading table: %w", err)
 	}
 
 	return nil

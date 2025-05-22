@@ -4,17 +4,18 @@ import (
 	"testing"
 
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/stretchr/testify/require"
 	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"
 )
 
-func Example(_ *pb.WorkerRequest) *pb.WorkerResponse {
-	return &pb.WorkerResponse{}
+func Example(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+	return &servicePb.WorkerResponse{}
 }
 
 type WorkerFunction struct {
-	CB       func(*pb.WorkerRequest) *pb.WorkerResponse
+	CB       func(*servicePb.WorkerRequest) *servicePb.WorkerResponse
 	Name     string
 	Parallel bool
 	RunFirst bool
@@ -37,7 +38,7 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 		})
 	}
 
-	callbacks := make(map[string]func(*pb.WorkerRequest) *pb.WorkerResponse)
+	callbacks := make(map[string]func(*servicePb.WorkerRequest) *servicePb.WorkerResponse)
 	for _, f := range functions {
 		callbacks[f.Name] = f.CB
 	}
@@ -51,7 +52,7 @@ func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm,
 
 			require.NoError(t, err, "failed to receive message")
 
-			req := pb.WorkerRequest{}
+			req := servicePb.WorkerRequest{}
 			err = proto.Unmarshal(msg, &req)
 			require.NoError(t, err, "failed to unmarshal request")
 

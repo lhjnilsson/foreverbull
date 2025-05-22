@@ -10,11 +10,11 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"

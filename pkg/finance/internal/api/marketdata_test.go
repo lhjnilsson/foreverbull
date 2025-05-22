@@ -15,7 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -31,7 +31,7 @@ type FinanceServerTest struct {
 
 	listener *bufconn.Listener
 	server   *grpc.Server
-	client   pb.MarketdataClient
+	client   servicePb.MarketdataClient
 }
 
 func TestFinanceServerTest(t *testing.T) {
@@ -59,7 +59,7 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.server, err = internalGrpc.NewServer()
 	suite.Require().NoError(err)
 	server := api.NewMarketdataServer(suite.pgx, suite.marketdata)
-	pb.RegisterMarketdataServer(suite.server, server)
+	servicePb.RegisterMarketdataServer(suite.server, server)
 
 	go func() {
 		suite.NoError(suite.server.Serve(suite.listener))
@@ -77,11 +77,11 @@ func (suite *FinanceServerTest) SetupTest() {
 		log.Printf("error connecting to server: %v", err)
 	}
 
-	suite.client = pb.NewMarketdataClient(conn)
+	suite.client = servicePb.NewMarketdataClient(conn)
 }
 
 func (suite *FinanceServerTest) TestGetAsset() {
-	req := &pb.GetAssetRequest{Symbol: "AAPL"}
+	req := &servicePb.GetAssetRequest{Symbol: "AAPL"}
 	rsp, err := suite.client.GetAsset(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
@@ -90,7 +90,7 @@ func (suite *FinanceServerTest) TestGetAsset() {
 }
 
 func (suite *FinanceServerTest) TestGetIndex() {
-	req := &pb.GetIndexRequest{Symbol: "^GDAXI"}
+	req := &servicePb.GetIndexRequest{Symbol: "^GDAXI"}
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
@@ -98,7 +98,7 @@ func (suite *FinanceServerTest) TestGetIndex() {
 }
 
 func (suite *FinanceServerTest) TestDownloadHistoricalData() {
-	req := &pb.DownloadHistoricalDataRequest{
+	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"^GDAXI"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
@@ -108,7 +108,7 @@ func (suite *FinanceServerTest) TestDownloadHistoricalData() {
 }
 
 func (suite *FinanceServerTest) TestDownloadAssets() {
-	req := &pb.DownloadHistoricalDataRequest{
+	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
@@ -118,7 +118,7 @@ func (suite *FinanceServerTest) TestDownloadAssets() {
 }
 
 func (suite *FinanceServerTest) TestDownloadAssetsNoEndDate() {
-	req := &pb.DownloadHistoricalDataRequest{
+	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 	}

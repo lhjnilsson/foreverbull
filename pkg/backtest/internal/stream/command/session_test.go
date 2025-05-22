@@ -19,6 +19,7 @@ import (
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -162,8 +163,8 @@ func (test *CommandSessionTest) TestSessionRun() {
 			),
 		)
 		test.Require().NoError(err)
-		client := pb.NewSessionServicerClient(conn)
-		rsp, err := client.StopServer(context.TODO(), &pb.StopServerRequest{})
+		client := servicePb.NewSessionServicerClient(conn)
+		rsp, err := client.StopServer(context.TODO(), &servicePb.StopServerRequest{})
 		test.Require().NoError(err)
 		test.NotNil(rsp)
 

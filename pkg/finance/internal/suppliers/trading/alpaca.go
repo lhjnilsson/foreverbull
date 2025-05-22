@@ -3,6 +3,7 @@ package trading
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -15,10 +16,23 @@ type AlpacaClient struct {
 }
 
 func NewAlpacaClient() (*AlpacaClient, error) {
+	baseUrl, found := os.LookupEnv(environment.AlpacaBaseURL)
+	if !found {
+		return nil, fmt.Errorf("failed to find environment variable %s", environment.AlpacaBaseURL)
+	}
+	apiKey, found := os.LookupEnv(environment.AlpacaApiKey)
+	if !found {
+		return nil, fmt.Errorf("failed to find environment variable %s", environment.AlpacaApiKey)
+	}
+	apiSecret, found := os.LookupEnv(environment.AlpacaApiSecret)
+	if !found {
+		return nil, fmt.Errorf("failed to find environment variable %s", environment.AlpacaApiSecret)
+	}
+
 	client := alpaca.NewClient(alpaca.ClientOpts{
-		BaseURL:   environment.GetAlpacaBaseURL(),
-		APIKey:    environment.GetAlpacaAPIKey(),
-		APISecret: environment.GetAlpacaAPISecret(),
+		BaseURL:   baseUrl,
+		APIKey:    apiKey,
+		APISecret: apiSecret,
 	})
 
 	acc, err := client.GetAccount()

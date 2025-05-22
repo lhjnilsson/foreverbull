@@ -20,11 +20,13 @@ def test_get_means(asset_manager: AssetManager):
     assert type(long_mean) is numpy.float64
     assert short_mean == pytest.approx(118.6, abs=0.1)
     assert long_mean == pytest.approx(120.1, abs=0.1)
-    
+
+
 def test_should_buy(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
     aapl = asset_manager.get_asset(datetime(2021, 1, 1), datetime(2021, 3, 31), "AAPL")
     portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
     assert not should_buy(aapl, portfolio)
+
 
 def test_backtest(backtest: Backtest):
     backtest.run_execution(algo, backtest.get_default())

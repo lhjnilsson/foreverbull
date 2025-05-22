@@ -1,11 +1,12 @@
 from datetime import datetime
 
+from {{cookiecutter.project_slug}}.macd import handle_data
+
 from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.models import Position
 
-from {{cookiecutter.project_slug}}.macd import handle_data
 
 def test_handle_data(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
     # AAPL has negative MACD, MSFT has positive MACD

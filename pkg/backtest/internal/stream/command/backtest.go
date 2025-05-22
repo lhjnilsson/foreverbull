@@ -12,7 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
 func Ingest(ctx context.Context, msg stream.Message) error {
@@ -50,7 +50,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting zipline engine")
 	}
 
-	ingestion := pb.Ingestion{
+	ingestion := servicePb.Ingestion{
 		StartDate: pb_internal.DateStringToDate(command.Start),
 		EndDate:   pb_internal.DateStringToDate(command.End),
 		Symbols:   command.Symbols,

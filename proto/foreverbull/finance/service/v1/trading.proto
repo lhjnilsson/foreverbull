@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package foreverbull.finance.service.v1;
+
+import "buf/validate/validate.proto";
+import "foreverbull/common.proto";
+import "foreverbull/finance/v1/marketdata.proto";
+import "foreverbull/finance/v1/trading.proto";
+import "foreverbull/service/v1/worker.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service";
+
+message GetPortfolioRequest {}
+
+message GetPortfolioResponse {
+  foreverbull.finance.v1.Portfolio portfolio = 1;
+}
+
+message GetOrdersRequest {}
+
+message GetOrdersResponse {
+  repeated foreverbull.finance.v1.Order orders = 1;
+}
+
+message CreateSessionRequest {
+  repeated string symbols = 1;
+}
+
+message CreateSessionResponse {
+  enum SessionStatus {
+    UPDATING_MARKETDATA = 0;
+    RUNNING = 1;
+    COMPLETED = 2;
+    FAILED = 3;
+  }
+  message Status {
+    SessionStatus status = 1;
+    foreverbull.common.State state = 2;
+  }
+  foreverbull.finance.v1.Session session = 1;
+  Status status = 2;
+}
+
+service TradingServicer {
+  rpc GetPortfolio(GetPortfolioRequest) returns (GetPortfolioResponse) {}
+  rpc GetOrders(GetOrdersRequest) returns (GetOrdersResponse) {}
+
+  rpc CreateSession(CreateSessionRequest) returns (stream CreateSessionResponse) {}
+}
+
+message ConfigureRequest {
+  foreverbull.service.v1.Algorithm algorithm = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required_algo"
+      expression: "this != null"
+    }
+  }];
+}
+
+message ConfigureResponse {
+  foreverbull.service.v1.ExecutionConfiguration configuration = 1;
+}
+
+message RunRequest {
+  repeated string symbols = 1;
+}
+
+message RunResponse {
+  repeated foreverbull.finance.v1.Order orders = 1;
+}
+
+message GetPendingOrdersRequest {}
+
+message GetPendingOrdersResponse {
+  repeated foreverbull.finance.v1.Order orders = 1;
+}
+
+message PlaceOrderRequest {}
+
+message PlaceOrderResponse {}
+
+message StopServerRequest {}
+
+message StopServerResponse {}
+
+service SessionServicer {
+  rpc Configure(ConfigureRequest) returns (ConfigureResponse) {}
+  rpc Run(RunRequest) returns (RunResponse) {}
+  rpc GetPendingOrders(GetPendingOrdersRequest) returns (GetPendingOrdersResponse) {}
+  rpc PlaceOrders(PlaceOrderRequest) returns (PlaceOrderResponse) {}
+  rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
+}
