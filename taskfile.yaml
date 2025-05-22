@@ -71,17 +71,6 @@ tasks:
       - service:test:unit
       - strategy:test:unit
 
-  test:demo:
-    vars:
-      RECIPIENT: '{{default "World" .RECIPIENT}}'
-    cmds:
-      - echo "Hello, {{.RECIPIENT}}!"
-
-  test:demo2:
-    - echo "Hello!"
-    - task: test:demo
-      vars: { RECIPIENT: "Cruel World" }
-
   test:integration:
     dir: client/
     deps:
