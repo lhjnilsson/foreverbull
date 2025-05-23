@@ -9,13 +9,13 @@ import pytest
 
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import session_pb2
-from foreverbull.pb.foreverbull.backtest import session_service_pb2
-from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as session_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 
 
 def demo():

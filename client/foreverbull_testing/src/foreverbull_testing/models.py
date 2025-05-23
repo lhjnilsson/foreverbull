@@ -19,8 +19,8 @@ from foreverbull import models
 from foreverbull.algorithm import Algorithm
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 
 
 @dataclass
@@ -132,7 +132,7 @@ class PortfolioManager:
         proto_positions = []
         for position in positions:
             proto_positions.append(
-                finance_pb2.Position(
+                marketdata_pb2.Position(
                     symbol=position.symbol,
                     amount=position.amount,
                 )
@@ -141,7 +141,7 @@ class PortfolioManager:
         if dt is not None:
             dt = dt.replace(tzinfo=UTC)  # Make sure its UTC, TODO: Replace datetime with date
         return Portfolio(
-            finance_pb2.Portfolio(
+            marketdata_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(dt) if dt else None,
                 positions=proto_positions,
                 portfolio_value=portfolio_value,

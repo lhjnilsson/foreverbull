@@ -12,7 +12,7 @@ from testcontainers.postgres import PostgresContainer
 
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager

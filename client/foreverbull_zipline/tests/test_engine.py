@@ -11,10 +11,10 @@ import pytest
 from zipline.data import bundles
 
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.engine import find_end_timestamp
@@ -293,7 +293,7 @@ def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: s
     response = engine.place_orders_and_continue(
         engine_service_pb2.PlaceOrdersAndContinueRequest(
             orders=[
-                finance_pb2.Order(symbol=execution.symbols[0], amount=10),
+                marketdata_pb2.Order(symbol=execution.symbols[0], amount=10),
             ]
         )
     )
@@ -305,7 +305,7 @@ def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: s
     response = engine.place_orders_and_continue(
         engine_service_pb2.PlaceOrdersAndContinueRequest(
             orders=[
-                finance_pb2.Order(symbol=execution.symbols[0], amount=-5),
+                marketdata_pb2.Order(symbol=execution.symbols[0], amount=-5),
             ]
         )
     )
@@ -317,7 +317,7 @@ def test_broker(execution: execution_pb2.Execution, engine: Engine, benchmark: s
     response = engine.place_orders_and_continue(
         engine_service_pb2.PlaceOrdersAndContinueRequest(
             orders=[
-                finance_pb2.Order(symbol=execution.symbols[0], amount=-5),
+                marketdata_pb2.Order(symbol=execution.symbols[0], amount=-5),
             ]
         )
     )

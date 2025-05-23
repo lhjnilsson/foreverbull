@@ -7,16 +7,15 @@ import pandas
 
 from foreverbull import models
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.backtest import session_pb2
-from foreverbull.pb.foreverbull.backtest import session_service_pb2
-from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
-from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.strategy import strategy_service_pb2
-from foreverbull.pb.foreverbull.strategy import strategy_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as session_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
+from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb2
+from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb2_grpc
 from foreverbull.worker import WorkerPool
 
 

@@ -14,11 +14,11 @@ from foreverbull import Algorithm
 from foreverbull import Order
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2
-from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 @pytest.fixture(scope="session")
@@ -121,7 +121,7 @@ def get_algo(file_path: str) -> Algorithm:
 def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
-        portfolio = finance_pb2.Portfolio(
+        portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
@@ -191,7 +191,7 @@ algo = Algorithm(
 def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
-        portfolio = finance_pb2.Portfolio(
+        portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
@@ -260,7 +260,7 @@ algo = Algorithm(
 def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
-        portfolio = finance_pb2.Portfolio(
+        portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
@@ -337,7 +337,7 @@ algo = Algorithm(
 def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
-        portfolio = finance_pb2.Portfolio(
+        portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
@@ -414,7 +414,7 @@ algo = Algorithm(
 def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         start = pb_utils.from_proto_date_to_pydate(execution.start_date)
-        portfolio = finance_pb2.Portfolio(
+        portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],

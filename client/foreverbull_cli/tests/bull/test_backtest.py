@@ -17,11 +17,11 @@ from typer.testing import CliRunner
 
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import session_service_pb2_grpc
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.backtest import backtest
 
@@ -140,7 +140,7 @@ def test_backtest_run(runner, start_grpc_server):
         symbols=["AAPL", "MSFT"],
         benchmark="SPY",
     )
-    mock_algorithm.run_execution.return_value = iter([finance_pb2.Portfolio()])
+    mock_algorithm.run_execution.return_value = iter([marketdata_pb2.Portfolio()])
 
     with patch("foreverbull.algorithm.Algorithm.backtest_session", new_callable=lambda: mock_algorithm):
         with patch("foreverbull.models.Algorithm.from_file_path") as from_file_path:

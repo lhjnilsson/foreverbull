@@ -5,7 +5,7 @@ import pytest
 
 from foreverbull import exceptions
 from foreverbull import worker
-from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 class TestWorkerInstance:

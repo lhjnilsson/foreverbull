@@ -20,9 +20,9 @@ from foreverbull import exceptions
 from foreverbull import models
 from foreverbull.models import get_engine
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2
-from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 class Worker(ABC):
@@ -118,7 +118,7 @@ class WorkerInstance(Worker):
                     )
                 self.logger.debug("Sending orders to broker: %s", orders)
                 for order in orders:
-                    response.orders.append(finance_pb2.Order(symbol=order.symbol, amount=order.amount))
+                    response.orders.append(marketdata_pb2.Order(symbol=order.symbol, amount=order.amount))
                 context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:

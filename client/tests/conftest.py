@@ -16,9 +16,9 @@ from zipline.utils.run_algo import _run
 
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull_zipline import service
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 

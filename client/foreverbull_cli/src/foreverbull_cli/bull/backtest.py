@@ -18,8 +18,8 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.algorithm import Algorithm
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import FBProgress
@@ -178,7 +178,7 @@ def run(
                 return
 
         task = progress.add_task(f"{backtest.name}")
-        for period in session.run_execution(
+        for _, period in session.run_execution(
             start_date,
             end_date,
             [s for s in backtest.symbols],

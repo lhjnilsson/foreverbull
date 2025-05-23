@@ -4,14 +4,14 @@ from typing import Generator
 
 import pynng
 
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest import session_pb2
-from foreverbull.pb.foreverbull.backtest import session_service_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2
-from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as session_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 class Broker:
