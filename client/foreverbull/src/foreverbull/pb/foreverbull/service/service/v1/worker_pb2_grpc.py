@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service as foreverbull_dot_service_dot_service_dot_v1_dot_worker__pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as foreverbull_dot_service_dot_service_dot_v1_dot_worker__pb2
 
 GRPC_GENERATED_VERSION = '1.71.0'
 GRPC_VERSION = grpc.__version__

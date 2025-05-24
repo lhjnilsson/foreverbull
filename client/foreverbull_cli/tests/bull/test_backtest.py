@@ -99,6 +99,7 @@ def test_backtest_create(runner):
 def test_backtest_get(runner):
     with (
         patch("foreverbull.broker.backtest.get") as mock_get,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
     ):
         mock_get.return_value = backtest_pb2.Backtest(
             name="test_name",
@@ -106,6 +107,7 @@ def test_backtest_get(runner):
             end_date=from_pydate_to_proto_date(date.today()),
             symbols=["AAPL", "MSFT"],
         )
+        mock_list_executions.return_value = []
         result = runner(backtest, ["get", "test"])
 
         if not result.exit_code == 0 and result.exc_info:

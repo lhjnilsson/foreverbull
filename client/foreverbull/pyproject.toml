@@ -16,7 +16,7 @@ dependencies = [
   "tables",
   "numpy",
   "setuptools",
-  "protobuf==5.27.2",
+  "protobuf",
   "types-protobuf",
   "grpcio",
 ]
