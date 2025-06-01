@@ -15,8 +15,8 @@ import typer
 from click.testing import Result
 from typer.testing import CliRunner
 
-from foreverbull.algorithm import Algorithm
-from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.foreverbull import BacktestSession
+from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
@@ -133,18 +133,13 @@ def start_grpc_server():
 
 
 def test_backtest_run(runner, start_grpc_server):
-    mock_algorithm = MagicMock(spec=Algorithm)
-    mock_algorithm.backtest_session.return_value.__enter__.return_value = mock_algorithm
-    mock_algorithm.get_default.return_value = backtest_pb2.Backtest(
-        name="test",
-        start_date=common_pb2.Date(year=2022, month=1, day=1),
-        end_date=common_pb2.Date(year=2022, month=12, day=31),
-        symbols=["AAPL", "MSFT"],
-        benchmark="SPY",
-    )
-    mock_algorithm.run_execution.return_value = iter([marketdata_pb2.Portfolio()])
+    mock_backtest_session = MagicMock(spec=BacktestSession)
+    mock_backtest_session.run_execution.return_value = iter([marketdata_pb2.Portfolio()])
 
-    with patch("foreverbull.algorithm.Algorithm.backtest_session", new_callable=lambda: mock_algorithm):
+    mock_foreverbull = MagicMock(spec=Foreverbull)
+    mock_foreverbull.backtest_session.return_value.__enter__.return_value = mock_backtest_session
+
+    with patch("foreverbull.foreverbull.Foreverbull.backtest_session", new_callable=lambda: mock_foreverbull):
         with patch("foreverbull.models.Algorithm.from_file_path") as from_file_path:
             from_file_path.return_value = True
 

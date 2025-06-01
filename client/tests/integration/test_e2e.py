@@ -8,7 +8,7 @@ import grpc
 import pytest
 
 from foreverbull import models
-from foreverbull.algorithm import Algorithm
+from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
@@ -63,8 +63,8 @@ def test_baseline_performance(
     foreverbull_bundle,
     baseline_performance,
 ):
-    algorithm = Algorithm(models.Algorithm.from_file_path(file_path))
-    with algorithm.backtest_session("demo", broker_port=6067) as backtest:
+    foreverbull = Foreverbull(models.Algorithm.from_file_path(file_path))
+    with foreverbull.backtest_session("demo", broker_port=6067) as backtest:
         periods = [
             p
             for p in backtest.run_execution(
@@ -75,7 +75,7 @@ def test_baseline_performance(
         ]
         assert periods
 
-        result, df = algorithm.get_execution("demo")
+        result, df = foreverbull.get_execution("demo")
 
         baseline_performance = baseline_performance[df.columns]
         if not baseline_performance.equals(df):
