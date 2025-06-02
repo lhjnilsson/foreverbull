@@ -21,9 +21,10 @@ type TradingServer struct {
 	trading supplier.Trading
 }
 
-func NewTradingServer(pgx *pgxpool.Pool, trading supplier.Trading) *TradingServer {
+func NewTradingServer(pgx *pgxpool.Pool, stream stream.Stream, trading supplier.Trading) *TradingServer {
 	return &TradingServer{
 		pgx:     pgx,
+		stream:  stream,
 		trading: trading,
 	}
 }
@@ -50,7 +51,7 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 	return rsp, nil
 }
 
-func (ts *TradingServer) Run(req *servicePb.RunRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
+func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
 	repository := repository.Trading{Conn: ts.pgx}
 	s, err := repository.Create(stream.Context())
 	if err != nil {
