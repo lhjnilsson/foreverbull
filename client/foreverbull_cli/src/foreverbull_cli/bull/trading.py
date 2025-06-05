@@ -27,5 +27,6 @@ def run(
 
     live = Live(Progress())
     with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(symbols) as session, live:
-        assert type(session) is not None
-        pass
+        orders = session.run_trading(symbols)
+        for order in orders:
+            print(order)

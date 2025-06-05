@@ -87,6 +87,7 @@ class TradingSession:
 
     def run_trading(
         self,
+        symbols: list[str],
     ):
         with WorkerPool(self._model._file_path) as wp:
             req = trading_service_pb2.ConfigureRequest(
@@ -95,7 +96,9 @@ class TradingSession:
             rsp = self._stub.Configure(req)
             wp.configure_execution(rsp.configuration)
             wp.run_execution(Event())
-            req = trading_service_pb2.RunRequest()
+            req = trading_service_pb2.RunRequest(
+                symbols=symbols,
+            )
             rsp = self._stub.Run(req)
             return rsp.orders
 

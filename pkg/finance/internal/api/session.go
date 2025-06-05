@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type grpcSessionServer struct {
@@ -45,7 +46,7 @@ func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.Confi
 }
 
 func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest) (*servicePb.RunResponse, error) {
-	orders, err := gs.wp.Process(ctx, time.Now(), req.Symbols, nil)
+	orders, err := gs.wp.Process(ctx, time.Now(), req.Symbols, &pb.Portfolio{Timestamp: timestamppb.Now()})
 	if err != nil {
 		return nil, err
 	}
