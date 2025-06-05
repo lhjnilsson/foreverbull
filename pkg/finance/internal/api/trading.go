@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 )
 
@@ -57,6 +58,14 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stre
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
+	err = stream.Send(&servicePb.CreateSessionResponse{
+		Status: &servicePb.CreateSessionResponse_Status{
+			Step:  servicePb.CreateSessionResponse_CREATING,
+			State: pbInternal.State_STATE_COMPLETED,
+		}})
+	if err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
 
 	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.Symbols)
 	if err != nil {
@@ -64,10 +73,18 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stre
 	}
 	ch := ts.stream.RunOrchestration(stream.Context(), o)
 	for msg := range ch {
+		if servicePb.CreateSessionResponse_Step(msg.Num) == servicePb.CreateSessionResponse_STARTING && msg.State == pbInternal.State_STATE_COMPLETED {
+			s, err = repository.Get(stream.Context(), s.Id)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = stream.Send(&servicePb.CreateSessionResponse{
+			Session: s,
 			Status: &servicePb.CreateSessionResponse_Status{
-				Status: servicePb.CreateSessionResponse_SessionStatus(msg.Status),
-				State:  msg.State,
+				Step:  servicePb.CreateSessionResponse_Step(msg.Num),
+				State: msg.State,
 			},
 		})
 		if err != nil {

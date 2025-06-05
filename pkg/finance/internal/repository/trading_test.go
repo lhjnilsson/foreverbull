@@ -63,6 +63,25 @@ func (test *TradingTest) TestGet() {
 	test.Nil(session2.Port)
 }
 
+func (test *TradingTest) TestList() {
+	uut := repository.Trading{Conn: test.conn}
+	ctx := context.Background()
+
+	session1, err := uut.Create(ctx)
+	test.Require().NoError(err)
+	test.NotNil(session1.Id)
+
+	session2, err := uut.Create(ctx)
+	test.Require().NoError(err)
+	test.NotNil(session2.Id)
+
+	allSessions, err := uut.List(ctx)
+	test.Require().NoError(err)
+	test.Len(allSessions, 2)
+	test.Equal(session1.Id, allSessions[0].Id)
+	test.Equal(session2.Id, allSessions[1].Id)
+}
+
 func (test *TradingTest) TestUpdatePort() {
 	uut := repository.Trading{Conn: test.conn}
 	ctx := context.Background()

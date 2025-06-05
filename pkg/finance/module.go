@@ -72,6 +72,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					if err != nil {
 						return fmt.Errorf("failed to subscribe to ingest command: %w", err)
 					}
+					err = sub.Subscribe("trading", "run", command.SessionRun)
+					if err != nil {
+						return fmt.Errorf("failed to subscribe to run command: %w", err)
+					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {

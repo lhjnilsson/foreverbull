@@ -134,23 +134,31 @@ func (test *TradingServerTest) TestGetPortfolio() {
 }
 
 func (test *TradingServerTest) TestCreateSession() {
-
 	test.Run("normal", func() {
-		statuses := []*streamPb.Orchestration_Step{
-			{Status: int32(servicePb.CreateSessionResponse_UPDATING_MARKETDATA), State: commonPb.State_STATE_COMPLETED},
-			{Status: int32(servicePb.CreateSessionResponse_RUNNING), State: commonPb.State_STATE_COMPLETED},
-		}
-		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
-		for _, status := range statuses {
-			statusCh <- status
-		}
-		close(statusCh)
+		repository := repository.Trading{Conn: test.pgx}
+		statusCh := make(chan *streamPb.Orchestration_Step)
+		go func() {
+			statusCh <- &streamPb.Orchestration_Step{
+				Num:   int32(servicePb.CreateSessionResponse_CREATING),
+				State: commonPb.State_STATE_COMPLETED,
+			}
+			sessions, err := repository.List(context.Background())
+			test.NoError(err)
+			test.Len(sessions, 1)
+			test.NoError(repository.UpdatePort(context.Background(), sessions[0].Id, 1337))
+			statusCh <- &streamPb.Orchestration_Step{
+				Num:   int32(servicePb.CreateSessionResponse_STARTING),
+				State: commonPb.State_STATE_COMPLETED,
+			}
+			close(statusCh)
+		}()
 		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 		req := &servicePb.CreateSessionRequest{}
 		rsp, err := test.client.CreateSession(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)
+		var session *pb.Session
 		for {
 			msg, err := rsp.Recv()
 			if errors.Is(err, io.EOF) {
@@ -158,6 +166,10 @@ func (test *TradingServerTest) TestCreateSession() {
 			}
 			test.Require().NoError(err)
 			test.Require().NotNil(msg)
+			session = msg.GetSession()
 		}
+		test.Require().NotNil(session)
+		test.Require().NotNil(session.Port)
+		test.Equal(int64(1337), *session.Port)
 	})
 }

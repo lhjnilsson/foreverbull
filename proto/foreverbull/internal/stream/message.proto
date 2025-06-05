@@ -38,7 +38,7 @@ message State {
 
 message Orchestration {
   message Step {
-    int32 status = 1;
+    int32 num = 1;
     repeated Message messages = 2;
     foreverbull.common.State state = 3;
     optional string error = 4;

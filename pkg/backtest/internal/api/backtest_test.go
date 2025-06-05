@@ -139,8 +139,8 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 	test.Run("Create", func() {
 
 		statuses := []*streamPb.Orchestration_Step{
-			{Status: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_RUNNING},
-			{Status: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_COMPLETED},
+			{Num: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_RUNNING},
+			{Num: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_COMPLETED},
 		}
 
 		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))

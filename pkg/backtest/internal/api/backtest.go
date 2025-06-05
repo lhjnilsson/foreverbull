@@ -68,7 +68,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 			&servicePb.CreateBacktestResponse{
 				Backtest: backtest,
 				Status: &servicePb.CreateBacktestResponse_Status{
-					Status: pb.BacktestStatus(step.Status),
+					Status: pb.BacktestStatus(step.Num),
 					State:  step.State,
 				},
 			})
