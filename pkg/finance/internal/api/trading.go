@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 )
 
@@ -21,9 +22,10 @@ type TradingServer struct {
 	trading supplier.Trading
 }
 
-func NewTradingServer(pgx *pgxpool.Pool, trading supplier.Trading) *TradingServer {
+func NewTradingServer(pgx *pgxpool.Pool, stream stream.Stream, trading supplier.Trading) *TradingServer {
 	return &TradingServer{
 		pgx:     pgx,
+		stream:  stream,
 		trading: trading,
 	}
 }
@@ -50,11 +52,19 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 	return rsp, nil
 }
 
-func (ts *TradingServer) Run(req *servicePb.RunRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
+func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
 	repository := repository.Trading{Conn: ts.pgx}
 	s, err := repository.Create(stream.Context())
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
+	}
+	err = stream.Send(&servicePb.CreateSessionResponse{
+		Status: &servicePb.CreateSessionResponse_Status{
+			Step:  servicePb.CreateSessionResponse_CREATING,
+			State: pbInternal.State_STATE_COMPLETED,
+		}})
+	if err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.Symbols)
@@ -63,10 +73,18 @@ func (ts *TradingServer) Run(req *servicePb.RunRequest, stream servicePb.Trading
 	}
 	ch := ts.stream.RunOrchestration(stream.Context(), o)
 	for msg := range ch {
+		if servicePb.CreateSessionResponse_Step(msg.Num) == servicePb.CreateSessionResponse_STARTING && msg.State == pbInternal.State_STATE_COMPLETED {
+			s, err = repository.Get(stream.Context(), s.Id)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = stream.Send(&servicePb.CreateSessionResponse{
+			Session: s,
 			Status: &servicePb.CreateSessionResponse_Status{
-				Status: servicePb.CreateSessionResponse_SessionStatus(msg.Status),
-				State:  msg.State,
+				Step:  servicePb.CreateSessionResponse_Step(msg.Num),
+				State: msg.State,
 			},
 		})
 		if err != nil {

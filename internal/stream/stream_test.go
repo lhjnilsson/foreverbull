@@ -164,7 +164,7 @@ func (test *StreamTest) TestRunOrchestration() {
 		o := pb.Orchestration{
 			Steps: []*pb.Orchestration_Step{
 				{
-					Status: int32(1),
+					Num: int32(1),
 					Messages: []*pb.Message{
 						successfulMsg.GetMsg(), successfulMsg.GetMsg(),
 					},
@@ -185,13 +185,13 @@ func (test *StreamTest) TestRunOrchestration() {
 		o := pb.Orchestration{
 			Steps: []*pb.Orchestration_Step{
 				{
-					Status: int32(1),
+					Num: int32(1),
 					Messages: []*pb.Message{
 						successfulMsg.GetMsg(), errorMsg.GetMsg(),
 					},
 				},
 				{
-					Status: int32(2),
+					Num: int32(2),
 					Messages: []*pb.Message{
 						successfulMsg.GetMsg(),
 					},
@@ -213,13 +213,13 @@ func (test *StreamTest) TestRunOrchestration() {
 		o := pb.Orchestration{
 			Steps: []*pb.Orchestration_Step{
 				{
-					Status: int32(1),
+					Num: int32(1),
 					Messages: []*pb.Message{
 						successfulMsg.GetMsg(), timeoutMsg.GetMsg(),
 					},
 				},
 				{
-					Status: int32(2),
+					Num: int32(2),
 					Messages: []*pb.Message{
 						successfulMsg.GetMsg(),
 					},

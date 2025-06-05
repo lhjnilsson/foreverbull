@@ -24,6 +24,7 @@ def should_buy(asset: Asset, portfolio: Portfolio):
 def handle_data(assets: Assets, portfolio: Portfolio):
     for asset in assets:
         if len(asset.stock_data) < 30:
+            print("CONTINUE: ", asset.symbol, len(asset.stock_data))
             continue
         short_mean, long_mean = get_means(asset)
         position = [p for p in portfolio.positions if p.symbol == asset.symbol]

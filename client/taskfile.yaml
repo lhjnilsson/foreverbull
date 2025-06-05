@@ -38,10 +38,14 @@ tasks:
 
   proto:generate:
     cmds:
-      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/finance/*.proto
-      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/backtest/*.proto
-      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/service/*.proto
-      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/strategy/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/finance/v1/*.proto      
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/finance/service/v1/*.proto 
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/backtest/v1/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/backtest/service/v1/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/service/v1/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/service/service/v1/*.proto
+      #- rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/strategy/v1/*.proto
+      - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/strategy/service/v1/*.proto
       - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/foreverbull/common.proto
       - rye run python3 -m grpc_tools.protoc -I../proto --python_out=foreverbull/src/foreverbull/pb --pyi_out=foreverbull/src/foreverbull/pb --grpc_python_out=foreverbull/src/foreverbull/pb ../proto/buf/validate/validate.proto
       # Update imports, could maybe be solved by organizing the proto files in a better way

@@ -25,17 +25,17 @@ func (s *NATSStream) RunOrchestration(ctx context.Context, o *pb.Orchestration) 
 	go func() {
 		defer close(out)
 		for _, step := range o.Steps {
-			runningStep := pb.Orchestration_Step{Status: step.Status, State: commonPb.State_STATE_RUNNING}
+			runningStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_RUNNING}
 
 			out <- &runningStep
 			err := s.runOrchestrationStep(ctx, step)
 			if err != nil {
 				errStr := err.Error()
-				failedStep := pb.Orchestration_Step{Status: step.Status, State: commonPb.State_STATE_FAILED, Error: &errStr}
+				failedStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_FAILED, Error: &errStr}
 				out <- &failedStep
 				return
 			} else {
-				completedStep := pb.Orchestration_Step{Status: step.Status, State: commonPb.State_STATE_COMPLETED}
+				completedStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_COMPLETED}
 				out <- &completedStep
 			}
 		}

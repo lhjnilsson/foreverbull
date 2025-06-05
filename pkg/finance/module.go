@@ -55,10 +55,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 	fx.Invoke(
-		func(s *grpc.Server, pgx *pgxpool.Pool, md supplier.Marketdata, t supplier.Trading) error {
+		func(s *grpc.Server, pgx *pgxpool.Pool, _stream stream.Stream, md supplier.Marketdata, t supplier.Trading) error {
 			marketdata := api.NewMarketdataServer(pgx, md)
 			servicePb.RegisterMarketdataServer(s, marketdata)
-			trading := api.NewTradingServer(pgx, t)
+			trading := api.NewTradingServer(pgx, _stream, t)
 			servicePb.RegisterTradingServicerServer(s, trading)
 			return nil
 		},
@@ -71,6 +71,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					err := sub.Subscribe("marketdata", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("failed to subscribe to ingest command: %w", err)
+					}
+					err = sub.Subscribe("trading", "run", command.SessionRun)
+					if err != nil {
+						return fmt.Errorf("failed to subscribe to run command: %w", err)
 					}
 					return nil
 				},

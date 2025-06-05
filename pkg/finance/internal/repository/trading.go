@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -34,6 +35,25 @@ func (db *Trading) Get(ctx context.Context, id string) (*pb.Session, error) {
 		return nil, err
 	}
 	return session, nil
+}
+
+func (db *Trading) List(ctx context.Context) ([]*pb.Session, error) {
+	rows, err := db.Conn.Query(ctx, `SELECT id, port FROM trading_session`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+	sessions := []*pb.Session{}
+
+	defer rows.Close()
+	for rows.Next() {
+		session := pb.Session{}
+		err := rows.Scan(&session.Id, &session.Port)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan: %w", err)
+		}
+		sessions = append(sessions, &session)
+	}
+	return sessions, nil
 }
 
 func (db *Trading) UpdatePort(ctx context.Context, id string, port int) error {

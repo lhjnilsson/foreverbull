@@ -17,8 +17,8 @@ from zipline.utils.paths import data_root
 
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
 from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine

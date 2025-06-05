@@ -15,8 +15,8 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.types import Numeric
 
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 
 
 Base = declarative_base()
@@ -71,7 +71,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
         for symbol in backtest.symbols:
             feed = yfinance.Ticker(symbol)
             info = feed.info
-            asset = finance_pb2.Asset(
+            asset = marketdata_pb2.Asset(
                 symbol=info["symbol"],
                 name=info["longName"],
             )

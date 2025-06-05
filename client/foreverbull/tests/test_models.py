@@ -14,8 +14,8 @@ from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Portfolio
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance import finance_pb2
-from foreverbull.pb.foreverbull.service import worker_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 class TestAsset:
@@ -99,7 +99,7 @@ class TestPortfolio:
     @pytest.fixture(scope="function")
     def uut(self, db):
         with db.connect() as conn:
-            pb = finance_pb2.Portfolio(
+            pb = marketdata_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
                 portfolio_value=1000000,
             )
@@ -137,7 +137,7 @@ class TestPortfolio:
     )
     def test_order_target(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
-            position = finance_pb2.Position(
+            position = marketdata_pb2.Position(
                 symbol="ptest",
                 amount=position_amount,
             )
@@ -153,7 +153,7 @@ class TestPortfolio:
     )
     def test_order_target_percent(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
-            position = finance_pb2.Position(
+            position = marketdata_pb2.Position(
                 symbol="ptest",
                 amount=position_amount,
             )
@@ -168,7 +168,7 @@ class TestPortfolio:
     )
     def test_order_target_value(self, uut: Portfolio, position_amount, order_target_amount, expected_order_amount):
         if position_amount:
-            position = finance_pb2.Position(
+            position = marketdata_pb2.Position(
                 symbol="ptest",
                 amount=position_amount,
             )

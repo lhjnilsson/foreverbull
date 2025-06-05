@@ -1,4 +1,4 @@
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
 from foreverbull_zipline.engine import Engine
 
 

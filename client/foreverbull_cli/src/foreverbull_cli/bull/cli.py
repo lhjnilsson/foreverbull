@@ -6,12 +6,14 @@ import typer
 from rich.logging import RichHandler
 
 from foreverbull_cli.bull.backtest import backtest
+from foreverbull_cli.bull.trading import trading
 from foreverbull_cli.output import console
 
 
 cli = typer.Typer()
 
 cli.add_typer(backtest, name="backtest")
+cli.add_typer(trading, name="trading")
 
 
 @cli.callback()

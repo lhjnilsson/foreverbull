@@ -25,9 +25,9 @@ from sqlalchemy import engine
 from sqlalchemy import text
 
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance import finance_pb2  # noqa
-from foreverbull.pb.foreverbull.service import worker_pb2
-from foreverbull.pb.foreverbull.service import worker_service_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2  # noqa
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
 # Hacky way to get the database URL, TODO: find a better way
@@ -187,21 +187,21 @@ class Assets:
 
 
 class Positions:
-    def __init__(self, positions: RepeatedCompositeFieldContainer[finance_pb2.Position]):
+    def __init__(self, positions: RepeatedCompositeFieldContainer[marketdata_pb2.Position]):
         self._positions = positions
         self._positions_index = 0
 
     def __iter__(self):
         return self
 
-    def __next__(self) -> finance_pb2.Position:
+    def __next__(self) -> marketdata_pb2.Position:
         if self._positions_index >= len(self._positions):
             raise StopIteration
         value = self._positions[self._positions_index]
         self._positions_index += 1
         return value
 
-    def __getitem__(self, symbol: str) -> finance_pb2.Position | None:
+    def __getitem__(self, symbol: str) -> marketdata_pb2.Position | None:
         for p in self._positions:
             if p.symbol == symbol:
                 return p
@@ -212,10 +212,10 @@ class Positions:
 
 
 class Portfolio:
-    def __init__(self, pb: finance_pb2.Portfolio, db: engine.Connection):
+    def __init__(self, pb: marketdata_pb2.Portfolio, db: engine.Connection):
         self._pb = pb
         self._db = db
-        self.pending_orders: list[finance_pb2.Order] = []
+        self.pending_orders: list[marketdata_pb2.Order] = []
 
     @property
     def positions(self) -> Positions:
@@ -238,40 +238,40 @@ class Portfolio:
                 return amount - pos.amount
         return amount
 
-    def order(self, symbol: str, amount: int) -> finance_pb2.Order:
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+    def order(self, symbol: str, amount: int) -> marketdata_pb2.Order:
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
+    def order_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order_value(self, symbol: str, value: float) -> finance_pb2.Order:
+    def order_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_value_amount(symbol, value)
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order_target(self, symbol: str, amount: int) -> finance_pb2.Order:
+    def order_target(self, symbol: str, amount: int) -> marketdata_pb2.Order:
         amount = self._calculate_order_target_amount(symbol, amount)
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order_target_percent(self, symbol: str, percent: float) -> finance_pb2.Order:
+    def order_target_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         amount = self._calculate_order_target_amount(symbol, amount)
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order_target_value(self, symbol: str, value: float) -> finance_pb2.Order:
+    def order_target_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_value_amount(symbol, value)
         amount = self._calculate_order_target_amount(symbol, amount)
-        order = finance_pb2.Order(symbol=symbol, amount=amount)
+        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
@@ -417,9 +417,9 @@ class Algorithm:
         self,
         function_name: str,
         db: Connection,
-        portfolio: finance_pb2.Portfolio,
+        portfolio: marketdata_pb2.Portfolio,
         symbols: list[str],
-    ) -> list[finance_pb2.Order]:
+    ) -> list[marketdata_pb2.Order]:
         p = Portfolio(portfolio, db)
         if self._functions[function_name]["definition"].parallelExecution:
             for symbol in symbols:

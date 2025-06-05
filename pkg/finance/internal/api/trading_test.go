@@ -3,18 +3,21 @@ package api_test
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"testing"
 
-	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
+	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/mock"
@@ -30,13 +33,14 @@ type TradingServerTest struct {
 
 	pgx     *pgxpool.Pool
 	trading *supplier.MockTrading
+	stream  *stream.MockStream
 
 	listener *bufconn.Listener
 	server   *grpc.Server
 	client   servicePb.TradingServicerClient
 }
 
-func TestTradingServerTest(t *testing.T) {
+func TestTradingServer(t *testing.T) {
 	suite.Run(t, new(TradingServerTest))
 }
 
@@ -60,7 +64,8 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
 	suite.Require().NoError(err)
-	server := api.NewTradingServer(suite.pgx, suite.trading)
+	suite.stream = new(stream.MockStream)
+	server := api.NewTradingServer(suite.pgx, suite.stream, suite.trading)
 	servicePb.RegisterTradingServicerServer(suite.server, server)
 
 	go func() {
@@ -125,5 +130,46 @@ func (test *TradingServerTest) TestGetPortfolio() {
 		rsp, err := test.client.GetPortfolio(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)
+	})
+}
+
+func (test *TradingServerTest) TestCreateSession() {
+	test.Run("normal", func() {
+		repository := repository.Trading{Conn: test.pgx}
+		statusCh := make(chan *streamPb.Orchestration_Step)
+		go func() {
+			statusCh <- &streamPb.Orchestration_Step{
+				Num:   int32(servicePb.CreateSessionResponse_CREATING),
+				State: commonPb.State_STATE_COMPLETED,
+			}
+			sessions, err := repository.List(context.Background())
+			test.NoError(err)
+			test.Len(sessions, 1)
+			test.NoError(repository.UpdatePort(context.Background(), sessions[0].Id, 1337))
+			statusCh <- &streamPb.Orchestration_Step{
+				Num:   int32(servicePb.CreateSessionResponse_STARTING),
+				State: commonPb.State_STATE_COMPLETED,
+			}
+			close(statusCh)
+		}()
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+		req := &servicePb.CreateSessionRequest{}
+		rsp, err := test.client.CreateSession(context.Background(), req)
+		test.Require().NoError(err)
+		test.Require().NotNil(rsp)
+		var session *pb.Session
+		for {
+			msg, err := rsp.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			test.Require().NoError(err)
+			test.Require().NotNil(msg)
+			session = msg.GetSession()
+		}
+		test.Require().NotNil(session)
+		test.Require().NotNil(session.Port)
+		test.Equal(int64(1337), *session.Port)
 	})
 }

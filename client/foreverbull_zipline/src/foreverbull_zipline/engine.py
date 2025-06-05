@@ -24,10 +24,10 @@ from zipline.utils.calendar_utils import get_calendar
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import engine_service_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 
 
 class ConfigError(Exception):
@@ -291,7 +291,7 @@ class Engine(multiprocessing.Process):
         p: Portfolio = trading_algorithm.portfolio
         return engine_service_pb2.GetCurrentPeriodResponse(
             is_running=True,
-            portfolio=finance_pb2.Portfolio(
+            portfolio=marketdata_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
                 cash_flow=p.cash_flow,  # type: ignore
                 starting_cash=p.starting_cash,  # type: ignore
@@ -302,7 +302,7 @@ class Engine(multiprocessing.Process):
                 positions_value=p.positions_value,  # type: ignore
                 positions_exposure=p.positions_exposure,  # type: ignore
                 positions=[
-                    finance_pb2.Position(
+                    marketdata_pb2.Position(
                         symbol=p.sid.symbol,
                         amount=p.amount,
                         cost_basis=p.cost_basis,

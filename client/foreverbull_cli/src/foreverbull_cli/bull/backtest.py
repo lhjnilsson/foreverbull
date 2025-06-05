@@ -16,10 +16,10 @@ from typing_extensions import Annotated
 
 from foreverbull import broker
 from foreverbull import models
-from foreverbull.algorithm import Algorithm
+from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import FBProgress
@@ -159,9 +159,8 @@ def run(
         TextColumn("[progress.completed]"),
     )
     live = Live(progress, console=console, refresh_per_second=120)
-    with Algorithm(models.Algorithm.from_file_path(file_path)).backtest_session(name) as session, live:
-        backtest = session.get_default()
-        start_date = backtest.start_date
+    with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(name) as session, live:
+        start_date = session.backtest.start_date
         if start:
             try:
                 start_date = from_pydate_to_proto_date(date.fromisoformat(start))
@@ -169,7 +168,7 @@ def run(
                 console.print(f"[red]Invalid start date: [yellow]{start}")
                 return
 
-        end_date = backtest.end_date
+        end_date = session.backtest.end_date
         if end:
             try:
                 end_date = from_pydate_to_proto_date(date.fromisoformat(end))
@@ -177,14 +176,14 @@ def run(
                 console.print(f"[red]Invalid end date: [yellow]{end}")
                 return
 
-        task = progress.add_task(f"{backtest.name}")
-        for period in session.run_execution(
+        task = progress.add_task(f"{session.backtest.name}")
+        for _, period in session.run_execution(
             start_date,
             end_date,
-            [s for s in backtest.symbols],
+            [s for s in session.backtest.symbols],
         ):
             progress.update(task, total=period.num_total_periods, completed=period.num_current_period)
-        log.info(f"Execution completed for {backtest.name}")
+        log.info(f"Execution completed for {session.backtest.name}")
 
 
 """

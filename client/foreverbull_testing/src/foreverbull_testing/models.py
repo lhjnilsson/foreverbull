@@ -16,11 +16,11 @@ from foreverbull import Asset as BaseAsset
 from foreverbull import Assets as BaseAssets
 from foreverbull import Portfolio
 from foreverbull import models
-from foreverbull.algorithm import Algorithm
 from foreverbull.broker.storage import Storage
+from foreverbull.foreverbull import BacktestSession
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.finance import finance_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 
 
 @dataclass
@@ -132,7 +132,7 @@ class PortfolioManager:
         proto_positions = []
         for position in positions:
             proto_positions.append(
-                finance_pb2.Position(
+                marketdata_pb2.Position(
                     symbol=position.symbol,
                     amount=position.amount,
                 )
@@ -141,7 +141,7 @@ class PortfolioManager:
         if dt is not None:
             dt = dt.replace(tzinfo=UTC)  # Make sure its UTC, TODO: Replace datetime with date
         return Portfolio(
-            finance_pb2.Portfolio(
+            marketdata_pb2.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(dt) if dt else None,
                 positions=proto_positions,
                 portfolio_value=portfolio_value,
@@ -151,8 +151,7 @@ class PortfolioManager:
 
 
 class BacktestResult:
-    def __init__(self, algorithm: Algorithm, backtest: backtest_pb2.Backtest, execution_id: str):
-        self._algorithm = algorithm
+    def __init__(self, backtest: backtest_pb2.Backtest, execution_id: str):
         self._backtest = backtest
         self._execution_id = execution_id
         self.__df = None
@@ -171,21 +170,21 @@ class BacktestResult:
 
 
 class Backtest:
-    def __init__(self, algorithm: Algorithm):
-        self._algorithm = algorithm
+    def __init__(self, backtest_session: BacktestSession):
+        self._backtest_session = backtest_session
 
     def get_default(self) -> backtest_pb2.Backtest:
-        return self._algorithm.get_default()
+        return self._backtest_session.backtest
 
     def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb2.Backtest) -> BacktestResult:
-        self._algorithm._model = algorithm
+        self._backtest_session._algorithm = algorithm
         periods = []
         exc_id: str | None = None
-        for exc_id, period in self._algorithm.run_execution(
+        for exc_id, period in self._backtest_session.run_execution(
             backtest.start_date,
             backtest.end_date,
             [s for s in backtest.symbols],
         ):
             periods.append(period)
         assert exc_id is not None, "no execution id"
-        return BacktestResult(self._algorithm, backtest, exc_id)
+        return BacktestResult(backtest, exc_id)

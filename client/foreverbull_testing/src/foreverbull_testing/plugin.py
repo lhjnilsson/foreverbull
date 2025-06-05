@@ -10,9 +10,9 @@ from sqlalchemy import create_engine
 from testcontainers.core.config import testcontainers_config
 from testcontainers.postgres import PostgresContainer
 
-from foreverbull.algorithm import Algorithm
+from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager
@@ -31,7 +31,7 @@ def backtest(request):
     backtest_name = request.config.getoption("--backtest")
     if backtest_name is None:
         pytest.skip("Skipping backtest, no backtest name provided")
-    algo = Algorithm(None)
+    algo = Foreverbull(None)
     with algo.backtest_session(backtest_name) as session:
         yield Backtest(session)
 

@@ -27,14 +27,15 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
-  enum SessionStatus {
-    UPDATING_MARKETDATA = 0;
-    RUNNING = 1;
-    COMPLETED = 2;
-    FAILED = 3;
+  enum Step {
+    STATE_UNSPECIFIED = 0;
+    CREATING = 1;
+    UPDATING_MARKET_DATA = 2;
+    STARTING = 3;
+    FINISHING = 4;
   }
   message Status {
-    SessionStatus status = 1;
+    Step step = 1;
     foreverbull.common.State state = 2;
   }
   foreverbull.finance.v1.Session session = 1;

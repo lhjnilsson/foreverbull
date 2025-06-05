@@ -4,8 +4,8 @@ from multiprocessing import set_start_method
 import pytest
 
 from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest import backtest_pb2
-from foreverbull.pb.foreverbull.backtest import execution_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 
 
 @pytest.fixture(scope="session")
