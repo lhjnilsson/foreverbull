@@ -150,13 +150,24 @@ class Foreverbull:
         create_rsp = self._broker_stub.CreateSession(trading_service_pb2.CreateSessionRequest(symbols=symbols))
         rsp: trading_service_pb2.CreateSessionResponse
         for rsp in create_rsp:
-            if rsp.status.status == trading_service_pb2.CreateSessionResponse.SessionStatus.FAILED:
-                raise Exception(f"Session failed: {rsp.status.status}")
-            if rsp.status.status == trading_service_pb2.CreateSessionResponse.SessionStatus.RUNNING:
+            print(
+                "STATUS: ",
+                trading_service_pb2.CreateSessionResponse.Step.Name(rsp.status.step),
+                common_pb2.State.Name(rsp.status.state),
+            )
+            if rsp.status.state == common_pb2.STATE_FAILED:
+                raise Exception(
+                    f"Session failed on: {trading_service_pb2.CreateSessionResponse.Step.Name(rsp.status.step)}"
+                )
+            if (
+                rsp.status.step == trading_service_pb2.CreateSessionResponse.Step.STARTING
+                and rsp.status.state == common_pb2.STATE_COMPLETED
+            ):
                 trading_session = rsp.session
                 break
         assert self._model is not None, "no model"
         assert trading_session is not None, "session is not set"
+        print("SESSION: PORT", trading_session.port)
         trading_session_stub = trading_service_pb2_grpc.SessionServicerStub(
             grpc.insecure_channel(f"{broker_hostname}:{trading_session.port}")
         )

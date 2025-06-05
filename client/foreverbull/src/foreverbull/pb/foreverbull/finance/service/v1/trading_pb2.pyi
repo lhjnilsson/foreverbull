@@ -39,23 +39,25 @@ class CreateSessionRequest(_message.Message):
 
 class CreateSessionResponse(_message.Message):
     __slots__ = ("session", "status")
-    class SessionStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    class Step(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
-        UPDATING_MARKETDATA: _ClassVar[CreateSessionResponse.SessionStatus]
-        RUNNING: _ClassVar[CreateSessionResponse.SessionStatus]
-        COMPLETED: _ClassVar[CreateSessionResponse.SessionStatus]
-        FAILED: _ClassVar[CreateSessionResponse.SessionStatus]
-    UPDATING_MARKETDATA: CreateSessionResponse.SessionStatus
-    RUNNING: CreateSessionResponse.SessionStatus
-    COMPLETED: CreateSessionResponse.SessionStatus
-    FAILED: CreateSessionResponse.SessionStatus
+        STATE_UNSPECIFIED: _ClassVar[CreateSessionResponse.Step]
+        CREATING: _ClassVar[CreateSessionResponse.Step]
+        UPDATING_MARKET_DATA: _ClassVar[CreateSessionResponse.Step]
+        STARTING: _ClassVar[CreateSessionResponse.Step]
+        FINISHING: _ClassVar[CreateSessionResponse.Step]
+    STATE_UNSPECIFIED: CreateSessionResponse.Step
+    CREATING: CreateSessionResponse.Step
+    UPDATING_MARKET_DATA: CreateSessionResponse.Step
+    STARTING: CreateSessionResponse.Step
+    FINISHING: CreateSessionResponse.Step
     class Status(_message.Message):
-        __slots__ = ("status", "state")
-        STATUS_FIELD_NUMBER: _ClassVar[int]
+        __slots__ = ("step", "state")
+        STEP_FIELD_NUMBER: _ClassVar[int]
         STATE_FIELD_NUMBER: _ClassVar[int]
-        status: CreateSessionResponse.SessionStatus
+        step: CreateSessionResponse.Step
         state: _common_pb2.State
-        def __init__(self, status: _Optional[_Union[CreateSessionResponse.SessionStatus, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
+        def __init__(self, step: _Optional[_Union[CreateSessionResponse.Step, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
     SESSION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     session: _trading_pb2.Session
