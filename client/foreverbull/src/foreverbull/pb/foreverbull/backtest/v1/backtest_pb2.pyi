@@ -1,22 +1,10 @@
 from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
-
-class BacktestStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    DOWNLOADING: _ClassVar[BacktestStatus]
-    INGESTING: _ClassVar[BacktestStatus]
-    STORING: _ClassVar[BacktestStatus]
-    ERROR: _ClassVar[BacktestStatus]
-DOWNLOADING: BacktestStatus
-INGESTING: BacktestStatus
-STORING: BacktestStatus
-ERROR: BacktestStatus
 
 class Backtest(_message.Message):
     __slots__ = ("name", "start_date", "end_date", "symbols", "benchmark")

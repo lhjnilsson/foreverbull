@@ -41,12 +41,10 @@ class CreateSessionResponse(_message.Message):
     __slots__ = ("session", "status")
     class Step(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
-        STATE_UNSPECIFIED: _ClassVar[CreateSessionResponse.Step]
         CREATING: _ClassVar[CreateSessionResponse.Step]
         UPDATING_MARKET_DATA: _ClassVar[CreateSessionResponse.Step]
         STARTING: _ClassVar[CreateSessionResponse.Step]
         FINISHING: _ClassVar[CreateSessionResponse.Step]
-    STATE_UNSPECIFIED: CreateSessionResponse.Step
     CREATING: CreateSessionResponse.Step
     UPDATING_MARKET_DATA: CreateSessionResponse.Step
     STARTING: CreateSessionResponse.Step
