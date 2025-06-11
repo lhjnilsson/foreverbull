@@ -6,13 +6,6 @@ import "foreverbull/common.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
-enum BacktestStatus {
-  DOWNLOADING = 0;
-  INGESTING = 1;
-  STORING = 2;
-  ERROR = 3;
-}
-
 message Backtest {
   string name = 1;
   foreverbull.common.Date start_date = 2;

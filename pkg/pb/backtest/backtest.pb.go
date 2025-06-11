@@ -21,58 +21,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type BacktestStatus int32
-
-const (
-	BacktestStatus_DOWNLOADING BacktestStatus = 0
-	BacktestStatus_INGESTING   BacktestStatus = 1
-	BacktestStatus_STORING     BacktestStatus = 2
-	BacktestStatus_ERROR       BacktestStatus = 3
-)
-
-// Enum value maps for BacktestStatus.
-var (
-	BacktestStatus_name = map[int32]string{
-		0: "DOWNLOADING",
-		1: "INGESTING",
-		2: "STORING",
-		3: "ERROR",
-	}
-	BacktestStatus_value = map[string]int32{
-		"DOWNLOADING": 0,
-		"INGESTING":   1,
-		"STORING":     2,
-		"ERROR":       3,
-	}
-)
-
-func (x BacktestStatus) Enum() *BacktestStatus {
-	p := new(BacktestStatus)
-	*p = x
-	return p
-}
-
-func (x BacktestStatus) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (BacktestStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_foreverbull_backtest_v1_backtest_proto_enumTypes[0].Descriptor()
-}
-
-func (BacktestStatus) Type() protoreflect.EnumType {
-	return &file_foreverbull_backtest_v1_backtest_proto_enumTypes[0]
-}
-
-func (x BacktestStatus) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use BacktestStatus.Descriptor instead.
-func (BacktestStatus) EnumDescriptor() ([]byte, []int) {
-	return file_foreverbull_backtest_v1_backtest_proto_rawDescGZIP(), []int{0}
-}
-
 type Backtest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -174,15 +122,11 @@ var file_foreverbull_backtest_v1_backtest_proto_rawDesc = []byte{
 	0x62, 0x6f, 0x6c, 0x73, 0x12, 0x21, 0x0a, 0x09, 0x62, 0x65, 0x6e, 0x63, 0x68, 0x6d, 0x61, 0x72,
 	0x6b, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00, 0x52, 0x09, 0x62, 0x65, 0x6e, 0x63, 0x68,
 	0x6d, 0x61, 0x72, 0x6b, 0x88, 0x01, 0x01, 0x42, 0x0c, 0x0a, 0x0a, 0x5f, 0x62, 0x65, 0x6e, 0x63,
-	0x68, 0x6d, 0x61, 0x72, 0x6b, 0x2a, 0x48, 0x0a, 0x0e, 0x42, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73,
-	0x74, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x0f, 0x0a, 0x0b, 0x44, 0x4f, 0x57, 0x4e, 0x4c,
-	0x4f, 0x41, 0x44, 0x49, 0x4e, 0x47, 0x10, 0x00, 0x12, 0x0d, 0x0a, 0x09, 0x49, 0x4e, 0x47, 0x45,
-	0x53, 0x54, 0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x0b, 0x0a, 0x07, 0x53, 0x54, 0x4f, 0x52, 0x49,
-	0x4e, 0x47, 0x10, 0x02, 0x12, 0x09, 0x0a, 0x05, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x03, 0x42,
-	0x33, 0x5a, 0x31, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68,
-	0x6a, 0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72,
-	0x62, 0x75, 0x6c, 0x6c, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x62, 0x2f, 0x62, 0x61, 0x63, 0x6b,
-	0x74, 0x65, 0x73, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x68, 0x6d, 0x61, 0x72, 0x6b, 0x42, 0x33, 0x5a, 0x31, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a, 0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66,
+	0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70,
+	0x62, 0x2f, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65, 0x73, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x33,
 }
 
 var (
@@ -197,16 +141,14 @@ func file_foreverbull_backtest_v1_backtest_proto_rawDescGZIP() []byte {
 	return file_foreverbull_backtest_v1_backtest_proto_rawDescData
 }
 
-var file_foreverbull_backtest_v1_backtest_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_foreverbull_backtest_v1_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_foreverbull_backtest_v1_backtest_proto_goTypes = []any{
-	(BacktestStatus)(0), // 0: foreverbull.backtest.v1.BacktestStatus
-	(*Backtest)(nil),    // 1: foreverbull.backtest.v1.Backtest
-	(*pb.Date)(nil),     // 2: foreverbull.common.Date
+	(*Backtest)(nil), // 0: foreverbull.backtest.v1.Backtest
+	(*pb.Date)(nil),  // 1: foreverbull.common.Date
 }
 var file_foreverbull_backtest_v1_backtest_proto_depIdxs = []int32{
-	2, // 0: foreverbull.backtest.v1.Backtest.start_date:type_name -> foreverbull.common.Date
-	2, // 1: foreverbull.backtest.v1.Backtest.end_date:type_name -> foreverbull.common.Date
+	1, // 0: foreverbull.backtest.v1.Backtest.start_date:type_name -> foreverbull.common.Date
+	1, // 1: foreverbull.backtest.v1.Backtest.end_date:type_name -> foreverbull.common.Date
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -239,14 +181,13 @@ func file_foreverbull_backtest_v1_backtest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_foreverbull_backtest_v1_backtest_proto_rawDesc,
-			NumEnums:      1,
+			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_foreverbull_backtest_v1_backtest_proto_goTypes,
 		DependencyIndexes: file_foreverbull_backtest_v1_backtest_proto_depIdxs,
-		EnumInfos:         file_foreverbull_backtest_v1_backtest_proto_enumTypes,
 		MessageInfos:      file_foreverbull_backtest_v1_backtest_proto_msgTypes,
 	}.Build()
 	File_foreverbull_backtest_v1_backtest_proto = out.File

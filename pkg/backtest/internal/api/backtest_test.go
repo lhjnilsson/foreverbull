@@ -137,10 +137,9 @@ func (test *BacktestServerTest) TestListBacktests() {
 
 func (test *BacktestServerTest) TestCreateBacktest() {
 	test.Run("Create", func() {
-
 		statuses := []*streamPb.Orchestration_Step{
-			{Num: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_RUNNING},
-			{Num: int32(pb.BacktestStatus_INGESTING), State: common_pb.State_STATE_COMPLETED},
+			{Num: int32(servicePb.CreateBacktestResponse_INGESTING), State: common_pb.State_STATE_RUNNING},
+			{Num: int32(servicePb.CreateBacktestResponse_INGESTING), State: common_pb.State_STATE_COMPLETED},
 		}
 
 		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
@@ -175,9 +174,9 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 			responses = append(responses, msg)
 		}
 		test.Require().Len(responses, 2)
-		test.Require().Equal(pb.BacktestStatus_INGESTING, responses[0].Status.Status)
+		test.Require().Equal(servicePb.CreateBacktestResponse_INGESTING, responses[0].Status.Step)
 		test.Require().Equal(common_pb.State_STATE_RUNNING, responses[0].Status.State)
-		test.Require().Equal(pb.BacktestStatus_INGESTING, responses[1].Status.Status)
+		test.Require().Equal(servicePb.CreateBacktestResponse_INGESTING, responses[1].Status.Step)
 		test.Require().Equal(common_pb.State_STATE_COMPLETED, responses[1].Status.State)
 	})
 }
@@ -245,8 +244,8 @@ func (test *BacktestServerTest) TestCreateSession() {
 			responses = append(responses, msg)
 		}
 		test.Require().Len(responses, 2)
-		test.Require().Equal(pb.SessionStatus_CREATED, responses[0].Status.Status)
-		test.Require().Equal(pb.SessionStatus_RUNNING, responses[1].Status.Status)
+		test.Require().Equal(servicePb.CreateSessionResponse_CREATING, responses[0].Status.Step)
+		test.Require().Equal(servicePb.CreateSessionResponse_STARTING, responses[1].Status.Step)
 	})
 }
 
