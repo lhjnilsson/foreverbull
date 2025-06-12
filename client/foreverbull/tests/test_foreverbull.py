@@ -11,6 +11,7 @@ from foreverbull.foreverbull import BacktestSession
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as backtest_session_service_pb2
@@ -98,7 +99,7 @@ class TestTradingSession:
 
         stub = start_grpc_server(mocked_session_servicer)
         uut = TradingSession(model, stub)
-        orders = uut.run_trading()
+        orders = uut.run_trading([])
         assert orders == []
 
 
@@ -150,7 +151,8 @@ class TestForeverbull:
                     port=7877,
                 ),
                 status=backtest_service_pb2.CreateSessionResponse.Status(
-                    status=session_pb2.SessionStatus.RUNNING,
+                    step=backtest_service_pb2.CreateSessionResponse.Step.STARTING,
+                    state=common_pb2.STATE_COMPLETED,
                 ),
             )
 
@@ -173,7 +175,8 @@ class TestForeverbull:
                     port=7877,
                 ),
                 status=trading_service_pb2.CreateSessionResponse.Status(
-                    status=trading_service_pb2.CreateSessionResponse.SessionStatus.RUNNING,
+                    step=trading_service_pb2.CreateSessionResponse.Step.STARTING,
+                    state=common_pb2.STATE_COMPLETED,
                 ),
             )
 

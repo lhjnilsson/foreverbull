@@ -79,7 +79,7 @@ def create(
         progress.update(create_task, completed=1)
         rsp = broker.backtest.create(backtest)
         for backtest_rsp in rsp:
-            status = backtest_pb2.BacktestStatus.Name(backtest_rsp.status.status)
+            status = backtest_service_pb2.CreateBacktestResponse.Step.Name(backtest_rsp.status.step)
             state = common_pb2.State.Name(backtest_rsp.status.state)
             progress.update(
                 create_task,
