@@ -149,7 +149,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	test.Require().NotNil(latestStatus)
-	test.Require().Equal(pb.BacktestStatus_INGESTING, latestStatus.Status)
+	test.Require().Equal(servicePb.CreateBacktestResponse_INGESTING, latestStatus.Step)
 	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &servicePb.GetBacktestRequest{Name: "Test Backtest"})
@@ -175,7 +175,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	test.Require().NotNil(latestSessionRsp, "response is nil")
 	test.Require().NotNil(latestSessionRsp.Session, "session is nil")
-	test.Require().Equal(pb.SessionStatus_RUNNING, latestSessionRsp.Status.Status)
+	test.Require().Equal(servicePb.CreateSessionResponse_STARTING, latestSessionRsp.Status.Step)
 
 	test.Require().NotNil(latestSessionRsp.Session.Port)
 	port := *latestSessionRsp.Session.Port

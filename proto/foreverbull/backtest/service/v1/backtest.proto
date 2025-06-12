@@ -27,8 +27,14 @@ message CreateBacktestRequest {
 }
 
 message CreateBacktestResponse {
+  enum Step {
+    CREATING = 0;
+    DOWNLOADING = 1;
+    INGESTING = 2;
+    STORING = 3;
+  }
   message Status {
-    foreverbull.backtest.v1.BacktestStatus status = 1;
+    Step step = 1;
     foreverbull.common.State state = 2;
   }
 
@@ -62,8 +68,13 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
+  enum Step {
+    CREATING = 0;
+    STARTING = 1;
+    STORING = 2;
+  }
   message Status {
-    foreverbull.backtest.v1.SessionStatus status = 1;
+    Step step = 1;
     foreverbull.common.State state = 2;
   }
   foreverbull.backtest.v1.Session session = 1;

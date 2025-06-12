@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xa9\x01\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x04 \x03(\t\x12\x16\n\tbenchmark\x18\x05 \x01(\tH\x00\x88\x01\x01\x42\x0c\n\n_benchmark*H\n\x0e\x42\x61\x63ktestStatus\x12\x0f\n\x0b\x44OWNLOADING\x10\x00\x12\r\n\tINGESTING\x10\x01\x12\x0b\n\x07STORING\x10\x02\x12\t\n\x05\x45RROR\x10\x03\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xa9\x01\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x04 \x03(\t\x12\x16\n\tbenchmark\x18\x05 \x01(\tH\x00\x88\x01\x01\x42\x0c\n\n_benchmarkB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,8 +33,6 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.backtest.v1.bac
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtest'
-  _globals['_BACKTESTSTATUS']._serialized_start=265
-  _globals['_BACKTESTSTATUS']._serialized_end=337
   _globals['_BACKTEST']._serialized_start=94
   _globals['_BACKTEST']._serialized_end=263
 # @@protoc_insertion_point(module_scope)

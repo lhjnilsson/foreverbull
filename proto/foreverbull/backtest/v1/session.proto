@@ -4,13 +4,6 @@ package foreverbull.backtest.v1;
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
-enum SessionStatus {
-  CREATED = 0;
-  RUNNING = 1;
-  COMPLETED = 2;
-  FAILED = 3;
-}
-
 message Session {
   string id = 1;
   string backtest = 2;

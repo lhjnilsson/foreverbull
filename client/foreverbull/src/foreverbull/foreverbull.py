@@ -125,9 +125,12 @@ class Foreverbull:
         )
         rsp = backtest_service_pb2.CreateSessionResponse()
         for rsp in create_rsp:
-            if rsp.status.status == session_pb2.SessionStatus.FAILED:
+            if rsp.status.state == common_pb2.STATE_FAILED:
                 raise Exception(f"Session failed: {rsp.status.status}")
-            if rsp.status.status == session_pb2.SessionStatus.RUNNING:
+            if (
+                rsp.status.step == backtest_service_pb2.CreateSessionResponse.Step.STARTING
+                and rsp.status.state == common_pb2.STATE_COMPLETED
+            ):
                 session = rsp.session
                 break
         _backtest_session_stub = session_service_pb2_grpc.SessionServicerStub(

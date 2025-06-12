@@ -10,7 +10,6 @@ import (
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
@@ -68,8 +67,8 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 			&servicePb.CreateBacktestResponse{
 				Backtest: backtest,
 				Status: &servicePb.CreateBacktestResponse_Status{
-					Status: pb.BacktestStatus(step.Num),
-					State:  step.State,
+					Step:  servicePb.CreateBacktestResponse_Step(step.Num),
+					State: step.State,
 				},
 			})
 		if err != nil {
@@ -108,8 +107,8 @@ func (bs *BacktestServer) CreateSession(
 	err = _stream.Send(&servicePb.CreateSessionResponse{
 		Session: session,
 		Status: &servicePb.CreateSessionResponse_Status{
-			Status: pb.SessionStatus_CREATED,
-			State:  pbInternal.State_STATE_COMPLETED,
+			Step:  servicePb.CreateSessionResponse_CREATING,
+			State: pbInternal.State_STATE_COMPLETED,
 		},
 	})
 	if err != nil {
@@ -135,14 +134,13 @@ func (bs *BacktestServer) CreateSession(
 	err = _stream.Send(&servicePb.CreateSessionResponse{
 		Session: session,
 		Status: &servicePb.CreateSessionResponse_Status{
-			Status: pb.SessionStatus_RUNNING,
-			State:  pbInternal.State_STATE_RUNNING,
+			Step:  servicePb.CreateSessionResponse_STARTING,
+			State: pbInternal.State_STATE_COMPLETED,
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
-
 	return nil
 }
 

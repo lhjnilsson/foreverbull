@@ -6,7 +6,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
-	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
 type IngestCommand struct {
@@ -39,13 +39,14 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestPb.BacktestStatus_DOWNLOADING), Messages: []*streamPb.Message{msg.GetMsg()}})
+
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestServicePb.CreateBacktestResponse_DOWNLOADING), Messages: []*streamPb.Message{msg.GetMsg()}})
 
 	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestPb.BacktestStatus_INGESTING), Messages: []*streamPb.Message{msg.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestServicePb.CreateBacktestResponse_INGESTING), Messages: []*streamPb.Message{msg.GetMsg()}})
 
 	return &o, nil
 }

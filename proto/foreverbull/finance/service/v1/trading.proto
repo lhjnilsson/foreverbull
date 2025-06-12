@@ -28,11 +28,10 @@ message CreateSessionRequest {
 
 message CreateSessionResponse {
   enum Step {
-    STATE_UNSPECIFIED = 0;
-    CREATING = 1;
-    UPDATING_MARKET_DATA = 2;
-    STARTING = 3;
-    FINISHING = 4;
+    CREATING = 0;
+    UPDATING_MARKET_DATA = 1;
+    STARTING = 2;
+    FINISHING = 3;
   }
   message Status {
     Step step = 1;
