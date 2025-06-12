@@ -77,7 +77,6 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
-
 	return rsp, nil
 }
 
@@ -107,8 +106,10 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
-
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fail to get asset data for symbol %s: %s", symbol, resp.Status)
+	}
 
 	data := AssetResponse{}
 
@@ -150,6 +151,9 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	result := IndexResponse{}
 
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fail to get index data for symbol %s: %s", symbol, resp.Status)
+	}
 
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
@@ -239,6 +243,9 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	}
 
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %s", symbol, resp.Status)
+	}
 
 	data := OHLCResponse{}
 
