@@ -18,6 +18,7 @@ from foreverbull_cli.env.environment import GrafanaContainer
 from foreverbull_cli.env.environment import MinioContainer
 from foreverbull_cli.env.environment import NatsContainer
 from foreverbull_cli.env.environment import PostgresContainer
+from foreverbull_cli.env.environment import ZiplineContainer
 
 
 class TestConfig:
@@ -44,7 +45,7 @@ class TestConfig:
         assert uut.foreverbull_image == "lhjnilsson/foreverbull:latest"
 
     def test_backtest_image(self, uut: Config):
-        assert uut.backtest_image == "lhjnilsson/zipline:latest"
+        assert uut.zipline_image == "lhjnilsson/zipline:latest"
 
     def test_grafana_image(self, uut: Config):
         assert uut.grafana_image == "lhjnilsson/fb-grafana:latest"
@@ -197,6 +198,18 @@ class TestNatsContainer(DockerMocks):
         return NatsContainer(config, env)
 
     def test_create(self, uut: NatsContainer, mocked_container: MagicMock):
+        uut.create()
+        assert mocked_container.create.called
+
+
+class TestZiplineContainer(DockerMocks):
+    @pytest.fixture
+    def uut(self):
+        config = Config()
+        env = Environment()
+        return ZiplineContainer(config, env)
+
+    def test_create(self, uut: ZiplineContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
 

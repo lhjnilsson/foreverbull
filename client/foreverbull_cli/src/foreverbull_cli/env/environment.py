@@ -57,7 +57,7 @@ class Config:
         return f"lhjnilsson/foreverbull:{self.version}"
 
     @property
-    def backtest_image(self) -> str:
+    def zipline_image(self) -> str:
         return f"lhjnilsson/zipline:{self.version}"
 
     @property
@@ -249,6 +249,18 @@ class NatsContainer(BaseContainer):
         return super().create(*args, **kwargs)
 
 
+class ZiplineContainer(BaseContainer):
+    def __init__(self, config: Config, environment: Environment):
+        super().__init__(config, environment)
+        self.name = "foreverbull_zipline"
+        self.hostname = "zipline"
+        self.image = config.zipline_image
+        self.data_location = None
+
+    def create(self, *args, **kwargs) -> ContainerStatus:
+        return super().create(*args, **kwargs)
+
+
 class ForeverbullContainer(BaseContainer):
     def __init__(self, config: Config, environment: Environment):
         super().__init__(config, environment)
@@ -282,7 +294,7 @@ class ForeverbullContainer(BaseContainer):
             "NATS_URL": "nats://nats:4222",
             "MINIO_URL": "minio:9000",
             "DOCKER_NETWORK": self.config.network_name,
-            "BACKTEST_IMAGE": self.config.backtest_image,
+            "ZIPLINE_CONTAINER_NAME": "foreverbull_zipline",
             "LOG_LEVEL": "debug",
         }
         kwargs["healthcheck"] = {
@@ -321,9 +333,10 @@ class ContainerManager:
         self.postgres = PostgresContainer(config, environment)
         self.minio = MinioContainer(config, environment)
         self.nats = NatsContainer(config, environment)
+        self.zipline = ZiplineContainer(config, environment)
         self.foreverbull = ForeverbullContainer(config, environment)
         self.grafana = GrafanaContainer(config, environment)
-        self.containers = [self.postgres, self.minio, self.nats, self.foreverbull, self.grafana]
+        self.containers = [self.postgres, self.minio, self.nats, self.zipline, self.foreverbull, self.grafana]
 
     def verify_images(self):
         for container in self.containers:

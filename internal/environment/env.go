@@ -25,8 +25,8 @@ const (
 	BacktestIngestionDefaultName        = "BACKTEST_INGESTION_DEFAULT_NAME"
 	BacktestIngestionDefaultNameDefault = "default_ingestion"
 
-	BacktestImage                 = "BACKTEST_IMAGE"
-	BacktestImageDefault          = "lhjnilson/zipline:latest"
+	ZiplineContainerName          = "ZIPLINE_CONTAINER_NAME"
+	ZiplineContainerNameDefault   = "foreverbull_zipline"
 	BacktestPortRangeStart        = "BACKTEST_PORT_RANGE_START"
 	BacktestPortRangeStartDefault = "27000"
 	BacktestPortRangeEnd          = "BACKTEST_PORT_RANGE_END"
@@ -70,7 +70,7 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{HTTPPort, func() (string, error) { return HTTPPortDefault, nil }},
 	{GRPCPort, func() (string, error) { return GRPCPortDefault, nil }},
 	{BacktestIngestionDefaultName, func() (string, error) { return BacktestIngestionDefaultNameDefault, nil }},
-	{BacktestImage, func() (string, error) { return BacktestImageDefault, nil }},
+	{ZiplineContainerName, func() (string, error) { return ZiplineContainerNameDefault, nil }},
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
 	{BacktestPortRangeEnd, func() (string, error) { return BacktestPortRangeEndDefault, nil }},
 	{LogLevel, func() (string, error) { return LogLevelDefault, nil }},
@@ -145,8 +145,8 @@ func GetBacktestIngestionDefaultName() string {
 	return os.Getenv(BacktestIngestionDefaultName)
 }
 
-func GetBacktestImage() string {
-	return os.Getenv(BacktestImage)
+func GetZiplineContainerName() string {
+	return os.Getenv(ZiplineContainerName)
 }
 
 func GetBacktestPortRangeStart() int {
