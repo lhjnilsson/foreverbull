@@ -107,9 +107,6 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 		return nil, fmt.Errorf("error: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fail to get asset data for symbol %s: %s", symbol, resp.Status)
-	}
 
 	data := AssetResponse{}
 
@@ -243,10 +240,6 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %s", symbol, resp.Status)
-	}
-
 	data := OHLCResponse{}
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
