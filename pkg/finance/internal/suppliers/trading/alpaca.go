@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/shopspring/decimal"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AlpacaClient struct {
@@ -72,6 +73,7 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 	}
 
 	return &pb.Portfolio{
+		Timestamp:      timestamppb.Now(),
 		Cash:           acc.Cash.InexactFloat64(),
 		PortfolioValue: acc.PortfolioValue.InexactFloat64(),
 		Positions:      positions,

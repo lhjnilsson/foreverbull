@@ -4,16 +4,18 @@ import (
 	"context"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type grpcSessionServer struct {
 	servicePb.UnimplementedSessionServicerServer
+
+	trading supplier.Trading
 
 	wp worker.Pool
 
@@ -22,10 +24,11 @@ type grpcSessionServer struct {
 	activity chan bool
 }
 
-func NewGRPCSessionServer() (*grpc.Server, <-chan bool, error) {
+func NewGRPCSessionServer(trading supplier.Trading) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
 	activity := make(chan bool)
 	server := &grpcSessionServer{
+		trading:  trading,
 		activity: activity,
 	}
 	servicePb.RegisterSessionServicerServer(grpcServer, server)
@@ -46,7 +49,12 @@ func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.Confi
 }
 
 func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest) (*servicePb.RunResponse, error) {
-	orders, err := gs.wp.Process(ctx, time.Now(), req.Symbols, &pb.Portfolio{Timestamp: timestamppb.Now()})
+	portfolio, err := gs.trading.GetPortfolio()
+	if err != nil {
+		return nil, err
+	}
+
+	orders, err := gs.wp.Process(ctx, time.Now(), req.Symbols, portfolio)
 	if err != nil {
 		return nil, err
 	}
