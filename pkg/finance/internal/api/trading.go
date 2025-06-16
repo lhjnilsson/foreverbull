@@ -11,6 +11,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type TradingServer struct {
@@ -31,6 +33,10 @@ func NewTradingServer(pgx *pgxpool.Pool, stream stream.Stream, trading supplier.
 }
 
 func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrdersRequest) (*servicePb.GetOrdersResponse, error) {
+	if ts.trading == nil {
+		return nil, fmt.Errorf("trading is not enabled")
+	}
+
 	orders, err := ts.trading.GetOrders()
 	if err != nil {
 		return nil, fmt.Errorf("error getting orders: %w", err)
@@ -42,6 +48,10 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 }
 
 func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPortfolioRequest) (*servicePb.GetPortfolioResponse, error) {
+	if ts.trading == nil {
+		return nil, fmt.Errorf("trading is not enabled")
+	}
+
 	portfolio, err := ts.trading.GetPortfolio()
 	if err != nil {
 		return nil, fmt.Errorf("error getting portfolio: %w", err)
@@ -53,6 +63,10 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 }
 
 func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
+	if ts.trading == nil {
+		return status.Error(codes.Unimplemented, "trading is not enabled")
+	}
+
 	repository := repository.Trading{Conn: ts.pgx}
 	s, err := repository.Create(stream.Context())
 	if err != nil {
