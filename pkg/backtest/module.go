@@ -43,7 +43,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 			return sub, dc, nil
 		},
-		func(ctx context.Context, ce container.Engine) (engine.Engine, error) {
+		func(ce container.Engine) (engine.Engine, error) {
 			container, err := ce.Get(context.Background(), environment.GetZiplineContainerName())
 			if err != nil {
 				return nil, fmt.Errorf("failed to get container for zipline: %w", err)
@@ -55,7 +55,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			if health != types.Healthy {
 				return nil, errors.New("zipline container is unhealthy")
 			}
-			engine, err := backtest.NewZiplineEngine(ctx, container, nil)
+			engine, err := backtest.NewZiplineEngine(context.Background(), container, nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create zipline engine: %w", err)
 			}

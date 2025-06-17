@@ -50,13 +50,6 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 	}
 
 	jtCb := func(natsMsg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println(string(debug.Stack())) // nolint: forbidigo
-				log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
-			}
-		}()
-
 		msg := &message{
 			msg:                 &pb.Message{},
 			dependencyContainer: ns.deps,
@@ -87,7 +80,15 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 				log.Err(err).Msg("error unsubscribing from jetstream")
 			}
 		}()
-
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println(string(debug.Stack())) // nolint: forbidigo
+				log.Err(fmt.Errorf("panic: %v", r)).Stack().Str("component", component).Str("method", method).Msg("panic in command subscriber")
+				if err := publishState(msg, pb.State_STATE_ERROR, fmt.Errorf("panic: %v", r)); err != nil {
+					log.Err(err).Msg("error publishing state")
+				}
+			}
+		}()
 		err = cb(ctx, msg)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {

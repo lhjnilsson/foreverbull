@@ -26,25 +26,38 @@ type Subscriber stream.Subscriber
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() (supplier.Marketdata, error) {
-			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
+			switch environment.GetMarketDataProvider() {
+			case "alpaca":
+				marketData, err := marketdata.NewAlpacaClient()
+				if err != nil {
+					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+				}
+				return marketData, nil
+			case "yahoo":
 				marketData, err := marketdata.NewYahooClient()
 				if err != nil {
 					return nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 				}
 				return marketData, nil
+			default:
+				return nil, fmt.Errorf("unknown market data provider: %s", environment.GetMarketDataProvider())
 			}
-			marketData, err := marketdata.NewAlpacaClient()
-			if err != nil {
-				return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-			}
-			return marketData, nil
 		},
 		func() (supplier.Trading, error) {
-			t, err := trading.NewAlpacaClient()
-			if err != nil {
-				return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+			if !environment.GetTradingEnabled() {
+				return nil, nil
 			}
-			return t, nil
+
+			switch environment.GetTradingProvider() {
+			case "alpaca":
+				t, err := trading.NewAlpacaClient()
+				if err != nil {
+					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+				}
+				return t, nil
+			default:
+				return nil, fmt.Errorf("unknown trading provider: %s", environment.GetTradingProvider())
+			}
 		},
 		func(conn *pgxpool.Pool, marketData supplier.Marketdata, trading supplier.Trading, _stream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()

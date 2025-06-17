@@ -53,11 +53,18 @@ const (
 	MinioSecretKeyDefault = "minioadmin"
 
 	MarketDataProvider        = "MARKET_DATA_PROVIDER"
-	MarketDataProviderDefault = "alpaca_markets"
-	AlpacaBaseURL             = "ALPACA_MARKETS_BASE_URL"
-	AlpacaBaseURLDefault      = "https://paper-api.alpaca.markets"
-	AlpacaApiKey              = "ALPACA_MARKETS_API_KEY"
-	AlpacaApiSecret           = "ALPACA_MARKETS_API_SECRET"
+	MarketDataProviderDefault = "yahoo"
+
+	TradingEnabled        = "TRADING_ENABLED"
+	TradingEnabledDefault = "false"
+
+	TradingProvider        = "TRADING_PROVIDER"
+	TradingProviderDefault = "alpaca"
+
+	AlpacaBaseURL        = "ALPACA_MARKETS_BASE_URL"
+	AlpacaBaseURLDefault = "https://paper-api.alpaca.markets"
+	AlpacaApiKey         = "ALPACA_MARKETS_API_KEY"
+	AlpacaApiSecret      = "ALPACA_MARKETS_API_SECRET"
 )
 
 type envVar struct {
@@ -83,6 +90,8 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
 	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
 	{MarketDataProvider, func() (string, error) { return MarketDataProviderDefault, nil }},
+	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
+	{TradingProvider, func() (string, error) { return TradingProviderDefault, nil }},
 	{AlpacaBaseURL, func() (string, error) { return AlpacaBaseURLDefault, nil }},
 	{AlpacaApiKey, func() (string, error) { return "", nil }},
 	{AlpacaApiSecret, func() (string, error) { return "", nil }},
@@ -205,6 +214,18 @@ func GetMinioSecretKey() string {
 
 func GetMarketDataProvider() string {
 	return os.Getenv(MarketDataProvider)
+}
+
+func GetTradingEnabled() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(TradingEnabled))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetTradingProvider() string {
+	return os.Getenv(TradingProvider)
 }
 
 func GetAlpacaBaseURL() string {

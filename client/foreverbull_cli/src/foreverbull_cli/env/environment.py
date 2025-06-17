@@ -270,6 +270,18 @@ class ForeverbullContainer(BaseContainer):
         self.data_location = None
 
     def create(self, *args, **kwargs) -> ContainerStatus:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "POSTGRES_URL": "postgres://foreverbull:foreverbull@postgres:5432/foreverbull",
+                "NATS_URL": "nats://nats:4222",
+                "MINIO_URL": "minio:9000",
+                "DOCKER_NETWORK": self.config.network_name,
+                "ZIPLINE_CONTAINER_NAME": "foreverbull_zipline",
+                "LOG_LEVEL": "debug",
+            }
+        )
+
         kwargs["ports"] = {
             "50055/tcp": 50055,
             "27000/tcp": 27000,
@@ -289,14 +301,7 @@ class ForeverbullContainer(BaseContainer):
             "27014/tcp": 27014,
             "27015/tcp": 27015,
         }
-        kwargs["environment"] = {
-            "POSTGRES_URL": "postgres://foreverbull:foreverbull@postgres:5432/foreverbull",
-            "NATS_URL": "nats://nats:4222",
-            "MINIO_URL": "minio:9000",
-            "DOCKER_NETWORK": self.config.network_name,
-            "ZIPLINE_CONTAINER_NAME": "foreverbull_zipline",
-            "LOG_LEVEL": "debug",
-        }
+        kwargs["environment"] = environment
         kwargs["healthcheck"] = {
             "test": ["CMD", "pg_isready", "-U", "foreverbull"],
             "interval": 10000000000,
@@ -353,7 +358,7 @@ class ContainerManager:
             container.create()
 
     def start(self):
-        for container in [self.postgres, self.minio, self.nats]:
+        for container in [self.postgres, self.minio, self.nats, self.zipline]:
             container.start()
         for _ in range(200):
             # TODO: Refactor
@@ -363,6 +368,8 @@ class ContainerManager:
             if _docker.containers.get(self.postgres.name).health != "healthy":
                 continue
             if _docker.containers.get(self.nats.name).health != "healthy":
+                continue
+            if _docker.containers.get(self.zipline.name).health != "healthy":
                 continue
             break
         else:
