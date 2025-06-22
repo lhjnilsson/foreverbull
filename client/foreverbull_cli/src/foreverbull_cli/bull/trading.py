@@ -13,6 +13,7 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull_cli.output import FBProgress
 from foreverbull_cli.output import console
 
 
@@ -104,10 +105,16 @@ def run(
     _backtest = broker.backtest.get(backtest_name)
     symbols = [s for s in _backtest.symbols]
     portfolio = broker.finance.get_portfolio()
-    live = Live(Progress())
-    with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(symbols) as session:
-        with live:
+
+    with FBProgress() as progress:
+        setup_task = progress.add_task("Setting Up", total=2)
+        run_task = progress.add_task("Running Trading", total=2)
+        progress.update(setup_task, completed=1)
+        with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(symbols) as session:
+            progress.update(setup_task, completed=2)
+            progress.update(run_task, completed=1)
             orders, place_orders = session.run_trading(symbols)
+            progress.update(run_task, completed=2)
 
             items = PositionAndOrder.parse([p for p in portfolio.portfolio.positions], orders)
             orders_table = Table(title="Positions and Orders")
@@ -121,14 +128,22 @@ def run(
                 orders_table.add_row(
                     item.symbol, item.amount, item.cost_basis, item.order_type, item.time_in_force, item.position_intent
                 )
+
+            # Clean up terminal
+            progress.remove_task(setup_task)
+            progress.remove_task(run_task)
+
             console.print(orders_table)
 
-        place_order = typer.confirm("Place order?")
-        if place_order:
-            rsp = place_orders(orders)
-            print("RSP: ", rsp)
-        else:
-            print("NOT PLACING ORDER")
+            progress.stop()
+            place_order = typer.confirm("Place order?")
+            progress.start()
+
+            if place_order:
+                place_orders_task = progress.add_task("Placing Orders", total=2)
+                progress.update(place_orders_task, completed=1)
+                place_orders(orders)
+                progress.update(place_orders_task, completed=2)
 
 
 @trading.command()
