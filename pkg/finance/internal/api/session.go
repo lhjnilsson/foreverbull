@@ -64,14 +64,18 @@ func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest)
 	}, nil
 }
 
-func (gs *grpcSessionServer) GetPendingOrders(ctx context.Context, req *servicePb.GetPendingOrdersRequest) (*servicePb.GetPendingOrdersResponse, error) {
-	return &servicePb.GetPendingOrdersResponse{
-		Orders: gs.orders,
-	}, nil
-}
-
 func (gs *grpcSessionServer) PlaceOrders(ctx context.Context, req *servicePb.PlaceOrderRequest) (*servicePb.PlaceOrderResponse, error) {
-	return nil, nil
+	rsp := &servicePb.PlaceOrderResponse{
+		Orders: make([]*pb.Order, len(req.Orders)),
+	}
+	for i, order := range req.Orders {
+		_, err := gs.trading.PlaceOrder(order)
+		if err != nil {
+			return nil, err
+		}
+		rsp.Orders[i] = order
+	}
+	return rsp, nil
 }
 
 func (gs *grpcSessionServer) StopServer(ctx context.Context, req *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {

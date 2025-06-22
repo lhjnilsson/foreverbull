@@ -536,45 +536,7 @@ func (x *RunResponse) GetOrders() []*finance.Order {
 	return nil
 }
 
-type GetPendingOrdersRequest struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-}
-
-func (x *GetPendingOrdersRequest) Reset() {
-	*x = GetPendingOrdersRequest{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[10]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *GetPendingOrdersRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetPendingOrdersRequest) ProtoMessage() {}
-
-func (x *GetPendingOrdersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[10]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetPendingOrdersRequest.ProtoReflect.Descriptor instead.
-func (*GetPendingOrdersRequest) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{10}
-}
-
-type GetPendingOrdersResponse struct {
+type PlaceOrderRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -582,55 +544,10 @@ type GetPendingOrdersResponse struct {
 	Orders []*finance.Order `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
 }
 
-func (x *GetPendingOrdersResponse) Reset() {
-	*x = GetPendingOrdersResponse{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[11]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *GetPendingOrdersResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetPendingOrdersResponse) ProtoMessage() {}
-
-func (x *GetPendingOrdersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[11]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetPendingOrdersResponse.ProtoReflect.Descriptor instead.
-func (*GetPendingOrdersResponse) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *GetPendingOrdersResponse) GetOrders() []*finance.Order {
-	if x != nil {
-		return x.Orders
-	}
-	return nil
-}
-
-type PlaceOrderRequest struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-}
-
 func (x *PlaceOrderRequest) Reset() {
 	*x = PlaceOrderRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[12]
+		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -643,7 +560,7 @@ func (x *PlaceOrderRequest) String() string {
 func (*PlaceOrderRequest) ProtoMessage() {}
 
 func (x *PlaceOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[12]
+	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,19 +573,28 @@ func (x *PlaceOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceOrderRequest.ProtoReflect.Descriptor instead.
 func (*PlaceOrderRequest) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{12}
+	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *PlaceOrderRequest) GetOrders() []*finance.Order {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
 }
 
 type PlaceOrderResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
+
+	Orders []*finance.Order `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
 }
 
 func (x *PlaceOrderResponse) Reset() {
 	*x = PlaceOrderResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[13]
+		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -681,7 +607,7 @@ func (x *PlaceOrderResponse) String() string {
 func (*PlaceOrderResponse) ProtoMessage() {}
 
 func (x *PlaceOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[13]
+	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -694,7 +620,14 @@ func (x *PlaceOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceOrderResponse.ProtoReflect.Descriptor instead.
 func (*PlaceOrderResponse) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{13}
+	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PlaceOrderResponse) GetOrders() []*finance.Order {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
 }
 
 type StopServerRequest struct {
@@ -706,7 +639,7 @@ type StopServerRequest struct {
 func (x *StopServerRequest) Reset() {
 	*x = StopServerRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[14]
+		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -719,7 +652,7 @@ func (x *StopServerRequest) String() string {
 func (*StopServerRequest) ProtoMessage() {}
 
 func (x *StopServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[14]
+	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -732,7 +665,7 @@ func (x *StopServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServerRequest.ProtoReflect.Descriptor instead.
 func (*StopServerRequest) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{14}
+	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{12}
 }
 
 type StopServerResponse struct {
@@ -744,7 +677,7 @@ type StopServerResponse struct {
 func (x *StopServerResponse) Reset() {
 	*x = StopServerResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[15]
+		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -757,7 +690,7 @@ func (x *StopServerResponse) String() string {
 func (*StopServerResponse) ProtoMessage() {}
 
 func (x *StopServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[15]
+	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,7 +703,7 @@ func (x *StopServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServerResponse.ProtoReflect.Descriptor instead.
 func (*StopServerResponse) Descriptor() ([]byte, []int) {
-	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{15}
+	return file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP(), []int{13}
 }
 
 type CreateSessionResponse_Status struct {
@@ -785,7 +718,7 @@ type CreateSessionResponse_Status struct {
 func (x *CreateSessionResponse_Status) Reset() {
 	*x = CreateSessionResponse_Status{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[16]
+		mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -798,7 +731,7 @@ func (x *CreateSessionResponse_Status) String() string {
 func (*CreateSessionResponse_Status) ProtoMessage() {}
 
 func (x *CreateSessionResponse_Status) ProtoReflect() protoreflect.Message {
-	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[16]
+	mi := &file_foreverbull_finance_service_v1_trading_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,16 +841,16 @@ var file_foreverbull_finance_service_v1_trading_proto_rawDesc = []byte{
 	0x0a, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d,
 	0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e,
 	0x61, 0x6e, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x06, 0x6f,
-	0x72, 0x64, 0x65, 0x72, 0x73, 0x22, 0x19, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x50, 0x65, 0x6e, 0x64,
-	0x69, 0x6e, 0x67, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x22, 0x51, 0x0a, 0x18, 0x47, 0x65, 0x74, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4f, 0x72,
-	0x64, 0x65, 0x72, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x35, 0x0a, 0x06,
-	0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x66,
-	0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e,
-	0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x06, 0x6f, 0x72, 0x64,
-	0x65, 0x72, 0x73, 0x22, 0x13, 0x0a, 0x11, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65,
-	0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x14, 0x0a, 0x12, 0x50, 0x6c, 0x61, 0x63,
-	0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x13,
+	0x72, 0x64, 0x65, 0x72, 0x73, 0x22, 0x4a, 0x0a, 0x11, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72,
+	0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x35, 0x0a, 0x06, 0x6f, 0x72,
+	0x64, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x66, 0x6f, 0x72,
+	0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65,
+	0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72,
+	0x73, 0x22, 0x4b, 0x0a, 0x12, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x35, 0x0a, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72,
+	0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65,
+	0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x76, 0x31,
+	0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x06, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x22, 0x13,
 	0x0a, 0x11, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75,
 	0x65, 0x73, 0x74, 0x22, 0x14, 0x0a, 0x12, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65,
 	0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x85, 0x03, 0x0a, 0x0f, 0x54, 0x72,
@@ -945,7 +878,7 @@ var file_foreverbull_finance_service_v1_trading_proto_rawDesc = []byte{
 	0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72,
 	0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x65,
 	0x73, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x30,
-	0x01, 0x32, 0xe0, 0x04, 0x0a, 0x0f, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72,
+	0x01, 0x32, 0xd6, 0x03, 0x0a, 0x0f, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72,
 	0x76, 0x69, 0x63, 0x65, 0x72, 0x12, 0x72, 0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75,
 	0x72, 0x65, 0x12, 0x30, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c,
 	0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
@@ -959,35 +892,26 @@ var file_foreverbull_finance_service_v1_trading_proto_rawDesc = []byte{
 	0x31, 0x2e, 0x52, 0x75, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x66,
 	0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e,
 	0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x75,
-	0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x87, 0x01, 0x0a, 0x10,
-	0x47, 0x65, 0x74, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73,
-	0x12, 0x37, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66,
-	0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76,
-	0x31, 0x2e, 0x47, 0x65, 0x74, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4f, 0x72, 0x64, 0x65,
-	0x72, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x38, 0x2e, 0x66, 0x6f, 0x72, 0x65,
-	0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e,
-	0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x50, 0x65,
-	0x6e, 0x64, 0x69, 0x6e, 0x67, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x76, 0x0a, 0x0b, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72,
-	0x64, 0x65, 0x72, 0x73, 0x12, 0x31, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75,
+	0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x76, 0x0a, 0x0b, 0x50,
+	0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x12, 0x31, 0x2e, 0x66, 0x6f, 0x72,
+	0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65,
+	0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x6c, 0x61, 0x63,
+	0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x32, 0x2e,
+	0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61,
+	0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x50,
+	0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x22, 0x00, 0x12, 0x75, 0x0a, 0x0a, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65,
+	0x72, 0x12, 0x31, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e,
+	0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e,
+	0x76, 0x31, 0x2e, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x32, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75,
 	0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69,
-	0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x32, 0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65,
-	0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65,
-	0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x6c, 0x61, 0x63, 0x65, 0x4f, 0x72,
-	0x64, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x75, 0x0a,
-	0x0a, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x12, 0x31, 0x2e, 0x66, 0x6f,
-	0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63,
-	0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x74, 0x6f,
-	0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x32,
-	0x2e, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2e, 0x66, 0x69, 0x6e,
-	0x61, 0x6e, 0x63, 0x65, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e,
-	0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x22, 0x00, 0x42, 0x3a, 0x5a, 0x38, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
-	0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a, 0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f,
-	0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x62,
-	0x2f, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2f, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x3a, 0x5a, 0x38, 0x67, 0x69,
+	0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a, 0x6e, 0x69, 0x6c, 0x73,
+	0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2f,
+	0x70, 0x6b, 0x67, 0x2f, 0x70, 0x62, 0x2f, 0x66, 0x69, 0x6e, 0x61, 0x6e, 0x63, 0x65, 0x2f, 0x73,
+	0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1003,7 +927,7 @@ func file_foreverbull_finance_service_v1_trading_proto_rawDescGZIP() []byte {
 }
 
 var file_foreverbull_finance_service_v1_trading_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_foreverbull_finance_service_v1_trading_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_foreverbull_finance_service_v1_trading_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_foreverbull_finance_service_v1_trading_proto_goTypes = []any{
 	(CreateSessionResponse_Step)(0),        // 0: foreverbull.finance.service.v1.CreateSessionResponse.Step
 	(*GetPortfolioRequest)(nil),            // 1: foreverbull.finance.service.v1.GetPortfolioRequest
@@ -1016,52 +940,49 @@ var file_foreverbull_finance_service_v1_trading_proto_goTypes = []any{
 	(*ConfigureResponse)(nil),              // 8: foreverbull.finance.service.v1.ConfigureResponse
 	(*RunRequest)(nil),                     // 9: foreverbull.finance.service.v1.RunRequest
 	(*RunResponse)(nil),                    // 10: foreverbull.finance.service.v1.RunResponse
-	(*GetPendingOrdersRequest)(nil),        // 11: foreverbull.finance.service.v1.GetPendingOrdersRequest
-	(*GetPendingOrdersResponse)(nil),       // 12: foreverbull.finance.service.v1.GetPendingOrdersResponse
-	(*PlaceOrderRequest)(nil),              // 13: foreverbull.finance.service.v1.PlaceOrderRequest
-	(*PlaceOrderResponse)(nil),             // 14: foreverbull.finance.service.v1.PlaceOrderResponse
-	(*StopServerRequest)(nil),              // 15: foreverbull.finance.service.v1.StopServerRequest
-	(*StopServerResponse)(nil),             // 16: foreverbull.finance.service.v1.StopServerResponse
-	(*CreateSessionResponse_Status)(nil),   // 17: foreverbull.finance.service.v1.CreateSessionResponse.Status
-	(*finance.Portfolio)(nil),              // 18: foreverbull.finance.v1.Portfolio
-	(*finance.Order)(nil),                  // 19: foreverbull.finance.v1.Order
-	(*finance.Session)(nil),                // 20: foreverbull.finance.v1.Session
-	(*service.Algorithm)(nil),              // 21: foreverbull.service.v1.Algorithm
-	(*service.ExecutionConfiguration)(nil), // 22: foreverbull.service.v1.ExecutionConfiguration
-	(pb.State)(0),                          // 23: foreverbull.common.State
+	(*PlaceOrderRequest)(nil),              // 11: foreverbull.finance.service.v1.PlaceOrderRequest
+	(*PlaceOrderResponse)(nil),             // 12: foreverbull.finance.service.v1.PlaceOrderResponse
+	(*StopServerRequest)(nil),              // 13: foreverbull.finance.service.v1.StopServerRequest
+	(*StopServerResponse)(nil),             // 14: foreverbull.finance.service.v1.StopServerResponse
+	(*CreateSessionResponse_Status)(nil),   // 15: foreverbull.finance.service.v1.CreateSessionResponse.Status
+	(*finance.Portfolio)(nil),              // 16: foreverbull.finance.v1.Portfolio
+	(*finance.Order)(nil),                  // 17: foreverbull.finance.v1.Order
+	(*finance.Session)(nil),                // 18: foreverbull.finance.v1.Session
+	(*service.Algorithm)(nil),              // 19: foreverbull.service.v1.Algorithm
+	(*service.ExecutionConfiguration)(nil), // 20: foreverbull.service.v1.ExecutionConfiguration
+	(pb.State)(0),                          // 21: foreverbull.common.State
 }
 var file_foreverbull_finance_service_v1_trading_proto_depIdxs = []int32{
-	18, // 0: foreverbull.finance.service.v1.GetPortfolioResponse.portfolio:type_name -> foreverbull.finance.v1.Portfolio
-	19, // 1: foreverbull.finance.service.v1.GetOrdersResponse.orders:type_name -> foreverbull.finance.v1.Order
-	20, // 2: foreverbull.finance.service.v1.CreateSessionResponse.session:type_name -> foreverbull.finance.v1.Session
-	17, // 3: foreverbull.finance.service.v1.CreateSessionResponse.status:type_name -> foreverbull.finance.service.v1.CreateSessionResponse.Status
-	21, // 4: foreverbull.finance.service.v1.ConfigureRequest.algorithm:type_name -> foreverbull.service.v1.Algorithm
-	22, // 5: foreverbull.finance.service.v1.ConfigureResponse.configuration:type_name -> foreverbull.service.v1.ExecutionConfiguration
-	19, // 6: foreverbull.finance.service.v1.RunResponse.orders:type_name -> foreverbull.finance.v1.Order
-	19, // 7: foreverbull.finance.service.v1.GetPendingOrdersResponse.orders:type_name -> foreverbull.finance.v1.Order
-	0,  // 8: foreverbull.finance.service.v1.CreateSessionResponse.Status.step:type_name -> foreverbull.finance.service.v1.CreateSessionResponse.Step
-	23, // 9: foreverbull.finance.service.v1.CreateSessionResponse.Status.state:type_name -> foreverbull.common.State
-	1,  // 10: foreverbull.finance.service.v1.TradingServicer.GetPortfolio:input_type -> foreverbull.finance.service.v1.GetPortfolioRequest
-	3,  // 11: foreverbull.finance.service.v1.TradingServicer.GetOrders:input_type -> foreverbull.finance.service.v1.GetOrdersRequest
-	5,  // 12: foreverbull.finance.service.v1.TradingServicer.CreateSession:input_type -> foreverbull.finance.service.v1.CreateSessionRequest
-	7,  // 13: foreverbull.finance.service.v1.SessionServicer.Configure:input_type -> foreverbull.finance.service.v1.ConfigureRequest
-	9,  // 14: foreverbull.finance.service.v1.SessionServicer.Run:input_type -> foreverbull.finance.service.v1.RunRequest
-	11, // 15: foreverbull.finance.service.v1.SessionServicer.GetPendingOrders:input_type -> foreverbull.finance.service.v1.GetPendingOrdersRequest
-	13, // 16: foreverbull.finance.service.v1.SessionServicer.PlaceOrders:input_type -> foreverbull.finance.service.v1.PlaceOrderRequest
-	15, // 17: foreverbull.finance.service.v1.SessionServicer.StopServer:input_type -> foreverbull.finance.service.v1.StopServerRequest
+	16, // 0: foreverbull.finance.service.v1.GetPortfolioResponse.portfolio:type_name -> foreverbull.finance.v1.Portfolio
+	17, // 1: foreverbull.finance.service.v1.GetOrdersResponse.orders:type_name -> foreverbull.finance.v1.Order
+	18, // 2: foreverbull.finance.service.v1.CreateSessionResponse.session:type_name -> foreverbull.finance.v1.Session
+	15, // 3: foreverbull.finance.service.v1.CreateSessionResponse.status:type_name -> foreverbull.finance.service.v1.CreateSessionResponse.Status
+	19, // 4: foreverbull.finance.service.v1.ConfigureRequest.algorithm:type_name -> foreverbull.service.v1.Algorithm
+	20, // 5: foreverbull.finance.service.v1.ConfigureResponse.configuration:type_name -> foreverbull.service.v1.ExecutionConfiguration
+	17, // 6: foreverbull.finance.service.v1.RunResponse.orders:type_name -> foreverbull.finance.v1.Order
+	17, // 7: foreverbull.finance.service.v1.PlaceOrderRequest.orders:type_name -> foreverbull.finance.v1.Order
+	17, // 8: foreverbull.finance.service.v1.PlaceOrderResponse.orders:type_name -> foreverbull.finance.v1.Order
+	0,  // 9: foreverbull.finance.service.v1.CreateSessionResponse.Status.step:type_name -> foreverbull.finance.service.v1.CreateSessionResponse.Step
+	21, // 10: foreverbull.finance.service.v1.CreateSessionResponse.Status.state:type_name -> foreverbull.common.State
+	1,  // 11: foreverbull.finance.service.v1.TradingServicer.GetPortfolio:input_type -> foreverbull.finance.service.v1.GetPortfolioRequest
+	3,  // 12: foreverbull.finance.service.v1.TradingServicer.GetOrders:input_type -> foreverbull.finance.service.v1.GetOrdersRequest
+	5,  // 13: foreverbull.finance.service.v1.TradingServicer.CreateSession:input_type -> foreverbull.finance.service.v1.CreateSessionRequest
+	7,  // 14: foreverbull.finance.service.v1.SessionServicer.Configure:input_type -> foreverbull.finance.service.v1.ConfigureRequest
+	9,  // 15: foreverbull.finance.service.v1.SessionServicer.Run:input_type -> foreverbull.finance.service.v1.RunRequest
+	11, // 16: foreverbull.finance.service.v1.SessionServicer.PlaceOrders:input_type -> foreverbull.finance.service.v1.PlaceOrderRequest
+	13, // 17: foreverbull.finance.service.v1.SessionServicer.StopServer:input_type -> foreverbull.finance.service.v1.StopServerRequest
 	2,  // 18: foreverbull.finance.service.v1.TradingServicer.GetPortfolio:output_type -> foreverbull.finance.service.v1.GetPortfolioResponse
 	4,  // 19: foreverbull.finance.service.v1.TradingServicer.GetOrders:output_type -> foreverbull.finance.service.v1.GetOrdersResponse
 	6,  // 20: foreverbull.finance.service.v1.TradingServicer.CreateSession:output_type -> foreverbull.finance.service.v1.CreateSessionResponse
 	8,  // 21: foreverbull.finance.service.v1.SessionServicer.Configure:output_type -> foreverbull.finance.service.v1.ConfigureResponse
 	10, // 22: foreverbull.finance.service.v1.SessionServicer.Run:output_type -> foreverbull.finance.service.v1.RunResponse
-	12, // 23: foreverbull.finance.service.v1.SessionServicer.GetPendingOrders:output_type -> foreverbull.finance.service.v1.GetPendingOrdersResponse
-	14, // 24: foreverbull.finance.service.v1.SessionServicer.PlaceOrders:output_type -> foreverbull.finance.service.v1.PlaceOrderResponse
-	16, // 25: foreverbull.finance.service.v1.SessionServicer.StopServer:output_type -> foreverbull.finance.service.v1.StopServerResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	12, // 23: foreverbull.finance.service.v1.SessionServicer.PlaceOrders:output_type -> foreverbull.finance.service.v1.PlaceOrderResponse
+	14, // 24: foreverbull.finance.service.v1.SessionServicer.StopServer:output_type -> foreverbull.finance.service.v1.StopServerResponse
+	18, // [18:25] is the sub-list for method output_type
+	11, // [11:18] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_foreverbull_finance_service_v1_trading_proto_init() }
@@ -1191,30 +1112,6 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 			}
 		}
 		file_foreverbull_finance_service_v1_trading_proto_msgTypes[10].Exporter = func(v any, i int) any {
-			switch v := v.(*GetPendingOrdersRequest); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[11].Exporter = func(v any, i int) any {
-			switch v := v.(*GetPendingOrdersResponse); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[12].Exporter = func(v any, i int) any {
 			switch v := v.(*PlaceOrderRequest); i {
 			case 0:
 				return &v.state
@@ -1226,7 +1123,7 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 				return nil
 			}
 		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[13].Exporter = func(v any, i int) any {
+		file_foreverbull_finance_service_v1_trading_proto_msgTypes[11].Exporter = func(v any, i int) any {
 			switch v := v.(*PlaceOrderResponse); i {
 			case 0:
 				return &v.state
@@ -1238,7 +1135,7 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 				return nil
 			}
 		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[14].Exporter = func(v any, i int) any {
+		file_foreverbull_finance_service_v1_trading_proto_msgTypes[12].Exporter = func(v any, i int) any {
 			switch v := v.(*StopServerRequest); i {
 			case 0:
 				return &v.state
@@ -1250,7 +1147,7 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 				return nil
 			}
 		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[15].Exporter = func(v any, i int) any {
+		file_foreverbull_finance_service_v1_trading_proto_msgTypes[13].Exporter = func(v any, i int) any {
 			switch v := v.(*StopServerResponse); i {
 			case 0:
 				return &v.state
@@ -1262,7 +1159,7 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 				return nil
 			}
 		}
-		file_foreverbull_finance_service_v1_trading_proto_msgTypes[16].Exporter = func(v any, i int) any {
+		file_foreverbull_finance_service_v1_trading_proto_msgTypes[14].Exporter = func(v any, i int) any {
 			switch v := v.(*CreateSessionResponse_Status); i {
 			case 0:
 				return &v.state
@@ -1281,7 +1178,7 @@ func file_foreverbull_finance_service_v1_trading_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_foreverbull_finance_service_v1_trading_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

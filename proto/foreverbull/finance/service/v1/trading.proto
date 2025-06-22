@@ -70,15 +70,13 @@ message RunResponse {
   repeated foreverbull.finance.v1.Order orders = 1;
 }
 
-message GetPendingOrdersRequest {}
-
-message GetPendingOrdersResponse {
+message PlaceOrderRequest {
   repeated foreverbull.finance.v1.Order orders = 1;
 }
 
-message PlaceOrderRequest {}
-
-message PlaceOrderResponse {}
+message PlaceOrderResponse {
+  repeated foreverbull.finance.v1.Order orders = 1;
+}
 
 message StopServerRequest {}
 
@@ -87,7 +85,6 @@ message StopServerResponse {}
 service SessionServicer {
   rpc Configure(ConfigureRequest) returns (ConfigureResponse) {}
   rpc Run(RunRequest) returns (RunResponse) {}
-  rpc GetPendingOrders(GetPendingOrdersRequest) returns (GetPendingOrdersResponse) {}
   rpc PlaceOrders(PlaceOrderRequest) returns (PlaceOrderResponse) {}
   rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
 }

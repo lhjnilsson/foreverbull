@@ -43,36 +43,6 @@ func (_m *MockSessionServicerServer) Configure(_a0 context.Context, _a1 *Configu
 	return r0, r1
 }
 
-// GetPendingOrders provides a mock function with given fields: _a0, _a1
-func (_m *MockSessionServicerServer) GetPendingOrders(_a0 context.Context, _a1 *GetPendingOrdersRequest) (*GetPendingOrdersResponse, error) {
-	ret := _m.Called(_a0, _a1)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetPendingOrders")
-	}
-
-	var r0 *GetPendingOrdersResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *GetPendingOrdersRequest) (*GetPendingOrdersResponse, error)); ok {
-		return rf(_a0, _a1)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *GetPendingOrdersRequest) *GetPendingOrdersResponse); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*GetPendingOrdersResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *GetPendingOrdersRequest) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // PlaceOrders provides a mock function with given fields: _a0, _a1
 func (_m *MockSessionServicerServer) PlaceOrders(_a0 context.Context, _a1 *PlaceOrderRequest) (*PlaceOrderResponse, error) {
 	ret := _m.Called(_a0, _a1)

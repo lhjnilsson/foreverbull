@@ -1,4 +1,3 @@
-import os
 import tempfile
 import time
 import traceback
@@ -10,10 +9,6 @@ from unittest.mock import patch
 
 import grpc
 import pytest
-import typer
-
-from click.testing import Result
-from typer.testing import CliRunner
 
 from foreverbull.foreverbull import BacktestSession
 from foreverbull.foreverbull import Foreverbull
@@ -24,25 +19,6 @@ from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.backtest import backtest
-
-
-@pytest.fixture
-def runner():
-    runner = CliRunner()
-
-    def invoke(app: typer.Typer, args: list[str]) -> Result:
-        result = runner.invoke(app, args)
-        if result.exception:
-            raise result.exception
-
-        echo_stdout = os.environ.get("ECHO", False)
-        if echo_stdout:
-            print("")
-            print(result.stdout)
-
-        return result
-
-    return invoke
 
 
 def test_backtest_list(runner):
@@ -132,7 +108,7 @@ def start_grpc_server():
     grpc_server.stop(None)
 
 
-def test_backtest_run(runner, start_grpc_server):
+def test_backtest_run(runner):
     mock_backtest_session = MagicMock(spec=BacktestSession)
     mock_backtest_session.run_execution.return_value = iter([marketdata_pb2.Portfolio()])
 

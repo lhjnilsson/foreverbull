@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from contextlib import contextmanager
 from multiprocessing import Event
 from typing import Generator
@@ -16,6 +17,7 @@ from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2_grpc as trading_service_pb2_grpc
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
 from foreverbull.worker import WorkerPool
 
@@ -88,7 +90,7 @@ class TradingSession:
     def run_trading(
         self,
         symbols: list[str],
-    ):
+    ) -> tuple[list[marketdata_pb2.Order], Callable]:
         with WorkerPool(self._model._file_path) as wp:
             req = trading_service_pb2.ConfigureRequest(
                 algorithm=self._model.get_definition(),
@@ -100,7 +102,15 @@ class TradingSession:
                 symbols=symbols,
             )
             rsp = self._stub.Run(req)
-            return rsp.orders
+
+            def place_orders(orders: list[marketdata_pb2.Order]):
+                req = trading_service_pb2.PlaceOrderRequest(
+                    orders=orders,
+                )
+                rsp = self._stub.PlaceOrders(req)
+                return rsp
+
+            return rsp.orders, place_orders
 
 
 class Foreverbull:

@@ -201,11 +201,10 @@ var TradingServicer_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SessionServicer_Configure_FullMethodName        = "/foreverbull.finance.service.v1.SessionServicer/Configure"
-	SessionServicer_Run_FullMethodName              = "/foreverbull.finance.service.v1.SessionServicer/Run"
-	SessionServicer_GetPendingOrders_FullMethodName = "/foreverbull.finance.service.v1.SessionServicer/GetPendingOrders"
-	SessionServicer_PlaceOrders_FullMethodName      = "/foreverbull.finance.service.v1.SessionServicer/PlaceOrders"
-	SessionServicer_StopServer_FullMethodName       = "/foreverbull.finance.service.v1.SessionServicer/StopServer"
+	SessionServicer_Configure_FullMethodName   = "/foreverbull.finance.service.v1.SessionServicer/Configure"
+	SessionServicer_Run_FullMethodName         = "/foreverbull.finance.service.v1.SessionServicer/Run"
+	SessionServicer_PlaceOrders_FullMethodName = "/foreverbull.finance.service.v1.SessionServicer/PlaceOrders"
+	SessionServicer_StopServer_FullMethodName  = "/foreverbull.finance.service.v1.SessionServicer/StopServer"
 )
 
 // SessionServicerClient is the client API for SessionServicer service.
@@ -214,7 +213,6 @@ const (
 type SessionServicerClient interface {
 	Configure(ctx context.Context, in *ConfigureRequest, opts ...grpc.CallOption) (*ConfigureResponse, error)
 	Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error)
-	GetPendingOrders(ctx context.Context, in *GetPendingOrdersRequest, opts ...grpc.CallOption) (*GetPendingOrdersResponse, error)
 	PlaceOrders(ctx context.Context, in *PlaceOrderRequest, opts ...grpc.CallOption) (*PlaceOrderResponse, error)
 	StopServer(ctx context.Context, in *StopServerRequest, opts ...grpc.CallOption) (*StopServerResponse, error)
 }
@@ -247,16 +245,6 @@ func (c *sessionServicerClient) Run(ctx context.Context, in *RunRequest, opts ..
 	return out, nil
 }
 
-func (c *sessionServicerClient) GetPendingOrders(ctx context.Context, in *GetPendingOrdersRequest, opts ...grpc.CallOption) (*GetPendingOrdersResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetPendingOrdersResponse)
-	err := c.cc.Invoke(ctx, SessionServicer_GetPendingOrders_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *sessionServicerClient) PlaceOrders(ctx context.Context, in *PlaceOrderRequest, opts ...grpc.CallOption) (*PlaceOrderResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PlaceOrderResponse)
@@ -283,7 +271,6 @@ func (c *sessionServicerClient) StopServer(ctx context.Context, in *StopServerRe
 type SessionServicerServer interface {
 	Configure(context.Context, *ConfigureRequest) (*ConfigureResponse, error)
 	Run(context.Context, *RunRequest) (*RunResponse, error)
-	GetPendingOrders(context.Context, *GetPendingOrdersRequest) (*GetPendingOrdersResponse, error)
 	PlaceOrders(context.Context, *PlaceOrderRequest) (*PlaceOrderResponse, error)
 	StopServer(context.Context, *StopServerRequest) (*StopServerResponse, error)
 	mustEmbedUnimplementedSessionServicerServer()
@@ -301,9 +288,6 @@ func (UnimplementedSessionServicerServer) Configure(context.Context, *ConfigureR
 }
 func (UnimplementedSessionServicerServer) Run(context.Context, *RunRequest) (*RunResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
-}
-func (UnimplementedSessionServicerServer) GetPendingOrders(context.Context, *GetPendingOrdersRequest) (*GetPendingOrdersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPendingOrders not implemented")
 }
 func (UnimplementedSessionServicerServer) PlaceOrders(context.Context, *PlaceOrderRequest) (*PlaceOrderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PlaceOrders not implemented")
@@ -368,24 +352,6 @@ func _SessionServicer_Run_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SessionServicer_GetPendingOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPendingOrdersRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SessionServicerServer).GetPendingOrders(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SessionServicer_GetPendingOrders_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SessionServicerServer).GetPendingOrders(ctx, req.(*GetPendingOrdersRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _SessionServicer_PlaceOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PlaceOrderRequest)
 	if err := dec(in); err != nil {
@@ -436,10 +402,6 @@ var SessionServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Run",
 			Handler:    _SessionServicer_Run_Handler,
-		},
-		{
-			MethodName: "GetPendingOrders",
-			Handler:    _SessionServicer_GetPendingOrders_Handler,
 		},
 		{
 			MethodName: "PlaceOrders",

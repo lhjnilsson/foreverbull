@@ -202,11 +202,6 @@ class SessionServicerStub(object):
                 request_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunResponse.FromString,
                 _registered_method=True)
-        self.GetPendingOrders = channel.unary_unary(
-                '/foreverbull.finance.service.v1.SessionServicer/GetPendingOrders',
-                request_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersResponse.FromString,
-                _registered_method=True)
         self.PlaceOrders = channel.unary_unary(
                 '/foreverbull.finance.service.v1.SessionServicer/PlaceOrders',
                 request_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.PlaceOrderRequest.SerializeToString,
@@ -229,12 +224,6 @@ class SessionServicerServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Run(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetPendingOrders(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -264,11 +253,6 @@ def add_SessionServicerServicer_to_server(servicer, server):
                     servicer.Run,
                     request_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunRequest.FromString,
                     response_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunResponse.SerializeToString,
-            ),
-            'GetPendingOrders': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetPendingOrders,
-                    request_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersRequest.FromString,
-                    response_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersResponse.SerializeToString,
             ),
             'PlaceOrders': grpc.unary_unary_rpc_method_handler(
                     servicer.PlaceOrders,
@@ -335,33 +319,6 @@ class SessionServicer(object):
             '/foreverbull.finance.service.v1.SessionServicer/Run',
             foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunRequest.SerializeToString,
             foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.RunResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetPendingOrders(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/foreverbull.finance.service.v1.SessionServicer/GetPendingOrders',
-            foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersRequest.SerializeToString,
-            foreverbull_dot_finance_dot_service_dot_v1_dot_trading__pb2.GetPendingOrdersResponse.FromString,
             options,
             channel_credentials,
             insecure,
