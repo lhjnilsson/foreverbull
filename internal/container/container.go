@@ -34,20 +34,6 @@ type container struct {
 	container types.ContainerJSON
 }
 
-func GetContainer(ctx context.Context, containerID string) (Container, error) {
-	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return nil, fmt.Errorf("error creating docker client: %w", err)
-	}
-
-	cont, err := client.ContainerInspect(ctx, containerID)
-	if err != nil {
-		return nil, fmt.Errorf("error inspecting container: %w", err)
-	}
-
-	return &container{client: client, container: cont}, nil
-}
-
 func (c *container) GetStatus() (string, error) {
 	container, err := c.client.ContainerInspect(context.Background(), c.container.ID)
 	if err != nil {
@@ -111,8 +97,7 @@ func NewEngine() (Engine, error) {
 }
 
 type Engine interface {
-	PullImage() error
-
+	Get(ctx context.Context, name string) (Container, error)
 	Start(ctx context.Context, image, name string) (Container, error)
 	StopAll(ctx context.Context, remove bool) error
 }
@@ -121,8 +106,18 @@ type engine struct {
 	client *client.Client
 }
 
-func (e *engine) PullImage() error {
-	return nil
+func (e *engine) Get(ctx context.Context, containerId string) (Container, error) {
+	client, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, fmt.Errorf("error creating docker client: %w", err)
+	}
+
+	cont, err := client.ContainerInspect(ctx, containerId)
+	if err != nil {
+		return nil, fmt.Errorf("error inspecting container: %w", err)
+	}
+
+	return &container{client: client, container: cont}, nil
 }
 
 func (e *engine) Start(ctx context.Context, image string, name string) (Container, error) {
@@ -205,7 +200,7 @@ func (e *engine) Start(ctx context.Context, image string, name string) (Containe
 		}
 	}()
 
-	return GetContainer(ctx, resp.ID)
+	return e.Get(ctx, resp.ID)
 }
 
 func (e *engine) StopAll(ctx context.Context, _ bool) error {
@@ -220,7 +215,7 @@ func (e *engine) StopAll(ctx context.Context, _ bool) error {
 	}
 
 	for _, c := range containers {
-		c, err := GetContainer(ctx, c.ID)
+		c, err := e.Get(ctx, c.ID)
 		if err != nil {
 			return fmt.Errorf("error getting container: %w", err)
 		}

@@ -13,7 +13,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
 
 func SessionRun(ctx context.Context, msg stream.Message) error {
@@ -27,12 +29,14 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	repository := repository.Trading{Conn: db}
 
+	trading := msg.MustGet(dependency.TradingDep).(supplier.Trading)
+
 	_, err = repository.Get(ctx, cmd.Id)
 	if err != nil {
 		return fmt.Errorf("error getting session: %w", err)
 	}
 
-	server, activity, err := api.NewGRPCSessionServer()
+	server, activity, err := api.NewGRPCSessionServer(trading)
 	if err != nil {
 		return fmt.Errorf("error creating grpc session server: %w", err)
 	}

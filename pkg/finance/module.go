@@ -25,28 +25,45 @@ type Subscriber stream.Subscriber
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() (supplier.Marketdata, supplier.Trading, error) {
-			if environment.GetAlpacaAPIKey() == "" || environment.GetAlpacaAPISecret() == "" {
+		func() (supplier.Marketdata, error) {
+			switch environment.GetMarketDataProvider() {
+			case "alpaca":
+				marketData, err := marketdata.NewAlpacaClient()
+				if err != nil {
+					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+				}
+				return marketData, nil
+			case "yahoo":
 				marketData, err := marketdata.NewYahooClient()
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to create Yahoo client: %w", err)
+					return nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 				}
-				return marketData, nil, nil
+				return marketData, nil
+			default:
+				return nil, fmt.Errorf("unknown market data provider: %s", environment.GetMarketDataProvider())
 			}
-			marketData, err := marketdata.NewAlpacaClient()
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-			}
-			t, err := trading.NewAlpacaClient()
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-			}
-			return marketData, t, nil
 		},
-		func(conn *pgxpool.Pool, marketData supplier.Marketdata, _stream stream.Stream) (Subscriber, error) {
+		func() (supplier.Trading, error) {
+			if !environment.GetTradingEnabled() {
+				return nil, nil
+			}
+
+			switch environment.GetTradingProvider() {
+			case "alpaca":
+				t, err := trading.NewAlpacaClient()
+				if err != nil {
+					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
+				}
+				return t, nil
+			default:
+				return nil, fmt.Errorf("unknown trading provider: %s", environment.GetTradingProvider())
+			}
+		},
+		func(conn *pgxpool.Pool, marketData supplier.Marketdata, trading supplier.Trading, _stream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.MarketDataDep, marketData)
+			dc.AddSingleton(dependency.TradingDep, trading)
 			sub, err := _stream.NewSubscriber(StreamName, dc)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create subscriber: %w", err)

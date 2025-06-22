@@ -86,23 +86,17 @@ class RunResponse(_message.Message):
     orders: _containers.RepeatedCompositeFieldContainer[_marketdata_pb2.Order]
     def __init__(self, orders: _Optional[_Iterable[_Union[_marketdata_pb2.Order, _Mapping]]] = ...) -> None: ...
 
-class GetPendingOrdersRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetPendingOrdersResponse(_message.Message):
+class PlaceOrderRequest(_message.Message):
     __slots__ = ("orders",)
     ORDERS_FIELD_NUMBER: _ClassVar[int]
     orders: _containers.RepeatedCompositeFieldContainer[_marketdata_pb2.Order]
     def __init__(self, orders: _Optional[_Iterable[_Union[_marketdata_pb2.Order, _Mapping]]] = ...) -> None: ...
 
-class PlaceOrderRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
 class PlaceOrderResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+    __slots__ = ("orders",)
+    ORDERS_FIELD_NUMBER: _ClassVar[int]
+    orders: _containers.RepeatedCompositeFieldContainer[_marketdata_pb2.Order]
+    def __init__(self, orders: _Optional[_Iterable[_Union[_marketdata_pb2.Order, _Mapping]]] = ...) -> None: ...
 
 class StopServerRequest(_message.Message):
     __slots__ = ()

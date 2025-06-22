@@ -7,6 +7,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/suite"
@@ -25,6 +26,7 @@ type SessionTest struct {
 	activity <-chan bool
 
 	mockWorkers *worker.MockPool
+	mockTrading *supplier.MockTrading
 }
 
 func (test *SessionTest) SetupSuite() {
@@ -34,9 +36,10 @@ func (test *SessionTest) SetupSuite() {
 func (test *SessionTest) SetupTest() {
 	var err error
 	test.mockWorkers = new(worker.MockPool)
+	test.mockTrading = new(supplier.MockTrading)
 
 	test.listener = bufconn.Listen(1024 * 1024)
-	test.server, test.activity, err = api.NewGRPCSessionServer()
+	test.server, test.activity, err = api.NewGRPCSessionServer(test.mockTrading)
 	test.Require().NoError(err)
 	go func() {
 		if err := test.server.Serve(test.listener); err != nil {

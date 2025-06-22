@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/shopspring/decimal"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AlpacaClient struct {
@@ -72,6 +73,7 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 	}
 
 	return &pb.Portfolio{
+		Timestamp:      timestamppb.Now(),
 		Cash:           acc.Cash.InexactFloat64(),
 		PortfolioValue: acc.PortfolioValue.InexactFloat64(),
 		Positions:      positions,
@@ -86,16 +88,58 @@ func (c *AlpacaClient) PlaceOrder(order *pb.Order) (*pb.Order, error) {
 	} else {
 		side = alpaca.Buy
 	}
+	qty = qty.Abs()
 
-	_, err := c.client.PlaceOrder(alpaca.PlaceOrderRequest{
-		Symbol: order.Symbol,
-		Qty:    &qty,
-		Side:   side,
-	})
+	var orderType alpaca.OrderType
+	switch order.Type {
+	case pb.OrderType_ORDER_TYPE_MARKET:
+		orderType = alpaca.Market
+	case pb.OrderType_ORDER_TYPE_LIMIT:
+		orderType = alpaca.Limit
+	case pb.OrderType_ORDER_TYPE_UNSPECIFIED:
+		return nil, fmt.Errorf("unknown order type: %s", order.Type)
+	default:
+		return nil, fmt.Errorf("unknown order type: %s", order.Type)
+	}
+
+	var timeInForce alpaca.TimeInForce
+	switch order.TimeInForce {
+	case pb.TimeInForce_TIME_IN_FORCE_DAY:
+		timeInForce = alpaca.Day
+	case pb.TimeInForce_TIME_IN_FORCE_UNSPECIFIED:
+		return nil, fmt.Errorf("unknown time in force: %s", order.TimeInForce)
+	default:
+		return nil, fmt.Errorf("unknown time in force: %s", order.TimeInForce)
+	}
+
+	var intent alpaca.PositionIntent
+	switch order.Intent {
+	case pb.PositionIntent_POSITION_INTENT_BUY_TO_OPEN:
+		intent = alpaca.BuyToOpen
+	case pb.PositionIntent_POSITION_INTENT_SELL_TO_CLOSE:
+		intent = alpaca.SellToClose
+	case pb.PositionIntent_POSITION_INTENT_BUY_TO_CLOSE:
+		intent = alpaca.BuyToClose
+	case pb.PositionIntent_POSITION_INTENT_SELL_TO_OPEN:
+		intent = alpaca.SellToOpen
+	case pb.PositionIntent_POSITION_INTENT_UNSPECIFIED:
+		return nil, fmt.Errorf("unknown position intent: %s", order.Intent)
+	default:
+		return nil, fmt.Errorf("unknown position intent: %s", order.Intent)
+	}
+
+	req := alpaca.PlaceOrderRequest{
+		Symbol:         order.Symbol,
+		Qty:            &qty,
+		Side:           side,
+		Type:           orderType,
+		TimeInForce:    timeInForce,
+		PositionIntent: intent,
+	}
+	_, err := c.client.PlaceOrder(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to place order: %w", err)
 	}
-
 	return order, nil
 }
 

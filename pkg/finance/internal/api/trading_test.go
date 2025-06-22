@@ -173,3 +173,80 @@ func (test *TradingServerTest) TestCreateSession() {
 		test.Equal(int64(1337), *session.Port)
 	})
 }
+
+type TradingServerDisabledTest struct {
+	suite.Suite
+
+	listener *bufconn.Listener
+	server   *grpc.Server
+	client   servicePb.TradingServicerClient
+}
+
+func TestTradingServerDisabled(t *testing.T) {
+	suite.Run(t, new(TradingServerDisabledTest))
+}
+
+func (test *TradingServerDisabledTest) SetupSuite() {
+	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
+}
+
+func (test *TradingServerDisabledTest) SetupSubTest() {
+	var err error
+	test.listener = bufconn.Listen(1024 * 1024)
+	test.server, err = internalGrpc.NewServer()
+	test.Require().NoError(err)
+	server := api.NewTradingServer(nil, nil, nil)
+	servicePb.RegisterTradingServicerServer(test.server, server)
+
+	go func() {
+		test.NoError(test.server.Serve(test.listener))
+	}()
+
+	resolver.SetDefaultScheme("passthrough")
+
+	conn, err := grpc.NewClient(test.listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
+			return test.listener.Dial()
+		}),
+	)
+	if err != nil {
+		log.Printf("error connecting to server: %v", err)
+	}
+
+	test.client = servicePb.NewTradingServicerClient(conn)
+}
+
+func (test *TradingServerDisabledTest) TestGetOrders() {
+	test.Run("error getting orders", func() {
+		req := &servicePb.GetOrdersRequest{}
+		rsp, err := test.client.GetOrders(context.Background(), req)
+		test.Require().Error(err)
+		test.Require().ErrorContains(err, "trading is not enabled")
+		test.Require().Nil(rsp)
+	})
+}
+
+func (test *TradingServerDisabledTest) TestGetPortfolio() {
+	test.Run("error getting portfolio", func() {
+		req := &servicePb.GetPortfolioRequest{}
+		rsp, err := test.client.GetPortfolio(context.Background(), req)
+		test.Require().Error(err)
+		test.Require().ErrorContains(err, "trading is not enabled")
+		test.Require().Nil(rsp)
+	})
+}
+
+func (test *TradingServerDisabledTest) TestCreateSession() {
+	test.Run("error creating session", func() {
+		req := &servicePb.CreateSessionRequest{}
+		rsp, err := test.client.CreateSession(context.Background(), req)
+		test.Require().NoError(err)
+		test.Require().NotNil(rsp)
+
+		msg, err := rsp.Recv()
+		test.Require().Nil(msg)
+		test.Require().Error(err)
+		test.Require().ErrorContains(err, "trading is not enabled")
+	})
+}

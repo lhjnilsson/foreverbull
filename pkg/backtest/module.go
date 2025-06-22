@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,13 +25,13 @@ import (
 const StreamName = "backtest"
 
 type (
-	Subscriber         stream.Subscriber
-	DependecyContainer stream.DependencyContainer
+	Subscriber          stream.Subscriber
+	DependencyContainer stream.DependencyContainer
 )
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine, _stream stream.Stream) (Subscriber, DependecyContainer, error) {
+		func(conn *pgxpool.Pool, st storage.Storage, ce container.Engine, _stream stream.Stream) (Subscriber, DependencyContainer, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(stream.StorageDep, st)
@@ -44,6 +43,24 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 			return sub, dc, nil
 		},
+		func(ce container.Engine) (engine.Engine, error) {
+			container, err := ce.Get(context.Background(), environment.GetZiplineContainerName())
+			if err != nil {
+				return nil, fmt.Errorf("failed to get container for zipline: %w", err)
+			}
+			health, err := container.GetHealth()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get health for zipline container: %w", err)
+			}
+			if health != types.Healthy {
+				return nil, errors.New("zipline container is unhealthy")
+			}
+			engine, err := backtest.NewZiplineEngine(context.Background(), container, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create zipline engine: %w", err)
+			}
+			return engine, nil
+		},
 	),
 	fx.Invoke(
 		func(g *grpc.Server, pgx *pgxpool.Pool, s stream.Stream, st storage.Storage) error {
@@ -54,39 +71,16 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.TODO(), conn)
 		},
-		func(lc fx.Lifecycle, sub Subscriber, containers container.Engine, dependencies DependecyContainer) error {
+		func(lc fx.Lifecycle, sub Subscriber, backtestEngine engine.Engine, dependencies DependencyContainer) error {
 			var backtestContainer container.Container
-			var backtestEngine engine.Engine
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					var err error
-					backtestContainer, err = containers.Start(ctx, environment.GetBacktestImage(), "")
-					if err != nil {
-						return fmt.Errorf("error starting container: %w", err)
-					}
-
-					for range 30 {
-						health, err := backtestContainer.GetHealth()
-						if err != nil {
-							return fmt.Errorf("error getting container health: %w", err)
-						}
-						if health == types.Healthy {
-							break
-						} else if health == types.Unhealthy {
-							return errors.New("container is unhealthy")
-						}
-						time.Sleep(time.Second / 3) //nolint: gomnd
-					}
-					backtestEngine, err = backtest.NewZiplineEngine(ctx, backtestContainer, nil)
-					if err != nil {
-						return fmt.Errorf("error creating zipline engine: %w", err)
-					}
 					returnEngine := func(ctx context.Context, msg stream.Message) (interface{}, error) {
 						return backtestEngine, nil
 					}
 					dependencies.AddMethod(dependency.GetEngineKey, returnEngine)
 
-					err = sub.Subscribe("ingest", "ingest", command.Ingest)
+					err := sub.Subscribe("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
