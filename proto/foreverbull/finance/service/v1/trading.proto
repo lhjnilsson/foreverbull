@@ -27,18 +27,12 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
-  enum Step {
-    CREATING = 0;
-    UPDATING_MARKET_DATA = 1;
-    STARTING = 2;
-    FINISHING = 3;
-  }
-  message Status {
-    Step step = 1;
-    foreverbull.common.State state = 2;
-  }
-  foreverbull.finance.v1.Session session = 1;
-  Status status = 2;
+  foreverbull.common.Step CREATING = 1;
+  foreverbull.common.Step UPDATING_MARKET_DATA = 2;
+  foreverbull.common.Step STARTING = 3;
+  foreverbull.common.Step FINISHING = 4;
+
+  foreverbull.finance.v1.Session session = 5;
 }
 
 service TradingServicer {

@@ -27,3 +27,8 @@ enum State {
   STATE_COMPLETED = 2;
   STATE_FAILED = 3;
 }
+
+message Step {
+  State state = 1;
+  string message = 2;
+}
