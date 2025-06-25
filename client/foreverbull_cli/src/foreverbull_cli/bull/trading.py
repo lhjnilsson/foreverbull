@@ -4,8 +4,6 @@ from typing import List
 
 import typer
 
-from rich.live import Live
-from rich.progress import Progress
 from rich.table import Table
 from typing_extensions import Annotated
 
@@ -13,7 +11,7 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull_cli.output import FBProgress
+from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 
 
@@ -106,51 +104,33 @@ def run(
     symbols = [s for s in _backtest.symbols]
     portfolio = broker.finance.get_portfolio()
 
-    with FBProgress() as progress:
-        setup_task = progress.add_task("Setting Up", total=2)
-        run_task = progress.add_task("Running Trading", total=2)
-        progress.update(setup_task, completed=1)
-        with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(symbols) as session:
-            progress.update(setup_task, completed=2)
-            progress.update(run_task, completed=1)
-            orders, place_orders = session.run_trading(symbols)
-            progress.update(run_task, completed=2)
+    with LiveProgress() as progress:
+        has_run = False
+        for msg in broker.finance.create_session(symbols):
+            progress.update_from_message(msg)
+            if msg.session.port and not has_run:
+                with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(msg.session) as session:
+                    orders, place_orders = session.run_trading(symbols)
+                    has_run = True
 
-            items = PositionAndOrder.parse([p for p in portfolio.portfolio.positions], orders)
-            orders_table = Table(title="Positions and Orders")
-            orders_table.add_column("Symbol")
-            orders_table.add_column("Amount")
-            orders_table.add_column("Cost Basis")
-            orders_table.add_column("Order Type")
-            orders_table.add_column("Time In Force")
-            orders_table.add_column("Position Intent")
-            for item in items:
-                orders_table.add_row(
-                    item.symbol, item.amount, item.cost_basis, item.order_type, item.time_in_force, item.position_intent
-                )
-
-            # Clean up terminal
-            progress.remove_task(setup_task)
-            progress.remove_task(run_task)
-
-            console.print(orders_table)
-
-            progress.stop()
-            place_order = typer.confirm("Place order?")
-            progress.start()
-
-            if place_order:
-                place_orders_task = progress.add_task("Placing Orders", total=2)
-                progress.update(place_orders_task, completed=1)
-                place_orders(orders)
-                progress.update(place_orders_task, completed=2)
-
-
-@trading.command()
-def demo():
-    live = Live(Progress())
-    with live:
-        c = typer.confirm("Continue?")
-        if not c:
-            return
-        print("Running demo")
+                    items = PositionAndOrder.parse([p for p in portfolio.portfolio.positions], orders)
+                    orders_table = Table(title="Positions and Orders")
+                    orders_table.add_column("Symbol")
+                    orders_table.add_column("Amount")
+                    orders_table.add_column("Cost Basis")
+                    orders_table.add_column("Order Type")
+                    orders_table.add_column("Time In Force")
+                    orders_table.add_column("Position Intent")
+                    for item in items:
+                        orders_table.add_row(
+                            item.symbol,
+                            item.amount,
+                            item.cost_basis,
+                            item.order_type,
+                            item.time_in_force,
+                            item.position_intent,
+                        )
+                    console.print(orders_table)
+                    place_order = progress.confirm("Place order?")
+                    if place_order:
+                        place_orders(orders)

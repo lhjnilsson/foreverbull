@@ -6,23 +6,17 @@ from pathlib import Path
 
 import typer
 
-from rich.live import Live
-from rich.progress import BarColumn
-from rich.progress import Progress
-from rich.progress import SpinnerColumn
-from rich.progress import TextColumn
 from rich.table import Table
 from typing_extensions import Annotated
 
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
-from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
-from foreverbull_cli.output import FBProgress
+from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 
 
@@ -73,19 +67,10 @@ def create(
         benchmark=cfg.get("benchmark"),
     )
     backtest_rsp = backtest_service_pb2.CreateBacktestResponse()
-    with FBProgress() as progress:
-        create_task = progress.add_task("Creating Backtest", total=2)
-
-        progress.update(create_task, completed=1)
+    with LiveProgress() as progress:
         rsp = broker.backtest.create(backtest)
         for backtest_rsp in rsp:
-            status = backtest_service_pb2.CreateBacktestResponse.Step.Name(backtest_rsp.status.step)
-            state = common_pb2.State.Name(backtest_rsp.status.state)
-            progress.update(
-                create_task,
-                description=f"Creating Backtest: {status} - {state}",
-            )
-        progress.update(create_task, completed=2)
+            progress.update_from_message(backtest_rsp)
 
     table = Table(title="Created Backtest", expand=True)
     table.add_column("Name")
@@ -151,39 +136,40 @@ def run(
     start: Annotated[str, typer.Option(help="start date of the backtest")] | None = None,
     end: Annotated[str, typer.Option(help="end date of the backtest")] | None = None,
 ):
-    progress = Progress(
-        SpinnerColumn(),
-        "[progress.description]{task.description}",
-        BarColumn(),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        TextColumn("[progress.completed]"),
-    )
-    live = Live(progress, console=console, refresh_per_second=120)
-    with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(name) as session, live:
-        start_date = session.backtest.start_date
-        if start:
-            try:
-                start_date = from_pydate_to_proto_date(date.fromisoformat(start))
-            except Exception:
-                console.print(f"[red]Invalid start date: [yellow]{start}")
-                return
+    backtest = broker.backtest.get(name)
+    with LiveProgress() as progress:
+        has_run = False
+        for msg in broker.backtest.create_session(name):
+            progress.update_from_message(msg)
+            if msg.session.port and not has_run:
+                has_run = True
+                with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
+                    backtest, msg.session
+                ) as session:
+                    start_date = session.backtest.start_date
+                    if start:
+                        try:
+                            start_date = from_pydate_to_proto_date(date.fromisoformat(start))
+                        except Exception:
+                            console.print(f"[red]Invalid start date: [yellow]{start}")
+                            return
 
-        end_date = session.backtest.end_date
-        if end:
-            try:
-                end_date = from_pydate_to_proto_date(date.fromisoformat(end))
-            except Exception:
-                console.print(f"[red]Invalid end date: [yellow]{end}")
-                return
+                    end_date = session.backtest.end_date
+                    if end:
+                        try:
+                            end_date = from_pydate_to_proto_date(date.fromisoformat(end))
+                        except Exception:
+                            console.print(f"[red]Invalid end date: [yellow]{end}")
+                            return
 
-        task = progress.add_task(f"{session.backtest.name}")
-        for _, period in session.run_execution(
-            start_date,
-            end_date,
-            [s for s in session.backtest.symbols],
-        ):
-            progress.update(task, total=period.num_total_periods, completed=period.num_current_period)
-        log.info(f"Execution completed for {session.backtest.name}")
+                    with progress.bar_progress("execution") as bar_progress:
+                        for _, period in session.run_execution(
+                            start_date,
+                            end_date,
+                            [s for s in session.backtest.symbols],
+                        ):
+                            bar_progress(period.num_current_period, period.num_total_periods)
+                    log.info(f"Execution completed for {session.backtest.name}")
 
 
 """

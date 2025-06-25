@@ -1,7 +1,7 @@
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Optional as _Optional
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -43,3 +43,11 @@ class Date(_message.Message):
     month: int
     day: int
     def __init__(self, year: _Optional[int] = ..., month: _Optional[int] = ..., day: _Optional[int] = ...) -> None: ...
+
+class Step(_message.Message):
+    __slots__ = ("state", "message")
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    state: State
+    message: str
+    def __init__(self, state: _Optional[_Union[State, str]] = ..., message: _Optional[str] = ...) -> None: ...
