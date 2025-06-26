@@ -27,19 +27,12 @@ message CreateBacktestRequest {
 }
 
 message CreateBacktestResponse {
-  enum Step {
-    CREATING = 0;
-    DOWNLOADING = 1;
-    INGESTING = 2;
-    STORING = 3;
-  }
-  message Status {
-    Step step = 1;
-    foreverbull.common.State state = 2;
-  }
+  foreverbull.common.Step CREATING = 1;
+  foreverbull.common.Step DOWNLOADING = 2;
+  foreverbull.common.Step INGESTING = 3;
+  foreverbull.common.Step STORING = 4;
 
-  foreverbull.backtest.v1.Backtest backtest = 1;
-  Status status = 2;
+  foreverbull.backtest.v1.Backtest backtest = 5;
 }
 
 message GetBacktestRequest {
@@ -68,17 +61,11 @@ message CreateSessionRequest {
 }
 
 message CreateSessionResponse {
-  enum Step {
-    CREATING = 0;
-    STARTING = 1;
-    STORING = 2;
-  }
-  message Status {
-    Step step = 1;
-    foreverbull.common.State state = 2;
-  }
-  foreverbull.backtest.v1.Session session = 1;
-  Status status = 2;
+  foreverbull.common.Step CREATING = 1;
+  foreverbull.common.Step STARTING = 2;
+  foreverbull.common.Step STORING = 3;
+
+  foreverbull.backtest.v1.Session session = 4;
 }
 
 message GetSessionRequest {

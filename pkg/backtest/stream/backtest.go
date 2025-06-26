@@ -34,19 +34,19 @@ func NewBacktestIngestCommand(name string, symbols []string, start, end string) 
 
 func NewCreateBacktestOrchestration(name string, symbols []string, start, end string) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
+	rsp := &backtestServicePb.CreateBacktestResponse{}
 
 	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestServicePb.CreateBacktestResponse_DOWNLOADING), Messages: []*streamPb.Message{msg.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.CREATING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{msg.GetMsg()}})
 
 	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(backtestServicePb.CreateBacktestResponse_INGESTING), Messages: []*streamPb.Message{msg.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.INGESTING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{msg.GetMsg()}})
 
 	return &o, nil
 }

@@ -128,7 +128,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	// Create Backtest
-	createResponse, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
+	createBacktestStream, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
 			Name:      "Test Backtest",
 			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
@@ -138,19 +138,18 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	})
 	test.Require().NoError(err, "failed to create backtest: %v", err)
 
-	var latestStatus *servicePb.CreateBacktestResponse_Status
+	var createBacktest *servicePb.CreateBacktestResponse
 	for {
-		rsp, err := createResponse.Recv()
+		rsp, err := createBacktestStream.Recv()
 		if err != nil && errors.Is(err, io.EOF) {
 			break
 		}
 		test.Require().NoError(err)
-		latestStatus = rsp.Status
+		createBacktest = rsp
 	}
 
-	test.Require().NotNil(latestStatus)
-	test.Require().Equal(servicePb.CreateBacktestResponse_INGESTING, latestStatus.Step)
-	test.Require().Equal(common_pb.State_STATE_COMPLETED, latestStatus.State)
+	test.Require().NotNil(createBacktest, "response is nil")
+	test.Require().Equal(common_pb.State_STATE_COMPLETED, createBacktest.INGESTING.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &servicePb.GetBacktestRequest{Name: "Test Backtest"})
 	test.Require().NoError(err, "failed to get backtest")
@@ -175,7 +174,6 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 
 	test.Require().NotNil(latestSessionRsp, "response is nil")
 	test.Require().NotNil(latestSessionRsp.Session, "session is nil")
-	test.Require().Equal(servicePb.CreateSessionResponse_STARTING, latestSessionRsp.Status.Step)
 
 	test.Require().NotNil(latestSessionRsp.Session.Port)
 	port := *latestSessionRsp.Session.Port

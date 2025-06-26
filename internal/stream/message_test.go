@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	backtestServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -122,4 +126,18 @@ type MessageOrchestrationTest struct {
 }
 
 func (test *MessageOrchestrationTest) SetupTest() {
+}
+
+func TestUpdateOrchestration(t *testing.T) {
+	msg := &backtestServicePb.CreateBacktestResponse{
+		CREATING: &commonPb.Step{
+			State: commonPb.State_STATE_RUNNING,
+		},
+	}
+	step := &pb.Orchestration_Step{
+		Num:   1,
+		State: commonPb.State_STATE_COMPLETED,
+	}
+	err := UpdateOrchestration(msg, step)
+	assert.NoError(t, err)
 }
