@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Message interface {
@@ -90,4 +92,30 @@ func (m *message) TaskAbortTopic() string {
 
 func (m *message) TaskStateTopic() string {
 	return fmt.Sprintf(TOPIC_TASK_STATE, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod(), m.msg.GetId())
+}
+
+func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
+	reflectMsg := msg.ProtoReflect()
+	msgDesc := reflectMsg.Descriptor()
+
+	fieldDesc := msgDesc.Fields().ByNumber(protoreflect.FieldNumber(step.Num))
+	if fieldDesc == nil {
+		return fmt.Errorf("field '%d' not found in message", step.Num)
+	}
+
+	if fieldDesc.Kind() != protoreflect.MessageKind {
+		return fmt.Errorf("field is not an message type")
+	}
+
+	stepMsg := reflectMsg.Get(fieldDesc).Message()
+	if stepMsg.IsValid() {
+		stateField := stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(1))
+		if stateField == nil {
+			return fmt.Errorf("state field not found in message")
+		}
+		stepMsg.Set(stateField, protoreflect.ValueOfEnum(step.State.Enum().Number()))
+	} else {
+		return fmt.Errorf("step message not found")
+	}
+	return nil
 }

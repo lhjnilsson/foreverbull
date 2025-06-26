@@ -1,6 +1,7 @@
 from functools import wraps
 from typing import Callable
 from typing import Concatenate
+from typing import Generator
 
 import grpc
 
@@ -28,3 +29,12 @@ def get_portfolio(stub: trading_service_pb2_grpc.TradingServicerStub) -> trading
 @trading_servicer
 def get_orders(stub: trading_service_pb2_grpc.TradingServicerStub) -> trading_service_pb2.GetOrdersResponse:
     return stub.GetOrders(trading_service_pb2.GetOrdersRequest())
+
+
+@trading_servicer
+def create_session(
+    stub: trading_service_pb2_grpc.TradingServicerStub, symbols: list[str]
+) -> Generator[trading_service_pb2.CreateSessionResponse, None, None]:
+    rsp = stub.CreateSession(trading_service_pb2.CreateSessionRequest(symbols=symbols))
+    for msg in rsp:
+        yield msg

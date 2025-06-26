@@ -25,12 +25,14 @@ func NewRunTradeOrchestration(id string, symbols []string) (*streamPb.Orchestrat
 	if err != nil {
 		return nil, err
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(financeServicePb.CreateSessionResponse_UPDATING_MARKET_DATA), Messages: []*streamPb.Message{msg.GetMsg()}})
+
+	s := financeServicePb.CreateSessionResponse{}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(s.UPDATING_MARKET_DATA.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{msg.GetMsg()}})
 
 	msg, err = NewRunTradeCommand(id, symbols)
 	if err != nil {
 		return nil, err
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(financeServicePb.CreateSessionResponse_STARTING), Messages: []*streamPb.Message{msg.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(s.STARTING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{msg.GetMsg()}})
 	return o, nil
 }

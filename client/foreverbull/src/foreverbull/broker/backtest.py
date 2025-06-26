@@ -55,7 +55,8 @@ def create_session(
     req = backtest_service_pb2.CreateSessionRequest(
         backtest_name=backtest_name,
     )
-    return servicer.CreateSession(req)
+    for rsp in servicer.CreateSession(req):
+        yield rsp
 
 
 @backtest_servicer

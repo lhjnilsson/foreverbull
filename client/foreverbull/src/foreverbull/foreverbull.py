@@ -120,67 +120,27 @@ class Foreverbull:
     @contextmanager
     def backtest_session(
         self,
-        backtest_name: str,
+        backtest: backtest_pb2.Backtest,
+        backtest_session: session_pb2.Session,
         broker_hostname: str = "localhost",
-        broker_port: int = 50055,
     ) -> Generator[BacktestSession, None, None]:
-        channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
-        self._broker_stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
-
-        backtest = self._broker_stub.GetBacktest(backtest_service_pb2.GetBacktestRequest(name=backtest_name))
-        session: session_pb2.Session | None = None
-
-        create_rsp = self._broker_stub.CreateSession(
-            backtest_service_pb2.CreateSessionRequest(backtest_name=backtest_name)
-        )
-        rsp = backtest_service_pb2.CreateSessionResponse()
-        for rsp in create_rsp:
-            if rsp.status.state == common_pb2.STATE_FAILED:
-                raise Exception(f"Session failed: {rsp.status.status}")
-            if (
-                rsp.status.step == backtest_service_pb2.CreateSessionResponse.Step.STARTING
-                and rsp.status.state == common_pb2.STATE_COMPLETED
-            ):
-                session = rsp.session
-                break
-        _backtest_session_stub = session_service_pb2_grpc.SessionServicerStub(
-            grpc.insecure_channel(f"{broker_hostname}:{rsp.session.port}")
-        )
+        channel = grpc.insecure_channel(f"{broker_hostname}:{backtest_session.port}")
+        _backtest_session_stub = session_service_pb2_grpc.SessionServicerStub(channel)
         assert self._model is not None, "no model"
-        assert session is not None, "session is not set"
-        yield BacktestSession(self._model, backtest, session, _backtest_session_stub)
+        yield BacktestSession(self._model, backtest, backtest_session, _backtest_session_stub)
         _backtest_session_stub.StopServer(session_service_pb2.StopServerRequest())
         channel.close()
 
     @contextmanager
     def trading_session(
         self,
-        symbols: list[str],
+        trading_session: trading_pb2.Session,
         broker_hostname: str = "localhost",
-        broker_port: int = 50055,
     ) -> Generator[TradingSession, None, None]:
-        channel = grpc.insecure_channel(f"{broker_hostname}:{broker_port}")
-        self._broker_stub = trading_service_pb2_grpc.TradingServicerStub(channel)
-        trading_session: trading_pb2.Session | None = None
-
-        create_rsp = self._broker_stub.CreateSession(trading_service_pb2.CreateSessionRequest(symbols=symbols))
-        rsp: trading_service_pb2.CreateSessionResponse
-        for rsp in create_rsp:
-            if rsp.status.state == common_pb2.STATE_FAILED:
-                raise Exception(
-                    f"Session failed on: {trading_service_pb2.CreateSessionResponse.Step.Name(rsp.status.step)}"
-                )
-            if (
-                rsp.status.step == trading_service_pb2.CreateSessionResponse.Step.STARTING
-                and rsp.status.state == common_pb2.STATE_COMPLETED
-            ):
-                trading_session = rsp.session
-                break
         assert self._model is not None, "no model"
         assert trading_session is not None, "session is not set"
-        trading_session_stub = trading_service_pb2_grpc.SessionServicerStub(
-            grpc.insecure_channel(f"{broker_hostname}:{trading_session.port}")
-        )
+        channel = grpc.insecure_channel(f"{broker_hostname}:{trading_session.port}")
+        trading_session_stub = trading_service_pb2_grpc.SessionServicerStub(channel)
         yield TradingSession(self._model, trading_session_stub)
         trading_session_stub.StopServer(session_service_pb2.StopServerRequest())
         channel.close()

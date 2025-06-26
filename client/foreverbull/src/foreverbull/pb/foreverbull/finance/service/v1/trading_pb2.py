@@ -29,7 +29,7 @@ from foreverbull.pb.foreverbull.finance.v1 import trading_pb2 as foreverbull_dot
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2 as foreverbull_dot_service_dot_v1_dot_worker__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n,foreverbull/finance/service/v1/trading.proto\x12\x1e\x66oreverbull.finance.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a\x18\x66oreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a$foreverbull/finance/v1/trading.proto\x1a#foreverbull/service/v1/worker.proto\"\x15\n\x13GetPortfolioRequest\"L\n\x14GetPortfolioResponse\x12\x34\n\tportfolio\x18\x01 \x01(\x0b\x32!.foreverbull.finance.v1.Portfolio\"\x12\n\x10GetOrdersRequest\"B\n\x11GetOrdersResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"\'\n\x14\x43reateSessionRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\"\xe2\x02\n\x15\x43reateSessionResponse\x12\x30\n\x07session\x18\x01 \x01(\x0b\x32\x1f.foreverbull.finance.v1.Session\x12L\n\x06status\x18\x02 \x01(\x0b\x32<.foreverbull.finance.service.v1.CreateSessionResponse.Status\x1a|\n\x06Status\x12H\n\x04step\x18\x01 \x01(\x0e\x32:.foreverbull.finance.service.v1.CreateSessionResponse.Step\x12(\n\x05state\x18\x02 \x01(\x0e\x32\x19.foreverbull.common.State\"K\n\x04Step\x12\x0c\n\x08\x43REATING\x10\x00\x12\x18\n\x14UPDATING_MARKET_DATA\x10\x01\x12\x0c\n\x08STARTING\x10\x02\x12\r\n\tFINISHING\x10\x03\"p\n\x10\x43onfigureRequest\x12\\\n\talgorithm\x18\x01 \x01(\x0b\x32!.foreverbull.service.v1.AlgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01\"Z\n\x11\x43onfigureResponse\x12\x45\n\rconfiguration\x18\x01 \x01(\x0b\x32..foreverbull.service.v1.ExecutionConfiguration\"\x1d\n\nRunRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\"<\n\x0bRunResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"B\n\x11PlaceOrderRequest\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"C\n\x12PlaceOrderResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"\x13\n\x11StopServerRequest\"\x14\n\x12StopServerResponse2\x85\x03\n\x0fTradingServicer\x12{\n\x0cGetPortfolio\x12\x33.foreverbull.finance.service.v1.GetPortfolioRequest\x1a\x34.foreverbull.finance.service.v1.GetPortfolioResponse\"\x00\x12r\n\tGetOrders\x12\x30.foreverbull.finance.service.v1.GetOrdersRequest\x1a\x31.foreverbull.finance.service.v1.GetOrdersResponse\"\x00\x12\x80\x01\n\rCreateSession\x12\x34.foreverbull.finance.service.v1.CreateSessionRequest\x1a\x35.foreverbull.finance.service.v1.CreateSessionResponse\"\x00\x30\x01\x32\xd6\x03\n\x0fSessionServicer\x12r\n\tConfigure\x12\x30.foreverbull.finance.service.v1.ConfigureRequest\x1a\x31.foreverbull.finance.service.v1.ConfigureResponse\"\x00\x12`\n\x03Run\x12*.foreverbull.finance.service.v1.RunRequest\x1a+.foreverbull.finance.service.v1.RunResponse\"\x00\x12v\n\x0bPlaceOrders\x12\x31.foreverbull.finance.service.v1.PlaceOrderRequest\x1a\x32.foreverbull.finance.service.v1.PlaceOrderResponse\"\x00\x12u\n\nStopServer\x12\x31.foreverbull.finance.service.v1.StopServerRequest\x1a\x32.foreverbull.finance.service.v1.StopServerResponse\"\x00\x42:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n,foreverbull/finance/service/v1/trading.proto\x12\x1e\x66oreverbull.finance.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a\x18\x66oreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a$foreverbull/finance/v1/trading.proto\x1a#foreverbull/service/v1/worker.proto\"\x15\n\x13GetPortfolioRequest\"L\n\x14GetPortfolioResponse\x12\x34\n\tportfolio\x18\x01 \x01(\x0b\x32!.foreverbull.finance.v1.Portfolio\"\x12\n\x10GetOrdersRequest\"B\n\x11GetOrdersResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"\'\n\x14\x43reateSessionRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\"\x86\x02\n\x15\x43reateSessionResponse\x12*\n\x08\x43REATING\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x36\n\x14UPDATING_MARKET_DATA\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Step\x12*\n\x08STARTING\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Step\x12+\n\tFINISHING\x18\x04 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x30\n\x07session\x18\x05 \x01(\x0b\x32\x1f.foreverbull.finance.v1.Session\"p\n\x10\x43onfigureRequest\x12\\\n\talgorithm\x18\x01 \x01(\x0b\x32!.foreverbull.service.v1.AlgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01\"Z\n\x11\x43onfigureResponse\x12\x45\n\rconfiguration\x18\x01 \x01(\x0b\x32..foreverbull.service.v1.ExecutionConfiguration\"\x1d\n\nRunRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\"<\n\x0bRunResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"B\n\x11PlaceOrderRequest\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"C\n\x12PlaceOrderResponse\x12-\n\x06orders\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Order\"\x13\n\x11StopServerRequest\"\x14\n\x12StopServerResponse2\x85\x03\n\x0fTradingServicer\x12{\n\x0cGetPortfolio\x12\x33.foreverbull.finance.service.v1.GetPortfolioRequest\x1a\x34.foreverbull.finance.service.v1.GetPortfolioResponse\"\x00\x12r\n\tGetOrders\x12\x30.foreverbull.finance.service.v1.GetOrdersRequest\x1a\x31.foreverbull.finance.service.v1.GetOrdersResponse\"\x00\x12\x80\x01\n\rCreateSession\x12\x34.foreverbull.finance.service.v1.CreateSessionRequest\x1a\x35.foreverbull.finance.service.v1.CreateSessionResponse\"\x00\x30\x01\x32\xd6\x03\n\x0fSessionServicer\x12r\n\tConfigure\x12\x30.foreverbull.finance.service.v1.ConfigureRequest\x1a\x31.foreverbull.finance.service.v1.ConfigureResponse\"\x00\x12`\n\x03Run\x12*.foreverbull.finance.service.v1.RunRequest\x1a+.foreverbull.finance.service.v1.RunResponse\"\x00\x12v\n\x0bPlaceOrders\x12\x31.foreverbull.finance.service.v1.PlaceOrderRequest\x1a\x32.foreverbull.finance.service.v1.PlaceOrderResponse\"\x00\x12u\n\nStopServer\x12\x31.foreverbull.finance.service.v1.StopServerRequest\x1a\x32.foreverbull.finance.service.v1.StopServerResponse\"\x00\x42:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -50,29 +50,25 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CREATESESSIONREQUEST']._serialized_start=440
   _globals['_CREATESESSIONREQUEST']._serialized_end=479
   _globals['_CREATESESSIONRESPONSE']._serialized_start=482
-  _globals['_CREATESESSIONRESPONSE']._serialized_end=836
-  _globals['_CREATESESSIONRESPONSE_STATUS']._serialized_start=635
-  _globals['_CREATESESSIONRESPONSE_STATUS']._serialized_end=759
-  _globals['_CREATESESSIONRESPONSE_STEP']._serialized_start=761
-  _globals['_CREATESESSIONRESPONSE_STEP']._serialized_end=836
-  _globals['_CONFIGUREREQUEST']._serialized_start=838
-  _globals['_CONFIGUREREQUEST']._serialized_end=950
-  _globals['_CONFIGURERESPONSE']._serialized_start=952
-  _globals['_CONFIGURERESPONSE']._serialized_end=1042
-  _globals['_RUNREQUEST']._serialized_start=1044
-  _globals['_RUNREQUEST']._serialized_end=1073
-  _globals['_RUNRESPONSE']._serialized_start=1075
-  _globals['_RUNRESPONSE']._serialized_end=1135
-  _globals['_PLACEORDERREQUEST']._serialized_start=1137
-  _globals['_PLACEORDERREQUEST']._serialized_end=1203
-  _globals['_PLACEORDERRESPONSE']._serialized_start=1205
-  _globals['_PLACEORDERRESPONSE']._serialized_end=1272
-  _globals['_STOPSERVERREQUEST']._serialized_start=1274
-  _globals['_STOPSERVERREQUEST']._serialized_end=1293
-  _globals['_STOPSERVERRESPONSE']._serialized_start=1295
-  _globals['_STOPSERVERRESPONSE']._serialized_end=1315
-  _globals['_TRADINGSERVICER']._serialized_start=1318
-  _globals['_TRADINGSERVICER']._serialized_end=1707
-  _globals['_SESSIONSERVICER']._serialized_start=1710
-  _globals['_SESSIONSERVICER']._serialized_end=2180
+  _globals['_CREATESESSIONRESPONSE']._serialized_end=744
+  _globals['_CONFIGUREREQUEST']._serialized_start=746
+  _globals['_CONFIGUREREQUEST']._serialized_end=858
+  _globals['_CONFIGURERESPONSE']._serialized_start=860
+  _globals['_CONFIGURERESPONSE']._serialized_end=950
+  _globals['_RUNREQUEST']._serialized_start=952
+  _globals['_RUNREQUEST']._serialized_end=981
+  _globals['_RUNRESPONSE']._serialized_start=983
+  _globals['_RUNRESPONSE']._serialized_end=1043
+  _globals['_PLACEORDERREQUEST']._serialized_start=1045
+  _globals['_PLACEORDERREQUEST']._serialized_end=1111
+  _globals['_PLACEORDERRESPONSE']._serialized_start=1113
+  _globals['_PLACEORDERRESPONSE']._serialized_end=1180
+  _globals['_STOPSERVERREQUEST']._serialized_start=1182
+  _globals['_STOPSERVERREQUEST']._serialized_end=1201
+  _globals['_STOPSERVERRESPONSE']._serialized_start=1203
+  _globals['_STOPSERVERRESPONSE']._serialized_end=1223
+  _globals['_TRADINGSERVICER']._serialized_start=1226
+  _globals['_TRADINGSERVICER']._serialized_end=1615
+  _globals['_SESSIONSERVICER']._serialized_start=1618
+  _globals['_SESSIONSERVICER']._serialized_end=2088
 # @@protoc_insertion_point(module_scope)

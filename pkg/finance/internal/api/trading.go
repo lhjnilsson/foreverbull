@@ -9,7 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
-	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,47 +62,54 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 	return rsp, nil
 }
 
-func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, stream servicePb.TradingServicer_CreateSessionServer) error {
+func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, _stream servicePb.TradingServicer_CreateSessionServer) error {
 	if ts.trading == nil {
 		return status.Error(codes.Unimplemented, "trading is not enabled")
 	}
-
-	repository := repository.Trading{Conn: ts.pgx}
-	s, err := repository.Create(stream.Context())
-	if err != nil {
-		return fmt.Errorf("error creating session: %w", err)
+	rsp := &servicePb.CreateSessionResponse{
+		CREATING: &commonPb.Step{
+			State: commonPb.State_STATE_RUNNING,
+		},
+		UPDATING_MARKET_DATA: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		STARTING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		FINISHING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		Session: nil,
 	}
-	err = stream.Send(&servicePb.CreateSessionResponse{
-		Status: &servicePb.CreateSessionResponse_Status{
-			Step:  servicePb.CreateSessionResponse_CREATING,
-			State: pbInternal.State_STATE_COMPLETED,
-		}})
-	if err != nil {
+	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
+	repository := repository.Trading{Conn: ts.pgx}
+	s, err := repository.Create(_stream.Context())
+	if err != nil {
+		return fmt.Errorf("error creating session: %w", err)
+	}
+	rsp.Session = s
+	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
+	if err := _stream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
 	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.Symbols)
 	if err != nil {
 		return err
 	}
-	ch := ts.stream.RunOrchestration(stream.Context(), o)
+	ch := ts.stream.RunOrchestration(_stream.Context(), o)
 	for msg := range ch {
-		if servicePb.CreateSessionResponse_Step(msg.Num) == servicePb.CreateSessionResponse_STARTING && msg.State == pbInternal.State_STATE_COMPLETED {
-			s, err = repository.Get(stream.Context(), s.Id)
-			if err != nil {
-				return err
-			}
+		if err := stream.UpdateOrchestration(rsp, msg); err != nil {
+			return fmt.Errorf("error updating orchestration: %w", err)
 		}
-
-		err = stream.Send(&servicePb.CreateSessionResponse{
-			Session: s,
-			Status: &servicePb.CreateSessionResponse_Status{
-				Step:  servicePb.CreateSessionResponse_Step(msg.Num),
-				State: msg.State,
-			},
-		})
+		rsp.Session, err = repository.Get(_stream.Context(), s.Id)
 		if err != nil {
 			return err
+		}
+		if err := _stream.Send(rsp); err != nil {
+			return fmt.Errorf("error sending response: %w", err)
 		}
 	}
 	return nil

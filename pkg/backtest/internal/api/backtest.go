@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pbInternal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
@@ -43,14 +44,38 @@ func (bs *BacktestServer) ListBacktests(ctx context.Context,
 }
 
 func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
-	stream servicePb.BacktestServicer_CreateBacktestServer,
+	_stream servicePb.BacktestServicer_CreateBacktestServer,
 ) error {
-	ctx := stream.Context()
+	ctx := _stream.Context()
 	backtests := repository.Backtest{Conn: bs.pgx}
+	rsp := &servicePb.CreateBacktestResponse{
+		CREATING: &commonPb.Step{
+			State: commonPb.State_STATE_RUNNING,
+		},
+		DOWNLOADING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		INGESTING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		STORING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		Backtest: nil,
+	}
+	if err := _stream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
+
 	backtest, err := backtests.Create(ctx, req.GetBacktest().GetName(), req.GetBacktest().StartDate,
 		req.GetBacktest().EndDate, req.GetBacktest().Symbols, req.GetBacktest().Benchmark)
 	if err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
+	}
+	rsp.Backtest = backtest
+	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
+	if err := _stream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	o, err := backtestStream.NewCreateBacktestOrchestration(req.GetBacktest().GetName(),
@@ -63,14 +88,11 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 
 	steps := bs.stream.RunOrchestration(ctx, o)
 	for step := range steps {
-		err = stream.Send(
-			&servicePb.CreateBacktestResponse{
-				Backtest: backtest,
-				Status: &servicePb.CreateBacktestResponse_Status{
-					Step:  servicePb.CreateBacktestResponse_Step(step.Num),
-					State: step.State,
-				},
-			})
+		err = stream.UpdateOrchestration(rsp, step)
+		if err != nil {
+			return fmt.Errorf("error updating orchestration: %w", err)
+		}
+		err = _stream.Send(rsp)
 		if err != nil {
 			return fmt.Errorf("error sending response: %w", err)
 		}
@@ -99,25 +121,39 @@ func (bs *BacktestServer) CreateSession(
 ) error {
 	sessions := repository.Session{Conn: bs.pgx}
 	ctx := _stream.Context()
+	rsp := &servicePb.CreateSessionResponse{
+		CREATING: &commonPb.Step{
+			State: commonPb.State_STATE_RUNNING,
+		},
+		STARTING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		STORING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		Session: nil,
+	}
+	if err := _stream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
 
 	session, err := sessions.Create(ctx, req.GetBacktestName())
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
-	err = _stream.Send(&servicePb.CreateSessionResponse{
-		Session: session,
-		Status: &servicePb.CreateSessionResponse_Status{
-			Step:  servicePb.CreateSessionResponse_CREATING,
-			State: pbInternal.State_STATE_COMPLETED,
-		},
-	})
-	if err != nil {
+	rsp.Session = session
+	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
+	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	msg, err := msg.NewSessionRunCommand(session.Backtest, session.Id)
 	if err != nil {
 		return fmt.Errorf("error creating session run command: %w", err)
+	}
+	rsp.STARTING.State = commonPb.State_STATE_RUNNING
+	if err := _stream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 
 	err = bs.stream.Publish(ctx, msg, stream.WaitForCompletion())
@@ -131,14 +167,9 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error getting session: %w", err)
 	}
 
-	err = _stream.Send(&servicePb.CreateSessionResponse{
-		Session: session,
-		Status: &servicePb.CreateSessionResponse_Status{
-			Step:  servicePb.CreateSessionResponse_STARTING,
-			State: pbInternal.State_STATE_COMPLETED,
-		},
-	})
-	if err != nil {
+	rsp.STARTING.State = commonPb.State_STATE_COMPLETED
+	rsp.Session = session
+	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 	return nil

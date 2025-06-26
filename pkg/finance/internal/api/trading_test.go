@@ -138,8 +138,9 @@ func (test *TradingServerTest) TestCreateSession() {
 		repository := repository.Trading{Conn: test.pgx}
 		statusCh := make(chan *streamPb.Orchestration_Step)
 		go func() {
+			rsp := &servicePb.CreateSessionResponse{}
 			statusCh <- &streamPb.Orchestration_Step{
-				Num:   int32(servicePb.CreateSessionResponse_CREATING),
+				Num:   int32(rsp.CREATING.ProtoReflect().Descriptor().Index()),
 				State: commonPb.State_STATE_COMPLETED,
 			}
 			sessions, err := repository.List(context.Background())
@@ -147,7 +148,7 @@ func (test *TradingServerTest) TestCreateSession() {
 			test.Len(sessions, 1)
 			test.NoError(repository.UpdatePort(context.Background(), sessions[0].Id, 1337))
 			statusCh <- &streamPb.Orchestration_Step{
-				Num:   int32(servicePb.CreateSessionResponse_STARTING),
+				Num:   int32(rsp.STARTING.ProtoReflect().Descriptor().Index()),
 				State: commonPb.State_STATE_COMPLETED,
 			}
 			close(statusCh)
