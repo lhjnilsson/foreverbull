@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package foreverbull.finance.v1;
+
+import "foreverbull/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance";
+
+message CalendarDate {
+  foreverbull.common.Date date = 1;
+  google.protobuf.Timestamp open = 2;
+  google.protobuf.Timestamp close = 3;
+}

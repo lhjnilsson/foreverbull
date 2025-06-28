@@ -4,7 +4,6 @@ from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2 as _execution_p
 from foreverbull.pb.foreverbull.backtest.v1 import session_pb2 as _session_pb2
 from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
@@ -28,29 +27,18 @@ class CreateBacktestRequest(_message.Message):
     def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class CreateBacktestResponse(_message.Message):
-    __slots__ = ("backtest", "status")
-    class Step(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-        __slots__ = ()
-        CREATING: _ClassVar[CreateBacktestResponse.Step]
-        DOWNLOADING: _ClassVar[CreateBacktestResponse.Step]
-        INGESTING: _ClassVar[CreateBacktestResponse.Step]
-        STORING: _ClassVar[CreateBacktestResponse.Step]
-    CREATING: CreateBacktestResponse.Step
-    DOWNLOADING: CreateBacktestResponse.Step
-    INGESTING: CreateBacktestResponse.Step
-    STORING: CreateBacktestResponse.Step
-    class Status(_message.Message):
-        __slots__ = ("step", "state")
-        STEP_FIELD_NUMBER: _ClassVar[int]
-        STATE_FIELD_NUMBER: _ClassVar[int]
-        step: CreateBacktestResponse.Step
-        state: _common_pb2.State
-        def __init__(self, step: _Optional[_Union[CreateBacktestResponse.Step, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
+    __slots__ = ("CREATING", "DOWNLOADING", "INGESTING", "STORING", "backtest")
+    CREATING_FIELD_NUMBER: _ClassVar[int]
+    DOWNLOADING_FIELD_NUMBER: _ClassVar[int]
+    INGESTING_FIELD_NUMBER: _ClassVar[int]
+    STORING_FIELD_NUMBER: _ClassVar[int]
     BACKTEST_FIELD_NUMBER: _ClassVar[int]
-    STATUS_FIELD_NUMBER: _ClassVar[int]
+    CREATING: _common_pb2.Step
+    DOWNLOADING: _common_pb2.Step
+    INGESTING: _common_pb2.Step
+    STORING: _common_pb2.Step
     backtest: _backtest_pb2.Backtest
-    status: CreateBacktestResponse.Status
-    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ..., status: _Optional[_Union[CreateBacktestResponse.Status, _Mapping]] = ...) -> None: ...
+    def __init__(self, CREATING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., DOWNLOADING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., INGESTING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., STORING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
 class GetBacktestRequest(_message.Message):
     __slots__ = ("name",)
@@ -73,27 +61,16 @@ class CreateSessionRequest(_message.Message):
     def __init__(self, backtest_name: _Optional[str] = ...) -> None: ...
 
 class CreateSessionResponse(_message.Message):
-    __slots__ = ("session", "status")
-    class Step(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-        __slots__ = ()
-        CREATING: _ClassVar[CreateSessionResponse.Step]
-        STARTING: _ClassVar[CreateSessionResponse.Step]
-        STORING: _ClassVar[CreateSessionResponse.Step]
-    CREATING: CreateSessionResponse.Step
-    STARTING: CreateSessionResponse.Step
-    STORING: CreateSessionResponse.Step
-    class Status(_message.Message):
-        __slots__ = ("step", "state")
-        STEP_FIELD_NUMBER: _ClassVar[int]
-        STATE_FIELD_NUMBER: _ClassVar[int]
-        step: CreateSessionResponse.Step
-        state: _common_pb2.State
-        def __init__(self, step: _Optional[_Union[CreateSessionResponse.Step, str]] = ..., state: _Optional[_Union[_common_pb2.State, str]] = ...) -> None: ...
+    __slots__ = ("CREATING", "STARTING", "STORING", "session")
+    CREATING_FIELD_NUMBER: _ClassVar[int]
+    STARTING_FIELD_NUMBER: _ClassVar[int]
+    STORING_FIELD_NUMBER: _ClassVar[int]
     SESSION_FIELD_NUMBER: _ClassVar[int]
-    STATUS_FIELD_NUMBER: _ClassVar[int]
+    CREATING: _common_pb2.Step
+    STARTING: _common_pb2.Step
+    STORING: _common_pb2.Step
     session: _session_pb2.Session
-    status: CreateSessionResponse.Status
-    def __init__(self, session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ..., status: _Optional[_Union[CreateSessionResponse.Status, _Mapping]] = ...) -> None: ...
+    def __init__(self, CREATING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., STARTING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., STORING: _Optional[_Union[_common_pb2.Step, _Mapping]] = ..., session: _Optional[_Union[_session_pb2.Session, _Mapping]] = ...) -> None: ...
 
 class GetSessionRequest(_message.Message):
     __slots__ = ("session_id",)
