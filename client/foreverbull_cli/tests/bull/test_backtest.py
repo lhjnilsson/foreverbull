@@ -16,6 +16,7 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backt
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.backtest import backtest
@@ -116,8 +117,15 @@ def test_backtest_run(runner):
     mock_foreverbull.backtest_session.return_value.__enter__.return_value = mock_backtest_session
 
     with patch("foreverbull.foreverbull.Foreverbull.backtest_session", new_callable=lambda: mock_foreverbull):
-        with patch("foreverbull.models.Algorithm.from_file_path") as from_file_path:
+        with (
+            patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
+            patch("foreverbull.broker.backtest.create_session") as create_session,
+            patch("foreverbull.broker.backtest.get") as get,
+        ):
             from_file_path.return_value = True
-
+            get.return_value = backtest_pb2.Backtest()
+            create_session.return_value = iter(
+                [backtest_service_pb2.CreateSessionResponse(session=session_pb2.Session(port=7878))]
+            )
             result = runner(backtest, ["run", "test", "demo"])
             assert result.exit_code == 0

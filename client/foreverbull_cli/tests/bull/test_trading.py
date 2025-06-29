@@ -5,8 +5,10 @@ import pytest
 
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
 from foreverbull_cli.bull.trading import PositionAndOrder
 from foreverbull_cli.bull.trading import trading
 
@@ -45,10 +47,15 @@ def test_session_run(runner):
     with (
         patch("foreverbull.foreverbull.Foreverbull.trading_session", new_callable=lambda: mock_foreverbull),
         patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
-        patch("foreverbull.broker.backtest.get"),
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
     ):
         from_file_path.return_value = True
+        get_backtest.return_value = backtest_pb2.Backtest(symbols=["A", "B", "C", "D", "E", "F"])
+        create_session.return_value = iter(
+            [trading_service_pb2.CreateSessionResponse(session=trading_pb2.Session(port=7878))]
+        )
         portfolio = marketdata_pb2.Portfolio(
             positions=[
                 marketdata_pb2.Position(symbol="A", amount=10),
@@ -58,12 +65,17 @@ def test_session_run(runner):
             ]
         )
         get_portfolio.return_value = trading_service_pb2.GetPortfolioResponse(portfolio=portfolio)
-        mock_trading_session.run_trading.return_value = [
-            marketdata_pb2.Order(symbol="A", amount=10),
-            marketdata_pb2.Order(symbol="B", amount=-10),
-            marketdata_pb2.Order(symbol="E", amount=10),
-            marketdata_pb2.Order(symbol="F", amount=10),
-        ]
+        mock_trading_session.run_trading.return_value = tuple(
+            [
+                [
+                    marketdata_pb2.Order(symbol="A", amount=10),
+                    marketdata_pb2.Order(symbol="B", amount=-10),
+                    marketdata_pb2.Order(symbol="E", amount=10),
+                    marketdata_pb2.Order(symbol="F", amount=10),
+                ],
+                None,
+            ]
+        )
 
         result = runner(trading, ["run", "test"])
         assert result.exit_code == 0
