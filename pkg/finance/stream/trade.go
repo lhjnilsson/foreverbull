@@ -21,7 +21,7 @@ func NewRunTradeCommand(Id string, symbols []string) (stream.Message, error) {
 func NewRunTradeOrchestration(id string, symbols []string) (*streamPb.Orchestration, error) {
 	o := &streamPb.Orchestration{}
 	start := time.Now().Add(-time.Hour * 120).Format("2006-01-02")
-	msg, err := NewIngestCommand(symbols, start, nil)
+	msg, err := NewIngestCommand("XNYS", symbols, start, nil)
 	if err != nil {
 		return nil, err
 	}

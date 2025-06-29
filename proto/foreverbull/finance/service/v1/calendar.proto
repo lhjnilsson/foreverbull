@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package foreverbull.finance.service.v1;
+
+import "foreverbull/common.proto";
+import "foreverbull/finance/v1/calendar.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service";
+
+message ListCalendarDatesRequest {
+  string code = 1;
+  foreverbull.common.Date start = 2;
+  foreverbull.common.Date end = 3;
+}
+
+message ListCalendarDatesResponse {
+  repeated foreverbull.finance.v1.CalendarDate dates = 1;
+}
+
+service Calendar {
+  rpc ListCalendarDates(ListCalendarDatesRequest) returns (ListCalendarDatesResponse) {}
+}

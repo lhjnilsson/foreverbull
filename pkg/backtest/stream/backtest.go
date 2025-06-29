@@ -36,7 +36,7 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 
-	msg, err := financeStream.NewIngestCommand(symbols, start, &end)
+	msg, err := financeStream.NewIngestCommand("XNYS", symbols, start, &end)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}

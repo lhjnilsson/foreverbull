@@ -11,8 +11,6 @@ from foreverbull.foreverbull import BacktestSession
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as backtest_session_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as backtest_session_service_pb2_grpc
@@ -99,7 +97,7 @@ class TestTradingSession:
 
         stub = start_grpc_server(mocked_session_servicer)
         uut = TradingSession(model, stub)
-        orders = uut.run_trading([])
+        orders, _ = uut.run_trading([])
         assert orders == []
 
 
@@ -144,22 +142,13 @@ class TestForeverbull:
         mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-
-        def create_session(req, ctx):
-            yield backtest_service_pb2.CreateSessionResponse(
-                session=session_pb2.Session(
-                    port=7877,
-                ),
-                status=backtest_service_pb2.CreateSessionResponse.Status(
-                    step=backtest_service_pb2.CreateSessionResponse.Step.STARTING,
-                    state=common_pb2.STATE_COMPLETED,
-                ),
-            )
-
-        mock_server.CreateSession = create_session
-        mock_server.GetBacktest.return_value = backtest_service_pb2.GetBacktestResponse()
         port = backtest_grpc_server(mock_server, mock_backtest_session_servicer)
-        with algorithm.backtest_session("test", broker_port=port) as algo:
+        backtest = backtest_pb2.Backtest()
+        backtest_session = session_pb2.Session(
+            port=port,
+        )
+
+        with algorithm.backtest_session(backtest, backtest_session) as algo:
             assert type(algo) is BacktestSession
 
     def test_trading_session(self, parallel_algo_file, trading_grpc_server):
@@ -168,20 +157,9 @@ class TestForeverbull:
         mock_server = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-
-        def create_session(req, ctx):
-            yield trading_service_pb2.CreateSessionResponse(
-                session=trading_pb2.Session(
-                    port=7877,
-                ),
-                status=trading_service_pb2.CreateSessionResponse.Status(
-                    step=trading_service_pb2.CreateSessionResponse.Step.STARTING,
-                    state=common_pb2.STATE_COMPLETED,
-                ),
-            )
-
-        mock_server.CreateSession = create_session
-
         port = trading_grpc_server(mock_server, mock_trading_session_servicer)
-        with algorithm.trading_session(["AAPL"], broker_port=port) as algo:
+        trading_session = trading_pb2.Session(
+            port=port,
+        )
+        with algorithm.trading_session(trading_session) as algo:
             assert type(algo) is TradingSession

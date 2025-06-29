@@ -202,7 +202,6 @@ func (test *BacktestServerTest) TestGetBacktest() {
 
 func (test *BacktestServerTest) TestCreateSession() {
 	test.Run("backtest not found", func() {
-
 		req := &servicePb.CreateSessionRequest{
 			BacktestName: "backtest",
 		}
@@ -212,8 +211,8 @@ func (test *BacktestServerTest) TestCreateSession() {
 		test.Require().NotNil(resp)
 
 		msg, err := resp.Recv()
-		test.Require().Error(err)
-		test.Require().Nil(msg)
+		test.Require().NoError(err)
+		test.Require().NotNil(msg)
 	})
 
 	test.Run("normal", func() {
@@ -239,7 +238,7 @@ func (test *BacktestServerTest) TestCreateSession() {
 			test.Require().NotNil(msg)
 			responses = append(responses, msg)
 		}
-		test.Require().Len(responses, 2)
+		test.Require().Len(responses, 4)
 	})
 }
 

@@ -8,6 +8,10 @@ import (
 )
 
 func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS trading_calendar_date`); err != nil {
+		return fmt.Errorf("failed to drop trading_calendar_date table: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS ohlc`); err != nil {
 		return fmt.Errorf("failed to drop ohlc table: %w", err)
 	}
@@ -36,6 +40,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create trading table: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, CalendarTable); err != nil {
+		return fmt.Errorf("failed to create trading_calendar table: %w", err)
+	}
+
 	return nil
 }
 
@@ -54,6 +62,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, TradingTable); err != nil {
 		return fmt.Errorf("failed to create trading table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, CalendarTable); err != nil {
+		return fmt.Errorf("failed to create trading_calendar table: %w", err)
 	}
 
 	return nil
