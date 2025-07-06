@@ -69,11 +69,16 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
     # )
     with database.connect() as conn:
         for symbol in backtest.symbols:
-            feed = yfinance.Ticker(symbol)
+            try:
+                feed = yfinance.Ticker(symbol)
+            except Exception as e:
+                print(f"Failed to get feed for {symbol}: {e}")
+                continue
+
             info = feed.info
             asset = marketdata_pb2.Asset(
                 symbol=info["symbol"],
-                name=info["longName"],
+                name="demo",
             )
             conn.execute(
                 text(

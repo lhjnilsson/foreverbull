@@ -9,6 +9,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"golang.org/x/sync/errgroup"
 )
@@ -28,9 +29,37 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 }
 
 func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
-	asset, err := fs.marketdata.GetAsset(req.GetSymbol())
-	if err != nil {
-		return nil, fmt.Errorf("error getting asset: %w", err)
+	identifier := req.GetIdentifier()
+	if identifier == nil {
+		return nil, fmt.Errorf("identifier is nil")
+	}
+	var asset *pb.Asset
+	var err error
+	switch identifier := identifier.(type) {
+	case *servicePb.GetAssetRequest_Symbol:
+		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
+		if err != nil {
+			return nil, fmt.Errorf("error getting asset: %w", err)
+		}
+	case *servicePb.GetAssetRequest_Isin:
+		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
+		if err != nil {
+			return nil, fmt.Errorf("error getting asset: %w", err)
+		}
+		if len(assets) == 0 {
+			return nil, fmt.Errorf("asset not found by isin: %s", identifier.Isin)
+		}
+		for _, a := range assets {
+			if a.ISIN == identifier.Isin {
+				asset = a
+				break
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unknown identifier type: %T", identifier)
+	}
+	if asset == nil {
+		return nil, fmt.Errorf("asset not found: %s", req.GetSymbol())
 	}
 
 	return &servicePb.GetAssetResponse{

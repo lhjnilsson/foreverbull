@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-type FinanceServerTest struct {
+type MarketdataTest struct {
 	suite.Suite
 
 	pgx        *pgxpool.Pool
@@ -34,20 +34,20 @@ type FinanceServerTest struct {
 	client   servicePb.MarketdataClient
 }
 
-func TestFinanceServerTest(t *testing.T) {
-	suite.Run(t, new(FinanceServerTest))
+func TestMarketData(t *testing.T) {
+	suite.Run(t, new(MarketdataTest))
 }
 
-func (suite *FinanceServerTest) SetupSuite() {
+func (suite *MarketdataTest) SetupSuite() {
 	test_helper.SetupEnvironment(suite.T(), &test_helper.Containers{
 		Postgres: true,
 	})
 }
 
-func (suite *FinanceServerTest) TearDownSuite() {
+func (suite *MarketdataTest) TearDownSuite() {
 }
 
-func (suite *FinanceServerTest) SetupTest() {
+func (suite *MarketdataTest) SetupTest() {
 	var err error
 	suite.pgx, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	suite.Require().NoError(err)
@@ -80,8 +80,8 @@ func (suite *FinanceServerTest) SetupTest() {
 	suite.client = servicePb.NewMarketdataClient(conn)
 }
 
-func (suite *FinanceServerTest) TestGetAsset() {
-	req := &servicePb.GetAssetRequest{Symbol: "AAPL"}
+func (suite *MarketdataTest) TestGetAsset() {
+	req := &servicePb.GetAssetRequest{Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "AAPL"}}
 	rsp, err := suite.client.GetAsset(context.Background(), req)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(rsp)
@@ -89,7 +89,7 @@ func (suite *FinanceServerTest) TestGetAsset() {
 	suite.Equal("Apple Inc.", rsp.Asset.Name)
 }
 
-func (suite *FinanceServerTest) TestGetIndex() {
+func (suite *MarketdataTest) TestGetIndex() {
 	req := &servicePb.GetIndexRequest{Symbol: "^GDAXI"}
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
@@ -97,17 +97,7 @@ func (suite *FinanceServerTest) TestGetIndex() {
 	suite.NotEmpty(rsp.Assets)
 }
 
-func (suite *FinanceServerTest) TestDownloadHistoricalData() {
-	req := &servicePb.DownloadHistoricalDataRequest{
-		Symbols:   []string{"^GDAXI"},
-		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
-		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
-	}
-	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
-	suite.Require().NoError(err)
-}
-
-func (suite *FinanceServerTest) TestDownloadAssets() {
+func (suite *MarketdataTest) TestDownloadHistoricalData() {
 	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
@@ -117,7 +107,7 @@ func (suite *FinanceServerTest) TestDownloadAssets() {
 	suite.Require().NoError(err)
 }
 
-func (suite *FinanceServerTest) TestDownloadAssetsNoEndDate() {
+func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},

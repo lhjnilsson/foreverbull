@@ -75,6 +75,83 @@ class SQLIngester:
                 start_date = data.index[0]
                 end_date = data.index[-1]
                 autoclose_date = end_date + pd.Timedelta(days=1)
+                print(f"Ingesting {symbol} from {start_date} to {end_date}")
+                self._df_metadata.iloc[index] = (
+                    start_date,
+                    end_date,
+                    autoclose_date,
+                    symbol,
+                    "NASDAQ",
+                )
+                yield index, data
+
+    def __call__(
+        self,
+        environ,
+        asset_db_writer,
+        minute_bar_writer,
+        daily_bar_writer,
+        adjustment_writer,
+        calendar,
+        start_session,
+        end_session,
+        cache,
+        show_progress,
+        output_dir,
+    ):
+        self._df_metadata = self.create_metadata()
+        daily_bar_writer.write(self.writer(show_progress), show_progress=show_progress)
+        asset_db_writer.write(equities=self._df_metadata)
+        adjustment_writer.write()
+
+
+register("foreverbull", SQLIngester())
+
+
+class NewIngester:
+    engine: DatabaseEngine
+    assets = []
+
+    def __init__(self):
+        pass
+
+    def create_metadata(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            np.empty(
+                len(self.assets),
+                dtype=[
+                    ("start_date", "datetime64[ns]"),
+                    ("end_date", "datetime64[ns]"),
+                    ("auto_close_date", "datetime64[ns]"),
+                    ("symbol", "object"),
+                    ("exchange", "object"),
+                ],
+            )
+        )
+
+    def get_stock_data(self, symbols: str, from_date, to_date) -> pd.DataFrame:
+        data = self.engine.get_data(symbols, from_date, to_date)
+        data["time"] = pd.to_datetime(data["time"])
+        data.rename(columns={"time": "Date"}, inplace=True, copy=False)
+        data.set_index("Date", inplace=True)
+        return data
+
+    def writer(self, show_progress: bool) -> Iterable[Tuple[int, pd.DataFrame]]:
+        with maybe_show_progress(self.assets, show_progress, label="Ingesting from SQL") as it:
+            for index, asset in enumerate(it):  # type: ignore
+                from_date, to_date, symbol = asset
+                data = self.get_stock_data(symbol, from_date, to_date)
+                print(f"Ingesting {symbol} from {from_date} to {to_date}")
+                if len(data) == 0:
+                    print(f"No data found for {symbol} on {from_date} to {to_date}")
+                    continue
+                    # raise ValueError(f"No data found for {symbol} on {from_date} to {to_date}")
+                data.dropna(
+                    inplace=True
+                )  # Yahoo can sometimes add duplicate rows on same date, one which is full or NaN
+                start_date = data.index[0]
+                end_date = data.index[-1]
+                autoclose_date = end_date + pd.Timedelta(days=1)
                 self._df_metadata.iloc[index] = (
                     start_date,
                     end_date,

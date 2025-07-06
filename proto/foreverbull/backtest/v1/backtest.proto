@@ -7,9 +7,16 @@ import "foreverbull/common.proto";
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
 message Backtest {
+  message Period {
+    repeated string asset_symbols = 1;
+    foreverbull.common.Date start_date = 2;
+    foreverbull.common.Date end_date = 3;
+  }
   string name = 1;
   foreverbull.common.Date start_date = 2;
   foreverbull.common.Date end_date = 3;
   repeated string symbols = 4;
   optional string benchmark = 5;
+
+  repeated Period periods = 6;
 }

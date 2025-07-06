@@ -9,7 +9,10 @@ import "foreverbull/finance/v1/marketdata.proto";
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service";
 
 message GetAssetRequest {
-  string symbol = 1;
+  oneof identifier {
+    string symbol = 1;
+    string isin = 2;
+  }
 }
 
 message GetAssetResponse {

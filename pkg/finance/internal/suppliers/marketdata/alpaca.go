@@ -46,6 +46,11 @@ func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
 	return &storeAsset, nil
 }
 
+func (a *AlpacaClient) SearchAsset(q string) ([]*pb.Asset, error) {
+	var storeAssets []*pb.Asset
+	return storeAssets, nil
+}
+
 func (a *AlpacaClient) GetIndex(_ string) ([]*pb.Asset, error) {
 	var storeAssets []*pb.Asset
 	return storeAssets, nil
