@@ -67,8 +67,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
-	backtest, err := backtests.Create(ctx, req.GetBacktest().GetName(), req.GetBacktest().StartDate,
-		req.GetBacktest().EndDate, req.GetBacktest().Symbols, req.GetBacktest().Benchmark)
+	backtest, err := backtests.Create(ctx, req.GetBacktest().GetName(), req.GetBacktest().Benchmark)
 	if err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}

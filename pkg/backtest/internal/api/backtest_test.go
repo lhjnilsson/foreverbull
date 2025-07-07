@@ -94,7 +94,7 @@ func (test *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	test.T().Helper()
 
 	backtests := repository.Backtest{Conn: test.pgx}
-	backtest, err := backtests.Create(context.TODO(), name, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{"AAPL"}, nil)
+	backtest, err := backtests.Create(context.TODO(), name, nil)
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
 	return backtest

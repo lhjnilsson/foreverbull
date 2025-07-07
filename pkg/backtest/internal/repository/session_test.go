@@ -8,7 +8,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
@@ -38,9 +37,7 @@ func (test *SessionTest) SetupTest() {
 
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
-	test.storedBacktest, err = backtests.Create(ctx, "backtest",
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	test.storedBacktest, err = backtests.Create(ctx, "backtest", nil)
 	test.Require().NoError(err)
 }
 
@@ -122,9 +119,7 @@ func (test *SessionTest) TestListByBacktest() {
 	test.NotNil(session2.Id)
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	test.storedBacktest, err = backtests.Create(ctx, "backtest2",
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	test.storedBacktest, err = backtests.Create(ctx, "backtest2", nil)
 	test.Require().NoError(err)
 	session3, err := sessions.Create(ctx, "backtest2")
 	test.Require().NoError(err)

@@ -3,44 +3,44 @@ package repository
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
-	pb_internal "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
+	benchmark text);
+
+CREATE TABLE IF NOT EXISTS backtest_period (
+	backtest_name text REFERENCES backtest (name) ON DELETE CASCADE,
 	start_date date NOT NULL,
-	end_date date,
-	benchmark text,
-	symbols text[]);
+	end_date date NOT NULL,
+	PRIMARY KEY (backtest_name, start_date, end_date)
+);
+
+CREATE TABLE IF NOT EXISTS backtest_period_asset (
+    backtest_name text,
+    start_date date,
+    end_date date,
+    asset_symbol text NOT NULL,
+    enabled boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (backtest_name, start_date, end_date, asset_symbol),
+    FOREIGN KEY (backtest_name, start_date, end_date) 
+        REFERENCES backtest_period(backtest_name, start_date, end_date) ON DELETE CASCADE
+);
 `
 
 type Backtest struct {
 	Conn postgres.Query
 }
 
-func (db *Backtest) Create(ctx context.Context, name string,
-	start, end *pb_internal.Date, symbols []string, benchmark *string,
-) (*backtest.Backtest, error) {
-	var endDate *string
-
-	if start == nil {
-		return nil, fmt.Errorf("failed to create backtest: start date is nil")
-	}
-	if end != nil {
-		ed := pb_internal.DateToDateString(end)
-		endDate = &ed
-	}
-
+func (db *Backtest) Create(ctx context.Context, name string, benchmark *string) (*backtest.Backtest, error) {
 	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, start_date, end_date, symbols, benchmark)
-		VALUES ($1, $2, $3, $4, $5)`,
-		name, pb_internal.DateToDateString(start), endDate, symbols, benchmark)
+		`INSERT INTO backtest (name, benchmark)
+		VALUES ($1, $2)`,
+		name, benchmark)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create backtest: %w", err)
 	}
@@ -50,41 +50,25 @@ func (db *Backtest) Create(ctx context.Context, name string,
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
 	b := backtest.Backtest{}
-	startDate := time.Time{}
-	endDate := pgtype.Date{}
-
 	err := db.Conn.QueryRow(ctx,
-		`SELECT backtest.name, start_date, end_date, benchmark, symbols
-		FROM backtest
-		WHERE backtest.name=$1`, name).Scan(&b.Name, &startDate, &endDate, &b.Benchmark, &b.Symbols)
+		`SELECT name, benchmark FROM backtest WHERE name=$1`, name).Scan(&b.Name, &b.Benchmark)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}
-	b.StartDate = pb_internal.GoTimeToDate(startDate)
-	if endDate.Valid {
-		b.EndDate = pb_internal.GoTimeToDate(endDate.Time)
-	}
-
 	return &b, nil
 }
 
-func (db *Backtest) Update(ctx context.Context, name string,
-	start, end *pb_internal.Date, symbols []string, benchmark *string,
+func (db *Backtest) Update(ctx context.Context, name string, benchmark *string,
 ) (*backtest.Backtest, error) {
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE backtest SET start_date=$2, end_date=$3,
-		symbols=$4, benchmark=$5
-		WHERE name=$1`,
-		name, pb_internal.DateToDateString(start), pb_internal.DateToDateString(end), symbols, benchmark)
+	_, err := db.Conn.Exec(ctx, `UPDATE backtest SET benchmark=$2 WHERE name=$1`, name, benchmark)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update backtest: %w", err)
 	}
-
 	return db.Get(ctx, name)
 }
 
 func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
-	rows, err := db.Conn.Query(ctx, `SELECT name, start_date, end_date, benchmark, symbols FROM backtest`)
+	rows, err := db.Conn.Query(ctx, `SELECT name, benchmark FROM backtest`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list backtests: %w", err)
 	}
@@ -94,20 +78,10 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 
 	for rows.Next() {
 		backtest := backtest.Backtest{}
-		start := time.Time{}
-		end := pgtype.Date{}
 
-		err = rows.Scan(
-			&backtest.Name, &start, &end, &backtest.Benchmark,
-			&backtest.Symbols,
-		)
+		err = rows.Scan(&backtest.Name, &backtest.Benchmark)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backtest: %w", err)
-		}
-
-		backtest.StartDate = pb_internal.GoTimeToDate(start)
-		if end.Valid {
-			backtest.EndDate = pb_internal.GoTimeToDate(end.Time)
 		}
 		backtests = append(backtests, &backtest)
 	}

@@ -38,7 +38,7 @@ func (test *ExecutionTest) SetupTest() {
 
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err = backtests.Create(ctx, "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	_, err = backtests.Create(ctx, "backtest", nil)
 	test.Require().NoError(err)
 	test.storedBacktest, err = backtests.Get(ctx, "backtest")
 	test.Require().NoError(err)

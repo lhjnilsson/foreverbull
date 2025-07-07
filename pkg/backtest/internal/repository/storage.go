@@ -24,24 +24,20 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to drop table position: %w", err)
 	}
 
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS execution_status;`); err != nil {
-		return fmt.Errorf("failed to drop table execution_status: %w", err)
-	}
-
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS execution;`); err != nil {
 		return fmt.Errorf("failed to drop table execution: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS session_status;`); err != nil {
-		return fmt.Errorf("failed to drop table session_status: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS session;`); err != nil {
 		return fmt.Errorf("failed to drop table session: %w", err)
 	}
 
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_status;`); err != nil {
-		return fmt.Errorf("failed to drop table backtest_status: %w", err)
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_period_asset;`); err != nil {
+		return fmt.Errorf("failed to drop table backtest_period_asset: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_period;`); err != nil {
+		return fmt.Errorf("failed to drop table backtest_period: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest;`); err != nil {

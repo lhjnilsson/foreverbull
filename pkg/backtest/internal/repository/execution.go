@@ -22,7 +22,7 @@ benchmark text,
 symbols text[]);
 
 
-CREATE TABLE IF NOT EXISTS backtest_period (
+CREATE TABLE IF NOT EXISTS backtest_execution_period (
 	id serial primary key,
 	backtest_execution text not null,
 
@@ -70,10 +70,10 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
-        WHERE conname = 'unique_backtest_period'
-        AND conrelid = 'backtest_period'::regclass
+        WHERE conname = 'unique_backtest_execution_period'
+        AND conrelid = 'backtest_execution_period'::regclass
     ) THEN
-        ALTER TABLE backtest_period ADD CONSTRAINT unique_backtest_period UNIQUE(backtest_execution, date);
+        ALTER TABLE backtest_execution_period ADD CONSTRAINT unique_backtest_execution_period UNIQUE(backtest_execution, date);
     END IF;
 END $$;
 `
@@ -109,7 +109,7 @@ func (db *Execution) Create(ctx context.Context, session string, start, end *int
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
 	for _, period := range periods {
 		_, err := db.Conn.Exec(ctx,
-			`INSERT INTO backtest_period(
+			`INSERT INTO backtest_execution_period(
 				backtest_execution, date, pnl, returns, portfolio_value,
 				longs_count, shorts_count, long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
 				capital_used, gross_leverage, net_leverage,
@@ -170,7 +170,7 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 		net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
 		max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
 		algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-		alpha, beta FROM backtest_period WHERE backtest_execution=$1 ORDER BY DATE ASC`, executionId)
+		alpha, beta FROM backtest_execution_period WHERE backtest_execution=$1 ORDER BY DATE ASC`, executionId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get periods: %w", err)
 	}
@@ -504,7 +504,7 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
 			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
 			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
 		) as ep ON execution.id=ep.backtest_execution`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
@@ -533,7 +533,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
 			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
 			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
 		) as ep ON execution.id=ep.backtest_execution
 		WHERE session=$1`, session)
 	if err != nil {
@@ -563,7 +563,7 @@ func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*pb
 			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
 			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
 			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_period ORDER BY date DESC LIMIT 1
+			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
 		) as ep ON execution.id=ep.backtest_execution
 		INNER JOIN session ON execution.session=session.id
 		INNER JOIN backtest ON session.backtest=backtest.name
