@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
@@ -54,7 +55,10 @@ func (test *CommandSessionTest) SetupSubTest() {
 	err = repository.Recreate(context.TODO(), test.db)
 	test.Require().NoError(err)
 	backtests := repository.Backtest{Conn: test.db}
-	test.backtest, err = backtests.Create(context.TODO(), "test-backtest", nil)
+	backtest := backtest.Backtest{
+		Name: "test-backtest",
+	}
+	test.backtest, err = backtests.Create(context.TODO(), &backtest)
 	test.Require().NoError(err)
 	sessions := repository.Session{Conn: test.db}
 	test.session, err = sessions.Create(context.TODO(), "test-backtest")

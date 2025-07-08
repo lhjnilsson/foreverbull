@@ -8,23 +8,7 @@ import (
 )
 
 func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS period;`); err != nil {
-		return fmt.Errorf("failed to drop table period: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS portfolio;`); err != nil {
-		return fmt.Errorf("failed to drop table portfolio: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS _order;`); err != nil {
-		return fmt.Errorf("failed to drop table _order: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS position;`); err != nil {
-		return fmt.Errorf("failed to drop table position: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS execution;`); err != nil {
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution;`); err != nil {
 		return fmt.Errorf("failed to drop table execution: %w", err)
 	}
 

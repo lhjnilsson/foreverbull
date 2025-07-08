@@ -7,6 +7,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -65,14 +66,11 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	}
 
 	executions := repository.Execution{Conn: s.db}
+	e := backtest.Execution{
+		Session: s.session.Id,
+	}
 
-	execution, err := executions.Create(context.TODO(),
-		s.session.Id,
-		req.Backtest.StartDate,
-		req.Backtest.EndDate,
-		req.Backtest.Symbols,
-		req.Backtest.Benchmark,
-	)
+	execution, err := executions.Create(context.TODO(), &e)
 	if err != nil {
 		log.Error().Err(err).Msg("error creating execution")
 		return nil, fmt.Errorf("error creating execution: %w", err)
@@ -108,9 +106,6 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 	}
 
 	backtest := backtest_pb.Backtest{
-		StartDate: execution.StartDate,
-		EndDate:   execution.EndDate,
-		Symbols:   execution.Symbols,
 		Benchmark: execution.Benchmark,
 	}
 

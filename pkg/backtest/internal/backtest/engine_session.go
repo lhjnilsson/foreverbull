@@ -71,7 +71,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 			case ch <- &excRsp:
 			default:
 			}
-			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), backtest.Symbols, period.Portfolio)
+			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), []string{}, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
 				close(ch)

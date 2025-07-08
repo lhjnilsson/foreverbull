@@ -130,10 +130,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	// Create Backtest
 	createBacktestStream, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
 		Backtest: &pb.Backtest{
-			Name:      "Test Backtest",
-			StartDate: common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24 * 200)),
-			EndDate:   common_pb.GoTimeToDate(time.Now().Add(-time.Hour * 24)),
-			Symbols:   []string{"AAPL", "MSFT"},
+			Name: "Test Backtest",
 		},
 	})
 	test.Require().NoError(err, "failed to create backtest: %v", err)

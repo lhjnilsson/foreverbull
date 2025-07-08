@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
@@ -94,7 +95,10 @@ func (test *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	test.T().Helper()
 
 	backtests := repository.Backtest{Conn: test.pgx}
-	backtest, err := backtests.Create(context.TODO(), name, nil)
+	b := backtest.Backtest{
+		Name: name,
+	}
+	backtest, err := backtests.Create(context.TODO(), &b)
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
 	return backtest
@@ -115,10 +119,13 @@ func (test *BacktestServerTest) createExecution(session string) *pb.Execution {
 	test.T().Helper()
 
 	executions := repository.Execution{Conn: test.pgx}
-	execution, err := executions.Create(context.TODO(),
-		session, &common_pb.Date{Year: 2024, Month: 1, Day: 1},
-		&common_pb.Date{Year: 2024, Month: 1, Day: 1},
-		[]string{"AAPL"}, nil)
+	e := backtest.Execution{
+		Session:   session,
+		StartDate: &common_pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &common_pb.Date{Year: 2024, Month: 1, Day: 1},
+	}
+
+	execution, err := executions.Create(context.TODO(), &e)
 	test.Require().NoError(err)
 	test.Require().NotNil(execution)
 
@@ -151,10 +158,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 
 		req := &servicePb.CreateBacktestRequest{
 			Backtest: &pb.Backtest{
-				Name:      "Test Backtest",
-				StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-				Symbols:   []string{"AAPL", "MSFT"},
+				Name: "Test Backtest",
 			},
 		}
 

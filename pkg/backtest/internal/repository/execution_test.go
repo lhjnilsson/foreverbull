@@ -8,8 +8,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,8 +18,11 @@ type ExecutionTest struct {
 
 	conn *pgxpool.Pool
 
-	storedBacktest *pb.Backtest
-	storedSession  *pb.Session
+	storedBacktest *backtest.Backtest
+	storedSession  *backtest.Session
+	execution      *backtest.Execution
+
+	uut repository.Execution
 }
 
 func (test *ExecutionTest) SetupSuite() {
@@ -38,7 +41,16 @@ func (test *ExecutionTest) SetupTest() {
 
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err = backtests.Create(ctx, "backtest", nil)
+	b := backtest.Backtest{
+		Name: "backtest",
+		Periods: []*backtest.Backtest_Period{
+			{
+				StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+				EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			},
+		},
+	}
+	_, err = backtests.Create(ctx, &b)
 	test.Require().NoError(err)
 	test.storedBacktest, err = backtests.Get(ctx, "backtest")
 	test.Require().NoError(err)
@@ -47,6 +59,14 @@ func (test *ExecutionTest) SetupTest() {
 
 	test.storedSession, err = sessions.Create(ctx, "backtest")
 	test.Require().NoError(err)
+
+	test.uut = repository.Execution{Conn: test.conn}
+	test.execution = &backtest.Execution{
+		Session:   test.storedSession.Id,
+		StartDate: b.Periods[0].StartDate,
+		EndDate:   b.Periods[0].EndDate,
+		Benchmark: b.Benchmark,
+	}
 }
 
 func (test *ExecutionTest) TearDownTest() {
@@ -60,40 +80,31 @@ func (test *ExecutionTest) TestCreate() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
 
-	for _, end := range []*common_pb.Date{
-		{Year: 2024, Month: 0o1, Day: 0o1},
-		nil,
-	} {
-		execution, err := executions.Create(ctx, test.storedSession.Id,
-			test.storedBacktest.StartDate, end, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
-		test.Require().NoError(err)
-		test.NotNil(execution.Id)
-		test.Equal(test.storedSession.Id, execution.Session)
-		test.Equal(test.storedBacktest.Symbols, execution.Symbols)
-		test.Equal(end, execution.EndDate)
-	}
+	execution, err := executions.Create(ctx, test.execution)
+	test.Require().NoError(err)
+	test.NotNil(execution.Id)
+	test.Equal(test.storedSession.Id, execution.Session)
+	test.Equal(test.storedBacktest.Periods[0].StartDate, execution.StartDate)
+	test.Equal(test.storedBacktest.Periods[0].EndDate, execution.EndDate)
 }
 
 func (test *ExecutionTest) TestGet() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	execution, err := executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 	execution, err = executions.Get(ctx, execution.Id)
 	test.Require().NoError(err)
 	test.NotNil(execution.Id)
 	test.Equal(test.storedSession.Id, execution.Session)
-	test.Equal(test.storedBacktest.StartDate, execution.StartDate)
-	test.Equal(test.storedBacktest.EndDate, execution.EndDate)
-	test.Equal(test.storedBacktest.Symbols, execution.Symbols)
+	test.Equal(test.execution.StartDate, execution.StartDate)
+	test.Equal(test.execution.EndDate, execution.EndDate)
 }
 
 func (test *ExecutionTest) TestGetPeriods() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	execution, err := executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 	periods, err := executions.GetPeriods(ctx, execution.Id)
 	test.Require().NoError(err)
@@ -103,8 +114,7 @@ func (test *ExecutionTest) TestGetPeriods() {
 func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	execution, err := executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 	// e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	// e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
@@ -122,12 +132,10 @@ func (test *ExecutionTest) TestList() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
 
-	_, err := executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	_, err := executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 
-	_, err = executions.Create(ctx, test.storedSession.Id,
-		test.storedBacktest.StartDate, nil, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	_, err = executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.List(ctx)
@@ -146,8 +154,8 @@ func (test *ExecutionTest) TestListBySession() {
 	test.Require().NoError(err)
 
 	executions := repository.Execution{Conn: test.conn}
-	_, err = executions.Create(ctx, session1.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	test.execution.Session = session1.Id
+	_, err = executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.ListBySession(ctx, session1.Id)
@@ -165,10 +173,10 @@ func (test *ExecutionTest) TestListByBacktest() {
 	ctx := context.Background()
 	session, err := sessions.Create(ctx, "backtest")
 	test.Require().NoError(err)
+	test.execution.Session = session.Id
 
 	executions := repository.Execution{Conn: test.conn}
-	_, err = executions.Create(ctx, session.Id,
-		test.storedBacktest.StartDate, test.storedBacktest.EndDate, test.storedBacktest.Symbols, test.storedBacktest.Benchmark)
+	_, err = executions.Create(ctx, test.execution)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.ListByBacktest(ctx, "backtest")

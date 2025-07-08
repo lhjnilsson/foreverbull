@@ -10,13 +10,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
 type BacktestTest struct {
 	suite.Suite
 
-	conn *pgxpool.Pool
+	conn     *pgxpool.Pool
+	uut      repository.Backtest
+	backtest *backtest.Backtest
 }
 
 func (test *BacktestTest) SetupSuite() {
@@ -32,6 +35,11 @@ func (test *BacktestTest) SetupTest() {
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), test.conn)
 	test.Require().NoError(err)
+	test.uut = repository.Backtest{Conn: test.conn}
+	test.backtest = &backtest.Backtest{
+		Name:      "test_backtest",
+		Benchmark: func() *string { s := "AAPL"; return &s }(),
+	}
 }
 
 func (test *BacktestTest) TearDownTest() {
@@ -46,11 +54,9 @@ func (test *BacktestTest) TestCreate() {
 
 	for index, benchmark := range []*string{nil, func() *string { s := "benchmark"; return &s }()} {
 		test.Run(fmt.Sprintf("create backtest %d with benchmark %v", index, benchmark), func() {
-			backtests := &repository.Backtest{Conn: test.conn}
-			backtest, err := backtests.Create(ctx,
-				fmt.Sprintf("backtest_bench_%d", index),
-				benchmark,
-			)
+			test.backtest.Benchmark = benchmark
+			test.backtest.Name = fmt.Sprintf("backtest_bench_%d", index)
+			backtest, err := test.uut.Create(ctx, test.backtest)
 			test.Require().NoError(err)
 			test.Equal(fmt.Sprintf("backtest_bench_%d", index), backtest.Name)
 			if benchmark == nil {
@@ -74,13 +80,12 @@ func (test *BacktestTest) TestGet() {
 	})
 	test.Run("found", func() {
 		backtests := &repository.Backtest{Conn: test.conn}
-		_, err := backtests.Create(ctx, "backtest", nil)
+		_, err := backtests.Create(ctx, test.backtest)
 		test.Require().NoError(err)
 
-		backtest, err := backtests.Get(ctx, "backtest")
+		backtest, err := backtests.Get(ctx, test.backtest.Name)
 		test.Require().NoError(err)
-		test.Equal("backtest", backtest.Name)
-		test.Nil(backtest.Benchmark)
+		test.Equal(test.backtest.Name, backtest.Name)
 	})
 }
 
@@ -88,16 +93,16 @@ func (test *BacktestTest) TestUpdate() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest", nil)
+	_, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
 	benchmark := "benchmark"
-	_, err = backtests.Update(ctx, "backtest", &benchmark)
+	_, err = backtests.Update(ctx, test.backtest.Name, &benchmark)
 	test.Require().NoError(err)
 
-	backtest, err := backtests.Get(ctx, "backtest")
+	backtest, err := backtests.Get(ctx, test.backtest.Name)
 	test.Require().NoError(err)
-	test.Equal("backtest", backtest.Name)
+	test.Equal(test.backtest.Name, backtest.Name)
 	test.Equal(benchmark, *backtest.Benchmark)
 }
 
@@ -105,10 +110,11 @@ func (test *BacktestTest) TestList() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest1", nil)
+	_, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
-	_, err = backtests.Create(ctx, "backtest2", nil)
+	test.backtest.Name = "test_backtest_2"
+	_, err = backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
 	storedBacktests, err := backtests.List(ctx)
@@ -120,10 +126,10 @@ func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, "backtest", nil)
+	_, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
-	err = backtests.Delete(ctx, "backtest")
+	err = backtests.Delete(ctx, test.backtest.Name)
 	test.Require().NoError(err)
 
 	storedBacktests, err := backtests.List(ctx)
