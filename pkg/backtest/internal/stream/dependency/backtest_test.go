@@ -13,7 +13,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
-	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
@@ -26,10 +25,15 @@ type BacktestTest struct {
 	pool *pgxpool.Pool
 	app  *fx.App
 
-	uut dependency.ETFLookup
+	uut dependency.ETFScraper
 }
 
 func (test *BacktestTest) SetupTest() {
+	test.uut = dependency.NewETFScaper()
+
+}
+
+func (test *BacktestTest) NoSetupTest() {
 	var err error
 
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
@@ -78,13 +82,8 @@ func (test *BacktestTest) SetupTest() {
 	)
 	test.Require().NoError(test.app.Start(context.TODO()))
 
-	conn, err := grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	_, err = grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	test.Require().NoError(err, "failed to create grpc client")
-	financeClient := financeServicePB.NewMarketdataClient(conn)
-
-	test.uut = dependency.ETFLookup{
-		FinanceAPI: financeClient,
-	}
 }
 
 func TestBacktest(t *testing.T) {
@@ -92,6 +91,6 @@ func TestBacktest(t *testing.T) {
 }
 
 func (test *BacktestTest) TestDemo() {
-	err := test.uut.Get("https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax", "2022")
+	_, err := test.uut.GetAssets("iShares S&P 100", "2022", "2023")
 	test.Require().NoError(err)
 }
