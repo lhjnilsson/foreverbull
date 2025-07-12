@@ -16,7 +16,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/mock"
@@ -40,8 +39,8 @@ type SessionTest struct {
 	mockEngineSession *engine.MockEngineSession
 	client            servicePb.SessionServicerClient
 
-	backtest *backtest_pb.Backtest
-	session  *backtest_pb.Session
+	backtest *backtest.Backtest
+	session  *backtest.Session
 }
 
 func TestSessionManual(t *testing.T) {
@@ -108,7 +107,7 @@ func (s *SessionTest) SetupTest() {
 func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
-		s.Fail("error closing listener: %w", err)
+		s.Failf("error closing listener: %s", err.Error())
 	}
 
 	s.baseServer.Stop()
@@ -116,7 +115,7 @@ func (s *SessionTest) TearDownTest() {
 
 func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest:  &backtest_pb.Backtest{},
+		Backtest:  &backtest.Backtest{},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
@@ -130,7 +129,7 @@ func (s *SessionTest) TestCreateExecution() {
 
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest:  &backtest_pb.Backtest{},
+		Backtest:  &backtest.Backtest{},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)

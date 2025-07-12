@@ -18,7 +18,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -91,7 +90,7 @@ func (test *BacktestServerTest) TearDownSubTest() {
 	test.server.Stop()
 }
 
-func (test *BacktestServerTest) createBacktest(name string) *pb.Backtest {
+func (test *BacktestServerTest) createBacktest(name string) *backtest.Backtest {
 	test.T().Helper()
 
 	backtests := repository.Backtest{Conn: test.pgx}
@@ -104,7 +103,7 @@ func (test *BacktestServerTest) createBacktest(name string) *pb.Backtest {
 	return backtest
 }
 
-func (test *BacktestServerTest) createSession(backtest string) *pb.Session {
+func (test *BacktestServerTest) createSession(backtest string) *backtest.Session {
 	test.T().Helper()
 
 	sessions := repository.Session{Conn: test.pgx}
@@ -115,7 +114,7 @@ func (test *BacktestServerTest) createSession(backtest string) *pb.Session {
 	return session
 }
 
-func (test *BacktestServerTest) createExecution(session string) *pb.Execution {
+func (test *BacktestServerTest) createExecution(session string) *backtest.Execution {
 	test.T().Helper()
 
 	executions := repository.Execution{Conn: test.pgx}
@@ -157,7 +156,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 		req := &servicePb.CreateBacktestRequest{
-			Backtest: &pb.Backtest{
+			Backtest: &backtest.Backtest{
 				Name: "Test Backtest",
 			},
 		}

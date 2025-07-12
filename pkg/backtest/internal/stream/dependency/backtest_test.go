@@ -90,7 +90,12 @@ func TestBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestTest))
 }
 
-func (test *BacktestTest) TestDemo() {
-	_, err := test.uut.GetAssets("iShares S&P 100", "2022", "2023")
+func (test *BacktestTest) TestGetAssets() {
+	assetMap, err := test.uut.GetAssets("iShares S&P 100", "2022", "2023")
 	test.Require().NoError(err)
+	test.Len(assetMap, 2)
+	_, ok := assetMap["2022"]
+	test.Require().True(ok)
+	_, ok = assetMap["2023"]
+	test.Require().True(ok)
 }

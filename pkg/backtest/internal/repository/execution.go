@@ -11,7 +11,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
 const ExecutionTable = `CREATE TABLE IF NOT EXISTS backtest_execution (
@@ -96,7 +95,7 @@ func (db *Execution) Create(ctx context.Context, execution *backtest.Execution) 
 	return db.Get(ctx, executionID)
 }
 
-func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*pb.Period) error {
+func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*backtest.Period) error {
 	for _, period := range periods {
 		_, err := db.Conn.Exec(ctx,
 			`INSERT INTO backtest_execution_period(
@@ -130,8 +129,8 @@ func (db *Execution) StorePeriods(ctx context.Context, execution string, periods
 	return nil
 }
 
-func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution, error) {
-	execution := pb.Execution{}
+func (db *Execution) Get(ctx context.Context, executionId string) (*backtest.Execution, error) {
+	execution := backtest.Execution{}
 	start := time.Time{}
 	end := pgtype.Date{}
 
@@ -152,7 +151,7 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*pb.Execution
 	return &execution, nil
 }
 
-func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.Period, error) {
+func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*backtest.Period, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT date, pnl, returns, portfolio_value, longs_count, shorts_count,
 		long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
@@ -164,10 +163,10 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 		return nil, fmt.Errorf("failed to get periods: %w", err)
 	}
 
-	periods := make([]*pb.Period, 0)
+	periods := make([]*backtest.Period, 0)
 	defer rows.Close()
 	for rows.Next() {
-		period := pb.Period{}
+		period := backtest.Period{}
 		periodDate := pgtype.Date{}
 		pnl := sql.NullFloat64{}
 		returns := sql.NullFloat64{}
@@ -307,7 +306,7 @@ func (db *Execution) GetPeriods(ctx context.Context, executionId string) ([]*pb.
 	return periods, nil
 }
 
-func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Execution) error {
+func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *backtest.Execution) error {
 	_, err := db.Conn.Exec(ctx,
 		`UPDATE backtest_execution SET start_date=$1, end_date=$2 WHERE id=$3`, internal_pb.DateToDateString(e.StartDate),
 		internal_pb.DateToDateString(e.EndDate), e.Id)
@@ -318,13 +317,13 @@ func (db *Execution) UpdateSimulationDetails(ctx context.Context, e *pb.Executio
 	return nil
 }
 
-func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
-	executions := make([]*pb.Execution, 0)
+func (db *Execution) parseRows(rows pgx.Rows) ([]*backtest.Execution, error) {
+	executions := make([]*backtest.Execution, 0)
 
 	var err error
 	for rows.Next() {
-		execution := pb.Execution{}
-		result := pb.Period{}
+		execution := backtest.Execution{}
+		result := backtest.Period{}
 		resultDate := pgtype.Date{}
 		start := time.Time{}
 		end := pgtype.Date{}
@@ -474,7 +473,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*pb.Execution, error) {
 	return executions, nil
 }
 
-func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
+func (db *Execution) List(ctx context.Context) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date, benchmark,
 		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
@@ -502,7 +501,7 @@ func (db *Execution) List(ctx context.Context) ([]*pb.Execution, error) {
 	return db.parseRows(rows)
 }
 
-func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.Execution, error) {
+func (db *Execution) ListBySession(ctx context.Context, session string) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date, benchmark,
 		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
@@ -532,7 +531,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*pb.E
 	return db.parseRows(rows)
 }
 
-func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*pb.Execution, error) {
+func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date,
 		backtest_execution.benchmark,

@@ -9,7 +9,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,7 +17,7 @@ type SessionTest struct {
 
 	conn *pgxpool.Pool
 
-	storedBacktest *pb.Backtest
+	storedBacktest *backtest.Backtest
 }
 
 func (test *SessionTest) SetupSuite() {

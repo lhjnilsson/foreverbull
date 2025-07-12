@@ -90,6 +90,24 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
+		assetRows, err := db.Conn.Query(ctx, `SELECT symbol, enabled FROM backtest_period_asset WHERE backtest_name=$1 AND start_date=$2 AND end_date=$3`, name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate))
+		if err != nil {
+			return nil, fmt.Errorf("failed to list period assets: %w", err)
+		}
+		period.Assets = make([]*backtest.Backtest_Period_Asset, 0)
+
+		for assetRows.Next() {
+			var symbol string
+			var enabled bool
+			err = assetRows.Scan(&symbol, &enabled)
+			if err != nil {
+				return nil, fmt.Errorf("failed to scan asset: %w", err)
+			}
+			period.Assets = append(period.Assets, &backtest.Backtest_Period_Asset{
+				Symbol:  symbol,
+				Enabled: enabled,
+			})
+		}
 		periods = append(periods, &period)
 	}
 	b.Periods = periods
@@ -105,7 +123,15 @@ func (db *Backtest) Update(ctx context.Context, name string, benchmark *string,
 	return db.Get(ctx, name)
 }
 
-func (db *Backtest) UpdatePeriodAsset(ctx context.Context, backtest_name string, start_date, end_date *commonPB.Date, symbol string, enabled bool) error {
+func (db *Backtest) UpdatePeriod(ctx context.Context, name string, period *backtest.Backtest_Period) error {
+	for _, asset := range period.Assets {
+		_, err := db.Conn.Exec(ctx, `INSERT INTO backtest_period_asset (backtest_name, start_date, end_date, symbol, enabled)
+		VALUES ($1, $2, $3, $4, $5)`,
+			name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate), asset.Symbol, asset.Enabled)
+		if err != nil {
+			return fmt.Errorf("failed to update backtest period asset: %w", err)
+		}
+	}
 	return nil
 }
 

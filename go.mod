@@ -1,6 +1,6 @@
 module github.com/lhjnilsson/foreverbull
 
-go 1.22
+go 1.24
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.2-20240920164238-5a7b106cbb87.1

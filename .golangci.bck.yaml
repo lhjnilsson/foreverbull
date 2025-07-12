@@ -1,0 +1,12 @@
+linters:
+  enable:
+    # - goerr113
+    - errcheck
+    - goimports
+    # - revive
+    - staticcheck
+    - govet
+    - forbidigo
+    - exhaustive
+    - godox
+    - testifylint

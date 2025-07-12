@@ -109,7 +109,7 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error creating listener: %w", err)
 	}
 	if listener == nil {
-		return fmt.Errorf("Listener is nil")
+		return fmt.Errorf("listener is nil")
 	}
 
 	go func() {

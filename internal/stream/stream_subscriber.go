@@ -122,8 +122,7 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 	}
 
 	topic := fmt.Sprintf(TOPIC_TASK, ns.module, component, method)
-	name := strings.Replace(topic, ".", "-", -1)
-
+	name := strings.ReplaceAll(topic, ".", "-")
 	consumerCfg := nats.ConsumerConfig{
 		Name:           name,
 		Durable:        name,

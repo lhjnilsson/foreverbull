@@ -18,7 +18,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -30,8 +29,8 @@ type CommandSessionTest struct {
 	suite.Suite
 
 	db       *pgxpool.Pool
-	backtest *pb.Backtest
-	session  *pb.Session
+	backtest *backtest.Backtest
+	session  *backtest.Session
 	storage  *storage.MockStorage
 }
 

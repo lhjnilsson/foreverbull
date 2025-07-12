@@ -8,7 +8,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	msg "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
@@ -143,7 +142,7 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
-	msg, err := msg.NewSessionRunCommand(session.Backtest, session.Id)
+	msg, err := backtestStream.NewSessionRunCommand(session.Backtest, session.Id)
 	if err != nil {
 		return fmt.Errorf("error creating session run command: %w", err)
 	}

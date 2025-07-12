@@ -50,3 +50,56 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 
 	return &o, nil
 }
+
+type CreateBacktestCommand struct {
+	BacktestName string `json:"backtest_name"`
+	ETFName      string `json:"etf_name"`
+}
+
+func NewCreateBacktestCommand() (stream.Message, error) {
+	cmd := &CreateBacktestCommand{}
+	return stream.NewMessage("backtest", "create", "create", cmd)
+}
+
+type DownloadFinancialDataCommand struct {
+}
+
+func NewDownloadFinancialDataCommand() (stream.Message, error) {
+	cmd := &DownloadFinancialDataCommand{}
+	return stream.NewMessage("finance", "download", "download", cmd)
+}
+
+type IngestBacktestDataCommand struct{}
+
+func NewIngestBacktestDataCommand() (stream.Message, error) {
+	cmd := &IngestBacktestDataCommand{}
+	return stream.NewMessage("backtest", "ingest", "ingest", cmd)
+}
+
+func CreateBacktestFromETF(backtest_name string, etf_name string, start string, end string) (*streamPb.Orchestration, error) {
+	o := streamPb.Orchestration{}
+	rsp := &backtestServicePb.CreateBacktestResponse{}
+
+	// Create Backtest
+	cmd, err := NewCreateBacktestCommand()
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.CREATING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	// Ingest Financial Data
+	cmd, err = NewDownloadFinancialDataCommand()
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.DOWNLOADING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	// Ingest into Backtest
+	cmd, err = NewIngestBacktestDataCommand()
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.INGESTING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	return &o, nil
+}

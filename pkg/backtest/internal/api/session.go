@@ -8,7 +8,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
@@ -18,7 +17,7 @@ import (
 type grpcSessionServer struct {
 	servicePb.UnimplementedSessionServicerServer
 
-	session *backtest_pb.Session
+	session *backtest.Session
 
 	db              postgres.Query
 	backtest        engine.Engine
@@ -33,7 +32,7 @@ const (
 	ActivityBufferSize = 5
 )
 
-func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
+func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
 	backtest engine.Engine,
 ) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
@@ -105,7 +104,7 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	backtest := backtest_pb.Backtest{
+	backtest := backtest.Backtest{
 		Benchmark: execution.Benchmark,
 	}
 
@@ -154,7 +153,7 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.Get
 
 	return &servicePb.GetExecutionResponse{
 		Execution: execution,
-		Periods:   []*backtest_pb.Period{},
+		Periods:   []*backtest.Period{},
 	}, nil
 }
 
