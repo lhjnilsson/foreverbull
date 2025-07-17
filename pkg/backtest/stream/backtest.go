@@ -56,17 +56,23 @@ type CreateBacktestCommand struct {
 	ETFName      string `json:"etf_name"`
 }
 
-func NewCreateBacktestCommand() (stream.Message, error) {
-	cmd := &CreateBacktestCommand{}
+func NewCreateBacktestCommand(backtestName string, etfName string) (stream.Message, error) {
+	cmd := &CreateBacktestCommand{
+		BacktestName: backtestName,
+		ETFName:      etfName,
+	}
 	return stream.NewMessage("backtest", "create", "create", cmd)
 }
 
 type DownloadFinancialDataCommand struct {
+	BacktestName string `json:"backtest_name"`
 }
 
-func NewDownloadFinancialDataCommand() (stream.Message, error) {
-	cmd := &DownloadFinancialDataCommand{}
-	return stream.NewMessage("finance", "download", "download", cmd)
+func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error) {
+	cmd := &DownloadFinancialDataCommand{
+		BacktestName: backtestName,
+	}
+	return stream.NewMessage("backtest", "download", "download", cmd)
 }
 
 type IngestBacktestDataCommand struct{}
@@ -81,14 +87,14 @@ func CreateBacktestFromETF(backtest_name string, etf_name string, start string, 
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 
 	// Create Backtest
-	cmd, err := NewCreateBacktestCommand()
+	cmd, err := NewCreateBacktestCommand(backtest_name, etf_name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.CREATING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 
 	// Ingest Financial Data
-	cmd, err = NewDownloadFinancialDataCommand()
+	cmd, err = NewDownloadFinancialDataCommand(backtest_name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}

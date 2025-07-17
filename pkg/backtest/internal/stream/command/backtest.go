@@ -18,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	"github.com/rs/zerolog/log"
 )
 
 func CreateBacktest(ctx context.Context, msg stream.Message) error {
@@ -66,13 +67,20 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 			EndDate:   pb.GoTimeToDate(end),
 		}
 		for _, asset := range assets {
+			if asset.AssetType != "Equity" {
+				continue
+			}
 			rsp, err := marketdataClient.GetAsset(ctx, &financeServicePB.GetAssetRequest{
 				Identifier: &financeServicePB.GetAssetRequest_Symbol{
 					Symbol: asset.Symbol,
 				},
 			})
 			if err != nil {
-				return fmt.Errorf("error getting asset: %w", err)
+				log.Warn().Err(err).Msg("error getting asset, marking as disabled")
+				backtet_period.Assets = append(backtet_period.Assets, &backtest.Backtest_Period_Asset{
+					Symbol:  asset.Symbol,
+					Enabled: false,
+				})
 			}
 			backtet_period.Assets = append(backtet_period.Assets, &backtest.Backtest_Period_Asset{
 				Symbol:  rsp.Asset.Symbol,
@@ -91,6 +99,48 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 		err = backtests.UpdatePeriod(ctx, command.BacktestName, period)
 		if err != nil {
 			return fmt.Errorf("error updating period assets: %w", err)
+		}
+	}
+	return nil
+}
+
+func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
+	command := ss.DownloadFinancialDataCommand{}
+
+	err := msg.ParsePayload(&command)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling DownloadFinancialDataCommand payload: %w", err)
+	}
+
+	financeClient, isMarketdataClient := msg.MustGet(dependency.GetMarketdataClient).(financeServicePB.MarketdataClient)
+	if !isMarketdataClient {
+		return errors.New("error casting marketdata client")
+	}
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	backtests := repository.Backtest{Conn: db}
+	b, err := backtests.Get(ctx, command.BacktestName)
+	if err != nil {
+		return fmt.Errorf("error getting backtest: %w", err)
+	}
+
+	for _, period := range b.Periods {
+		var symbols []string
+		for _, asset := range period.Assets {
+			if !asset.Enabled {
+				continue
+			}
+			symbols = append(symbols, asset.Symbol)
+		}
+		if len(symbols) == 0 {
+			continue
+		}
+		_, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
+			Symbols:   symbols,
+			StartDate: period.StartDate,
+			EndDate:   period.EndDate,
+		})
+		if err != nil {
+			return fmt.Errorf("error downloading financial data: %w", err)
 		}
 	}
 	return nil

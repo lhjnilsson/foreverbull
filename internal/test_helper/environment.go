@@ -25,6 +25,7 @@ type Containers struct {
 	NATS     bool
 	Minio    bool
 	Loki     bool
+	Zipline  bool
 }
 
 func getOrCreateNetwork() error {
@@ -99,6 +100,13 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 			os.Setenv(environment.MinioAccessKey, accessKey)
 			os.Setenv(environment.MinioSecretKey, secretKey)
 
+			return nil
+		})
+	}
+
+	if containers.Zipline {
+		group.Go(func() error {
+			os.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
 			return nil
 		})
 	}

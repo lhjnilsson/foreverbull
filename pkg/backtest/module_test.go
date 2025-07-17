@@ -43,7 +43,6 @@ func TestModuleBacktest(t *testing.T) {
 	if backtestImage == "" {
 		t.Skip("backtest image not set")
 	}
-
 	suite.Run(t, new(BacktestModuleTest))
 }
 

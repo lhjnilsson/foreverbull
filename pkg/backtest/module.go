@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
+	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
@@ -72,15 +73,20 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			return repository.CreateTables(context.TODO(), conn)
 		},
 		func(lc fx.Lifecycle, sub Subscriber, backtestEngine engine.Engine, dependencies DependencyContainer) error {
-			var backtestContainer container.Container
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					returnEngine := func(ctx context.Context, msg stream.Message) (interface{}, error) {
 						return backtestEngine, nil
 					}
+					mdclient, err := financeapi.NewMarketdataClient()
+					if err != nil {
+						return fmt.Errorf("error creating marketdata client: %w", err)
+					}
 					dependencies.AddMethod(dependency.GetEngineKey, returnEngine)
+					dependencies.AddSingleton(dependency.GetETFScraper, dependency.NewETFScaper())
+					dependencies.AddSingleton(dependency.GetMarketdataClient, mdclient)
 
-					err := sub.Subscribe("ingest", "ingest", command.Ingest)
+					err = sub.Subscribe("ingest", "ingest", command.Ingest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.ingest: %w", err)
 					}
@@ -88,12 +94,17 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
+					err = sub.Subscribe("create", "create", command.CreateBacktest)
+					if err != nil {
+						return fmt.Errorf("error subscribing to backtest.create: %w", err)
+					}
+					err = sub.Subscribe("download", "download", command.DownloadFinancialData)
+					if err != nil {
+						return fmt.Errorf("error subscribing to backtest.download: %w", err)
+					}
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					if err := backtestContainer.Stop(); err != nil {
-						return fmt.Errorf("error stopping container: %w", err)
-					}
 					return sub.Unsubscribe()
 				},
 			})

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	GetETFScraper       stream.Dependency = "get_engine"
+	GetETFScraper       stream.Dependency = "get_etf_scraper"
 	GetMarketdataClient stream.Dependency = "get_marketdata_client"
 )
 

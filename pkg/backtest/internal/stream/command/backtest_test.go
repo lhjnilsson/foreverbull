@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type CreateBacktestTest struct {
+type BacktestCommandTest struct {
 	suite.Suite
 
 	db         *pgxpool.Pool
@@ -28,11 +28,11 @@ type CreateBacktestTest struct {
 	mdclient   *financeServicePB.MockMarketdataClient
 }
 
-func TestCreateBacktest(t *testing.T) {
-	suite.Run(t, new(CreateBacktestTest))
+func TestBacktest(t *testing.T) {
+	suite.Run(t, new(BacktestCommandTest))
 }
 
-func (test *CreateBacktestTest) SetupSuite() {
+func (test *BacktestCommandTest) SetupSuite() {
 	var err error
 	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
 		Postgres: true,
@@ -64,16 +64,16 @@ func (test *CreateBacktestTest) SetupSuite() {
 	test.Require().NoError(err)
 }
 
-func (test *CreateBacktestTest) TearDownSuite() {
+func (test *BacktestCommandTest) TearDownSuite() {
 }
 
-func (test *CreateBacktestTest) SetupTest() {
+func (test *BacktestCommandTest) SetupTest() {
 }
 
-func (test *CreateBacktestTest) TearDownTest() {
+func (test *BacktestCommandTest) TearDownTest() {
 }
 
-func (test *CreateBacktestTest) TestCreateBacktest() {
+func (test *BacktestCommandTest) TestCreateBacktest() {
 	message := new(stream.MockMessage)
 	message.On("ParsePayload", &bs.CreateBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*bs.CreateBacktestCommand)
@@ -84,7 +84,7 @@ func (test *CreateBacktestTest) TestCreateBacktest() {
 	message.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
 
 	assetMap := map[string][]dependency.Asset{
-		"2022": []dependency.Asset{
+		"2022": {
 			{
 				Symbol:    "AAPL",
 				Name:      "Apple Inc.",
@@ -93,7 +93,7 @@ func (test *CreateBacktestTest) TestCreateBacktest() {
 				ISIN:      "US0000000000",
 			},
 		},
-		"2023": []dependency.Asset{
+		"2023": {
 			{
 				Symbol:    "TSLA",
 				Name:      "Tesla, Inc.",
@@ -132,4 +132,34 @@ func (test *CreateBacktestTest) TestCreateBacktest() {
 	backtest, err := backtests.Get(context.TODO(), "test-backtest")
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
+}
+func (test *BacktestCommandTest) TestDownloadFinancialData() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{
+				Symbol:  "AAPL",
+				Enabled: true,
+			},
+		},
+	})
+	test.Require().NoError(err)
+	msg := new(stream.MockMessage)
+	msg.On("MustGet", stream.DBDep).Return(test.db)
+	msg.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
+	msg.On("ParsePayload", &bs.DownloadFinancialDataCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
+		payload.BacktestName = "test-backtest"
+	})
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, &financeServicePB.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+	}).Return(nil, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), msg)
+	test.Require().NoError(err)
+	test.mdclient.AssertExpectations(test.T())
 }
