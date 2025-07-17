@@ -16,7 +16,7 @@ type MockMarketdataClient struct {
 }
 
 // DownloadHistoricalData provides a mock function with given fields: ctx, in, opts
-func (_m *MockMarketdataClient) DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (*DownloadHistoricalDataResponse, error) {
+func (_m *MockMarketdataClient) DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadHistoricalDataResponse], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -30,16 +30,16 @@ func (_m *MockMarketdataClient) DownloadHistoricalData(ctx context.Context, in *
 		panic("no return value specified for DownloadHistoricalData")
 	}
 
-	var r0 *DownloadHistoricalDataResponse
+	var r0 grpc.ServerStreamingClient[DownloadHistoricalDataResponse]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *DownloadHistoricalDataRequest, ...grpc.CallOption) (*DownloadHistoricalDataResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *DownloadHistoricalDataRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadHistoricalDataResponse], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *DownloadHistoricalDataRequest, ...grpc.CallOption) *DownloadHistoricalDataResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *DownloadHistoricalDataRequest, ...grpc.CallOption) grpc.ServerStreamingClient[DownloadHistoricalDataResponse]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*DownloadHistoricalDataResponse)
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[DownloadHistoricalDataResponse])
 		}
 	}
 

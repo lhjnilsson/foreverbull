@@ -2,6 +2,8 @@ package api_test
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
 	"net"
 	"testing"
@@ -99,19 +101,51 @@ func (suite *MarketdataTest) TestGetIndex() {
 
 func (suite *MarketdataTest) TestDownloadHistoricalData() {
 	req := &servicePb.DownloadHistoricalDataRequest{
-		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
+		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
 	}
-	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)
+
+	result := make(map[string]servicePb.DownloadHistoricalDataResponse_Status)
+	for {
+		msg, err := rsp.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			suite.Require().NoError(err)
+			break
+		}
+		suite.Require().NoError(err)
+		result[msg.GetSymbol()] = msg.GetStatus()
+	}
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, result["AAPL"])
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, result["NOCORP"])
 }
 
 func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	req := &servicePb.DownloadHistoricalDataRequest{
-		Symbols:   []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "AMD", "INTC", "QCOM"},
+		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 	}
-	_, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
 	suite.Require().NoError(err)
+
+	result := make(map[string]servicePb.DownloadHistoricalDataResponse_Status)
+	for {
+		msg, err := rsp.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			suite.Require().NoError(err)
+			break
+		}
+		suite.Require().NoError(err)
+		result[msg.GetSymbol()] = msg.GetStatus()
+	}
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, result["AAPL"])
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, result["NOCORP"])
 }
