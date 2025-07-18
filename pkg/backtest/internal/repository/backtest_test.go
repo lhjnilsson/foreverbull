@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
@@ -89,7 +90,7 @@ func (test *BacktestTest) TestGet() {
 	})
 }
 
-func (test *BacktestTest) TestUpdate() {
+func (test *BacktestTest) TestUpdateBenchmark() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
@@ -97,13 +98,87 @@ func (test *BacktestTest) TestUpdate() {
 	test.Require().NoError(err)
 
 	benchmark := "benchmark"
-	_, err = backtests.Update(ctx, test.backtest.Name, &benchmark)
+	_, err = backtests.UpdateBenchmark(ctx, test.backtest.Name, &benchmark)
 	test.Require().NoError(err)
 
 	backtest, err := backtests.Get(ctx, test.backtest.Name)
 	test.Require().NoError(err)
 	test.Equal(test.backtest.Name, backtest.Name)
 	test.Equal(benchmark, *backtest.Benchmark)
+}
+
+func (test *BacktestTest) TestUpdatePeriod() {
+	ctx := context.Background()
+
+	backtests := &repository.Backtest{Conn: test.conn}
+	test.backtest.Periods = []*backtest.Backtest_Period{
+		{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+		},
+	}
+
+	_, err := backtests.Create(ctx, test.backtest)
+	test.Require().NoError(err)
+	period := &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{
+				Symbol:  "AAPL",
+				Enabled: true,
+			},
+		},
+	}
+	err = backtests.UpdatePeriod(ctx, test.backtest.Name, period)
+	test.Require().NoError(err)
+
+	backtest, err := backtests.Get(ctx, test.backtest.Name)
+	test.Require().NoError(err)
+	test.Equal(test.backtest.Name, backtest.Name)
+	test.Equal(period.StartDate, backtest.Periods[0].StartDate)
+	test.Equal(period.EndDate, backtest.Periods[0].EndDate)
+	test.Equal(period.Assets[0].Symbol, backtest.Periods[0].Assets[0].Symbol)
+}
+
+func (test *BacktestTest) TestUpdatePeriodAsset() {
+	ctx := context.Background()
+
+	backtests := &repository.Backtest{Conn: test.conn}
+	test.backtest.Periods = []*backtest.Backtest_Period{
+		{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets: []*backtest.Backtest_Period_Asset{
+				{
+					Symbol:  "AAPL",
+					Enabled: true,
+				},
+			},
+		},
+	}
+
+	_, err := backtests.Create(ctx, test.backtest)
+	test.Require().NoError(err)
+
+	period := &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+	}
+	asset := &backtest.Backtest_Period_Asset{
+		Symbol:  "AAPL",
+		Enabled: false,
+	}
+	err = backtests.UpdatePeriodAsset(ctx, test.backtest.Name, period, asset)
+	test.Require().NoError(err)
+
+	backtest, err := backtests.Get(ctx, test.backtest.Name)
+	test.Require().NoError(err)
+	test.Equal(test.backtest.Name, backtest.Name)
+	test.Equal(period.StartDate, backtest.Periods[0].StartDate)
+	test.Equal(period.EndDate, backtest.Periods[0].EndDate)
+	test.Equal("AAPL", backtest.Periods[0].Assets[0].Symbol)
+	test.False(backtest.Periods[0].Assets[0].Enabled)
 }
 
 func (test *BacktestTest) TestList() {
