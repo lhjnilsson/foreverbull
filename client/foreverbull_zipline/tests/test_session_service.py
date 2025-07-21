@@ -7,7 +7,6 @@ import pytest
 
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
 
@@ -35,12 +34,7 @@ def uut(fb_database, backtest_entity):
 def test_session_service_servicer(execution, uut: engine_service_pb2_grpc.EngineSessionStub):
     rsp = uut.RunBacktest(
         engine_service_pb2.RunBacktestRequest(
-            backtest=backtest_pb2.Backtest(
-                start_date=execution.start_date,
-                end_date=execution.end_date,
-                symbols=execution.symbols,
-                benchmark=None,
-            )
+            execution=execution,
         )
     )
     assert rsp

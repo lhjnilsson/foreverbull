@@ -43,22 +43,43 @@ class OHLC(Base):
 
 
 def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
+    # TODO: Refactor using exchange calendar
     with database.connect() as conn:
-        for symbol in backtest.symbols:
-            result = conn.execute(
-                text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
-                {"symbol": symbol},
-            )
-            res = result.fetchone()
-            if res is None:
-                return False
-            start, end = res
-            if start is None or end is None:
-                return False
-            if start.date() != pb_utils.from_proto_date_to_pydate(
-                backtest.start_date
-            ) or end.date() != pb_utils.from_proto_date_to_pydate(backtest.end_date):
-                return False
+        for period in backtest.periods:
+            for asset in period.assets:
+                if not asset.enabled:
+                    continue
+                result = conn.execute(
+                    text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
+                    {"symbol": asset.symbol},
+                )
+                res = result.fetchone()
+                if res is None:
+                    return False
+                start, end = res
+                if start is None or end is None:
+                    return False
+                if start.date() != pb_utils.from_proto_date_to_pydate(period.start_date):
+                    return False
+                if end.date() != pb_utils.from_proto_date_to_pydate(period.end_date):
+                    return False
+
+        start_date = pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date)
+        end_date = pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date)
+        result = conn.execute(
+            text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
+            {"symbol": backtest.benchmark},
+        )
+        res = result.fetchone()
+        if res is None:
+            return False
+        start, end = res
+        if start is None or end is None:
+            return False
+        if start.date() != start_date:
+            return False
+        if end.date() != end_date:
+            return False
         return True
 
 
@@ -67,14 +88,25 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
     # yfinance.data.YfData.user_agent_headers["User-Agent"] = (
     #    "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
     # )
-    with database.connect() as conn:
-        for symbol in backtest.symbols:
-            try:
-                feed = yfinance.Ticker(symbol)
-            except Exception as e:
-                print(f"Failed to get feed for {symbol}: {e}")
-                continue
+    def what_to_populate():
+        for period in backtest.periods:
+            for asset in period.assets:
+                if not asset.enabled:
+                    continue
+                yield (
+                    pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date),
+                    pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date),
+                    asset.symbol,
+                )
+        yield (
+            pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date),
+            pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date),
+            backtest.benchmark,
+        )
 
+    with database.connect() as conn:
+        for start, end, symbol in what_to_populate():
+            feed = yfinance.Ticker(symbol)
             info = feed.info
             asset = marketdata_pb2.Asset(
                 symbol=info["symbol"],
@@ -88,8 +120,8 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                 {"symbol": asset.symbol, "name": asset.name},
             )
             data = feed.history(
-                start=pb_utils.from_proto_date_to_pydate(backtest.start_date),
-                end=pb_utils.from_proto_date_to_pydate(backtest.end_date) + timedelta(days=1),
+                start=start,
+                end=end + timedelta(days=1),
             )
             for idx, row in data.iterrows():
                 time = datetime(idx.year, idx.month, idx.day, idx.hour, idx.minute, idx.second)  # type: ignore
@@ -99,7 +131,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                         VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
                     ),
                     {
-                        "symbol": symbol,
+                        "symbol": asset.symbol,
                         "open": row.Open.item(),
                         "high": row.High.item(),
                         "low": row.Low.item(),
@@ -108,4 +140,4 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                         "time": time,
                     },
                 )
-        conn.commit()
+            conn.commit()

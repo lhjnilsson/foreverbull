@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xa9\x01\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x0f\n\x07symbols\x18\x04 \x03(\t\x12\x16\n\tbenchmark\x18\x05 \x01(\tH\x00\x88\x01\x01\x42\x0c\n\n_benchmarkB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xb5\x02\n\x08\x42\x61\x63ktest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x11\n\tbenchmark\x18\x05 \x01(\t\x12\x39\n\x07periods\x18\x06 \x03(\x0b\x32(.foreverbull.backtest.v1.Backtest.Period\x1a\xcc\x01\n\x06Period\x12,\n\nstart_date\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12>\n\x06\x61ssets\x18\x03 \x03(\x0b\x32..foreverbull.backtest.v1.Backtest.Period.Asset\x1a(\n\x05\x41sset\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0f\n\x07\x65nabled\x18\x02 \x01(\x08\x42\x33Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,5 +34,9 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtest'
   _globals['_BACKTEST']._serialized_start=94
-  _globals['_BACKTEST']._serialized_end=263
+  _globals['_BACKTEST']._serialized_end=403
+  _globals['_BACKTEST_PERIOD']._serialized_start=199
+  _globals['_BACKTEST_PERIOD']._serialized_end=403
+  _globals['_BACKTEST_PERIOD_ASSET']._serialized_start=363
+  _globals['_BACKTEST_PERIOD_ASSET']._serialized_end=403
 # @@protoc_insertion_point(module_scope)

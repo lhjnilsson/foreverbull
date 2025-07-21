@@ -26,14 +26,14 @@ from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n%foreverbull/finance/v1/calendar.proto\x12\x16\x66oreverbull.finance.v1\x1a\x18\x66oreverbull/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x01\n\x0c\x43\x61lendarDate\x12&\n\x04\x64\x61te\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Date\x12(\n\x04open\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\x05\x63lose\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampB=Z;github.com/lhjnilsson/foreverbull/pkg/pb/finance/v1;financeb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n%foreverbull/finance/v1/calendar.proto\x12\x16\x66oreverbull.finance.v1\x1a\x18\x66oreverbull/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x01\n\x0c\x43\x61lendarDate\x12&\n\x04\x64\x61te\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Date\x12(\n\x04open\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\x05\x63lose\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampB2Z0github.com/lhjnilsson/foreverbull/pkg/pb/financeb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.finance.v1.calendar_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z;github.com/lhjnilsson/foreverbull/pkg/pb/finance/v1;finance'
+  _globals['DESCRIPTOR']._serialized_options = b'Z0github.com/lhjnilsson/foreverbull/pkg/pb/finance'
   _globals['_CALENDARDATE']._serialized_start=125
   _globals['_CALENDARDATE']._serialized_end=264
 # @@protoc_insertion_point(module_scope)

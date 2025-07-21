@@ -23,8 +23,6 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as en
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2 as calendar_service_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2_grpc as calendar_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance.v1 import calendar_pb2 as calendar_pb2
-from foreverbull_zipline.data_bundles.foreverbull import DatabaseEngine
-from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
 
@@ -62,54 +60,24 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.sessions: list[Session] = []
-        bundles.register("foreverbull", SQLIngester(), calendar_name="XNYS")
-        try:
-            self.bundle = bundles.load("foreverbull", os.environ, None)
-        except ValueError:
-            self.bundle = None
-
-    @property
-    def ingestion(self) -> tuple[list[str], pd.Timestamp, pd.Timestamp]:
-        if self.bundle is None:
-            raise LookupError("no ingestion avaible")
-        assets = self.bundle.asset_finder.retrieve_all(self.bundle.asset_finder.sids)
-        start = assets[0].start_date.tz_localize("UTC")
-        end = assets[0].end_date.tz_localize("UTC")
-        return [a.symbol for a in assets], start, end
-
-    def GetIngestion(self, request, context):
-        symbols, start, end = self.ingestion
-        return engine_service_pb2.GetIngestionResponse(
-            ingestion=engine_service_pb2.Ingestion(
-                start_date=pb_utils.from_pydate_to_proto_date(start),
-                end_date=pb_utils.from_pydate_to_proto_date(end),
-                symbols=symbols,
-            )
-        )
 
     def DownloadIngestion(self, request: engine_service_pb2.DownloadIngestionRequest, context):
         storage = Storage.from_environment()
         storage.download_object(request.bucket, request.object, "/tmp/ingestion.tar.gz")
         with tarfile.open("/tmp/ingestion.tar.gz", "r:gz") as tar:
             tar.extractall(data_root())
-        bundles.register("foreverbull", SQLIngester())
         return engine_service_pb2.DownloadIngestionResponse()
 
     def Ingest(self, request: engine_service_pb2.IngestRequest, context):
-        SQLIngester.engine = DatabaseEngine()
-        SQLIngester.from_date = pb_utils.from_proto_date_to_pydate(request.ingestion.start_date)
-        SQLIngester.to_date = pb_utils.from_proto_date_to_pydate(request.ingestion.end_date)
-        SQLIngester.symbols = [s for s in request.ingestion.symbols]
-        bundles.ingest("foreverbull", os.environ, pd.Timestamp.utcnow(), [], True)
-        self.bundle = bundles.load("foreverbull", os.environ, None)
+        bundles.ingest(request.backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
+        self.bundle = bundles.load(request.backtest.name, os.environ, None)
         self.logger.debug("ingestion completed")
-        symbols, start, end = self.ingestion
         if request.HasField("bucket") and request.HasField("object"):
             self.logger.debug("Uploading ingestion to: %s/%s", request.bucket, request.object)
-            with tarfile.open("/tmp/ingestion.tar.gz", "w:gz") as tar:
+            with tarfile.open(f"/tmp/{request.backtest.name}.tar.gz", "w:gz") as tar:
                 tar.add(data_path(["foreverbull"]), arcname="foreverbull")
             storage = Storage.from_environment()
-            storage.upload_object(request.bucket, request.object, "/tmp/ingestion.tar.gz")
+            storage.upload_object(request.bucket, request.object, f"/tmp/{request.backtest.name}.tar.gz")
             self.logger.debug("Ingestion uploaded")
         return engine_service_pb2.IngestResponse()
 

@@ -1,6 +1,5 @@
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2 as _backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2 as _execution_pb2
-from foreverbull.pb.foreverbull import common_pb2 as _common_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2 as _marketdata_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
@@ -8,26 +7,6 @@ from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
-
-class Ingestion(_message.Message):
-    __slots__ = ("start_date", "end_date", "symbols")
-    START_DATE_FIELD_NUMBER: _ClassVar[int]
-    END_DATE_FIELD_NUMBER: _ClassVar[int]
-    SYMBOLS_FIELD_NUMBER: _ClassVar[int]
-    start_date: _common_pb2.Date
-    end_date: _common_pb2.Date
-    symbols: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., symbols: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class GetIngestionRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetIngestionResponse(_message.Message):
-    __slots__ = ("ingestion",)
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
-    ingestion: Ingestion
-    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ...) -> None: ...
 
 class DownloadIngestionRequest(_message.Message):
     __slots__ = ("bucket", "object")
@@ -42,14 +21,14 @@ class DownloadIngestionResponse(_message.Message):
     def __init__(self) -> None: ...
 
 class IngestRequest(_message.Message):
-    __slots__ = ("ingestion", "bucket", "object")
-    INGESTION_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("backtest", "bucket", "object")
+    BACKTEST_FIELD_NUMBER: _ClassVar[int]
     BUCKET_FIELD_NUMBER: _ClassVar[int]
     OBJECT_FIELD_NUMBER: _ClassVar[int]
-    ingestion: Ingestion
+    backtest: _backtest_pb2.Backtest
     bucket: str
     object: str
-    def __init__(self, ingestion: _Optional[_Union[Ingestion, _Mapping]] = ..., bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
+    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ..., bucket: _Optional[str] = ..., object: _Optional[str] = ...) -> None: ...
 
 class IngestResponse(_message.Message):
     __slots__ = ()
@@ -68,18 +47,20 @@ class NewSessionResponse(_message.Message):
     def __init__(self, port: _Optional[int] = ...) -> None: ...
 
 class RunBacktestRequest(_message.Message):
-    __slots__ = ("backtest",)
-    BACKTEST_FIELD_NUMBER: _ClassVar[int]
-    backtest: _backtest_pb2.Backtest
-    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
+    __slots__ = ("execution", "benchmark")
+    EXECUTION_FIELD_NUMBER: _ClassVar[int]
+    BENCHMARK_FIELD_NUMBER: _ClassVar[int]
+    execution: _execution_pb2.Execution
+    benchmark: str
+    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., benchmark: _Optional[str] = ...) -> None: ...
 
 class RunBacktestResponse(_message.Message):
-    __slots__ = ("backtest", "num_periods")
-    BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("execution", "num_periods")
+    EXECUTION_FIELD_NUMBER: _ClassVar[int]
     NUM_PERIODS_FIELD_NUMBER: _ClassVar[int]
-    backtest: _backtest_pb2.Backtest
+    execution: _execution_pb2.Execution
     num_periods: int
-    def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ..., num_periods: _Optional[int] = ...) -> None: ...
+    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., num_periods: _Optional[int] = ...) -> None: ...
 
 class GetCurrentPeriodRequest(_message.Message):
     __slots__ = ()
