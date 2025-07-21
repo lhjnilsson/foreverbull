@@ -77,10 +77,10 @@ def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
         engine.place_orders_and_continue(engine_service_pb2.PlaceOrdersAndContinueRequest())
 
 
-@pytest.mark.parametrize("benchmark", ["AAPL", None])
-def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmark):
+def test_get_result(execution: execution_pb2.Execution, backtest_entity: backtest_pb2.Backtest, engine: Engine):
     request = engine_service_pb2.RunBacktestRequest(
         execution=execution,
+        benchmark=backtest_entity.benchmark,
     )
     response = engine.run_backtest(request)
     assert response.execution
@@ -94,10 +94,7 @@ def test_get_result(execution: execution_pb2.Execution, engine: Engine, benchmar
 
     response = engine.get_backtest_result(engine_service_pb2.GetResultRequest())
     assert len(response.periods)
-    if benchmark:
-        assert response.periods[-1].benchmark_period_return != 0.0
-    else:
-        assert response.periods[-1].benchmark_period_return == 0.0
+    assert response.periods[-1].benchmark_period_return != 0.0
 
 
 def test_broker(backtest_entity: backtest_pb2.Backtest, execution: execution_pb2.Execution, engine: Engine):
