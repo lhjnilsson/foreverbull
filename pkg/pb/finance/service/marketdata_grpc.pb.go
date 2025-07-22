@@ -30,7 +30,7 @@ const (
 type MarketdataClient interface {
 	GetAsset(ctx context.Context, in *GetAssetRequest, opts ...grpc.CallOption) (*GetAssetResponse, error)
 	GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*GetIndexResponse, error)
-	DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (*DownloadHistoricalDataResponse, error)
+	DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadHistoricalDataResponse], error)
 }
 
 type marketdataClient struct {
@@ -61,15 +61,24 @@ func (c *marketdataClient) GetIndex(ctx context.Context, in *GetIndexRequest, op
 	return out, nil
 }
 
-func (c *marketdataClient) DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (*DownloadHistoricalDataResponse, error) {
+func (c *marketdataClient) DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadHistoricalDataResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DownloadHistoricalDataResponse)
-	err := c.cc.Invoke(ctx, Marketdata_DownloadHistoricalData_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Marketdata_ServiceDesc.Streams[0], Marketdata_DownloadHistoricalData_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[DownloadHistoricalDataRequest, DownloadHistoricalDataResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Marketdata_DownloadHistoricalDataClient = grpc.ServerStreamingClient[DownloadHistoricalDataResponse]
 
 // MarketdataServer is the server API for Marketdata service.
 // All implementations must embed UnimplementedMarketdataServer
@@ -77,7 +86,7 @@ func (c *marketdataClient) DownloadHistoricalData(ctx context.Context, in *Downl
 type MarketdataServer interface {
 	GetAsset(context.Context, *GetAssetRequest) (*GetAssetResponse, error)
 	GetIndex(context.Context, *GetIndexRequest) (*GetIndexResponse, error)
-	DownloadHistoricalData(context.Context, *DownloadHistoricalDataRequest) (*DownloadHistoricalDataResponse, error)
+	DownloadHistoricalData(*DownloadHistoricalDataRequest, grpc.ServerStreamingServer[DownloadHistoricalDataResponse]) error
 	mustEmbedUnimplementedMarketdataServer()
 }
 
@@ -94,8 +103,8 @@ func (UnimplementedMarketdataServer) GetAsset(context.Context, *GetAssetRequest)
 func (UnimplementedMarketdataServer) GetIndex(context.Context, *GetIndexRequest) (*GetIndexResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIndex not implemented")
 }
-func (UnimplementedMarketdataServer) DownloadHistoricalData(context.Context, *DownloadHistoricalDataRequest) (*DownloadHistoricalDataResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DownloadHistoricalData not implemented")
+func (UnimplementedMarketdataServer) DownloadHistoricalData(*DownloadHistoricalDataRequest, grpc.ServerStreamingServer[DownloadHistoricalDataResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadHistoricalData not implemented")
 }
 func (UnimplementedMarketdataServer) mustEmbedUnimplementedMarketdataServer() {}
 func (UnimplementedMarketdataServer) testEmbeddedByValue()                    {}
@@ -154,23 +163,16 @@ func _Marketdata_GetIndex_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Marketdata_DownloadHistoricalData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DownloadHistoricalDataRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _Marketdata_DownloadHistoricalData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadHistoricalDataRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(MarketdataServer).DownloadHistoricalData(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Marketdata_DownloadHistoricalData_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MarketdataServer).DownloadHistoricalData(ctx, req.(*DownloadHistoricalDataRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(MarketdataServer).DownloadHistoricalData(m, &grpc.GenericServerStream[DownloadHistoricalDataRequest, DownloadHistoricalDataResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Marketdata_DownloadHistoricalDataServer = grpc.ServerStreamingServer[DownloadHistoricalDataResponse]
 
 // Marketdata_ServiceDesc is the grpc.ServiceDesc for Marketdata service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -187,11 +189,13 @@ var Marketdata_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetIndex",
 			Handler:    _Marketdata_GetIndex_Handler,
 		},
+	},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "DownloadHistoricalData",
-			Handler:    _Marketdata_DownloadHistoricalData_Handler,
+			StreamName:    "DownloadHistoricalData",
+			Handler:       _Marketdata_DownloadHistoricalData_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "foreverbull/finance/service/v1/marketdata.proto",
 }

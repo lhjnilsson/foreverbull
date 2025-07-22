@@ -19,44 +19,45 @@ def spawn_process():
 def backtest_entity():
     return backtest_pb2.Backtest(
         name="testing_backtest",
-        start_date=common_pb2.Date(year=2022, month=1, day=3),
-        end_date=common_pb2.Date(year=2023, month=12, day=29),
-        symbols=[
-            "AAPL",
-            "AMZN",
-            "BAC",
-            "BRK-B",
-            "CMCSA",
-            "CSCO",
-            "DIS",
-            "GOOG",
-            "GOOGL",
-            "HD",
-            "INTC",
-            "JNJ",
-            "JPM",
-            "KO",
-            "MA",
-            "META",
-            "MRK",
-            "MSFT",
-            "PEP",
-            "PG",
-            "TSLA",
-            "UNH",
-            "V",
-            "VZ",
-            "WMT",
+        benchmark="OEF",
+        periods=[
+            backtest_pb2.Backtest.Period(
+                start_date=common_pb2.Date(year=2022, month=1, day=1),
+                end_date=common_pb2.Date(year=2022, month=12, day=31),
+                assets=[
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="AAPL",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="MSFT",
+                        enabled=True,
+                    ),
+                ],
+            ),
+            backtest_pb2.Backtest.Period(
+                start_date=common_pb2.Date(year=2023, month=1, day=1),
+                end_date=common_pb2.Date(year=2023, month=12, day=31),
+                assets=[
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="AAPL",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="AMZN",
+                        enabled=True,
+                    ),
+                ],
+            ),
         ],
     )
 
 
 @pytest.fixture(scope="function")
-def execution():
+def execution(backtest_entity):
     return execution_pb2.Execution(
         id="test",
-        start_date=common_pb2.Date(year=2022, month=1, day=3),
-        end_date=common_pb2.Date(year=2023, month=12, day=29),
-        symbols=["AAPL", "MSFT", "TSLA"],
-        benchmark="AAPL",
+        backtest=backtest_entity.name,
+        start_date=common_pb2.Date(year=2022, month=1, day=1),
+        end_date=common_pb2.Date(year=2023, month=12, day=31),
     )

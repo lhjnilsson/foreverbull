@@ -7,7 +7,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
@@ -17,7 +17,7 @@ import (
 type grpcSessionServer struct {
 	servicePb.UnimplementedSessionServicerServer
 
-	session *backtest_pb.Session
+	session *backtest.Session
 
 	db              postgres.Query
 	backtest        engine.Engine
@@ -32,7 +32,7 @@ const (
 	ActivityBufferSize = 5
 )
 
-func NewGRPCSessionServer(session *backtest_pb.Session, database postgres.Query,
+func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
 	backtest engine.Engine,
 ) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
@@ -65,14 +65,11 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	}
 
 	executions := repository.Execution{Conn: s.db}
+	e := backtest.Execution{
+		Session: s.session.Id,
+	}
 
-	execution, err := executions.Create(context.TODO(),
-		s.session.Id,
-		req.Backtest.StartDate,
-		req.Backtest.EndDate,
-		req.Backtest.Symbols,
-		req.Backtest.Benchmark,
-	)
+	execution, err := executions.Create(context.TODO(), &e)
 	if err != nil {
 		log.Error().Err(err).Msg("error creating execution")
 		return nil, fmt.Errorf("error creating execution: %w", err)
@@ -107,10 +104,7 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	backtest := backtest_pb.Backtest{
-		StartDate: execution.StartDate,
-		EndDate:   execution.EndDate,
-		Symbols:   execution.Symbols,
+	backtest := backtest.Backtest{
 		Benchmark: execution.Benchmark,
 	}
 
@@ -159,7 +153,7 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.Get
 
 	return &servicePb.GetExecutionResponse{
 		Execution: execution,
-		Periods:   []*backtest_pb.Period{},
+		Periods:   []*backtest.Period{},
 	}, nil
 }
 

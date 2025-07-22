@@ -25,6 +25,7 @@ type Containers struct {
 	NATS     bool
 	Minio    bool
 	Loki     bool
+	Zipline  bool
 }
 
 func getOrCreateNetwork() error {
@@ -115,6 +116,11 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	err = group.Wait()
 	if err != nil {
 		require.NoError(t, err, "fail to create environment")
+	}
+
+	// Zipline depends on Postgres to be running
+	if containers.Zipline {
+		os.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
 	}
 
 	t.Setenv(environment.ServerAddress, "host.docker.internal")

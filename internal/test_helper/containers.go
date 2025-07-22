@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -318,4 +319,35 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 	log.Logger = zerolog.New(zerolog.MultiLevelWriter(zerolog.NewConsoleWriter(), lokiLogger))
 
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
+}
+
+func ZiplineContainer(t *testing.T, network string) string {
+	t.Helper()
+
+	healthStrategy := wait.NewHealthStrategy()
+
+	container := testcontainers.ContainerRequest{
+		Image:      "lhjnilsson/zipline:local",
+		WaitingFor: healthStrategy,
+		Networks:   []string{network},
+		Env:        map[string]string{"DATABASE_URL": environment.GetPostgresURL()},
+	}
+	genericReq := testcontainers.GenericContainerRequest{
+		ContainerRequest: container,
+		Started:          true,
+	}
+
+	reuse := testcontainers.CustomizeRequestOption(
+		func(req *testcontainers.GenericContainerRequest) error {
+			req.Reuse = true
+			req.Name = "foreverbull-testing-zipline"
+			return nil
+		},
+	)
+	err := reuse.Customize(&genericReq)
+	require.NoError(t, err)
+	_, err = testcontainers.GenericContainer(context.TODO(), genericReq)
+	require.NoError(t, err)
+
+	return "foreverbull-testing-zipline"
 }

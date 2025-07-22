@@ -9,6 +9,7 @@ option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance";
 message Asset {
   string symbol = 1;
   string name = 2;
+  string ISIN = 3;
 }
 
 message OHLC {

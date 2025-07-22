@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
@@ -27,11 +26,11 @@ type HealthCheck struct {
 	healthgrpc.UnimplementedHealthServer
 }
 
-func (h *HealthCheck) Check(_ context.Context, _ *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
-	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+func (h *HealthCheck) Check(_ context.Context, _ *healthgrpc.HealthCheckRequest) (*healthgrpc.HealthCheckResponse, error) {
+	return &healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVING}, nil
 }
 
-func (h *HealthCheck) Watch(_ *healthpb.HealthCheckRequest, _ healthgrpc.Health_WatchServer) error {
+func (h *HealthCheck) Watch(_ *healthgrpc.HealthCheckRequest, _ healthgrpc.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
@@ -133,7 +132,7 @@ func NewServer() (*grpc.Server, error) {
 	logger := zap.NewExample()
 
 	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
-		return healthpb.Health_ServiceDesc.ServiceName != callMeta.Service
+		return healthgrpc.Health_ServiceDesc.ServiceName != callMeta.Service
 	}
 
 	validator, err := protovalidate.New()
@@ -182,7 +181,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 							return fmt.Errorf("failed to listen: %w", err)
 						}
 						server := &HealthCheck{}
-						healthpb.RegisterHealthServer(grpcServer, server)
+						healthgrpc.RegisterHealthServer(grpcServer, server)
 						go func() {
 							if err := grpcServer.Serve(listener); err != nil {
 								panic(err)

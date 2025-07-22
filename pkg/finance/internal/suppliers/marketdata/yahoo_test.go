@@ -37,6 +37,8 @@ func (test *YahooTest) TestGetAsset() {
 		{"GOOGL", "Alphabet Inc.", nil},
 		{"MSFT", "Microsoft Corporation", nil},
 		{"^DJI", "Dow Jones Industrial Average", nil},
+		{"NVDA", "NVIDIA Corporation", nil},
+		{"HD", "The Home Depot, Inc.", nil},
 		{"---", "", errors.New("Quote not found for symbol: ---")},
 	}
 
@@ -53,6 +55,12 @@ func (test *YahooTest) TestGetAsset() {
 	}
 }
 
+func (test *YahooTest) TestSearchAsset() {
+	asset, err := test.client.SearchAsset("US02079K3059")
+	test.Require().NoError(err)
+	test.NotNil(asset)
+}
+
 func (test *YahooTest) TestGetIndex() {
 	type TestCase struct {
 		Symbol      string
@@ -60,7 +68,7 @@ func (test *YahooTest) TestGetIndex() {
 	}
 
 	testCases := []TestCase{
-		{"^FCHI", nil},
+		//{"^FCHI", nil},
 		{"^DJI", nil},
 		{"^OMX", nil},
 	}

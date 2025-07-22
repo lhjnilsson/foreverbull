@@ -9,7 +9,10 @@ import "foreverbull/finance/v1/marketdata.proto";
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service";
 
 message GetAssetRequest {
-  string symbol = 1;
+  oneof identifier {
+    string symbol = 1;
+    string isin = 2;
+  }
 }
 
 message GetAssetResponse {
@@ -42,10 +45,19 @@ message DownloadHistoricalDataRequest {
   foreverbull.common.Date end_date = 3;
 }
 
-message DownloadHistoricalDataResponse {}
+message DownloadHistoricalDataResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+    STATUS_ERROR = 2;
+  }
+  string symbol = 1;
+  Status status = 2;
+  string error = 3;
+}
 
 service Marketdata {
   rpc GetAsset(GetAssetRequest) returns (GetAssetResponse) {}
   rpc GetIndex(GetIndexRequest) returns (GetIndexResponse) {}
-  rpc DownloadHistoricalData(DownloadHistoricalDataRequest) returns (DownloadHistoricalDataResponse) {}
+  rpc DownloadHistoricalData(DownloadHistoricalDataRequest) returns (stream DownloadHistoricalDataResponse) {}
 }

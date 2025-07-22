@@ -11,7 +11,6 @@ import six
 
 from zipline import TradingAlgorithm
 from zipline.data import bundles
-from zipline.data.bundles.core import BundleData
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
 from zipline.finance import metrics
@@ -25,7 +24,6 @@ from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 
@@ -36,40 +34,6 @@ class ConfigError(Exception):
 
 class StopExcecution(Exception):
     pass
-
-
-def find_start_timestamp(bundle: BundleData, request: engine_service_pb2.RunBacktestRequest) -> pd.Timestamp:
-    bundle_start = None
-    for symbol in request.backtest.symbols:
-        asset_start = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).start_date
-        bundle_start = asset_start if bundle_start is None else max(bundle_start, asset_start)
-    if type(bundle_start) is not pd.Timestamp:
-        raise ConfigError("no bundle start_date found")
-
-    if not request.backtest.HasField("start_date"):
-        return bundle_start
-    request_start = pd.Timestamp(pb_utils.from_proto_date_to_pydate(request.backtest.start_date))
-    assert type(request_start) is pd.Timestamp
-    if request_start < bundle_start:
-        return bundle_start
-    return request_start
-
-
-def find_end_timestamp(bundle: BundleData, request: engine_service_pb2.RunBacktestRequest) -> pd.Timestamp:
-    bundle_end = None
-    for symbol in request.backtest.symbols:
-        asset_end = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).end_date
-        bundle_end = asset_end if bundle_end is None else min(bundle_end, asset_end)
-    if type(bundle_end) is not pd.Timestamp:
-        raise ConfigError("no bundle end_date found")
-
-    if not request.backtest.HasField("end_date"):
-        return bundle_end
-    request_end = pd.Timestamp(pb_utils.from_proto_date_to_pydate(request.backtest.end_date))
-    assert type(request_end) is pd.Timestamp
-    if request_end > bundle_end:
-        return bundle_end
-    return request_end
 
 
 class Engine(multiprocessing.Process):
@@ -198,20 +162,17 @@ class Engine(multiprocessing.Process):
     def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
         req = engine_service_pb2.RunBacktestRequest()
         req.ParseFromString(data)
-        bundles.register("foreverbull", None, calendar_name="XNYS")
-        bundle = bundles.load("foreverbull", os.environ, None)
+        bundles.register(req.execution.backtest, None, calendar_name="XNYS")
+        bundle = bundles.load(req.execution.backtest, os.environ, None)
 
-        for symbol in req.backtest.symbols:
-            asset = bundle.asset_finder.lookup_symbol(symbol, as_of_date=None)
-            if asset is None:
-                raise ConfigError(f"Unknown symbol: {symbol}")
+        start_date = pd.Timestamp(
+            req.execution.start_date.year, req.execution.start_date.month, req.execution.start_date.day
+        )
+        end_date = pd.Timestamp(req.execution.end_date.year, req.execution.end_date.month, req.execution.end_date.day)
 
-        start_date = find_start_timestamp(bundle, req).normalize()
-        end_date = find_end_timestamp(bundle, req).normalize()
-
-        if req.backtest.benchmark:
+        if req.benchmark:
             benchmark_returns = None
-            benchmark_sid = bundle.asset_finder.lookup_symbol(req.backtest.benchmark, as_of_date=None)
+            benchmark_sid = bundle.asset_finder.lookup_symbol(req.benchmark, as_of_date=None)
         else:
             benchmark_returns = pd.Series(index=pd.date_range(start_date, end_date, tz="utc"), data=0.0)
             benchmark_sid = None
@@ -231,7 +192,7 @@ class Engine(multiprocessing.Process):
             trading_calendar=trading_calendar,
             data_frequency="daily",
         )
-        num_periods = trading_calendar.sessions_in_range(start_date, end_date).size
+        num_periods = trading_calendar.sessions_in_range(start_date, end_date).size  # type: ignore
         metrics_set = "default"
         blotter = "default"
         if isinstance(metrics_set, six.string_types):
@@ -264,12 +225,7 @@ class Engine(multiprocessing.Process):
         return (
             trading_algorithm,
             engine_service_pb2.RunBacktestResponse(
-                backtest=backtest_pb2.Backtest(
-                    start_date=pb_utils.from_pydate_to_proto_date(trading_algorithm.sim_params.start_session),
-                    end_date=pb_utils.from_pydate_to_proto_date(trading_algorithm.sim_params.end_session),
-                    symbols=req.backtest.symbols,
-                    benchmark=(req.backtest.benchmark if req.backtest.benchmark else None),
-                ),
+                execution=req.execution,
                 num_periods=num_periods,
             ).SerializeToString(),
         )

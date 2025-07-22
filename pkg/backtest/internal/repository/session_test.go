@@ -8,8 +8,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,7 +17,7 @@ type SessionTest struct {
 
 	conn *pgxpool.Pool
 
-	storedBacktest *pb.Backtest
+	storedBacktest *backtest.Backtest
 }
 
 func (test *SessionTest) SetupSuite() {
@@ -38,9 +37,10 @@ func (test *SessionTest) SetupTest() {
 
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
-	test.storedBacktest, err = backtests.Create(ctx, "backtest",
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	backtest := backtest.Backtest{
+		Name: "backtest",
+	}
+	test.storedBacktest, err = backtests.Create(ctx, &backtest)
 	test.Require().NoError(err)
 }
 
@@ -122,9 +122,10 @@ func (test *SessionTest) TestListByBacktest() {
 	test.NotNil(session2.Id)
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	test.storedBacktest, err = backtests.Create(ctx, "backtest2",
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-		&common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	backtest2 := backtest.Backtest{
+		Name: "backtest2",
+	}
+	test.storedBacktest, err = backtests.Create(ctx, &backtest2)
 	test.Require().NoError(err)
 	session3, err := sessions.Create(ctx, "backtest2")
 	test.Require().NoError(err)

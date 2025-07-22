@@ -15,8 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	backtest_pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/mock"
@@ -40,8 +39,8 @@ type SessionTest struct {
 	mockEngineSession *engine.MockEngineSession
 	client            servicePb.SessionServicerClient
 
-	backtest *backtest_pb.Backtest
-	session  *backtest_pb.Session
+	backtest *backtest.Backtest
+	session  *backtest.Session
 }
 
 func TestSessionManual(t *testing.T) {
@@ -66,7 +65,10 @@ func (s *SessionTest) SetupTest() {
 	s.Require().NoError(err)
 
 	backtests := repository.Backtest{Conn: s.conn}
-	s.backtest, err = backtests.Create(context.Background(), "backtest", &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1}, []string{}, nil)
+	backtest := backtest.Backtest{
+		Name: "backtest",
+	}
+	s.backtest, err = backtests.Create(context.Background(), &backtest)
 	s.Require().NoError(err)
 	sessions := repository.Session{Conn: s.conn}
 	s.session, err = sessions.Create(context.TODO(), "backtest")
@@ -105,7 +107,7 @@ func (s *SessionTest) SetupTest() {
 func (s *SessionTest) TearDownTest() {
 	err := s.listener.Close()
 	if err != nil {
-		s.Fail("error closing listener: %w", err)
+		s.Failf("error closing listener: %s", err.Error())
 	}
 
 	s.baseServer.Stop()
@@ -113,11 +115,7 @@ func (s *SessionTest) TearDownTest() {
 
 func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest: &backtest_pb.Backtest{
-			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-			Symbols:   []string{"AAPL"},
-		},
+		Backtest:  &backtest.Backtest{},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
@@ -131,11 +129,7 @@ func (s *SessionTest) TestCreateExecution() {
 
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest: &backtest_pb.Backtest{
-			StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-			EndDate:   &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
-			Symbols:   []string{"AAPL"},
-		},
+		Backtest:  &backtest.Backtest{},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
@@ -147,8 +141,10 @@ func (s *SessionTest) TestRunExecution() {
 	}
 
 	executions := repository.Execution{Conn: s.conn}
-	execution, err := executions.Create(context.Background(), s.session.Id,
-		s.backtest.StartDate, s.backtest.EndDate, []string{"AAPL"}, nil)
+	e := backtest.Execution{
+		Session: s.session.Id,
+	}
+	execution, err := executions.Create(context.Background(), &e)
 	s.Require().NoError(err)
 
 	ch := make(chan *servicePb.RunExecutionResponse, 5)

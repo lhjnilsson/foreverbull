@@ -34,11 +34,6 @@ class EngineStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetIngestion = channel.unary_unary(
-                '/foreverbull.backtest.service.v1.Engine/GetIngestion',
-                request_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionResponse.FromString,
-                _registered_method=True)
         self.DownloadIngestion = channel.unary_unary(
                 '/foreverbull.backtest.service.v1.Engine/DownloadIngestion',
                 request_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.DownloadIngestionRequest.SerializeToString,
@@ -58,12 +53,6 @@ class EngineStub(object):
 
 class EngineServicer(object):
     """Missing associated documentation comment in .proto file."""
-
-    def GetIngestion(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
     def DownloadIngestion(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -86,11 +75,6 @@ class EngineServicer(object):
 
 def add_EngineServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetIngestion': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetIngestion,
-                    request_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionRequest.FromString,
-                    response_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionResponse.SerializeToString,
-            ),
             'DownloadIngestion': grpc.unary_unary_rpc_method_handler(
                     servicer.DownloadIngestion,
                     request_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.DownloadIngestionRequest.FromString,
@@ -116,33 +100,6 @@ def add_EngineServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Engine(object):
     """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def GetIngestion(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/foreverbull.backtest.service.v1.Engine/GetIngestion',
-            foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionRequest.SerializeToString,
-            foreverbull_dot_backtest_dot_service_dot_v1_dot_engine__pb2.GetIngestionResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
 
     @staticmethod
     def DownloadIngestion(request,

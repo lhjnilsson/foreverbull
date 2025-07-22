@@ -44,7 +44,7 @@ class MarketdataStub(object):
                 request_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.GetIndexRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.GetIndexResponse.FromString,
                 _registered_method=True)
-        self.DownloadHistoricalData = channel.unary_unary(
+        self.DownloadHistoricalData = channel.unary_stream(
                 '/foreverbull.finance.service.v1.Marketdata/DownloadHistoricalData',
                 request_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.DownloadHistoricalDataRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.DownloadHistoricalDataResponse.FromString,
@@ -85,7 +85,7 @@ def add_MarketdataServicer_to_server(servicer, server):
                     request_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.GetIndexRequest.FromString,
                     response_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.GetIndexResponse.SerializeToString,
             ),
-            'DownloadHistoricalData': grpc.unary_unary_rpc_method_handler(
+            'DownloadHistoricalData': grpc.unary_stream_rpc_method_handler(
                     servicer.DownloadHistoricalData,
                     request_deserializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.DownloadHistoricalDataRequest.FromString,
                     response_serializer=foreverbull_dot_finance_dot_service_dot_v1_dot_marketdata__pb2.DownloadHistoricalDataResponse.SerializeToString,
@@ -166,7 +166,7 @@ class Marketdata(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/foreverbull.finance.service.v1.Marketdata/DownloadHistoricalData',

@@ -7,15 +7,27 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Backtest(_message.Message):
-    __slots__ = ("name", "start_date", "end_date", "symbols", "benchmark")
+    __slots__ = ("name", "benchmark", "periods")
+    class Period(_message.Message):
+        __slots__ = ("start_date", "end_date", "assets")
+        class Asset(_message.Message):
+            __slots__ = ("symbol", "enabled")
+            SYMBOL_FIELD_NUMBER: _ClassVar[int]
+            ENABLED_FIELD_NUMBER: _ClassVar[int]
+            symbol: str
+            enabled: bool
+            def __init__(self, symbol: _Optional[str] = ..., enabled: bool = ...) -> None: ...
+        START_DATE_FIELD_NUMBER: _ClassVar[int]
+        END_DATE_FIELD_NUMBER: _ClassVar[int]
+        ASSETS_FIELD_NUMBER: _ClassVar[int]
+        start_date: _common_pb2.Date
+        end_date: _common_pb2.Date
+        assets: _containers.RepeatedCompositeFieldContainer[Backtest.Period.Asset]
+        def __init__(self, start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., assets: _Optional[_Iterable[_Union[Backtest.Period.Asset, _Mapping]]] = ...) -> None: ...
     NAME_FIELD_NUMBER: _ClassVar[int]
-    START_DATE_FIELD_NUMBER: _ClassVar[int]
-    END_DATE_FIELD_NUMBER: _ClassVar[int]
-    SYMBOLS_FIELD_NUMBER: _ClassVar[int]
     BENCHMARK_FIELD_NUMBER: _ClassVar[int]
+    PERIODS_FIELD_NUMBER: _ClassVar[int]
     name: str
-    start_date: _common_pb2.Date
-    end_date: _common_pb2.Date
-    symbols: _containers.RepeatedScalarFieldContainer[str]
     benchmark: str
-    def __init__(self, name: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., symbols: _Optional[_Iterable[str]] = ..., benchmark: _Optional[str] = ...) -> None: ...
+    periods: _containers.RepeatedCompositeFieldContainer[Backtest.Period]
+    def __init__(self, name: _Optional[str] = ..., benchmark: _Optional[str] = ..., periods: _Optional[_Iterable[_Union[Backtest.Period, _Mapping]]] = ...) -> None: ...

@@ -10,6 +10,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -99,6 +100,53 @@ type AssetResponse struct {
 	} `json:"quoteSummary"`
 }
 
+func (y *YahooClient) getISIN(symbol string) (string, error) {
+	url := "https://markets.businessinsider.com/ajax/markets-insider/search/" + symbol
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("error making HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get index data for symbol %s: status %s", symbol, resp.Status)
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", fmt.Errorf("error decoding response: %w", err)
+	}
+
+	stocks, ok := data["stocks"]
+	if !ok {
+		return "", fmt.Errorf("response missing 'stocks' field")
+	}
+	stocksSlice, ok := stocks.([]interface{})
+	if !ok {
+		return "", fmt.Errorf("'stocks' field is not an array")
+	}
+
+	for _, stock := range stocksSlice {
+		stockData, ok := stock.(map[string]interface{})
+		if !ok {
+			continue // Skip invalid stock entries
+		}
+		keywords, ok := stockData["keywords"].(string)
+		if !ok {
+			continue
+		}
+
+		parts := strings.Split(keywords, "|")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("invalid keywords format for stock %s", symbol)
+		}
+		if strings.Compare(parts[0], symbol) == 0 {
+			return parts[1], nil
+		}
+	}
+	return "", fmt.Errorf("ISIN not found for symbol %s", symbol)
+}
+
 func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
 
@@ -122,9 +170,46 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	asset := pb.Asset{
 		Symbol: data.QuoteSummary.Result[0].QuoteType.Symbol,
 		Name:   data.QuoteSummary.Result[0].QuoteType.LongName,
+		ISIN:   "",
+	}
+
+	if data.QuoteSummary.Result[0].QuoteType.QuoteType == "EQUITY" {
+		asset.ISIN, err = y.getISIN(asset.Symbol)
+		if err != nil {
+			log.Info().Msgf("error getting isin for symbol %s: %v", asset.Symbol, err)
+		}
 	}
 
 	return &asset, nil
+}
+
+func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
+	url := "https://query2.finance.yahoo.com/v1/finance/search?q=" + q + "&lang=en-US&region=US&quotesCount=6&newsCount=0&listsCount=0&quotesQueryId=tss_match_phrase_query"
+	resp, err := m.doRequest(url)
+	if err != nil {
+		return nil, fmt.Errorf("error: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fail to search asset: %s", resp.Status)
+	}
+	var data map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	assets := make([]*pb.Asset, 0)
+	for _, quote := range data["quotes"].([]interface{}) {
+		quoteMap := quote.(map[string]interface{})
+		symbol := quoteMap["symbol"].(string)
+		a, err := m.GetAsset(symbol)
+		if err != nil {
+			return nil, fmt.Errorf("error getting asset: %w", err)
+		}
+		assets = append(assets, a)
+	}
+	return assets, nil
 }
 
 type IndexResponse struct {

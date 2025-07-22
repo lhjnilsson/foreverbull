@@ -61,10 +61,6 @@ class TestBacktestService:
     def stub(self, servicer):
         return engine_service_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:60066"))
 
-    def test_get_ingestion(self, stub: engine_service_pb2_grpc.EngineStub):
-        response = stub.GetIngestion(engine_service_pb2.GetIngestionRequest())
-        assert response
-
     def test_ingest(
         self,
         stub: engine_service_pb2_grpc.EngineStub,
@@ -72,11 +68,7 @@ class TestBacktestService:
     ):
         response = stub.Ingest(
             engine_service_pb2.IngestRequest(
-                ingestion=engine_service_pb2.Ingestion(
-                    start_date=backtest_entity.start_date,
-                    end_date=backtest_entity.end_date,
-                    symbols=backtest_entity.symbols,
-                )
+                backtest=backtest_entity,
             )
         )
         assert response

@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\'foreverbull/finance/v1/marketdata.proto\x12\x16\x66oreverbull.finance.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"%\n\x05\x41sset\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\"\x8d\x01\n\x04OHLC\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0c\n\x04open\x18\x03 \x01(\x01\x12\x0c\n\x04high\x18\x04 \x01(\x01\x12\x0b\n\x03low\x18\x05 \x01(\x01\x12\r\n\x05\x63lose\x18\x06 \x01(\x01\x12\x0e\n\x06volume\x18\x07 \x01(\x04\"\x8b\x01\n\x08Position\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0e\n\x06\x61mount\x18\x02 \x01(\x05\x12\x12\n\ncost_basis\x18\x03 \x01(\x01\x12\x17\n\x0flast_sale_price\x18\x04 \x01(\x01\x12\x32\n\x0elast_sale_date\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x93\x02\n\tPortfolio\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x11\n\tcash_flow\x18\x02 \x01(\x01\x12\x15\n\rstarting_cash\x18\x03 \x01(\x01\x12\x17\n\x0fportfolio_value\x18\x04 \x01(\x01\x12\x0b\n\x03pnl\x18\x05 \x01(\x01\x12\x0f\n\x07returns\x18\x06 \x01(\x01\x12\x0c\n\x04\x63\x61sh\x18\x07 \x01(\x01\x12\x17\n\x0fpositions_value\x18\x08 \x01(\x01\x12\x1a\n\x12positions_exposure\x18\t \x01(\x01\x12\x33\n\tpositions\x18\n \x03(\x0b\x32 .foreverbull.finance.v1.Position\"\xcc\x01\n\x05Order\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0e\n\x06\x61mount\x18\x02 \x01(\x05\x12/\n\x04type\x18\x03 \x01(\x0e\x32!.foreverbull.finance.v1.OrderType\x12:\n\rtime_in_force\x18\x04 \x01(\x0e\x32#.foreverbull.finance.v1.TimeInForce\x12\x36\n\x06intent\x18\x05 \x01(\x0e\x32&.foreverbull.finance.v1.PositionIntent*T\n\tOrderType\x12\x1a\n\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11ORDER_TYPE_MARKET\x10\x01\x12\x14\n\x10ORDER_TYPE_LIMIT\x10\x02*C\n\x0bTimeInForce\x12\x1d\n\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n\x11TIME_IN_FORCE_DAY\x10\x01*\xb9\x01\n\x0ePositionIntent\x12\x1f\n\x1bPOSITION_INTENT_UNSPECIFIED\x10\x00\x12\x1f\n\x1bPOSITION_INTENT_BUY_TO_OPEN\x10\x01\x12!\n\x1dPOSITION_INTENT_SELL_TO_CLOSE\x10\x02\x12 \n\x1cPOSITION_INTENT_BUY_TO_CLOSE\x10\x03\x12 \n\x1cPOSITION_INTENT_SELL_TO_OPEN\x10\x04\x42\x32Z0github.com/lhjnilsson/foreverbull/pkg/pb/financeb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\'foreverbull/finance/v1/marketdata.proto\x12\x16\x66oreverbull.finance.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"3\n\x05\x41sset\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04ISIN\x18\x03 \x01(\t\"\x8d\x01\n\x04OHLC\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0c\n\x04open\x18\x03 \x01(\x01\x12\x0c\n\x04high\x18\x04 \x01(\x01\x12\x0b\n\x03low\x18\x05 \x01(\x01\x12\r\n\x05\x63lose\x18\x06 \x01(\x01\x12\x0e\n\x06volume\x18\x07 \x01(\x04\"\x8b\x01\n\x08Position\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0e\n\x06\x61mount\x18\x02 \x01(\x05\x12\x12\n\ncost_basis\x18\x03 \x01(\x01\x12\x17\n\x0flast_sale_price\x18\x04 \x01(\x01\x12\x32\n\x0elast_sale_date\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x93\x02\n\tPortfolio\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x11\n\tcash_flow\x18\x02 \x01(\x01\x12\x15\n\rstarting_cash\x18\x03 \x01(\x01\x12\x17\n\x0fportfolio_value\x18\x04 \x01(\x01\x12\x0b\n\x03pnl\x18\x05 \x01(\x01\x12\x0f\n\x07returns\x18\x06 \x01(\x01\x12\x0c\n\x04\x63\x61sh\x18\x07 \x01(\x01\x12\x17\n\x0fpositions_value\x18\x08 \x01(\x01\x12\x1a\n\x12positions_exposure\x18\t \x01(\x01\x12\x33\n\tpositions\x18\n \x03(\x0b\x32 .foreverbull.finance.v1.Position\"\xcc\x01\n\x05Order\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12\x0e\n\x06\x61mount\x18\x02 \x01(\x05\x12/\n\x04type\x18\x03 \x01(\x0e\x32!.foreverbull.finance.v1.OrderType\x12:\n\rtime_in_force\x18\x04 \x01(\x0e\x32#.foreverbull.finance.v1.TimeInForce\x12\x36\n\x06intent\x18\x05 \x01(\x0e\x32&.foreverbull.finance.v1.PositionIntent*T\n\tOrderType\x12\x1a\n\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11ORDER_TYPE_MARKET\x10\x01\x12\x14\n\x10ORDER_TYPE_LIMIT\x10\x02*C\n\x0bTimeInForce\x12\x1d\n\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n\x11TIME_IN_FORCE_DAY\x10\x01*\xb9\x01\n\x0ePositionIntent\x12\x1f\n\x1bPOSITION_INTENT_UNSPECIFIED\x10\x00\x12\x1f\n\x1bPOSITION_INTENT_BUY_TO_OPEN\x10\x01\x12!\n\x1dPOSITION_INTENT_SELL_TO_CLOSE\x10\x02\x12 \n\x1cPOSITION_INTENT_BUY_TO_CLOSE\x10\x03\x12 \n\x1cPOSITION_INTENT_SELL_TO_OPEN\x10\x04\x42\x32Z0github.com/lhjnilsson/foreverbull/pkg/pb/financeb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,20 +33,20 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.finance.v1.mark
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z0github.com/lhjnilsson/foreverbull/pkg/pb/finance'
-  _globals['_ORDERTYPE']._serialized_start=910
-  _globals['_ORDERTYPE']._serialized_end=994
-  _globals['_TIMEINFORCE']._serialized_start=996
-  _globals['_TIMEINFORCE']._serialized_end=1063
-  _globals['_POSITIONINTENT']._serialized_start=1066
-  _globals['_POSITIONINTENT']._serialized_end=1251
+  _globals['_ORDERTYPE']._serialized_start=924
+  _globals['_ORDERTYPE']._serialized_end=1008
+  _globals['_TIMEINFORCE']._serialized_start=1010
+  _globals['_TIMEINFORCE']._serialized_end=1077
+  _globals['_POSITIONINTENT']._serialized_start=1080
+  _globals['_POSITIONINTENT']._serialized_end=1265
   _globals['_ASSET']._serialized_start=100
-  _globals['_ASSET']._serialized_end=137
-  _globals['_OHLC']._serialized_start=140
-  _globals['_OHLC']._serialized_end=281
-  _globals['_POSITION']._serialized_start=284
-  _globals['_POSITION']._serialized_end=423
-  _globals['_PORTFOLIO']._serialized_start=426
-  _globals['_PORTFOLIO']._serialized_end=701
-  _globals['_ORDER']._serialized_start=704
-  _globals['_ORDER']._serialized_end=908
+  _globals['_ASSET']._serialized_end=151
+  _globals['_OHLC']._serialized_start=154
+  _globals['_OHLC']._serialized_end=295
+  _globals['_POSITION']._serialized_start=298
+  _globals['_POSITION']._serialized_end=437
+  _globals['_PORTFOLIO']._serialized_start=440
+  _globals['_PORTFOLIO']._serialized_end=715
+  _globals['_ORDER']._serialized_start=718
+  _globals['_ORDER']._serialized_end=922
 # @@protoc_insertion_point(module_scope)

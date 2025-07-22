@@ -27,7 +27,7 @@ from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2 as foreverbull_dot_finance_dot_v1_dot_marketdata__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n/foreverbull/finance/service/v1/marketdata.proto\x12\x1e\x66oreverbull.finance.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a\x18\x66oreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\"!\n\x0fGetAssetRequest\x12\x0e\n\x06symbol\x18\x01 \x01(\t\"@\n\x10GetAssetResponse\x12,\n\x05\x61sset\x18\x01 \x01(\x0b\x32\x1d.foreverbull.finance.v1.Asset\"I\n\x0fGetIndexRequest\x12\x36\n\x06symbol\x18\x01 \x01(\tB&\xbaH#\xba\x01\x1d\n\x0fsymbol_required\x1a\nthis != \'\'\xc8\x01\x01\"A\n\x10GetIndexResponse\x12-\n\x06\x61ssets\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Asset\"\xb2\x01\n\x1d\x44ownloadHistoricalDataRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\x12T\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.DateB&\xbaH#\xba\x01\x1d\n\rdate_required\x1a\x0cthis != null\xc8\x01\x01\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\" \n\x1e\x44ownloadHistoricalDataResponse2\x8a\x03\n\nMarketdata\x12o\n\x08GetAsset\x12/.foreverbull.finance.service.v1.GetAssetRequest\x1a\x30.foreverbull.finance.service.v1.GetAssetResponse\"\x00\x12o\n\x08GetIndex\x12/.foreverbull.finance.service.v1.GetIndexRequest\x1a\x30.foreverbull.finance.service.v1.GetIndexResponse\"\x00\x12\x99\x01\n\x16\x44ownloadHistoricalData\x12=.foreverbull.finance.service.v1.DownloadHistoricalDataRequest\x1a>.foreverbull.finance.service.v1.DownloadHistoricalDataResponse\"\x00\x42:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n/foreverbull/finance/service/v1/marketdata.proto\x12\x1e\x66oreverbull.finance.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a\x18\x66oreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\"A\n\x0fGetAssetRequest\x12\x10\n\x06symbol\x18\x01 \x01(\tH\x00\x12\x0e\n\x04isin\x18\x02 \x01(\tH\x00\x42\x0c\n\nidentifier\"@\n\x10GetAssetResponse\x12,\n\x05\x61sset\x18\x01 \x01(\x0b\x32\x1d.foreverbull.finance.v1.Asset\"I\n\x0fGetIndexRequest\x12\x36\n\x06symbol\x18\x01 \x01(\tB&\xbaH#\xba\x01\x1d\n\x0fsymbol_required\x1a\nthis != \'\'\xc8\x01\x01\"A\n\x10GetIndexResponse\x12-\n\x06\x61ssets\x18\x01 \x03(\x0b\x32\x1d.foreverbull.finance.v1.Asset\"\xb2\x01\n\x1d\x44ownloadHistoricalDataRequest\x12\x0f\n\x07symbols\x18\x01 \x03(\t\x12T\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.DateB&\xbaH#\xba\x01\x1d\n\rdate_required\x1a\x0cthis != null\xc8\x01\x01\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\"\xd9\x01\n\x1e\x44ownloadHistoricalDataResponse\x12\x0e\n\x06symbol\x18\x01 \x01(\t\x12U\n\x06status\x18\x02 \x01(\x0e\x32\x45.foreverbull.finance.service.v1.DownloadHistoricalDataResponse.Status\x12\r\n\x05\x65rror\x18\x03 \x01(\t\"A\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\r\n\tSTATUS_OK\x10\x01\x12\x10\n\x0cSTATUS_ERROR\x10\x02\x32\x8c\x03\n\nMarketdata\x12o\n\x08GetAsset\x12/.foreverbull.finance.service.v1.GetAssetRequest\x1a\x30.foreverbull.finance.service.v1.GetAssetResponse\"\x00\x12o\n\x08GetIndex\x12/.foreverbull.finance.service.v1.GetIndexRequest\x1a\x30.foreverbull.finance.service.v1.GetIndexResponse\"\x00\x12\x9b\x01\n\x16\x44ownloadHistoricalData\x12=.foreverbull.finance.service.v1.DownloadHistoricalDataRequest\x1a>.foreverbull.finance.service.v1.DownloadHistoricalDataResponse\"\x00\x30\x01\x42:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -40,17 +40,19 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_DOWNLOADHISTORICALDATAREQUEST'].fields_by_name['start_date']._loaded_options = None
   _globals['_DOWNLOADHISTORICALDATAREQUEST'].fields_by_name['start_date']._serialized_options = b'\272H#\272\001\035\n\rdate_required\032\014this != null\310\001\001'
   _globals['_GETASSETREQUEST']._serialized_start=179
-  _globals['_GETASSETREQUEST']._serialized_end=212
-  _globals['_GETASSETRESPONSE']._serialized_start=214
-  _globals['_GETASSETRESPONSE']._serialized_end=278
-  _globals['_GETINDEXREQUEST']._serialized_start=280
-  _globals['_GETINDEXREQUEST']._serialized_end=353
-  _globals['_GETINDEXRESPONSE']._serialized_start=355
-  _globals['_GETINDEXRESPONSE']._serialized_end=420
-  _globals['_DOWNLOADHISTORICALDATAREQUEST']._serialized_start=423
-  _globals['_DOWNLOADHISTORICALDATAREQUEST']._serialized_end=601
-  _globals['_DOWNLOADHISTORICALDATARESPONSE']._serialized_start=603
-  _globals['_DOWNLOADHISTORICALDATARESPONSE']._serialized_end=635
-  _globals['_MARKETDATA']._serialized_start=638
-  _globals['_MARKETDATA']._serialized_end=1032
+  _globals['_GETASSETREQUEST']._serialized_end=244
+  _globals['_GETASSETRESPONSE']._serialized_start=246
+  _globals['_GETASSETRESPONSE']._serialized_end=310
+  _globals['_GETINDEXREQUEST']._serialized_start=312
+  _globals['_GETINDEXREQUEST']._serialized_end=385
+  _globals['_GETINDEXRESPONSE']._serialized_start=387
+  _globals['_GETINDEXRESPONSE']._serialized_end=452
+  _globals['_DOWNLOADHISTORICALDATAREQUEST']._serialized_start=455
+  _globals['_DOWNLOADHISTORICALDATAREQUEST']._serialized_end=633
+  _globals['_DOWNLOADHISTORICALDATARESPONSE']._serialized_start=636
+  _globals['_DOWNLOADHISTORICALDATARESPONSE']._serialized_end=853
+  _globals['_DOWNLOADHISTORICALDATARESPONSE_STATUS']._serialized_start=788
+  _globals['_DOWNLOADHISTORICALDATARESPONSE_STATUS']._serialized_end=853
+  _globals['_MARKETDATA']._serialized_start=856
+  _globals['_MARKETDATA']._serialized_end=1252
 # @@protoc_insertion_point(module_scope)

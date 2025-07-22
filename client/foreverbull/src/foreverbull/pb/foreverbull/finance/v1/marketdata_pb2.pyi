@@ -37,12 +37,14 @@ POSITION_INTENT_BUY_TO_CLOSE: PositionIntent
 POSITION_INTENT_SELL_TO_OPEN: PositionIntent
 
 class Asset(_message.Message):
-    __slots__ = ("symbol", "name")
+    __slots__ = ("symbol", "name", "ISIN")
     SYMBOL_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
+    ISIN_FIELD_NUMBER: _ClassVar[int]
     symbol: str
     name: str
-    def __init__(self, symbol: _Optional[str] = ..., name: _Optional[str] = ...) -> None: ...
+    ISIN: str
+    def __init__(self, symbol: _Optional[str] = ..., name: _Optional[str] = ..., ISIN: _Optional[str] = ...) -> None: ...
 
 class OHLC(_message.Message):
     __slots__ = ("symbol", "timestamp", "open", "high", "low", "close", "volume")

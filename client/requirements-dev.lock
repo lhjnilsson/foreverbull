@@ -296,6 +296,6 @@ websockets==15.0.1
     # via yfinance
 wrapt==1.17.2
     # via testcontainers
-yfinance==0.2.61
+yfinance==0.2.64
     # via foreverbull-testing
 zipline-reloaded==3.1
