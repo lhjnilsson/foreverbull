@@ -23,6 +23,7 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as en
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2 as calendar_service_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2_grpc as calendar_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance.v1 import calendar_pb2 as calendar_pb2
+from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
 
@@ -69,13 +70,14 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         return engine_service_pb2.DownloadIngestionResponse()
 
     def Ingest(self, request: engine_service_pb2.IngestRequest, context):
+        bundles.register(request.backtest.name, SQLIngester(request.backtest), calendar_name="XNYS")
         bundles.ingest(request.backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
         self.bundle = bundles.load(request.backtest.name, os.environ, None)
         self.logger.debug("ingestion completed")
         if request.HasField("bucket") and request.HasField("object"):
             self.logger.debug("Uploading ingestion to: %s/%s", request.bucket, request.object)
             with tarfile.open(f"/tmp/{request.backtest.name}.tar.gz", "w:gz") as tar:
-                tar.add(data_path(["foreverbull"]), arcname="foreverbull")
+                tar.add(data_path([request.backtest.name]), arcname=request.backtest.name)
             storage = Storage.from_environment()
             storage.upload_object(request.bucket, request.object, f"/tmp/{request.backtest.name}.tar.gz")
             self.logger.debug("Ingestion uploaded")

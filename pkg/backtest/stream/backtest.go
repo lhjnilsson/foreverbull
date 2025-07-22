@@ -10,18 +10,12 @@ import (
 )
 
 type IngestCommand struct {
-	Name    string
-	Symbols []string
-	Start   string
-	End     string
+	BacktestName string
 }
 
-func NewBacktestIngestCommand(name string, symbols []string, start, end string) (stream.Message, error) {
+func NewBacktestIngestCommand(backtest_name string) (stream.Message, error) {
 	cmd := &IngestCommand{
-		Name:    name,
-		Symbols: symbols,
-		Start:   start,
-		End:     end,
+		BacktestName: backtest_name,
 	}
 
 	msg, err := stream.NewMessage("backtest", "ingest", "ingest", cmd)
@@ -42,7 +36,7 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 	}
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.CREATING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{msg.GetMsg()}})
 
-	msg, err = NewBacktestIngestCommand(name, symbols, start, end)
+	msg, err = NewBacktestIngestCommand(name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
@@ -75,13 +69,6 @@ func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error
 	return stream.NewMessage("backtest", "download", "download", cmd)
 }
 
-type IngestBacktestDataCommand struct{}
-
-func NewIngestBacktestDataCommand() (stream.Message, error) {
-	cmd := &IngestBacktestDataCommand{}
-	return stream.NewMessage("backtest", "ingest", "ingest", cmd)
-}
-
 func CreateBacktestFromETF(backtest_name string, etf_name string, start string, end string) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
@@ -101,7 +88,7 @@ func CreateBacktestFromETF(backtest_name string, etf_name string, start string, 
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.DOWNLOADING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 
 	// Ingest into Backtest
-	cmd, err = NewIngestBacktestDataCommand()
+	cmd, err = NewBacktestIngestCommand(backtest_name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}

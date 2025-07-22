@@ -13,9 +13,7 @@ message Execution {
   string session = 3;
   foreverbull.common.Date start_date = 4;
   foreverbull.common.Date end_date = 5;
-  optional string benchmark = 6;
-  repeated string symbols = 7;
-  optional Period result = 9;
+  optional Period result = 7;
 }
 
 message Period {

@@ -135,9 +135,9 @@ func (db *Backtest) UpdatePeriod(ctx context.Context, name string, period *backt
 	return nil
 }
 
-func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, period *backtest.Backtest_Period, asset *backtest.Backtest_Period_Asset) error {
-	_, err := db.Conn.Exec(ctx, `UPDATE backtest_period_asset SET enabled=$5 WHERE backtest_name=$1 AND start_date=$2 AND end_date=$3 AND symbol=$4`,
-		name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate), asset.Symbol, asset.Enabled)
+func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, asset_symbol string, enabled bool) error {
+	_, err := db.Conn.Exec(ctx, `UPDATE backtest_period_asset SET enabled=$3 WHERE backtest_name=$1 AND symbol=$2`,
+		name, asset_symbol, enabled)
 	if err != nil {
 		return fmt.Errorf("failed to update backtest period asset: %w", err)
 	}

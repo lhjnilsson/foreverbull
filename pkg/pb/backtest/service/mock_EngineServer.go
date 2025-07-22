@@ -43,36 +43,6 @@ func (_m *MockEngineServer) DownloadIngestion(_a0 context.Context, _a1 *Download
 	return r0, r1
 }
 
-// GetIngestion provides a mock function with given fields: _a0, _a1
-func (_m *MockEngineServer) GetIngestion(_a0 context.Context, _a1 *GetIngestionRequest) (*GetIngestionResponse, error) {
-	ret := _m.Called(_a0, _a1)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetIngestion")
-	}
-
-	var r0 *GetIngestionResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *GetIngestionRequest) (*GetIngestionResponse, error)); ok {
-		return rf(_a0, _a1)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *GetIngestionRequest) *GetIngestionResponse); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*GetIngestionResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *GetIngestionRequest) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // Ingest provides a mock function with given fields: _a0, _a1
 func (_m *MockEngineServer) Ingest(_a0 context.Context, _a1 *IngestRequest) (*IngestResponse, error) {
 	ret := _m.Called(_a0, _a1)

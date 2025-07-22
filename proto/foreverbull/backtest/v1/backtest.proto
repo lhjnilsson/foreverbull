@@ -18,7 +18,7 @@ message Backtest {
     repeated Asset assets = 3;
   }
   string name = 1;
-  optional string benchmark = 5;
+  string benchmark = 5;
 
   repeated Period periods = 6;
 }

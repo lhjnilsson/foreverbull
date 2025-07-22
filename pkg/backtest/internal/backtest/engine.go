@@ -49,12 +49,12 @@ type Zipline struct {
 	container container.Container
 }
 
-func (z *Zipline) Ingest(ctx context.Context, ingestion *servicePb.Ingestion, object *storage.Object) error {
+func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *storage.Object) error {
 	bucket := string(object.Bucket)
 	req := servicePb.IngestRequest{
-		Ingestion: ingestion,
-		Bucket:    &bucket,
-		Object:    &object.Name,
+		Backtest: backtest,
+		Bucket:   &bucket,
+		Object:   &object.Name,
 	}
 
 	_, err := z.client.Ingest(ctx, &req)

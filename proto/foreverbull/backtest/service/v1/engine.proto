@@ -4,22 +4,9 @@ package foreverbull.backtest.service.v1;
 
 import "foreverbull/backtest/v1/backtest.proto";
 import "foreverbull/backtest/v1/execution.proto";
-import "foreverbull/common.proto";
 import "foreverbull/finance/v1/marketdata.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service";
-
-message Ingestion {
-  foreverbull.common.Date start_date = 1;
-  foreverbull.common.Date end_date = 2;
-  repeated string symbols = 3;
-}
-
-message GetIngestionRequest {}
-
-message GetIngestionResponse {
-  Ingestion ingestion = 1;
-}
 
 message DownloadIngestionRequest {
   string bucket = 1;
@@ -29,7 +16,7 @@ message DownloadIngestionRequest {
 message DownloadIngestionResponse {}
 
 message IngestRequest {
-  Ingestion ingestion = 1;
+  backtest.v1.Backtest backtest = 1;
   optional string bucket = 2;
   optional string object = 3;
 }
@@ -45,11 +32,12 @@ message NewSessionResponse {
 }
 
 message RunBacktestRequest {
-  foreverbull.backtest.v1.Backtest backtest = 1;
+  foreverbull.backtest.v1.Execution execution = 1;
+  string benchmark = 2;
 }
 
 message RunBacktestResponse {
-  foreverbull.backtest.v1.Backtest backtest = 1;
+  foreverbull.backtest.v1.Execution execution = 1;
   int64 num_periods = 2;
 }
 
@@ -80,7 +68,6 @@ message GetResultResponse {
 }
 
 service Engine {
-  rpc GetIngestion(GetIngestionRequest) returns (GetIngestionResponse) {}
   rpc DownloadIngestion(DownloadIngestionRequest) returns (DownloadIngestionResponse) {}
   rpc Ingest(IngestRequest) returns (IngestResponse) {}
   rpc NewSession(NewSessionRequest) returns (NewSessionResponse) {}

@@ -23,7 +23,7 @@ class DatabaseEngine:
     def __init__(self):
         database_uri = os.environ.get("DATABASE_URL")
         if database_uri is None:
-            raise KeyError("DATABASE_URI environment variable not set")
+            raise KeyError("DATABASE_URL environment variable not set")
 
         self._engine = get_engine(database_uri)
 

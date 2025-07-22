@@ -165,11 +165,7 @@ func (test *BacktestTest) TestUpdatePeriodAsset() {
 		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
 	}
-	asset := &backtest.Backtest_Period_Asset{
-		Symbol:  "AAPL",
-		Enabled: false,
-	}
-	err = backtests.UpdatePeriodAsset(ctx, test.backtest.Name, period, asset)
+	err = backtests.UpdatePeriodAsset(ctx, test.backtest.Name, "AAPL", false)
 	test.Require().NoError(err)
 
 	backtest, err := backtests.Get(ctx, test.backtest.Name)

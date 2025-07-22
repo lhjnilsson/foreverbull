@@ -104,13 +104,6 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 		})
 	}
 
-	if containers.Zipline {
-		group.Go(func() error {
-			os.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
-			return nil
-		})
-	}
-
 	// If we run in Github CI, Loki will have issue creating folder and fail to start
 	_, disableLoki := os.LookupEnv("DISABLE_LOKI_LOGGING")
 	if containers.Loki && !disableLoki {
@@ -123,6 +116,11 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	err = group.Wait()
 	if err != nil {
 		require.NoError(t, err, "fail to create environment")
+	}
+
+	// Zipline depends on Postgres to be running
+	if containers.Zipline {
+		os.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
 	}
 
 	t.Setenv(environment.ServerAddress, "host.docker.internal")

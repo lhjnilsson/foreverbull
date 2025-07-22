@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -329,6 +330,7 @@ func ZiplineContainer(t *testing.T, network string) string {
 		Image:      "lhjnilsson/zipline:local",
 		WaitingFor: healthStrategy,
 		Networks:   []string{network},
+		Env:        map[string]string{"DATABASE_URL": environment.GetPostgresURL()},
 	}
 	genericReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: container,

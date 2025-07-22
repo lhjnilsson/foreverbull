@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Engine_GetIngestion_FullMethodName      = "/foreverbull.backtest.service.v1.Engine/GetIngestion"
 	Engine_DownloadIngestion_FullMethodName = "/foreverbull.backtest.service.v1.Engine/DownloadIngestion"
 	Engine_Ingest_FullMethodName            = "/foreverbull.backtest.service.v1.Engine/Ingest"
 	Engine_NewSession_FullMethodName        = "/foreverbull.backtest.service.v1.Engine/NewSession"
@@ -29,7 +28,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EngineClient interface {
-	GetIngestion(ctx context.Context, in *GetIngestionRequest, opts ...grpc.CallOption) (*GetIngestionResponse, error)
 	DownloadIngestion(ctx context.Context, in *DownloadIngestionRequest, opts ...grpc.CallOption) (*DownloadIngestionResponse, error)
 	Ingest(ctx context.Context, in *IngestRequest, opts ...grpc.CallOption) (*IngestResponse, error)
 	NewSession(ctx context.Context, in *NewSessionRequest, opts ...grpc.CallOption) (*NewSessionResponse, error)
@@ -41,16 +39,6 @@ type engineClient struct {
 
 func NewEngineClient(cc grpc.ClientConnInterface) EngineClient {
 	return &engineClient{cc}
-}
-
-func (c *engineClient) GetIngestion(ctx context.Context, in *GetIngestionRequest, opts ...grpc.CallOption) (*GetIngestionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetIngestionResponse)
-	err := c.cc.Invoke(ctx, Engine_GetIngestion_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *engineClient) DownloadIngestion(ctx context.Context, in *DownloadIngestionRequest, opts ...grpc.CallOption) (*DownloadIngestionResponse, error) {
@@ -87,7 +75,6 @@ func (c *engineClient) NewSession(ctx context.Context, in *NewSessionRequest, op
 // All implementations must embed UnimplementedEngineServer
 // for forward compatibility.
 type EngineServer interface {
-	GetIngestion(context.Context, *GetIngestionRequest) (*GetIngestionResponse, error)
 	DownloadIngestion(context.Context, *DownloadIngestionRequest) (*DownloadIngestionResponse, error)
 	Ingest(context.Context, *IngestRequest) (*IngestResponse, error)
 	NewSession(context.Context, *NewSessionRequest) (*NewSessionResponse, error)
@@ -101,9 +88,6 @@ type EngineServer interface {
 // pointer dereference when methods are called.
 type UnimplementedEngineServer struct{}
 
-func (UnimplementedEngineServer) GetIngestion(context.Context, *GetIngestionRequest) (*GetIngestionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetIngestion not implemented")
-}
 func (UnimplementedEngineServer) DownloadIngestion(context.Context, *DownloadIngestionRequest) (*DownloadIngestionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DownloadIngestion not implemented")
 }
@@ -132,24 +116,6 @@ func RegisterEngineServer(s grpc.ServiceRegistrar, srv EngineServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&Engine_ServiceDesc, srv)
-}
-
-func _Engine_GetIngestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetIngestionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(EngineServer).GetIngestion(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Engine_GetIngestion_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(EngineServer).GetIngestion(ctx, req.(*GetIngestionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Engine_DownloadIngestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -213,10 +179,6 @@ var Engine_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "foreverbull.backtest.service.v1.Engine",
 	HandlerType: (*EngineServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetIngestion",
-			Handler:    _Engine_GetIngestion_Handler,
-		},
 		{
 			MethodName: "DownloadIngestion",
 			Handler:    _Engine_DownloadIngestion_Handler,

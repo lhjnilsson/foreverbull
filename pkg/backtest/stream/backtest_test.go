@@ -80,12 +80,12 @@ func TestBacktest(t *testing.T) {
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETF() {
-	o, err := stream.CreateBacktestFromETF("test", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 
 	b := backtestpb.Backtest{
-		Name: "test",
+		Name: "sp100_backtest",
 		Periods: []*backtestpb.Backtest_Period{
 			{
 				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -106,4 +106,11 @@ func (test *BacktestTest) TestCreateBacktestFromETF() {
 	for step := range steps {
 		test.T().Logf("Step: %v", step)
 	}
+
+	minio, err := storage.NewMinioStorage(context.TODO())
+	test.Require().NoError(err)
+	objects, err := minio.ListObjects(context.TODO(), storage.IngestionsBucket)
+	test.Require().NoError(err)
+	test.Len(*objects, 1)
+	test.Equal("sp100_backtest", (*objects)[0].Name)
 }
