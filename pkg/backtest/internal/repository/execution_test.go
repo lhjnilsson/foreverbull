@@ -65,7 +65,6 @@ func (test *ExecutionTest) SetupTest() {
 		Session:   test.storedSession.Id,
 		StartDate: b.Periods[0].StartDate,
 		EndDate:   b.Periods[0].EndDate,
-		Benchmark: b.Benchmark,
 	}
 }
 
@@ -118,8 +117,6 @@ func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	test.Require().NoError(err)
 	// e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	// e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
-	execution.Benchmark = func() *string { s := "AAPL"; return &s }()
-	execution.Symbols = []string{"AAPL", "MSFT", "TSLA"}
 	err = executions.UpdateSimulationDetails(ctx, execution)
 	test.Require().NoError(err)
 	execution, err = executions.Get(ctx, execution.Id)

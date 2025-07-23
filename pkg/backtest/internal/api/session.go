@@ -104,11 +104,7 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	backtest := backtest.Backtest{
-		Benchmark: execution.Benchmark,
-	}
-
-	periods, err := s.backtestSession.RunBacktest(context.Background(), &backtest, s.wp)
+	periods, err := s.backtestSession.RunBacktest(context.Background(), execution, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
 		return fmt.Errorf("error running backtest: %w", err)

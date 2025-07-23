@@ -32,9 +32,9 @@ type ZipelineSession struct {
 	client servicePb.EngineSessionClient
 }
 
-func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error) {
+func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Execution, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error) {
 	req := servicePb.RunBacktestRequest{
-		Backtest: backtest,
+		Execution: execution,
 	}
 
 	rsp, err := z.client.RunBacktest(ctx, &req)
@@ -61,7 +61,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, backtest *pb.Backtest
 			}
 			currentPeriod++
 			excRsp := servicePb.RunExecutionResponse{
-				Backtest:         backtest,
+				Execution:        execution,
 				Portfolio:        period.Portfolio,
 				NumTotalPeriods:  totalPeriods,
 				NumCurrentPeriod: currentPeriod,

@@ -50,11 +50,6 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting assets: %w", err)
 	}
 
-	_, err = backtests.UpdateBenchmark(ctx, command.BacktestName, func() *string { b := "OEF"; return &b }())
-	if err != nil {
-		return fmt.Errorf("error updating benchmark: %w", err)
-	}
-
 	// Fetch Symbols from Finance
 	marketdataClient, isMarketdataClient := msg.MustGet(dependency.GetMarketdataClient).(financeServicePB.MarketdataClient)
 	if !isMarketdataClient {
@@ -136,7 +131,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
 
-	symbols := []string{*b.Benchmark}
+	symbols := []string{b.Benchmark}
 	for _, period := range b.Periods {
 		for _, asset := range period.Assets {
 			if !asset.Enabled {

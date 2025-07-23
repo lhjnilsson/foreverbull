@@ -17,8 +17,7 @@ const ExecutionTable = `CREATE TABLE IF NOT EXISTS backtest_execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
 start_date date NOT NULL,
-end_date date NOT NULL,
-benchmark text);
+end_date date NOT NULL);
 
 
 CREATE TABLE IF NOT EXISTS backtest_execution_period (
@@ -85,8 +84,8 @@ func (db *Execution) Create(ctx context.Context, execution *backtest.Execution) 
 	var executionID string
 
 	err := db.Conn.QueryRow(ctx,
-		`INSERT INTO backtest_execution (session, start_date, end_date, benchmark)
-		VALUES($1,$2,$3,$4) RETURNING id`, execution.Session, internal_pb.DateToDateString(execution.StartDate), internal_pb.DateToDateString(execution.EndDate), execution.Benchmark).
+		`INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES($1,$2,$3) RETURNING id`, execution.Session, internal_pb.DateToDateString(execution.StartDate), internal_pb.DateToDateString(execution.EndDate)).
 		Scan(&executionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create execution: %w", err)
@@ -135,9 +134,9 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*backtest.Exe
 	end := pgtype.Date{}
 
 	err := db.Conn.QueryRow(ctx,
-		`SELECT id, session, start_date, end_date, benchmark
+		`SELECT id, session, start_date, end_date 
 		FROM backtest_execution WHERE id=$1`, executionId).Scan(
-		&execution.Id, &execution.Session, &start, &end, &execution.Benchmark,
+		&execution.Id, &execution.Session, &start, &end,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get execution: %w", err)
@@ -359,7 +358,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*backtest.Execution, error) {
 		alpha := sql.NullFloat64{}
 		beta := sql.NullFloat64{}
 
-		err = rows.Scan(&execution.Id, &execution.Session, &execution.Backtest, &start, &end, &execution.Benchmark,
+		err = rows.Scan(&execution.Id, &execution.Session, &execution.Backtest, &start, &end,
 			&resultDate, &pnl, &returns, &portfolioValue, &longsCount, &shortsCount,
 			&longValue, &shortValue, &startingExposure, &endingExposure, &longExposure,
 			&shortExposure, &capitalUsed, &grossLeverage, &netLeverage, &startingValue,
@@ -475,7 +474,7 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*backtest.Execution, error) {
 
 func (db *Execution) List(ctx context.Context) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date, benchmark,
+		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date,
 		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
 		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
 		ep.capital_used, ep.gross_leverage, ep.net_leverage,
@@ -503,7 +502,7 @@ func (db *Execution) List(ctx context.Context) ([]*backtest.Execution, error) {
 
 func (db *Execution) ListBySession(ctx context.Context, session string) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
-		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date, benchmark,
+		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date,
 		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
 		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
 		ep.capital_used, ep.gross_leverage, ep.net_leverage,
@@ -534,7 +533,6 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*back
 func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*backtest.Execution, error) {
 	rows, err := db.Conn.Query(ctx,
 		`SELECT backtest_execution.id, session.id, session.backtest, backtest_execution.start_date, backtest_execution.end_date,
-		backtest_execution.benchmark,
 		ep.date, ep.pnl, ep.returns, ep.portfolio_value, ep.longs_count, ep.shorts_count,
 		ep.long_value, ep.short_value, ep.starting_exposure, ep.ending_exposure, ep.long_exposure, ep.short_exposure,
 		ep.capital_used, ep.gross_leverage, ep.net_leverage,

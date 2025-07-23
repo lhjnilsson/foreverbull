@@ -16,6 +16,6 @@ type Engine interface {
 }
 
 type EngineSession interface {
-	RunBacktest(ctx context.Context, backtest *backtest.Backtest, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error)
+	RunBacktest(ctx context.Context, execution *backtest.Execution, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error)
 	GetResult(ctx context.Context, executionId string) (*servicePb.GetResultResponse, error)
 }

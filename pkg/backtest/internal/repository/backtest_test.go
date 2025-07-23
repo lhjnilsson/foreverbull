@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -39,34 +38,24 @@ func (test *BacktestTest) SetupTest() {
 	test.uut = repository.Backtest{Conn: test.conn}
 	test.backtest = &backtest.Backtest{
 		Name:      "test_backtest",
-		Benchmark: func() *string { s := "AAPL"; return &s }(),
+		Benchmark: "benchmark",
 	}
 }
 
 func (test *BacktestTest) TearDownTest() {
 }
 
-func TestBacktests(t *testing.T) {
+func TestBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestTest))
 }
 
 func (test *BacktestTest) TestCreate() {
 	ctx := context.Background()
 
-	for index, benchmark := range []*string{nil, func() *string { s := "benchmark"; return &s }()} {
-		test.Run(fmt.Sprintf("create backtest %d with benchmark %v", index, benchmark), func() {
-			test.backtest.Benchmark = benchmark
-			test.backtest.Name = fmt.Sprintf("backtest_bench_%d", index)
-			backtest, err := test.uut.Create(ctx, test.backtest)
-			test.Require().NoError(err)
-			test.Equal(fmt.Sprintf("backtest_bench_%d", index), backtest.Name)
-			if benchmark == nil {
-				test.Nil(backtest.Benchmark)
-			} else {
-				test.Equal(*benchmark, *backtest.Benchmark)
-			}
-		})
-	}
+	backtest, err := test.uut.Create(ctx, test.backtest)
+	test.Require().NoError(err)
+	test.Equal(test.backtest.Name, backtest.Name)
+	test.Equal(test.backtest.Benchmark, backtest.Benchmark)
 }
 
 func (test *BacktestTest) TestGet() {
@@ -97,14 +86,13 @@ func (test *BacktestTest) TestUpdateBenchmark() {
 	_, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
-	benchmark := "benchmark"
-	_, err = backtests.UpdateBenchmark(ctx, test.backtest.Name, &benchmark)
+	_, err = backtests.UpdateBenchmark(ctx, test.backtest.Name, "new_benchmark")
 	test.Require().NoError(err)
 
 	backtest, err := backtests.Get(ctx, test.backtest.Name)
 	test.Require().NoError(err)
 	test.Equal(test.backtest.Name, backtest.Name)
-	test.Equal(benchmark, *backtest.Benchmark)
+	test.Equal("new_benchmark", backtest.Benchmark)
 }
 
 func (test *BacktestTest) TestUpdatePeriod() {
