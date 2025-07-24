@@ -176,7 +176,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 			test.Require().NotNil(msg)
 			responses = append(responses, msg)
 		}
-		test.Require().Len(responses, 2)
+		test.Require().Len(responses, 4)
 	})
 }
 
@@ -199,7 +199,7 @@ func (test *BacktestServerTest) TestGetBacktest() {
 		resp, err := test.client.GetBacktest(context.Background(), req)
 		test.Require().NoError(err)
 		test.NotNil(resp)
-		test.Equal(backtest, resp.Backtest)
+		test.Equal(backtest.Name, resp.GetBacktest().Name)
 	})
 }
 

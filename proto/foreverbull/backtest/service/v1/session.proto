@@ -3,22 +3,20 @@ syntax = "proto3";
 package foreverbull.backtest.service.v1;
 
 import "buf/validate/validate.proto";
-import "foreverbull/backtest/v1/backtest.proto";
 import "foreverbull/backtest/v1/execution.proto";
+import "foreverbull/common.proto";
 import "foreverbull/finance/v1/marketdata.proto";
 import "foreverbull/service/v1/worker.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service";
 
 message CreateExecutionRequest {
-  foreverbull.backtest.v1.Backtest backtest = 1 [(buf.validate.field) = {
-    required: true
-    cel: {
-      id: "required_backtest"
-      expression: "this != null"
-    }
-  }];
-  foreverbull.service.v1.Algorithm algorithm = 2 [(buf.validate.field) = {
+  string id = 1;
+  string session = 2;
+  foreverbull.common.Date start_date = 3 [(buf.validate.field) = {}];
+  foreverbull.common.Date end_date = 4 [(buf.validate.field) = {}];
+
+  foreverbull.service.v1.Algorithm algorithm = 5 [(buf.validate.field) = {
     required: true
     cel: {
       id: "required_algo"

@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
@@ -115,7 +116,10 @@ func (s *SessionTest) TearDownTest() {
 
 func (s *SessionTest) TestCreateExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest:  &backtest.Backtest{},
+		Id:        "execution_123",
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
@@ -129,7 +133,10 @@ func (s *SessionTest) TestCreateExecution() {
 
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
-		Backtest:  &backtest.Backtest{},
+		Id:        "execution_123",
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 		Algorithm: &service_pb.Algorithm{},
 	})
 	s.Require().NoError(err)
@@ -142,7 +149,9 @@ func (s *SessionTest) TestRunExecution() {
 
 	executions := repository.Execution{Conn: s.conn}
 	e := backtest.Execution{
-		Session: s.session.Id,
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 	}
 	execution, err := executions.Create(context.Background(), &e)
 	s.Require().NoError(err)

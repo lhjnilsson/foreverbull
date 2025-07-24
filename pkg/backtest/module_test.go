@@ -194,7 +194,9 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	algo, runner := test_helper.WorkerSimulator(test.T(), functions...)
 
 	excRep, err := sessionClient.CreateExecution(context.TODO(), &servicePb.CreateExecutionRequest{
-		Backtest:  getResponse.GetBacktest(),
+		Id:        "execution_123",
+		StartDate: getResponse.Backtest.Periods[0].StartDate,
+		EndDate:   getResponse.Backtest.Periods[(len(getResponse.Backtest.Periods) - 1)].EndDate,
 		Algorithm: algo,
 	})
 	test.Require().NoError(err, "failed to create execution")
