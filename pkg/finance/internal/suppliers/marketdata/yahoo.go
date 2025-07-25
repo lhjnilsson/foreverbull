@@ -167,6 +167,10 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 		return nil, fmt.Errorf("%v", data.QuoteSummary.Error.Description)
 	}
 
+	if len(data.QuoteSummary.Result) == 0 {
+		return nil, fmt.Errorf("no results found")
+	}
+
 	asset := pb.Asset{
 		Symbol: data.QuoteSummary.Result[0].QuoteType.Symbol,
 		Name:   data.QuoteSummary.Result[0].QuoteType.LongName,

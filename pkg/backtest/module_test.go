@@ -1,3 +1,5 @@
+//go:build integration
+
 package backtest_test
 
 import (
@@ -5,22 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
@@ -39,10 +39,6 @@ type BacktestModuleTest struct {
 }
 
 func TestModuleBacktest(t *testing.T) {
-	backtestImage := os.Getenv("BACKTEST_IMAGE")
-	if backtestImage == "" {
-		t.Skip("backtest image not set")
-	}
 	suite.Run(t, new(BacktestModuleTest))
 }
 
@@ -52,6 +48,7 @@ func (test *BacktestModuleTest) SetupSuite() {
 		NATS:     true,
 		Minio:    true,
 		Loki:     true,
+		Zipline:  true,
 	})
 
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -67,35 +64,10 @@ func (test *BacktestModuleTest) SetupSuite() {
 			func() (storage.Storage, error) {
 				return storage.NewMinioStorage(context.Background())
 			},
-			func() *grpc.Server {
-				return grpc.NewServer()
-			},
 			container.NewEngine,
 		),
-		fx.Invoke(
-			func(lc fx.Lifecycle, gServer *grpc.Server) error {
-				lc.Append(fx.Hook{
-					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", fmt.Sprintf(":%s", environment.GetGRPCPort()))
-						if err != nil {
-							return fmt.Errorf("failed to listen: %w", err)
-						}
-						go func() {
-							if err := gServer.Serve(listener); err != nil {
-								panic(err)
-							}
-						}()
-						return nil
-					},
-					OnStop: func(context.Context) error {
-						gServer.GracefulStop()
-						return nil
-					},
-				})
-
-				return nil
-			},
-		),
+		fx.Invoke(),
+		internalGrpc.Module,
 		stream.Module,
 		service.Module,
 		finance.Module,
@@ -121,16 +93,12 @@ func (test *BacktestModuleTest) TearDownSuite() {
 }
 
 func (test *BacktestModuleTest) TestBacktestModule() {
-	_, exists := os.LookupEnv("BACKTEST_IMAGE")
-	if !exists {
-		test.T().Skip("IMAGES not set")
-	}
-
 	// Create Backtest
 	createBacktestStream, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
-		Backtest: &pb.Backtest{
-			Name: "Test Backtest",
-		},
+		Name:      "Test Backtest",
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		BaseEtf:   "iShares S&P 100",
 	})
 	test.Require().NoError(err, "failed to create backtest: %v", err)
 
@@ -145,7 +113,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	}
 
 	test.Require().NotNil(createBacktest, "response is nil")
-	test.Require().Equal(common_pb.State_STATE_COMPLETED, createBacktest.INGESTING.State)
+	test.Require().Equal(pb.State_STATE_COMPLETED, createBacktest.INGESTING.State)
 
 	getResponse, err := test.backtestClient.GetBacktest(context.TODO(), &servicePb.GetBacktestRequest{Name: "Test Backtest"})
 	test.Require().NoError(err, "failed to get backtest")
@@ -182,6 +150,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 	test.Require().NoError(err)
 
 	cb := func(_ *service_servicePb.WorkerRequest) *service_servicePb.WorkerResponse {
+		test.T().Log("WorkerSimulator callback")
 		return &service_servicePb.WorkerResponse{}
 	}
 	functions := []*test_helper.WorkerFunction{

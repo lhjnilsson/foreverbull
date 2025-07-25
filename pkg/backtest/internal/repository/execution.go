@@ -134,9 +134,11 @@ func (db *Execution) Get(ctx context.Context, executionId string) (*backtest.Exe
 	end := pgtype.Date{}
 
 	err := db.Conn.QueryRow(ctx,
-		`SELECT id, session, start_date, end_date 
-		FROM backtest_execution WHERE id=$1`, executionId).Scan(
-		&execution.Id, &execution.Session, &start, &end,
+		`SELECT backtest_execution.id, session.backtest, backtest_execution.session, start_date, end_date  
+		FROM backtest_execution
+		INNER JOIN session ON backtest_execution.session=session.id
+		WHERE backtest_execution.id=$1`, executionId).Scan(
+		&execution.Id, &execution.Backtest, &execution.Session, &start, &end,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get execution: %w", err)

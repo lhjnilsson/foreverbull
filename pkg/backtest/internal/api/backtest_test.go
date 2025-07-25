@@ -16,7 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
@@ -120,8 +120,8 @@ func (test *BacktestServerTest) createExecution(session string) *backtest.Execut
 	executions := repository.Execution{Conn: test.pgx}
 	e := backtest.Execution{
 		Session:   session,
-		StartDate: &common_pb.Date{Year: 2024, Month: 1, Day: 1},
-		EndDate:   &common_pb.Date{Year: 2024, Month: 1, Day: 1},
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 	}
 
 	execution, err := executions.Create(context.TODO(), &e)
@@ -144,8 +144,8 @@ func (test *BacktestServerTest) TestListBacktests() {
 func (test *BacktestServerTest) TestCreateBacktest() {
 	test.Run("Create", func() {
 		statuses := []*streamPb.Orchestration_Step{
-			{Num: 2, State: common_pb.State_STATE_RUNNING},
-			{Num: 2, State: common_pb.State_STATE_COMPLETED},
+			{Num: 2, State: pb.State_STATE_RUNNING},
+			{Num: 2, State: pb.State_STATE_COMPLETED},
 		}
 
 		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
@@ -156,9 +156,10 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 		req := &servicePb.CreateBacktestRequest{
-			Backtest: &backtest.Backtest{
-				Name: "Test Backtest",
-			},
+			Name:      "Test Backtest",
+			StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+			BaseEtf:   "iShares S&P 100",
 		}
 
 		resp, err := test.client.CreateBacktest(context.TODO(), req)

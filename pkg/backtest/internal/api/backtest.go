@@ -8,7 +8,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
-	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
@@ -47,36 +48,55 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 	ctx := _stream.Context()
 	backtests := repository.Backtest{Conn: bs.pgx}
 	rsp := &servicePb.CreateBacktestResponse{
-		CREATING: &commonPb.Step{
-			State: commonPb.State_STATE_RUNNING,
+		CREATING: &pb.Step{
+			State: pb.State_STATE_RUNNING,
 		},
-		DOWNLOADING: &commonPb.Step{
-			State: commonPb.State_STATE_UNSPECIFIED,
+		DOWNLOADING: &pb.Step{
+			State: pb.State_STATE_UNSPECIFIED,
 		},
-		INGESTING: &commonPb.Step{
-			State: commonPb.State_STATE_UNSPECIFIED,
+		INGESTING: &pb.Step{
+			State: pb.State_STATE_UNSPECIFIED,
 		},
-		STORING: &commonPb.Step{
-			State: commonPb.State_STATE_UNSPECIFIED,
+		STORING: &pb.Step{
+			State: pb.State_STATE_UNSPECIFIED,
 		},
 		Backtest: nil,
 	}
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
+	req.GetName()
 
-	backtest, err := backtests.Create(ctx, req.GetBacktest())
+	b := backtest.Backtest{
+		Name:    req.GetName(),
+		Periods: []*backtest.Backtest_Period{},
+	}
+	for firstYear := req.GetStartDate().GetYear(); firstYear <= req.GetEndDate().GetYear(); firstYear++ {
+		b.Periods = append(b.Periods, &backtest.Backtest_Period{
+			StartDate: &pb.Date{
+				Year:  firstYear,
+				Month: 1,
+				Day:   1,
+			},
+			EndDate: &pb.Date{
+				Year:  firstYear,
+				Month: 12,
+				Day:   31,
+			},
+		})
+	}
+
+	backtest, err := backtests.Create(ctx, &b)
 	if err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 	rsp.Backtest = backtest
-	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
+	rsp.CREATING.State = pb.State_STATE_COMPLETED
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
-	o, err := backtestStream.NewCreateBacktestOrchestration(req.GetBacktest().GetName(),
-		[]string{}, "", "")
+	o, err := backtestStream.CreateBacktestFromETF(req.GetName(), req.GetBaseEtf(), "", "")
 	if err != nil {
 		return fmt.Errorf("error creating backtest orchestration: %w", err)
 	}
@@ -117,14 +137,14 @@ func (bs *BacktestServer) CreateSession(
 	sessions := repository.Session{Conn: bs.pgx}
 	ctx := _stream.Context()
 	rsp := &servicePb.CreateSessionResponse{
-		CREATING: &commonPb.Step{
-			State: commonPb.State_STATE_RUNNING,
+		CREATING: &pb.Step{
+			State: pb.State_STATE_RUNNING,
 		},
-		STARTING: &commonPb.Step{
-			State: commonPb.State_STATE_UNSPECIFIED,
+		STARTING: &pb.Step{
+			State: pb.State_STATE_UNSPECIFIED,
 		},
-		STORING: &commonPb.Step{
-			State: commonPb.State_STATE_UNSPECIFIED,
+		STORING: &pb.Step{
+			State: pb.State_STATE_UNSPECIFIED,
 		},
 		Session: nil,
 	}
@@ -137,7 +157,7 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error creating session: %w", err)
 	}
 	rsp.Session = session
-	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
+	rsp.CREATING.State = pb.State_STATE_COMPLETED
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
@@ -146,7 +166,7 @@ func (bs *BacktestServer) CreateSession(
 	if err != nil {
 		return fmt.Errorf("error creating session run command: %w", err)
 	}
-	rsp.STARTING.State = commonPb.State_STATE_RUNNING
+	rsp.STARTING.State = pb.State_STATE_RUNNING
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
@@ -162,7 +182,7 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error getting session: %w", err)
 	}
 
-	rsp.STARTING.State = commonPb.State_STATE_COMPLETED
+	rsp.STARTING.State = pb.State_STATE_COMPLETED
 	rsp.Session = session
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)

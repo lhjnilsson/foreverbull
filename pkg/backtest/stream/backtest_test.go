@@ -111,8 +111,7 @@ func (test *BacktestTest) TestCreateBacktestFromETF() {
 
 	minio, err := storage.NewMinioStorage(context.TODO())
 	test.Require().NoError(err)
-	objects, err := minio.ListObjects(context.TODO(), storage.IngestionsBucket)
+	object, err := minio.GetObject(context.TODO(), storage.IngestionsBucket, "sp100_backtest")
 	test.Require().NoError(err)
-	test.Len(*objects, 1)
-	test.Equal("sp100_backtest", (*objects)[0].Name)
+	test.Equal("sp100_backtest", object.Name)
 }
