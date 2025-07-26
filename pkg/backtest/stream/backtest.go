@@ -72,20 +72,21 @@ func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error
 func CreateBacktestFromETF(backtest_name string, etf_name string, start string, end string) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
+	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
 	// Create Backtest
 	cmd, err := NewCreateBacktestCommand(backtest_name, etf_name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.CREATING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 
 	// Ingest Financial Data
 	cmd, err = NewDownloadFinancialDataCommand(backtest_name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.DOWNLOADING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("DOWNLOADING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 
 	// Ingest into Backtest
 	cmd, err = NewBacktestIngestCommand(backtest_name)
@@ -93,6 +94,6 @@ func CreateBacktestFromETF(backtest_name string, etf_name string, start string, 
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
-	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rsp.INGESTING.ProtoReflect().Descriptor().Index()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("INGESTING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 	return &o, nil
 }

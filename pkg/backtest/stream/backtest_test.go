@@ -22,9 +22,18 @@ import (
 	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 )
+
+func TestCreateBacktest(t *testing.T) {
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	assert.NoError(t, err)
+	assert.Equal(t, int32(1), o.Steps[0].Num)
+	assert.Equal(t, int32(2), o.Steps[1].Num)
+	assert.Equal(t, int32(3), o.Steps[2].Num)
+}
 
 type BacktestTest struct {
 	suite.Suite
@@ -83,6 +92,41 @@ func TestBacktest(t *testing.T) {
 
 func (test *BacktestTest) TestCreateBacktestFromETF() {
 	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	test.Require().NoError(err)
+	test.Require().NotNil(o)
+
+	b := backtestpb.Backtest{
+		Name: "sp100_backtest",
+		Periods: []*backtestpb.Backtest_Period{
+			{
+				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+			},
+			{
+				StartDate: &pb.Date{Year: 2023, Month: 1, Day: 1},
+				EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+			},
+		},
+	}
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Create(context.TODO(), &b)
+	test.Require().NoError(err)
+
+	steps := test.stream.RunOrchestration(context.TODO(), o)
+	for step := range steps {
+		test.T().Logf("Step: %v", step)
+	}
+
+	minio, err := storage.NewMinioStorage(context.TODO())
+	test.Require().NoError(err)
+	object, err := minio.GetObject(context.TODO(), storage.IngestionsBucket, "sp100_backtest")
+	test.Require().NoError(err)
+	test.Equal("sp100_backtest", object.Name)
+}
+
+func (test *BacktestTest) TestCreateBacktestFromETFBadETF() {
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 
