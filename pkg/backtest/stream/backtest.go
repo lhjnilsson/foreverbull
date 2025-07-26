@@ -48,12 +48,16 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 type CreateBacktestCommand struct {
 	BacktestName string `json:"backtest_name"`
 	ETFName      string `json:"etf_name"`
+	StartDate    string `json:"start_date"`
+	EndDate      string `json:"end_date"`
 }
 
-func NewCreateBacktestCommand(backtestName string, etfName string) (stream.Message, error) {
+func NewCreateBacktestCommand(backtestName string, etfName string, startDate string, endDate string) (stream.Message, error) {
 	cmd := &CreateBacktestCommand{
 		BacktestName: backtestName,
 		ETFName:      etfName,
+		StartDate:    startDate,
+		EndDate:      endDate,
 	}
 	return stream.NewMessage("backtest", "create", "create", cmd)
 }
@@ -69,13 +73,13 @@ func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error
 	return stream.NewMessage("backtest", "download", "download", cmd)
 }
 
-func CreateBacktestFromETF(backtest_name string, etf_name string, start string, end string) (*streamPb.Orchestration, error) {
+func CreateBacktestFromETF(backtest_name string, etf_name string, start_date string, end_date string) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
 	// Create Backtest
-	cmd, err := NewCreateBacktestCommand(backtest_name, etf_name)
+	cmd, err := NewCreateBacktestCommand(backtest_name, etf_name, start_date, end_date)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}

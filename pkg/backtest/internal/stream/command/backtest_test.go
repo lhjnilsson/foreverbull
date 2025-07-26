@@ -86,8 +86,10 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 	message := new(stream.MockMessage)
 	message.On("ParsePayload", &bs.CreateBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*bs.CreateBacktestCommand)
-		payload.BacktestName = "test-backtest"
+		payload.BacktestName = "test-backtest-2"
 		payload.ETFName = "iShares S&P 100"
+		payload.StartDate = "2022-01-01"
+		payload.EndDate = "2023-12-31"
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
@@ -113,6 +115,8 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 		},
 	}
 	test.etfscraper.On("GetAssets", "iShares S&P 100", "2022", "2023").Return(assetMap, nil)
+	test.etfscraper.On("GetBenchmark", "iShares S&P 100").Return("OEF", nil)
+
 	message.On("MustGet", dependency.GetETFScraper).Return(test.etfscraper)
 
 	test.mdclient.On("GetAsset", mock.Anything, &financeServicePB.GetAssetRequest{

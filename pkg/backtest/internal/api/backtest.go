@@ -9,7 +9,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 )
 
@@ -46,10 +45,9 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 	_stream servicePb.BacktestServicer_CreateBacktestServer,
 ) error {
 	ctx := _stream.Context()
-	backtests := repository.Backtest{Conn: bs.pgx}
 	rsp := &servicePb.CreateBacktestResponse{
 		CREATING: &pb.Step{
-			State: pb.State_STATE_RUNNING,
+			State: pb.State_STATE_UNSPECIFIED,
 		},
 		DOWNLOADING: &pb.Step{
 			State: pb.State_STATE_UNSPECIFIED,
@@ -65,38 +63,9 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 	if err := _stream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
-	req.GetName()
 
-	b := backtest.Backtest{
-		Name:    req.GetName(),
-		Periods: []*backtest.Backtest_Period{},
-	}
-	for firstYear := req.GetStartDate().GetYear(); firstYear <= req.GetEndDate().GetYear(); firstYear++ {
-		b.Periods = append(b.Periods, &backtest.Backtest_Period{
-			StartDate: &pb.Date{
-				Year:  firstYear,
-				Month: 1,
-				Day:   1,
-			},
-			EndDate: &pb.Date{
-				Year:  firstYear,
-				Month: 12,
-				Day:   31,
-			},
-		})
-	}
-
-	backtest, err := backtests.Create(ctx, &b)
-	if err != nil {
-		return fmt.Errorf("error creating backtest: %w", err)
-	}
-	rsp.Backtest = backtest
-	rsp.CREATING.State = pb.State_STATE_COMPLETED
-	if err := _stream.Send(rsp); err != nil {
-		return fmt.Errorf("error sending response: %w", err)
-	}
-
-	o, err := backtestStream.CreateBacktestFromETF(req.GetName(), req.GetBaseEtf(), "", "")
+	o, err := backtestStream.CreateBacktestFromETF(req.GetName(), req.GetBaseEtf(),
+		pb.DateToDateString(req.GetStartDate()), pb.DateToDateString(req.GetEndDate()))
 	if err != nil {
 		return fmt.Errorf("error creating backtest orchestration: %w", err)
 	}

@@ -29,17 +29,35 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshalling CreateBacktest payload: %w", err)
 	}
-	// Get backtest
+
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	b, err := backtests.Get(ctx, command.BacktestName)
-	if err != nil {
-		return fmt.Errorf("error getting backtest: %w", err)
+
+	// construct backtest
+	b := backtest.Backtest{
+		Name:    command.BacktestName,
+		Periods: []*backtest.Backtest_Period{},
 	}
-	var years []string
-	for _, period := range b.Periods {
-		years = append(years, fmt.Sprintf("%d", period.StartDate.Year))
+
+	startYear := pb.DateStringToDate(command.StartDate).Year
+	endYear := pb.DateStringToDate(command.EndDate).Year
+	years := []string{}
+	for year := startYear; year <= endYear; year++ {
+		b.Periods = append(b.Periods, &backtest.Backtest_Period{
+			StartDate: &pb.Date{
+				Year:  year,
+				Month: 1,
+				Day:   1,
+			},
+			EndDate: &pb.Date{
+				Year:  year,
+				Month: 12,
+				Day:   31,
+			},
+		})
+		years = append(years, fmt.Sprintf("%d", year))
 	}
+
 	// Get ETF Symbols
 	etfscraper, isETFScraper := msg.MustGet(dependency.GetETFScraper).(dependency.ETFScraper)
 	if !isETFScraper {
@@ -49,15 +67,11 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting assets: %w", err)
 	}
-	benchmark, err := etfscraper.GetBenchmark(command.ETFName)
+	b.Benchmark, err = etfscraper.GetBenchmark(command.ETFName)
 	if err != nil {
 		return fmt.Errorf("error getting benchmark: %w", err)
 	}
 
-	_, err = backtests.UpdateBenchmark(ctx, command.BacktestName, benchmark)
-	if err != nil {
-		return fmt.Errorf("error updating benchmark: %w", err)
-	}
 	// Fetch Symbols from Finance
 	marketdataClient, isMarketdataClient := msg.MustGet(dependency.GetMarketdataClient).(financeServicePB.MarketdataClient)
 	if !isMarketdataClient {
@@ -111,12 +125,11 @@ func CreateBacktest(ctx context.Context, msg stream.Message) error {
 		}
 	}
 
-	for _, period := range b.Periods {
-		err = backtests.UpdatePeriod(ctx, command.BacktestName, period)
-		if err != nil {
-			return fmt.Errorf("error updating period assets: %w", err)
-		}
+	_, err = backtests.Create(ctx, &b)
+	if err != nil {
+		return fmt.Errorf("error creating backtest: %w", err)
 	}
+
 	return nil
 }
 
