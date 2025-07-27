@@ -1,3 +1,4 @@
+import datetime
 import os
 import tempfile
 
@@ -10,8 +11,6 @@ from typing import Iterator
 
 import pynng
 import pytest
-
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from foreverbull import Algorithm
 from foreverbull import Order
@@ -197,13 +196,13 @@ def get_algo(file_path: str) -> Algorithm:
     return Algorithm.from_file_path(file_path)
 
 
-def backtest_date_range(backtest: backtest_pb2.Backtest) -> Iterator[tuple[Timestamp, list[str]]]:
+def backtest_date_range(backtest: backtest_pb2.Backtest) -> Iterator[tuple[datetime.datetime, list[str]]]:
     for period in backtest.periods:
         start = pb_utils.from_proto_date_to_pydate(period.start_date)
         end = pb_utils.from_proto_date_to_pydate(period.end_date)
         symbols = [asset.symbol for asset in period.assets if asset.enabled]
         while start <= end:
-            yield Timestamp(), symbols
+            yield datetime.datetime.combine(start, datetime.time(0, 0, 0)), symbols
             start += timedelta(days=1)
 
 
@@ -216,8 +215,8 @@ def parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest, fb
             positions=[],
         )
         orders: list[Order] = []
-        for ts, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp = ts
+        for dt, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp.FromDatetime(dt)
             for symbol in symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo",
@@ -285,8 +284,8 @@ def non_parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest
             positions=[],
         )
         orders: list[Order] = []
-        for ts, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp = ts
+        for dt, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp.FromDatetime(dt)
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo",
                 symbols=symbols,
@@ -353,8 +352,8 @@ def parallel_algo_file_with_parameters(spawn_process, backtest_entity: backtest_
             positions=[],
         )
         orders: list[Order] = []
-        for ts, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp = ts
+        for dt, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp.FromDatetime(dt)
             for symbol in symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
@@ -429,8 +428,8 @@ def non_parallel_algo_file_with_parameters(spawn_process, backtest_entity: backt
             positions=[],
         )
         orders: list[Order] = []
-        for ts, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp = ts
+        for dt, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp.FromDatetime(dt)
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
                 symbols=symbols,
@@ -505,8 +504,8 @@ def multistep_algo_with_namespace(spawn_process, backtest_entity: backtest_pb2.B
             positions=[],
         )
         orders: list[Order] = []
-        for ts, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp = ts
+        for dt, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp.FromDatetime(dt)
             req = worker_service_pb2.WorkerRequest(
                 task="filter_assets",
                 symbols=symbols,
