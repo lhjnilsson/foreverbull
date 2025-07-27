@@ -63,7 +63,6 @@ class TestBacktestSession:
         periods = uut.run_execution(
             pb_utils.from_pydate_to_proto_date(date.today()),
             pb_utils.from_pydate_to_proto_date(date.today()),
-            [],
         )
         assert periods is not None
         assert len(list(periods)) == 10

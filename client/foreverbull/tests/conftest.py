@@ -6,9 +6,12 @@ from functools import partial
 from multiprocessing import get_start_method
 from multiprocessing import set_start_method
 from threading import Thread
+from typing import Iterator
 
 import pynng
 import pytest
+
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from foreverbull import Algorithm
 from foreverbull import Order
@@ -32,34 +35,113 @@ def spawn_process():
 def backtest_entity():
     return backtest_pb2.Backtest(
         name="testing_backtest",
-        start_date=common_pb2.Date(year=2022, month=1, day=3),
-        end_date=common_pb2.Date(year=2023, month=12, day=29),
-        symbols=[
-            "AAPL",
-            "AMZN",
-            "BAC",
-            "BRK-B",
-            "CMCSA",
-            "CSCO",
-            "DIS",
-            "GOOG",
-            "GOOGL",
-            "HD",
-            "INTC",
-            "JNJ",
-            "JPM",
-            "KO",
-            "MA",
-            "META",
-            "MRK",
-            "MSFT",
-            "PEP",
-            "PG",
-            "TSLA",
-            "UNH",
-            "V",
-            "VZ",
-            "WMT",
+        periods=[
+            backtest_pb2.Backtest.Period(
+                start_date=common_pb2.Date(year=2022, month=1, day=3),
+                end_date=common_pb2.Date(year=2023, month=12, day=29),
+                assets=[
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="AAPL",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="AMZN",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="BAC",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="BRK-B",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="CMCSA",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="CSCO",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="DIS",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="GOOG",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="GOOGL",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="HD",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="INTC",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="JNJ",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="JPM",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="KO",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="MA",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="META",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="MRK",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="MSFT",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="PEP",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="PG",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="TSLA",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="UNH",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="V",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="VZ",
+                        enabled=True,
+                    ),
+                    backtest_pb2.Backtest.Period.Asset(
+                        symbol="WMT",
+                        enabled=True,
+                    ),
+                ],
+            )
         ],
     )
 
@@ -70,8 +152,6 @@ def execution(fb_database):
         id="test",
         start_date=common_pb2.Date(year=2022, month=1, day=3),
         end_date=common_pb2.Date(year=2023, month=12, day=29),
-        symbols=["AAPL", "MSFT", "TSLA"],
-        benchmark="AAPL",
     )
 
 
@@ -117,18 +197,28 @@ def get_algo(file_path: str) -> Algorithm:
     return Algorithm.from_file_path(file_path)
 
 
+def backtest_date_range(backtest: backtest_pb2.Backtest) -> Iterator[tuple[Timestamp, list[str]]]:
+    for period in backtest.periods:
+        start = pb_utils.from_proto_date_to_pydate(period.start_date)
+        end = pb_utils.from_proto_date_to_pydate(period.end_date)
+        symbols = [asset.symbol for asset in period.assets if asset.enabled]
+        while start <= end:
+            yield Timestamp(), symbols
+            start += timedelta(days=1)
+
+
 @pytest.fixture(scope="function")
-def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
+def parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
-            for symbol in execution.symbols:
+        for ts, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp = ts
+            for symbol in symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo",
                     symbols=[symbol],
@@ -147,7 +237,6 @@ def parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_dat
                             amount=order.amount,
                         )
                     )
-            start += timedelta(days=1)
         return orders
 
     request = worker_pb2.ExecutionConfiguration(
@@ -188,19 +277,19 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb_database):
+def non_parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
+        for ts, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp = ts
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo",
-                symbols=execution.symbols,
+                symbols=symbols,
                 portfolio=portfolio,
             )
 
@@ -216,7 +305,6 @@ def non_parallel_algo_file(spawn_process, execution: execution_pb2.Execution, fb
                         amount=order.amount,
                     )
                 )
-            start += timedelta(days=1)
         return orders
 
     request = worker_pb2.ExecutionConfiguration(
@@ -257,17 +345,17 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
+def parallel_algo_file_with_parameters(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
-        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
-            for symbol in execution.symbols:
+        for ts, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp = ts
+            for symbol in symbols:
                 request = worker_service_pb2.WorkerRequest(
                     task="parallel_algo_with_parameters",
                     symbols=[symbol],
@@ -286,7 +374,6 @@ def parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.E
                         )
                     )
 
-            start += timedelta(days=1)
         return orders
 
     request = worker_pb2.ExecutionConfiguration(
@@ -334,19 +421,19 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_pb2.Execution, fb_database):
+def non_parallel_algo_file_with_parameters(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
-        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
+        for ts, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp = ts
             request = worker_service_pb2.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
-                symbols=execution.symbols,
+                symbols=symbols,
                 portfolio=portfolio,
             )
 
@@ -362,7 +449,6 @@ def non_parallel_algo_file_with_parameters(spawn_process, execution: execution_p
                         amount=order.amount,
                     )
                 )
-            start += timedelta(days=1)
         return orders
 
     request = worker_pb2.ExecutionConfiguration(
@@ -411,19 +497,19 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execution, fb_database, namespace_server):
+def multistep_algo_with_namespace(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
-        start = pb_utils.from_proto_date_to_pydate(execution.start_date)
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
-        while start < pb_utils.from_proto_date_to_pydate(execution.end_date):
+        for ts, symbols in backtest_date_range(backtest_entity):
+            portfolio.timestamp = ts
             req = worker_service_pb2.WorkerRequest(
                 task="filter_assets",
-                symbols=execution.symbols,
+                symbols=symbols,
                 portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
@@ -433,7 +519,7 @@ def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execut
             assert response.HasField("error") is False
 
             # measure assets
-            for symbol in execution.symbols:
+            for symbol in symbols:
                 req = worker_service_pb2.WorkerRequest(
                     task="measure_assets",
                     symbols=[symbol],
@@ -448,7 +534,7 @@ def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execut
             # create orders
             req = worker_service_pb2.WorkerRequest(
                 task="create_orders",
-                symbols=execution.symbols,
+                symbols=symbols,
                 portfolio=portfolio,
             )
             server_socket.send(req.SerializeToString())
@@ -456,7 +542,6 @@ def multistep_algo_with_namespace(spawn_process, execution: execution_pb2.Execut
             response.ParseFromString(server_socket.recv())
             assert response.task == "create_orders"
             assert response.HasField("error") is False
-            start += timedelta(days=1)
         return orders
 
     request = worker_pb2.ExecutionConfiguration(

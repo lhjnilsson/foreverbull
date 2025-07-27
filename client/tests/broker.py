@@ -21,7 +21,7 @@ class Broker:
         self._namespace_port = 7879
         self._worker_socket: pynng.Socket | None = None
         self._namespace_socket: pynng.Socket | None = None
-        self._execution: backtest_pb2.Backtest | None = None
+        self._backtest: backtest_pb2.Backtest | None = None
 
     def ListBacktests(
         self, request: backtest_service_pb2.ListBacktestsRequest, context
@@ -80,7 +80,7 @@ class Broker:
     ) -> session_service_pb2.CreateExecutionResponse:
         self._worker_socket = pynng.Req0(listen="tcp://0.0.0.0:7878")
         self._namespace_socket = pynng.Req0(listen="tcp://0.0.0.0:7879")
-        self._execution = request.backtest
+        self._execution = request
 
         return session_service_pb2.CreateExecutionResponse(
             configuration=worker_pb2.ExecutionConfiguration(
@@ -97,16 +97,7 @@ class Broker:
         if self._worker_socket is None or self._execution is None:
             raise Exception("Session not created")
 
-        rsp = self.engine.RunBacktest(
-            engine_service_pb2.RunBacktestRequest(
-                backtest=backtest_pb2.Backtest(
-                    start_date=self._execution.start_date,
-                    end_date=self._execution.end_date,
-                    symbols=self._execution.symbols,
-                    benchmark=self._execution.benchmark,
-                )
-            )
-        )
+        rsp = self.engine.RunBacktest(engine_service_pb2.RunBacktestRequest())
         while True:
             rsp: engine_service_pb2.GetCurrentPeriodResponse = self.engine.GetCurrentPeriod(
                 engine_service_pb2.GetCurrentPeriodRequest()
@@ -114,7 +105,10 @@ class Broker:
             if rsp.is_running is False:
                 break
             orders = []
-            for symbol in self._execution.symbols:
+            if self._backtest is None:
+                raise Exception("Backtest not set")
+            symbols = [a.symbol for period in self._backtest.periods for a in period.assets if a.enabled]
+            for symbol in symbols:
                 worker_request = worker_service_pb2.WorkerRequest(
                     task="handle_data",
                     symbols=[symbol],

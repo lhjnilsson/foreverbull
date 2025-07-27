@@ -27,9 +27,22 @@ def test_backtest_list(runner):
         mock_list.return_value = [
             backtest_pb2.Backtest(
                 name="test_name",
-                start_date=from_pydate_to_proto_date(date.today()),
-                end_date=from_pydate_to_proto_date(date.today()),
-                symbols=["AAPL", "MSFT"],
+                periods=[
+                    backtest_pb2.Backtest.Period(
+                        start_date=from_pydate_to_proto_date(date.today()),
+                        end_date=from_pydate_to_proto_date(date.today()),
+                        assets=[
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol="AAPL",
+                                enabled=True,
+                            ),
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol="MSFT",
+                                enabled=True,
+                            ),
+                        ],
+                    )
+                ],
             )
         ]
         result = runner(backtest, ["list"])
@@ -50,9 +63,22 @@ def test_backtest_create(runner):
                 backtest_service_pb2.CreateBacktestResponse(
                     backtest=backtest_pb2.Backtest(
                         name="test_name",
-                        start_date=from_pydate_to_proto_date(date.today()),
-                        end_date=from_pydate_to_proto_date(date.today()),
-                        symbols=["AAPL", "MSFT"],
+                        periods=[
+                            backtest_pb2.Backtest.Period(
+                                start_date=from_pydate_to_proto_date(date.today()),
+                                end_date=from_pydate_to_proto_date(date.today()),
+                                assets=[
+                                    backtest_pb2.Backtest.Period.Asset(
+                                        symbol="AAPL",
+                                        enabled=True,
+                                    ),
+                                    backtest_pb2.Backtest.Period.Asset(
+                                        symbol="MSFT",
+                                        enabled=True,
+                                    ),
+                                ],
+                            )
+                        ],
                     )
                 )
             ]
@@ -80,9 +106,22 @@ def test_backtest_get(runner):
     ):
         mock_get.return_value = backtest_pb2.Backtest(
             name="test_name",
-            start_date=from_pydate_to_proto_date(date.today()),
-            end_date=from_pydate_to_proto_date(date.today()),
-            symbols=["AAPL", "MSFT"],
+            periods=[
+                backtest_pb2.Backtest.Period(
+                    start_date=from_pydate_to_proto_date(date.today()),
+                    end_date=from_pydate_to_proto_date(date.today()),
+                    assets=[
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="AAPL",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="MSFT",
+                            enabled=True,
+                        ),
+                    ],
+                )
+            ],
         )
         mock_list_executions.return_value = []
         result = runner(backtest, ["get", "test"])
