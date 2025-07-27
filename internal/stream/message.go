@@ -114,6 +114,9 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 			return fmt.Errorf("state field not found in message")
 		}
 		stepMsg.Set(stateField, protoreflect.ValueOfEnum(step.State.Enum().Number()))
+		if step.Error != nil {
+			stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(*step.Error))
+		}
 	} else {
 		return fmt.Errorf("step message not found")
 	}

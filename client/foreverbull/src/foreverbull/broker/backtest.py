@@ -5,6 +5,7 @@ from typing import Generator
 
 import grpc
 
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
@@ -31,10 +32,17 @@ def list_backtests(servicer: backtest_service_pb2_grpc.BacktestServicerStub) -> 
 
 @backtest_servicer
 def create(
-    servicer: backtest_service_pb2_grpc.BacktestServicerStub, backtest: backtest_pb2.Backtest
+    servicer: backtest_service_pb2_grpc.BacktestServicerStub,
+    name: str,
+    base_etf: str,
+    start_date: common_pb2.Date,
+    end_date: common_pb2.Date,
 ) -> Generator[backtest_service_pb2.CreateBacktestResponse, None, None]:
     req = backtest_service_pb2.CreateBacktestRequest(
-        backtest=backtest,
+        name=name,
+        base_etf=base_etf,
+        start_date=start_date,
+        end_date=end_date,
     )
     return servicer.CreateBacktest(req)
 

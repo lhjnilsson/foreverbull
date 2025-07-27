@@ -72,6 +72,9 @@ class LiveProgress(Live):
                         if not self.progress.tasks[task_id].started:
                             self.progress.start_task(task_id)
                         self.progress.update(task_id, completed=1)
+                    case common_pb2.State.STATE_FAILED:
+                        description = f"{self.progress.tasks[task_id].description}: {step.message}"
+                        self.progress.update(task_id, completed=-1, description=description)
 
     @contextmanager
     def bar_progress(self, name, description=""):

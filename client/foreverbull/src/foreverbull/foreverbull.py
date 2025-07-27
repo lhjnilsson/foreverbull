@@ -51,17 +51,12 @@ class BacktestSession:
         self,
         start: common_pb2.Date,
         end: common_pb2.Date,
-        symbols: list[str],
-        benchmark=None,
     ) -> Generator[tuple[str, session_service_pb2.RunExecutionResponse], None, None]:
         with WorkerPool(self._algorithm._file_path) as wp:
             req = session_service_pb2.CreateExecutionRequest(
-                backtest=backtest_pb2.Backtest(
-                    start_date=start,
-                    end_date=end,
-                    symbols=symbols,
-                    benchmark=benchmark,
-                ),
+                session=self._session.id,
+                start_date=start,
+                end_date=end,
                 algorithm=self._algorithm.get_definition(),
             )
             create: session_service_pb2.CreateExecutionResponse = self._stub.CreateExecution(req)
