@@ -42,7 +42,8 @@ tasks:
     deps:
       - client:docker:zipline
     cmds:
-      - go test ./... -tags=integration {{.CLI_ARGS}}
+      - go test . -tags=integration {{.CLI_ARGS}} 
+      - go test ./stream/ -tags=integration {{.CLI_ARGS}}
 
   backtest:test:unit:
     dir: ./pkg/backtest
