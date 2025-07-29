@@ -5,6 +5,7 @@ import pytest
 
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -52,7 +53,37 @@ def test_session_run(runner):
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
     ):
         from_file_path.return_value = True
-        get_backtest.return_value = backtest_pb2.Backtest(symbols=["A", "B", "C", "D", "E", "F"])
+        backtest = backtest_pb2.Backtest(
+            periods=[
+                backtest_pb2.Backtest.Period(
+                    start_date=common_pb2.Date(year=2022, month=1, day=1),
+                    end_date=common_pb2.Date(year=2022, month=12, day=31),
+                    assets=[
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="A",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="B",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="C",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="D",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="E",
+                            enabled=True,
+                        ),
+                    ],
+                )
+            ]
+        )
+        get_backtest.return_value = backtest
         create_session.return_value = iter(
             [trading_service_pb2.CreateSessionResponse(session=trading_pb2.Session(port=7878))]
         )

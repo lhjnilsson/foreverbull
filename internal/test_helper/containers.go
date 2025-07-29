@@ -346,8 +346,13 @@ func ZiplineContainer(t *testing.T, network string) string {
 	)
 	err := reuse.Customize(&genericReq)
 	require.NoError(t, err)
-	_, err = testcontainers.GenericContainer(context.TODO(), genericReq)
+	c, err := testcontainers.GenericContainer(context.TODO(), genericReq)
 	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := c.Terminate(context.TODO())
+		require.NoError(t, err)
+	})
 
 	return "foreverbull-testing-zipline"
 }

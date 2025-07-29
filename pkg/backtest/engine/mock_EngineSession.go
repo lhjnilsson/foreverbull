@@ -49,9 +49,9 @@ func (_m *MockEngineSession) GetResult(ctx context.Context, executionId string) 
 	return r0, r1
 }
 
-// RunBacktest provides a mock function with given fields: ctx, _a1, workers
-func (_m *MockEngineSession) RunBacktest(ctx context.Context, _a1 *backtest.Backtest, workers worker.Pool) (chan *service.RunExecutionResponse, error) {
-	ret := _m.Called(ctx, _a1, workers)
+// RunBacktest provides a mock function with given fields: ctx, execution, workers
+func (_m *MockEngineSession) RunBacktest(ctx context.Context, execution *backtest.Execution, workers worker.Pool) (chan *service.RunExecutionResponse, error) {
+	ret := _m.Called(ctx, execution, workers)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RunBacktest")
@@ -59,19 +59,19 @@ func (_m *MockEngineSession) RunBacktest(ctx context.Context, _a1 *backtest.Back
 
 	var r0 chan *service.RunExecutionResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) (chan *service.RunExecutionResponse, error)); ok {
-		return rf(ctx, _a1, workers)
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Execution, worker.Pool) (chan *service.RunExecutionResponse, error)); ok {
+		return rf(ctx, execution, workers)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, worker.Pool) chan *service.RunExecutionResponse); ok {
-		r0 = rf(ctx, _a1, workers)
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Execution, worker.Pool) chan *service.RunExecutionResponse); ok {
+		r0 = rf(ctx, execution, workers)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(chan *service.RunExecutionResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *backtest.Backtest, worker.Pool) error); ok {
-		r1 = rf(ctx, _a1, workers)
+	if rf, ok := ret.Get(1).(func(context.Context, *backtest.Execution, worker.Pool) error); ok {
+		r1 = rf(ctx, execution, workers)
 	} else {
 		r1 = ret.Error(1)
 	}

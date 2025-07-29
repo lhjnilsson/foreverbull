@@ -98,11 +98,12 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                     pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date),
                     asset.symbol,
                 )
-        yield (
-            pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date),
-            pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date),
-            backtest.benchmark,
-        )
+        if backtest.benchmark:
+            yield (
+                pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date),
+                pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date),
+                backtest.benchmark,
+            )
 
     with database.connect() as conn:
         for start, end, symbol in what_to_populate():
@@ -110,7 +111,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
             info = feed.info
             asset = marketdata_pb2.Asset(
                 symbol=info["symbol"],
-                name="demo",
+                name="",
             )
             conn.execute(
                 text(

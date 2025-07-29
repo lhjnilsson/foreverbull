@@ -5,6 +5,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -30,6 +31,7 @@ func (s *NATSStream) RunOrchestration(ctx context.Context, o *pb.Orchestration) 
 			out <- &runningStep
 			err := s.runOrchestrationStep(ctx, step)
 			if err != nil {
+				log.Warn().Err(err).Msg("error running orchestration step")
 				errStr := err.Error()
 				failedStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_FAILED, Error: &errStr}
 				out <- &failedStep

@@ -12,7 +12,9 @@ from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
 from tests.broker import Broker
@@ -64,18 +66,17 @@ def test_baseline_performance(
     baseline_performance,
 ):
     foreverbull = Foreverbull(models.Algorithm.from_file_path(file_path))
-    with foreverbull.backtest_session("demo", broker_port=6067) as backtest:
+    with foreverbull.backtest_session(backtest_pb2.Backtest(), session_pb2.Session()) as backtest:
         periods = [
             p
             for p in backtest.run_execution(
                 start=execution.start_date,
                 end=execution.end_date,
-                symbols=[s for s in execution.symbols],
             )
         ]
         assert periods
 
-        result, df = foreverbull.get_execution("demo")
+        _, df = foreverbull.get_execution("demo")
 
         baseline_performance = baseline_performance[df.columns]
         if not baseline_performance.equals(df):

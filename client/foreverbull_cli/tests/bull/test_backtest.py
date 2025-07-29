@@ -12,6 +12,7 @@ import pytest
 
 from foreverbull.foreverbull import BacktestSession
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
@@ -27,9 +28,23 @@ def test_backtest_list(runner):
         mock_list.return_value = [
             backtest_pb2.Backtest(
                 name="test_name",
-                start_date=from_pydate_to_proto_date(date.today()),
-                end_date=from_pydate_to_proto_date(date.today()),
-                symbols=["AAPL", "MSFT"],
+                benchmark="SPY",
+                periods=[
+                    backtest_pb2.Backtest.Period(
+                        start_date=from_pydate_to_proto_date(date.today()),
+                        end_date=from_pydate_to_proto_date(date.today()),
+                        assets=[
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol="AAPL",
+                                enabled=True,
+                            ),
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol="MSFT",
+                                enabled=True,
+                            ),
+                        ],
+                    )
+                ],
             )
         ]
         result = runner(backtest, ["list"])
@@ -37,7 +52,7 @@ def test_backtest_list(runner):
         if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
-        assert "AAPL,MSFT" in result.stdout
+        assert "SPY" in result.stdout
 
 
 def test_backtest_create(runner):
@@ -48,12 +63,29 @@ def test_backtest_create(runner):
         mock_create.return_value = iter(
             [
                 backtest_service_pb2.CreateBacktestResponse(
+                    CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
                     backtest=backtest_pb2.Backtest(
                         name="test_name",
-                        start_date=from_pydate_to_proto_date(date.today()),
-                        end_date=from_pydate_to_proto_date(date.today()),
-                        symbols=["AAPL", "MSFT"],
-                    )
+                        periods=[
+                            backtest_pb2.Backtest.Period(
+                                start_date=from_pydate_to_proto_date(date.today()),
+                                end_date=from_pydate_to_proto_date(date.today()),
+                                assets=[
+                                    backtest_pb2.Backtest.Period.Asset(
+                                        symbol="AAPL",
+                                        enabled=True,
+                                    ),
+                                    backtest_pb2.Backtest.Period.Asset(
+                                        symbol="MSFT",
+                                        enabled=True,
+                                    ),
+                                ],
+                            )
+                        ],
+                    ),
                 )
             ]
         )
@@ -63,14 +95,20 @@ def test_backtest_create(runner):
             backtest,
             [
                 "create",
-                cfg_file.name,
+                "--name",
+                "test_name",
+                "--base-etf",
+                "iShares S&P 100",
+                "--start-date",
+                "2022-01-01",
+                "--end-date",
+                "2023-12-31",
             ],
         )
 
         if not result.exit_code == 0:
             traceback.print_exception(*result.exc_info)  # type: ignore
         assert "test_name" in result.stdout
-        assert "AAPL,MSFT" in result.stdout
 
 
 def test_backtest_get(runner):
@@ -80,9 +118,22 @@ def test_backtest_get(runner):
     ):
         mock_get.return_value = backtest_pb2.Backtest(
             name="test_name",
-            start_date=from_pydate_to_proto_date(date.today()),
-            end_date=from_pydate_to_proto_date(date.today()),
-            symbols=["AAPL", "MSFT"],
+            periods=[
+                backtest_pb2.Backtest.Period(
+                    start_date=from_pydate_to_proto_date(date.today()),
+                    end_date=from_pydate_to_proto_date(date.today()),
+                    assets=[
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="AAPL",
+                            enabled=True,
+                        ),
+                        backtest_pb2.Backtest.Period.Asset(
+                            symbol="MSFT",
+                            enabled=True,
+                        ),
+                    ],
+                )
+            ],
         )
         mock_list_executions.return_value = []
         result = runner(backtest, ["get", "test"])
@@ -90,7 +141,6 @@ def test_backtest_get(runner):
         if not result.exit_code == 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test" in result.stdout
-        assert "AAPL,MSFT" in result.stdout
 
 
 @pytest.fixture

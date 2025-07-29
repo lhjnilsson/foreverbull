@@ -23,13 +23,13 @@ _sym_db = _symbol_database.Default()
 
 
 from foreverbull.pb.buf.validate import validate_pb2 as buf_dot_validate_dot_validate__pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2 as foreverbull_dot_backtest_dot_v1_dot_backtest__pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2 as foreverbull_dot_backtest_dot_v1_dot_execution__pb2
+from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2 as foreverbull_dot_finance_dot_v1_dot_marketdata__pb2
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2 as foreverbull_dot_service_dot_v1_dot_worker__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-foreverbull/backtest/service/v1/session.proto\x12\x1f\x66oreverbull.backtest.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a&foreverbull/backtest/v1/backtest.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a#foreverbull/service/v1/worker.proto\"\xd7\x01\n\x16\x43reateExecutionRequest\x12_\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.backtest.v1.BacktestB*\xbaH\'\xba\x01!\n\x11required_backtest\x1a\x0cthis != null\xc8\x01\x01\x12\\\n\talgorithm\x18\x02 \x01(\x0b\x32!.foreverbull.service.v1.AlgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01\"\x97\x01\n\x17\x43reateExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32\".foreverbull.backtest.v1.Execution\x12\x45\n\rconfiguration\x18\x02 \x01(\x0b\x32..foreverbull.service.v1.ExecutionConfiguration\"L\n\x13RunExecutionRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\xb8\x01\n\x14RunExecutionResponse\x12\x33\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.backtest.v1.Backtest\x12\x34\n\tportfolio\x18\x02 \x01(\x0b\x32!.foreverbull.finance.v1.Portfolio\x12\x19\n\x11num_total_periods\x18\x03 \x01(\x03\x12\x1a\n\x12num_current_period\x18\x04 \x01(\x03\"T\n\x1bStoreExecutionResultRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\x1e\n\x1cStoreExecutionResultResponse\"\x13\n\x11StopServerRequest\"\x14\n\x12StopServerResponse2\xa3\x04\n\x0fSessionServicer\x12\x86\x01\n\x0f\x43reateExecution\x12\x37.foreverbull.backtest.service.v1.CreateExecutionRequest\x1a\x38.foreverbull.backtest.service.v1.CreateExecutionResponse\"\x00\x12\x7f\n\x0cRunExecution\x12\x34.foreverbull.backtest.service.v1.RunExecutionRequest\x1a\x35.foreverbull.backtest.service.v1.RunExecutionResponse\"\x00\x30\x01\x12\x8c\x01\n\x0bStoreResult\x12<.foreverbull.backtest.service.v1.StoreExecutionResultRequest\x1a=.foreverbull.backtest.service.v1.StoreExecutionResultResponse\"\x00\x12w\n\nStopServer\x12\x32.foreverbull.backtest.service.v1.StopServerRequest\x1a\x33.foreverbull.backtest.service.v1.StopServerResponse\"\x00\x42;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-foreverbull/backtest/service/v1/session.proto\x12\x1f\x66oreverbull.backtest.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a\x18\x66oreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a#foreverbull/service/v1/worker.proto\"\xf7\x01\n\x16\x43reateExecutionRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07session\x18\x02 \x01(\t\x12\x31\n\nstart_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.DateB\x03\xbaH\x00\x12/\n\x08\x65nd_date\x18\x04 \x01(\x0b\x32\x18.foreverbull.common.DateB\x03\xbaH\x00\x12\\\n\talgorithm\x18\x05 \x01(\x0b\x32!.foreverbull.service.v1.AlgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01\"\x97\x01\n\x17\x43reateExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32\".foreverbull.backtest.v1.Execution\x12\x45\n\rconfiguration\x18\x02 \x01(\x0b\x32..foreverbull.service.v1.ExecutionConfiguration\"L\n\x13RunExecutionRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\xba\x01\n\x14RunExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32\".foreverbull.backtest.v1.Execution\x12\x34\n\tportfolio\x18\x02 \x01(\x0b\x32!.foreverbull.finance.v1.Portfolio\x12\x19\n\x11num_total_periods\x18\x03 \x01(\x03\x12\x1a\n\x12num_current_period\x18\x04 \x01(\x03\"T\n\x1bStoreExecutionResultRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\x1e\n\x1cStoreExecutionResultResponse\"\x13\n\x11StopServerRequest\"\x14\n\x12StopServerResponse2\xa3\x04\n\x0fSessionServicer\x12\x86\x01\n\x0f\x43reateExecution\x12\x37.foreverbull.backtest.service.v1.CreateExecutionRequest\x1a\x38.foreverbull.backtest.service.v1.CreateExecutionResponse\"\x00\x12\x7f\n\x0cRunExecution\x12\x34.foreverbull.backtest.service.v1.RunExecutionRequest\x1a\x35.foreverbull.backtest.service.v1.RunExecutionResponse\"\x00\x30\x01\x12\x8c\x01\n\x0bStoreResult\x12<.foreverbull.backtest.service.v1.StoreExecutionResultRequest\x1a=.foreverbull.backtest.service.v1.StoreExecutionResultResponse\"\x00\x12w\n\nStopServer\x12\x32.foreverbull.backtest.service.v1.StopServerRequest\x1a\x33.foreverbull.backtest.service.v1.StopServerResponse\"\x00\x42;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,30 +37,32 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'foreverbull.backtest.servic
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service'
-  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['backtest']._loaded_options = None
-  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['backtest']._serialized_options = b'\272H\'\272\001!\n\021required_backtest\032\014this != null\310\001\001'
+  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['start_date']._loaded_options = None
+  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['start_date']._serialized_options = b'\272H\000'
+  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['end_date']._loaded_options = None
+  _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['end_date']._serialized_options = b'\272H\000'
   _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['algorithm']._loaded_options = None
   _globals['_CREATEEXECUTIONREQUEST'].fields_by_name['algorithm']._serialized_options = b'\272H#\272\001\035\n\rrequired_algo\032\014this != null\310\001\001'
   _globals['_RUNEXECUTIONREQUEST'].fields_by_name['execution_id']._loaded_options = None
   _globals['_RUNEXECUTIONREQUEST'].fields_by_name['execution_id']._serialized_options = b'\272H\034\272\001\026\n\010required\032\nthis != \'\'\310\001\001'
   _globals['_STOREEXECUTIONRESULTREQUEST'].fields_by_name['execution_id']._loaded_options = None
   _globals['_STOREEXECUTIONRESULTREQUEST'].fields_by_name['execution_id']._serialized_options = b'\272H\034\272\001\026\n\010required\032\nthis != \'\'\310\001\001'
-  _globals['_CREATEEXECUTIONREQUEST']._serialized_start=271
-  _globals['_CREATEEXECUTIONREQUEST']._serialized_end=486
-  _globals['_CREATEEXECUTIONRESPONSE']._serialized_start=489
-  _globals['_CREATEEXECUTIONRESPONSE']._serialized_end=640
-  _globals['_RUNEXECUTIONREQUEST']._serialized_start=642
-  _globals['_RUNEXECUTIONREQUEST']._serialized_end=718
-  _globals['_RUNEXECUTIONRESPONSE']._serialized_start=721
-  _globals['_RUNEXECUTIONRESPONSE']._serialized_end=905
-  _globals['_STOREEXECUTIONRESULTREQUEST']._serialized_start=907
-  _globals['_STOREEXECUTIONRESULTREQUEST']._serialized_end=991
-  _globals['_STOREEXECUTIONRESULTRESPONSE']._serialized_start=993
-  _globals['_STOREEXECUTIONRESULTRESPONSE']._serialized_end=1023
-  _globals['_STOPSERVERREQUEST']._serialized_start=1025
-  _globals['_STOPSERVERREQUEST']._serialized_end=1044
-  _globals['_STOPSERVERRESPONSE']._serialized_start=1046
-  _globals['_STOPSERVERRESPONSE']._serialized_end=1066
-  _globals['_SESSIONSERVICER']._serialized_start=1069
-  _globals['_SESSIONSERVICER']._serialized_end=1616
+  _globals['_CREATEEXECUTIONREQUEST']._serialized_start=257
+  _globals['_CREATEEXECUTIONREQUEST']._serialized_end=504
+  _globals['_CREATEEXECUTIONRESPONSE']._serialized_start=507
+  _globals['_CREATEEXECUTIONRESPONSE']._serialized_end=658
+  _globals['_RUNEXECUTIONREQUEST']._serialized_start=660
+  _globals['_RUNEXECUTIONREQUEST']._serialized_end=736
+  _globals['_RUNEXECUTIONRESPONSE']._serialized_start=739
+  _globals['_RUNEXECUTIONRESPONSE']._serialized_end=925
+  _globals['_STOREEXECUTIONRESULTREQUEST']._serialized_start=927
+  _globals['_STOREEXECUTIONRESULTREQUEST']._serialized_end=1011
+  _globals['_STOREEXECUTIONRESULTRESPONSE']._serialized_start=1013
+  _globals['_STOREEXECUTIONRESULTRESPONSE']._serialized_end=1043
+  _globals['_STOPSERVERREQUEST']._serialized_start=1045
+  _globals['_STOPSERVERREQUEST']._serialized_end=1064
+  _globals['_STOPSERVERRESPONSE']._serialized_start=1066
+  _globals['_STOPSERVERRESPONSE']._serialized_end=1086
+  _globals['_SESSIONSERVICER']._serialized_start=1089
+  _globals['_SESSIONSERVICER']._serialized_end=1636
 # @@protoc_insertion_point(module_scope)

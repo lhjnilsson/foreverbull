@@ -66,7 +66,9 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 
 	executions := repository.Execution{Conn: s.db}
 	e := backtest.Execution{
-		Session: s.session.Id,
+		Session:   s.session.Id,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
 	}
 
 	execution, err := executions.Create(context.TODO(), &e)
@@ -104,11 +106,7 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	backtest := backtest.Backtest{
-		Benchmark: execution.Benchmark,
-	}
-
-	periods, err := s.backtestSession.RunBacktest(context.Background(), &backtest, s.wp)
+	periods, err := s.backtestSession.RunBacktest(context.Background(), execution, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
 		return fmt.Errorf("error running backtest: %w", err)

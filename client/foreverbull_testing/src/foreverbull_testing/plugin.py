@@ -10,11 +10,9 @@ from sqlalchemy import create_engine
 from testcontainers.core.config import testcontainers_config
 from testcontainers.postgres import PostgresContainer
 
-from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull_testing.models import AssetManager
-from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager
 
 from . import database
@@ -24,16 +22,6 @@ def pytest_addoption(parser):
     parser.addoption(
         "--backtest", action="store", default=None, help="Environment to run tests against (e.g. dev, staging, prod)"
     )
-
-
-@pytest.fixture(scope="session")
-def backtest(request):
-    backtest_name = request.config.getoption("--backtest")
-    if backtest_name is None:
-        pytest.skip("Skipping backtest, no backtest name provided")
-    algo = Foreverbull(None)
-    with algo.backtest_session(backtest_name) as session:
-        yield Backtest(session)
 
 
 @pytest.fixture(scope="session")
@@ -67,12 +55,21 @@ def fb_database():
                 start = datetime.strptime(start, "%Y-%m-%d").date()
             if type(end) is str:
                 end = datetime.strptime(end, "%Y-%m-%d").date()
-
             assert start and end and symbols
             entity = backtest_pb2.Backtest(
-                start_date=pb_utils.from_pydate_to_proto_date(start),
-                end_date=pb_utils.from_pydate_to_proto_date(end),
-                symbols=symbols,
+                periods=[
+                    backtest_pb2.Backtest.Period(
+                        start_date=pb_utils.from_pydate_to_proto_date(start),
+                        end_date=pb_utils.from_pydate_to_proto_date(end),
+                        assets=[
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol=symbol,
+                                enabled=True,
+                            )
+                            for symbol in symbols
+                        ],
+                    )
+                ]
             )
         if not database.verify(engine, entity):
             database.populate(engine, entity)

@@ -258,6 +258,13 @@ class ZiplineContainer(BaseContainer):
         self.data_location = None
 
     def create(self, *args, **kwargs) -> ContainerStatus:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "DATABASE_URL": "postgres://foreverbull:foreverbull@postgres:5432/foreverbull",
+            }
+        )
+        kwargs["environment"] = environment
         return super().create(*args, **kwargs)
 
 

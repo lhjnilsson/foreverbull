@@ -7,7 +7,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	backtestServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -121,23 +120,62 @@ func (test *DependencyContainerTest) TestNewDependencyContainer() {
 	})
 }
 
-type MessageOrchestrationTest struct {
+type UpdateOrchestrationTest struct {
 	suite.Suite
+
+	msg *backtestServicePb.CreateBacktestResponse
 }
 
-func (test *MessageOrchestrationTest) SetupTest() {
+func (test *UpdateOrchestrationTest) SetupSubTest() {
+	test.msg = &backtestServicePb.CreateBacktestResponse{
+		CREATING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		DOWNLOADING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		INGESTING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		STORING: &commonPb.Step{
+			State: commonPb.State_STATE_UNSPECIFIED,
+		},
+		Backtest: nil,
+	}
 }
 
 func TestUpdateOrchestration(t *testing.T) {
-	msg := &backtestServicePb.CreateBacktestResponse{
-		CREATING: &commonPb.Step{
+	suite.Run(t, new(UpdateOrchestrationTest))
+}
+
+func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
+	test.Run("mark as running", func() {
+		step := &pb.Orchestration_Step{
+			Num:   1,
 			State: commonPb.State_STATE_RUNNING,
-		},
-	}
-	step := &pb.Orchestration_Step{
-		Num:   1,
-		State: commonPb.State_STATE_COMPLETED,
-	}
-	err := UpdateOrchestration(msg, step)
-	assert.NoError(t, err)
+		}
+		err := UpdateOrchestration(test.msg, step)
+		test.Require().NoError(err)
+		test.Equal(commonPb.State_STATE_RUNNING, test.msg.CREATING.State)
+	})
+	test.Run("mark as completed", func() {
+		step := &pb.Orchestration_Step{
+			Num:   1,
+			State: commonPb.State_STATE_COMPLETED,
+		}
+		err := UpdateOrchestration(test.msg, step)
+		test.Require().NoError(err)
+		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.CREATING.State)
+	})
+	test.Run("mark as failed", func() {
+		step := &pb.Orchestration_Step{
+			Num:   1,
+			State: commonPb.State_STATE_FAILED,
+			Error: func() *string { s := "example error"; return &s }(),
+		}
+		err := UpdateOrchestration(test.msg, step)
+		test.Require().NoError(err)
+		test.Equal(commonPb.State_STATE_FAILED, test.msg.CREATING.State)
+		test.Equal("example error", test.msg.CREATING.Message)
+	})
 }

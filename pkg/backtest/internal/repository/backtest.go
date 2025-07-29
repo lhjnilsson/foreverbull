@@ -13,7 +13,8 @@ import (
 const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-	benchmark text);
+	benchmark text NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS backtest_period (
 	backtest_name text REFERENCES backtest (name) ON DELETE CASCADE,
@@ -114,7 +115,7 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 	return &b, nil
 }
 
-func (db *Backtest) UpdateBenchmark(ctx context.Context, name string, benchmark *string,
+func (db *Backtest) UpdateBenchmark(ctx context.Context, name string, benchmark string,
 ) (*backtest.Backtest, error) {
 	_, err := db.Conn.Exec(ctx, `UPDATE backtest SET benchmark=$2 WHERE name=$1`, name, benchmark)
 	if err != nil {

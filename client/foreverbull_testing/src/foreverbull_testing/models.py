@@ -181,9 +181,8 @@ class Backtest:
         periods = []
         exc_id: str | None = None
         for exc_id, period in self._backtest_session.run_execution(
-            backtest.start_date,
-            backtest.end_date,
-            [s for s in backtest.symbols],
+            backtest.periods[0].start_date,
+            backtest.periods[-1].end_date,
         ):
             periods.append(period)
         assert exc_id is not None, "no execution id"

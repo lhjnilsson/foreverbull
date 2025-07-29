@@ -18,6 +18,7 @@ const (
 
 type ETFScraper interface {
 	GetAssets(name string, years ...string) (map[string][]Asset, error)
+	GetBenchmark(name string) (string, error)
 }
 
 func trapBOM(fileBytes []byte) []byte {
@@ -111,4 +112,11 @@ func (e *ISharesETFLoopup) GetAssets(etf string, years ...string) (map[string][]
 		}
 	}
 	return retMap, nil
+}
+
+func (e *ISharesETFLoopup) GetBenchmark(etf string) (string, error) {
+	if etf == "iShares S&P 100" {
+		return "OEF", nil
+	}
+	return "", fmt.Errorf("ETF not found: %s", etf)
 }

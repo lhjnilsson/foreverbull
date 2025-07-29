@@ -1,8 +1,7 @@
-import json
 import logging
 
 from datetime import date
-from pathlib import Path
+from datetime import datetime
 
 import typer
 
@@ -12,8 +11,8 @@ from typing_extensions import Annotated
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import LiveProgress
@@ -30,14 +29,16 @@ def list():
     table.add_column("Name")
     table.add_column("Start")
     table.add_column("End")
-    table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
     for backtest in broker.backtest.list_backtests():
         table.add_row(
             backtest.name,
-            (from_proto_date_to_pydate(backtest.start_date).isoformat()),
-            (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
-            ",".join(backtest.symbols),
+            (from_proto_date_to_pydate(backtest.periods[0].start_date).isoformat()),
+            (
+                from_proto_date_to_pydate(backtest.periods[-1].end_date).isoformat()
+                if backtest.periods[-1].HasField("end_date")
+                else None
+            ),
             backtest.benchmark,
         )
     console.print(table)
@@ -45,32 +46,24 @@ def list():
 
 @backtest.command()
 def create(
-    config: Annotated[str, typer.Argument(help="path to the config file")],
-    name: Annotated[str, typer.Option(help="name of the backtest, filename if None")] = "",
+    name: Annotated[str, typer.Option(help="name of the backtest")],
+    base_etf: Annotated[str, typer.Option(help="name of the etf to base the backtest on")],
+    start_date: Annotated[datetime, typer.Option(help="start date of the backtest")],
+    end_date: Annotated[datetime, typer.Option(help="end date of the backtest")],
 ):
-    config_file = Path(config)
-    with open(config_file, "r") as f:
-        cfg = json.load(f)
-
-    assert "start_date" in cfg, "start_date is required in config"
-    assert "symbols" in cfg, "symbols is required in config"
-    if not name:
-        name = config_file.stem
-    start = date.fromisoformat(cfg["start_date"])
-    end = date.fromisoformat(cfg.get("end_date")) if "end_date" in cfg else None
-
-    backtest = backtest_pb2.Backtest(
-        name=name,
-        start_date=from_pydate_to_proto_date(start),
-        end_date=from_pydate_to_proto_date(end) if end else None,
-        symbols=cfg["symbols"],
-        benchmark=cfg.get("benchmark"),
-    )
     backtest_rsp = backtest_service_pb2.CreateBacktestResponse()
     with LiveProgress() as progress:
-        rsp = broker.backtest.create(backtest)
+        rsp = broker.backtest.create(
+            name=name,
+            base_etf=base_etf,
+            start_date=from_pydate_to_proto_date(start_date),
+            end_date=from_pydate_to_proto_date(end_date),
+        )
         for backtest_rsp in rsp:
             progress.update_from_message(backtest_rsp)
+
+    if not backtest_rsp.STORING.state == common_pb2.State.STATE_COMPLETED:
+        return
 
     table = Table(title="Created Backtest", expand=True)
     table.add_column("Name")
@@ -80,17 +73,9 @@ def create(
     table.add_column("Benchmark")
     table.add_row(
         backtest_rsp.backtest.name,
-        (
-            from_proto_date_to_pydate(backtest_rsp.backtest.start_date).isoformat()
-            if backtest_rsp.backtest.start_date
-            else ""
-        ),
-        (
-            from_proto_date_to_pydate(backtest_rsp.backtest.end_date).isoformat()
-            if backtest_rsp.backtest.end_date
-            else ""
-        ),
-        ",".join(backtest_rsp.backtest.symbols),
+        (from_proto_date_to_pydate(backtest_rsp.backtest.start_date).isoformat() if False else ""),
+        (from_proto_date_to_pydate(backtest_rsp.backtest.end_date).isoformat() if False else ""),
+        "",
         backtest_rsp.backtest.benchmark,
     )
     console.print(table)
@@ -109,9 +94,13 @@ def get(
     backtest_table.add_column("Benchmark")
     backtest_table.add_row(
         backtest.name,
-        from_proto_date_to_pydate(backtest.start_date).isoformat(),
-        (from_proto_date_to_pydate(backtest.end_date).isoformat() if backtest.HasField("end_date") else None),
-        ",".join(backtest.symbols),
+        from_proto_date_to_pydate(backtest.periods[0].start_date).isoformat(),
+        (
+            from_proto_date_to_pydate(backtest.periods[-1].end_date).isoformat()
+            if backtest.periods[-1].HasField("end_date")
+            else None
+        ),
+        ",".join([]),
         backtest.benchmark,
     )
     executions = broker.backtest.list_executions(name, None)
@@ -146,7 +135,7 @@ def run(
                 with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
                     backtest, msg.session
                 ) as session:
-                    start_date = session.backtest.start_date
+                    start_date = session.backtest.periods[0].start_date
                     if start:
                         try:
                             start_date = from_pydate_to_proto_date(date.fromisoformat(start))
@@ -154,7 +143,7 @@ def run(
                             console.print(f"[red]Invalid start date: [yellow]{start}")
                             return
 
-                    end_date = session.backtest.end_date
+                    end_date = session.backtest.periods[-1].end_date
                     if end:
                         try:
                             end_date = from_pydate_to_proto_date(date.fromisoformat(end))
@@ -166,7 +155,6 @@ def run(
                         for _, period in session.run_execution(
                             start_date,
                             end_date,
-                            [s for s in session.backtest.symbols],
                         ):
                             bar_progress(period.num_current_period, period.num_total_periods)
                     log.info(f"Execution completed for {session.backtest.name}")

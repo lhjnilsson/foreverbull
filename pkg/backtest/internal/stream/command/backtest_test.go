@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,6 +27,8 @@ type BacktestCommandTest struct {
 	db         *pgxpool.Pool
 	etfscraper *dependency.MockETFScraper
 	mdclient   *financeServicePB.MockMarketdataClient
+
+	backtest *backtest.Backtest
 }
 
 func TestBacktest(t *testing.T) {
@@ -46,8 +49,9 @@ func (test *BacktestCommandTest) SetupSuite() {
 	test.etfscraper = new(dependency.MockETFScraper)
 	test.mdclient = new(financeServicePB.MockMarketdataClient)
 
-	backtest := backtest.Backtest{
-		Name: "test-backtest",
+	test.backtest = &backtest.Backtest{
+		Name:      "test-backtest",
+		Benchmark: "SPY",
 		Periods: []*backtest.Backtest_Period{
 			{
 				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -60,7 +64,7 @@ func (test *BacktestCommandTest) SetupSuite() {
 		},
 	}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Create(context.TODO(), &backtest)
+	_, err = backtests.Create(context.TODO(), test.backtest)
 	test.Require().NoError(err)
 }
 
@@ -68,6 +72,11 @@ func (test *BacktestCommandTest) TearDownSuite() {
 }
 
 func (test *BacktestCommandTest) SetupTest() {
+	err := repository.Recreate(context.Background(), test.db)
+	test.Require().NoError(err)
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Create(context.TODO(), test.backtest)
+	test.Require().NoError(err)
 }
 
 func (test *BacktestCommandTest) TearDownTest() {
@@ -77,8 +86,10 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 	message := new(stream.MockMessage)
 	message.On("ParsePayload", &bs.CreateBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*bs.CreateBacktestCommand)
-		payload.BacktestName = "test-backtest"
+		payload.BacktestName = "test-backtest-2"
 		payload.ETFName = "iShares S&P 100"
+		payload.StartDate = "2022-01-01"
+		payload.EndDate = "2023-12-31"
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
@@ -104,6 +115,8 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 		},
 	}
 	test.etfscraper.On("GetAssets", "iShares S&P 100", "2022", "2023").Return(assetMap, nil)
+	test.etfscraper.On("GetBenchmark", "iShares S&P 100").Return("OEF", nil)
+
 	message.On("MustGet", dependency.GetETFScraper).Return(test.etfscraper)
 
 	test.mdclient.On("GetAsset", mock.Anything, &financeServicePB.GetAssetRequest{
@@ -153,11 +166,15 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
 		payload.BacktestName = "test-backtest"
 	})
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, &financeServicePB.DownloadHistoricalDataRequest{
-		Symbols:   []string{"AAPL"},
+		Symbols:   []string{"SPY", "AAPL"},
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
-	}).Return(nil, nil)
+		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+	}).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().NoError(err)

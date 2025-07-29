@@ -14,6 +14,7 @@ from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Portfolio
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
@@ -32,11 +33,12 @@ class TestAsset:
             namespace_server["pe"] = {"AAPL": 12.3}
             assert asset.get_metric("pe") == 12.3
 
-    def test_assets(self, fb_database, backtest_entity):
+    def test_assets(self, fb_database, backtest_entity: backtest_pb2.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
-            assets = Assets(datetime.now(), conn, backtest_entity.symbols)
+            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
+            assets = Assets(datetime.now(), conn, symbols)
             for asset in assets:
                 assert asset is not None
                 assert asset.symbol is not None

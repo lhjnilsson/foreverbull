@@ -101,7 +101,7 @@ def run(
     yes: Annotated[bool, typer.Option(help="skip confirmation prompt")] = False,
 ):
     _backtest = broker.backtest.get(backtest_name)
-    symbols = [s for s in _backtest.symbols]
+    symbols = [a.symbol for a in _backtest.periods[-1].assets if a.enabled]
     portfolio = broker.finance.get_portfolio()
 
     with LiveProgress() as progress:
