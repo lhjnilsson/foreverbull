@@ -10,7 +10,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/grpc"
-	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	st "github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
@@ -18,8 +17,6 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
-	"github.com/lhjnilsson/foreverbull/pkg/pb"
-	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +36,7 @@ type BacktestTest struct {
 	suite.Suite
 
 	stream st.Stream
-	db     postgres.Query
+	db     *pgxpool.Pool
 
 	app *fx.App
 }
@@ -54,6 +51,8 @@ func (test *BacktestTest) SetupSuite() {
 
 	var err error
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
+	test.Require().NoError(err)
+	err = repository.Recreate(context.Background(), pool)
 	test.Require().NoError(err)
 	test.db = pool
 	test.app = fx.New(
@@ -76,13 +75,10 @@ func (test *BacktestTest) SetupSuite() {
 	)
 	test.stream, err = st.NewNATSStream()
 	test.Require().NoError(err)
-}
-
-func (test *BacktestTest) SetupTest() {
 	test.Require().NoError(test.app.Start(context.Background()), "failed to start app")
 }
 
-func (test *BacktestTest) TearDownTest() {
+func (test *BacktestTest) TearDownSuite() {
 	test.NoError(test.app.Stop(context.Background()), "failed to stop app")
 }
 
@@ -94,24 +90,6 @@ func (test *BacktestTest) TestCreateBacktestFromETF() {
 	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
-
-	b := backtestpb.Backtest{
-		Name: "sp100_backtest",
-		Periods: []*backtestpb.Backtest_Period{
-			{
-				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
-			},
-			{
-				StartDate: &pb.Date{Year: 2023, Month: 1, Day: 1},
-				EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-			},
-		},
-	}
-
-	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Create(context.TODO(), &b)
-	test.Require().NoError(err)
 
 	steps := test.stream.RunOrchestration(context.TODO(), o)
 	for step := range steps {
@@ -129,24 +107,6 @@ func (test *BacktestTest) TestCreateBacktestFromETFBadETF() {
 	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
-
-	b := backtestpb.Backtest{
-		Name: "sp100_backtest",
-		Periods: []*backtestpb.Backtest_Period{
-			{
-				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
-			},
-			{
-				StartDate: &pb.Date{Year: 2023, Month: 1, Day: 1},
-				EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-			},
-		},
-	}
-
-	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Create(context.TODO(), &b)
-	test.Require().NoError(err)
 
 	steps := test.stream.RunOrchestration(context.TODO(), o)
 	for step := range steps {
