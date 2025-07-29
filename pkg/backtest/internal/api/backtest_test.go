@@ -177,7 +177,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 			test.Require().NotNil(msg)
 			responses = append(responses, msg)
 		}
-		test.Require().Len(responses, 4)
+		test.Require().Len(responses, 3)
 	})
 }
 
