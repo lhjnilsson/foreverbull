@@ -29,7 +29,6 @@ def list():
     table.add_column("Name")
     table.add_column("Start")
     table.add_column("End")
-    table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
     for backtest in broker.backtest.list_backtests():
         table.add_row(
@@ -40,7 +39,6 @@ def list():
                 if backtest.periods[-1].HasField("end_date")
                 else None
             ),
-            ",".join([]),
             backtest.benchmark,
         )
     console.print(table)
