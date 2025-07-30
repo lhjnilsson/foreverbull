@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -69,49 +70,74 @@ func (db *Backtest) Create(ctx context.Context, backtest *backtest.Backtest) (*b
 }
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
-	b := backtest.Backtest{}
-	err := db.Conn.QueryRow(ctx,
-		`SELECT name, benchmark FROM backtest WHERE name=$1`, name).Scan(&b.Name, &b.Benchmark)
+	type rowData struct {
+		Name      string
+		Benchmark string
+		StartDate *time.Time
+		EndDate   *time.Time
+		Symbol    *string
+		Enabled   *bool
+	}
+	rows, err := db.Conn.Query(ctx, `
+	    SELECT 
+			backtest.name,
+			backtest.benchmark,
+			backtest_period.start_date,
+			backtest_period.end_date,
+			backtest_period_asset.symbol,
+			backtest_period_asset.enabled
+		FROM backtest
+		LEFT JOIN backtest_period ON backtest.name = backtest_period.backtest_name
+		LEFT JOIN backtest_period_asset ON backtest_period.backtest_name = backtest_period_asset.backtest_name
+		AND backtest_period.start_date = backtest_period_asset.start_date
+		WHERE backtest.name = $1
+		ORDER BY backtest_period.start_date, backtest_period_asset.symbol DESC
+	`, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}
-	rows, err := db.Conn.Query(ctx, `SELECT start_date, end_date FROM backtest_period WHERE backtest_name=$1`, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list periods: %w", err)
-	}
-	periods := make([]*backtest.Backtest_Period, 0)
 	defer rows.Close()
+
+	b := backtest.Backtest{}
+	periodsMap := make(map[string]*backtest.Backtest_Period)
+
 	for rows.Next() {
-		var startDate, endDate time.Time
-		err = rows.Scan(&startDate, &endDate)
-		period := backtest.Backtest_Period{
-			StartDate: commonPB.GoTimeToDate(startDate),
-			EndDate:   commonPB.GoTimeToDate(endDate),
-		}
+		var row rowData
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
-		assetRows, err := db.Conn.Query(ctx, `SELECT symbol, enabled FROM backtest_period_asset WHERE backtest_name=$1 AND start_date=$2 AND end_date=$3`, name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate))
-		if err != nil {
-			return nil, fmt.Errorf("failed to list period assets: %w", err)
-		}
-		period.Assets = make([]*backtest.Backtest_Period_Asset, 0)
 
-		for assetRows.Next() {
-			var symbol string
-			var enabled bool
-			err = assetRows.Scan(&symbol, &enabled)
-			if err != nil {
-				return nil, fmt.Errorf("failed to scan asset: %w", err)
-			}
-			period.Assets = append(period.Assets, &backtest.Backtest_Period_Asset{
-				Symbol:  symbol,
-				Enabled: enabled,
-			})
+		b.Name = row.Name
+		b.Benchmark = row.Benchmark
+
+		if row.StartDate == nil || row.EndDate == nil {
+			continue
 		}
-		periods = append(periods, &period)
+
+		period, ok := periodsMap[row.StartDate.String()+"_"+row.EndDate.String()]
+		if !ok {
+			period = &backtest.Backtest_Period{
+				StartDate: commonPB.GoTimeToDate(*row.StartDate),
+				EndDate:   commonPB.GoTimeToDate(*row.EndDate),
+				Assets:    make([]*backtest.Backtest_Period_Asset, 0),
+			}
+			periodsMap[row.StartDate.String()+"_"+row.EndDate.String()] = period
+		}
+		if row.Symbol == nil {
+			continue
+		}
+		period.Assets = append(period.Assets, &backtest.Backtest_Period_Asset{
+			Symbol:  *row.Symbol,
+			Enabled: *row.Enabled,
+		})
 	}
-	b.Periods = periods
+	for _, period := range periodsMap {
+		b.Periods = append(b.Periods, period)
+	}
+	if b.Name == "" {
+		return nil, pgx.ErrNoRows
+	}
 	return &b, nil
 }
 
@@ -146,24 +172,82 @@ func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, asset_sy
 }
 
 func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
-	rows, err := db.Conn.Query(ctx, `SELECT name, benchmark FROM backtest`)
+	type rowData struct {
+		Name      string
+		Benchmark string
+		StartDate *time.Time
+		EndDate   *time.Time
+		Symbol    *string
+		Enabled   *bool
+	}
+	rows, err := db.Conn.Query(ctx, `
+	    SELECT 
+			backtest.name,
+			backtest.benchmark,
+			backtest_period.start_date,
+			backtest_period.end_date,
+			backtest_period_asset.symbol,
+			backtest_period_asset.enabled
+		FROM backtest
+		LEFT JOIN backtest_period ON backtest.name = backtest_period.backtest_name
+		LEFT JOIN backtest_period_asset ON backtest_period.backtest_name = backtest_period_asset.backtest_name
+		AND backtest_period.start_date = backtest_period_asset.start_date
+		ORDER BY backtest_period.start_date, backtest_period_asset.symbol DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list backtests: %w", err)
 	}
 	defer rows.Close()
 
-	backtests := make([]*backtest.Backtest, 0)
+	type backtestPeriodMap struct {
+		backtest *backtest.Backtest
+		periods  map[string]*backtest.Backtest_Period
+	}
+	backtestMap := make(map[string]backtestPeriodMap)
 
 	for rows.Next() {
-		backtest := backtest.Backtest{}
-
-		err = rows.Scan(&backtest.Name, &backtest.Benchmark)
+		var row rowData
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan backtest: %w", err)
+			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
-		backtests = append(backtests, &backtest)
+		b, ok := backtestMap[row.Name]
+		if !ok {
+			b = backtestPeriodMap{
+				backtest: &backtest.Backtest{
+					Name:      row.Name,
+					Benchmark: row.Benchmark,
+				},
+				periods: make(map[string]*backtest.Backtest_Period),
+			}
+			backtestMap[row.Name] = b
+		}
+		if row.StartDate == nil || row.EndDate == nil {
+			continue
+		}
+		period, ok := b.periods[row.StartDate.String()+"_"+row.EndDate.String()]
+		if !ok {
+			period = &backtest.Backtest_Period{
+				StartDate: commonPB.GoTimeToDate(*row.StartDate),
+				EndDate:   commonPB.GoTimeToDate(*row.EndDate),
+				Assets:    make([]*backtest.Backtest_Period_Asset, 0),
+			}
+			b.periods[row.StartDate.String()+"_"+row.EndDate.String()] = period
+		}
+		if row.Symbol == nil {
+			continue
+		}
+		period.Assets = append(period.Assets, &backtest.Backtest_Period_Asset{
+			Symbol:  *row.Symbol,
+			Enabled: *row.Enabled,
+		})
 	}
-
+	backtests := make([]*backtest.Backtest, 0)
+	for _, b := range backtestMap {
+		for _, period := range b.periods {
+			b.backtest.Periods = append(b.backtest.Periods, period)
+		}
+		backtests = append(backtests, b.backtest)
+	}
 	return backtests, nil
 }
 
