@@ -2,8 +2,10 @@ import logging
 
 from datetime import date
 from datetime import datetime
+from enum import Enum
 
 import typer
+import yaml
 
 from rich.table import Table
 from typing_extensions import Annotated
@@ -11,6 +13,7 @@ from typing_extensions import Annotated
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
@@ -31,6 +34,9 @@ def list():
     table.add_column("End")
     table.add_column("Benchmark")
     for backtest in broker.backtest.list_backtests():
+        if not len(backtest.periods):
+            print(f"Backtest {backtest.name} has no periods")
+            continue
         table.add_row(
             backtest.name,
             (from_proto_date_to_pydate(backtest.periods[0].start_date).isoformat()),
@@ -81,11 +87,39 @@ def create(
     console.print(table)
 
 
+class OutputFormat(str, Enum):
+    DEFAULT = "default"
+    YAML = "yaml"
+
+
 @backtest.command()
 def get(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
+    output: Annotated[OutputFormat, typer.Option(help="output file")] = OutputFormat.DEFAULT,
 ):
     backtest = broker.backtest.get(name)
+    if output == OutputFormat.YAML:
+        backtest_dict = {
+            "name": backtest.name,
+            "benchmark": backtest.benchmark,
+            "periods": [],
+        }
+        for period in backtest.periods:
+            backtest_dict["periods"].append(
+                {
+                    "start_date": pb_utils.from_proto_date_to_pydate(period.start_date).isoformat(),
+                    "end_date": pb_utils.from_proto_date_to_pydate(period.end_date).isoformat(),
+                    "assets": [
+                        {
+                            "symbol": asset.symbol,
+                            "enabled": asset.enabled,
+                        }
+                        for asset in period.assets
+                    ],
+                }
+            )
+        print(yaml.dump(backtest_dict))
+        return
     backtest_table = Table(title="Backtest", expand=True)
     backtest_table.add_column("Name")
     backtest_table.add_column("Start")
@@ -103,6 +137,18 @@ def get(
         ",".join([]),
         backtest.benchmark,
     )
+    periods_table = Table(title="periods", expand=True, show_lines=True)
+    periods_table.add_column("Start")
+    periods_table.add_column("End")
+    periods_table.add_column("Enabled Symbols", overflow="fold")
+    periods_table.add_column("Disabled Symbols", overflow="fold")
+    for period in backtest.periods:
+        periods_table.add_row(
+            from_proto_date_to_pydate(period.start_date).isoformat(),
+            from_proto_date_to_pydate(period.end_date).isoformat(),
+            ",".join([asset.symbol for asset in period.assets if asset.enabled]),
+            ",".join([asset.symbol for asset in period.assets if not asset.enabled]),
+        )
     executions = broker.backtest.list_executions(name, None)
     executions_table = Table(title="executions", expand=True)
     executions_table.add_column("Start")
@@ -115,6 +161,7 @@ def get(
         )
 
     console.print(backtest_table)
+    console.print(periods_table)
     console.print(executions_table)
 
 
