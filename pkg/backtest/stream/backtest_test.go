@@ -17,6 +17,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy"
 	"github.com/stretchr/testify/assert"
@@ -84,6 +86,37 @@ func (test *BacktestTest) TearDownSuite() {
 
 func TestBacktest(t *testing.T) {
 	suite.Run(t, new(BacktestTest))
+}
+
+func (test *BacktestTest) TestCreateBacktestFromBacktest() {
+	o, err := stream.CreateBacktestFromBacktest(&backtestpb.Backtest{
+		Name:      "test_backtest_from_backtest",
+		Benchmark: "OEF",
+		Periods: []*backtestpb.Backtest_Period{
+			{
+				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+				Assets: []*backtestpb.Backtest_Period_Asset{
+					{
+						Symbol:  "AAPL",
+						Enabled: true,
+					},
+				},
+			},
+		},
+	})
+	test.Require().NoError(err)
+	test.Require().NotNil(o)
+	steps := test.stream.RunOrchestration(context.TODO(), o)
+	for step := range steps {
+		test.T().Logf("Step: %v", step)
+	}
+
+	minio, err := storage.NewMinioStorage(context.TODO())
+	test.Require().NoError(err)
+	object, err := minio.GetObject(context.TODO(), storage.IngestionsBucket, "test_backtest_from_backtest")
+	test.Require().NoError(err)
+	test.Equal("test_backtest_from_backtest", object.Name)
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETF() {

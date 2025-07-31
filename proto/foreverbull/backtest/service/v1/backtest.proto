@@ -17,10 +17,20 @@ message ListBacktestsResponse {
 }
 
 message CreateBacktestRequest {
-  string name = 1;
-  foreverbull.common.Date start_date = 2;
-  foreverbull.common.Date end_date = 3;
-  string base_etf = 4;
+  message CreateFromETF {
+    string name = 1;
+    foreverbull.common.Date start_date = 2;
+    foreverbull.common.Date end_date = 3;
+    string base_etf = 4;
+  }
+  message CreateFromBacktest {
+    foreverbull.backtest.v1.Backtest backtest = 1;
+  }
+
+  oneof create {
+    CreateFromETF etf = 1;
+    CreateFromBacktest backtest = 2;
+  }
 }
 
 message CreateBacktestResponse {

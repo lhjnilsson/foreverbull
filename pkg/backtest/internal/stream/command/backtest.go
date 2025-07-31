@@ -20,10 +20,33 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/proto"
 )
 
-func CreateBacktest(ctx context.Context, msg stream.Message) error {
-	command := ss.CreateBacktestCommand{}
+func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
+	command := ss.CreateBacktestFromBacktestCommand{}
+	err := msg.ParsePayload(&command)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling CreateBacktest payload: %w", err)
+	}
+
+	b := backtest.Backtest{}
+	err = proto.Unmarshal(command.Backtest, &b)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling backtest: %w", err)
+	}
+
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	backtests := repository.Backtest{Conn: db}
+	_, err = backtests.Create(ctx, &b)
+	if err != nil {
+		return fmt.Errorf("error creating backtest: %w", err)
+	}
+	return nil
+}
+
+func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
+	command := ss.CreateBacktestFromETFCommand{}
 
 	err := msg.ParsePayload(&command)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	internalPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -64,10 +65,24 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
-	o, err := backtestStream.CreateBacktestFromETF(req.GetName(), req.GetBaseEtf(),
-		pb.DateToDateString(req.GetStartDate()), pb.DateToDateString(req.GetEndDate()))
-	if err != nil {
-		return fmt.Errorf("error creating backtest orchestration: %w", err)
+	var o *internalPb.Orchestration
+	var err error
+	switch {
+	case req.GetEtf() != nil:
+		from_etf := req.GetEtf()
+		o, err = backtestStream.CreateBacktestFromETF(from_etf.GetName(), from_etf.GetBaseEtf(),
+			pb.DateToDateString(from_etf.GetStartDate()), pb.DateToDateString(from_etf.GetEndDate()))
+		if err != nil {
+			return fmt.Errorf("error creating backtest orchestration: %w", err)
+		}
+	case req.GetBacktest() != nil:
+		backtest := req.GetBacktest()
+		o, err = backtestStream.CreateBacktestFromBacktest(backtest.Backtest)
+		if err != nil {
+			return fmt.Errorf("error creating backtest orchestration: %w", err)
+		}
+	default:
+		return fmt.Errorf("invalid create type")
 	}
 
 	steps := bs.stream.RunOrchestration(ctx, o)
