@@ -21,16 +21,28 @@ class ListBacktestsResponse(_message.Message):
     def __init__(self, backtests: _Optional[_Iterable[_Union[_backtest_pb2.Backtest, _Mapping]]] = ...) -> None: ...
 
 class CreateBacktestRequest(_message.Message):
-    __slots__ = ("name", "start_date", "end_date", "base_etf")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    START_DATE_FIELD_NUMBER: _ClassVar[int]
-    END_DATE_FIELD_NUMBER: _ClassVar[int]
-    BASE_ETF_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    start_date: _common_pb2.Date
-    end_date: _common_pb2.Date
-    base_etf: str
-    def __init__(self, name: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., base_etf: _Optional[str] = ...) -> None: ...
+    __slots__ = ("etf", "backtest")
+    class CreateFromETF(_message.Message):
+        __slots__ = ("name", "start_date", "end_date", "base_etf")
+        NAME_FIELD_NUMBER: _ClassVar[int]
+        START_DATE_FIELD_NUMBER: _ClassVar[int]
+        END_DATE_FIELD_NUMBER: _ClassVar[int]
+        BASE_ETF_FIELD_NUMBER: _ClassVar[int]
+        name: str
+        start_date: _common_pb2.Date
+        end_date: _common_pb2.Date
+        base_etf: str
+        def __init__(self, name: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., base_etf: _Optional[str] = ...) -> None: ...
+    class CreateFromBacktest(_message.Message):
+        __slots__ = ("backtest",)
+        BACKTEST_FIELD_NUMBER: _ClassVar[int]
+        backtest: _backtest_pb2.Backtest
+        def __init__(self, backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
+    ETF_FIELD_NUMBER: _ClassVar[int]
+    BACKTEST_FIELD_NUMBER: _ClassVar[int]
+    etf: CreateBacktestRequest.CreateFromETF
+    backtest: CreateBacktestRequest.CreateFromBacktest
+    def __init__(self, etf: _Optional[_Union[CreateBacktestRequest.CreateFromETF, _Mapping]] = ..., backtest: _Optional[_Union[CreateBacktestRequest.CreateFromBacktest, _Mapping]] = ...) -> None: ...
 
 class CreateBacktestResponse(_message.Message):
     __slots__ = ("CREATING", "DOWNLOADING", "INGESTING", "STORING", "backtest")

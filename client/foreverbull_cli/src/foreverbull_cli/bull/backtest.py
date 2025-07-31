@@ -1,12 +1,13 @@
 import logging
 
 from datetime import date
-from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 import typer
 import yaml
 
+from rich.prompt import Prompt
 from rich.table import Table
 from typing_extensions import Annotated
 
@@ -16,6 +17,7 @@ from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.output import LiveProgress
@@ -52,18 +54,56 @@ def list():
 
 @backtest.command()
 def create(
-    name: Annotated[str, typer.Option(help="name of the backtest")],
-    base_etf: Annotated[str, typer.Option(help="name of the etf to base the backtest on")],
-    start_date: Annotated[datetime, typer.Option(help="start date of the backtest")],
-    end_date: Annotated[datetime, typer.Option(help="end date of the backtest")],
+    file: Annotated[Path, typer.Option(help="path to the backtest file[YAML]")] | None = None,
 ):
+    entity: (
+        backtest_service_pb2.CreateBacktestRequest.CreateFromETF
+        | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest
+    )
+    if file:
+        if not file.exists():
+            raise FileNotFoundError(f"File {file} not found")
+        data = dict()
+        with open(file, "r") as f:
+            data = yaml.safe_load(f)
+        entity = backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest(
+            backtest=backtest_pb2.Backtest(
+                name=data["name"],
+                benchmark=data["benchmark"],
+                periods=[
+                    backtest_pb2.Backtest.Period(
+                        start_date=from_pydate_to_proto_date(date.fromisoformat(period["start_date"])),
+                        end_date=from_pydate_to_proto_date(date.fromisoformat(period["end_date"])),
+                        assets=[
+                            backtest_pb2.Backtest.Period.Asset(
+                                symbol=asset["symbol"],
+                                enabled=asset["enabled"],
+                            )
+                            for asset in period["assets"]
+                        ],
+                    )
+                    for period in data["periods"]
+                ],
+            )
+        )
+    else:
+        name = Prompt.ask("What name do you want to give the backtest?")
+        base_etf = Prompt.ask(
+            "What ETF do you want to base the backtest on?", choices=["iShares S&P 100"], default="iShares S&P 100"
+        )
+        start_date_str = Prompt.ask("What is the start date of the backtest?")
+        end_date_str = Prompt.ask("What is the end date of the backtest?")
+        entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
+            name=name,
+            base_etf=base_etf,
+            start_date=from_pydate_to_proto_date(date.fromisoformat(start_date_str)),
+            end_date=from_pydate_to_proto_date(date.fromisoformat(end_date_str)),
+        )
+
     backtest_rsp = backtest_service_pb2.CreateBacktestResponse()
     with LiveProgress() as progress:
         rsp = broker.backtest.create(
-            name=name,
-            base_etf=base_etf,
-            start_date=from_pydate_to_proto_date(start_date),
-            end_date=from_pydate_to_proto_date(end_date),
+            entity=entity,
         )
         for backtest_rsp in rsp:
             progress.update_from_message(backtest_rsp)
