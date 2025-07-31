@@ -95,10 +95,14 @@ func (test *BacktestModuleTest) TearDownSuite() {
 func (test *BacktestModuleTest) TestBacktestModule() {
 	// Create Backtest
 	createBacktestStream, err := test.backtestClient.CreateBacktest(context.TODO(), &servicePb.CreateBacktestRequest{
-		Name:      "Test Backtest",
-		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
-		BaseEtf:   "iShares S&P 100",
+		Create: &servicePb.CreateBacktestRequest_Etf{
+			Etf: &servicePb.CreateBacktestRequest_CreateFromETF{
+				Name:      "Test Backtest",
+				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+				BaseEtf:   "iShares S&P 100",
+			},
+		},
 	})
 	test.Require().NoError(err, "failed to create backtest: %v", err)
 

@@ -82,10 +82,27 @@ func (test *BacktestCommandTest) SetupTest() {
 func (test *BacktestCommandTest) TearDownTest() {
 }
 
+func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
+	message := new(stream.MockMessage)
+	message.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+		payload.Backtest = []byte{}
+	})
+	message.On("MustGet", stream.DBDep).Return(test.db)
+
+	err := command.CreateBacktestFromBacktest(context.TODO(), message)
+	test.Require().NoError(err)
+
+	backtests := repository.Backtest{Conn: test.db}
+	backtest, err := backtests.Get(context.TODO(), "test-backtest-2")
+	test.Require().NoError(err)
+	test.Require().NotNil(backtest)
+}
+
 func (test *BacktestCommandTest) TestCreateBacktest() {
 	message := new(stream.MockMessage)
-	message.On("ParsePayload", &bs.CreateBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
-		payload := args.Get(0).(*bs.CreateBacktestCommand)
+	message.On("ParsePayload", &bs.CreateBacktestFromETFCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromETFCommand)
 		payload.BacktestName = "test-backtest-2"
 		payload.ETFName = "iShares S&P 100"
 		payload.StartDate = "2022-01-01"
@@ -138,7 +155,7 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 		},
 	}, nil)
 
-	err := command.CreateBacktest(context.TODO(), message)
+	err := command.CreateBacktestFromETF(context.TODO(), message)
 	test.Require().NoError(err)
 
 	backtests := repository.Backtest{Conn: test.db}
@@ -146,6 +163,7 @@ func (test *BacktestCommandTest) TestCreateBacktest() {
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
 }
+
 func (test *BacktestCommandTest) TestDownloadFinancialData() {
 	backtests := repository.Backtest{Conn: test.db}
 	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{

@@ -6,7 +6,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	backtestServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"google.golang.org/protobuf/proto"
 )
 
 type IngestCommand struct {
@@ -45,21 +47,32 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 	return &o, nil
 }
 
-type CreateBacktestCommand struct {
+type CreateBacktestFromETFCommand struct {
 	BacktestName string `json:"backtest_name"`
 	ETFName      string `json:"etf_name"`
 	StartDate    string `json:"start_date"`
 	EndDate      string `json:"end_date"`
 }
 
-func NewCreateBacktestCommand(backtestName string, etfName string, startDate string, endDate string) (stream.Message, error) {
-	cmd := &CreateBacktestCommand{
+func NewCreateBacktestFromETFCommand(backtestName string, etfName string, startDate string, endDate string) (stream.Message, error) {
+	cmd := &CreateBacktestFromETFCommand{
 		BacktestName: backtestName,
 		ETFName:      etfName,
 		StartDate:    startDate,
 		EndDate:      endDate,
 	}
-	return stream.NewMessage("backtest", "create", "create", cmd)
+	return stream.NewMessage("backtest", "create", "from_etf", cmd)
+}
+
+type CreateBacktestFromBacktestCommand struct {
+	Backtest []byte `json:"backtest"`
+}
+
+func NewCreateBacktestFromBacktestCommand(backtest []byte) (stream.Message, error) {
+	cmd := &CreateBacktestFromBacktestCommand{
+		Backtest: backtest,
+	}
+	return stream.NewMessage("backtest", "create", "from_backtest", cmd)
 }
 
 type DownloadFinancialDataCommand struct {
@@ -79,7 +92,7 @@ func CreateBacktestFromETF(backtest_name string, etf_name string, start_date str
 	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
 	// Create Backtest
-	cmd, err := NewCreateBacktestCommand(backtest_name, etf_name, start_date, end_date)
+	cmd, err := NewCreateBacktestFromETFCommand(backtest_name, etf_name, start_date, end_date)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
@@ -94,6 +107,39 @@ func CreateBacktestFromETF(backtest_name string, etf_name string, start_date str
 
 	// Ingest into Backtest
 	cmd, err = NewBacktestIngestCommand(backtest_name)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("INGESTING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	return &o, nil
+}
+
+func CreateBacktestFromBacktest(backtest *backtest.Backtest) (*streamPb.Orchestration, error) {
+	o := streamPb.Orchestration{}
+	rsp := &backtestServicePb.CreateBacktestResponse{}
+	rspFields := rsp.ProtoReflect().Descriptor().Fields()
+
+	// Create Backtest
+	bytes, err := proto.Marshal(backtest)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling backtest: %w", err)
+	}
+	cmd, err := NewCreateBacktestFromBacktestCommand(bytes)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	// Ingest Financial Data
+	cmd, err = NewDownloadFinancialDataCommand(backtest.Name)
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("DOWNLOADING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	// Ingest into Backtest
+	cmd, err = NewBacktestIngestCommand(backtest.Name)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}

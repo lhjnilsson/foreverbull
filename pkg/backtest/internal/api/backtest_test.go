@@ -142,7 +142,7 @@ func (test *BacktestServerTest) TestListBacktests() {
 }
 
 func (test *BacktestServerTest) TestCreateBacktest() {
-	test.Run("Create", func() {
+	test.Run("From ETF", func() {
 		statuses := []*streamPb.Orchestration_Step{
 			{Num: 2, State: pb.State_STATE_RUNNING},
 			{Num: 2, State: pb.State_STATE_COMPLETED},
@@ -156,10 +156,52 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 		req := &servicePb.CreateBacktestRequest{
-			Name:      "Test Backtest",
-			StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-			EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
-			BaseEtf:   "iShares S&P 100",
+			Create: &servicePb.CreateBacktestRequest_Etf{
+				Etf: &servicePb.CreateBacktestRequest_CreateFromETF{
+					Name:      "Test Backtest",
+					StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+					EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+					BaseEtf:   "iShares S&P 100",
+				},
+			},
+		}
+
+		resp, err := test.client.CreateBacktest(context.TODO(), req)
+		test.Require().NoError(err)
+		test.NotNil(resp)
+
+		responses := []*servicePb.CreateBacktestResponse{}
+
+		for {
+			msg, err := resp.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			test.Require().NoError(err)
+			test.Require().NotNil(msg)
+			responses = append(responses, msg)
+		}
+		test.Require().Len(responses, 3)
+	})
+	test.Run("From Backtest", func() {
+		statuses := []*streamPb.Orchestration_Step{
+			{Num: 2, State: pb.State_STATE_RUNNING},
+			{Num: 2, State: pb.State_STATE_COMPLETED},
+		}
+
+		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
+		for _, status := range statuses {
+			statusCh <- status
+		}
+		close(statusCh)
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+		req := &servicePb.CreateBacktestRequest{
+			Create: &servicePb.CreateBacktestRequest_Backtest{
+				Backtest: &servicePb.CreateBacktestRequest_CreateFromBacktest{
+					Backtest: &backtest.Backtest{},
+				},
+			},
 		}
 
 		resp, err := test.client.CreateBacktest(context.TODO(), req)

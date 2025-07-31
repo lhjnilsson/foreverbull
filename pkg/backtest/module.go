@@ -94,7 +94,11 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.start: %w", err)
 					}
-					err = sub.Subscribe("create", "create", command.CreateBacktest)
+					err = sub.Subscribe("create", "from_etf", command.CreateBacktestFromETF)
+					if err != nil {
+						return fmt.Errorf("error subscribing to backtest.create: %w", err)
+					}
+					err = sub.Subscribe("create", "from_backtest", command.CreateBacktestFromBacktest)
 					if err != nil {
 						return fmt.Errorf("error subscribing to backtest.create: %w", err)
 					}

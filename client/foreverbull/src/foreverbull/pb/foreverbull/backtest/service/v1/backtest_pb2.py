@@ -29,7 +29,7 @@ from foreverbull.pb.foreverbull.backtest.v1 import session_pb2 as foreverbull_do
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n.foreverbull/backtest/service/v1/backtest.proto\x12\x1f\x66oreverbull.backtest.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a&foreverbull/backtest/v1/backtest.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a%foreverbull/backtest/v1/session.proto\x1a\x18\x66oreverbull/common.proto\"\x16\n\x14ListBacktestsRequest\"M\n\x15ListBacktestsResponse\x12\x34\n\tbacktests\x18\x01 \x03(\x0b\x32!.foreverbull.backtest.v1.Backtest\"\x91\x01\n\x15\x43reateBacktestRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x10\n\x08\x62\x61se_etf\x18\x04 \x01(\t\"\x80\x02\n\x16\x43reateBacktestResponse\x12*\n\x08\x43REATING\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Step\x12-\n\x0b\x44OWNLOADING\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Step\x12+\n\tINGESTING\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Step\x12)\n\x07STORING\x18\x04 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x33\n\x08\x62\x61\x63ktest\x18\x05 \x01(\x0b\x32!.foreverbull.backtest.v1.Backtest\"C\n\x12GetBacktestRequest\x12-\n\x04name\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"X\n\x13GetBacktestResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x33\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32!.foreverbull.backtest.v1.Backtest\"N\n\x14\x43reateSessionRequest\x12\x36\n\rbacktest_name\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\xcd\x01\n\x15\x43reateSessionResponse\x12*\n\x08\x43REATING\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Step\x12*\n\x08STARTING\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Step\x12)\n\x07STORING\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x31\n\x07session\x18\x04 \x01(\x0b\x32 .foreverbull.backtest.v1.Session\"H\n\x11GetSessionRequest\x12\x33\n\nsession_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"G\n\x12GetSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.backtest.v1.Session\"=\n\x15ListExecutionsRequest\x12\x10\n\x08\x62\x61\x63ktest\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\"P\n\x16ListExecutionsResponse\x12\x36\n\nexecutions\x18\x01 \x03(\x0b\x32\".foreverbull.backtest.v1.Execution\"L\n\x13GetExecutionRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\x7f\n\x14GetExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32\".foreverbull.backtest.v1.Execution\x12\x30\n\x07periods\x18\x02 \x03(\x0b\x32\x1f.foreverbull.backtest.v1.Period2\x9c\x07\n\x10\x42\x61\x63ktestServicer\x12\x80\x01\n\rListBacktests\x12\x35.foreverbull.backtest.service.v1.ListBacktestsRequest\x1a\x36.foreverbull.backtest.service.v1.ListBacktestsResponse\"\x00\x12\x85\x01\n\x0e\x43reateBacktest\x12\x36.foreverbull.backtest.service.v1.CreateBacktestRequest\x1a\x37.foreverbull.backtest.service.v1.CreateBacktestResponse\"\x00\x30\x01\x12z\n\x0bGetBacktest\x12\x33.foreverbull.backtest.service.v1.GetBacktestRequest\x1a\x34.foreverbull.backtest.service.v1.GetBacktestResponse\"\x00\x12\x82\x01\n\rCreateSession\x12\x35.foreverbull.backtest.service.v1.CreateSessionRequest\x1a\x36.foreverbull.backtest.service.v1.CreateSessionResponse\"\x00\x30\x01\x12w\n\nGetSession\x12\x32.foreverbull.backtest.service.v1.GetSessionRequest\x1a\x33.foreverbull.backtest.service.v1.GetSessionResponse\"\x00\x12\x83\x01\n\x0eListExecutions\x12\x36.foreverbull.backtest.service.v1.ListExecutionsRequest\x1a\x37.foreverbull.backtest.service.v1.ListExecutionsResponse\"\x00\x12}\n\x0cGetExecution\x12\x34.foreverbull.backtest.service.v1.GetExecutionRequest\x1a\x35.foreverbull.backtest.service.v1.GetExecutionResponse\"\x00\x42;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n.foreverbull/backtest/service/v1/backtest.proto\x12\x1f\x66oreverbull.backtest.service.v1\x1a\x1b\x62uf/validate/validate.proto\x1a&foreverbull/backtest/v1/backtest.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a%foreverbull/backtest/v1/session.proto\x1a\x18\x66oreverbull/common.proto\"\x16\n\x14ListBacktestsRequest\"M\n\x15ListBacktestsResponse\x12\x34\n\tbacktests\x18\x01 \x03(\x0b\x32!.foreverbull.backtest.v1.Backtest\"\xac\x03\n\x15\x43reateBacktestRequest\x12S\n\x03\x65tf\x18\x01 \x01(\x0b\x32\x44.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromETFH\x00\x12]\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32I.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromBacktestH\x00\x1a\x89\x01\n\rCreateFromETF\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\nstart_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Date\x12*\n\x08\x65nd_date\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Date\x12\x10\n\x08\x62\x61se_etf\x18\x04 \x01(\t\x1aI\n\x12\x43reateFromBacktest\x12\x33\n\x08\x62\x61\x63ktest\x18\x01 \x01(\x0b\x32!.foreverbull.backtest.v1.BacktestB\x08\n\x06\x63reate\"\x80\x02\n\x16\x43reateBacktestResponse\x12*\n\x08\x43REATING\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Step\x12-\n\x0b\x44OWNLOADING\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Step\x12+\n\tINGESTING\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Step\x12)\n\x07STORING\x18\x04 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x33\n\x08\x62\x61\x63ktest\x18\x05 \x01(\x0b\x32!.foreverbull.backtest.v1.Backtest\"C\n\x12GetBacktestRequest\x12-\n\x04name\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"X\n\x13GetBacktestResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x33\n\x08\x62\x61\x63ktest\x18\x02 \x01(\x0b\x32!.foreverbull.backtest.v1.Backtest\"N\n\x14\x43reateSessionRequest\x12\x36\n\rbacktest_name\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\xcd\x01\n\x15\x43reateSessionResponse\x12*\n\x08\x43REATING\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.Step\x12*\n\x08STARTING\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.Step\x12)\n\x07STORING\x18\x03 \x01(\x0b\x32\x18.foreverbull.common.Step\x12\x31\n\x07session\x18\x04 \x01(\x0b\x32 .foreverbull.backtest.v1.Session\"H\n\x11GetSessionRequest\x12\x33\n\nsession_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"G\n\x12GetSessionResponse\x12\x31\n\x07session\x18\x01 \x01(\x0b\x32 .foreverbull.backtest.v1.Session\"=\n\x15ListExecutionsRequest\x12\x10\n\x08\x62\x61\x63ktest\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\"P\n\x16ListExecutionsResponse\x12\x36\n\nexecutions\x18\x01 \x03(\x0b\x32\".foreverbull.backtest.v1.Execution\"L\n\x13GetExecutionRequest\x12\x35\n\x0c\x65xecution_id\x18\x01 \x01(\tB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\"\x7f\n\x14GetExecutionResponse\x12\x35\n\texecution\x18\x01 \x01(\x0b\x32\".foreverbull.backtest.v1.Execution\x12\x30\n\x07periods\x18\x02 \x03(\x0b\x32\x1f.foreverbull.backtest.v1.Period2\x9c\x07\n\x10\x42\x61\x63ktestServicer\x12\x80\x01\n\rListBacktests\x12\x35.foreverbull.backtest.service.v1.ListBacktestsRequest\x1a\x36.foreverbull.backtest.service.v1.ListBacktestsResponse\"\x00\x12\x85\x01\n\x0e\x43reateBacktest\x12\x36.foreverbull.backtest.service.v1.CreateBacktestRequest\x1a\x37.foreverbull.backtest.service.v1.CreateBacktestResponse\"\x00\x30\x01\x12z\n\x0bGetBacktest\x12\x33.foreverbull.backtest.service.v1.GetBacktestRequest\x1a\x34.foreverbull.backtest.service.v1.GetBacktestResponse\"\x00\x12\x82\x01\n\rCreateSession\x12\x35.foreverbull.backtest.service.v1.CreateSessionRequest\x1a\x36.foreverbull.backtest.service.v1.CreateSessionResponse\"\x00\x30\x01\x12w\n\nGetSession\x12\x32.foreverbull.backtest.service.v1.GetSessionRequest\x1a\x33.foreverbull.backtest.service.v1.GetSessionResponse\"\x00\x12\x83\x01\n\x0eListExecutions\x12\x36.foreverbull.backtest.service.v1.ListExecutionsRequest\x1a\x37.foreverbull.backtest.service.v1.ListExecutionsResponse\"\x00\x12}\n\x0cGetExecution\x12\x34.foreverbull.backtest.service.v1.GetExecutionRequest\x1a\x35.foreverbull.backtest.service.v1.GetExecutionResponse\"\x00\x42;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -50,29 +50,33 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LISTBACKTESTSRESPONSE']._serialized_start=282
   _globals['_LISTBACKTESTSRESPONSE']._serialized_end=359
   _globals['_CREATEBACKTESTREQUEST']._serialized_start=362
-  _globals['_CREATEBACKTESTREQUEST']._serialized_end=507
-  _globals['_CREATEBACKTESTRESPONSE']._serialized_start=510
-  _globals['_CREATEBACKTESTRESPONSE']._serialized_end=766
-  _globals['_GETBACKTESTREQUEST']._serialized_start=768
-  _globals['_GETBACKTESTREQUEST']._serialized_end=835
-  _globals['_GETBACKTESTRESPONSE']._serialized_start=837
-  _globals['_GETBACKTESTRESPONSE']._serialized_end=925
-  _globals['_CREATESESSIONREQUEST']._serialized_start=927
-  _globals['_CREATESESSIONREQUEST']._serialized_end=1005
-  _globals['_CREATESESSIONRESPONSE']._serialized_start=1008
-  _globals['_CREATESESSIONRESPONSE']._serialized_end=1213
-  _globals['_GETSESSIONREQUEST']._serialized_start=1215
-  _globals['_GETSESSIONREQUEST']._serialized_end=1287
-  _globals['_GETSESSIONRESPONSE']._serialized_start=1289
-  _globals['_GETSESSIONRESPONSE']._serialized_end=1360
-  _globals['_LISTEXECUTIONSREQUEST']._serialized_start=1362
-  _globals['_LISTEXECUTIONSREQUEST']._serialized_end=1423
-  _globals['_LISTEXECUTIONSRESPONSE']._serialized_start=1425
-  _globals['_LISTEXECUTIONSRESPONSE']._serialized_end=1505
-  _globals['_GETEXECUTIONREQUEST']._serialized_start=1507
-  _globals['_GETEXECUTIONREQUEST']._serialized_end=1583
-  _globals['_GETEXECUTIONRESPONSE']._serialized_start=1585
-  _globals['_GETEXECUTIONRESPONSE']._serialized_end=1712
-  _globals['_BACKTESTSERVICER']._serialized_start=1715
-  _globals['_BACKTESTSERVICER']._serialized_end=2639
+  _globals['_CREATEBACKTESTREQUEST']._serialized_end=790
+  _globals['_CREATEBACKTESTREQUEST_CREATEFROMETF']._serialized_start=568
+  _globals['_CREATEBACKTESTREQUEST_CREATEFROMETF']._serialized_end=705
+  _globals['_CREATEBACKTESTREQUEST_CREATEFROMBACKTEST']._serialized_start=707
+  _globals['_CREATEBACKTESTREQUEST_CREATEFROMBACKTEST']._serialized_end=780
+  _globals['_CREATEBACKTESTRESPONSE']._serialized_start=793
+  _globals['_CREATEBACKTESTRESPONSE']._serialized_end=1049
+  _globals['_GETBACKTESTREQUEST']._serialized_start=1051
+  _globals['_GETBACKTESTREQUEST']._serialized_end=1118
+  _globals['_GETBACKTESTRESPONSE']._serialized_start=1120
+  _globals['_GETBACKTESTRESPONSE']._serialized_end=1208
+  _globals['_CREATESESSIONREQUEST']._serialized_start=1210
+  _globals['_CREATESESSIONREQUEST']._serialized_end=1288
+  _globals['_CREATESESSIONRESPONSE']._serialized_start=1291
+  _globals['_CREATESESSIONRESPONSE']._serialized_end=1496
+  _globals['_GETSESSIONREQUEST']._serialized_start=1498
+  _globals['_GETSESSIONREQUEST']._serialized_end=1570
+  _globals['_GETSESSIONRESPONSE']._serialized_start=1572
+  _globals['_GETSESSIONRESPONSE']._serialized_end=1643
+  _globals['_LISTEXECUTIONSREQUEST']._serialized_start=1645
+  _globals['_LISTEXECUTIONSREQUEST']._serialized_end=1706
+  _globals['_LISTEXECUTIONSRESPONSE']._serialized_start=1708
+  _globals['_LISTEXECUTIONSRESPONSE']._serialized_end=1788
+  _globals['_GETEXECUTIONREQUEST']._serialized_start=1790
+  _globals['_GETEXECUTIONREQUEST']._serialized_end=1866
+  _globals['_GETEXECUTIONRESPONSE']._serialized_start=1868
+  _globals['_GETEXECUTIONRESPONSE']._serialized_end=1995
+  _globals['_BACKTESTSERVICER']._serialized_start=1998
+  _globals['_BACKTESTSERVICER']._serialized_end=2922
 # @@protoc_insertion_point(module_scope)
