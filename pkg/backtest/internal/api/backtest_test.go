@@ -246,6 +246,26 @@ func (test *BacktestServerTest) TestGetBacktest() {
 	})
 }
 
+func (test *BacktestServerTest) TestDeleteBacktest() {
+	test.Run("not found", func() {
+		req := &servicePb.DeleteBacktestRequest{
+			Name: "not_found",
+		}
+		resp, err := test.client.DeleteBacktest(context.Background(), req)
+		test.Require().Error(err)
+		test.Nil(resp)
+	})
+	test.Run("found", func() {
+		backtests := test.createBacktest("test_1")
+		req := &servicePb.DeleteBacktestRequest{
+			Name: backtests.Name,
+		}
+		resp, err := test.client.DeleteBacktest(context.Background(), req)
+		test.Require().NoError(err)
+		test.Require().NotNil(resp)
+	})
+}
+
 func (test *BacktestServerTest) TestCreateSession() {
 	test.Run("backtest not found", func() {
 		req := &servicePb.CreateSessionRequest{

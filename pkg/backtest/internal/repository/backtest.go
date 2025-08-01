@@ -252,10 +252,12 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 }
 
 func (db *Backtest) Delete(ctx context.Context, name string) error {
-	_, err := db.Conn.Exec(ctx, `DELETE FROM backtest WHERE name=$1`, name)
+	result, err := db.Conn.Exec(ctx, `DELETE FROM backtest WHERE name=$1`, name)
 	if err != nil {
 		return fmt.Errorf("failed to delete backtest: %w", err)
 	}
-
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
