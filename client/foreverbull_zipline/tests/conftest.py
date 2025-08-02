@@ -16,7 +16,7 @@ def spawn_process():
 
 
 @pytest.fixture(scope="session")
-def backtest_entity():
+def backtest_entity(spawn_process):
     return backtest_pb2.Backtest(
         name="testing_backtest",
         benchmark="OEF",
