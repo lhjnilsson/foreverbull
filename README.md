@@ -1,63 +1,55 @@
-foreverbull
-===================
+# Foreverbull 🚀
+====================
 
-Foreverbull is a trading platform that enables continuous delivery of algorithmic trading strategies.
-The goal of the project is to provide a platform that enables rapid development and deployment of trading strategies and enable confidence in the results.
+Foreverbull is an exciting trading platform designed for seamless, continuous delivery of algorithmic trading strategies. Our mission? To empower you with rapid development, effortless deployment, and rock-solid confidence in your trading results! 💪
 
-At this moment the marketdata is provided by Yahoo together with fetching ETF- holdings directly from iShares API.
-Trading is supported through [Alpaca](https://alpaca.markets/) who provides both live and paper trading.
+Right now, we're sourcing market data from Yahoo Finance, and fetching ETF holdings straight from the iShares API. For trading, we integrate with Alpaca, supporting both live and paper trading modes. 📈
 
-The architecture is deeper describes in the [Architecture Overview](#architecture) section.
-However in short the platform consits of several services that are running in containers.
-- `Foreverbull`: Main application, orchestrates the other services
-- `Minio`: Store ingestions for backtesting as well as backtest execution results in raw format
-- `PostgreSQL`: Persistent storage for application data
-- `NATS`: Message queue for communcation between services in the main application
-- `Grafana(Including LOKI)`: For monitoring of the platform as well as visualization of backtest results
+Dive deeper into our architecture in the [Architecture Overview](## Architecture) section. In a nutshell, the platform runs on a suite of containerized services:
 
+- `Foreverbul`: The core app that orchestrates everything smoothly.
+- `Minio`: Handles storage for backtesting ingestions and raw results. 🗄️
+- `PostgreSQL`: Your reliable persistent storage for all app data. ` 
+- `NATS`: The speedy message queue for seamless service communication. ⚡
+- `Grafana` (with Loki): Monitors the platform and visualizes backtest outcomes beautifully. 📊
 
-Below you will find a quickstart guide to get started with the project.
+Ready to jump in? Here's a quickstart guide to get you up and running! 🌟
 
-# Getting Started
-
-## Requirements
-
+## Getting Started 🛠️
+### Requirements 📋
 - Docker
 - Python 3.12+
 - Cookiecutter
 
-## Quickstart
+### Quickstart 🚀
 
 ```bash
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
 
-Cookiecutter will guide you through the steps for setting up a new project.
-There are two starter templates to choose from, one of which requires you to have talib installed.
+Cookiecutter will walk you through the setup process for your new project. Choose from two starter templates—one even supports TA-Lib if you have it installed! 🎉
 
-# Architecture
+## Architecture 📐
 
 ![Overview](assets/diagram/overview.png)
 
-
-## Application Domains
+### Domains 🧩
 
 ![Domains](assets/diagram/domains.png)
 
-- `Backtest`: Backtesting of trading strategies using zipline
-- `Finance`: Ingesting marketdata as well as live trading
-- `Service`: Responsible for orchestrating alhorithmic trading strategies in containers
-- `Strategy`: Scheduling of backtesting as well as live trading
+- `Backtest`: Powers strategy backtesting with Zipline for reliable simulations. 🔄
+- `Finance`: Manages market data ingestion and live trading operations. ` 
+- `Service`: Orchestrates algorithmic strategies within containers efficiently. 🤖
+- `Strategy`: Handles scheduling for backtests and live trading sessions. ⏰
 
-# Development and Contributing
+## Development and Contributing 🤝
 
-The project is prodominantly written in Go where the domains reside under `pkg` together with internal parts in `internal`. CLI entry points reside in `cmd`.
-Python client libraries reside in `client` and consists of four parts
-- `foreverbull`: Main client application that connects to foreverbull-broker
-- `foreverbull-zipline`: Wrapper around zipline with gRPC Communication
-- `foreverbull-cli`: CLI to manage backtesting, trading as well as environment
-- `foreverbull-testing`: Custom Pytest fixtures to simplify testing
+The project is mainly built in Go, with domains organized under pkg and internal components in internal. CLI entry points live in cmd. Our Python client libraries are in client and include four key parts:
 
-For go specific information see the [Go README](https://github.com/lhjnilsson/foreverbull/blob/main/go/README.md) inside the `pkg`- folder.
-For python specific information see the [Python README](https://github.com/lhjnilsson/foreverbull/blob/main/python/README.md) inside the `client`- folder.
+- `foreverbull`: The primary client that connects to the Foreverbull broker. 🔗
+- `foreverbul-zipline`: A handy Zipline wrapper with gRPC for smooth communication. 📡
+- `foreverbull-cli`: Your go-to CLI for managing backtests, trading, and environments. 🖥️
+- `foreverbull-testing`: Custom Pytest fixtures to make testing a breeze. 🧪
 
+For Go-specific details, check out the Go README in the pkg folder.
+For Python insights, see the Python README in the client folder.
