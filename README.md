@@ -32,6 +32,10 @@ Cookiecutter will walk you through the setup process for your new project. Choos
 
 ![Overview](assets/diagram/overview.png)
 
+Client communicates with the broker through gRPC. The broker will internally orchastrate tasks between services through NATS.
+
+When running backtest simulations the client workers connects to the broker using NNG(NanoMSG) for lower latency and higher throughput.
+
 ### Domains 🧩
 
 ![Domains](assets/diagram/domains.png)
@@ -52,3 +56,8 @@ The project is mainly built in Go, with domains organized under pkg and internal
 
 For Go-specific details, check out the Go README in the pkg folder.
 For Python insights, see the Python README in the client folder.
+
+Both Go and Python utilizes TestContainers for dependencies when running unittests.
+Integration tests require Zipline to be built and available.
+
+taskfile.yaml contains collection of commands to assist with integration testing among other things.
