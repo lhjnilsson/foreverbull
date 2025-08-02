@@ -44,13 +44,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies (for TA-Lib(zipline))
         run: |
-          curl -L -o ta-lib-0.4.0-src.tar.gz  http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz &&
-          tar xvfz ta-lib-0.4.0-src.tar.gz &&
-          cd ta-lib &&
-          ./configure &&
+          curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+          tar -xzf ta-lib-0.6.4-src.tar.gz
+          cd ta-lib-0.6.4/
+          ./configure --prefix=/usr
           sudo make &&
           sudo make install &&
           sudo ldconfig
+          apt upgrade -y
       - name: Setup rye
         uses: eifinger/setup-rye@v4
       - name: Sync dependencies
