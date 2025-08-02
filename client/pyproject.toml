@@ -28,10 +28,10 @@ packages = [
 ]
 
 [tool.ruff.lint]
-exclude = ["foreverbull/src/foreverbull/pb/*"]
+exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
 
 [tool.ruff.format]
-exclude = ["foreverbull/src/foreverbull/pb/*"]
+exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
 
 [tool.ruff]
 fix = true
