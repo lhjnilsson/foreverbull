@@ -34,7 +34,7 @@ func (test *MessageTest) TestNewMessage() {
 
 		parsed, ok := msg.(*message)
 		test.True(ok)
-		test.Nil(parsed.msg.Id)
+		test.NotNil(parsed.msg.Id)
 		test.Nil(parsed.msg.OrchestrationName)
 		test.Nil(parsed.msg.OrchestrationId)
 		test.Nil(parsed.msg.OrchestrationStep)

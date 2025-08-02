@@ -26,7 +26,8 @@ Ready to jump in? Here's a quickstart guide to get you up and running! 🌟
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
 
-Cookiecutter will walk you through the setup process for your new project. Choose from two starter templates—one even supports TA-Lib if you have it installed! 🎉
+Cookiecutter will walk you through the setup process for your new project. 
+Choose from two starter templates depending if you have TA-Lib installed or not 🎉 
 
 ## Architecture 📐
 
