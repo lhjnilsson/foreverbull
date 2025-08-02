@@ -51,7 +51,6 @@ jobs:
           sudo make &&
           sudo make install &&
           sudo ldconfig
-          apt upgrade -y
       - name: Setup rye
         uses: eifinger/setup-rye@v4
       - name: Sync dependencies
