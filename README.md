@@ -1,13 +1,12 @@
 # Foreverbull 🚀
-====================
 
 Foreverbull is an exciting trading platform designed for seamless, continuous delivery of algorithmic trading strategies. Our mission? To empower you with rapid development, effortless deployment, and rock-solid confidence in your trading results! 💪
 
 Right now, we're sourcing market data from Yahoo Finance, and fetching ETF holdings straight from the iShares API. For trading, we integrate with Alpaca, supporting both live and paper trading modes. 📈
 
-Dive deeper into our architecture in the [Architecture Overview](## Architecture) section. In a nutshell, the platform runs on a suite of containerized services:
+Dive deeper into our architecture in the Architecture section. In a nutshell, the platform runs on a suite of containerized services:
 
-- `Foreverbul`: The core app that orchestrates everything smoothly.
+- `Foreverbull`: The core app that orchestrates everything smoothly.
 - `Minio`: Handles storage for backtesting ingestions and raw results. 🗄️
 - `PostgreSQL`: Your reliable persistent storage for all app data. ` 
 - `NATS`: The speedy message queue for seamless service communication. ⚡
