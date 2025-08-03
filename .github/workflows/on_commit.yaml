@@ -72,7 +72,6 @@ jobs:
       - name: Unittest foreverbull_cli
         run: |
           rye test -- foreverbull_cli/ --junitxml=/tmp/pytest_coverage_foreverbull_cli.xml --cov-report=term-missing:skip-covered --cov=foreverbull_cli/src foreverbull_cli/tests/ | tee /tmp/pytest_coverage_foreverbull_cli.txt
-
       - name: Pytest coverage comment
         uses: MishaKav/pytest-coverage-comment@main
         with:
