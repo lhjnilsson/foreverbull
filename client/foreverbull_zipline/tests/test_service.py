@@ -24,8 +24,10 @@ class TestCalendarService:
         server.add_insecure_port("[::]:60066")
         server.start()
         time.sleep(1)
-        yield server
-        server.stop(None)
+        try:
+            yield server
+        finally:
+            server.stop(None)
 
     @pytest.fixture
     def stub(self, servicer):

@@ -53,13 +53,15 @@ def engine(ensure_ingestion):
     log_thread = Thread(target=logging_thread, args=(log_queue,))
     log_thread.start()
     execution = Engine(logging_queue=log_queue)
-    execution.start()
-    execution.is_ready.wait(3.0)
-    yield execution
-    execution.stop()
-    execution.join(3.0)
-    log_queue.put_nowait(None)
-    log_thread.join(3.0)
+    try:
+        execution.start()
+        execution.is_ready.wait(3.0)
+        yield execution
+    finally:
+        execution.stop()
+        execution.join(3.0)
+        log_queue.put_nowait(None)
+        log_thread.join(3.0)
 
 
 def test_premature_stop(execution: execution_pb2.Execution, engine: Engine):
