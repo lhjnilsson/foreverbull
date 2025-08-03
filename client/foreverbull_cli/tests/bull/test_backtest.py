@@ -95,15 +95,8 @@ def test_backtest_create(runner):
             backtest,
             [
                 "create",
-                "--name",
-                "test_name",
-                "--base-etf",
-                "iShares S&P 100",
-                "--start-date",
-                "2022-01-01",
-                "--end-date",
-                "2023-12-31",
             ],
+            input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
         )
 
         if not result.exit_code == 0:
