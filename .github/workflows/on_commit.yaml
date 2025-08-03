@@ -63,9 +63,7 @@ jobs:
           rye test -- foreverbull/ --junitxml=/tmp/pytest_coverage_foreverbull.xml --cov-report=term-missing:skip-covered --cov=foreverbull/src foreverbull/tests/ | tee /tmp/pytest_coverage_foreverbull.txt
       - name: Unittest foreverbull_zipline
         run: |
-          rye test -- foreverbull_zipline/tests/test_engine.py -xvs
-          rye test -- foreverbull_zipline/tests/test_service.py -xvs
-          rye test -- foreverbull_zipline/tests/test_session_service.py -xvs
+          rye test -- foreverbull_zipline/tests/ -xvs
       - name: Unittest foreverbull_testing
         run: |
           rye test -- foreverbull_testing/ --junitxml=/tmp/pytest_coverage_foreverbull_testing.xml --cov-report=term-missing:skip-covered --cov=foreverbull_testing/src foreverbull_testing/tests/  | tee /tmp/pytest_coverage_foreverbull_testing.txt
