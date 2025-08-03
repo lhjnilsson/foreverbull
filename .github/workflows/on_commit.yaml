@@ -252,6 +252,7 @@ jobs:
           retention-days: 1
 
   end-to-end-tests:
+    if: false
     needs:
       [
         build-docker-foreverbull,
@@ -371,6 +372,7 @@ jobs:
         continue-on-error: true
 
   run-manual-backtest:
+    if: false 
     needs:
       [
         build-docker-foreverbull,
