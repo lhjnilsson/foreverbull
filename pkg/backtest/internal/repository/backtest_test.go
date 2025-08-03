@@ -119,7 +119,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 				EndDate:   &pb.Date{Year: 2025, Month: 12, Day: 31},
 				Assets: []*backtest.Backtest_Period_Asset{
 					{
-						Symbol:  "TSLA",
+						Symbol:  "AAPL",
 						Enabled: false,
 					},
 				},

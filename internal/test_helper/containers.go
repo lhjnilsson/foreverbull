@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/rs/zerolog"
@@ -107,7 +108,8 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	connectionString, err := container.ConnectionString(context.TODO(), "sslmode=disable")
 	require.NoError(t, err)
 
-	dbName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	name := t.Name() + strings.Split(uuid.NewString(), "-")[0]
+	dbName := strings.ToLower(strings.ReplaceAll(name, "/", "_"))
 
 	conn, err := pgxpool.New(context.TODO(), connectionString)
 	require.NoError(t, err)
@@ -116,7 +118,10 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 
 	_, err = conn.Exec(context.TODO(), fmt.Sprintf("CREATE DATABASE  %s", dbName))
 	require.NoError(t, err)
-
+	t.Cleanup(func() {
+		_, err := conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE) ", dbName))
+		require.NoError(t, err)
+	})
 	return strings.Replace(connectionString, "to_be_substituted", dbName, 1)
 }
 

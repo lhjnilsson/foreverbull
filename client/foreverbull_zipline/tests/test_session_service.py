@@ -17,18 +17,20 @@ def uut(fb_database, backtest_entity):
     verify(backtest_entity)
 
     engine = Engine()
-    engine.start()
-    assert engine.is_ready.wait(5.0), "engine was never ready"
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
-    servicer = SessionServiceServicer(engine)
-    engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)
-    server.add_insecure_port("[::]:60066")
-    server.start()
-    time.sleep(1)
-    yield engine_service_pb2_grpc.EngineSessionStub(grpc.insecure_channel("localhost:60066"))
-    server.stop(None)
-    engine.stop()
-    engine.join()
+    try:
+        engine.start()
+        assert engine.is_ready.wait(5.0), "engine was never ready"
+        servicer = SessionServiceServicer(engine)
+        engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)
+        server.add_insecure_port("[::]:60066")
+        server.start()
+        time.sleep(1)
+        yield engine_service_pb2_grpc.EngineSessionStub(grpc.insecure_channel("localhost:60066"))
+    finally:
+        server.stop(None)
+        engine.stop()
+        engine.join()
 
 
 def test_session_service_servicer(execution, uut: engine_service_pb2_grpc.EngineSessionStub):

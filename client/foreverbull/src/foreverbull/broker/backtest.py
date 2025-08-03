@@ -35,12 +35,11 @@ def create(
     entity: backtest_service_pb2.CreateBacktestRequest.CreateFromETF
     | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest,
 ) -> Generator[backtest_service_pb2.CreateBacktestResponse, None, None]:
-    req = backtest_service_pb2.CreateBacktestRequest()
     match entity:
         case backtest_service_pb2.CreateBacktestRequest.CreateFromETF():
-            req.etf = entity
+            req = backtest_service_pb2.CreateBacktestRequest(etf=entity)
         case backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest():
-            req.backtest = entity
+            req = backtest_service_pb2.CreateBacktestRequest(backtest=entity)
         case _:
             raise ValueError("Invalid entity")
     return servicer.CreateBacktest(req)
@@ -53,6 +52,14 @@ def get(servicer: backtest_service_pb2_grpc.BacktestServicerStub, name: str) -> 
     )
     rsp = servicer.GetBacktest(req)
     return rsp.backtest
+
+
+@backtest_servicer
+def delete(servicer: backtest_service_pb2_grpc.BacktestServicerStub, name: str) -> None:
+    req = backtest_service_pb2.DeleteBacktestRequest(
+        name=name,
+    )
+    return servicer.DeleteBacktest(req)
 
 
 @backtest_servicer

@@ -3,10 +3,12 @@ import logging
 from datetime import date
 from enum import Enum
 from pathlib import Path
+from typing import List
 
 import typer
 import yaml
 
+from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
 from typing_extensions import Annotated
@@ -203,6 +205,21 @@ def get(
     console.print(backtest_table)
     console.print(periods_table)
     console.print(executions_table)
+
+
+@backtest.command()
+def delete(
+    names: Annotated[List[str], typer.Argument(help="name of the backtest, can be multiple")],
+    force: Annotated[bool, typer.Option(help="force delete backtest without confirmation")] = False,
+):
+    for name in names:
+        _ = broker.backtest.get(name)
+        if not force:
+            shall_delete = Confirm.ask(f"Are you sure you want to delete backtest {name}?", default=False)
+            if not shall_delete:
+                return
+
+        broker.backtest.delete(name)
 
 
 @backtest.command()

@@ -57,6 +57,18 @@ message GetBacktestResponse {
   foreverbull.backtest.v1.Backtest backtest = 2;
 }
 
+message DeleteBacktestRequest {
+  string name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+}
+
+message DeleteBacktestResponse {}
+
 message CreateSessionRequest {
   string backtest_name = 1 [(buf.validate.field) = {
     required: true
@@ -117,6 +129,7 @@ service BacktestServicer {
   rpc ListBacktests(ListBacktestsRequest) returns (ListBacktestsResponse) {}
   rpc CreateBacktest(CreateBacktestRequest) returns (stream CreateBacktestResponse) {}
   rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse) {}
+  rpc DeleteBacktest(DeleteBacktestRequest) returns (DeleteBacktestResponse) {}
   rpc CreateSession(CreateSessionRequest) returns (stream CreateSessionResponse) {}
   rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {}

@@ -253,7 +253,7 @@ sqlalchemy==2.0.41
     # via zipline-reloaded
 statsmodels==0.14.4
     # via zipline-reloaded
-ta-lib==0.6.3
+ta-lib==0.6.4
 tables==3.10.2
     # via foreverbull
     # via zipline-reloaded

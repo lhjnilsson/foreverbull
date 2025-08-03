@@ -19,6 +19,7 @@ import (
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 )
 
 type BacktestCommandTest struct {
@@ -86,7 +87,23 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 	message := new(stream.MockMessage)
 	message.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
-		payload.Backtest = []byte{}
+		b := backtest.Backtest{
+			Name:      "test-backtest-from_backtest",
+			Benchmark: "SPY",
+			Periods: []*backtest.Backtest_Period{
+				{
+					StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+					EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+				},
+				{
+					StartDate: &pb.Date{Year: 2023, Month: 1, Day: 1},
+					EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+				},
+			},
+		}
+		bytes, err := proto.Marshal(&b)
+		test.Require().NoError(err)
+		payload.Backtest = bytes
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db)
 
@@ -94,7 +111,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 	test.Require().NoError(err)
 
 	backtests := repository.Backtest{Conn: test.db}
-	backtest, err := backtests.Get(context.TODO(), "test-backtest-2")
+	backtest, err := backtests.Get(context.TODO(), "test-backtest-from_backtest")
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
 }

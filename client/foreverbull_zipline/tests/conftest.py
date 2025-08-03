@@ -8,8 +8,9 @@ from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(autouse=True, scope="session")
 def spawn_process():
+    print("IS USED")
     method = get_start_method()
     if method != "spawn":
         set_start_method("spawn", force=True)

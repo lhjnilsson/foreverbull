@@ -24,8 +24,10 @@ class TestCalendarService:
         server.add_insecure_port("[::]:60066")
         server.start()
         time.sleep(1)
-        yield server
-        server.stop(None)
+        try:
+            yield server
+        finally:
+            server.stop(None)
 
     @pytest.fixture
     def stub(self, servicer):
@@ -53,9 +55,11 @@ class TestBacktestService:
         server.add_insecure_port("[::]:60066")
         server.start()
         time.sleep(1)
-        yield server
-        servicer.stop()
-        server.stop(None)
+        try:
+            yield server
+        finally:
+            servicer.stop()
+            server.stop(None)
 
     @pytest.fixture
     def stub(self, servicer):

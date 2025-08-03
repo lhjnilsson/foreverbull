@@ -22,6 +22,7 @@ const (
 	BacktestServicer_ListBacktests_FullMethodName  = "/foreverbull.backtest.service.v1.BacktestServicer/ListBacktests"
 	BacktestServicer_CreateBacktest_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/CreateBacktest"
 	BacktestServicer_GetBacktest_FullMethodName    = "/foreverbull.backtest.service.v1.BacktestServicer/GetBacktest"
+	BacktestServicer_DeleteBacktest_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/DeleteBacktest"
 	BacktestServicer_CreateSession_FullMethodName  = "/foreverbull.backtest.service.v1.BacktestServicer/CreateSession"
 	BacktestServicer_GetSession_FullMethodName     = "/foreverbull.backtest.service.v1.BacktestServicer/GetSession"
 	BacktestServicer_ListExecutions_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/ListExecutions"
@@ -35,6 +36,7 @@ type BacktestServicerClient interface {
 	ListBacktests(ctx context.Context, in *ListBacktestsRequest, opts ...grpc.CallOption) (*ListBacktestsResponse, error)
 	CreateBacktest(ctx context.Context, in *CreateBacktestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateBacktestResponse], error)
 	GetBacktest(ctx context.Context, in *GetBacktestRequest, opts ...grpc.CallOption) (*GetBacktestResponse, error)
+	DeleteBacktest(ctx context.Context, in *DeleteBacktestRequest, opts ...grpc.CallOption) (*DeleteBacktestResponse, error)
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateSessionResponse], error)
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
 	ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error)
@@ -82,6 +84,16 @@ func (c *backtestServicerClient) GetBacktest(ctx context.Context, in *GetBacktes
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetBacktestResponse)
 	err := c.cc.Invoke(ctx, BacktestServicer_GetBacktest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *backtestServicerClient) DeleteBacktest(ctx context.Context, in *DeleteBacktestRequest, opts ...grpc.CallOption) (*DeleteBacktestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteBacktestResponse)
+	err := c.cc.Invoke(ctx, BacktestServicer_DeleteBacktest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +156,7 @@ type BacktestServicerServer interface {
 	ListBacktests(context.Context, *ListBacktestsRequest) (*ListBacktestsResponse, error)
 	CreateBacktest(*CreateBacktestRequest, grpc.ServerStreamingServer[CreateBacktestResponse]) error
 	GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error)
+	DeleteBacktest(context.Context, *DeleteBacktestRequest) (*DeleteBacktestResponse, error)
 	CreateSession(*CreateSessionRequest, grpc.ServerStreamingServer[CreateSessionResponse]) error
 	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
 	ListExecutions(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error)
@@ -166,6 +179,9 @@ func (UnimplementedBacktestServicerServer) CreateBacktest(*CreateBacktestRequest
 }
 func (UnimplementedBacktestServicerServer) GetBacktest(context.Context, *GetBacktestRequest) (*GetBacktestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBacktest not implemented")
+}
+func (UnimplementedBacktestServicerServer) DeleteBacktest(context.Context, *DeleteBacktestRequest) (*DeleteBacktestResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteBacktest not implemented")
 }
 func (UnimplementedBacktestServicerServer) CreateSession(*CreateSessionRequest, grpc.ServerStreamingServer[CreateSessionResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method CreateSession not implemented")
@@ -243,6 +259,24 @@ func _BacktestServicer_GetBacktest_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BacktestServicerServer).GetBacktest(ctx, req.(*GetBacktestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BacktestServicer_DeleteBacktest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBacktestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BacktestServicerServer).DeleteBacktest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BacktestServicer_DeleteBacktest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BacktestServicerServer).DeleteBacktest(ctx, req.(*DeleteBacktestRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -326,6 +360,10 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBacktest",
 			Handler:    _BacktestServicer_GetBacktest_Handler,
+		},
+		{
+			MethodName: "DeleteBacktest",
+			Handler:    _BacktestServicer_DeleteBacktest_Handler,
 		},
 		{
 			MethodName: "GetSession",

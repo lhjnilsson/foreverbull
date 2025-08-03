@@ -11,8 +11,8 @@ from typer.testing import CliRunner
 def runner():
     runner = CliRunner()
 
-    def invoke(app: typer.Typer, args: list[str], kwargs: dict = {}) -> Result:
-        result = runner.invoke(app, args, **kwargs)
+    def invoke(app: typer.Typer, args: list[str], input=None, kwargs: dict = {}) -> Result:
+        result = runner.invoke(app, args, input=input, **kwargs)
         if result.exception:
             raise result.exception
         echo_stdout = os.environ.get("ECHO", False)

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/stretchr/testify/suite"
 )
@@ -86,20 +87,22 @@ func (test *StorageTest) TestStorage() {
 			"Key":  "value",
 			"Key2": "value2",
 		}
+		objectName := uuid.NewString() + ".pickle"
 
-		_, err := test.storage.CreateObject(context.Background(), ResultsBucket, "123.pickle", WithMetadata(metadata))
+		initialObjects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
 		test.Require().NoError(err)
 
-		object, err := test.storage.GetObject(context.Background(), ResultsBucket, "123.pickle")
+		_, err = test.storage.CreateObject(context.Background(), ResultsBucket, objectName, WithMetadata(metadata))
+		test.Require().NoError(err)
+
+		object, err := test.storage.GetObject(context.Background(), ResultsBucket, objectName)
 		test.Require().NoError(err)
 		test.Require().NotNil(object)
 		test.Require().Equal(metadata, object.Metadata)
 
 		objects, err := test.storage.ListObjects(context.Background(), ResultsBucket)
 		test.Require().NoError(err)
-		test.NoError((*objects)[0].Refresh())
-		test.Require().Len(*objects, 1)
-		test.Require().Equal(metadata, (*objects)[0].Metadata)
+		test.Require().Len(*objects, len(*initialObjects)+1)
 	})
 }
 

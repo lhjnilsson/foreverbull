@@ -49,6 +49,11 @@ class BacktestServicerStub(object):
                 request_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestRequest.SerializeToString,
                 response_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestResponse.FromString,
                 _registered_method=True)
+        self.DeleteBacktest = channel.unary_unary(
+                '/foreverbull.backtest.service.v1.BacktestServicer/DeleteBacktest',
+                request_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestResponse.FromString,
+                _registered_method=True)
         self.CreateSession = channel.unary_stream(
                 '/foreverbull.backtest.service.v1.BacktestServicer/CreateSession',
                 request_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.CreateSessionRequest.SerializeToString,
@@ -87,6 +92,12 @@ class BacktestServicerServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetBacktest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteBacktest(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -133,6 +144,11 @@ def add_BacktestServicerServicer_to_server(servicer, server):
                     servicer.GetBacktest,
                     request_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestRequest.FromString,
                     response_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestResponse.SerializeToString,
+            ),
+            'DeleteBacktest': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteBacktest,
+                    request_deserializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestRequest.FromString,
+                    response_serializer=foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestResponse.SerializeToString,
             ),
             'CreateSession': grpc.unary_stream_rpc_method_handler(
                     servicer.CreateSession,
@@ -236,6 +252,33 @@ class BacktestServicer(object):
             '/foreverbull.backtest.service.v1.BacktestServicer/GetBacktest',
             foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestRequest.SerializeToString,
             foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.GetBacktestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteBacktest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.backtest.service.v1.BacktestServicer/DeleteBacktest',
+            foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestRequest.SerializeToString,
+            foreverbull_dot_backtest_dot_service_dot_v1_dot_backtest__pb2.DeleteBacktestResponse.FromString,
             options,
             channel_credentials,
             insecure,

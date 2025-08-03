@@ -115,6 +115,15 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 	}, nil
 }
 
+func (bs *BacktestServer) DeleteBacktest(ctx context.Context, req *servicePb.DeleteBacktestRequest) (*servicePb.DeleteBacktestResponse, error) {
+	backtests := repository.Backtest{Conn: bs.pgx}
+	err := backtests.Delete(ctx, req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("error deleting backtest: %w", err)
+	}
+	return &servicePb.DeleteBacktestResponse{}, nil
+}
+
 func (bs *BacktestServer) CreateSession(
 	req *servicePb.CreateSessionRequest, _stream servicePb.BacktestServicer_CreateSessionServer,
 ) error {

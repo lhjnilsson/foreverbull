@@ -72,6 +72,16 @@ class GetBacktestResponse(_message.Message):
     backtest: _backtest_pb2.Backtest
     def __init__(self, name: _Optional[str] = ..., backtest: _Optional[_Union[_backtest_pb2.Backtest, _Mapping]] = ...) -> None: ...
 
+class DeleteBacktestRequest(_message.Message):
+    __slots__ = ("name",)
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    def __init__(self, name: _Optional[str] = ...) -> None: ...
+
+class DeleteBacktestResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class CreateSessionRequest(_message.Message):
     __slots__ = ("backtest_name",)
     BACKTEST_NAME_FIELD_NUMBER: _ClassVar[int]
