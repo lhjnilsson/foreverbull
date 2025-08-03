@@ -143,6 +143,7 @@ class Engine(multiprocessing.Process):
         self.logger = logging.getLogger().getChild(__name__)
 
         if os.path.exists(self._socket_file_path):
+            print("Removing old socket file", self._socket_file_path)
             os.remove(self._socket_file_path)
         with pynng.Rep0(
             listen=f"ipc://{self._socket_file_path}",
