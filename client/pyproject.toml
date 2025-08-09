@@ -1,54 +1,73 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
+]
+requires-python = ">=3.13"
 dependencies = [
-    "grpcio",
-    "textual-plotext",
+  "pynng",
+  "minio",
+  "pandas",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "click",
+  "cython",
+  "docker",
+  "pandas-datareader",
+  "tables",
+  "numpy",
+  "setuptools",
+  "protobuf==5.29.0",
+  "types-protobuf",
+  "grpcio",
 ]
 
-[tool.rye]
-managed = true
-virtual = true
-dev-dependencies = [
-    "pytest-repeat",
-    "grpcio-tools",
-    "grpcio-testing",
-    "pytest-cov",
-    "cookiecutter",
-    "ta-lib",
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = [
+    "cli",
+    "testing",
+    "zipline",
 ]
 
+[tool.uv.sources]
+foreverbull-zipline = { workspace = true }
 
-[tool.rye.workspace]
-packages = [
-    "foreverbull",
-    "foreverbull_cli",
-    "foreverbull_testing",
-    "foreverbull_zipline",
+[dependency-groups]
+dev = [
+    "grpcio-testing>=1.71.2",
+    "grpcio-tools>=1.71.2",
+    "pytest>=8.4.1",
+    "testcontainers>=4.12.0",
+    "yfinance>=0.2.65",
 ]
 
-[tool.ruff.lint]
-exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
+[tool.pytest.ini_options]
+addopts = [
+"--ignore=tests/end_to_end",
+"--ignore=tests/integration",
+]
 
-[tool.ruff.format]
-exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
 
 [tool.ruff]
 fix = true
-target-version = "py311"
+target-version = "py313"
 line-length = 120
+
+[tool.ruff.lint]
+exclude = ["src/foreverbull/pb/*", "templates/*"]
+
+[tool.ruff.format]
+exclude = ["src/foreverbull/pb/*", "templates/*"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
 lines-between-types = 1
 lines-after-imports = 2
 known-first-party = ["foreverbull"]
-
-[tool.pytest.ini_options]
-testpaths = [
-    "foreverbull/tests/",
-    "foreverbull_testing/tests/",
-    "foreverbull_zipline/tests/",
-    "tests/",
-]
-filterwarnings = "ignore::DeprecationWarning"

@@ -1,0 +1,54 @@
+[project]
+name = "foreverbull"
+version = "0.0.0"
+dependencies = [
+    "grpcio",
+    "textual-plotext",
+]
+
+[tool.rye]
+managed = true
+virtual = true
+dev-dependencies = [
+    "pytest-repeat",
+    "grpcio-tools",
+    "grpcio-testing",
+    "pytest-cov",
+    "cookiecutter",
+    "ta-lib",
+]
+
+
+[tool.rye.workspace]
+packages = [
+    "foreverbull",
+    "foreverbull_cli",
+    "foreverbull_testing",
+    "foreverbull_zipline",
+]
+
+[tool.ruff.lint]
+exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
+
+[tool.ruff.format]
+exclude = ["foreverbull/src/foreverbull/pb/*", "templates/*"]
+
+[tool.ruff]
+fix = true
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint.isort]
+force-single-line = true
+lines-between-types = 1
+lines-after-imports = 2
+known-first-party = ["foreverbull"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "foreverbull/tests/",
+    "foreverbull_testing/tests/",
+    "foreverbull_zipline/tests/",
+    "tests/",
+]
+filterwarnings = "ignore::DeprecationWarning"
