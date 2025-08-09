@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -51,52 +51,21 @@ jobs:
           sudo make &&
           sudo make install &&
           sudo ldconfig
-      - name: Setup rye
-        uses: eifinger/setup-rye@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
       - name: Sync dependencies
-        run: rye sync --no-lock
+        run: uv sync --all-packages --all-extras
       - name: Lint
         run: |
-          rye lint
-      - name: Unittest foreverbull
-        run: |
-          rye test -- foreverbull/ --junitxml=/tmp/pytest_coverage_foreverbull.xml --cov-report=term-missing:skip-covered --cov=foreverbull/src foreverbull/tests/ | tee /tmp/pytest_coverage_foreverbull.txt
-      - name: Unittest foreverbull_zipline
-        run: |
-          rye test -- foreverbull_zipline/tests/ -xvs
-      - name: Unittest foreverbull_testing
-        run: |
-          rye test -- foreverbull_testing/ --junitxml=/tmp/pytest_coverage_foreverbull_testing.xml --cov-report=term-missing:skip-covered --cov=foreverbull_testing/src foreverbull_testing/tests/  | tee /tmp/pytest_coverage_foreverbull_testing.txt
-      - name: Unittest foreverbull_cli
-        run: |
-          rye test -- foreverbull_cli/ --junitxml=/tmp/pytest_coverage_foreverbull_cli.xml --cov-report=term-missing:skip-covered --cov=foreverbull_cli/src foreverbull_cli/tests/ | tee /tmp/pytest_coverage_foreverbull_cli.txt
-      - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
-        with:
-          title: "Python Client"
-          pytest-coverage-path: /tmp/pytest_coverage_foreverbull.txt
-          junitxml-path: /tmp/pytest_coverage_foreverbull.xml
-
-      - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
-        with:
-          title: "Python Client(Zipline)"
-          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_zipline.txt
-          junitxml-path: /tmp/pytest_coverage_foreverbull_zipline.xml
-
-      - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
-        with:
-          title: "Python Client(Testing)"
-          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_testing.txt
-          junitxml-path: /tmp/pytest_coverage_foreverbull_testing.xml
-
-      - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
-        with:
-          title: "Python Client(CLI)"
-          pytest-coverage-path: /tmp/pytest_coverage_foreverbull_cli.txt
-          junitxml-path: /tmp/pytest_coverage_foreverbull_cli.xml
+          uvx ruff check
+          uvx ruff format --check
+          uvx pyright
+      - name: Unittest
+        run: | 
+          uv run pytest tests/
+          uv run pytest zipline/
+          uv run pytest cli/
+          uv run pytest testing/
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
@@ -186,15 +155,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Setup rye
-        uses: eifinger/setup-rye@v4
-      - name: build foreverbull
-        run: rye build --pyproject foreverbull/pyproject.toml
-      - name: build foreverbull_testing
-        run: rye build --pyproject foreverbull_testing/pyproject.toml
-      - name: build foreverbull_cli
-        run: rye build --pyproject foreverbull_cli/pyproject.toml
+          python-version: "3.13"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Build
+        run: uv build --all-packages
       - name: Upload foreverbull
         uses: actions/upload-artifact@v4
         with:
@@ -213,11 +178,6 @@ jobs:
           name: foreverbull_cli-0.0.1-py3-none-any.whl
           path: client/dist/foreverbull_cli-0.0.1-py3-none-any.whl
           retention-days: 1
-      - name: Upload example algorithms
-        uses: actions/upload-artifact@v4
-        with:
-          name: example_algorithms
-          path: client/example_algorithms
 
   build-docker-zipline:
     needs: [build-python-packages]
@@ -268,7 +228,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -388,7 +348,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.13"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx

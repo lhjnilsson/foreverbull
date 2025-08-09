@@ -2,7 +2,7 @@
   "venvPath": "client/",
   "venv": ".venv",
   "include": ["client/"],
-  "exclude": ["client/.venv", "client/foreverbull/src/foreverbull/pb", "client/.idea",
+  "exclude": ["client/.venv", "client/src/foreverbull/pb", "client/.idea",
 "client/templates"],
   "executionEnvironments": [
     {

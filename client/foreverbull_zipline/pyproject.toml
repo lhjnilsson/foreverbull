@@ -1,8 +1,0 @@
-[project]
-name = "foreverbull_zipline"
-version = "0.0.0"
-dependencies = ["foreverbull", "grpcio-health-checking"]
-
-[tool.rye]
-managed = true
-dev-dependencies = ["zipline-reloaded"]
