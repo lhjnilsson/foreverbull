@@ -332,7 +332,7 @@ wheels = [
 
 [[package]]
 name = "foreverbull"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -391,7 +391,7 @@ dev = [
 
 [[package]]
 name = "foreverbull-cli"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "cli" }
 dependencies = [
     { name = "docker" },
@@ -408,12 +408,12 @@ requires-dist = [
 
 [[package]]
 name = "foreverbull-testing"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "testing" }
 
 [[package]]
 name = "foreverbull-zipline"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "zipline" }
 dependencies = [
     { name = "empyrical-reloaded" },

@@ -163,20 +163,20 @@ jobs:
       - name: Upload foreverbull
         uses: actions/upload-artifact@v4
         with:
-          name: foreverbull-0.0.1-py3-none-any.whl
-          path: client/dist/foreverbull-0.0.1-py3-none-any.whl
+          name: foreverbull-0.0.0-py3-none-any.whl
+          path: client/dist/foreverbull-0.0.0-py3-none-any.whl
           retention-days: 1
       - name: Upload foreverbull_testing
         uses: actions/upload-artifact@v4
         with:
-          name: foreverbull_testing-0.0.1-py3-none-any.whl
-          path: client/dist/foreverbull_testing-0.0.1-py3-none-any.whl
+          name: foreverbull_testing-0.0.0-py3-none-any.whl
+          path: client/dist/foreverbull_testing-0.0.0-py3-none-any.whl
           retention-days: 1
       - name: Upload foreverbull_cli
         uses: actions/upload-artifact@v4
         with:
-          name: foreverbull_cli-0.0.1-py3-none-any.whl
-          path: client/dist/foreverbull_cli-0.0.1-py3-none-any.whl
+          name: foreverbull_cli-0.0.0-py3-none-any.whl
+          path: client/dist/foreverbull_cli-0.0.0-py3-none-any.whl
           retention-days: 1
 
   build-docker-zipline:
@@ -191,7 +191,7 @@ jobs:
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull-0.0.1-py3-none-any.whl
+          name: foreverbull-0.0.0-py3-none-any.whl
           path: client
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -202,7 +202,7 @@ jobs:
           file: ./client/foreverbull_zipline/Dockerfile
           tags: lhjnilsson/zipline:on_commit
           build-args: |
-            FB_WHEEL=foreverbull-0.0.1-py3-none-any.whl
+            FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
       - name: Upload zipline
         uses: actions/upload-artifact@v4
@@ -257,17 +257,17 @@ jobs:
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull-0.0.1-py3-none-any.whl
+          name: foreverbull-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download foreverbull-cli pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull_cli-0.0.1-py3-none-any.whl
+          name: foreverbull_cli-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download foreverbull_testing pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull_testing-0.0.1-py3-none-any.whl
+          name: foreverbull_testing-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download example_algorithms
         uses: actions/download-artifact@v4
@@ -280,9 +280,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install foreverbull and foreverbull_testing
         run: |
-          pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
-          pip install /tmp/foreverbull_cli-0.0.1-py3-none-any.whl
-          pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
+          pip install /tmp/foreverbull-0.0.0-py3-none-any.whl
+          pip install /tmp/foreverbull_cli-0.0.0-py3-none-any.whl
+          pip install /tmp/foreverbull_testing-0.0.0-py3-none-any.whl
       - name: Install example algorithms dependencies
         run: |
           curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
@@ -377,17 +377,17 @@ jobs:
       - name: Download foreverbull pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull-0.0.1-py3-none-any.whl
+          name: foreverbull-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download foreverbull-cli pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull_cli-0.0.1-py3-none-any.whl
+          name: foreverbull_cli-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download foreverbull_testing pypi package
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull_testing-0.0.1-py3-none-any.whl
+          name: foreverbull_testing-0.0.0-py3-none-any.whl
           path: /tmp
       - name: Download example_algorithms
         uses: actions/download-artifact@v4
@@ -400,9 +400,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install foreverbull and foreverbull_testing
         run: |
-          pip install /tmp/foreverbull-0.0.1-py3-none-any.whl
-          pip install /tmp/foreverbull_cli-0.0.1-py3-none-any.whl
-          pip install /tmp/foreverbull_testing-0.0.1-py3-none-any.whl
+          pip install /tmp/foreverbull-0.0.0-py3-none-any.whl
+          pip install /tmp/foreverbull_cli-0.0.0-py3-none-any.whl
+          pip install /tmp/foreverbull_testing-0.0.0-py3-none-any.whl
       - name: Create environment
         run: |
           fbenv create
