@@ -106,10 +106,10 @@ class WorkerInstance(Worker):
             print("Getting context socket")
             context_socket = self._broker_socket.new_context()
             try:
-                print("REQ: ", request)
                 request = worker_service_pb2.WorkerRequest()
                 request.ParseFromString(context_socket.recv())
                 response = worker_service_pb2.WorkerResponse(task=request.task, error=None)
+                print("REQ: ", request)
                 self.logger.debug(f"Processing {request.portfolio.timestamp} symbols: {request.symbols}")
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(

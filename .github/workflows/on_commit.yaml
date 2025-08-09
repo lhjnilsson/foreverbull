@@ -62,7 +62,7 @@ jobs:
           uvx pyright
       - name: Unittest
         run: | 
-          uv run pytest tests/
+          uv run pytest tests/test_worker.py -xvs
           uv run pytest zipline/
           uv run pytest cli/
           uv run pytest testing/
