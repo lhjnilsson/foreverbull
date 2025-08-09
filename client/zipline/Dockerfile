@@ -1,6 +1,6 @@
 FROM lhjnilsson/zipline_base:latest
 
-COPY foreverbull_zipline/src /app
+COPY zipline/src /app
 
 ARG FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
 COPY ${FB_WHEEL} /foreverbull-0.0.1-py3-none-any.whl

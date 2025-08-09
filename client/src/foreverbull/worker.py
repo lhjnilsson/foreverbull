@@ -103,6 +103,7 @@ class WorkerInstance(Worker):
         while not stop_event.is_set():
             request = None
             self.logger.debug("Getting context socket")
+            print("Getting context socket")
             context_socket = self._broker_socket.new_context()
             try:
                 request = worker_service_pb2.WorkerRequest()
@@ -122,8 +123,10 @@ class WorkerInstance(Worker):
                 context_socket.send(response.SerializeToString())
                 context_socket.close()
             except pynng.exceptions.Timeout:
+                print("Timeout")
                 context_socket.close()
             except Exception as e:
+                print("Exception")
                 self.logger.exception(repr(e))
                 if request:
                     response = worker_service_pb2.WorkerResponse()
