@@ -23,7 +23,7 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_s
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(autouse=True, scope="session")
 def spawn_process():
     method = get_start_method()
     if method != "spawn":
@@ -209,7 +209,7 @@ def backtest_date_range(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
+def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -278,7 +278,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
+def non_parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -346,7 +346,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
+def parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -422,7 +422,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database):
+def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, fb_database):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -498,7 +498,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(spawn_process, backtest_entity: backtest_pb2.Backtest, fb_database, namespace_server):
+def multistep_algo_with_namespace(backtest_entity: backtest_pb2.Backtest, fb_database, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
