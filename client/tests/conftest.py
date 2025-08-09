@@ -228,6 +228,7 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
 
                 server_socket.send(request.SerializeToString())
                 response = worker_service_pb2.WorkerResponse()
+                print("Waiting for response")
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
                 assert response.HasField("error") is False

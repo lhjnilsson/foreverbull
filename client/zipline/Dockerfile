@@ -2,9 +2,9 @@ FROM lhjnilsson/zipline_base:latest
 
 COPY zipline/src /app
 
-ARG FB_WHEEL=dist/foreverbull-0.0.1-py3-none-any.whl
-COPY ${FB_WHEEL} /foreverbull-0.0.1-py3-none-any.whl
-RUN pip install /foreverbull-0.0.1-py3-none-any.whl
+ARG FB_WHEEL=dist/foreverbull-0.0.0-py3-none-any.whl
+COPY ${FB_WHEEL} /foreverbull-0.0.0-py3-none-any.whl
+RUN pip install /foreverbull-0.0.0-py3-none-any.whl
 RUN pip install grpcio-health-checking==1.71.0
 
 RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
