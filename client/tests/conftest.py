@@ -186,10 +186,11 @@ def namespace_server():
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()
 
-    yield namespace
-
-    s.close()
-    thread.join()
+    try:
+        yield namespace
+    finally:
+        s.close()
+        thread.join()
 
 
 def get_algo(file_path: str) -> Algorithm:
@@ -282,9 +283,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -351,8 +353,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -427,8 +431,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -503,8 +509,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -609,5 +617,7 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
