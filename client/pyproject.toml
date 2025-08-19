@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
   "pynng",
   "minio",
