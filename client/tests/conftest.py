@@ -219,18 +219,6 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
         )
         orders: list[Order] = []
 
-        def send_with_retry(socket, request: worker_service_pb2.WorkerRequest) -> worker_service_pb2.WorkerResponse:
-            for _ in range(3):
-                try:
-                    socket.send(request.SerializeToString())
-                    response = worker_service_pb2.WorkerResponse()
-                    response.ParseFromString(socket.recv())
-                    return response
-                except Exception as e:
-                    print(f"Failed to send request: {e}")
-            else:
-                raise RuntimeError("Failed to send request")
-
         for dt, symbols in backtest_date_range(backtest_entity):
             portfolio.timestamp.FromDatetime(dt)
             for symbol in symbols:
@@ -239,7 +227,9 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-                response = send_with_retry(server_socket, request)
+                server_socket.send(request.SerializeToString())
+                response = worker_service_pb2.WorkerResponse()
+                response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
                 assert response.HasField("error") is False
                 for order in response.orders:
