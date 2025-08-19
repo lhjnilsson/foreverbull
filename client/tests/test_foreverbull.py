@@ -38,8 +38,10 @@ class TestBacktestSession:
             )
             return stub
 
-        yield _add_servicer
-        grpc_server.stop(None)
+        try:
+            yield _add_servicer
+        finally:
+            grpc_server.stop(None)
 
     def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
         model, configuration, _ = parallel_algo_file
@@ -81,8 +83,10 @@ class TestTradingSession:
             stub = trading_service_pb2_grpc.SessionServicerStub(grpc.insecure_channel(f"localhost:{server_port}"))
             return stub
 
-        yield _add_servicer
-        grpc_server.stop(None)
+        try:
+            yield _add_servicer
+        finally:
+            grpc_server.stop(None)
 
     def test_run_trading(self, parallel_algo_file, namespace_server, start_grpc_server):
         model, configuration, _ = parallel_algo_file
@@ -116,8 +120,10 @@ class TestForeverbull:
             time.sleep(1)
             return server_port
 
-        yield _add_servicer
-        grpc_server.stop(None)
+        try:
+            yield _add_servicer
+        finally:
+            grpc_server.stop(None)
 
     @pytest.fixture
     def trading_grpc_server(self):
@@ -132,8 +138,10 @@ class TestForeverbull:
             time.sleep(1)
             return server_port
 
-        yield _add_servicer
-        grpc_server.stop(None)
+        try:
+            yield _add_servicer
+        finally:
+            grpc_server.stop(None)
 
     def test_backtest_session(self, parallel_algo_file, backtest_grpc_server):
         mock_backtest_session_servicer = MagicMock(spec=backtest_session_service_pb2_grpc.SessionServicerServicer)

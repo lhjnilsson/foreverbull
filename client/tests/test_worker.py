@@ -122,8 +122,8 @@ class TestWorkerPool:
             pool.run_execution(stop_event)
             stop_event.set()
 
-    def test_run(self, namespace_server, parallel_algo_file):
-        algorithm, request, process_symbols = parallel_algo_file
+    def test_run(self, namespace_server, non_parallel_algo_file):
+        algorithm, request, process_symbols = non_parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pool:
             stop_event = Event()

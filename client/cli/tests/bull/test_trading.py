@@ -100,6 +100,7 @@ def test_session_run(runner):
             ]
         )
         get_portfolio.return_value = trading_service_pb2.GetPortfolioResponse(portfolio=portfolio)
+        place_orders = MagicMock()
         mock_trading_session.run_trading.return_value = tuple(
             [
                 [
@@ -108,9 +109,10 @@ def test_session_run(runner):
                     marketdata_pb2.Order(symbol="E", amount=10),
                     marketdata_pb2.Order(symbol="F", amount=10),
                 ],
-                None,
+                place_orders,
             ]
         )
 
-        result = runner(trading, ["run", "test"])
+        result = runner(trading, ["run", "test"], input="yes")
         assert result.exit_code == 0
+        assert place_orders.called

@@ -186,10 +186,11 @@ def namespace_server():
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()
 
-    yield namespace
-
-    s.close()
-    thread.join()
+    try:
+        yield namespace
+    finally:
+        s.close()
+        thread.join()
 
 
 def get_algo(file_path: str) -> Algorithm:
@@ -217,6 +218,7 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
             positions=[],
         )
         orders: list[Order] = []
+
         for dt, symbols in backtest_date_range(backtest_entity):
             portfolio.timestamp.FromDatetime(dt)
             for symbol in symbols:
@@ -225,10 +227,8 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-
                 server_socket.send(request.SerializeToString())
                 response = worker_service_pb2.WorkerResponse()
-                print("Waiting for response")
                 response.ParseFromString(server_socket.recv())
                 assert response.task == "parallel_algo"
                 assert response.HasField("error") is False
@@ -273,9 +273,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -342,8 +343,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -418,8 +421,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -494,8 +499,10 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
 
 
 @pytest.fixture(scope="function")
@@ -600,5 +607,7 @@ algo = Algorithm(
 """
         )
         f.flush()
-        yield get_algo(f.name), request, _process_symbols
-        process_socket.close()
+        try:
+            yield get_algo(f.name), request, _process_symbols
+        finally:
+            process_socket.close()
