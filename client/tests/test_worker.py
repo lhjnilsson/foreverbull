@@ -14,43 +14,40 @@ class TestWorkerInstance:
         with pytest.raises(exceptions.ConfigurationError):
             w.configure_execution(worker_pb2.ExecutionConfiguration())
 
-    def test_configure_bad_broker_port(self, parallel_algo_file):
+    @pytest.mark.parametrize(
+        "new_attr, exc_msg",
+        [
+            ([], None),
+            (["brokerPort", 1234], "Unable to connect to broker"),
+            (["namespacePort", 1234], "Unable to connect to namespace"),
+            (["databaseURL", "url"], "Unable to connect to database"),
+        ],
+    )
+    def test_configure_execution(self, parallel_algo_file, namespace_server, new_attr, exc_msg):
         algorithm, request, _ = parallel_algo_file
         w = worker.WorkerInstance(algorithm._file_path)
-        request.brokerPort = 1234
-        with pytest.raises(exceptions.ConfigurationError):
+        if new_attr:
+            setattr(request, *new_attr)
+        if exc_msg:
+            with pytest.raises(exceptions.ConfigurationError, match=exc_msg):
+                w.configure_execution(request)
+        else:
             w.configure_execution(request)
 
-    def test_configure_bad_namespace_port(self, parallel_algo_file):
-        algorithm, request, _ = parallel_algo_file
-        w = worker.WorkerInstance(algorithm._file_path)
-        request.namespacePort = 1234
-        with pytest.raises(exceptions.ConfigurationError):
-            w.configure_execution(request)
-
-    def test_configure_bad_database(self, parallel_algo_file):
-        algorithm, request, _ = parallel_algo_file
-        w = worker.WorkerInstance(algorithm._file_path)
-        request.databaseURL = "bad_url"
-        with pytest.raises(exceptions.ConfigurationError):
-            w.configure_execution(request)
-
-    def test_configure_bad_parameters(self, parallel_algo_file):
-        algorithm, request, _ = parallel_algo_file
-        w = worker.WorkerInstance(algorithm._file_path)
-        request.databaseURL = "bad_url"
-        with pytest.raises(exceptions.ConfigurationError):
-            w.configure_execution(request)
-
-    @pytest.mark.skip()
-    def test_configure_and_run_execution(self, namespace_server, parallel_algo_file):
+    def test_run_execution(self, namespace_server, parallel_algo_file):
         algorithm, request, process_symbols = parallel_algo_file
+        event = Event()
+
+        def process_and_stop():
+            process_symbols()
+            event.set()
+
         w = worker.WorkerInstance(algorithm._file_path)
         w.configure_execution(request)
-        t = Thread(target=process_symbols, args=())
+        t = Thread(target=process_and_stop, args=())
         t.start()
         w.run_execution(
-            Event(),
+            event,
         )
 
 
@@ -68,34 +65,28 @@ class TestWorkerPool:
             pool.configure_execution(worker_pb2.ExecutionConfiguration())
 
     @pytest.mark.parametrize(
-        "broker_port,namespace_port,database_url,expected_exception",
+        "new_attr,exc_msg",
         [
-            (1234, None, None, exceptions.ConfigurationError),
-            (None, 1234, None, exceptions.ConfigurationError),
-            (None, None, "bad_url", exceptions.ConfigurationError),
-            (None, None, None, None),
+            ([], None),
+            (["brokerPort", 1234], "Unable to connect to broker"),
+            (["namespacePort", 1234], "Unable to connect to namespace"),
+            (["databaseURL", "bad_url"], "Unable to connect to database"),
         ],
     )
     def test_configure(
         self,
         namespace_server,
         parallel_algo_file,
-        broker_port,
-        namespace_port,
-        database_url,
-        expected_exception,
+        new_attr,
+        exc_msg,
     ):
         algorithm, request, process_symbols = parallel_algo_file
-        if broker_port:
-            request.brokerPort = broker_port
-        if namespace_port:
-            request.namespacePort = namespace_port
-        if database_url:
-            request.databaseURL = database_url
-        pool = worker.WorkerPool(algorithm._file_path)
+        if new_attr:
+            setattr(request, *new_attr)
+        pool = worker.WorkerPool(algorithm._file_path, executors=1)
         with pool:
-            if expected_exception:
-                with pytest.raises(expected_exception):
+            if exc_msg:
+                with pytest.raises(exceptions.ConfigurationError, match=exc_msg):
                     pool.configure_execution(request)
             else:
                 pool.configure_execution(request)

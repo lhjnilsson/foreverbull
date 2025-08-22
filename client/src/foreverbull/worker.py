@@ -48,8 +48,9 @@ class WorkerInstance(Worker):
         self.logger.debug("configuring worker")
         try:
             self._algo = models.Algorithm.from_file_path(self._file_path)
+            self.logger.debug(f"loaded algorithmic file: {self._file_path}")
         except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
+            raise exceptions.ConfigurationError("Unable to load algorithm") from e
 
         _hostname = os.getenv("BROKER_HOSTNAME", "127.0.0.1")
         try:
@@ -59,9 +60,9 @@ class WorkerInstance(Worker):
                 recv_timeout=500,
                 send_timeout=500,
             )
-            self.logger.info(f"connected to broker socket: tcp://{_hostname}:{req.brokerPort}")
+            self.logger.debug(f"connected to broker socket: tcp://{_hostname}:{req.brokerPort}")
         except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to connect to broker: {e}")
+            raise exceptions.ConfigurationError("Unable to connect to broker") from e
         try:
             self._namespace_socket = pynng.Req0(
                 dial=f"tcp://{_hostname}:{req.namespacePort}",
@@ -69,25 +70,26 @@ class WorkerInstance(Worker):
                 recv_timeout=500,
                 send_timeout=500,
             )
-            self.logger.info(f"connected to namespace socket: tcp://{_hostname}:{req.namespacePort}")
+            self.logger.debug(f"connected to namespace socket: tcp://{_hostname}:{req.namespacePort}")
         except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to connect to namespace: {e}")
+            raise exceptions.ConfigurationError("Unable to connect to namespace") from e
 
         try:
             engine = get_engine(req.databaseURL)
             with engine.connect() as connection:
                 connection.execute(sqlalchemy.text("SELECT 1 from asset;"))
             self._database_engine = engine
+            self.logger.debug(f"connected to database: {req.databaseURL}")
         except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to connect to database: {e}")
+            print("FAIL: ", repr(e))
+            raise exceptions.ConfigurationError("Unable to connect to database") from e
 
         for function in req.functions:
             for parameter in function.parameters:
                 self._algo.configure(function.name, parameter.key, parameter.value)
-                self.logger.info(
+                self.logger.debug(
                     f"configured function {function.name} with parameter {parameter.key}={parameter.value}"
                 )
-
         self.logger.info("worker configured correctly")
 
     @property
