@@ -94,8 +94,13 @@ class WorkerInstance(Worker):
 
     @property
     def is_configured(self) -> bool:
-        return (
-            self._database_engine is not None and self._broker_socket is not None and self._namespace_socket is not None
+        return all(
+            [
+                self._algo is not None,
+                self._database_engine is not None,
+                self._broker_socket is not None,
+                self._namespace_socket is not None,
+            ]
         )
 
     def run_execution(self, stop_event: Event | threading.Event) -> None:
@@ -122,17 +127,16 @@ class WorkerInstance(Worker):
                 for order in orders:
                     response.orders.append(marketdata_pb2.Order(symbol=order.symbol, amount=order.amount))
                 context_socket.send(response.SerializeToString())
-                context_socket.close()
             except pynng.exceptions.Timeout:
-                context_socket.close()
+                pass
             except Exception as e:
                 self.logger.exception(repr(e))
                 if request:
                     response = worker_service_pb2.WorkerResponse()
                     response.error = repr(e)
                     context_socket.send(response.SerializeToString())
-                if context_socket:
-                    context_socket.close()
+            finally:
+                context_socket.close()
         self._broker_socket.close()
         self._namespace_socket.close()
         return None

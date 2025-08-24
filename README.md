@@ -1,6 +1,6 @@
 # Foreverbull 🚀
 
-Foreverbull is an exciting trading platform designed for seamless, continuous delivery of algorithmic trading strategies. Our mission? To empower you with rapid development, effortless deployment, and rock-solid confidence in your trading results! 💪
+Foreverbull is an trading platform designed for seamless, continuous delivery of algorithmic trading strategies. Our mission? To empower you with rapid development, effortless deployment, and rock-solid confidence in your trading results! 💪
 
 Right now, we're sourcing market data from Yahoo Finance, and fetching ETF holdings straight from the iShares API. For trading, we integrate with Alpaca, supporting both live and paper trading modes. 📈
 

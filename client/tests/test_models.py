@@ -13,10 +13,29 @@ from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Portfolio
+from foreverbull.models import _get_postgres_urls
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+
+
+@pytest.mark.parametrize(
+    "input,expected_output",
+    [
+        (
+            "postgres://user:password@127.0.0.1:5656/demo",
+            [
+                "postgresql://user:password@127.0.0.1:5656/demo",
+                "postgresql://user:password@localhost:5432/demo",
+                "postgresql://user:password@postgres:5432/demo",
+                "postgresql://user:password@127.0.0.1:5432/demo",
+            ],
+        )
+    ],
+)
+def test_get_postgres_urls(input, expected_output):
+    assert [u for u in _get_postgres_urls(input)] == expected_output
 
 
 class TestAsset:

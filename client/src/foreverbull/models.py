@@ -25,46 +25,42 @@ from sqlalchemy import engine
 from sqlalchemy import text
 
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2  # noqa
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 
 
-# Hacky way to get the database URL, TODO: find a better way
-def get_engine(url: str):
-    log = logging.getLogger().getChild(__name__)
+def _get_postgres_urls(base_url: str) -> Iterator[str]:
+    if base_url.startswith("postgres://"):
+        base_url = base_url.replace("postgres://", "postgresql://", 1)
 
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+    yield base_url
 
-    try:
-        engine = create_engine(url)
-        engine.connect()
-        return engine
-    except Exception:
-        log.warning(f"Could not connect to {url}")
-
-    database_host = re.search(r"@([^/]+):", url)
+    database_host = re.search(r"@([^/]+):", base_url)
     if database_host is None:
         raise Exception("Could not find database host in URL")
     database_host = database_host.group(1)
-    database_port = re.search(r":(\d+)/", url)
+    database_port = re.search(r":(\d+)/", base_url)
     if database_port is None:
         raise Exception("Could not find database port in URL")
     database_port = database_port.group(1)
 
     new_url = ""
     for hostname in ["localhost", "postgres", "127.0.0.1"]:
-        for port in [database_port, "5432"]:
-            try:
-                new_url = url.replace(f"@{database_host}:", f"@{hostname}:", 1)
-                new_url = new_url.replace(f":{database_port}", ":5432", 1)
-                engine = create_engine(new_url)
-                engine.connect()
-                log.info(f"Connected to {new_url}")
-                return engine
-            except Exception:
-                log.warning(f"Could not connect to {new_url}")
+        new_url = base_url.replace(f"@{database_host}:", f"@{hostname}:", 1)
+        yield new_url.replace(f":{database_port}", ":5432", 1)
+
+
+# Hacky way to get the database URL, TODO: find a better way, ie pass correct url
+def get_engine(url: str) -> engine.Engine:
+    log = logging.getLogger().getChild(__name__)
+    for url in _get_postgres_urls(url):
+        try:
+            engine = create_engine(url)
+            engine.connect()
+            return engine
+        except Exception:
+            log.warning(f"Could not connect to {url}")
     raise Exception("Could not connect to database")
 
 
@@ -75,10 +71,12 @@ def namespace_socket() -> Iterator[pynng.Socket]:
     if port is None:
         raise Exception("Namespace port not set")
     socket = pynng.Req0(dial=f"tcp://{hostname}:{port}", block_on_dial=True)
-    socket.recv_timeout = 500
-    socket.send_timeout = 500
-    yield socket
-    socket.close()
+    socket.recv_timeout = 5000
+    socket.send_timeout = 5000
+    try:
+        yield socket
+    finally:
+        socket.close()
 
 
 class Asset:
@@ -388,7 +386,7 @@ class Algorithm:
             elif type == "bool":
                 return bool(val)
             elif type == "str":
-                return str(val)
+                return val
             else:
                 raise TypeError(f"Unknown parameter type: {type}")
 

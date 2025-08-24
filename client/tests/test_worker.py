@@ -20,7 +20,7 @@ class TestWorkerInstance:
             ([], None),
             (["brokerPort", 1234], "Unable to connect to broker"),
             (["namespacePort", 1234], "Unable to connect to namespace"),
-            (["databaseURL", "url"], "Unable to connect to database"),
+            (["databaseURL", "bad_url"], "Unable to connect to database"),
         ],
     )
     def test_configure_execution(self, parallel_algo_file, namespace_server, new_attr, exc_msg):
@@ -34,8 +34,8 @@ class TestWorkerInstance:
         else:
             w.configure_execution(request)
 
-    def test_run_execution(self, namespace_server, parallel_algo_file):
-        algorithm, request, process_symbols = parallel_algo_file
+    def test_run_execution(self, namespace_server, non_parallel_algo_file):
+        algorithm, request, process_symbols = non_parallel_algo_file
         event = Event()
 
         def process_and_stop():
