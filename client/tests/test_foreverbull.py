@@ -1,6 +1,7 @@
 import time
 
 from concurrent import futures
+from contextlib import suppress
 from datetime import date
 from unittest.mock import MagicMock
 
@@ -41,7 +42,8 @@ class TestBacktestSession:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
         model, configuration, _ = parallel_algo_file
@@ -86,7 +88,8 @@ class TestTradingSession:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     def test_run_trading(self, parallel_algo_file, namespace_server, start_grpc_server):
         model, configuration, _ = parallel_algo_file
@@ -123,7 +126,8 @@ class TestForeverbull:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     @pytest.fixture
     def trading_grpc_server(self):
@@ -141,32 +145,33 @@ class TestForeverbull:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     def test_backtest_session(self, parallel_algo_file, backtest_grpc_server):
         mock_backtest_session_servicer = MagicMock(spec=backtest_session_service_pb2_grpc.SessionServicerServicer)
         mock_backtest_session_servicer.StopServer.return_value = backtest_session_service_pb2.StopServerResponse()
-        mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
+        mock_backtest_servicer = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-        port = backtest_grpc_server(mock_server, mock_backtest_session_servicer)
+        port = backtest_grpc_server(mock_backtest_servicer, mock_backtest_session_servicer)
         backtest = backtest_pb2.Backtest()
         backtest_session = session_pb2.Session(
             port=port,
         )
 
         with algorithm.backtest_session(backtest, backtest_session) as algo:
-            assert type(algo) is BacktestSession
+            assert type(algo) is BacktestSession, "algo is not of type BacktestSession"
 
     def test_trading_session(self, parallel_algo_file, trading_grpc_server):
         mock_trading_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
         mock_trading_session_servicer.StopServer.return_value = trading_service_pb2.StopServerResponse()
-        mock_server = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
+        mock_trading_servicer = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-        port = trading_grpc_server(mock_server, mock_trading_session_servicer)
+        port = trading_grpc_server(mock_trading_servicer, mock_trading_session_servicer)
         trading_session = trading_pb2.Session(
             port=port,
         )
         with algorithm.trading_session(trading_session) as algo:
-            assert type(algo) is TradingSession
+            assert type(algo) is TradingSession, "algo is not of type TradingSession"

@@ -7,6 +7,7 @@ import grpc
 import pandas
 
 from foreverbull import models
+from foreverbull.exceptions import RuntimeError
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
@@ -60,13 +61,16 @@ class BacktestSession:
                 algorithm=self._algorithm.get_definition(),
             )
             create: session_service_pb2.CreateExecutionResponse = self._stub.CreateExecution(req)
-            wp.configure_execution(create.configuration)
-            wp.run_execution(Event())
-            rsp = self._stub.RunExecution(session_service_pb2.RunExecutionRequest(execution_id=create.execution.id))
-            for message in rsp:
-                yield create.execution.id, message
+            try:
+                wp.configure_execution(create.configuration)
+                wp.run_execution(Event())
+                rsp = self._stub.RunExecution(session_service_pb2.RunExecutionRequest(execution_id=create.execution.id))
+                for message in rsp:
+                    yield create.execution.id, message
 
-            rsp = self._stub.StoreResult(
+            except Exception as e:
+                raise RuntimeError("Error running backtest") from e
+            self._stub.StoreResult(
                 session_service_pb2.StoreExecutionResultRequest(
                     execution_id=create.execution.id,
                 )
@@ -87,16 +91,19 @@ class TradingSession:
         symbols: list[str],
     ) -> tuple[list[marketdata_pb2.Order], Callable]:
         with WorkerPool(self._model._file_path) as wp:
-            req = trading_service_pb2.ConfigureRequest(
-                algorithm=self._model.get_definition(),
-            )
-            rsp = self._stub.Configure(req)
-            wp.configure_execution(rsp.configuration)
-            wp.run_execution(Event())
-            req = trading_service_pb2.RunRequest(
-                symbols=symbols,
-            )
-            rsp = self._stub.Run(req)
+            try:
+                req = trading_service_pb2.ConfigureRequest(
+                    algorithm=self._model.get_definition(),
+                )
+                rsp = self._stub.Configure(req)
+                wp.configure_execution(rsp.configuration)
+                wp.run_execution(Event())
+                req = trading_service_pb2.RunRequest(
+                    symbols=symbols,
+                )
+                rsp = self._stub.Run(req)
+            except Exception as e:
+                raise RuntimeError("Error running trading session") from e
 
             def place_orders(orders: list[marketdata_pb2.Order]):
                 req = trading_service_pb2.PlaceOrderRequest(
