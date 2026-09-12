@@ -120,7 +120,7 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 func NewServer() (*grpc.Server, error) {
 	logger := zap.NewExample()
 
-	allButHealthZ := func(ctx context.Context, callMeta interceptors.CallMeta) bool {
+	allButHealthZ := func(_ context.Context, callMeta interceptors.CallMeta) bool {
 		return healthgrpc.Health_ServiceDesc.ServiceName != callMeta.Service
 	}
 
@@ -132,7 +132,6 @@ func NewServer() (*grpc.Server, error) {
 	opts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 	}
-	selector.MatchFunc(allButHealthZ)
 
 	return grpc.NewServer(
 		grpc.ChainUnaryInterceptor(

@@ -28,7 +28,7 @@ func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer 
 }
 
 func (bs *BacktestServer) ListBacktests(ctx context.Context,
-	req *servicePb.ListBacktestsRequest,
+	_ *servicePb.ListBacktestsRequest,
 ) (*servicePb.ListBacktestsResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 
@@ -43,9 +43,9 @@ func (bs *BacktestServer) ListBacktests(ctx context.Context,
 }
 
 func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
-	_stream servicePb.BacktestServicer_CreateBacktestServer,
+	serverStream servicePb.BacktestServicer_CreateBacktestServer,
 ) error {
-	ctx := _stream.Context()
+	ctx := serverStream.Context()
 	rsp := &servicePb.CreateBacktestResponse{
 		CREATING: &pb.Step{
 			State: pb.State_STATE_UNSPECIFIED,
@@ -61,7 +61,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		},
 		Backtest: nil,
 	}
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
@@ -69,15 +69,15 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 	var err error
 	switch {
 	case req.GetEtf() != nil:
-		from_etf := req.GetEtf()
-		o, err = backtestStream.CreateBacktestFromETF(from_etf.GetName(), from_etf.GetBaseEtf(),
-			pb.DateToDateString(from_etf.GetStartDate()), pb.DateToDateString(from_etf.GetEndDate()))
+		fromETF := req.GetEtf()
+		o, err = backtestStream.CreateBacktestFromETF(fromETF.GetName(), fromETF.GetBaseEtf(),
+			pb.DateToDateString(fromETF.GetStartDate()), pb.DateToDateString(fromETF.GetEndDate()))
 		if err != nil {
 			return fmt.Errorf("error creating backtest orchestration: %w", err)
 		}
 	case req.GetBacktest() != nil:
-		backtest := req.GetBacktest()
-		o, err = backtestStream.CreateBacktestFromBacktest(backtest.Backtest)
+		source := req.GetBacktest()
+		o, err = backtestStream.CreateBacktestFromBacktest(source.Backtest)
 		if err != nil {
 			return fmt.Errorf("error creating backtest orchestration: %w", err)
 		}
@@ -91,7 +91,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		if err != nil {
 			return fmt.Errorf("error updating orchestration: %w", err)
 		}
-		err = _stream.Send(rsp)
+		err = serverStream.Send(rsp)
 		if err != nil {
 			return fmt.Errorf("error sending response: %w", err)
 		}
@@ -125,10 +125,10 @@ func (bs *BacktestServer) DeleteBacktest(ctx context.Context, req *servicePb.Del
 }
 
 func (bs *BacktestServer) CreateSession(
-	req *servicePb.CreateSessionRequest, _stream servicePb.BacktestServicer_CreateSessionServer,
+	req *servicePb.CreateSessionRequest, serverStream servicePb.BacktestServicer_CreateSessionServer,
 ) error {
 	sessions := repository.Session{Conn: bs.pgx}
-	ctx := _stream.Context()
+	ctx := serverStream.Context()
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &pb.Step{
 			State: pb.State_STATE_RUNNING,
@@ -141,7 +141,7 @@ func (bs *BacktestServer) CreateSession(
 		},
 		Session: nil,
 	}
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
@@ -151,7 +151,7 @@ func (bs *BacktestServer) CreateSession(
 	}
 	rsp.Session = session
 	rsp.CREATING.State = pb.State_STATE_COMPLETED
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
@@ -160,7 +160,7 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error creating session run command: %w", err)
 	}
 	rsp.STARTING.State = pb.State_STATE_RUNNING
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
@@ -169,7 +169,6 @@ func (bs *BacktestServer) CreateSession(
 		return fmt.Errorf("error publishing session run command: %w", err)
 	}
 
-	// Refetch session to get port
 	session, err = sessions.Get(ctx, session.Id)
 	if err != nil {
 		return fmt.Errorf("error getting session: %w", err)
@@ -177,7 +176,7 @@ func (bs *BacktestServer) CreateSession(
 
 	rsp.STARTING.State = pb.State_STATE_COMPLETED
 	rsp.Session = session
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 	return nil

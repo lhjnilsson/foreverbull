@@ -3,8 +3,7 @@ package container
 import "context"
 
 const (
-	// HealthHealthy is the GetHealth value callers treat as ready
-	// (matches Docker's types.Healthy used by pkg/backtest).
+	// HealthHealthy is the GetHealth value callers treat as ready.
 	HealthHealthy   = "healthy"
 	HealthUnhealthy = "unhealthy"
 	HealthStarting  = "starting"

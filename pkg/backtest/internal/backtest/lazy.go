@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/docker/docker/api/types"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
@@ -48,7 +47,7 @@ func (l *LazyEngine) get(ctx context.Context) (engine.Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get health for zipline container: %w", err)
 	}
-	if health != types.Healthy {
+	if health != container.HealthHealthy {
 		return nil, errors.New("zipline container is unhealthy")
 	}
 

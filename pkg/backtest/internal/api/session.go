@@ -20,10 +20,8 @@ type grpcSessionServer struct {
 	session *backtest.Session
 
 	db              postgres.Query
-	backtest        engine.Engine
 	backtestSession engine.EngineSession
 	wp              worker.Pool
-	server          *grpc.Server
 
 	activity chan bool
 }
@@ -33,11 +31,11 @@ const (
 )
 
 func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
-	backtest engine.Engine,
+	ziplineEngine engine.Engine,
 ) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
 
-	backtestSession, err := backtest.NewSession(context.TODO(), session)
+	backtestSession, err := ziplineEngine.NewSession(context.Background(), session)
 	if err != nil {
 		log.Error().Err(err).Msg("fail to create zipline session")
 		return nil, nil, fmt.Errorf("error creating session: %w", err)
@@ -47,9 +45,7 @@ func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
 	server := &grpcSessionServer{
 		session:         session,
 		db:              database,
-		backtest:        backtest,
 		backtestSession: backtestSession,
-		server:          grpcServer,
 		activity:        activity,
 	}
 	servicePb.RegisterSessionServicerServer(grpcServer, server)
@@ -57,12 +53,16 @@ func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
 	return grpcServer, activity, nil
 }
 
-func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.CreateExecutionRequest) (*servicePb.CreateExecutionResponse, error) {
-	log.Debug().Msg("create execution")
+func (s *grpcSessionServer) pingActivity() {
 	select {
 	case s.activity <- true:
 	default:
 	}
+}
+
+func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.CreateExecutionRequest) (*servicePb.CreateExecutionResponse, error) {
+	log.Debug().Msg("create execution")
+	s.pingActivity()
 
 	executions := repository.Execution{Conn: s.db}
 	e := backtest.Execution{
@@ -71,7 +71,7 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 		EndDate:   req.EndDate,
 	}
 
-	execution, err := executions.Create(context.TODO(), &e)
+	execution, err := executions.Create(ctx, &e)
 	if err != nil {
 		log.Error().Err(err).Msg("error creating execution")
 		return nil, fmt.Errorf("error creating execution: %w", err)
@@ -94,19 +94,17 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 
 func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, stream servicePb.SessionServicer_RunExecutionServer) error {
 	log.Debug().Any("request", req).Msg("run execution")
-	select {
-	case s.activity <- true:
-	default:
-	}
+	s.pingActivity()
+	ctx := stream.Context()
 	executions := repository.Execution{Conn: s.db}
 
-	execution, err := executions.Get(context.Background(), req.ExecutionId)
+	execution, err := executions.Get(ctx, req.ExecutionId)
 	if err != nil {
 		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error getting execution")
 		return fmt.Errorf("error getting execution: %w", err)
 	}
 
-	periods, err := s.backtestSession.RunBacktest(context.Background(), execution, s.wp)
+	periods, err := s.backtestSession.RunBacktest(ctx, execution, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
 		return fmt.Errorf("error running backtest: %w", err)
@@ -137,10 +135,7 @@ func (s *grpcSessionServer) StoreResult(ctx context.Context, req *servicePb.Stor
 
 func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.GetExecutionRequest) (*servicePb.GetExecutionResponse, error) {
 	log.Debug().Any("request", req).Msg("get execution")
-	select {
-	case s.activity <- true:
-	default:
-	}
+	s.pingActivity()
 
 	executions := repository.Execution{Conn: s.db}
 
@@ -155,8 +150,8 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.Get
 	}, nil
 }
 
-func (s *grpcSessionServer) StopServer(ctx context.Context, req *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {
-	log.Debug().Any("request", req).Msg("stop server")
+func (s *grpcSessionServer) StopServer(_ context.Context, _ *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {
+	log.Debug().Msg("stop server")
 	if s.wp != nil {
 		if err := s.wp.Close(); err != nil {
 			log.Error().Err(err).Msg("error closing worker pool")

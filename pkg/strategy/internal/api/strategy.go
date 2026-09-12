@@ -6,6 +6,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// StrategyServer is a gRPC stub. RunStrategy is unimplemented and is not a
+// live-trading entrypoint; strategy.Module is not registered on the broker.
 type StrategyServer struct {
 	pb.UnimplementedStrategyServicerServer
 }

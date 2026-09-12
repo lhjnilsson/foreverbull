@@ -19,6 +19,8 @@ const (
 	GRPCPort        = "GRPC_PORT"
 	GRPCPortDefault = "50055"
 
+	// DockerNetwork is the Testcontainers network name. The Kubernetes broker
+	// runtime does not use it.
 	DockerNetwork        = "DOCKER_NETWORK"
 	DockerNetworkDefault = "foreverbull"
 

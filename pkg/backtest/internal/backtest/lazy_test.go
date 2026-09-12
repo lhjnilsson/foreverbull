@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/docker/docker/api/types"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,7 +58,7 @@ func TestLazyEngineInitCachesSuccess(t *testing.T) {
 	ce := container.NewMockEngine(t)
 	c := container.NewMockContainer(t)
 	ce.On("Get", mock.Anything, "zipline").Return(c, nil).Once()
-	c.On("GetHealth").Return(types.Healthy, nil).Once()
+	c.On("GetHealth").Return(container.HealthHealthy, nil).Once()
 	c.On("GetConnectionString").Return("127.0.0.1:50055", nil).Once()
 
 	engine := NewLazyEngine(ce)
@@ -74,7 +73,7 @@ func TestLazyEngineInitRetriesAfterFailure(t *testing.T) {
 	c := container.NewMockContainer(t)
 	ce.On("Get", mock.Anything, "zipline").Return(nil, errors.New("down")).Once()
 	ce.On("Get", mock.Anything, "zipline").Return(c, nil).Once()
-	c.On("GetHealth").Return(types.Healthy, nil).Once()
+	c.On("GetHealth").Return(container.HealthHealthy, nil).Once()
 	c.On("GetConnectionString").Return("127.0.0.1:50055", nil).Once()
 
 	engine := NewLazyEngine(ce)
