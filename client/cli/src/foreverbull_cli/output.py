@@ -12,9 +12,36 @@ from rich.progress import Task
 from rich.progress import TextColumn
 
 from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 
 
 console = Console()
+GRAFANA_DASHBOARD_URL = "http://localhost:3000/d/ee9ep4jxtwkcgf"
+
+
+def format_proto_date(value: common_pb2.Date | None) -> str:
+    if value is None:
+        return ""
+    try:
+        return from_proto_date_to_pydate(value).isoformat()
+    except ValueError:
+        return ""
+
+
+def format_date_field(message, field: str) -> str:
+    if not message.HasField(field):
+        return ""
+    return format_proto_date(getattr(message, field))
+
+
+def format_optional_float(message, field: str) -> str:
+    if not message.HasField(field):
+        return "-"
+    return f"{getattr(message, field):.5f}"
+
+
+def execution_link(execution_id: str) -> str:
+    return f"{GRAFANA_DASHBOARD_URL}?var-execution={execution_id}"
 
 
 class FBSpinnerColumn(SpinnerColumn):
