@@ -28,6 +28,8 @@ from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 
 
+pytestmark = pytest.mark.usefixtures("fb_env")
+
 START = date(2020, 1, 1)
 END = date(2020, 1, 31)
 

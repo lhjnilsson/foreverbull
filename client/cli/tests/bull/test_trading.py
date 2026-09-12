@@ -14,6 +14,9 @@ from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
 
 
+pytestmark = pytest.mark.usefixtures("fb_env")
+
+
 def _sample_backtest(name="test_name") -> backtest_pb2.Backtest:
     return backtest_pb2.Backtest(
         name=name,
@@ -74,6 +77,56 @@ class TestPositionAndOrder:
     def test_parse(self, positions, orders, expected_length):
         items = PositionAndOrder.parse(positions, orders)
         assert len(items) == expected_length
+
+    @pytest.mark.parametrize(
+        "position,order,expected_intent",
+        [
+            (
+                None,
+                marketdata_pb2.Order(symbol="A", amount=10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_OPEN,
+            ),
+            (
+                None,
+                marketdata_pb2.Order(symbol="A", amount=-10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_OPEN,
+            ),
+            (
+                marketdata_pb2.Position(symbol="A", amount=10),
+                marketdata_pb2.Order(symbol="A", amount=-10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_CLOSE,
+            ),
+            (
+                marketdata_pb2.Position(symbol="A", amount=-10),
+                marketdata_pb2.Order(symbol="A", amount=10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_CLOSE,
+            ),
+        ],
+    )
+    def test_with_defaults_sets_position_intent(self, position, order, expected_intent):
+        item = PositionAndOrder.with_defaults(position, order)
+        assert item.order is not None
+        assert item.order.intent == expected_intent
+        assert item.order.type == marketdata_pb2.OrderType.ORDER_TYPE_MARKET
+        assert item.order.time_in_force == marketdata_pb2.TimeInForce.TIME_IN_FORCE_DAY
+
+    def test_display_and_rejects_both_none(self):
+        with pytest.raises(ValueError, match="Both position and order are None"):
+            PositionAndOrder(None, None)
+
+        held = PositionAndOrder(marketdata_pb2.Position(symbol="A", amount=10, cost_basis=12.5), None)
+        assert held.symbol == "A"
+        assert held.amount == "10"
+        assert held.cost_basis == "12.5"
+        assert held.order_type == "-"
+        assert held.time_in_force == "-"
+        assert held.position_intent == "-"
+
+        opening = PositionAndOrder.with_defaults(None, marketdata_pb2.Order(symbol="B", amount=5))
+        assert opening.symbol == "B"
+        assert opening.amount == "0 -> 5"
+        assert opening.cost_basis == "-"
+        assert opening.order_type == str(marketdata_pb2.OrderType.ORDER_TYPE_MARKET)
 
 
 @contextmanager

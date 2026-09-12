@@ -13,7 +13,7 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as en
 
 
 @pytest.fixture
-def uut(fb_database, backtest_entity):
+def uut(fb_env, fb_database, backtest_entity):
     _, verify = fb_database
     verify(backtest_entity)
 

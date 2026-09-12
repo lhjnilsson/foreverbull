@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 
 @pytest.fixture
-def runner():
+def runner(fb_env):
     runner = CliRunner()
 
     def invoke(app: typer.Typer, args: list[str], input=None, kwargs: dict = {}) -> Result:

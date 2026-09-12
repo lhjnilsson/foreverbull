@@ -16,8 +16,11 @@ from foreverbull_cli.env.environment import PostgresContainer
 from typer.testing import CliRunner
 
 
+pytestmark = pytest.mark.usefixtures("fb_env")
+
+
 @pytest.fixture
-def runner():
+def runner(fb_env):
     runner = CliRunner()
 
     def invoke(app: typer.Typer, args: list[str]) -> Result:

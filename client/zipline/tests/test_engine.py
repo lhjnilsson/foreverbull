@@ -18,7 +18,7 @@ from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from zipline.data import bundles
 
 
-def test_start_stop(spawn_process):
+def test_start_stop(fb_env, spawn_process):
     execution = Engine()
     execution.start()
     execution.is_ready.wait(3.0)
@@ -48,7 +48,7 @@ def ensure_ingestion(backtest_entity, fb_database):
 
 
 @pytest.fixture(scope="function")
-def engine(ensure_ingestion):
+def engine(fb_env, ensure_ingestion):
     log_queue = multiprocessing.Queue()
     log_thread = Thread(target=logging_thread, args=(log_queue,))
     log_thread.start()

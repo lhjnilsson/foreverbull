@@ -21,6 +21,9 @@ from foreverbull_cli.env.environment import PostgresContainer
 from foreverbull_cli.env.environment import ZiplineContainer
 
 
+pytestmark = pytest.mark.usefixtures("fb_env")
+
+
 class TestConfig:
     @pytest.fixture
     def uut(self):

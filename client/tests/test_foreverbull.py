@@ -45,7 +45,10 @@ class TestBacktestSession:
             with suppress(Exception):
                 grpc_server.stop(None)
 
-    def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
+    def test_run_execution(
+        self, fb_env, fb_database, parallel_algo_file, namespace_server, start_grpc_server, monkeypatch
+    ):
+        monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
         backtest = backtest_pb2.Backtest()
         session = session_pb2.Session()
@@ -91,7 +94,10 @@ class TestTradingSession:
             with suppress(Exception):
                 grpc_server.stop(None)
 
-    def test_run_trading(self, parallel_algo_file, namespace_server, start_grpc_server):
+    def test_run_trading(
+        self, fb_env, fb_database, parallel_algo_file, namespace_server, start_grpc_server, monkeypatch
+    ):
+        monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
         mocked_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
         mocked_session_servicer.Configure.return_value = trading_service_pb2.ConfigureResponse(
