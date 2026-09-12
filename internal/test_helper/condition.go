@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// WaitUntilCondition polls condition until it returns true or timeout elapses.
 func WaitUntilCondition(t *testing.T, condition func() (bool, error), timeout time.Duration) error {
 	t.Helper()
 

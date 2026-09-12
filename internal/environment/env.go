@@ -97,7 +97,13 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{AlpacaApiSecret, func() (string, error) { return "", nil }},
 }
 
-func Setup() error {
+type envSetter interface {
+	Helper()
+	Setenv(key, value string)
+	Fatalf(format string, args ...any)
+}
+
+func applyEnvDefaults(setenv func(name, value string) error) error {
 	for _, envVar := range envVars {
 		if os.Getenv(envVar.name) == "" {
 			defaultEnv, err := envVar.getDefault()
@@ -105,12 +111,18 @@ func Setup() error {
 				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
 			}
 
-			if err := os.Setenv(envVar.name, defaultEnv); err != nil {
+			if err := setenv(envVar.name, defaultEnv); err != nil {
 				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
 			}
 		}
 	}
 
+	configureLogging()
+
+	return nil
+}
+
+func configureLogging() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
 	switch os.Getenv(LogLevel) {
@@ -126,8 +138,26 @@ func Setup() error {
 		log.Warn().Msgf("unknown log level: %s", os.Getenv(LogLevel))
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	}
+}
 
-	return nil
+// Setup fills empty process env vars with package defaults and configures logging.
+// It does not start Docker or any other infrastructure.
+func Setup() error {
+	return applyEnvDefaults(os.Setenv)
+}
+
+// SetupForTest applies the same empty-var defaults as Setup, using t.Setenv so
+// values are restored when the test ends. It does not start Docker or other
+// infrastructure. t is typically *testing.T.
+func SetupForTest(t envSetter) {
+	t.Helper()
+
+	if err := applyEnvDefaults(func(name, value string) error {
+		t.Setenv(name, value)
+		return nil
+	}); err != nil {
+		t.Fatalf("environment.SetupForTest: %v", err)
+	}
 }
 
 func GetServerAddress() string {

@@ -38,6 +38,7 @@ type Strategy struct {
 	Backtest string
 }
 
+// Request sends an HTTP request to the local Foreverbull API.
 func Request(t *testing.T, method string, endpoint string, payload interface{}) *http.Response {
 	t.Helper()
 
@@ -85,6 +86,7 @@ func Request(t *testing.T, method string, endpoint string, payload interface{}) 
 	return res
 }
 
+// CleanupEnv deletes previously created services, backtests, and strategies.
 func CleanupEnv(t *testing.T, workerService Service, backtestService Service, backtest Backtest,
 	strategy *Strategy,
 ) {
@@ -104,6 +106,7 @@ func CleanupEnv(t *testing.T, workerService Service, backtestService Service, ba
 	}
 }
 
+// SetUpEnv creates a backtest (and optional strategy) via the local HTTP API.
 func SetUpEnv(t *testing.T, backtest Backtest, strategy *Strategy) error {
 	t.Helper()
 	// Create backtest

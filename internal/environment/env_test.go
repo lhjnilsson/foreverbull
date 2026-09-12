@@ -1,0 +1,59 @@
+package environment
+
+import (
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestSetupForTestFillsDefaultsWithoutDocker(t *testing.T) {
+	t.Setenv(HTTPPort, "")
+	t.Setenv(GRPCPort, "")
+	t.Setenv(PostgresURL, "")
+	t.Setenv(NatsURL, "")
+	t.Setenv(MinioURL, "")
+	t.Setenv(DockerNetwork, "")
+	t.Setenv(ServerAddress, "")
+	t.Setenv(BacktestPortRangeStart, "")
+	t.Setenv(BacktestPortRangeEnd, "")
+
+	SetupForTest(t)
+
+	require.Equal(t, HTTPPortDefault, GetHTTPPort())
+	require.Equal(t, GRPCPortDefault, GetGRPCPort())
+	require.Equal(t, PostgresURLDefault, GetPostgresURL())
+	require.Equal(t, NatsURLDefault, GetNATSURL())
+	require.Equal(t, MinioURLDefault, GetMinioURL())
+	require.Equal(t, DockerNetworkDefault, GetDockerNetworkName())
+	require.Equal(t, ServerAddressDefault, GetServerAddress())
+	require.Equal(t, 27000, GetBacktestPortRangeStart())
+	require.Equal(t, 27015, GetBacktestPortRangeEnd())
+}
+
+func TestSetupForTestDoesNotOverrideSetValues(t *testing.T) {
+	t.Setenv(HTTPPort, "12345")
+	SetupForTest(t)
+	require.Equal(t, "12345", GetHTTPPort())
+}
+
+func TestSetupFillsEmptyVars(t *testing.T) {
+	t.Setenv(HTTPPort, "")
+	require.NoError(t, Setup())
+	require.Equal(t, HTTPPortDefault, GetHTTPPort())
+	require.NotEmpty(t, os.Getenv(HTTPPort))
+}
+
+func TestGetTradingEnabledAndServerGRPCURL(t *testing.T) {
+	t.Setenv(GRPCPort, "1234")
+	require.Equal(t, "localhost:1234", GetServerGRPCURL())
+
+	t.Setenv(TradingEnabled, "true")
+	require.True(t, GetTradingEnabled())
+
+	t.Setenv(TradingEnabled, "false")
+	require.False(t, GetTradingEnabled())
+
+	t.Setenv(TradingEnabled, "not-a-bool")
+	require.False(t, GetTradingEnabled())
+}

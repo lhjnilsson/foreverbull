@@ -16,16 +16,38 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// NetworkID is the Docker network used when SetupEnvironment starts containers.
 const (
 	NetworkID = "foreverbull-testing-network"
 )
 
+// Containers selects which reused Testcontainers services to start.
+// A nil or zero-value Containers starts no containers, does not create a Docker
+// network, and does not disable Ryuk.
 type Containers struct {
 	Postgres bool
 	NATS     bool
 	Minio    bool
 	Loki     bool
 	Zipline  bool
+}
+
+func (c *Containers) requested() bool {
+	if c == nil {
+		return false
+	}
+
+	if c.Postgres || c.NATS || c.Minio || c.Zipline {
+		return true
+	}
+
+	if !c.Loki {
+		return false
+	}
+
+	_, disableLoki := os.LookupEnv("DISABLE_LOKI_LOGGING")
+
+	return !disableLoki
 }
 
 func getOrCreateNetwork() error {
@@ -54,57 +76,53 @@ func getOrCreateNetwork() error {
 	return nil
 }
 
-func SetupEnvironment(t *testing.T, containers *Containers) {
+// SetupEnv fills test env defaults (including test-only gRPC/backtest ports).
+// It does not create a Docker network, disable Ryuk, or require a Docker daemon.
+func SetupEnv(t *testing.T) {
 	t.Helper()
 
-	_ = environment.Setup()
+	environment.SetupForTest(t)
+	t.Setenv(environment.BacktestPortRangeStart, "37000")
+	t.Setenv(environment.BacktestPortRangeEnd, "37100")
+	t.Setenv(environment.GRPCPort, "60066")
+}
 
-	if containers == nil {
-		containers = &Containers{}
-	}
+func startContainers(t *testing.T, containers *Containers) {
+	t.Helper()
+
+	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+	err := getOrCreateNetwork()
+	require.NoError(t, err, "fail to create network")
+
+	t.Setenv(environment.DockerNetwork, NetworkID)
+	t.Setenv(environment.ServerAddress, "host.docker.internal")
 
 	ctx := context.TODO()
 	group, _ := errgroup.WithContext(ctx)
 
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true") // Disable ryuk that cleans up containers
-	err := getOrCreateNetwork()
-	if err != nil {
-		require.NoError(t, err, "fail to create network")
-	}
-
-	os.Setenv(environment.DockerNetwork, NetworkID)
-	os.Setenv(environment.BacktestPortRangeStart, "37000")
-	os.Setenv(environment.BacktestPortRangeEnd, "37100")
-	os.Setenv(environment.GRPCPort, "60066")
+	var postgresURL, natsURL, minioURL, minioAccessKey, minioSecretKey string
 
 	if containers.Postgres {
 		group.Go(func() error {
-			os.Setenv(environment.PostgresURL, PostgresContainer(t, NetworkID))
+			postgresURL = PostgresContainer(t, NetworkID)
 			return nil
 		})
 	}
 
 	if containers.NATS {
 		group.Go(func() error {
-			os.Setenv(environment.NatsURL, NATSContainer(t, NetworkID))
-			os.Setenv(environment.NatsDeliveryPolicy, "all")
-
+			natsURL = NATSContainer(t, NetworkID)
 			return nil
 		})
 	}
 
 	if containers.Minio {
 		group.Go(func() error {
-			uri, accessKey, secretKey := MinioContainer(t, NetworkID)
-			os.Setenv(environment.MinioURL, uri)
-			os.Setenv(environment.MinioAccessKey, accessKey)
-			os.Setenv(environment.MinioSecretKey, secretKey)
-
+			minioURL, minioAccessKey, minioSecretKey = MinioContainer(t, NetworkID)
 			return nil
 		})
 	}
 
-	// If we run in Github CI, Loki will have issue creating folder and fail to start
 	_, disableLoki := os.LookupEnv("DISABLE_LOKI_LOGGING")
 	if containers.Loki && !disableLoki {
 		group.Go(func() error {
@@ -114,14 +132,41 @@ func SetupEnvironment(t *testing.T, containers *Containers) {
 	}
 
 	err = group.Wait()
-	if err != nil {
-		require.NoError(t, err, "fail to create environment")
+	require.NoError(t, err, "fail to create environment")
+
+	if postgresURL != "" {
+		t.Setenv(environment.PostgresURL, postgresURL)
+	}
+
+	if natsURL != "" {
+		t.Setenv(environment.NatsURL, natsURL)
+		t.Setenv(environment.NatsDeliveryPolicy, "all")
+	}
+
+	if minioURL != "" {
+		t.Setenv(environment.MinioURL, minioURL)
+		t.Setenv(environment.MinioAccessKey, minioAccessKey)
+		t.Setenv(environment.MinioSecretKey, minioSecretKey)
 	}
 
 	// Zipline depends on Postgres to be running
 	if containers.Zipline {
-		os.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
+		t.Setenv(environment.ZiplineContainerName, ZiplineContainer(t, NetworkID))
+	}
+}
+
+// SetupEnvironment fills test env vars via SetupEnv. When containers is nil or
+// all flags are false, that is all it does. When a flag is true, the matching
+// reused named container is started on NetworkID. Postgres always gets a unique
+// database per test.
+func SetupEnvironment(t *testing.T, containers *Containers) {
+	t.Helper()
+
+	SetupEnv(t)
+
+	if !containers.requested() {
+		return
 	}
 
-	t.Setenv(environment.ServerAddress, "host.docker.internal")
+	startContainers(t, containers)
 }
