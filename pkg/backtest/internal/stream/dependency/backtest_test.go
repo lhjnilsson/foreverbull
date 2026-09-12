@@ -1,101 +1,83 @@
-package dependency_test
+package dependency
 
 import (
-	"context"
-	"fmt"
-	"net"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/finance"
-	"github.com/stretchr/testify/suite"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/stretchr/testify/require"
 )
 
-type BacktestTest struct {
-	suite.Suite
+func TestGetAssetsUnknownETF(t *testing.T) {
+	t.Parallel()
 
-	pool *pgxpool.Pool
-	app  *fx.App
-
-	uut dependency.ETFScraper
+	_, err := NewETFScaper().GetAssets("unknown")
+	require.ErrorContains(t, err, "ETF not found")
 }
 
-func (test *BacktestTest) SetupTest() {
-	test.uut = dependency.NewETFScaper()
+func TestGetAssetsInvalidYear(t *testing.T) {
+	t.Parallel()
 
+	_, err := NewETFScaper().GetAssets("iShares S&P 100", "not-a-year")
+	require.ErrorContains(t, err, "error parsing date")
 }
 
-func (test *BacktestTest) NoSetupTest() {
-	var err error
+func TestGetAssets(t *testing.T) {
+	t.Parallel()
 
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
-		Postgres: true,
-		NATS:     true,
-	})
+	body, err := json.Marshal(Response{Data: [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", "US0378331005"},
+	}})
+	require.NoError(t, err)
 
-	test.pool, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.Require().NoError(err)
-	err = repository.Recreate(context.Background(), test.pool)
-	test.Require().NoError(err)
-	test.app = fx.New(
-		fx.Provide(
-			func() *pgxpool.Pool {
-				return test.pool
-			},
-			func() *grpc.Server {
-				return grpc.NewServer()
-			},
-		),
-		fx.Invoke(
-			func(lc fx.Lifecycle, gServer *grpc.Server) error {
-				lc.Append(fx.Hook{
-					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", fmt.Sprintf(":%s", environment.GetGRPCPort()))
-						if err != nil {
-							return fmt.Errorf("failed to listen: %w", err)
-						}
-						go func() {
-							if err := gServer.Serve(listener); err != nil {
-								panic(err)
-							}
-						}()
-						return nil
-					},
-					OnStop: func(context.Context) error {
-						gServer.Stop()
-						return nil
-					},
-				})
-				return nil
-			},
-		),
-		stream.Module,
-		finance.Module,
-	)
-	test.Require().NoError(test.app.Start(context.TODO()))
+	var gotTab, gotFileType, gotAsOfDate string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		gotTab = q.Get("tab")
+		gotFileType = q.Get("fileType")
+		gotAsOfDate = q.Get("asOfDate")
 
-	_, err = grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	test.Require().NoError(err, "failed to create grpc client")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(append([]byte("\xef\xbb\xbf"), body...))
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{
+			"iShares S&P 100": srv.URL,
+		},
+	}
+
+	assetMap, err := scraper.GetAssets("iShares S&P 100", "2022", "2023")
+	require.NoError(t, err)
+	require.Equal(t, "all", gotTab)
+	require.Equal(t, "json", gotFileType)
+	require.NotEmpty(t, gotAsOfDate)
+	require.Len(t, assetMap, 2)
+
+	for _, year := range []string{"2022", "2023"} {
+		assets, ok := assetMap[year]
+		require.True(t, ok)
+		require.Equal(t, []Asset{{
+			Symbol:    "AAPL",
+			Name:      "Apple Inc.",
+			Sector:    "Technology",
+			AssetType: "Equity",
+			ISIN:      "US0378331005",
+		}}, assets)
+	}
 }
 
-func TestBacktest(t *testing.T) {
-	suite.Run(t, new(BacktestTest))
-}
+func TestGetBenchmark(t *testing.T) {
+	t.Parallel()
 
-func (test *BacktestTest) TestGetAssets() {
-	assetMap, err := test.uut.GetAssets("iShares S&P 100", "2022", "2023")
-	test.Require().NoError(err)
-	test.Len(assetMap, 2)
-	_, ok := assetMap["2022"]
-	test.Require().True(ok)
-	_, ok = assetMap["2023"]
-	test.Require().True(ok)
+	uut := NewETFScaper()
+
+	benchmark, err := uut.GetBenchmark("iShares S&P 100")
+	require.NoError(t, err)
+	require.Equal(t, "OEF", benchmark)
+
+	_, err = uut.GetBenchmark("unknown")
+	require.ErrorContains(t, err, "ETF not found")
 }

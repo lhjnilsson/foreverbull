@@ -30,7 +30,7 @@ type SessionTest struct {
 }
 
 func (test *SessionTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
+	test_helper.SetupEnv(test.T())
 }
 
 func (test *SessionTest) SetupTest() {

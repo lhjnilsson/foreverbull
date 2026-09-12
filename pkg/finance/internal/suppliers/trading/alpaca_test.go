@@ -16,9 +16,8 @@ type AlpacaClientTest struct {
 }
 
 func (test *AlpacaClientTest) SetupTest() {
-	_, found := os.LookupEnv(environment.AlpacaBaseURL)
-	if !found {
-		test.T().Skip("Skipping test because no Alpaca environment is not set")
+	if os.Getenv(environment.AlpacaApiKey) == "" || os.Getenv(environment.AlpacaApiSecret) == "" {
+		test.T().Skip("skipping live Alpaca HTTP; set ALPACA_MARKETS_API_KEY and ALPACA_MARKETS_API_SECRET to run")
 	}
 	client, err := trading.NewAlpacaClient()
 	test.Require().NoError(err)

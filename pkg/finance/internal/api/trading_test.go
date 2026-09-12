@@ -188,7 +188,7 @@ func TestTradingServerDisabled(t *testing.T) {
 }
 
 func (test *TradingServerDisabledTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
+	test_helper.SetupEnv(test.T())
 }
 
 func (test *TradingServerDisabledTest) SetupSubTest() {

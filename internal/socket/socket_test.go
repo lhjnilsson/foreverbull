@@ -1,20 +1,35 @@
 package socket
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestSockError(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, sockError(mangos.ErrClosed), ErrClosed)
+	require.ErrorIs(t, sockError(mangos.ErrRecvTimeout), ErrReadTimeout)
+	require.ErrorIs(t, sockError(mangos.ErrSendTimeout), ErrSendTimeout)
+
+	wrapped := sockError(errors.New("boom"))
+	require.ErrorContains(t, wrapped, "socket error")
+	require.ErrorContains(t, wrapped, "boom")
+}
 
 type SocketTest struct {
 	suite.Suite
 }
 
 func (test *SocketTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), nil)
+	test_helper.SetupEnv(test.T())
 }
 
 func TestSocket(t *testing.T) {
