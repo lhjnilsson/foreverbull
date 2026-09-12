@@ -2,31 +2,26 @@ package api_test
 
 import (
 	"context"
-	"log"
+	"io"
 	"net"
 	"testing"
 
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
-
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
-	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
-
-	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
-	"github.com/stretchr/testify/mock"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
 type StrategyServerTest struct {
 	suite.Suite
-
-	marketdata *finance_pb.MockMarketdataClient
 
 	listener *bufconn.Listener
 	server   *grpc.Server
@@ -37,20 +32,13 @@ func TestStrategyServer(t *testing.T) {
 	suite.Run(t, new(StrategyServerTest))
 }
 
-func (test *StrategyServerTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
-}
-
 func (test *StrategyServerTest) SetupTest() {
 	var err error
 	test.listener = bufconn.Listen(1024 * 1024)
 	test.server, err = internalGrpc.NewServer()
 	test.Require().NoError(err)
 
-	test.marketdata = finance_pb.NewMockMarketdataClient(test.T())
-
-	server := api.NewStrategyServer(test.marketdata)
-	pb.RegisterStrategyServicerServer(test.server, server)
+	pb.RegisterStrategyServicerServer(test.server, api.NewStrategyServer())
 
 	go func() {
 		test.NoError(test.server.Serve(test.listener))
@@ -58,34 +46,40 @@ func (test *StrategyServerTest) SetupTest() {
 
 	resolver.SetDefaultScheme("passthrough")
 
-	conn, err := grpc.NewClient(test.listener.Addr().String(),
+	conn, err := grpc.NewClient("bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 			return test.listener.Dial()
 		}),
 	)
-	if err != nil {
-		log.Printf("error connecting to server: %v", err)
-	}
+	test.Require().NoError(err)
 	test.client = pb.NewStrategyServicerClient(conn)
 }
 
-func (test *StrategyServerTest) TestRunStrategy() {
-	test.marketdata.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(nil, nil)
+func (test *StrategyServerTest) TearDownTest() {
+	if test.server != nil {
+		test.server.Stop()
+	}
+	if test.listener != nil {
+		test.NoError(test.listener.Close())
+	}
+}
 
+func (test *StrategyServerTest) TestRunStrategyUnimplemented() {
 	req := &pb.RunStrategyRequest{
 		Symbols:   []string{"AAPL"},
-		StartDate: &common_pb.Date{Year: 2024, Month: 0o1, Day: 0o1},
+		StartDate: &common_pb.Date{Year: 2024, Month: 1, Day: 1},
 		Algorithm: &service_pb.Algorithm{},
 	}
 
 	stream, err := test.client.RunStrategy(context.Background(), req)
 	test.Require().NoError(err)
-	for {
-		msg, err := stream.Recv()
-		if err != nil {
-			break
-		}
-		test.T().Log(msg)
-	}
+
+	msg, err := stream.Recv()
+	test.Nil(msg)
+	test.Require().Error(err)
+	test.Require().NotErrorIs(err, io.EOF)
+	st, ok := status.FromError(err)
+	test.True(ok)
+	test.Equal(codes.Unimplemented, st.Code())
 }
