@@ -26,7 +26,7 @@ For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbul
 | `docker-compose.yaml` | Isolated Grafana 11 for plugin UI work (see below) |
 | `Magefile.go` | Cross-compiles `gpx_foreverbull_*` into `dist/` |
 
-The backend reads `BROKER_URL`. Helm sets `foreverbull:50055`. If unset, the Go code defaults to `localhost:50555` (not the broker's `50055`).
+The backend reads `BROKER_URL`. Helm sets `foreverbull:50055`. If unset, the Go code defaults to `localhost:50055`.
 
 ## Build
 

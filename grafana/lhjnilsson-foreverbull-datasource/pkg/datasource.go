@@ -31,7 +31,7 @@ var (
 func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	foreverbull, exists := os.LookupEnv("BROKER_URL")
 	if !exists {
-		foreverbull = "localhost:50555"
+		foreverbull = "localhost:50055"
 	}
 
 	log := log.DefaultLogger.With("datasource", "foreverbull")
