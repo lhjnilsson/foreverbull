@@ -1,5 +1,6 @@
 name: "on commit jobs"
 # Kind/Helm e2e is not run here (local: task test:integration / task env).
+# Cluster smoke lives in kind_e2e.yaml (workflow_dispatch + push to main).
 # Go backtest tests tagged //go:build integration call container.NewEngine
 # and need a cluster; they stay off this workflow.
 on:
