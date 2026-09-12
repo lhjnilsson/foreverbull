@@ -41,21 +41,14 @@ tasks:
 
   proto:generate:
     desc: Generate Python protobuf code
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/v1/*.proto      
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/service/v1/*.proto 
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/backtest/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/backtest/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/service/service/v1/*.proto
-      #- uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/strategy/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/strategy/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/common.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/buf/validate/validate.proto
-      # Update imports, could maybe be solved by organizing the proto files in a better way
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;
+      # Internal stream messages are Go-only.
+      - buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
+      # Generated imports are rooted at proto/; rewrite them under foreverbull.pb.
+      - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from foreverbull\./from foreverbull.pb.foreverbull./g' {} \;
+      - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull.pb.foreverbull import common_pb2/g' {} \;
+      - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from buf\.validate import/from foreverbull.pb.buf.validate import/g' {} \;
 
   template:generate:
     desc: Render cookiecutter templates

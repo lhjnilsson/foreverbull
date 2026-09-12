@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  - plugin: python
+    out: client/src/foreverbull/pb
+  - plugin: pyi
+    out: client/src/foreverbull/pb
+  - plugin: buf.build/grpc/python:v1.71.0
+    out: client/src/foreverbull/pb
