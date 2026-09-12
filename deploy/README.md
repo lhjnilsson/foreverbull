@@ -1,8 +1,8 @@
 # Cluster contract (Kind + Helm)
 
-This directory is the install contract. Later steps add one Helm chart and
-switch the CLI from Docker `fbenv` to Kind/Helm. This step does **not** add
-the chart or change application code.
+This directory is the install contract: Kind config, cluster-config keys, and
+the Helm chart at `deploy/helm/foreverbull`. Later steps switch the CLI from
+Docker `fbenv` to Kind/Helm. This step does **not** change application code.
 
 - Local default: Kind cluster `foreverbull`, namespace `foreverbull`, one chart.
 - Remote: `helm upgrade --install` against a user kubeconfig/context/namespace.
@@ -103,7 +103,8 @@ Required keys (see the example file):
 
 ## Commands
 
-Chart path for later steps: `deploy/helm/foreverbull`. Release name: `foreverbull`.
+Chart path: `deploy/helm/foreverbull`. Release name: `foreverbull`. Namespace
+comes from the Helm release (`--namespace`, default `foreverbull`).
 
 ### Local (default)
 
@@ -140,6 +141,14 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
 
 Set `cluster: remote` and `remote.broker_address` in config. Do not pass
 Alpaca keys as chart values.
+
+Override defaults with `--set` or `-f my-values.yaml`. Check the chart without
+a cluster:
+
+```bash
+helm lint deploy/helm/foreverbull
+helm template foreverbull deploy/helm/foreverbull --namespace foreverbull
+```
 
 ## Helm value keys
 
@@ -254,7 +263,6 @@ volume on the broker pod.
 
 ## Out of scope here
 
-- Helm chart templates (`deploy/helm/foreverbull`)
 - Go Kubernetes runtime replacing `internal/container`
 - CLI Kind/Helm commands replacing Docker `fbenv`
 - Live trading / Alpaca secrets

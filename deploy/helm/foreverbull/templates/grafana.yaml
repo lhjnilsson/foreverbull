@@ -1,0 +1,76 @@
+{{- $sel := dict "name" "grafana" "root" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.grafana.port }}
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foreverbull.labels" . | nindent 8 }}
+        {{- include "foreverbull.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: {{ include "foreverbull.image" (list .Values.images.grafana.repository .Values.images.grafana.tag .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.grafana.port }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ .Values.grafana.port }}
+              {{- end }}
+          env:
+            - name: BROKER_URL
+              value: {{ .Values.grafana.brokerUrl | quote }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.grafana | nindent 12 }}

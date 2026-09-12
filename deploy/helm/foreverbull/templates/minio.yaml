@@ -1,0 +1,117 @@
+{{- $sel := dict "name" "minio" "root" . }}
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.minio.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: s3
+      port: {{ .Values.minio.port }}
+      targetPort: s3
+      protocol: TCP
+    - name: console
+      port: {{ .Values.minio.consolePort }}
+      targetPort: console
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foreverbull.labels" . | nindent 8 }}
+        {{- include "foreverbull.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: minio
+          image: {{ include "foreverbull.image" (list .Values.images.minio.repository .Values.images.minio.tag .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - server
+            - --console-address
+            - {{ printf ":%v" .Values.minio.consolePort | quote }}
+            - {{ .Values.persistence.minio.path }}
+          ports:
+            - name: s3
+              containerPort: {{ .Values.minio.port }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ .Values.minio.port }}
+              {{- end }}
+            - name: console
+              containerPort: {{ .Values.minio.consolePort }}
+              protocol: TCP
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.accessKey | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ .Values.minio.secretKey | quote }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.minio.path }}
+          startupProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            periodSeconds: 2
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.minio | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: minio
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

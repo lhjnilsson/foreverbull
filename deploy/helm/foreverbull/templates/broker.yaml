@@ -1,0 +1,127 @@
+{{- $sel := dict "name" "foreverbull" "root" . }}
+{{- $start := int .Values.broker.backtestPortStart }}
+{{- $end := int .Values.broker.backtestPortEnd }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: foreverbull
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: grpc
+      port: {{ .Values.broker.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: {{ .Values.broker.httpPort }}
+      targetPort: http
+      protocol: TCP
+    {{- range untilStep $start (int (add $end 1)) 1 }}
+    - name: nng-{{ . }}
+      port: {{ . }}
+      targetPort: nng-{{ . }}
+      protocol: TCP
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foreverbull
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foreverbull.labels" . | nindent 8 }}
+        {{- include "foreverbull.selectorLabels" $sel | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "foreverbull.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      containers:
+        - name: foreverbull
+          image: {{ include "foreverbull.image" (list .Values.images.broker.repository .Values.images.broker.tag .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.broker.grpcPort }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ .Values.broker.grpcPort }}
+              {{- end }}
+            - name: http
+              containerPort: {{ .Values.broker.httpPort }}
+              protocol: TCP
+            {{- range untilStep $start (int (add $end 1)) 1 }}
+            - name: nng-{{ . }}
+              containerPort: {{ . }}
+              protocol: TCP
+              {{- if $.Values.expose.hostPort }}
+              hostPort: {{ . }}
+              {{- end }}
+            {{- end }}
+          env:
+            - name: POSTGRES_URL
+              value: {{ include "foreverbull.postgresURL" . | quote }}
+            - name: NATS_URL
+              value: {{ printf "nats://nats:%v" .Values.nats.port | quote }}
+            - name: MINIO_URL
+              value: {{ printf "minio:%v" .Values.minio.port | quote }}
+            - name: MINIO_ACCESS_KEY
+              value: {{ .Values.minio.accessKey | quote }}
+            - name: MINIO_SECRET
+              value: {{ .Values.minio.secretKey | quote }}
+            - name: ZIPLINE_CONTAINER_NAME
+              value: {{ .Values.broker.ziplineServiceName | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.broker.logLevel | quote }}
+            - name: SERVER_ADDRESS
+              value: {{ .Values.broker.serverAddress | quote }}
+            - name: GRPC_PORT
+              value: {{ .Values.broker.grpcPort | quote }}
+            - name: HTTP_PORT
+              value: {{ .Values.broker.httpPort | quote }}
+            - name: BACKTEST_PORT_RANGE_START
+              value: {{ .Values.broker.backtestPortStart | quote }}
+            - name: BACKTEST_PORT_RANGE_END
+              value: {{ .Values.broker.backtestPortEnd | quote }}
+            - name: TRADING_ENABLED
+              value: {{ .Values.broker.trading.enabled | quote }}
+            - name: TRADING_PROVIDER
+              value: {{ .Values.broker.trading.provider | quote }}
+            - name: ALPACA_MARKETS_BASE_URL
+              value: {{ .Values.broker.trading.alpaca.baseUrl | quote }}
+            - name: ALPACA_MARKETS_API_KEY
+              value: {{ .Values.broker.trading.alpaca.apiKey | quote }}
+            - name: ALPACA_MARKETS_API_SECRET
+              value: {{ .Values.broker.trading.alpaca.apiSecret | quote }}
+          startupProbe:
+            exec:
+              command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.broker.grpcPort | quote }}]
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.broker.grpcPort | quote }}]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.broker.grpcPort | quote }}]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.broker | nindent 12 }}

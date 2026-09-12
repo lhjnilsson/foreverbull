@@ -1,0 +1,119 @@
+# Default values for the Foreverbull platform chart.
+# Keys under global/images/expose/persistence/postgres/nats/minio/broker/grafana/
+# serviceAccount/rbac match deploy/README.md. Do not rename them.
+
+replicaCount: 1
+
+global:
+  imageTag: latest          # VERSION; local CLI uses local
+  imagePullPolicy: IfNotPresent
+
+images:
+  postgres:
+    repository: postgres
+    tag: 13.3-alpine
+  nats:
+    repository: nats
+    tag: 2.10-alpine
+  minio:
+    repository: minio/minio
+    tag: latest
+  broker:
+    repository: lhjnilsson/foreverbull
+    tag: ""                 # empty → global.imageTag
+  zipline:
+    repository: lhjnilsson/zipline
+    tag: ""
+  grafana:
+    repository: lhjnilsson/fb-grafana
+    tag: ""
+
+expose:
+  hostPort: false           # local CLI sets true; remote leaves false
+
+persistence:
+  enabled: true
+  postgres:
+    size: 8Gi
+    path: /pgdata
+  nats:
+    size: 1Gi
+    path: /var/lib/nats/data
+  minio:
+    size: 8Gi
+    path: /data
+
+postgres:
+  user: foreverbull
+  password: foreverbull
+  database: foreverbull
+  port: 5432
+
+nats:
+  port: 4222
+  monitorPort: 8222
+  jetstream: true           # command: -js -sd /var/lib/nats/data -m 8222
+
+minio:
+  port: 9000
+  consolePort: 9001
+  accessKey: minioadmin
+  secretKey: minioadmin
+  command: 'server --console-address ":9001" /data'
+
+broker:
+  grpcPort: 50055
+  httpPort: 8080
+  backtestPortStart: 27000
+  backtestPortEnd: 27015
+  logLevel: warning
+  serverAddress: foreverbull
+  ziplineServiceName: zipline
+  trading:
+    enabled: false          # TRADING_ENABLED; never default true
+    provider: alpaca
+    alpaca:
+      baseUrl: https://paper-api.alpaca.markets
+      apiKey: ""            # no real keys in the chart
+      apiSecret: ""
+
+zipline:
+  grpcPort: 50055
+
+grafana:
+  port: 3000
+  brokerUrl: foreverbull:50055
+
+serviceAccount:
+  create: true
+  name: foreverbull
+
+rbac:
+  create: true
+
+# Modest requests for a local Kind node. Limits omitted so the node can burst.
+resources:
+  postgres:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  nats:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+  minio:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  zipline:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  broker:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  grafana:
+    requests:
+      cpu: 50m
+      memory: 128Mi

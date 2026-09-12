@@ -1,0 +1,106 @@
+{{- $sel := dict "name" "postgres" "root" . }}
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.postgres.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foreverbull.labels" . | nindent 8 }}
+        {{- include "foreverbull.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: {{ include "foreverbull.image" (list .Values.images.postgres.repository .Values.images.postgres.tag .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.port }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ .Values.postgres.port }}
+              {{- end }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgres.password | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: PGDATA
+              value: {{ .Values.persistence.postgres.path | quote }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.postgres.path }}
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 2
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.postgres | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: postgres
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

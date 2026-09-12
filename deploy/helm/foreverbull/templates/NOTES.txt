@@ -1,0 +1,27 @@
+Foreverbull {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+
+Workloads (ClusterIP DNS):
+  postgres:{{ .Values.postgres.port }}
+  nats:{{ .Values.nats.port }}
+  minio:{{ .Values.minio.port }}
+  zipline:{{ .Values.zipline.grpcPort }}
+  foreverbull:{{ .Values.broker.grpcPort }}  (gRPC; NNG {{ .Values.broker.backtestPortStart }}-{{ .Values.broker.backtestPortEnd }})
+  grafana:{{ .Values.grafana.port }}
+
+Broker image: {{ include "foreverbull.image" (list .Values.images.broker.repository .Values.images.broker.tag .Values.global.imageTag) }}
+Trading enabled: {{ .Values.broker.trading.enabled }}
+Docker socket: not mounted. Worker pods use ServiceAccount {{ include "foreverbull.serviceAccountName" . }}.
+
+{{- if .Values.expose.hostPort }}
+
+Host ports (Kind extraPortMappings / pod hostPort):
+  {{ .Values.postgres.port }} postgres
+  {{ .Values.nats.port }} nats
+  {{ .Values.minio.port }} minio
+  {{ .Values.broker.grpcPort }} broker gRPC (Python stubs: localhost:{{ .Values.broker.grpcPort }})
+  {{ .Values.broker.backtestPortStart }}-{{ .Values.broker.backtestPortEnd }} backtest NNG
+  {{ .Values.grafana.port }} grafana
+{{- else }}
+
+expose.hostPort=false: ClusterIP only. Point the CLI at remote.broker_address.
+{{- end }}
