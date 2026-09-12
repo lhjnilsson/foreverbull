@@ -2,41 +2,45 @@ version: "3"
 
 tasks:
   venv:
+    desc: Sync the Python workspace with uv
     cmds:
-      - rye sync
-      - . .venv/bin/activate
-      - defer deactivate
+      - uv sync
 
   lint:
+    desc: Lint Python with ruff
     cmds:
-      - rye lint
+      - uvx ruff check
 
   format:
+    desc: Format Python with ruff
     cmds:
-      - rye format
+      - uvx ruff format
 
   test:
+    desc: Run Python unit tests
     cmds:
-      - rye test -- {{.CLI_ARGS}}
+      - uv run pytest {{.CLI_ARGS}}
 
   build:foreverbull:
-    dir: foreverbull
+    desc: Build the foreverbull Python package
     sources:
       - src/foreverbull/**/*.py
     generates:
-      - ../dist/foreverbull-0.0.1.tar.gz
+      - dist/foreverbull-0.0.0-py3-none-any.whl
     cmds:
-      - rye build
+      - uv build
 
   docker:zipline:
+    desc: Build the local Zipline image
     deps:
     - build:foreverbull
     sources:
-      - foreverbull_zipline/src/foreverbull_zipline/**/*.py
+      - zipline/src/foreverbull_zipline/**/*.py
     cmds:
-      - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
+      - docker build -t lhjnilsson/zipline:local -f zipline/Dockerfile .
 
   proto:generate:
+    desc: Generate Python protobuf code
     cmds:
       - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/v1/*.proto      
       - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/service/v1/*.proto 
@@ -54,6 +58,7 @@ tasks:
       - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;
 
   template:generate:
+    desc: Render cookiecutter templates
     sources:
       - templates/**/*
     cmds:
@@ -61,22 +66,25 @@ tasks:
       - uv run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file rendered/simple.json -f
 
   template:test:simple:
+    desc: Test the simple cookiecutter template
     deps:
     - template:generate
     env:
       PYTHONPATH: rendered/simple/simple
     cmds:
-      - rye test -- rendered/simple/simple
+      - uv run pytest rendered/simple/simple
 
   template:test:advanced:
+    desc: Test the advanced cookiecutter template
     deps: 
     - template:generate
     env:
       PYTHONPATH: rendered/advanced/advanced
     cmds:
-      - rye test -- rendered/advanced/advanced
+      - uv run pytest rendered/advanced/advanced
 
   template:test:
+    desc: Test cookiecutter templates
     deps:
     - template:test:simple
     - template:test:advanced

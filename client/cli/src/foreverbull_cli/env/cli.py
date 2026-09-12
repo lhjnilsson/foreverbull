@@ -159,7 +159,7 @@ def update(ctx: typer.Context):
     with FBProgress() as progress:
         update = progress.add_task("Updating environment", total=2)
         progress.update(update, completed=1)
-
+        cm.update()
         progress.update(update, completed=2)
 
     print_status(cm)

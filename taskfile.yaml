@@ -10,12 +10,14 @@ includes:
 
 tasks:
   proto:clean:
+    desc: Remove generated protobuf files
     cmds:
-      - find client/foreverbull/src/foreverbull/pb/ -type f -name "*_pb2*" -delete
+      - find client/src/foreverbull/pb/ -type f -name "*_pb2*" -delete
       - find pkg/ -type f -name "*.pb.go" -delete
       - find internal/ -type f -name "*.pb.go" -delete
 
   proto:generate:
+    desc: Generate Go protobuf code
     cmds:
       - protoc -Iproto --go_out=pkg/pb/finance --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance proto/foreverbull/finance/v1/*.proto
       - protoc -Iproto --go_out=pkg/pb/finance/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance/service --go-grpc_out=pkg/pb/finance/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance/service proto/foreverbull/finance/service/v1/*.proto 
@@ -33,11 +35,13 @@ tasks:
       - protoc -Iproto --go_out=internal/stream/pb --go_opt=module=github.com/lhjnilsson/foreverbull/internal/stream/pb proto/foreverbull/internal/stream/*.proto
 
   proto:
+    desc: Generate Go and Python protobuf code
     deps:
       - proto:generate
       - client:proto:generate
 
   backtest:test:integration:
+    desc: Run backtest integration tests
     dir: ./pkg/backtest
     deps:
       - client:docker:zipline
@@ -46,26 +50,31 @@ tasks:
       - go test ./stream/ -tags=integration {{.CLI_ARGS}}
 
   backtest:test:unit:
+    desc: Run backtest unit tests
     dir: ./pkg/backtest
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   finance:test:unit:
+    desc: Run finance unit tests
     dir: ./pkg/finance
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   service:test:unit:
+    desc: Run service unit tests
     dir: ./pkg/service
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   strategy:test:unit:
+    desc: Run strategy unit tests
     dir: ./pkg/strategy
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   test:unit:
+    desc: Run all Go unit tests
     deps:
       - backtest:test:unit
       - finance:test:unit
@@ -73,26 +82,30 @@ tasks:
       - strategy:test:unit
 
   test:integration:
+    desc: Run client end-to-end tests
     dir: client/
     deps:
       - build:docker
       - client:docker:zipline
       - grafana:build:docker
     cmds:
-      - rye sync
-      - VERSION=local ECHO=true rye test -- tests/end_to_end/test_demo.py -vs
+      - uv sync
+      - VERSION=local ECHO=true uv run pytest tests/end_to_end/test_demo.py -vs
 
   mock:clean:
+    desc: Remove generated mocks
     cmds:
       - find pkg/ -type f -name "mock_*.go" -delete
       - find internal/ -type f -name "mock_*.go" -delete
 
   mock:generate:
+    desc: Generate Go mocks
     cmds:
       - mockery --dir pkg --all --inpackage
       - mockery --dir internal --all --inpackage
 
   build:docker:
+    desc: Build the local Foreverbull image
     sources:
       - pkg/**/*.go
       - internal/**/*.go
@@ -102,12 +115,13 @@ tasks:
       - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
 
   env:
+    desc: Build local images and create a development environment
     dir: client/
     deps:
       - client:docker:zipline
       - grafana:build:docker
       - build:docker
     cmds:
-      - rye sync
-      - rye run fbenv stop --remove
-      - VERSION=local rye run fbenv create
+      - uv sync
+      - uv run fbenv stop --remove
+      - VERSION=local uv run fbenv create

@@ -2,6 +2,7 @@ version: "3"
 
 tasks:
   build:docker:
+    desc: Build the local Grafana image
     sources:
       - lhjnilsson-foreverbull-datasource/pkg/**/*.go
       - lhjnilsson-foreverbull-datasource/src/**/*.tsx

@@ -10,6 +10,7 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from foreverbull_cli.env.environment import BaseContainer
 from foreverbull_cli.env.environment import Config
+from foreverbull_cli.env.environment import ContainerManager
 from foreverbull_cli.env.environment import ContainerStatus
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ForeverbullContainer
@@ -164,9 +165,22 @@ class TestBaseContainer(DockerMocks):
         mocked_container.get.assert_called_with("test_container")
         mocked_container.get.return_value.remove.assert_called()
 
-    def test_update(self, uut: BaseContainer):
-        # TODO
-        pass
+    def test_update(self, uut: BaseContainer, mocked_images: MagicMock, mocked_container: MagicMock):
+        uut.image = "test_image:latest"
+        uut.name = "test_container"
+        mocked_container.get.return_value = Container(attrs={"State": {"Status": "running"}})
+        uut.update()
+        mocked_images.pull.assert_called_with("test_image:latest")
+
+    def test_update_local_image(self, uut: BaseContainer, mocked_images: MagicMock, mocked_container: MagicMock):
+        uut.image = "lhjnilsson/foreverbull:local"
+        uut.name = "test_container"
+        mocked_images.pull.side_effect = docker.errors.APIError("not found")
+        mocked_images.get.return_value = Image(attrs={"RepoTags": [uut.image]})
+        mocked_container.get.return_value = Container(attrs={"State": {"Status": "running"}})
+        uut.update()
+        mocked_images.pull.assert_called_with(uut.image)
+        mocked_images.get.assert_called_with(uut.image)
 
 
 class TestPostgresContainer(DockerMocks):
@@ -215,6 +229,8 @@ class TestZiplineContainer(DockerMocks):
     def test_create(self, uut: ZiplineContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+        healthcheck = mocked_container.create.call_args.kwargs["healthcheck"]
+        assert healthcheck["test"] == ["CMD", "grpc_health_probe", "-addr=:50055"]
 
 
 class TestForeverbullContainer(DockerMocks):
@@ -227,6 +243,8 @@ class TestForeverbullContainer(DockerMocks):
     def test_create(self, uut: ForeverbullContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+        healthcheck = mocked_container.create.call_args.kwargs["healthcheck"]
+        assert healthcheck["test"] == ["CMD", "grpc_health_probe", "-addr=:50055"]
 
 
 class TestGrafanaContainer(DockerMocks):
@@ -239,3 +257,32 @@ class TestGrafanaContainer(DockerMocks):
     def create(self, uut: GrafanaContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+
+
+class TestContainerManager(DockerMocks):
+    @pytest.fixture
+    def uut(self):
+        return ContainerManager(Environment(), Config())
+
+    def test_update(self, uut: ContainerManager, mocked_images: MagicMock, mocked_container: MagicMock):
+        mocked_container.get.return_value = Container(attrs={"State": {"Status": "running"}})
+        uut.update()
+        assert mocked_images.pull.call_count == len(uut.containers)
+
+    def test_start_waits_for_health(self, uut: ContainerManager, mocked_container: MagicMock):
+        docker_container = MagicMock()
+        docker_container.health = "healthy"
+        mocked_container.get.return_value = docker_container
+        with patch("foreverbull_cli.env.environment.time.sleep"):
+            uut.start()
+        docker_container.start.assert_called()
+
+    def test_start_times_out_if_unhealthy(self, uut: ContainerManager, mocked_container: MagicMock):
+        docker_container = MagicMock()
+        docker_container.health = "unhealthy"
+        mocked_container.get.return_value = docker_container
+        with (
+            patch("foreverbull_cli.env.environment.time.sleep"),
+            pytest.raises(TimeoutError, match="Timed out waiting for healthy"),
+        ):
+            uut.start()

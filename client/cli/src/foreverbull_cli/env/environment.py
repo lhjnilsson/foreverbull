@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 
 from enum import StrEnum
 from pathlib import Path
@@ -9,7 +10,8 @@ import docker.errors
 import docker.models.containers
 
 
-_docker = docker.from_env()
+# Pin the API version so imports and unit tests do not require a running daemon.
+_docker = docker.from_env(version=os.environ.get("DOCKER_API_VERSION", "1.44"))
 
 
 class EnvironmentExists(Exception):
@@ -169,7 +171,14 @@ class BaseContainer:
         return ContainerStatus.NOT_FOUND
 
     def update(self) -> ContainerStatus:
-        return ContainerStatus.NOT_FOUND
+        try:
+            _docker.images.pull(self.image)
+        except docker.errors.APIError:
+            try:
+                _docker.images.get(self.image)
+            except docker.errors.ImageNotFound as e:
+                raise docker.errors.ImageNotFound(f"Unable to update image {self.image}") from e
+        return self.status()
 
 
 class PostgresContainer(BaseContainer):
@@ -265,6 +274,12 @@ class ZiplineContainer(BaseContainer):
             }
         )
         kwargs["environment"] = environment
+        kwargs["healthcheck"] = {
+            "test": ["CMD", "grpc_health_probe", "-addr=:50055"],
+            "interval": 5000000000,
+            "timeout": 3000000000,
+            "retries": 5,
+        }
         return super().create(*args, **kwargs)
 
 
@@ -310,9 +325,9 @@ class ForeverbullContainer(BaseContainer):
         }
         kwargs["environment"] = environment
         kwargs["healthcheck"] = {
-            "test": ["CMD", "pg_isready", "-U", "foreverbull"],
-            "interval": 10000000000,
-            "timeout": 5000000000,
+            "test": ["CMD", "grpc_health_probe", "-addr=:50055"],
+            "interval": 5000000000,
+            "timeout": 3000000000,
             "retries": 5,
         }
         kwargs["volumes"] = {
@@ -371,34 +386,26 @@ class ContainerManager:
         for container in self.containers:
             container.create()
 
+    def update(self):
+        for container in self.containers:
+            container.update()
+
+    def _wait_until_healthy(self, *containers: BaseContainer, attempts: int = 200, delay: float = 0.1) -> None:
+        names = [container.name for container in containers]
+        for _ in range(attempts):
+            time.sleep(delay)
+            if all(_docker.containers.get(name).health == "healthy" for name in names):
+                return
+        raise TimeoutError(f"Timed out waiting for healthy: {', '.join(names)}")
+
     def start(self):
         for container in [self.postgres, self.minio, self.nats, self.zipline]:
             container.start()
-        for _ in range(200):
-            # TODO: Refactor
-            import time
-
-            time.sleep(0.1)
-            if _docker.containers.get(self.postgres.name).health != "healthy":
-                continue
-            if _docker.containers.get(self.nats.name).health != "healthy":
-                continue
-            if _docker.containers.get(self.zipline.name).health != "healthy":
-                continue
-            break
-        else:
-            raise TimeoutError("Fail to get Postgres or Nats Healthy")
+        self._wait_until_healthy(self.postgres, self.nats, self.zipline)
 
         for container in [self.foreverbull, self.grafana]:
             container.start()
-        for _ in range(100):
-            import time
-
-            time.sleep(0.1)
-            if _docker.containers.get(self.foreverbull.name).health != "healthy":
-                continue
-            break
-        # TODO Fix healthcheck in foreverbull
+        self._wait_until_healthy(self.foreverbull)
 
     def stop(self):
         for container in self.containers:
