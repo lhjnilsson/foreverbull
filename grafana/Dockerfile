@@ -1,4 +1,5 @@
-# First stage: Build the Go binary
+# Plugin engines.node is >=22. Plugin go.mod and grafana-plugin-sdk-go v0.263.0
+# are still Go 1.23 (broker is 1.24). Grafana OSS stays 11.3.2.
 FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
@@ -16,7 +17,7 @@ RUN go install github.com/magefile/mage@latest
 RUN mage
 
 # Build frontend
-FROM node:18 AS js-builder
+FROM node:22 AS js-builder
 WORKDIR /app
 COPY lhjnilsson-foreverbull-datasource/ .
 RUN npm install
