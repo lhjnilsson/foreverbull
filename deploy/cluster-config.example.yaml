@@ -1,0 +1,33 @@
+# Foreverbull cluster config (copy to .foreverbull/config.yaml).
+#
+# Merge order, later wins:
+#   1. built-in defaults (this file's values)
+#   2. user override ~/.foreverbull/config.yaml
+#   3. project .foreverbull/config.yaml
+#   4. FOREVERBULL_CONFIG (explicit path, if set)
+#
+# Do not commit .foreverbull/config.yaml. Do not put Alpaca keys here.
+
+# local (default): Kind cluster + Helm into namespace.
+# remote: helm upgrade --install against kubeconfig/context/namespace.
+cluster: local
+
+# Helm install namespace for local. Remote uses remote.namespace when set.
+namespace: foreverbull
+
+kind:
+  # Kind cluster name. CLI default matches this.
+  name: foreverbull
+  # Path to Kind config. Relative paths are from the repo root.
+  config: deploy/kind/cluster.yaml
+
+remote:
+  # Empty kubeconfig uses KUBECONFIG, else ~/.kube/config.
+  kubeconfig: ""
+  # Empty context uses the kubeconfig current-context.
+  context: ""
+  # Empty namespace falls back to top-level namespace.
+  namespace: ""
+  # host:port the CLI and Python broker stubs use when cluster is remote.
+  # Required for remote. Local always uses localhost:50055.
+  broker_address: ""
