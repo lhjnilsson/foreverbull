@@ -1,4 +1,7 @@
 name: "on commit jobs"
+# Kind/Helm e2e is not run here (local: task test:integration / task env).
+# Go backtest tests tagged //go:build integration call container.NewEngine
+# and need a cluster; they stay off this workflow.
 on:
   push:
     branches-ignore:
@@ -17,7 +20,7 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.txt -covermode=atomic -timeout 180s
+        run: go test ./pkg/... ./internal/... -coverprofile=coverage.txt -covermode=atomic -timeout 180s
         env:
           DISABLE_LOKI_LOGGING: true
       - name: Archive code coverage results
@@ -35,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -43,11 +46,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies (for TA-Lib(zipline))
+        working-directory: .
         run: |
           curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
           tar -xzf ta-lib-0.6.4-src.tar.gz
           cd ta-lib-0.6.4/
-          ./configure 
+          ./configure
           sudo make &&
           sudo make install &&
           sudo ldconfig
@@ -61,11 +65,23 @@ jobs:
           uvx ruff format --check
           uvx pyright
       - name: Unittest
-        run: | 
+        run: |
           uv run pytest tests/
           uv run pytest zipline/
           uv run pytest cli/
           uv run pytest testing/
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint and template chart
+        run: bash deploy/helm/check-chart.sh
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
@@ -90,9 +106,6 @@ jobs:
   build-docker-grafana:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: ./grafana
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -111,40 +124,6 @@ jobs:
           path: /tmp/fb_grafana.tar
           retention-days: 1
 
-  go-module-tests:
-    needs: [build-docker-zipline]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Download zipline
-        uses: actions/download-artifact@v4
-        with:
-          name: zipline
-          path: /tmp
-      - name: Load zipline
-        run: |
-          docker load -i /tmp/zipline.tar
-          docker tag lhjnilsson/zipline:on_commit lhjnilsson/zipline:local
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Integration Tests
-        run: go test -timeout 300s -tags=integration -run TestModule -p 1 ./...
-        env:
-          ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
-          ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
-          ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          BACKTEST_IMAGE: lhjnilsson/zipline:on_commit
-          LOG_LEVEL: info
-          DISABLE_LOKI_LOGGING: true
-      - name: Sleep for 20 seconds to make all containers stop
-        run: sleep 20s
-        shell: bash
-
   build-python-packages:
     runs-on: ubuntu-latest
     defaults:
@@ -155,44 +134,35 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
       - name: Install uv
         uses: astral-sh/setup-uv@v6
       - name: Build
         run: uv build --all-packages
-      - name: Upload foreverbull
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull-0.0.0-py3-none-any.whl
-          retention-days: 1
-      - name: Upload foreverbull_testing
-        uses: actions/upload-artifact@v4
-        with:
-          name: foreverbull_testing-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull_testing-0.0.0-py3-none-any.whl
-          retention-days: 1
-      - name: Upload foreverbull_cli
-        uses: actions/upload-artifact@v4
-        with:
-          name: foreverbull_cli-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull_cli-0.0.0-py3-none-any.whl
+          name: dist
+          path: client/dist
           retention-days: 1
 
   build-docker-zipline:
     needs: [build-python-packages]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download foreverbull pypi package
+      - name: Download Python packages
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: client
+          name: dist
+          path: /tmp/pypi
+      - name: Stage foreverbull wheel
+        run: |
+          set -euo pipefail
+          wheel="$(find /tmp/pypi -name 'foreverbull-0.0.0-py3-none-any.whl' -print -quit)"
+          test -s "${wheel}"
+          cp "${wheel}" client/foreverbull-0.0.0-py3-none-any.whl
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build Zipline
