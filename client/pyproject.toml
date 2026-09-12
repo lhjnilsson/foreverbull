@@ -60,7 +60,7 @@ addopts = [
 
 [tool.ruff]
 fix = true
-target-version = "py313"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]

@@ -28,11 +28,11 @@ repos:
         exclude: '^client/templates/.*'
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.4.20
+    rev: 0.8.4
     hooks:
-      # Run the pip compile
-      - id: pip-compile
-        args: [requirements.in, -o, requirements.txt]
+      - id: uv-lock
+        args: ["--directory", "client"]
+        files: ^client/(uv\.lock|pyproject\.toml|cli/pyproject\.toml|testing/pyproject\.toml|zipline/pyproject\.toml)$
 
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.384

@@ -2,16 +2,24 @@
   "venvPath": "client/",
   "venv": ".venv",
   "include": ["client/"],
-  "exclude": ["client/.venv", "client/src/foreverbull/pb", "client/.idea",
-"client/templates", "client/tests/end_to_end", "client/tests/integration"],
+  "exclude": [
+    "client/.venv",
+    "client/src/foreverbull/pb",
+    "client/.idea",
+    "client/templates",
+    "client/tests/end_to_end",
+    "client/tests/integration"
+  ],
   "executionEnvironments": [
     {
       "root": ".",
       "extraPaths": [
-        "client/foreverbull/src",
-        "client/foreverbull_zipline/src",
-        "client/foreverbull_cli/src/foreverbull_cli"
+        "client/src",
+        "client/cli/src",
+        "client/testing/src",
+        "client/zipline/src"
       ]
     }
   ]
 }
+
