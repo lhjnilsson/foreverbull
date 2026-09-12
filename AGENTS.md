@@ -1,6 +1,6 @@
 # Agent notes
 
-Foreverbull is a Go trading platform with a Python client workspace. Work from the repository root unless a command says otherwise. Python is managed with **uv** (workspace in `client/`). Do not use rye.
+Foreverbull is a Go trading platform with a Python client workspace. Work from the repository root unless a command says otherwise. Python is managed with **uv** (workspace in `client/`).
 
 Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml` (it includes `client/taskfile.yaml` and `grafana/taskfile.yaml`).
 
@@ -30,7 +30,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 - Go 1.24 (see `go.mod`)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - Task
-- For proto generation: `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (pulls `grpcio-tools`)
+- For proto generation: [Buf](https://buf.build/docs/installation), `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (Python plugins / `grpcio-tools`)
 
 ```bash
 cd client && uv sync
@@ -130,12 +130,12 @@ Sources live in `proto/`. Generated code:
 - Go: `pkg/pb/**` (`*.pb.go`, `*_grpc.pb.go`) and `internal/stream/pb/`
 - Python: `client/src/foreverbull/pb/` (`*_pb2.py`, `*_pb2.pyi`, `*_pb2_grpc.py`)
 
-**Do not hand-edit generated protobuf.** Change `.proto` files and regenerate:
+**Do not hand-edit generated protobuf.** Change `.proto` files and regenerate with Buf (`buf.gen.yaml`, `buf.gen.py.yaml`):
 
 ```bash
-task proto                    # Go + Python
+task proto                    # Go + Python (`buf generate`)
 task proto:generate           # Go only
-task client:proto:generate    # Python only (rewrites imports after protoc)
+task client:proto:generate    # Python only (rewrites imports after buf)
 task proto:clean              # deletes generated *_pb2* and *.pb.go
 ```
 
@@ -144,7 +144,7 @@ Hand-written helpers next to generated code (safe to edit):
 - `pkg/pb/timestamp.go`
 - `client/src/foreverbull/pb/pb_utils.py`
 
-`mock_*.go` files are from `task mock:generate` (mockery), not protoc.
+`mock_*.go` files are from `task mock:generate` (mockery), not Buf.
 
 ## Local / dev environment
 

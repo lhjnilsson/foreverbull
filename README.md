@@ -169,7 +169,7 @@ task build:docker             # lhjnilsson/foreverbull:local
 task client:docker:zipline    # lhjnilsson/zipline:local
 task grafana:build:docker     # lhjnilsson/fb-grafana:local
 
-task proto                    # regenerate Go + Python protobuf from proto/
+task proto                    # regenerate Go + Python protobuf from proto/ (Buf)
 task mock:generate            # mockery
 task client:lint              # ruff check
 task client:format            # ruff format

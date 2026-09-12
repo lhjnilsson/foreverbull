@@ -1,7 +1,7 @@
 name: "Weekday trading"
 
-# Not scheduled. client/example_algorithms/ and `fbull strategy` / `fbull env` are gone.
-# Do not enable live trading from CI. Reintroduce against the current trading CLI later.
+# Not scheduled. Do not enable live trading from CI.
+# Reintroduce against `fbull trading` when a live path is ready.
 on:
   workflow_dispatch:
 
@@ -11,4 +11,4 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - run: echo "daily trading is disabled; example_algorithms and fbull strategy are gone"
+      - run: echo "daily trading is disabled"

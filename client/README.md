@@ -1,6 +1,6 @@
 # Python client workspace
 
-Four packages, one [uv](https://docs.astral.sh/uv/) workspace. Python 3.12+. Do not use rye.
+Four packages, one [uv](https://docs.astral.sh/uv/) workspace. Python 3.12+.
 
 | Package | Path | Role |
 | --- | --- | --- |

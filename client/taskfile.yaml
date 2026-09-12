@@ -45,7 +45,7 @@ tasks:
     cmds:
       # Internal stream messages are Go-only.
       - buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
-      # Generated imports are rooted at proto/; rewrite them under foreverbull.pb.
+      # Buf emits proto-rooted imports; rewrite them under foreverbull.pb.
       - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from foreverbull\./from foreverbull.pb.foreverbull./g' {} \;
       - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull.pb.foreverbull import common_pb2/g' {} \;
       - LC_ALL=C find client/src/foreverbull/pb -name '*_pb2*' -exec sed -i '' 's/from buf\.validate import/from foreverbull.pb.buf.validate import/g' {} \;

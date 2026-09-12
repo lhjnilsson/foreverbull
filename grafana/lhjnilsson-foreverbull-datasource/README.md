@@ -1,6 +1,6 @@
 # Foreverbull Grafana datasource
 
-Backend Grafana datasource for Foreverbull backtest executions and metrics. This is the `lhjnilsson-foreverbull-datasource` plugin, not a Grafana App plugin template.
+Backend Grafana datasource for Foreverbull backtest executions and metrics (`lhjnilsson-foreverbull-datasource`).
 
 Plugin ID: `lhjnilsson-foreverbull-datasource`. Grafana 10.4+.
 
