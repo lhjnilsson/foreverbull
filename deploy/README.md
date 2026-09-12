@@ -101,6 +101,16 @@ Required keys (see the example file):
 | `remote.namespace` | empty | Empty → `namespace` |
 | `remote.broker_address` | empty | Required when `cluster=remote` (`host:port`) |
 
+## Kind
+
+Local default is a Kind cluster named `foreverbull`. The node image is **not**
+pinned; Kind uses its default Kubernetes version. `extraPortMappings` in
+`deploy/kind/cluster.yaml` are 1:1 with the host ports above and are fixed at
+create time — delete and recreate the cluster to change them.
+
+Create, image load, and Helm install are idempotent (safe to re-run). Taskfile
+wrappers: `task kind:create`, `task kind:load`, `task helm:install`.
+
 ## Commands
 
 Chart path: `deploy/helm/foreverbull`. Release name: `foreverbull`. Namespace
@@ -109,14 +119,29 @@ comes from the Helm release (`--namespace`, default `foreverbull`).
 ### Local (default)
 
 ```bash
+# 1. Create the Kind cluster (or: task kind:create)
 kind create cluster --name foreverbull --config deploy/kind/cluster.yaml
 
+# 2. Load images tagged VERSION (default local). Or: task kind:load
+#    Build first if the images are not on the Docker host:
+#      task build:docker
+#      task client:docker:zipline
+#      task grafana:build:docker
+VERSION=local ./deploy/kind/load-images.sh
+
+# 3. Install the chart (or: task helm:install)
 helm upgrade --install foreverbull deploy/helm/foreverbull \
   --namespace foreverbull \
   --create-namespace \
+  --kube-context kind-foreverbull \
   --set expose.hostPort=true \
   --set global.imageTag=local
 ```
+
+`load-images.sh` loads `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and
+`lhjnilsson/fb-grafana` at `$VERSION` (or `local`) into the Kind node. Postgres,
+NATS, and Minio are pulled by the node on first pod start (or use images already
+cached on the Docker host).
 
 Host checks after install: `localhost:5432`, `4222`, `9000`, `50055`, `3000`,
 and `27000`–`27015`. Python `fbull` keeps using `localhost:50055`.

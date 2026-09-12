@@ -114,3 +114,18 @@ tasks:
       - uv sync
       - uv run fbenv stop --remove
       - VERSION=local uv run fbenv create
+
+  kind:create:
+    desc: Create the local Kind cluster (idempotent)
+    cmds:
+      - bash deploy/kind/create-cluster.sh
+
+  kind:load:
+    desc: Load lhjnilsson/foreverbull, zipline, and fb-grafana into Kind
+    cmds:
+      - bash deploy/kind/load-images.sh
+
+  helm:install:
+    desc: helm upgrade --install Foreverbull into the local Kind cluster
+    cmds:
+      - bash deploy/kind/helm-install.sh {{.CLI_ARGS}}

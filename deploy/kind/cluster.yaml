@@ -1,6 +1,8 @@
 # Kind cluster for local Foreverbull. Name must match kind.name in cluster config.
 # extraPortMappings are 1:1 with today's fbenv host ports. Helm must publish the
 # same ports on the control-plane node (pod hostPort) so localhost still works.
+# Node image is not pinned; Kind uses its default Kubernetes version.
+# extraPortMappings are fixed at create time — delete and recreate to change them.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: foreverbull
