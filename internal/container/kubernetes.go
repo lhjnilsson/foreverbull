@@ -144,7 +144,7 @@ func workerLabels(name string) map[string]string {
 func serviceEnv() []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{Name: "BROKER_HOSTNAME", Value: environment.GetServerAddress()},
-		{Name: "BROKER_PORT", Value: environment.GetHTTPPort()},
+		{Name: "BROKER_PORT", Value: environment.GetGRPCPort()},
 		{Name: "STORAGE_ENDPOINT", Value: environment.GetMinioURL()},
 		{Name: "STORAGE_ACCESS_KEY", Value: environment.GetMinioAccessKey()},
 		{Name: "STORAGE_SECRET_KEY", Value: environment.GetMinioSecretKey()},

@@ -65,7 +65,6 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `ZIPLINE_CONTAINER_NAME` | `zipline` |
 | `POD_NAMESPACE` | pod namespace (fieldRef) |
 | `GRPC_PORT` | `50055` |
-| `HTTP_PORT` | `8080` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
@@ -73,8 +72,8 @@ Matches `internal/environment/env.go` plus chart overrides:
 | Zipline `DATABASE_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
 
 Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
-`BROKER_HOSTNAME`, `BROKER_PORT`, `STORAGE_*`, `DATABASE_URL`, `LOGLEVEL`
-(`internal/container` `Start`).
+`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,
+`LOGLEVEL` (`internal/container` `Start`). The broker has no HTTP listener.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
@@ -274,7 +273,6 @@ minio:
 
 broker:
   grpcPort: 50055
-  httpPort: 8080
   backtestPortStart: 27000
   backtestPortEnd: 27015
   logLevel: warning

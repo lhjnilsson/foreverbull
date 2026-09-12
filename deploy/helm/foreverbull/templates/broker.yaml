@@ -17,10 +17,6 @@ spec:
       port: {{ .Values.broker.grpcPort }}
       targetPort: grpc
       protocol: TCP
-    - name: http
-      port: {{ .Values.broker.httpPort }}
-      targetPort: http
-      protocol: TCP
     {{- range untilStep $start (int (add $end 1)) 1 }}
     - name: nng-{{ . }}
       port: {{ . }}
@@ -59,9 +55,6 @@ spec:
               {{- if .Values.expose.hostPort }}
               hostPort: {{ .Values.broker.grpcPort }}
               {{- end }}
-            - name: http
-              containerPort: {{ .Values.broker.httpPort }}
-              protocol: TCP
             {{- range untilStep $start (int (add $end 1)) 1 }}
             - name: nng-{{ . }}
               containerPort: {{ . }}
@@ -93,8 +86,6 @@ spec:
                   fieldPath: metadata.namespace
             - name: GRPC_PORT
               value: {{ .Values.broker.grpcPort | quote }}
-            - name: HTTP_PORT
-              value: {{ .Values.broker.httpPort | quote }}
             - name: BACKTEST_PORT_RANGE_START
               value: {{ .Values.broker.backtestPortStart | quote }}
             - name: BACKTEST_PORT_RANGE_END

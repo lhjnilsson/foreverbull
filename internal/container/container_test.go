@@ -58,7 +58,7 @@ func TestStartCreatesLabeledPodWithBrokerEnv(t *testing.T) {
 
 	env := pod.Spec.Containers[0].Env
 	require.Equal(t, environment.GetServerAddress(), envValue(t, env, "BROKER_HOSTNAME"))
-	require.Equal(t, environment.GetHTTPPort(), envValue(t, env, "BROKER_PORT"))
+	require.Equal(t, environment.GetGRPCPort(), envValue(t, env, "BROKER_PORT"))
 	require.Equal(t, environment.GetMinioURL(), envValue(t, env, "STORAGE_ENDPOINT"))
 	require.Equal(t, environment.GetMinioAccessKey(), envValue(t, env, "STORAGE_ACCESS_KEY"))
 	require.Equal(t, environment.GetMinioSecretKey(), envValue(t, env, "STORAGE_SECRET_KEY"))

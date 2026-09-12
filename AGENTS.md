@@ -213,8 +213,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 
 | Variable | Default / notes |
 | --- | --- |
-| `GRPC_PORT` | `50055` |
-| `HTTP_PORT` | `8080` |
+| `GRPC_PORT` | `50055` (broker API; no HTTP listener) |
 | `SERVER_ADDRESS` | `foreverbull` (in-cluster Service DNS other pods use) |
 | `ZIPLINE_CONTAINER_NAME` | Go default `foreverbull_zipline`. **Helm** sets `zipline` (Service DNS). `internal/container` looks up that name as a Pod or `app.kubernetes.io/name` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
@@ -237,6 +236,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `DOCKER_NETWORK` | Legacy default `foreverbull`. Used by Testcontainers helpers, **not** by `fbenv` or the broker |
 | `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |
 | `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`; in-cluster workers get `SERVER_ADDRESS`) |
+| `BROKER_PORT` | Worker broker gRPC port; in-cluster workers get `GRPC_PORT` (`50055`) |
 | `NAMESPACE_PORT` | Required for the worker namespace socket |
 | `LOGGING_LEVEL` | Python client/CLI logging (`fbull -v/-vv/-vvv`) |
 | `ECHO` | If set, CLI tests print stdout |
