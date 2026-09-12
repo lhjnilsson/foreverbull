@@ -19,8 +19,6 @@ The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures 
 
 `fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
-`local_environment` in `foreverbull_testing.environment` starts a full-stack Docker network (Postgres, Minio, NATS, broker). It is not registered by the plugin, is not `fbenv`, and is not for default unit tests. The product install is Kind/Helm (`fbenv`).
-
 ## Example
 
 ```python
