@@ -87,6 +87,10 @@ spec:
               value: {{ .Values.broker.logLevel | quote }}
             - name: SERVER_ADDRESS
               value: {{ .Values.broker.serverAddress | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: GRPC_PORT
               value: {{ .Values.broker.grpcPort | quote }}
             - name: HTTP_PORT
