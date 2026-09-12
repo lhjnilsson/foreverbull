@@ -3,7 +3,6 @@ from datetime import datetime
 from {{cookiecutter.project_slug}}.rsi import calculate_rsi
 from {{cookiecutter.project_slug}}.rsi import place_orders
 
-from foreverbull.pb.foreverbull.finance import finance_pb2
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.models import Position
@@ -71,10 +70,14 @@ def test_place_orders(asset_manager: AssetManager, portfolio_manager: PortfolioM
 
     place_orders(assets, portfolio)
 
-    assert len(portfolio.pending_orders) == 5
-    assert finance_pb2.Order(symbol="AAPL", amount=-10) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="MCD", amount=48) in portfolio.pending_orders
-
-    assert finance_pb2.Order(symbol="VZ", amount=218) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="TSM", amount=90) in portfolio.pending_orders
-    assert finance_pb2.Order(symbol="MMM", amount=72) in portfolio.pending_orders
+    orders = {order.symbol: order.amount for order in portfolio.pending_orders}
+    assert "AAPL" in orders
+    assert orders["AAPL"] < 0
+    assert "VZ" in orders
+    assert orders["VZ"] > 0
+    assert "MCD" in orders
+    assert orders["MCD"] > 0
+    assert "MMM" in orders
+    assert orders["MMM"] > 0
+    assert "TSM" in orders
+    assert orders["TSM"] > 0

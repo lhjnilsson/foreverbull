@@ -41,6 +41,7 @@ foreverbull-zipline = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "cookiecutter>=2.6.0",
     "grpcio-testing>=1.71.2",
     "grpcio-tools>=1.71.2",
     "pytest>=8.4.1",
@@ -52,6 +53,8 @@ dev = [
 addopts = [
 "--ignore=tests/end_to_end",
 "--ignore=tests/integration",
+"--ignore=templates",
+"--ignore=rendered",
 ]
 
 

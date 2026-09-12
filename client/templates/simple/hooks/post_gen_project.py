@@ -1,27 +1,35 @@
 import importlib
+import shutil
 import subprocess
 import sys
 
-base_repo = "git+https://github.com/lhjnilsson/foreverbull.git@main#egg={pkg}&subdirectory=client/{pkg}"
-foreverbull = base_repo.format(pkg="foreverbull")
-foreverbull_testing = base_repo.format(pkg="foreverbull_testing")
-foreverbull_cli = base_repo.format(pkg="foreverbull_cli")
+from pathlib import Path
 
-with open("requirements.txt", "w") as f:
-    for pkg in [foreverbull, foreverbull_testing, foreverbull_cli]:
-        f.write(f"{pkg}\n")
 
-# Create virtual environment if selected
-if eval("{{ cookiecutter.install_dependencies }}"):
-    for pkg in [foreverbull, foreverbull_testing, foreverbull_cli]:
-        code = subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
-        assert code == 0, f"Failed to install {pkg}"
+REPO = "git+https://github.com/lhjnilsson/foreverbull.git@main"
+PACKAGES = [
+    f"foreverbull @ {REPO}#subdirectory=client",
+    f"foreverbull-testing @ {REPO}#subdirectory=client/testing",
+    f"foreverbull-cli @ {REPO}#subdirectory=client/cli",
+]
+
+
+def _flag(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+Path("requirements.txt").write_text("\n".join(PACKAGES) + "\n")
+
+if _flag("{{ cookiecutter.install_dependencies }}"):
+    if shutil.which("uv"):
+        subprocess.check_call(["uv", "pip", "install", *PACKAGES])
+    else:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *PACKAGES])
     importlib.invalidate_caches()
 
-if eval("{{ cookiecutter.run_setup }}"):
-    try:
-        from foreverbull_cli.setup import setup
-    except ImportError:
-        print("Unable to import foreverbull_cli, did you skip installing dependencies?")
-        exit(1)
-    setup()
+if _flag("{{ cookiecutter.run_setup }}"):
+    print("Next steps:")
+    print("  fbenv create")
+    print("  fbull backtest create --file backtest.yaml")
+    print("  fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py --yes")
+    print("  python -m pytest")

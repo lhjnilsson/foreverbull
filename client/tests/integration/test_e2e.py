@@ -3,9 +3,14 @@ import time
 from concurrent import futures
 from multiprocessing import get_start_method
 from multiprocessing import set_start_method
+from pathlib import Path
 
 import grpc
 import pytest
+
+from cookiecutter.main import cookiecutter
+from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.session_service import SessionServiceServicer
 
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
@@ -15,8 +20,6 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as s
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
-from foreverbull_zipline.engine import Engine
-from foreverbull_zipline.session_service import SessionServiceServicer
 from tests.broker import Broker
 
 
@@ -56,16 +59,33 @@ def broker_session_stub(engine_stub: engine_service_pb2_grpc.EngineSessionStub):
     server.stop(None)
 
 
-@pytest.mark.parametrize("file_path", ["example_algorithms/src/example_algorithms/parallel.py"])
+@pytest.fixture(scope="session")
+def simple_crossover_path(tmp_path_factory):
+    output = tmp_path_factory.mktemp("simple")
+    cookiecutter(
+        str(Path(__file__).resolve().parents[2] / "templates" / "simple"),
+        no_input=True,
+        extra_context={
+            "project_name": "simple",
+            "project_slug": "simple",
+            "install_dependencies": False,
+            "run_setup": False,
+        },
+        output_dir=str(output),
+        overwrite_if_exists=True,
+    )
+    return output / "simple" / "simple" / "crossover.py"
+
+
 def test_baseline_performance(
     spawn_process,
     broker_session_stub: backtest_service_pb2_grpc.BacktestServicerStub,
-    file_path,
+    simple_crossover_path,
     execution: execution_pb2.Execution,
     foreverbull_bundle,
     baseline_performance,
 ):
-    foreverbull = Foreverbull(models.Algorithm.from_file_path(file_path))
+    foreverbull = Foreverbull(models.Algorithm.from_file_path(str(simple_crossover_path)))
     with foreverbull.backtest_session(backtest_pb2.Backtest(), session_pb2.Session()) as backtest:
         periods = [
             p

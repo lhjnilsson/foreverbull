@@ -7,6 +7,7 @@ import pytest
 
 from docker.models.containers import Container
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from testcontainers.core.config import testcontainers_config
 from testcontainers.postgres import PostgresContainer
 
@@ -23,8 +24,16 @@ def pytest_addoption(parser):
         "--backtest",
         action="store",
         default=None,
-        help="Environment to run tests against (e.g. dev, staging, prod)",
+        help="Name of a broker backtest to run live algorithm tests against",
     )
+
+
+def _named_postgres_container(client, name: str):
+    for container in client.client.api.containers(all=True, filters={"name": name}):
+        names = container.get("Names") or []
+        if any(n.rstrip("/").split("/")[-1] == name for n in names):
+            return container
+    return None
 
 
 @pytest.fixture(scope="session")
@@ -33,15 +42,24 @@ def fb_database():
     postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     postgres = postgres.with_name("fbull_client_testing_pg")
     client = postgres.get_docker_client()
-    containers = client.client.api.containers(filters={"name": "fbull_client_testing_pg"})
-    if containers:
-        postgres._container = Container(attrs=containers[0])
-        engine = create_engine(postgres.get_connection_url())
-    else:
+    existing = _named_postgres_container(client, "fbull_client_testing_pg")
+    engine = None
+    if existing and existing.get("State") == "running":
+        postgres._container = Container(attrs=client.client.api.inspect_container(existing["Id"]))
+        try:
+            engine = create_engine(postgres.get_connection_url())
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:  # noqa: BLE001
+            engine = None
+    if engine is None:
+        if existing:
+            client.client.api.remove_container(existing["Id"], force=True)
+        postgres._container = None
         testcontainers_config.ryuk_disabled = True
         postgres.start()
         engine = create_engine(postgres.get_connection_url())
-        database.Base.metadata.create_all(engine)
+    database.Base.metadata.create_all(engine)
 
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
 
@@ -92,3 +110,11 @@ def portfolio_manager(fb_database):
     engine, _ = fb_database
     with engine.connect() as conn:
         yield PortfolioManager(conn)
+
+
+@pytest.fixture
+def backtest(request):
+    name = request.config.getoption("--backtest")
+    if not name:
+        pytest.skip("pass --backtest <name> to run live backtest tests against a broker")
+    pytest.skip(f"live backtest {name!r} requires a running Foreverbull broker")

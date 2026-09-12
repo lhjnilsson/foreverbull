@@ -55,8 +55,8 @@ tasks:
     sources:
       - templates/**/*
     cmds:
-      - uv run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file rendered/advanced.json -f
-      - uv run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file rendered/simple.json -f
+      - uv run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file templates/advanced.json -f
+      - uv run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file templates/simple.json -f
 
   template:test:simple:
     desc: Test the simple cookiecutter template
@@ -69,12 +69,17 @@ tasks:
 
   template:test:advanced:
     desc: Test the advanced cookiecutter template
-    deps: 
+    deps:
     - template:generate
     env:
       PYTHONPATH: rendered/advanced/advanced
     cmds:
-      - uv run pytest rendered/advanced/advanced
+      - |
+        if uv run python -c "import talib" >/dev/null 2>&1; then
+          uv run pytest rendered/advanced/advanced
+        else
+          echo "Skipping advanced template pytest: TA-Lib is not installed"
+        fi
 
   template:test:
     desc: Test cookiecutter templates

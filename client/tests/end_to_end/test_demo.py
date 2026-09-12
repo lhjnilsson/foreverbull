@@ -1,13 +1,17 @@
 import os
+import pathlib
 
 import pytest
 import typer
 
 from click.testing import Result
-from typer.testing import CliRunner
-
+from cookiecutter.main import cookiecutter
 from foreverbull_cli.bull.backtest import backtest as backtest_cli
 from foreverbull_cli.env import cli as env_cli
+from typer.testing import CliRunner
+
+
+TEMPLATES = pathlib.Path(__file__).resolve().parents[2] / "templates" / "simple"
 
 
 @pytest.fixture
@@ -18,7 +22,7 @@ def runner():
         result = runner.invoke(app, args, env=env)
         echo_stdout = os.environ.get("ECHO", False)
         if echo_stdout:
-            print("")
+            print()
             print(result.stdout)
 
         return result
@@ -26,12 +30,26 @@ def runner():
     return invoke
 
 
-def test_start_stop(runner):
-    import pathlib
+@pytest.fixture
+def simple_algorithm(tmp_path):
+    cookiecutter(
+        str(TEMPLATES),
+        no_input=True,
+        extra_context={
+            "project_name": "simple",
+            "project_slug": "simple",
+            "install_dependencies": False,
+            "run_setup": False,
+        },
+        output_dir=str(tmp_path),
+        overwrite_if_exists=True,
+    )
+    project = tmp_path / "simple"
+    return project / "simple" / "crossover.py", project / "backtest.yaml"
 
-    # Get directory of the current script
-    client_directory = pathlib.Path(__file__).parent.parent.parent.resolve()
-    non_parallel = client_directory / "example_algorithms" / "src" / "example_algorithms" / "non_parallel.py"
+
+def test_start_stop(runner, simple_algorithm):
+    crossover, backtest_file = simple_algorithm
 
     result = runner(env_cli.cli, "stop --remove --purge")
     assert result.exit_code == 0
@@ -39,12 +57,8 @@ def test_start_stop(runner):
     result = runner(env_cli.cli, "create", env={"VERSION": "local"})
     assert result.exit_code == 0
 
-    # Create Backtest
-    result = runner(backtest_cli, "create example_algorithms/nasdaq.json")
+    result = runner(backtest_cli, f"create --file {backtest_file}")
     assert result.exit_code == 0
 
-    # Run Backtest
-    result = runner(backtest_cli, f"run nasdaq {str(non_parallel)}")
+    result = runner(backtest_cli, f"run demo {crossover} --yes")
     assert result.exit_code == 0
-
-    # List Backtest Results
