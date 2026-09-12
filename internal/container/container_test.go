@@ -368,3 +368,80 @@ func TestNewEngineMissingKubeconfig(t *testing.T) {
 	_, err := NewEngine()
 	require.Error(t, err)
 }
+
+func TestGetEmptyName(t *testing.T) {
+	_, err := testEngine(t).Get(context.Background(), "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty")
+}
+
+func TestStartRejectsEmptyImageAndName(t *testing.T) {
+	eng := testEngine(t)
+
+	_, err := eng.Start(context.Background(), "", "worker-1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "image is empty")
+
+	_, err = eng.Start(context.Background(), "img:tag", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name is empty")
+}
+
+func TestStartDoesNotMountDockerSock(t *testing.T) {
+	eng := testEngine(t)
+	_, err := eng.Start(context.Background(), "lhjnilsson/strategy:local", "worker-1")
+	require.NoError(t, err)
+
+	pod, err := eng.(*engine).client.CoreV1().Pods(testNamespace).Get(
+		context.Background(), "worker-1", metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Empty(t, pod.Spec.Volumes)
+	require.Empty(t, pod.Spec.Containers[0].VolumeMounts)
+	require.NotNil(t, pod.Spec.AutomountServiceAccountToken)
+	require.False(t, *pod.Spec.AutomountServiceAccountToken)
+
+	for _, vol := range pod.Spec.Volumes {
+		if vol.HostPath != nil {
+			require.NotEqual(t, "/var/run/docker.sock", vol.HostPath.Path)
+		}
+	}
+}
+
+func TestStartSkipsInvalidHostname(t *testing.T) {
+	eng := testEngine(t)
+	_, err := eng.Start(context.Background(), "img:tag", "Not_Valid")
+	require.NoError(t, err)
+
+	pod, err := eng.(*engine).client.CoreV1().Pods(testNamespace).Get(
+		context.Background(), "Not_Valid", metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Empty(t, pod.Spec.Hostname)
+}
+
+func TestGetConnectionStringErrorsWhenPodMissing(t *testing.T) {
+	eng := testEngine(t)
+	got, err := eng.Start(context.Background(), "img:tag", "worker-gone")
+	require.NoError(t, err)
+	require.NoError(t, got.Stop())
+
+	_, err = got.GetConnectionString()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "error getting pod")
+
+	_, err = got.GetStatus()
+	require.Error(t, err)
+}
+
+func TestStopAllWithNoServicePods(t *testing.T) {
+	eng := testEngine(t)
+	require.NoError(t, eng.StopAll(context.Background(), true))
+}
+
+func TestGetMissingPodByExactName(t *testing.T) {
+	eng := testEngine(t)
+	_, err := eng.Get(context.Background(), "no-such-pod")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `workload "no-such-pod" not found`)
+}

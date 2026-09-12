@@ -75,3 +75,27 @@ def test_finance_stub_uses_resolved_address(monkeypatch):
     )
     assert finance.get_portfolio() == "portfolio"
     assert seen == ["remote.example:1234"]
+
+
+def test_backtest_stub_uses_config_broker_address(tmp_path: Path, monkeypatch):
+    cwd = tmp_path / "proj"
+    home = tmp_path / "home"
+    (cwd / ".foreverbull").mkdir(parents=True)
+    home.mkdir()
+    (cwd / ".foreverbull" / "config.yaml").write_text(
+        "cluster: remote\nremote:\n  broker_address: broker.example:50055\n"
+    )
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("FOREVERBULL_BROKER_ADDRESS", raising=False)
+    monkeypatch.delenv("FOREVERBULL_CONFIG", raising=False)
+    seen: list[str] = []
+    stub = MagicMock()
+    stub.ListBacktests.return_value.backtests = []
+    monkeypatch.setattr("foreverbull.broker.backtest.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
+    monkeypatch.setattr(
+        "foreverbull.broker.backtest.backtest_service_pb2_grpc.BacktestServicerStub",
+        lambda channel: stub,
+    )
+    assert backtest.list_backtests() == []
+    assert seen == ["broker.example:50055"]

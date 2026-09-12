@@ -45,6 +45,11 @@ def runner(fb_env):
 def mocked_container_manager():
     container_manager = MagicMock(spec=ContainerManager)
     container_manager.status_rows.return_value = STATUS_ROWS
+    container_manager.config = MagicMock()
+    container_manager.config.cluster = "local"
+    container_manager.config.namespace = "foreverbull"
+    container_manager.config.kube_context = "kind-foreverbull"
+    container_manager.config.broker_address = "localhost:50055"
 
     def initialize(ctx: typer.Context):
         ctx.obj = container_manager
@@ -116,6 +121,27 @@ def test_create_cluster_flag(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, ["create", "--cluster", "remote", "--context", "prod"])
     assert result.exit_code == 0
     mocked_container_manager.create.assert_called_once_with(start=True)
+    mocked_container_manager.config.apply_cli_overrides.assert_called()
+    kwargs = mocked_container_manager.config.apply_cli_overrides.call_args.kwargs
+    assert kwargs["cluster"] == "remote"
+    assert kwargs["context"] == "prod"
+
+
+def test_stop_and_status_forward_cluster_flags(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, ["stop", "--cluster", "remote", "--namespace", "fb"])
+    assert result.exit_code == 0
+    mocked_container_manager.stop.assert_called_once()
+    kwargs = mocked_container_manager.config.apply_cli_overrides.call_args.kwargs
+    assert kwargs["cluster"] == "remote"
+    assert kwargs["namespace"] == "fb"
+
+    mocked_container_manager.config.apply_cli_overrides.reset_mock()
+    result = runner(cli.cli, ["status", "--cluster", "local", "--namespace", "custom"])
+    assert result.exit_code == 0
+    mocked_container_manager.status_rows.assert_called()
+    kwargs = mocked_container_manager.config.apply_cli_overrides.call_args.kwargs
+    assert kwargs["cluster"] == "local"
+    assert kwargs["namespace"] == "custom"
 
 
 def _isolated_project(tmp_path, monkeypatch):

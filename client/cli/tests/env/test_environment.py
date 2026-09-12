@@ -563,3 +563,48 @@ class TestContainerManager:
         )
         with pytest.raises(FileNotFoundError, match="Kind config not found"):
             uut.ensure_kind_cluster()
+
+    def test_create_stop_status_local_vs_remote(self, tmp_path: Path):
+        local_runner = FakeRunner()
+        local_runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        local_runner.on(["kubectl"], _completed(stdout=json.dumps({"items": []})))
+        local = _manager(tmp_path, local_runner)
+        local.create()
+        local.stop()
+        rows = local.status_rows()
+        assert local_runner.calls_starting_with("kind", "load")
+        assert local_runner.calls_starting_with("helm", "upgrade", "--install")
+        assert any("scale" in call and "--replicas=0" in call for call in local_runner.calls_starting_with("kubectl"))
+        assert len(rows) == 6
+        assert all(row.status == ContainerStatus.NOT_FOUND for row in rows)
+
+        remote_runner = FakeRunner()
+        remote_runner.on(["kubectl"], _completed(stdout=json.dumps({"items": []})))
+        remote = ContainerManager(
+            local.environment,
+            Config(
+                {
+                    "cluster": "remote",
+                    "remote": {
+                        "kubeconfig": "/tmp/kube",
+                        "context": "prod",
+                        "namespace": "fb",
+                        "broker_address": "broker.example:50055",
+                    },
+                },
+                load_files=False,
+                environ={},
+            ),
+            runner=remote_runner,
+            repo_root=local.repo_root,
+            ready_timeout_seconds=5,
+        )
+        remote.create()
+        remote.stop()
+        remote.status_rows()
+        assert remote_runner.calls_starting_with("kind") == []
+        helm = remote_runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert helm[helm.index("--kube-context") + 1] == "prod"
+        assert helm[helm.index("--namespace") + 1] == "fb"
+        kubectl = remote_runner.calls_starting_with("kubectl")
+        assert kubectl[0][kubectl[0].index("--context") + 1] == "prod"
