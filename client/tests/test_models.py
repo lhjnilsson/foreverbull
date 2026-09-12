@@ -2,16 +2,20 @@ import tempfile
 
 from datetime import datetime
 from datetime import timezone
+from typing import Any
+from typing import cast
 from unittest import mock
 
 import pandas
 import pytest
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
+from foreverbull.models import Function
 from foreverbull.models import Portfolio
 from foreverbull.models import _get_postgres_urls
 from foreverbull.models import get_engine
@@ -60,18 +64,16 @@ def test_get_engine_uses_provided_url_only(monkeypatch):
 
 
 class TestAsset:
-    def test_asset_getattr_setattr(self, fb_database, namespace_server):
-        database, _ = fb_database
-        with database.connect() as conn:
-            asset = Asset(datetime.now(), conn, "AAPL")
-            assert asset is not None
-            asset.set_metric("rsi", 56.4)
+    def test_asset_getattr_setattr(self, fb_env, namespace_server):
+        asset = Asset(datetime.now(), cast(Connection, None), "AAPL")
+        assert asset is not None
+        asset.set_metric("rsi", 56.4)
 
-            assert "rsi" in namespace_server
-            assert namespace_server["rsi"] == {"AAPL": 56.4}
+        assert "rsi" in namespace_server
+        assert namespace_server["rsi"] == {"AAPL": 56.4}
 
-            namespace_server["pe"] = {"AAPL": 12.3}
-            assert asset.get_metric("pe") == 12.3
+        namespace_server["pe"] = {"AAPL": 12.3}
+        assert asset.get_metric("pe") == 12.3
 
     def test_assets(self, fb_database, backtest_entity: backtest_pb2.Backtest):
         database, ensure_data = fb_database
@@ -107,18 +109,16 @@ class TestAsset:
 
 
 class TestAssets:
-    def test_assets_getattr_setattr(self, fb_database, namespace_server):
-        database, _ = fb_database
-        with database.connect() as conn:
-            assets = Assets(datetime.now(), conn, [])
-            assert assets is not None
-            assets.set_metrics("holdings", {"AAPL": True, "MSFT": False})
+    def test_assets_getattr_setattr(self, fb_env, namespace_server):
+        assets = Assets(datetime.now(), cast(Connection, None), [])
+        assert assets is not None
+        assets.set_metrics("holdings", {"AAPL": True, "MSFT": False})
 
-            assert "holdings" in namespace_server
-            assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
+        assert "holdings" in namespace_server
+        assert namespace_server["holdings"] == {"AAPL": True, "MSFT": False}
 
-            namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
-            assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
+        namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
+        assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
 
     def test_stock_data(self, fb_database, backtest_entity: backtest_pb2.Backtest):
         database, ensure_data = fb_database
@@ -284,6 +284,91 @@ class TestPortfolio:
         order = uut.order_target_value("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
+
+
+def test_algorithm_parameter_parsing():
+    assert Algorithm.type_to_str(cast(Any, int)) == "int"
+    assert Algorithm.type_to_str(cast(Any, float)) == "float"
+    assert Algorithm.type_to_str(cast(Any, bool)) == "bool"
+    assert Algorithm.type_to_str(cast(Any, str)) == "string"
+    with pytest.raises(TypeError):
+        Algorithm.type_to_str(cast(Any, list))
+
+    def no_asset(x: int):
+        pass
+
+    with pytest.raises(TypeError, match="must have a parameter of type Asset or Assets"):
+        Algorithm(functions=[Function(callable=no_asset)])
+
+    def handle(asset: Asset, threshold: float = 1.5, enabled: bool = True, name: str = "x"):
+        pass
+
+    algo = Algorithm(functions=[Function(callable=handle)])
+    definition = algo.get_definition()
+    params = {p.key: p.valueType for p in definition.functions[0].parameters}
+    assert params == {"threshold": "float", "enabled": "bool", "name": "string"}
+
+    algo.configure("handle", "threshold", "2.5")
+    algo.configure("handle", "enabled", "false")
+    with pytest.raises(TypeError, match="Unknown parameter: missing"):
+        algo.configure("handle", "missing", "1")
+    with pytest.raises(TypeError, match="Unknown parameter type: string"):
+        algo.configure("handle", "name", "hello")
+
+
+def test_algorithm_definition_wire_contract():
+    def filter_assets(assets: Assets) -> None:
+        pass
+
+    def measure_assets(asset: Asset, lookback: int = 20) -> None:
+        pass
+
+    def create_orders(assets: Assets, portfolio: Portfolio) -> None:
+        pass
+
+    algo = Algorithm(
+        functions=[
+            Function(callable=filter_assets, run_first=True),
+            Function(callable=measure_assets),
+            Function(callable=create_orders, run_last=True),
+        ],
+        namespaces=["rsi"],
+    )
+    definition = algo.get_definition()
+    parsed = worker_pb2.Algorithm()
+    parsed.ParseFromString(definition.SerializeToString())
+    assert list(parsed.namespaces) == ["rsi"]
+    flags = [(fn.name, fn.parallelExecution, fn.runFirst, fn.runLast) for fn in parsed.functions]
+    assert flags == [
+        ("filter_assets", False, True, False),
+        ("measure_assets", True, False, False),
+        ("create_orders", False, False, True),
+    ]
+    assert parsed.functions[1].parameters[0].key == "lookback"
+    assert parsed.functions[1].parameters[0].valueType == "int"
+    assert parsed.functions[1].parameters[0].defaultValue == "20"
+
+
+def test_algorithm_process_maps_worker_request_to_orders():
+    def handle_data(assets: Assets, portfolio: Portfolio) -> None:
+        for symbol in assets.symbols:
+            portfolio.order(symbol, 7)
+
+    def measure_assets(asset: Asset, portfolio: Portfolio) -> None:
+        portfolio.order(asset.symbol, 3)
+
+    sequential = Algorithm(functions=[Function(callable=handle_data)])
+    parallel = Algorithm(functions=[Function(callable=measure_assets)])
+    portfolio = marketdata_pb2.Portfolio(
+        timestamp=pb_utils.to_proto_timestamp(datetime(2024, 3, 9, tzinfo=timezone.utc)),
+        cash=1000,
+    )
+
+    batched = sequential.process("handle_data", cast(Connection, None), portfolio, ["AAPL", "MSFT"])
+    assert [(order.symbol, order.amount) for order in batched] == [("AAPL", 7), ("MSFT", 7)]
+
+    per_symbol = parallel.process("measure_assets", cast(Connection, None), portfolio, ["AAPL", "MSFT"])
+    assert [(order.symbol, order.amount) for order in per_symbol] == [("AAPL", 3), ("MSFT", 3)]
 
 
 class TestDefinitions:
