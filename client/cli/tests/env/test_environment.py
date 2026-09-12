@@ -193,6 +193,8 @@ class TestPostgresContainer(DockerMocks):
     def test_create(self, uut: PostgresContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+        healthcheck = mocked_container.create.call_args.kwargs["healthcheck"]
+        assert healthcheck["test"] == ["CMD", "pg_isready", "-U", "foreverbull", "-d", "foreverbull"]
 
 
 class TestMinioContainer(DockerMocks):
@@ -205,6 +207,8 @@ class TestMinioContainer(DockerMocks):
     def test_create(self, uut: MinioContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+        healthcheck = mocked_container.create.call_args.kwargs["healthcheck"]
+        assert healthcheck["test"] == ["CMD", "mc", "ready", "local"]
 
 
 class TestNatsContainer(DockerMocks):
@@ -217,6 +221,9 @@ class TestNatsContainer(DockerMocks):
     def test_create(self, uut: NatsContainer, mocked_container: MagicMock):
         uut.create()
         assert mocked_container.create.called
+        kwargs = mocked_container.create.call_args.kwargs
+        assert kwargs["command"] == "-js -sd /var/lib/nats/data -m 8222"
+        assert kwargs["healthcheck"]["test"] == ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
 
 
 class TestZiplineContainer(DockerMocks):

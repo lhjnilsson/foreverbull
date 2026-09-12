@@ -198,7 +198,7 @@ class PostgresContainer(BaseContainer):
             "PGDATA": "/pgdata",
         }
         kwargs["healthcheck"] = {
-            "test": ["CMD", "pg_isready", "-U", "foreverbull"],
+            "test": ["CMD", "pg_isready", "-U", "foreverbull", "-d", "foreverbull"],
             "interval": 10000000000,
             "timeout": 5000000000,
             "retries": 5,
@@ -229,6 +229,12 @@ class MinioContainer(BaseContainer):
             },
         }
         kwargs["command"] = 'server --console-address ":9001" /data'
+        kwargs["healthcheck"] = {
+            "test": ["CMD", "mc", "ready", "local"],
+            "interval": 10000000000,
+            "timeout": 5000000000,
+            "retries": 5,
+        }
         return super().create(*args, **kwargs)
 
 
@@ -243,7 +249,7 @@ class NatsContainer(BaseContainer):
     def create(self, *args, **kwargs) -> ContainerStatus:
         kwargs["ports"] = {"4222/tcp": 4222}
         kwargs["healthcheck"] = {
-            "test": ["CMD", "nats-server", "-sl"],
+            "test": ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"],
             "interval": 10000000000,
             "timeout": 5000000000,
             "retries": 5,
@@ -254,7 +260,7 @@ class NatsContainer(BaseContainer):
                 "mode": "rw",
             },
         }
-        kwargs["command"] = "-js -sd /var/lib/nats/data"
+        kwargs["command"] = "-js -sd /var/lib/nats/data -m 8222"
         return super().create(*args, **kwargs)
 
 
@@ -401,7 +407,7 @@ class ContainerManager:
     def start(self):
         for container in [self.postgres, self.minio, self.nats, self.zipline]:
             container.start()
-        self._wait_until_healthy(self.postgres, self.nats, self.zipline)
+        self._wait_until_healthy(self.postgres, self.minio, self.nats, self.zipline)
 
         for container in [self.foreverbull, self.grafana]:
             container.start()

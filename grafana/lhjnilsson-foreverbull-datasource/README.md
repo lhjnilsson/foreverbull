@@ -1,133 +1,88 @@
-# Grafana data source plugin template
+# Foreverbull Grafana datasource
 
-This template is a starting point for building a Data Source Plugin for Grafana.
+Grafana backend datasource plugin for Foreverbull backtest executions and metrics. The frontend lives in `src/`; the Go backend in `pkg/` talks to the Foreverbull gRPC broker.
 
-## What are Grafana data source plugins?
+Plugin ID: `lhjnilsson-foreverbull-datasource`
 
-Grafana supports a wide range of data sources, including Prometheus, MySQL, and even Datadog. There’s a good chance you can already visualize metrics from the systems you have set up. In some cases, though, you already have an in-house metrics solution that you’d like to add to your Grafana dashboards. Grafana Data Source Plugins enables integrating such solutions with Grafana.
+## Prerequisites
 
-## Getting started
+- Node.js 22+ (see `engines` in `package.json`) and npm
+- Go 1.23+
+- [Mage](https://magefile.org/): `go install github.com/magefile/mage@latest`
+- Docker, to run Grafana with the plugin loaded
+- A Foreverbull stack on the `foreverbull` Docker network (`fbenv create` from the repository root). Compose joins that **external** network so the plugin can reach the broker.
 
-### Backend
+## Layout
 
-1. Update [Grafana plugin SDK for Go](https://grafana.com/developers/plugin-tools/key-concepts/backend-plugins/grafana-plugin-sdk-for-go) dependency to the latest minor version:
+| Path | What it is |
+| --- | --- |
+| `src/` | React / TypeScript UI (config editor, query editor) |
+| `pkg/` | Backend datasource (gRPC client, resource handlers) |
+| `provisioning/` | Datasource and dashboard YAML used by docker compose |
+| `docker-compose.yaml` | Grafana 11 with this unsigned plugin mounted from `dist/` |
+| `Magefile.go` | Cross-compiles `gpx_foreverbull_*` into `dist/` |
 
-   ```bash
-   go get -u github.com/grafana/grafana-plugin-sdk-go
-   go mod tidy
-   ```
+The backend reads `BROKER_URL` (compose sets `foreverbull:50055`; without it the plugin defaults to `localhost:50555`).
 
-2. Build backend plugin binaries for Linux, Windows and Darwin:
+## Build
 
-   ```bash
-   mage -v
-   ```
+From this directory:
 
-3. List all available Mage targets for additional commands:
+```bash
+npm install
+npm run build    # frontend → dist/
+mage -v          # backend binaries → dist/gpx_foreverbull_*
+```
 
-   ```bash
-   mage -l
-   ```
+Watch the frontend while iterating:
 
-### Frontend
+```bash
+npm run dev
+```
 
-1. Install dependencies
+Rebuild Go after changes under `pkg/`:
 
-   ```bash
-   npm install
-   ```
+```bash
+mage -v
+```
 
-2. Build plugin in development mode and run in watch mode
+## Run Grafana with the plugin
 
-   ```bash
-   npm run dev
-   ```
+`docker-compose.yaml` expects the `foreverbull` network to already exist:
 
-3. Build plugin in production mode
+```bash
+# repository root — local images + fbenv stack
+task build:docker
+task client:docker:zipline
+task grafana:build:docker
+VERSION=local fbenv create
 
-   ```bash
-   npm run build
-   ```
+# this directory
+npm run server    # docker compose up --build
+```
 
-4. Run the tests (using Jest)
+Grafana is at [http://localhost:3001](http://localhost:3001) with anonymous admin. Unsigned loading is enabled via `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource`.
 
-   ```bash
-   # Runs the tests and watches for changes, requires git init first
-   npm run test
+The image `fbenv` uses is built from `grafana/Dockerfile`:
 
-   # Exits after running all the tests
-   npm run test:ci
-   ```
+```bash
+# from grafana/
+task build:docker    # lhjnilsson/fb-grafana:local
+```
 
-5. Spin up a Grafana instance and run the plugin inside it (using Docker)
+Signing is not required for local development.
 
-   ```bash
-   npm run server
-   ```
+## Tests
 
-6. Run the E2E tests (using Cypress)
+```bash
+npm run test:ci      # Jest
+npm run lint
+npm run typecheck
+go test ./pkg/...    # backend unit tests
+```
 
-   ```bash
-   # Spins up a Grafana instance first that we tests against
-   npm run server
+Playwright (`npm run e2e`) expects `npm run server` and a reachable broker.
 
-   # Starts the tests
-   npm run e2e
-   ```
+## Queries
 
-7. Run the linter
-
-   ```bash
-   npm run lint
-
-   # or
-
-   npm run lint:fix
-   ```
-
-# Distributing your plugin
-
-When distributing a Grafana plugin either within the community or privately the plugin must be signed so the Grafana application can verify its authenticity. This can be done with the `@grafana/sign-plugin` package.
-
-_Note: It's not necessary to sign a plugin during development. The docker development environment that is scaffolded with `@grafana/create-plugin` caters for running the plugin without a signature._
-
-## Initial steps
-
-Before signing a plugin please read the Grafana [plugin publishing and signing criteria](https://grafana.com/legal/plugins/#plugin-publishing-and-signing-criteria) documentation carefully.
-
-`@grafana/create-plugin` has added the necessary commands and workflows to make signing and distributing a plugin via the grafana plugins catalog as straightforward as possible.
-
-Before signing a plugin for the first time please consult the Grafana [plugin signature levels](https://grafana.com/legal/plugins/#what-are-the-different-classifications-of-plugins) documentation to understand the differences between the types of signature level.
-
-1. Create a [Grafana Cloud account](https://grafana.com/signup).
-2. Make sure that the first part of the plugin ID matches the slug of your Grafana Cloud account.
-   - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
-3. Create a Grafana Cloud API key with the `PluginPublisher` role.
-4. Keep a record of this API key as it will be required for signing a plugin
-
-## Signing a plugin
-
-### Using Github actions release workflow
-
-If the plugin is using the github actions supplied with `@grafana/create-plugin` signing a plugin is included out of the box. The [release workflow](./.github/workflows/release.yml) can prepare everything to make submitting your plugin to Grafana as easy as possible. Before being able to sign the plugin however a secret needs adding to the Github repository.
-
-1. Please navigate to "settings > secrets > actions" within your repo to create secrets.
-2. Click "New repository secret"
-3. Name the secret "GRAFANA_API_KEY"
-4. Paste your Grafana Cloud API key in the Secret field
-5. Click "Add secret"
-
-#### Push a version tag
-
-To trigger the workflow we need to push a version tag to github. This can be achieved with the following steps:
-
-1. Run `npm version <major|minor|patch>`
-2. Run `git push origin main --follow-tags`
-
-## Learn more
-
-Below you can find source code for existing app plugins and other related documentation.
-
-- [Basic data source plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/datasource-basic#readme)
-- [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-json)
-- [How to sign a plugin?](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)
+Query type `GetExecutionMetric` loads a backtest execution by ID. Metrics include `portfolio_value`, `alpha`, `beta`, `sharpe`, `sortino`, `capital_used`, long/short counts, and long/short values.

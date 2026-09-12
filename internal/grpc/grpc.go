@@ -14,6 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -21,18 +22,6 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
-
-type HealthCheck struct {
-	healthgrpc.UnimplementedHealthServer
-}
-
-func (h *HealthCheck) Check(_ context.Context, _ *healthgrpc.HealthCheckRequest) (*healthgrpc.HealthCheckResponse, error) {
-	return &healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVING}, nil
-}
-
-func (h *HealthCheck) Watch(_ *healthgrpc.HealthCheckRequest, _ healthgrpc.Health_WatchServer) error {
-	return status.Error(codes.Unimplemented, "Watch is not implemented")
-}
 
 const (
 	FieldLength = 2
@@ -172,7 +161,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 	fx.Invoke(
-		func(lc fx.Lifecycle, grpcServer *grpc.Server) error {
+		func(lc fx.Lifecycle, grpcServer *grpc.Server, pool *pgxpool.Pool) error {
 			lc.Append(
 				fx.Hook{
 					OnStart: func(context.Context) error {
@@ -180,8 +169,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 						if err != nil {
 							return fmt.Errorf("failed to listen: %w", err)
 						}
-						server := &HealthCheck{}
-						healthgrpc.RegisterHealthServer(grpcServer, server)
+						healthgrpc.RegisterHealthServer(grpcServer, newHealthCheck(pool))
 						go func() {
 							if err := grpcServer.Serve(listener); err != nil {
 								panic(err)

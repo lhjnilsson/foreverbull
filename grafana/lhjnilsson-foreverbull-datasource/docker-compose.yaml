@@ -30,6 +30,12 @@ services:
       GF_DATAPROXY_LOGGING: 1
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: lhjnilsson-foreverbull-datasource
       BROKER_URL: foreverbull:50055
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:3000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
     networks:
       - foreverbull

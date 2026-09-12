@@ -176,8 +176,9 @@ yarn-error.log*
 # SQL files
 *.sql
 
-# Loki metric folder
+# Loki test container data (WAL, chunks, indexes). Do not commit fixtures.
 internal/test_helper/metrics/
+internal/test_helper/metrics/loki/
 client/baseline_performance.pickle
 
 .foreverbull
