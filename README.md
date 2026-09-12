@@ -8,7 +8,7 @@ Dive deeper into our architecture in the Architecture section. In a nutshell, th
 
 - `Foreverbull`: The core app that orchestrates everything smoothly.
 - `Minio`: Handles storage for backtesting ingestions and raw results. 🗄️
-- `PostgreSQL`: Your reliable persistent storage for all app data. ` 
+- `PostgreSQL`: Your reliable persistent storage for all app data. 
 - `NATS`: The speedy message queue for seamless service communication. ⚡
 - `Grafana` (with Loki): Monitors the platform and visualizes backtest outcomes beautifully. 📊
 
@@ -17,17 +17,57 @@ Ready to jump in? Here's a quickstart guide to get you up and running! 🌟
 ## Getting Started 🛠️
 ### Requirements 📋
 - Docker
+- [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/)
+- [Helm](https://helm.sh/docs/intro/install/)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - Python 3.12+
-- Cookiecutter
+- [uv](https://docs.astral.sh/uv/)
+
+The local stack is a Kind cluster plus one Helm chart, not a raw Docker network.
 
 ### Quickstart 🚀
+
+From a clone of this repository:
+
+```bash
+cd client
+uv sync
+VERSION=local uv run fbenv create   # Kind cluster `foreverbull` + Helm into namespace `foreverbull`
+uv run fbenv status
+```
+
+`fbenv create` (cluster `local`, the default) creates a Kind cluster named `foreverbull` if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` into namespace `foreverbull`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
+
+To build `:local` images first (broker, Zipline, Grafana) and then create the environment, from the repository root:
+
+```bash
+task env
+```
+
+Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055` locally. Override with `FOREVERBULL_BROKER_ADDRESS`.
+
+Remote cluster (writes `.foreverbull/config.yaml`, then installs the same chart):
+
+```bash
+uv run fbenv use remote \
+  --kubeconfig /path/to/kubeconfig \
+  --context my-context \
+  --namespace my-namespace \
+  --broker-address host:50055
+uv run fbenv create
+```
+
+You can also `helm upgrade --install` against a kubeconfig directly — see [deploy/README.md](deploy/README.md).
+
+### Strategy projects
+
+Once the platform is running, generate a starter algorithm:
 
 ```bash
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
 
-Cookiecutter will walk you through the setup process for your new project. 
-Choose from two starter templates depending if you have TA-Lib installed or not 🎉 
+Cookiecutter walks you through setup. Choose from two starter templates depending on whether you have TA-Lib installed. 
 
 ## Architecture 📐
 
@@ -42,7 +82,7 @@ When running backtest simulations the client workers connects to the broker usin
 ![Domains](assets/diagram/domains.png)
 
 - `Backtest`: Powers strategy backtesting with Zipline for reliable simulations. 🔄
-- `Finance`: Manages market data ingestion and live trading operations. ` 
+- `Finance`: Manages market data ingestion and live trading operations. 
 - `Service`: Orchestrates algorithmic strategies within containers efficiently. 🤖
 - `Strategy`: Handles scheduling for backtests and live trading sessions. ⏰
 

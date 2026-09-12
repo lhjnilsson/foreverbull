@@ -1,22 +1,25 @@
-# Cluster contract (Kind + Helm)
+# Cluster install (Kind + Helm)
 
-This directory is the install contract: Kind config, cluster-config keys, and
-the Helm chart at `deploy/helm/foreverbull`. Later steps switch the CLI from
-Docker `fbenv` to Kind/Helm. This step does **not** change application code.
+One Helm chart (`deploy/helm/foreverbull`) installs the six platform workloads.
+`fbenv` is the CLI installer; you can also `helm upgrade --install` by hand.
 
-- Local default: Kind cluster `foreverbull`, namespace `foreverbull`, one chart.
-- Remote: `helm upgrade --install` against a user kubeconfig/context/namespace.
+- Local default: Kind cluster `foreverbull`, namespace `foreverbull`, chart
+  installed into it (`expose.hostPort=true`).
+- Remote: `helm upgrade --install` against a user kubeconfig/context/namespace
+  (`expose.hostPort=false`).
 - Broker does **not** mount `/var/run/docker.sock`. Extra strategy-worker pods
   use in-cluster Kubernetes (ServiceAccount RBAC).
 - Go/Python Testcontainers stay on Docker. Do **not** convert unit/component
   tests to Kind.
 
+Chart details: [helm/foreverbull/README.md](helm/foreverbull/README.md).
+CLI: [client/cli/README.md](../client/cli/README.md).
+
 ## Six workloads
 
-Same processes as `fbenv` (`client/cli/src/foreverbull_cli/env/environment.py`).
-In-cluster DNS names stay the Docker hostnames.
+In-cluster DNS names match the Service object names.
 
-| Workload | K8s Service DNS | Image (default) | Host port |
+| Workload | K8s Service DNS | Image (default) | Host port (local Kind) |
 | --- | --- | --- | --- |
 | Postgres | `postgres` | `postgres:13.3-alpine` | `5432` |
 | NATS JetStream | `nats` | `nats:2.10-alpine` | `4222` |
@@ -29,7 +32,7 @@ In-cluster DNS names stay the Docker hostnames.
 
 ### Host ports (local Kind)
 
-Published on the host, same as fbenv:
+Published on the host when `expose.hostPort=true` (local CLI):
 
 | Port | Service |
 | --- | --- |
@@ -41,16 +44,16 @@ Published on the host, same as fbenv:
 | `3000` | Grafana |
 
 `deploy/kind/cluster.yaml` maps each of those 1:1 onto the Kind control-plane
-node (`hostPort` == `containerPort`). The chart MUST set matching container
-`hostPort` when `expose.hostPort=true` (local CLI). NodePort is not used:
-these ports are outside `30000`–`32767`.
+node (`hostPort` == `containerPort`). The chart sets matching container
+`hostPort` when `expose.hostPort=true`. NodePort is not used: these ports are
+outside `30000`–`32767`.
 
-Remote installs leave `expose.hostPort=false` (ClusterIP only). The CLI talks
-to `remote.broker_address` instead of `localhost:50055`.
+Remote installs leave `expose.hostPort=false` (ClusterIP only). Point the CLI
+and Python stubs at `remote.broker_address` or `FOREVERBULL_BROKER_ADDRESS`.
 
 ### In-cluster env (broker)
 
-Matches fbenv container env / `internal/environment/env.go`:
+Matches `internal/environment/env.go` plus chart overrides:
 
 | Variable | Value |
 | --- | --- |
@@ -59,25 +62,27 @@ Matches fbenv container env / `internal/environment/env.go`:
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
 | `SERVER_ADDRESS` | `foreverbull` |
+| `ZIPLINE_CONTAINER_NAME` | `zipline` |
+| `POD_NAMESPACE` | pod namespace (fieldRef) |
 | `GRPC_PORT` | `50055` |
 | `HTTP_PORT` | `8080` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
-| `LOG_LEVEL` | `debug` local; chart default `warning` |
+| `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
 | Grafana `BROKER_URL` | `foreverbull:50055` |
 | Zipline `DATABASE_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
 
-Zipline is reached by in-cluster Service `zipline:50055`, not Docker inspect
-of `foreverbull_zipline`. Worker pods get the same env `container.Start`
-sets today (`BROKER_HOSTNAME`, `BROKER_PORT`, `STORAGE_*`, `DATABASE_URL`,
-`LOGLEVEL`).
+Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
+`BROKER_HOSTNAME`, `BROKER_PORT`, `STORAGE_*`, `DATABASE_URL`, `LOGLEVEL`
+(`internal/container` `Start`).
 
-Persistence is cluster PVCs (`persistence.*`), not host binds to
-`.foreverbull/{postgres,minio,nats}`.
+Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
+under `.foreverbull/{postgres,minio,nats}` are not used.
 
 ## Cluster config
 
-Users pick `cluster: local` (default) or `remote`.
+Users pick `cluster: local` (default) or `remote`. `fbenv use` writes the
+project file.
 
 | File | Role |
 | --- | --- |
@@ -85,6 +90,7 @@ Users pick `cluster: local` (default) or `remote`.
 | `.foreverbull/config.yaml` | Project config (cwd; do not commit) |
 | `~/.foreverbull/config.yaml` | Optional user override |
 | `FOREVERBULL_CONFIG` | Explicit path; wins over the files above |
+| `FOREVERBULL_BROKER_ADDRESS` | Runtime broker `host:port`; highest priority |
 
 Merge order (later wins): built-in defaults → user → project → `FOREVERBULL_CONFIG`.
 
@@ -118,6 +124,14 @@ comes from the Helm release (`--namespace`, default `foreverbull`).
 
 ### Local (default)
 
+CLI (from `client/` after `uv sync`):
+
+```bash
+VERSION=local uv run fbenv create
+```
+
+Equivalent by hand:
+
 ```bash
 # 1. Create the Kind cluster (or: task kind:create)
 kind create cluster --name foreverbull --config deploy/kind/cluster.yaml
@@ -135,7 +149,8 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --create-namespace \
   --kube-context kind-foreverbull \
   --set expose.hostPort=true \
-  --set global.imageTag=local
+  --set global.imageTag=local \
+  --set broker.logLevel=debug
 ```
 
 `load-images.sh` loads `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and
@@ -144,16 +159,32 @@ NATS, and Minio are pulled by the node on first pod start (or use images already
 cached on the Docker host).
 
 Host checks after install: `localhost:5432`, `4222`, `9000`, `50055`, `3000`,
-and `27000`–`27015`. Python `fbull` keeps using `localhost:50055`.
+and `27000`–`27015`. Python `fbull` keeps using `localhost:50055` unless
+`FOREVERBULL_BROKER_ADDRESS` is set.
 
 Teardown:
 
 ```bash
+uv run fbenv stop --remove --purge
+# or:
 helm uninstall foreverbull --namespace foreverbull
 kind delete cluster --name foreverbull
 ```
 
 ### Remote
+
+CLI:
+
+```bash
+uv run fbenv use remote \
+  --kubeconfig /path/to/kubeconfig \
+  --context my-context \
+  --namespace my-namespace \
+  --broker-address host:50055
+uv run fbenv create
+```
+
+Or install the chart against a real cluster:
 
 ```bash
 helm upgrade --install foreverbull deploy/helm/foreverbull \
@@ -164,8 +195,8 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --set expose.hostPort=false
 ```
 
-Set `cluster: remote` and `remote.broker_address` in config. Do not pass
-Alpaca keys as chart values.
+Set `cluster: remote` and `remote.broker_address` in config (or
+`FOREVERBULL_BROKER_ADDRESS`). Do not pass Alpaca keys as chart values.
 
 Override defaults with `--set` or `-f my-values.yaml`. Check the chart without
 a cluster:
@@ -173,11 +204,16 @@ a cluster:
 ```bash
 helm lint deploy/helm/foreverbull
 helm template foreverbull deploy/helm/foreverbull --namespace foreverbull
+bash deploy/helm/check-chart.sh
 ```
+
+`check-chart.sh` lints, templates with and without `expose.hostPort`, and
+asserts the render has ServiceAccount/Role/RoleBinding and does not mention
+`/var/run/docker.sock`.
 
 ## Helm value keys
 
-One chart, these keys. Do not rename them in later steps.
+One chart, these keys. Match `values.yaml`.
 
 ```yaml
 global:
@@ -263,32 +299,27 @@ rbac:
   create: true
 ```
 
-Workload object names (Deployment or StatefulSet + Service): `postgres`,
-`nats`, `minio`, `zipline`, `foreverbull`, `grafana`.
+Workload object names (Deployment + Service): `postgres`, `nats`, `minio`,
+`zipline`, `foreverbull`, `grafana`.
 
-NATS, Minio, and Postgres keep the fbenv commands, credentials, and volume
-paths above. Grafana gets only `BROKER_URL` from `grafana.brokerUrl`.
+NATS, Minio, and Postgres keep the commands, credentials, and volume paths
+above. Grafana gets `BROKER_URL` from `grafana.brokerUrl`.
 
 ## Broker RBAC
 
 The broker ServiceAccount (`serviceAccount.name`) needs a Role in the install
-namespace to create/get/delete strategy-worker pods (today:
-`internal/container` `Start` / `Get` / `Stop` via Docker). Scope is **that
-namespace only**.
+namespace so `internal/container` can Get/Start/StopAll extra pods. Scope is
+**that namespace only**.
 
 ```yaml
 rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log", "pods/status"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
 ```
 
-Worker pods: labels `platform=foreverbull`, `type=service`. No docker.sock
-volume on the broker pod.
-
-## Out of scope here
-
-- Go Kubernetes runtime replacing `internal/container`
-- CLI Kind/Helm commands replacing Docker `fbenv`
-- Live trading / Alpaca secrets
-- Moving Testcontainers tests onto Kind
+Worker pods: labels `platform=foreverbull`, `type=service`,
+`app.kubernetes.io/name=<name>`. No docker.sock volume on the broker pod.

@@ -11,19 +11,22 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 | `cmd/server/` | Go broker/server entrypoint |
 | `pkg/` | Go domains: `backtest`, `finance`, `service`, `strategy` |
 | `pkg/pb/` | Generated Go protobuf (plus a few hand-written helpers) |
-| `internal/` | Shared Go internals (env, grpc, storage, stream, testcontainers helpers) |
+| `internal/` | Shared Go internals (env, grpc, storage, stream, Kubernetes container runtime, testcontainers helpers) |
 | `proto/` | Protobuf **sources**. Edit these, then regenerate. |
 | `client/` | uv workspace: `foreverbull`, `foreverbull-cli`, `foreverbull-testing`, `foreverbull-zipline` |
 | `client/src/foreverbull/` | Python client library |
-| `client/cli/` | `fbull` and `fbenv` CLIs |
+| `client/cli/` | `fbull` and `fbenv` CLIs (`fbenv` is Kind/Helm, not a Docker network) |
 | `client/zipline/` | Zipline gRPC engine + Docker image |
 | `client/testing/` | Pytest plugin/fixtures (`fb_database`, etc.) |
+| `deploy/` | Kind config, Helm chart, cluster-config example |
 | `docker/Dockerfile` | Local `lhjnilsson/foreverbull` image |
 | `grafana/` | Grafana image + datasource plugin |
+| `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
 ## Prerequisites
 
-- Docker (unit tests use Testcontainers; integration/e2e need local images)
+- Docker (unit tests use Testcontainers; Kind also needs a Docker daemon; integration/e2e need local images)
+- Kind, Helm, and kubectl (local `fbenv` / Kind cluster)
 - Go 1.24 (see `go.mod`)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - Task
@@ -35,7 +38,7 @@ cd client && uv sync
 
 ## Testing
 
-Many Go and Python unit tests start Postgres/NATS/Minio via Testcontainers. Have Docker running. They are not live-trading tests.
+Many Go and Python unit tests start Postgres/NATS/Minio via Testcontainers. Have Docker running. They are not live-trading tests. **Do not convert unit/component tests to Kind.** Testcontainers stay on Docker even though `fbenv` installs the platform with Kind/Helm.
 
 ### Go
 
@@ -145,34 +148,64 @@ Hand-written helpers next to generated code (safe to edit):
 
 ## Local / dev environment
 
+The platform install is **Kind + Helm**, not a Docker Compose / Docker-network stack. `fbenv` creates a Kind cluster named `foreverbull` (default), then `helm upgrade --install`s `deploy/helm/foreverbull` into namespace `foreverbull`. The broker pod does **not** mount `/var/run/docker.sock`. Extra strategy-worker pods are created with the in-cluster Kubernetes API (ServiceAccount RBAC). Do not add a docker.sock volume to the broker, and do not talk to the Docker API from the broker runtime.
+
 Bring up the full stack (local images + `fbenv`):
 
 ```bash
 task env
 ```
 
-That builds Zipline, Grafana, and Foreverbull `:local` images, `uv sync`s the client, then:
+That builds Zipline, Grafana, and Foreverbull `:local` images, `uv sync`s the client, then from `client/`:
 
 ```bash
 uv run fbenv stop --remove
 VERSION=local uv run fbenv create
 ```
 
-`fbenv` creates Docker network `foreverbull` and containers: Postgres, NATS, Minio, Zipline, Foreverbull, Grafana. State/volumes live in `./.foreverbull/` relative to the working directory (`client/` when using `task env`).
-
 Useful `fbenv` commands (from `client/`):
 
 ```bash
 uv run fbenv status
-VERSION=local uv run fbenv create          # create + start (default)
-uv run fbenv start
-uv run fbenv stop
-uv run fbenv stop --remove
-uv run fbenv stop --remove --purge         # also deletes .foreverbull data dirs
-uv run fbenv update
+uv run fbenv use                         # print selected cluster
+uv run fbenv use local                   # Kind (default); writes .foreverbull/config.yaml
+uv run fbenv use remote --kubeconfig … --context … --namespace … --broker-address host:50055
+VERSION=local uv run fbenv create        # Kind cluster + helm upgrade --install (default start)
+uv run fbenv start                       # scale deployments to 1
+uv run fbenv stop                        # scale to 0
+uv run fbenv stop --remove               # helm uninstall
+uv run fbenv stop --remove --purge       # uninstall; local also deletes the Kind cluster; deletes .foreverbull data except config.yaml
+uv run fbenv update                      # reload images (local) and helm upgrade --reuse-values
 ```
 
-Published host ports: Postgres `5432`, NATS `4222`, Minio `9000`, Foreverbull gRPC `50055`, backtest `27000–27015`, Grafana `3000`. The Python broker stubs talk to `localhost:50055`.
+CLI flags `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-address` override the selected cluster for one command.
+
+Published host ports (Kind `extraPortMappings` + chart `expose.hostPort=true`): Postgres `5432`, NATS `4222`, Minio `9000`, Foreverbull gRPC `50055`, backtest `27000–27015`, Grafana `3000`. Persistence is cluster PVCs (`persistence.*`), not host binds under `.foreverbull/{postgres,minio,nats}`.
+
+Python broker stubs resolve the address in this order: `FOREVERBULL_BROKER_ADDRESS` → `remote.broker_address` when `cluster: remote` → `localhost:50055` when `cluster: local`. Grafana in-cluster uses `BROKER_URL=foreverbull:50055`.
+
+### Cluster config
+
+Users pick `cluster: local` (default) or `remote`. Canonical keys: `deploy/cluster-config.example.yaml`.
+
+| File / env | Role |
+| --- | --- |
+| `.foreverbull/config.yaml` | Project config (cwd; do not commit) |
+| `~/.foreverbull/config.yaml` | Optional user override |
+| `FOREVERBULL_CONFIG` | Explicit path; wins over the files above |
+| `FOREVERBULL_BROKER_ADDRESS` | Runtime broker `host:port`; highest priority for stubs/CLI |
+
+Merge order (later wins): built-in defaults → user → project → `FOREVERBULL_CONFIG`. Remote requires `remote.broker_address` (or `--broker-address` / `FOREVERBULL_BROKER_ADDRESS`). Local always uses `localhost:50055` unless the env var is set.
+
+### Helm chart checks (no cluster)
+
+```bash
+helm lint deploy/helm/foreverbull
+bash deploy/helm/check-chart.sh
+# equivalent: helm template … and assert RBAC exists and docker.sock is not mounted
+```
+
+Manual Kind/Helm (same as `fbenv create` local): `task kind:create`, `task kind:load`, `task helm:install`. Recipes: `deploy/README.md`.
 
 ### Environment variables
 
@@ -182,26 +215,28 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | --- | --- |
 | `GRPC_PORT` | `50055` |
 | `HTTP_PORT` | `8080` |
-| `SERVER_ADDRESS` | `foreverbull` (hostname other containers use) |
-| `DOCKER_NETWORK` | `foreverbull` |
-| `ZIPLINE_CONTAINER_NAME` | `foreverbull_zipline` |
+| `SERVER_ADDRESS` | `foreverbull` (in-cluster Service DNS other pods use) |
+| `ZIPLINE_CONTAINER_NAME` | Go default `foreverbull_zipline`. **Helm** sets `zipline` (Service DNS). `internal/container` looks up that name as a Pod or `app.kubernetes.io/name` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
-| `LOG_LEVEL` | `warning` (`debug`/`info`/`warning`/`error`); fbenv sets `debug` on the broker container |
-| `POSTGRES_URL` | Go default: `postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable`. **fbenv** Postgres is user/password/db `foreverbull`, and the broker container gets `postgres://foreverbull:foreverbull@postgres:5432/foreverbull`. Host-side against fbenv: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable` |
-| `NATS_URL` | `nats://localhost:4222` (in-network: `nats://nats:4222`) |
+| `LOG_LEVEL` | `warning` (`debug`/`info`/`warning`/`error`); local `fbenv` sets `debug` on the broker (`--set broker.logLevel=debug`) |
+| `POSTGRES_URL` | Go default: `postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable`. **Helm** Postgres is user/password/db `foreverbull`, and the broker pod gets `postgres://foreverbull:foreverbull@postgres:5432/foreverbull`. Host-side against local Kind: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable` |
+| `NATS_URL` | `nats://localhost:4222` (in-cluster: `nats://nats:4222`) |
 | `NATS_DURABLE` | `foreverbull` |
 | `NATS_DELIVERY_POLICY` | `all` |
-| `MINIO_URL` | `localhost:9000` (in-network: `minio:9000`) |
+| `MINIO_URL` | `localhost:9000` (in-cluster: `minio:9000`) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
+| `POD_NAMESPACE` / `KUBERNETES_NAMESPACE` | Broker chart sets `POD_NAMESPACE` from the pod namespace; `internal/container` uses it for the in-cluster client |
 | `MARKET_DATA_PROVIDER` | `yahoo` |
-| `TRADING_ENABLED` | `false` — do not enable live trading unless explicitly requested |
+| `TRADING_ENABLED` | `false` — do not enable live trading unless explicitly requested; never put real Alpaca keys in the chart |
 | `TRADING_PROVIDER` | `alpaca` |
 | `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` |
 | `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled |
-| `VERSION` | Image tag for `fbenv` (`lhjnilsson/foreverbull|zipline|fb-grafana:{VERSION}`). Use `local` with `task env` / locally built images; default `latest` |
-| `DOCKER_API_VERSION` | Docker SDK pin used by fbenv (default `1.44`) |
+| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task env` / locally built images; default `latest` |
+| `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
+| `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
+| `DOCKER_NETWORK` | Legacy default `foreverbull`. Used by Testcontainers helpers, **not** by `fbenv` or the broker |
 | `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |
-| `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`) |
+| `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`; in-cluster workers get `SERVER_ADDRESS`) |
 | `NAMESPACE_PORT` | Required for the worker namespace socket |
 | `LOGGING_LEVEL` | Python client/CLI logging (`fbull -v/-vv/-vvv`) |
 | `ECHO` | If set, CLI tests print stdout |
@@ -214,7 +249,7 @@ Python Minio client (`Storage.from_environment`) also reads `STORAGE_ENDPOINT` (
 Both live in `client/cli/` (`foreverbull-cli`). Entry points in `client/cli/pyproject.toml`:
 
 - `fbull` → `foreverbull_cli.bull.cli:cli` — backtests and trading against a running broker (`fbull backtest …`, `fbull trading …`)
-- `fbenv` → `foreverbull_cli.env.cli:cli` — local Docker environment
+- `fbenv` → `foreverbull_cli.env.cli:cli` — Kind/Helm environment (`local` Kind cluster or `remote` kubeconfig)
 
 After `uv sync` in `client/`:
 
