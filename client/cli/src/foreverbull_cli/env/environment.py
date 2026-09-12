@@ -11,14 +11,19 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-import yaml
+from foreverbull.broker.config import BROKER_ADDRESS_ENV
+from foreverbull.broker.config import DEFAULT_BROKER_ADDRESS
+from foreverbull.broker.config import DEFAULT_CLUSTER_CONFIG
+from foreverbull.broker.config import DEFAULT_KIND_CONFIG
+from foreverbull.broker.config import DEFAULT_KIND_NAME
+from foreverbull.broker.config import DEFAULT_NAMESPACE
+from foreverbull.broker.config import deep_merge
+from foreverbull.broker.config import load_cluster_config
+from foreverbull.broker.config import project_config_path
+from foreverbull.broker.config import save_cluster_config
 
 
 RELEASE_NAME = "foreverbull"
-DEFAULT_NAMESPACE = "foreverbull"
-DEFAULT_KIND_NAME = "foreverbull"
-DEFAULT_KIND_CONFIG = "deploy/kind/cluster.yaml"
-DEFAULT_BROKER_ADDRESS = "localhost:50055"
 CHART_RELATIVE_PATH = Path("deploy") / "helm" / "foreverbull"
 
 TOOL_HINTS = {
@@ -37,21 +42,6 @@ WORKLOADS: tuple[tuple[str, str], ...] = (
     ("Grafana", "grafana"),
 )
 DEPLOYMENTS: tuple[str, ...] = tuple(name for _, name in WORKLOADS)
-
-DEFAULT_CLUSTER_CONFIG: dict[str, Any] = {
-    "cluster": "local",
-    "namespace": DEFAULT_NAMESPACE,
-    "kind": {
-        "name": DEFAULT_KIND_NAME,
-        "config": DEFAULT_KIND_CONFIG,
-    },
-    "remote": {
-        "kubeconfig": "",
-        "context": "",
-        "namespace": "",
-        "broker_address": "",
-    },
-}
 
 
 class MissingToolError(RuntimeError):
@@ -128,46 +118,7 @@ class WorkloadRow:
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in override.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _load_yaml_file(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    with path.open() as fh:
-        loaded = yaml.safe_load(fh)
-    if loaded is None:
-        return {}
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Cluster config must be a mapping: {path}")
-    return loaded
-
-
-def load_cluster_config(
-    *,
-    cwd: Path | None = None,
-    home: Path | None = None,
-    environ: Mapping[str, str] | None = None,
-) -> dict[str, Any]:
-    environ = os.environ if environ is None else environ
-    cwd = Path.cwd() if cwd is None else cwd
-    home = Path.home() if home is None else home
-    merged = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
-    for path in (home / ".foreverbull" / "config.yaml", cwd / ".foreverbull" / "config.yaml"):
-        merged = _deep_merge(merged, _load_yaml_file(path))
-    explicit = environ.get("FOREVERBULL_CONFIG")
-    if explicit:
-        path = Path(explicit).expanduser()
-        if not path.is_file():
-            raise FileNotFoundError(f"FOREVERBULL_CONFIG not found: {path}")
-        merged = _deep_merge(merged, _load_yaml_file(path))
-    return merged
+    return deep_merge(base, override)
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -196,21 +147,112 @@ class Config:
         load_files: bool = True,
         cwd: Path | None = None,
         home: Path | None = None,
+        cluster: str | None = None,
+        kubeconfig: str | None = None,
+        context: str | None = None,
+        namespace: str | None = None,
+        broker_address: str | None = None,
     ):
         self._environ = os.environ if environ is None else environ
+        self._cwd = Path.cwd() if cwd is None else cwd
+        self._home = Path.home() if home is None else home
+        self._load_files = load_files
+        self._broker_address_override: str | None = None
         if data is None and load_files:
-            self._data = load_cluster_config(cwd=cwd, home=home, environ=self._environ)
+            self._data = load_cluster_config(cwd=self._cwd, home=self._home, environ=self._environ)
         elif data is None:
             self._data = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
         elif load_files:
-            self._data = _deep_merge(load_cluster_config(cwd=cwd, home=home, environ=self._environ), data)
+            self._data = _deep_merge(load_cluster_config(cwd=self._cwd, home=self._home, environ=self._environ), data)
         else:
             self._data = _deep_merge(copy.deepcopy(DEFAULT_CLUSTER_CONFIG), data)
 
+        self._normalize_cluster()
+        self.apply_cli_overrides(
+            cluster=cluster,
+            kubeconfig=kubeconfig,
+            context=context,
+            namespace=namespace,
+            broker_address=broker_address,
+        )
+
+    def _normalize_cluster(self) -> None:
         cluster = str(self._data.get("cluster") or "local").lower()
         if cluster not in {"local", "remote"}:
             raise ValueError(f"cluster must be 'local' or 'remote', got {cluster!r}")
         self._data["cluster"] = cluster
+
+    def apply_cli_overrides(
+        self,
+        *,
+        cluster: str | None = None,
+        kubeconfig: str | None = None,
+        context: str | None = None,
+        namespace: str | None = None,
+        broker_address: str | None = None,
+    ) -> None:
+        if cluster is not None:
+            self._data["cluster"] = cluster
+            self._normalize_cluster()
+        remote = dict(self._data.get("remote") or {})
+        if kubeconfig is not None:
+            remote["kubeconfig"] = kubeconfig
+        if context is not None:
+            remote["context"] = context
+        if broker_address is not None:
+            remote["broker_address"] = broker_address
+            self._broker_address_override = broker_address
+        if namespace is not None:
+            if self.is_local:
+                self._data["namespace"] = namespace
+            else:
+                remote["namespace"] = namespace
+        self._data["remote"] = remote
+
+    def persist_selection(
+        self,
+        cluster: str,
+        *,
+        kubeconfig: str | None = None,
+        context: str | None = None,
+        namespace: str | None = None,
+        broker_address: str | None = None,
+    ) -> Path:
+        cluster = cluster.lower()
+        if cluster not in {"local", "remote"}:
+            raise ValueError(f"cluster must be 'local' or 'remote', got {cluster!r}")
+        updates: dict[str, Any] = {"cluster": cluster}
+        remote_updates: dict[str, Any] = {}
+        if kubeconfig is not None:
+            remote_updates["kubeconfig"] = kubeconfig
+        if context is not None:
+            remote_updates["context"] = context
+        if broker_address is not None:
+            remote_updates["broker_address"] = broker_address
+        if namespace is not None:
+            if cluster == "local":
+                updates["namespace"] = namespace
+            else:
+                remote_updates["namespace"] = namespace
+        if remote_updates:
+            updates["remote"] = remote_updates
+        preview = Config(
+            updates,
+            environ=self._environ,
+            load_files=self._load_files,
+            cwd=self._cwd,
+            home=self._home,
+        )
+        if not preview.is_local and not preview.broker_address:
+            raise ValueError(
+                "remote.broker_address is required; pass --broker-address or set it in .foreverbull/config.yaml"
+            )
+        path = save_cluster_config(updates, cwd=self._cwd)
+        self._load_files = True
+        self._data = load_cluster_config(cwd=self._cwd, home=self._home, environ=self._environ)
+        self._normalize_cluster()
+        self._broker_address_override = None
+        return path
 
     @property
     def version(self) -> str:
@@ -258,9 +300,18 @@ class Config:
 
     @property
     def broker_address(self) -> str:
+        env_addr = str(self._environ.get(BROKER_ADDRESS_ENV) or "").strip()
+        if env_addr:
+            return env_addr
+        if self._broker_address_override:
+            return self._broker_address_override
         if self.is_local:
             return DEFAULT_BROKER_ADDRESS
         return str((self._data.get("remote") or {}).get("broker_address") or "").strip()
+
+    @property
+    def config_path(self) -> Path:
+        return project_config_path(self._cwd)
 
     @property
     def postgres_image(self) -> str:

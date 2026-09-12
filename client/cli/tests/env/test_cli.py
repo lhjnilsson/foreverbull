@@ -33,7 +33,7 @@ def runner(fb_env):
         result = runner.invoke(app, args)
         echo_stdout = os.environ.get("ECHO", False)
         if echo_stdout:
-            print("")
+            print()
             print(result.stdout)
 
         return result
@@ -50,8 +50,10 @@ def mocked_container_manager():
         ctx.obj = container_manager
 
     assert cli.cli.registered_callback
+    original = cli.cli.registered_callback.callback
     cli.cli.registered_callback.callback = initialize
-    return container_manager
+    yield container_manager
+    cli.cli.registered_callback.callback = original
 
 
 def test_status(runner, mocked_container_manager: MagicMock):
@@ -108,3 +110,70 @@ def test_update(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "update")
     assert result.exit_code == 0
     mocked_container_manager.update.assert_called_once()
+
+
+def test_create_cluster_flag(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, ["create", "--cluster", "remote", "--context", "prod"])
+    assert result.exit_code == 0
+    mocked_container_manager.create.assert_called_once_with(start=True)
+
+
+def _isolated_project(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("FOREVERBULL_CONFIG", raising=False)
+    monkeypatch.delenv("FOREVERBULL_BROKER_ADDRESS", raising=False)
+    return home
+
+
+def test_use_shows_current_cluster(tmp_path, monkeypatch):
+    _isolated_project(tmp_path, monkeypatch)
+    result = CliRunner().invoke(cli.cli, ["use"])
+    assert result.exit_code == 0
+    assert "cluster: local" in result.stdout
+    assert "broker: localhost:50055" in result.stdout
+
+
+def test_use_local_writes_config(tmp_path, monkeypatch):
+    _isolated_project(tmp_path, monkeypatch)
+    result = CliRunner().invoke(cli.cli, ["use", "local"])
+    assert result.exit_code == 0, result.output
+    config_path = tmp_path / ".foreverbull" / "config.yaml"
+    assert config_path.is_file()
+    assert "cluster: local" in config_path.read_text()
+    assert "Wrote" in result.stdout
+
+
+def test_use_remote_writes_config(tmp_path, monkeypatch):
+    _isolated_project(tmp_path, monkeypatch)
+    result = CliRunner().invoke(
+        cli.cli,
+        [
+            "use",
+            "remote",
+            "--kubeconfig",
+            "/tmp/kube",
+            "--context",
+            "prod",
+            "--namespace",
+            "fb",
+            "--broker-address",
+            "broker.example:50055",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    text = (tmp_path / ".foreverbull" / "config.yaml").read_text()
+    assert "cluster: remote" in text
+    assert "context: prod" in text
+    assert "broker_address: broker.example:50055" in text
+    assert "cluster: remote" in result.stdout
+    assert "broker: broker.example:50055" in result.stdout
+
+
+def test_use_remote_requires_broker_address(tmp_path, monkeypatch):
+    _isolated_project(tmp_path, monkeypatch)
+    result = CliRunner().invoke(cli.cli, ["use", "remote", "--context", "prod"])
+    assert result.exit_code != 0
+    assert "broker_address" in (result.output or "") + str(result.exception)

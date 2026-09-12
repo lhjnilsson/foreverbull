@@ -1,10 +1,11 @@
+from collections.abc import Callable
+from collections.abc import Generator
 from functools import wraps
-from typing import Callable
 from typing import Concatenate
-from typing import Generator
 
 import grpc
 
+from foreverbull.broker.config import resolve_broker_address
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
@@ -15,10 +16,9 @@ from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
 def backtest_servicer[R, **P](
     f: Callable[Concatenate[backtest_service_pb2_grpc.BacktestServicerStub, P], R],
 ) -> Callable[P, R]:
-    servicer = backtest_service_pb2_grpc.BacktestServicerStub(grpc.insecure_channel("localhost:50055"))
-
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
+        servicer = backtest_service_pb2_grpc.BacktestServicerStub(grpc.insecure_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper

@@ -30,4 +30,6 @@ remote:
   namespace: ""
   # host:port the CLI and Python broker stubs use when cluster is remote.
   # Required for remote. Local always uses localhost:50055.
+  # Override at runtime with FOREVERBULL_BROKER_ADDRESS (highest priority).
+  # Select cluster with: fbenv use local|remote
   broker_address: ""

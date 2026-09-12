@@ -191,6 +191,68 @@ class TestConfig:
         with pytest.raises(ValueError, match="local"):
             Config({"cluster": "kind"}, load_files=False, environ={})
 
+    def test_broker_address_env_overrides_local_and_remote(self):
+        local = Config(load_files=False, environ={"FOREVERBULL_BROKER_ADDRESS": "from-env:9"})
+        assert local.broker_address == "from-env:9"
+        remote = Config(
+            {
+                "cluster": "remote",
+                "remote": {"broker_address": "from-file:1"},
+            },
+            load_files=False,
+            environ={"FOREVERBULL_BROKER_ADDRESS": "from-env:9"},
+        )
+        assert remote.broker_address == "from-env:9"
+
+    def test_cli_overrides_switch_to_remote(self):
+        uut = Config(load_files=False, environ={})
+        uut.apply_cli_overrides(
+            cluster="remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
+            broker_address="broker.example:50055",
+        )
+        assert uut.cluster == "remote"
+        assert uut.is_local is False
+        assert uut.kubeconfig == "/tmp/kube"
+        assert uut.kube_context == "prod"
+        assert uut.namespace == "fb"
+        assert uut.broker_address == "broker.example:50055"
+
+    def test_cli_namespace_override_local(self):
+        uut = Config(load_files=False, environ={})
+        uut.apply_cli_overrides(namespace="custom")
+        assert uut.is_local is True
+        assert uut.namespace == "custom"
+
+    def test_persist_selection_writes_project_config(self, tmp_path: Path):
+        cwd = tmp_path / "proj"
+        cwd.mkdir()
+        home = tmp_path / "home"
+        home.mkdir()
+        uut = Config(load_files=True, cwd=cwd, home=home, environ={})
+        path = uut.persist_selection(
+            "remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
+            broker_address="broker.example:50055",
+        )
+        assert path == cwd / ".foreverbull" / "config.yaml"
+        assert uut.cluster == "remote"
+        assert uut.kube_context == "prod"
+        assert uut.namespace == "fb"
+        assert uut.broker_address == "broker.example:50055"
+        written = path.read_text()
+        assert "cluster: remote" in written
+        assert "broker_address: broker.example:50055" in written
+
+    def test_persist_remote_requires_broker_address(self, tmp_path: Path):
+        uut = Config(load_files=False, cwd=tmp_path, home=tmp_path, environ={})
+        with pytest.raises(ValueError, match="remote.broker_address"):
+            uut.persist_selection("remote", context="prod")
+
 
 class TestLoadClusterConfig:
     def test_merge_order_later_wins(self, tmp_path: Path):
@@ -281,6 +343,23 @@ class TestContainerManager:
         uut.create(start=False)
         helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
         assert "replicaCount=0" in helm
+
+    def test_create_uses_cli_overrides_for_remote(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
+        uut.config.apply_cli_overrides(
+            cluster="remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
+        )
+        uut.create()
+        assert runner.calls_starting_with("kind") == []
+        helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert helm[helm.index("--kubeconfig") + 1] == "/tmp/kube"
+        assert helm[helm.index("--kube-context") + 1] == "prod"
+        assert helm[helm.index("--namespace") + 1] == "fb"
+        assert "expose.hostPort=false" in helm
 
     def test_create_remote_skips_kind(self, tmp_path: Path):
         runner = FakeRunner()

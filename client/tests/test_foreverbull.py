@@ -181,3 +181,22 @@ class TestForeverbull:
         )
         with algorithm.trading_session(trading_session) as algo:
             assert type(algo) is TradingSession, "algo is not of type TradingSession"
+
+    def test_get_execution_uses_resolved_broker_address(self, monkeypatch):
+        seen: list[str] = []
+        stub = MagicMock()
+        stub.GetExecution.return_value = MagicMock(execution=MagicMock(), periods=[])
+        monkeypatch.setenv("FOREVERBULL_BROKER_ADDRESS", "remote.example:1234")
+        monkeypatch.setattr(
+            "foreverbull.foreverbull.grpc.insecure_channel",
+            lambda addr: seen.append(addr) or MagicMock(),
+        )
+        monkeypatch.setattr(
+            "foreverbull.foreverbull.backtest_service_pb2_grpc.BacktestServicerStub",
+            lambda channel: stub,
+        )
+        algorithm = Foreverbull(None)
+        execution, frame = algorithm.get_execution("exec-1")
+        assert execution is stub.GetExecution.return_value.execution
+        assert frame.empty
+        assert seen == ["remote.example:1234"]
