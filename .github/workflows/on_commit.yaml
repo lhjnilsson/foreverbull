@@ -83,6 +83,43 @@ jobs:
       - name: Lint and template chart
         run: bash deploy/helm/check-chart.sh
 
+  proto-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Pin the same generators that produced the committed pb tree:
+      # buf 1.26.1, protoc 27.1 (python/pyi), protoc-gen-go v1.31.0,
+      # protoc-gen-go-grpc v1.5.1. Python gRPC is buf.build/grpc/python:v1.71.0.
+      - name: Install protoc
+        env:
+          PROTOC_VERSION: "27.1"
+        run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip" -o /tmp/protoc.zip
+          sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc "include/*"
+          protoc --version
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          version: "1.26.1"
+          github_token: ${{ github.token }}
+      - name: Install Go protobuf plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.31.0
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      - name: Generate protobuf and fail if dirty
+        run: task proto:check
+
   build-docker-foreverbull:
     runs-on: ubuntu-latest
     timeout-minutes: 30

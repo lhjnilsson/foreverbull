@@ -29,6 +29,19 @@ tasks:
       - task: proto:generate
       - task: client:proto:generate
 
+  proto:check:
+    desc: Fail if generated protobuf is out of date
+    cmds:
+      - task: proto
+      - |
+        dirty="$(git status --porcelain -- pkg/pb client/src/foreverbull/pb internal/stream/pb)"
+        if [ -n "${dirty}" ]; then
+          echo "Generated protobuf is dirty. Run 'task proto' and commit the result." >&2
+          git status -- pkg/pb client/src/foreverbull/pb internal/stream/pb
+          git --no-pager diff -- pkg/pb client/src/foreverbull/pb internal/stream/pb
+          exit 1
+        fi
+
   backtest:test:integration:
     desc: Run backtest integration tests
     dir: ./pkg/backtest
