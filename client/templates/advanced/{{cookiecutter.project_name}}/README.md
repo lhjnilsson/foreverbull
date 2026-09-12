@@ -4,14 +4,25 @@ Generated from the Foreverbull **advanced** cookiecutter template.
 Sample strategies use [TA-Lib](https://ta-lib.org/) (`macd.py` and `rsi.py`).
 
 Cookiecutter plus `foreverbull-testing` is the supported way to write algorithms.
-Do not copy a deleted `example_algorithms` tree.
 
 Install TA-Lib (the C library and the `TA-Lib` Python package) before running
 the sample strategies. If you do not have TA-Lib, use the simple template instead.
 
-# Installation
+## Requirements
+
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/) (preferred; pip works)
+- TA-Lib
+- A running Foreverbull broker (Kind locally via `fbenv`, or Helm remote)
+
+## Install
 
 Skip this section if you already installed dependencies during generation.
+
+```bash
+uv sync
+```
+
+The hook also writes `requirements.txt`. Without uv:
 
 ```bash
 python -m venv .venv
@@ -19,12 +30,26 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you have [uv](https://docs.astral.sh/uv/) and this repo checked out locally,
-you can also `uv sync` in `client/` and run tools from there.
+If this repo is checked out locally, `uv sync` in `client/` puts `fbull` and `fbenv` on the workspace PATH (`uv run fbull`, `uv run fbenv`).
 
-# Usage
+## Run against Kind / fbenv
 
-Bring up a local Foreverbull environment (`fbenv create`), then:
+The platform is Kubernetes, not Docker Compose. From a Foreverbull clone:
+
+```bash
+# repository root — builds :local images and installs the Helm chart into Kind
+task env
+```
+
+If those images already exist:
+
+```bash
+cd client
+VERSION=local uv run fbenv create
+uv run fbenv status
+```
+
+`fbull` talks to `localhost:50055` when cluster is `local`. Then from this project:
 
 ```bash
 fbull backtest create --file backtest.yaml
@@ -32,11 +57,23 @@ fbull backtest run demo {{ cookiecutter.project_slug }}/macd.py --yes
 fbull backtest run demo {{ cookiecutter.project_slug }}/rsi.py --yes
 ```
 
-# Testing
+Remote cluster: `fbenv use remote …` then `fbenv create`. Set `FOREVERBULL_BROKER_ADDRESS` or `remote.broker_address`. See the clone's [deploy/README.md](https://github.com/lhjnilsson/foreverbull/blob/main/deploy/README.md).
+
+Do not enable live trading from this template.
+
+## Testing
 
 Tests live in `tests/` and use the `foreverbull-testing` pytest plugin.
 
+Unit tests (Docker Postgres via Testcontainers). They do not use Kind:
+
 ```bash
-python -m pytest
-python -m pytest --backtest demo
+uv run pytest
+# or: python -m pytest
+```
+
+Live backtest tests against a named broker backtest (needs `fbenv` / Kind running):
+
+```bash
+uv run pytest --backtest demo
 ```

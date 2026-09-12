@@ -1,28 +1,32 @@
 # Foreverbull Grafana datasource
 
-Grafana backend datasource plugin for Foreverbull backtest executions and metrics. The frontend lives in `src/`; the Go backend in `pkg/` talks to the Foreverbull gRPC broker.
+Backend Grafana datasource for Foreverbull backtest executions and metrics. This is the `lhjnilsson-foreverbull-datasource` plugin, not a Grafana App plugin template.
 
-Plugin ID: `lhjnilsson-foreverbull-datasource`
+Plugin ID: `lhjnilsson-foreverbull-datasource`. Grafana 10.4+.
+
+The Go backend (`pkg/`) calls the Foreverbull gRPC broker. The React UI (`src/`) is a query editor: pick an execution ID and one or more metrics.
+
+The image Helm installs is `lhjnilsson/fb-grafana` (`grafana/Dockerfile` in this repo). In-cluster it sets `BROKER_URL=foreverbull:50055`. Local Kind publishes Grafana at `http://localhost:3000`.
 
 ## Prerequisites
 
 - Node.js 22+ (see `engines` in `package.json`) and npm
 - Go 1.23+
 - [Mage](https://magefile.org/): `go install github.com/magefile/mage@latest`
-- Docker, to run Grafana with the plugin loaded
-- A Foreverbull stack on the `foreverbull` Docker network (`fbenv create` from the repository root). Compose joins that **external** network so the plugin can reach the broker.
+
+For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbull stack (`task env` / `fbenv`).
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `src/` | React / TypeScript UI (config editor, query editor) |
-| `pkg/` | Backend datasource (gRPC client, resource handlers) |
-| `provisioning/` | Datasource and dashboard YAML used by docker compose |
-| `docker-compose.yaml` | Grafana 11 with this unsigned plugin mounted from `dist/` |
+| `pkg/` | Backend datasource (gRPC client, `/executions` and `/metrics` resources) |
+| `provisioning/` | Datasource and dashboard YAML baked into `lhjnilsson/fb-grafana` |
+| `docker-compose.yaml` | Isolated Grafana 11 for plugin UI work (see below) |
 | `Magefile.go` | Cross-compiles `gpx_foreverbull_*` into `dist/` |
 
-The backend reads `BROKER_URL` (compose sets `foreverbull:50055`; without it the plugin defaults to `localhost:50555`).
+The backend reads `BROKER_URL`. Helm sets `foreverbull:50055`. If unset, the Go code defaults to `localhost:50555` (not the broker's `50055`).
 
 ## Build
 
@@ -34,7 +38,7 @@ npm run build    # frontend → dist/
 mage -v          # backend binaries → dist/gpx_foreverbull_*
 ```
 
-Watch the frontend while iterating:
+Watch the frontend:
 
 ```bash
 npm run dev
@@ -46,31 +50,29 @@ Rebuild Go after changes under `pkg/`:
 mage -v
 ```
 
-## Run Grafana with the plugin
-
-`docker-compose.yaml` expects the `foreverbull` network to already exist:
+Platform image (from `grafana/`):
 
 ```bash
-# repository root — local images + fbenv stack
-task build:docker
-task client:docker:zipline
-task grafana:build:docker
-VERSION=local fbenv create
-
-# this directory
-npm run server    # docker compose up --build
-```
-
-Grafana is at [http://localhost:3001](http://localhost:3001) with anonymous admin. Unsigned loading is enabled via `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource`.
-
-The image `fbenv` uses is built from `grafana/Dockerfile`:
-
-```bash
-# from grafana/
 task build:docker    # lhjnilsson/fb-grafana:local
 ```
 
-Signing is not required for local development.
+Then load it with `fbenv` / `task env`. Signing is not required for local Kind.
+
+## Queries
+
+Query type `GetExecutionMetric` loads a backtest execution by ID. Metrics: `portfolio_value`, `alpha`, `beta`, `sharpe`, `sortino`, `capital_used`, `long_count`, `short_count`, `long_value`, `short_value`.
+
+`fbull backtest run` prints a dashboard link at `http://localhost:3000` on local Kind.
+
+## Plugin-only Grafana (compose)
+
+`docker-compose.yaml` runs Grafana 11 on host port `3001` with this unsigned plugin mounted from `dist/`. It joins an **external** Docker network named `foreverbull`. Kind/`fbenv` does **not** create that network. Use compose only when you already have a broker reachable as `foreverbull:50055` on that Docker network. For the product Grafana, use the Helm chart (`lhjnilsson/fb-grafana`) and `http://localhost:3000`.
+
+```bash
+npm run server    # docker compose up --build
+```
+
+Unsigned loading: `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource`.
 
 ## Tests
 
@@ -82,7 +84,3 @@ go test ./pkg/...    # backend unit tests
 ```
 
 Playwright (`npm run e2e`) expects `npm run server` and a reachable broker.
-
-## Queries
-
-Query type `GetExecutionMetric` loads a backtest execution by ID. Metrics include `portfolio_value`, `alpha`, `beta`, `sharpe`, `sortino`, `capital_used`, long/short counts, and long/short values.

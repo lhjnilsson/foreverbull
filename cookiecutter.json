@@ -3,11 +3,12 @@
       "simple": {
         "path": "./client/templates/simple",
         "title": "Simple Setup without TALib",
-        "description": "Intended for PoC and demo purposes"
+        "description": "Moving-average crossover demo (no TA-Lib). Run against Kind via fbenv."
         },
       "advanced": {
         "path": "./client/templates/advanced",
-        "title": "More Advanced Setup with TALib and mix of parallelism"
+        "title": "More Advanced Setup with TALib and mix of parallelism",
+        "description": "MACD and RSI samples; requires TA-Lib. Run against Kind via fbenv."
       }
     }
   }

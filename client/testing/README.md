@@ -1,18 +1,12 @@
 # foreverbull-testing
 
-Pytest plugin used by Foreverbull algorithm projects. Cookiecutter templates under
-`client/templates/` are the supported way to start an algorithm; this package is
-what those projects use to unit-test strategy code before a full backtest.
+Pytest plugin used by Foreverbull algorithm projects. Cookiecutter templates under `client/templates/` are the supported way to start an algorithm; this package is what those projects use to unit-test strategy code before a full backtest.
 
-Install it with the rest of the client workspace (`uv sync` from `client/`) or as
-a dependency of a generated project.
+Install it with the rest of the client workspace (`uv sync` from `client/`) or as a dependency of a generated project.
 
 ## Fixtures
 
-The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures
-are autouse. Tests that do not execute SQL — CLI rendering, proto utils, and
-in-process namespace socket fakes — must not request `fb_database`,
-`asset_manager`, or `portfolio_manager`, and will not start Docker.
+The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures are autouse. Tests that do not execute SQL — CLI rendering, proto utils, and in-process namespace socket fakes — must not request `fb_database`, `asset_manager`, or `portfolio_manager`, and will not start Docker.
 
 | Fixture | Scope | Docker | Purpose |
 | --- | --- | --- | --- |
@@ -23,13 +17,9 @@ in-process namespace socket fakes — must not request `fb_database`,
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
 | `backtest` | function | no | Live broker run; skipped unless `--backtest <name>` is passed |
 
-`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg`
-and can download prices through yfinance when a window is missing. Do not switch
-SQL tests to SQLite.
+`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
-`local_environment` in `foreverbull_testing.environment` starts a full-stack
-Docker network (Postgres, Minio, NATS, broker). It is not registered by the
-plugin and is not for default unit tests.
+`local_environment` in `foreverbull_testing.environment` starts a full-stack Docker network (Postgres, Minio, NATS, broker). It is not registered by the plugin, is not `fbenv`, and is not for default unit tests. The product install is Kind/Helm (`fbenv`).
 
 ## Example
 
@@ -51,19 +41,25 @@ def test_should_buy(asset_manager: AssetManager, portfolio_manager: PortfolioMan
     assert portfolio.positions["AAPL"] is not None
 ```
 
-Namespace-only tests request `namespace_server` (and optionally `fb_env`) instead
-of `fb_database`.
+Namespace-only tests request `namespace_server` (and optionally `fb_env`) instead of `fb_database`.
 
 ## Live backtests
 
-Pass `--backtest <name>` to opt into tests that talk to a running Foreverbull
-broker. Without that flag, those tests skip so unit tests stay local.
+Pass `--backtest <name>` to opt into tests that talk to a running Foreverbull broker. Without that flag, those tests skip so unit tests stay local. The broker is the Kind/Helm stack (`fbenv create` / `task env`), not this plugin.
 
 ```bash
 uv run pytest --backtest demo
 ```
 
 Do not enable live trading from this plugin.
+
+## Tests for this package
+
+From `client/`:
+
+```bash
+uv run pytest testing/
+```
 
 ## Related
 

@@ -279,6 +279,7 @@ broker:
   backtestPortEnd: 27015
   logLevel: warning
   serverAddress: foreverbull
+  ziplineServiceName: zipline   # ZIPLINE_CONTAINER_NAME
   trading:
     enabled: false          # TRADING_ENABLED; never default true
     provider: alpaca
@@ -286,6 +287,9 @@ broker:
       baseUrl: https://paper-api.alpaca.markets
       apiKey: ""            # no real keys in the chart
       apiSecret: ""
+
+zipline:
+  grpcPort: 50055
 
 grafana:
   port: 3000
@@ -298,6 +302,9 @@ serviceAccount:
 rbac:
   create: true
 ```
+
+`replicaCount` is `1`. `global.imagePullPolicy` is `IfNotPresent`. `resources.*`
+are modest CPU/memory requests for a local Kind node (limits omitted).
 
 Workload object names (Deployment + Service): `postgres`, `nats`, `minio`,
 `zipline`, `foreverbull`, `grafana`.
