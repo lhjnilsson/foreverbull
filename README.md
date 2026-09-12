@@ -1,50 +1,50 @@
-# Foreverbull 🚀
+# Foreverbull
 
-Foreverbull is an trading platform designed for seamless, continuous delivery of algorithmic trading strategies. Our mission? To empower you with rapid development, effortless deployment, and rock-solid confidence in your trading results! 💪
+Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. ETF universes can be built from the iShares API. Alpaca trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (do not enable live trading from this README).
 
-Right now, we're sourcing market data from Yahoo Finance, and fetching ETF holdings straight from the iShares API. For trading, we integrate with Alpaca, supporting both live and paper trading modes. 📈
+The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote cluster. One chart deploys Postgres, NATS JetStream, Minio, Zipline, the broker, and Grafana.
 
-Dive deeper into our architecture in the Architecture section. In a nutshell, the platform runs on a suite of containerized services:
+## Requirements
 
-- `Foreverbull`: The core app that orchestrates everything smoothly.
-- `Minio`: Handles storage for backtesting ingestions and raw results. 🗄️
-- `PostgreSQL`: Your reliable persistent storage for all app data. 
-- `NATS`: The speedy message queue for seamless service communication. ⚡
-- `Grafana` (with Loki): Monitors the platform and visualizes backtest outcomes beautifully. 📊
-
-Ready to jump in? Here's a quickstart guide to get you up and running! 🌟
-
-## Getting Started 🛠️
-### Requirements 📋
-- Docker
+- [Docker](https://docs.docker.com/get-docker/) (Kind node runtime; Testcontainers for tests)
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/)
 - [Helm](https://helm.sh/docs/intro/install/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
+- [Task](https://taskfile.dev/) (`go-task`)
+- Go 1.24 (contributors; see `go.mod`)
 
-The local stack is a Kind cluster plus one Helm chart, not a raw Docker network.
+This is not a Docker Compose / Docker-network stack. Tests still use Testcontainers on Docker; they do not run on Kind.
 
-### Quickstart 🚀
+## Quickstart
 
 From a clone of this repository:
 
 ```bash
 cd client
 uv sync
-VERSION=local uv run fbenv create   # Kind cluster `foreverbull` + Helm into namespace `foreverbull`
-uv run fbenv status
 ```
 
-`fbenv create` (cluster `local`, the default) creates a Kind cluster named `foreverbull` if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` into namespace `foreverbull`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
-
-To build `:local` images first (broker, Zipline, Grafana) and then create the environment, from the repository root:
+Build `:local` images and install the chart into a Kind cluster named `foreverbull` (namespace `foreverbull`):
 
 ```bash
+# from the repository root
 task env
 ```
 
-Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055` locally. Override with `FOREVERBULL_BROKER_ADDRESS`.
+`task env` builds `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` at tag `local`, then from `client/` runs `fbenv stop --remove` and `VERSION=local uv run fbenv create`.
+
+If those images already exist on the Docker host:
+
+```bash
+cd client
+VERSION=local uv run fbenv create
+uv run fbenv status
+```
+
+`fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
+
+Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055`. Override with `FOREVERBULL_BROKER_ADDRESS`.
 
 Remote cluster (writes `.foreverbull/config.yaml`, then installs the same chart):
 
@@ -57,50 +57,122 @@ uv run fbenv use remote \
 uv run fbenv create
 ```
 
-You can also `helm upgrade --install` against a kubeconfig directly — see [deploy/README.md](deploy/README.md).
+You can also `helm upgrade --install` against a kubeconfig directly. See [deploy/README.md](deploy/README.md).
+
+Useful `fbenv` commands (from `client/` after `uv sync`):
+
+```bash
+uv run fbenv status
+uv run fbenv start                 # scale deployments to 1
+uv run fbenv stop                  # scale to 0
+uv run fbenv stop --remove         # helm uninstall
+uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind cluster
+```
 
 ### Strategy projects
 
-Once the platform is running, generate a starter algorithm:
+Once the platform is running, generate a starter algorithm. Cookiecutter is a client workspace dev dependency.
+
+From this clone:
+
+```bash
+cd client
+uv run cookiecutter templates/simple      # no TA-Lib
+# or
+uv run cookiecutter templates/advanced    # requires TA-Lib
+```
+
+From GitHub (picks the same two templates via the root `cookiecutter.json`):
 
 ```bash
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
 
-Cookiecutter walks you through setup. Choose from two starter templates depending on whether you have TA-Lib installed. 
+The generated project README shows `fbull backtest create` and `fbull backtest run`. `fbull` is the Python CLI against a running broker (`uv run fbull --help`).
 
-## Architecture 📐
+## Architecture
 
-![Overview](assets/diagram/overview.png)
+The Python client and `fbull` call the broker over gRPC. Inside the broker process, Backtest, Finance, and Service domains publish and subscribe on NATS JetStream. During a backtest, Python workers (host processes or extra Kubernetes pods) attach to the broker over NNG on ports `27000`–`27015`. Zipline is a separate gRPC engine pod. Grafana reads the broker through a custom datasource. Persistence is cluster PVCs, not host binds under `.foreverbull`. The broker does not mount `/var/run/docker.sock`; extra worker pods use the in-cluster Kubernetes API.
 
-Client communicates with the broker through gRPC. The broker will internally orchestrate tasks between services through NATS.
+```mermaid
+flowchart LR
+  subgraph host [Host]
+    Client["Python client / fbull"]
+    Workers["Algorithm workers"]
+  end
 
-When running backtest simulations the client workers connects to the broker using NNG(NanoMSG) for lower latency and higher throughput.
+  subgraph cluster ["Kind / Helm: postgres, nats, minio, zipline, broker, grafana"]
+    Broker["Broker :50055"]
+    Zipline["Zipline"]
+    Grafana["Grafana :3000"]
+    Postgres["Postgres :5432"]
+    NATS["NATS JetStream :4222"]
+    Minio["Minio :9000"]
+  end
 
-### Domains 🧩
+  Client -->|"gRPC"| Broker
+  Workers -->|"NNG 27000-27015"| Broker
+  Grafana -->|"gRPC"| Broker
+  Broker <--> NATS
+  Broker <--> Postgres
+  Broker <--> Minio
+  Broker -->|"gRPC"| Zipline
+  Zipline --> Postgres
+```
 
-![Domains](assets/diagram/domains.png)
+### Domains
 
-- `Backtest`: Powers strategy backtesting with Zipline for reliable simulations. 🔄
-- `Finance`: Manages market data ingestion and live trading operations. 
-- `Service`: Orchestrates algorithmic strategies within containers efficiently. 🤖
-- `Strategy`: Handles scheduling for backtests and live trading sessions. ⏰
+Go domains live under `pkg/`. The server in `cmd/server` registers Backtest, Finance, and Service. Strategy is not wired.
 
-## Development and Contributing 🤝
+```mermaid
+flowchart TB
+  subgraph broker ["Go broker"]
+    Backtest
+    Finance
+    Service
+    Strategy
+  end
+  NATS["NATS JetStream"]
+  Backtest <--> NATS
+  Finance <--> NATS
+  Service <--> NATS
+```
 
-The project is mainly built in Go, with domains organized under pkg and internal components in internal. CLI entry points live in cmd. Our Python client libraries are in client and include four key parts:
+- **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. Can seed a universe from iShares ETF holdings.
+- **Finance**: Market data (Yahoo by default; Alpaca is an alternate provider) and a trading API. Alpaca live/paper trading is compiled in but `TRADING_ENABLED` defaults to `false`.
+- **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
+- **Strategy**: Quarantined stub. `pkg/strategy.Module` is empty; `RunStrategy` returns unimplemented and is not registered on the gRPC server.
 
-- `foreverbull`: The primary client that connects to the Foreverbull broker. 🔗
-- `foreverbul-zipline`: A handy Zipline wrapper with gRPC for smooth communication. 📡
-- `foreverbull-cli`: Your go-to CLI for managing backtests, trading, and environments. 🖥️
-- `foreverbull-testing`: Custom Pytest fixtures to make testing a breeze. 🧪
+## Development
 
-For Go-specific details, check out the Go README in the pkg folder.
-For Python insights, see the Python README in the client folder.
+The broker is Go (`cmd/server`, `pkg/`, `internal/`). The Python workspace is `client/` (`foreverbull`, `foreverbull-cli`, `foreverbull-zipline`, `foreverbull-testing`). See [client/README.md](client/README.md) and [AGENTS.md](AGENTS.md). CLI details: [client/cli/README.md](client/cli/README.md).
 
-Both Go and Python utilizes TestContainers for dependencies when running unit tests.
-Integration tests require Zipline to be built.
+Install Task to run the root `taskfile.yaml` (it includes `client/taskfile.yaml` and `grafana/taskfile.yaml`).
 
-taskfile.yaml contains collection of commands to assist with integration testing among other things.
-In order to run them you need to have go-task installed.
+```bash
+task env                      # local images + Kind + Helm
+task kind:create              # Kind cluster only
+task kind:load                # load :local images into Kind
+task helm:install             # helm upgrade --install into Kind
 
+task test:unit                # Go unit tests (Backtest, Finance, Service, Strategy)
+task backtest:test:unit
+task finance:test:unit
+task service:test:unit
+task strategy:test:unit
+task backtest:test:integration  # needs the local Zipline image
+
+task client:test              # Python unit tests (uv run pytest from client/)
+task test:integration         # client end-to-end; builds images first
+
+task build:docker             # lhjnilsson/foreverbull:local
+task client:docker:zipline    # lhjnilsson/zipline:local
+task grafana:build:docker     # lhjnilsson/fb-grafana:local
+
+task proto                    # regenerate Go + Python protobuf from proto/
+task mock:generate            # mockery
+task client:lint              # ruff check
+task client:format            # ruff format
+```
+
+Go and Python unit tests start Postgres/NATS/Minio with Testcontainers. Have Docker running. They are not live-trading tests.
