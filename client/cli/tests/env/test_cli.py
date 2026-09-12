@@ -8,15 +8,21 @@ import typer
 from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import ContainerManager
-from foreverbull_cli.env.environment import ForeverbullContainer
-from foreverbull_cli.env.environment import GrafanaContainer
-from foreverbull_cli.env.environment import MinioContainer
-from foreverbull_cli.env.environment import NatsContainer
-from foreverbull_cli.env.environment import PostgresContainer
+from foreverbull_cli.env.environment import WorkloadRow
 from typer.testing import CliRunner
 
 
 pytestmark = pytest.mark.usefixtures("fb_env")
+
+
+STATUS_ROWS = [
+    WorkloadRow("Postgres", "postgres", "running", "postgres:13.3-alpine", "abc"),
+    WorkloadRow("NATS", "nats", "running", "nats:2.10-alpine", "def"),
+    WorkloadRow("Minio", "minio", "running", "minio/minio:latest", "ghi"),
+    WorkloadRow("Zipline", "zipline", "running", "lhjnilsson/zipline:latest", "jkl"),
+    WorkloadRow("Foreverbull", "foreverbull", "running", "lhjnilsson/foreverbull:latest", "mno"),
+    WorkloadRow("Grafana", "grafana", "running", "lhjnilsson/fb-grafana:latest", "pqr"),
+]
 
 
 @pytest.fixture
@@ -38,71 +44,67 @@ def runner(fb_env):
 @pytest.fixture
 def mocked_container_manager():
     container_manager = MagicMock(spec=ContainerManager)
-
-    postgres = MagicMock(spec=PostgresContainer)
-    postgres.name = "testing"
-    postgres.status.return_value = "OK"
-    postgres.image_version.return_value = "OK"
-    postgres.container_id.return_value = "OK"
-
-    nats = MagicMock(spec=NatsContainer)
-    nats.name = "testing"
-    nats.status.return_value = "OK"
-    nats.image_version.return_value = "OK"
-    nats.container_id.return_value = "OK"
-
-    minio = MagicMock(spec=MinioContainer)
-    minio.name = "testing"
-    minio.status.return_value = "OK"
-    minio.image_version.return_value = "OK"
-    minio.container_id.return_value = "OK"
-
-    grafana = MagicMock(spec=GrafanaContainer)
-    grafana.name = "testing"
-    grafana.status.return_value = "OK"
-    grafana.image_version.return_value = "OK"
-    grafana.container_id.return_value = "OK"
-
-    foreverbull = MagicMock(spec=ForeverbullContainer)
-    foreverbull.name = "testing"
-    foreverbull.status.return_value = "OK"
-    foreverbull.image_version.return_value = "OK"
-    foreverbull.container_id.return_value = "OK"
-
-    container_manager.postgres = postgres
-    container_manager.nats = nats
-    container_manager.minio = minio
-    container_manager.grafana = grafana
-    container_manager.foreverbull = foreverbull
+    container_manager.status_rows.return_value = STATUS_ROWS
 
     def initialize(ctx: typer.Context):
         ctx.obj = container_manager
 
-    # Replace with mocked Container Manager
     assert cli.cli.registered_callback
     cli.cli.registered_callback.callback = initialize
+    return container_manager
 
 
 def test_status(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "status")
     assert result.exit_code == 0
+    mocked_container_manager.status_rows.assert_called()
+    assert "Postgres" in result.stdout
+    assert "Zipline" in result.stdout
+    assert "Grafana" in result.stdout
 
 
 def test_create(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "create")
     assert result.exit_code == 0
+    mocked_container_manager.verify_images.assert_called_once()
+    mocked_container_manager.create.assert_called_once_with(start=True)
+    mocked_container_manager.start.assert_called_once()
+
+
+def test_create_no_start(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "create --no-start")
+    assert result.exit_code == 0
+    mocked_container_manager.create.assert_called_once_with(start=False)
+    mocked_container_manager.start.assert_not_called()
 
 
 def test_start(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "start")
     assert result.exit_code == 0
+    mocked_container_manager.start.assert_called_once()
 
 
 def test_stop(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "stop")
     assert result.exit_code == 0
+    mocked_container_manager.stop.assert_called_once()
+    mocked_container_manager.remove.assert_not_called()
+
+
+def test_stop_remove(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "stop --remove")
+    assert result.exit_code == 0
+    mocked_container_manager.stop.assert_called_once()
+    mocked_container_manager.remove.assert_called_once_with(False)
+
+
+def test_stop_remove_purge(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "stop --remove --purge")
+    assert result.exit_code == 0
+    mocked_container_manager.remove.assert_called_once_with(True)
 
 
 def test_update(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "update")
     assert result.exit_code == 0
+    mocked_container_manager.update.assert_called_once()

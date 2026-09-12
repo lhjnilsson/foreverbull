@@ -491,14 +491,12 @@ name = "foreverbull-cli"
 version = "0.0.0"
 source = { editable = "cli" }
 dependencies = [
-    { name = "docker" },
     { name = "pyyaml" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "docker" },
     { name = "pyyaml" },
     { name = "typer", extras = ["all"] },
 ]
