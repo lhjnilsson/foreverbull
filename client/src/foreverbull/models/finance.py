@@ -6,6 +6,7 @@ from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
 from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame
 from pandas import read_sql_query
+from sqlalchemy import bindparam
 from sqlalchemy import engine
 from sqlalchemy import text
 
@@ -13,6 +14,10 @@ from foreverbull.broker.utils import namespace_socket
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+
+
+# One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
+_STOCK_DATA_LOOKBACK = 252
 
 
 class Asset:
@@ -57,11 +62,20 @@ class Asset:
 
     @property
     def stock_data(self) -> DataFrame:
-        return read_sql_query(
-            f"""Select symbol, time, high, low, open, close, volume
-            FROM ohlc WHERE time <= '{self._as_of}' AND symbol='{self.symbol}'""",
-            self._db,
-        )
+        query = text(
+            """
+            SELECT symbol, time, high, low, open, close, volume
+            FROM (
+                SELECT symbol, time, high, low, open, close, volume
+                FROM ohlc
+                WHERE time <= :as_of AND symbol = :symbol
+                ORDER BY time DESC
+                LIMIT :limit
+            ) recent
+            ORDER BY time ASC
+            """
+        ).bindparams(as_of=self._as_of, symbol=self.symbol, limit=_STOCK_DATA_LOOKBACK)
+        return read_sql_query(query, self._db)
 
 
 class Assets:
@@ -110,11 +124,24 @@ class Assets:
 
     @property
     def stock_data(self) -> DataFrame:
-        df = read_sql_query(
-            f"""Select symbol, time, high, low, open, close, volume
-            FROM ohlc WHERE time <= '{self._as_of}' AND symbol IN {tuple(self.symbols) if len(self.symbols) > 1 else f"('{self.symbols[0]}')"}""",
-            self._db,
+        query = text(
+            """
+            SELECT symbol, time, high, low, open, close, volume
+            FROM (
+                SELECT symbol, time, high, low, open, close, volume,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
+                FROM ohlc
+                WHERE time <= :as_of AND symbol IN :symbols
+            ) bounded
+            WHERE rn <= :limit
+            ORDER BY symbol, time
+            """
+        ).bindparams(
+            bindparam("as_of", value=self._as_of),
+            bindparam("symbols", value=list(self.symbols), expanding=True),
+            bindparam("limit", value=_STOCK_DATA_LOOKBACK),
         )
+        df = read_sql_query(query, self._db)
         df.set_index(["symbol", "time"], inplace=True)
         df.sort_index(inplace=True)
         return df

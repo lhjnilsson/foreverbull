@@ -14,6 +14,8 @@ from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Portfolio
 from foreverbull.models import _get_postgres_urls
+from foreverbull.models import get_engine
+from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -25,17 +27,36 @@ from foreverbull.pb.foreverbull.service.v1 import worker_pb2
     [
         (
             "postgres://user:password@127.0.0.1:5656/demo",
-            [
-                "postgresql://user:password@127.0.0.1:5656/demo",
-                "postgresql://user:password@localhost:5432/demo",
-                "postgresql://user:password@postgres:5432/demo",
-                "postgresql://user:password@127.0.0.1:5432/demo",
-            ],
-        )
+            ["postgresql://user:password@127.0.0.1:5656/demo"],
+        ),
+        (
+            "postgresql://user:password@db.internal:5433/demo",
+            ["postgresql://user:password@db.internal:5433/demo"],
+        ),
+        (
+            "postgres://user:password@postgres:5432/demo",
+            ["postgresql://user:password@postgres:5432/demo"],
+        ),
     ],
 )
 def test_get_postgres_urls(input, expected_output):
     assert [u for u in _get_postgres_urls(input)] == expected_output
+
+
+def test_get_engine_uses_provided_url_only(monkeypatch):
+    attempted = []
+
+    def fake_create_engine(url):
+        attempted.append(url)
+        raise Exception("refused")
+
+    monkeypatch.setattr("foreverbull.broker.utils.create_engine", fake_create_engine)
+    with pytest.raises(
+        Exception,
+        match="Could not connect to database at postgresql://user:password@db.internal:5656/demo",
+    ):
+        get_engine("postgres://user:password@db.internal:5656/demo")
+    assert attempted == ["postgresql://user:password@db.internal:5656/demo"]
 
 
 class TestAsset:
@@ -70,6 +91,19 @@ class TestAsset:
                 assert "low" in stock_data.columns
                 assert "close" in stock_data.columns
                 assert "volume" in stock_data.columns
+                assert len(stock_data) <= _STOCK_DATA_LOOKBACK
+
+    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        with database.connect() as conn:
+            before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
+            asset = Asset(datetime.now(), conn, "AAPL'; DROP TABLE ohlc; --")
+            stock_data = asset.stock_data
+            assert isinstance(stock_data, pandas.DataFrame)
+            assert len(stock_data) == 0
+            after = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
+            assert after == before
 
 
 class TestAssets:
@@ -85,6 +119,39 @@ class TestAssets:
 
             namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
             assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
+
+    def test_stock_data(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        with database.connect() as conn:
+            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
+            assets = Assets(datetime.now(), conn, symbols)
+            stock_data = assets.stock_data
+            assert stock_data is not None
+            assert isinstance(stock_data, pandas.DataFrame)
+            assert len(stock_data) > 0
+            assert list(stock_data.index.names) == ["symbol", "time"]
+            assert "open" in stock_data.columns
+            assert "high" in stock_data.columns
+            assert "low" in stock_data.columns
+            assert "close" in stock_data.columns
+            assert "volume" in stock_data.columns
+            counts = stock_data.groupby(level="symbol").size()
+            assert (counts <= _STOCK_DATA_LOOKBACK).all()
+
+    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        with database.connect() as conn:
+            before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
+            assets = Assets(datetime.now(), conn, ["AAPL'; DROP TABLE ohlc; --", "MSFT"])
+            stock_data = assets.stock_data
+            assert isinstance(stock_data, pandas.DataFrame)
+            after = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
+            assert after == before
+            assert "AAPL'; DROP TABLE ohlc; --" not in (
+                stock_data.index.get_level_values("symbol") if not stock_data.empty else []
+            )
 
 
 class TestPortfolio:
