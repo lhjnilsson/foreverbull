@@ -2,13 +2,10 @@ package backtest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/docker/docker/api/types"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/container"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -44,23 +41,8 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			}
 			return sub, dc, nil
 		},
-		func(ce container.Engine) (engine.Engine, error) {
-			container, err := ce.Get(context.Background(), environment.GetZiplineContainerName())
-			if err != nil {
-				return nil, fmt.Errorf("failed to get container for zipline: %w", err)
-			}
-			health, err := container.GetHealth()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get health for zipline container: %w", err)
-			}
-			if health != types.Healthy {
-				return nil, errors.New("zipline container is unhealthy")
-			}
-			engine, err := backtest.NewZiplineEngine(context.Background(), container, nil)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create zipline engine: %w", err)
-			}
-			return engine, nil
+		func(ce container.Engine) engine.Engine {
+			return backtest.NewLazyEngine(ce)
 		},
 	),
 	fx.Invoke(
@@ -76,6 +58,11 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					returnEngine := func(ctx context.Context, msg stream.Message) (interface{}, error) {
+						if lazy, ok := backtestEngine.(*backtest.LazyEngine); ok {
+							if err := lazy.Init(ctx); err != nil {
+								return nil, fmt.Errorf("failed to initialize zipline engine: %w", err)
+							}
+						}
 						return backtestEngine, nil
 					}
 					mdclient, err := financeapi.NewMarketdataClient()
