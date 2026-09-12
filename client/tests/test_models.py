@@ -1,7 +1,7 @@
 import tempfile
 
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from typing import Any
 from typing import cast
 from unittest import mock
@@ -178,7 +178,7 @@ class TestPortfolio:
                     "low": 5,
                     "close": 193,  # We should use Close when calculating order value
                     "volume": 100,
-                    "time": datetime(2023, 12, 29, tzinfo=timezone.utc),
+                    "time": datetime(2023, 12, 29, tzinfo=UTC),
                 },
             )
             conn.commit()
@@ -188,7 +188,7 @@ class TestPortfolio:
     def uut(self, db):
         with db.connect() as conn:
             pb = marketdata_pb2.Portfolio(
-                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=timezone.utc)),
+                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=UTC)),
                 portfolio_value=1000000,
             )
             portfolio = Portfolio(pb, conn)
@@ -360,7 +360,7 @@ def test_algorithm_process_maps_worker_request_to_orders():
     sequential = Algorithm(functions=[Function(callable=handle_data)])
     parallel = Algorithm(functions=[Function(callable=measure_assets)])
     portfolio = marketdata_pb2.Portfolio(
-        timestamp=pb_utils.to_proto_timestamp(datetime(2024, 3, 9, tzinfo=timezone.utc)),
+        timestamp=pb_utils.to_proto_timestamp(datetime(2024, 3, 9, tzinfo=UTC)),
         cash=1000,
     )
 
@@ -390,9 +390,6 @@ algo = Algorithm(
             f.write(example)
             f.flush()
             yield Algorithm.from_file_path(f.name)
-
-    def test_new(self, non_parallel_algo: Algorithm):
-        pass
 
     def test_non_parallel(self, non_parallel_algo: Algorithm):
         assert non_parallel_algo._file_path is not None

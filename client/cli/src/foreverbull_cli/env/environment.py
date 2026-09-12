@@ -100,7 +100,7 @@ class CommandRunner:
         return completed
 
 
-class ContainerStatus(StrEnum):
+class WorkloadStatus(StrEnum):
     NOT_FOUND = "not_found"
     RUNNING = "running"
     STOPPED = "stopped"
@@ -115,10 +115,6 @@ class WorkloadRow:
     status: str
     image: str
     container_id: str
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    return deep_merge(base, override)
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -163,9 +159,9 @@ class Config:
         elif data is None:
             self._data = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
         elif load_files:
-            self._data = _deep_merge(load_cluster_config(cwd=self._cwd, home=self._home, environ=self._environ), data)
+            self._data = deep_merge(load_cluster_config(cwd=self._cwd, home=self._home, environ=self._environ), data)
         else:
-            self._data = _deep_merge(copy.deepcopy(DEFAULT_CLUSTER_CONFIG), data)
+            self._data = deep_merge(copy.deepcopy(DEFAULT_CLUSTER_CONFIG), data)
 
         self._normalize_cluster()
         self.apply_cli_overrides(
@@ -314,18 +310,6 @@ class Config:
         return project_config_path(self._cwd)
 
     @property
-    def postgres_image(self) -> str:
-        return "postgres:13.3-alpine"
-
-    @property
-    def minio_image(self) -> str:
-        return "minio/minio:latest"
-
-    @property
-    def nats_image(self) -> str:
-        return "nats:2.10-alpine"
-
-    @property
     def foreverbull_image(self) -> str:
         return f"lhjnilsson/foreverbull:{self.version}"
 
@@ -350,18 +334,6 @@ class Environment:
             self.path = Path(path) / ".foreverbull"
         self.path.mkdir(parents=True, exist_ok=True)
 
-    @property
-    def postgres_location(self) -> Path:
-        return self.path / "postgres"
-
-    @property
-    def minio_location(self) -> Path:
-        return self.path / "minio"
-
-    @property
-    def nats_location(self) -> Path:
-        return self.path / "nats"
-
     def purge(self) -> None:
         if not self.path.exists():
             return
@@ -375,7 +347,7 @@ class Environment:
 
 
 class Workload:
-    def __init__(self, service: str, name: str, manager: "ContainerManager"):
+    def __init__(self, service: str, name: str, manager: "ClusterManager"):
         self.service = service
         self.name = name
         self._manager = manager
@@ -390,7 +362,7 @@ class Workload:
         return self._manager._row(self.name).container_id
 
 
-class ContainerManager:
+class ClusterManager:
     def __init__(
         self,
         environment: Environment,
@@ -642,7 +614,7 @@ class ContainerManager:
 
     def _query_status(self) -> dict[str, WorkloadRow]:
         not_found = {
-            name: WorkloadRow(service, name, ContainerStatus.NOT_FOUND, "not found", "not found")
+            name: WorkloadRow(service, name, WorkloadStatus.NOT_FOUND, "not found", "not found")
             for service, name in WORKLOADS
         }
         self.require_tools("kubectl")
@@ -680,7 +652,7 @@ class ContainerManager:
     ) -> WorkloadRow:
         image = "not found"
         container_id = "not found"
-        status = ContainerStatus.NOT_FOUND
+        status = WorkloadStatus.NOT_FOUND
         if pod:
             metadata = pod.get("metadata") or {}
             container_id = str(metadata.get("name") or "not found")
@@ -701,7 +673,7 @@ class ContainerManager:
             status = _status_from_phase(phase, ready)
         elif deploy:
             replicas = int((deploy.get("spec") or {}).get("replicas") or 0)
-            status = ContainerStatus.STOPPED if replicas == 0 else ContainerStatus.PENDING
+            status = WorkloadStatus.STOPPED if replicas == 0 else WorkloadStatus.PENDING
             containers = ((deploy.get("spec") or {}).get("template") or {}).get("spec", {}).get("containers") or []
             if containers:
                 image = str(containers[0].get("image") or "not found")
@@ -718,16 +690,16 @@ class ContainerManager:
         return {"items": []}
 
 
-def _status_from_phase(phase: str, ready: bool) -> ContainerStatus:
+def _status_from_phase(phase: str, ready: bool) -> WorkloadStatus:
     normalized = phase.lower()
     if normalized == "running":
-        return ContainerStatus.RUNNING if ready else ContainerStatus.PENDING
+        return WorkloadStatus.RUNNING if ready else WorkloadStatus.PENDING
     if normalized == "pending":
-        return ContainerStatus.PENDING
+        return WorkloadStatus.PENDING
     if normalized in {"failed", "error"}:
-        return ContainerStatus.FAILED
+        return WorkloadStatus.FAILED
     if normalized in {"succeeded", "unknown"}:
-        return ContainerStatus.STOPPED
+        return WorkloadStatus.STOPPED
     if not normalized:
-        return ContainerStatus.NOT_FOUND
-    return ContainerStatus.PENDING
+        return WorkloadStatus.NOT_FOUND
+    return WorkloadStatus.PENDING

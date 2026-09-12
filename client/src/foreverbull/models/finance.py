@@ -20,6 +20,16 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_s
 _STOCK_DATA_LOOKBACK = 252
 
 
+def _exchange_namespace(request: worker_service_pb2.NamespaceRequest) -> worker_service_pb2.NamespaceResponse:
+    with namespace_socket() as s:
+        s.send(request.SerializeToString())
+        response = worker_service_pb2.NamespaceResponse()
+        response.ParseFromString(s.recv())
+        if response.HasField("error"):
+            raise Exception(response.error)
+        return response
+
+
 class Asset:
     def __init__(self, as_of: datetime, db: engine.Connection, symbol: str):
         self._as_of = as_of
@@ -27,34 +37,22 @@ class Asset:
         self._symbol = symbol
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
-        with namespace_socket() as s:
-            request = worker_service_pb2.NamespaceRequest(
-                key=key,
-                type=worker_service_pb2.NamespaceRequestType.GET,
-            )
-            s.send(request.SerializeToString())
-            response = worker_service_pb2.NamespaceResponse()
-            response.ParseFromString(s.recv())
-            if response.HasField("error"):
-                raise Exception(response.error)
-            value = pb_utils.protobuf_struct_to_dict(response.value)
-            if self._symbol not in value:
-                return None  # type: ignore
-            return value[self._symbol]
+        request = worker_service_pb2.NamespaceRequest(
+            key=key,
+            type=worker_service_pb2.NamespaceRequestType.GET,
+        )
+        value = pb_utils.protobuf_struct_to_dict(_exchange_namespace(request).value)
+        if self._symbol not in value:
+            return None  # type: ignore
+        return value[self._symbol]
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
-        with namespace_socket() as s:
-            request = worker_service_pb2.NamespaceRequest(
-                key=key,
-                type=worker_service_pb2.NamespaceRequestType.SET,
-            )
-            request.value.update({self._symbol: value})
-            s.send(request.SerializeToString())
-            response = worker_service_pb2.NamespaceResponse()
-            response.ParseFromString(s.recv())
-            if response.HasField("error"):
-                raise Exception(response.error)
-            return None
+        request = worker_service_pb2.NamespaceRequest(
+            key=key,
+            type=worker_service_pb2.NamespaceRequestType.SET,
+        )
+        request.value.update({self._symbol: value})
+        _exchange_namespace(request)
 
     @property
     def symbol(self):
@@ -85,34 +83,22 @@ class Assets:
         self._symbols = symbols
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
-        with namespace_socket() as s:
-            request = worker_service_pb2.NamespaceRequest(
-                key=key,
-                type=worker_service_pb2.NamespaceRequestType.GET,
-            )
-            s.send(request.SerializeToString())
-            response = worker_service_pb2.NamespaceResponse()
-            response.ParseFromString(s.recv())
-            if response.HasField("error"):
-                raise Exception(response.error)
-            return pandas.Series(pb_utils.protobuf_struct_to_dict(response.value))
+        request = worker_service_pb2.NamespaceRequest(
+            key=key,
+            type=worker_service_pb2.NamespaceRequestType.GET,
+        )
+        return pandas.Series(pb_utils.protobuf_struct_to_dict(_exchange_namespace(request).value))
 
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
-        with namespace_socket() as s:
-            struct = Struct()
-            for k, v in value.items():
-                struct.update({k: v})
-            request = worker_service_pb2.NamespaceRequest(
-                key=key,
-                type=worker_service_pb2.NamespaceRequestType.SET,
-                value=struct,
-            )
-            s.send(request.SerializeToString())
-            response = worker_service_pb2.NamespaceResponse()
-            response.ParseFromString(s.recv())
-            if response.HasField("error"):
-                raise Exception(response.error)
-            return None
+        struct = Struct()
+        for k, v in value.items():
+            struct.update({k: v})
+        request = worker_service_pb2.NamespaceRequest(
+            key=key,
+            type=worker_service_pb2.NamespaceRequestType.SET,
+            value=struct,
+        )
+        _exchange_namespace(request)
 
     @property
     def symbols(self):
@@ -199,39 +185,27 @@ class Portfolio:
                 return amount - pos.amount
         return amount
 
-    def order(self, symbol: str, amount: int) -> marketdata_pb2.Order:
+    def _enqueue(self, symbol: str, amount: int) -> marketdata_pb2.Order:
         order = marketdata_pb2.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
+
+    def order(self, symbol: str, amount: int) -> marketdata_pb2.Order:
+        return self._enqueue(symbol, amount)
 
     def order_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
-        amount = self._calculate_order_percent_amount(symbol, percent)
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
-        self.pending_orders.append(order)
-        return order
+        return self._enqueue(symbol, self._calculate_order_percent_amount(symbol, percent))
 
     def order_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
-        amount = self._calculate_order_value_amount(symbol, value)
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
-        self.pending_orders.append(order)
-        return order
+        return self._enqueue(symbol, self._calculate_order_value_amount(symbol, value))
 
     def order_target(self, symbol: str, amount: int) -> marketdata_pb2.Order:
-        amount = self._calculate_order_target_amount(symbol, amount)
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
-        self.pending_orders.append(order)
-        return order
+        return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))
 
     def order_target_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
-        amount = self._calculate_order_target_amount(symbol, amount)
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
-        self.pending_orders.append(order)
-        return order
+        return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))
 
     def order_target_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
         amount = self._calculate_order_value_amount(symbol, value)
-        amount = self._calculate_order_target_amount(symbol, amount)
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
-        self.pending_orders.append(order)
-        return order
+        return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))

@@ -127,13 +127,28 @@ def resolve_broker_address(
     return addr
 
 
+def broker_host_port(
+    hostname: str | None = None,
+    port: int | None = None,
+    *,
+    cwd: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, int]:
+    resolved_host, resolved_port = split_broker_address(resolve_broker_address(cwd=cwd, home=home, environ=environ))
+    return (
+        resolved_host if hostname is None else hostname,
+        resolved_port if port is None else port,
+    )
+
+
 def broker_host(
     *,
     cwd: Path | None = None,
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> str:
-    return split_broker_address(resolve_broker_address(cwd=cwd, home=home, environ=environ))[0]
+    return broker_host_port(cwd=cwd, home=home, environ=environ)[0]
 
 
 def broker_port(
@@ -142,4 +157,4 @@ def broker_port(
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> int:
-    return split_broker_address(resolve_broker_address(cwd=cwd, home=home, environ=environ))[1]
+    return broker_host_port(cwd=cwd, home=home, environ=environ)[1]

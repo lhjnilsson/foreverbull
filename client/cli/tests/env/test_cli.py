@@ -7,7 +7,7 @@ import typer
 
 from click.testing import Result
 from foreverbull_cli.env import cli
-from foreverbull_cli.env.environment import ContainerManager
+from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import WorkloadRow
 from typer.testing import CliRunner
 
@@ -43,7 +43,7 @@ def runner(fb_env):
 
 @pytest.fixture
 def mocked_container_manager():
-    container_manager = MagicMock(spec=ContainerManager)
+    container_manager = MagicMock(spec=ClusterManager)
     container_manager.status_rows.return_value = STATUS_ROWS
     container_manager.config = MagicMock()
     container_manager.config.cluster = "local"

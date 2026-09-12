@@ -7,8 +7,8 @@ from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.table import Table
 
+from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import Config
-from foreverbull_cli.env.environment import ContainerManager
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.output import FBSpinnerColumn
 from foreverbull_cli.output import console
@@ -54,30 +54,25 @@ def _manager(
     context: str | None = None,
     namespace: str | None = None,
     broker_address: str | None = None,
-) -> ContainerManager:
-    cm: ContainerManager = ctx.obj
-    config = getattr(cm, "config", None)
-    if config is not None and hasattr(config, "apply_cli_overrides"):
-        config.apply_cli_overrides(
-            cluster=cluster,
-            kubeconfig=kubeconfig,
-            context=context,
-            namespace=namespace,
-            broker_address=broker_address,
-        )
+) -> ClusterManager:
+    cm: ClusterManager = ctx.obj
+    cm.config.apply_cli_overrides(
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
     return cm
 
 
-def print_status(cm: ContainerManager):
-    cfg = getattr(cm, "config", None)
-    if cfg is not None:
-        broker = getattr(cfg, "broker_address", "") or "unset"
-        title = (
-            f"Environment Status ({cfg.cluster}, ns={cfg.namespace}, "
-            f"context={cfg.kube_context or 'default'}, broker={broker})"
-        )
-    else:
-        title = "Environment Status"
+def print_status(cm: ClusterManager):
+    cfg = cm.config
+    broker = cfg.broker_address or "unset"
+    title = (
+        f"Environment Status ({cfg.cluster}, ns={cfg.namespace}, "
+        f"context={cfg.kube_context or 'default'}, broker={broker})"
+    )
     table = Table(title=title)
     table.add_column("Service")
     table.add_column("Name")
@@ -267,7 +262,7 @@ def use(
     namespace: NamespaceFlag = None,
     broker_address: BrokerAddressFlag = None,
 ):
-    cm: ContainerManager = ctx.obj
+    cm: ClusterManager = ctx.obj
     config: Config = cm.config
     if cluster is None:
         print_cluster(config)
@@ -289,4 +284,4 @@ def use(
 def initialize(ctx: typer.Context):
     config = Config()
     environment = Environment()
-    ctx.obj = ContainerManager(environment, config)
+    ctx.obj = ClusterManager(environment, config)

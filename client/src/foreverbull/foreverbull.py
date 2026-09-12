@@ -7,9 +7,7 @@ import grpc
 import pandas
 
 from foreverbull import models
-from foreverbull.broker.config import broker_host as default_broker_host
-from foreverbull.broker.config import resolve_broker_address
-from foreverbull.broker.config import split_broker_address
+from foreverbull.broker.config import broker_host_port
 from foreverbull.exceptions import RuntimeError
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
@@ -129,7 +127,7 @@ class Foreverbull:
         backtest_session: session_pb2.Session,
         broker_hostname: str | None = None,
     ) -> Generator[BacktestSession, None, None]:
-        hostname = default_broker_host() if broker_hostname is None else broker_hostname
+        hostname, _ = broker_host_port(broker_hostname)
         channel = grpc.insecure_channel(f"{hostname}:{backtest_session.port}")
         _backtest_session_stub = session_service_pb2_grpc.SessionServicerStub(channel)
         assert self._model is not None, "no model"
@@ -145,7 +143,7 @@ class Foreverbull:
     ) -> Generator[TradingSession, None, None]:
         assert self._model is not None, "no model"
         assert trading_session is not None, "session is not set"
-        hostname = default_broker_host() if broker_hostname is None else broker_hostname
+        hostname, _ = broker_host_port(broker_hostname)
         channel = grpc.insecure_channel(f"{hostname}:{trading_session.port}")
         trading_session_stub = trading_service_pb2_grpc.SessionServicerStub(channel)
         yield TradingSession(self._model, trading_session_stub)
@@ -158,13 +156,7 @@ class Foreverbull:
         broker_hostname: str | None = None,
         broker_port: int | None = None,
     ) -> tuple[execution_pb2.Execution, pandas.DataFrame]:
-        if broker_hostname is None or broker_port is None:
-            host, port = split_broker_address(resolve_broker_address())
-            hostname = host if broker_hostname is None else broker_hostname
-            port = port if broker_port is None else broker_port
-        else:
-            hostname = broker_hostname
-            port = broker_port
+        hostname, port = broker_host_port(broker_hostname, broker_port)
         channel = grpc.insecure_channel(f"{hostname}:{port}")
         stub = backtest_service_pb2_grpc.BacktestServicerStub(channel)
 

@@ -21,18 +21,22 @@ _LOG_LEVELS = {
     0: "ERROR",
     1: "WARNING",
     2: "INFO",
+    3: "DEBUG",
 }
+
+
+def _logging_level(verbose: int) -> str:
+    return _LOG_LEVELS.get(verbose, "DEBUG")
 
 
 @cli.callback()
 def setup_logging(
-    ctx: typer.Context,
     verbose: Annotated[
         int,
         typer.Option("--verbose", "-v", count=True, help="Increase logging verbosity; repeat for more detail"),
     ] = 0,
 ):
-    level = _LOG_LEVELS.get(verbose, "DEBUG")
+    level = _logging_level(verbose)
     os.environ["LOGGING_LEVEL"] = level
     logging.basicConfig(
         level=level,
