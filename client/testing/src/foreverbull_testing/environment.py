@@ -1,17 +1,31 @@
+"""Test environment helpers.
+
+`setup_env` fills process env defaults and does not start Docker, create a
+network, or require a daemon. Request `fb_env` from CLI, proto, and in-process
+socket tests.
+
+`local_environment` starts Postgres, Minio, NATS, and a Foreverbull broker
+container. Use it only for full-stack tests — not default unit tests. It is not
+registered by the pytest plugin.
+"""
+
 import os
 
-import pytest
 
-from testcontainers.core.container import DockerContainer
-from testcontainers.core.network import Network
-from testcontainers.core.waiting_utils import wait_for_logs
-from testcontainers.minio import MinioContainer
-from testcontainers.nats import NatsContainer
-from testcontainers.postgres import PostgresContainer
+def setup_env() -> None:
+    """Set test env defaults without creating a Docker network or containers."""
+    os.environ.setdefault("BROKER_HOSTNAME", "127.0.0.1")
 
 
-@pytest.fixture(scope="session")
-def local_environment(network, minio, nats, postgres):
+def local_environment():
+    """Full-stack Docker environment. Not registered by the pytest plugin."""
+    from testcontainers.core.container import DockerContainer
+    from testcontainers.core.network import Network
+    from testcontainers.core.waiting_utils import wait_for_logs
+    from testcontainers.minio import MinioContainer
+    from testcontainers.nats import NatsContainer
+    from testcontainers.postgres import PostgresContainer
+
     with Network() as network:
         postgres = PostgresContainer(
             "postgres:13.3-alpine",

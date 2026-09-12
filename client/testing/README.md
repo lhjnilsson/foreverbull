@@ -9,17 +9,27 @@ a dependency of a generated project.
 
 ## Fixtures
 
-The plugin registers itself as `foreverbull` (`pytest11`). Tests can request:
+The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures
+are autouse. Tests that do not execute SQL — CLI rendering, proto utils, and
+in-process namespace socket fakes — must not request `fb_database`,
+`asset_manager`, or `portfolio_manager`, and will not start Docker.
 
-| Fixture | Scope | Purpose |
-| --- | --- | --- |
-| `fb_database` | session | Postgres Testcontainer plus `verify_or_populate` for OHLC data |
-| `asset_manager` | function | Load `Asset` / `Assets` windows from that database |
-| `portfolio_manager` | function | Build a `Portfolio` with optional positions |
-| `backtest` | function | Live broker run; skipped unless `--backtest <name>` is passed |
+| Fixture | Scope | Docker | Purpose |
+| --- | --- | --- | --- |
+| `fb_env` | function | no | Process env defaults (`setup_env`) |
+| `namespace_server` | function | no | In-process pynng namespace fake |
+| `fb_database` | session | yes | Postgres Testcontainer plus `verify_or_populate` for OHLC data |
+| `asset_manager` | function | yes | Load `Asset` / `Assets` windows from that database |
+| `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
+| `backtest` | function | no | Live broker run; skipped unless `--backtest <name>` is passed |
 
 `fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg`
-and can download prices through yfinance when a window is missing.
+and can download prices through yfinance when a window is missing. Do not switch
+SQL tests to SQLite.
+
+`local_environment` in `foreverbull_testing.environment` starts a full-stack
+Docker network (Postgres, Minio, NATS, broker). It is not registered by the
+plugin and is not for default unit tests.
 
 ## Example
 
@@ -40,6 +50,9 @@ def test_should_buy(asset_manager: AssetManager, portfolio_manager: PortfolioMan
     assert asset.symbol == "AAPL"
     assert portfolio.positions["AAPL"] is not None
 ```
+
+Namespace-only tests request `namespace_server` (and optionally `fb_env`) instead
+of `fb_database`.
 
 ## Live backtests
 

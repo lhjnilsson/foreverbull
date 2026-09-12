@@ -2,17 +2,15 @@ import os
 
 from datetime import date
 from datetime import datetime
+from threading import Thread
 
+import pynng
 import pytest
-
-from docker.models.containers import Container
-from sqlalchemy import create_engine
-from sqlalchemy import text
-from testcontainers.core.config import testcontainers_config
-from testcontainers.postgres import PostgresContainer
 
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
 
@@ -36,8 +34,66 @@ def _named_postgres_container(client, name: str):
     return None
 
 
+@pytest.fixture
+def fb_env():
+    """Process env defaults. Does not start Docker or require a daemon."""
+    setup_env()
+    yield
+
+
+@pytest.fixture
+def namespace_server():
+    """In-process pynng namespace fake. Does not start Docker or query SQL."""
+    namespace = {}
+
+    s = pynng.Rep0(listen="tcp://0.0.0.0:7878")
+    s.recv_timeout = 500
+    s.send_timeout = 500
+    os.environ["NAMESPACE_PORT"] = "7878"
+
+    def runner(s, namespace):
+        while True:
+            request = worker_service_pb2.NamespaceRequest()
+            try:
+                request.ParseFromString(s.recv())
+            except pynng.exceptions.Timeout:
+                continue
+            except pynng.exceptions.Closed:
+                break
+            if request.type == worker_service_pb2.NamespaceRequestType.GET:
+                response = worker_service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
+            elif request.type == worker_service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = worker_service_pb2.NamespaceResponse()
+                response.value.update(namespace[request.key])
+            else:
+                response = worker_service_pb2.NamespaceResponse(error="Invalid task")
+            s.send(response.SerializeToString())
+
+    thread = Thread(target=runner, args=(s, namespace))
+    thread.start()
+
+    try:
+        yield namespace
+    finally:
+        s.close()
+        thread.join()
+
+
 @pytest.fixture(scope="session")
 def fb_database():
+    """Postgres Testcontainer plus verify_or_populate for OHLC data.
+
+    Not autouse. Request this only from tests that execute SQL. Reuses a named
+    container (`fbull_client_testing_pg`) when one is already running.
+    """
+    from docker.models.containers import Container
+    from sqlalchemy import create_engine
+    from sqlalchemy import text
+    from testcontainers.core.config import testcontainers_config
+    from testcontainers.postgres import PostgresContainer
+
     postgres = PostgresContainer("postgres:alpine")
     postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     postgres = postgres.with_name("fbull_client_testing_pg")
