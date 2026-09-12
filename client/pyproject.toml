@@ -1,7 +1,7 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
-description = "Add your description here"
+description = "Python client library: algorithm models, gRPC stubs, and NNG workers"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }

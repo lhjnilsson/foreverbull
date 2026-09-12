@@ -1,7 +1,7 @@
 [project]
 name = "foreverbull-cli"
 version = "0.0.0"
-description = "Add your description here"
+description = "CLI for the Foreverbull broker (fbull) and Kind/Helm environments (fbenv)"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }

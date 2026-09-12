@@ -1,7 +1,7 @@
 [project]
 name = "foreverbull-zipline"
 version = "0.0.0"
-description = "Add your description here"
+description = "Zipline backtest engine gRPC service and Docker image for Foreverbull"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
