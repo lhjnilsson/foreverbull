@@ -183,6 +183,12 @@ client/baseline_performance.pickle
 
 .foreverbull
 
+# Local Grok Build session/workflows (not part of the product tree)
+.grok/
+
+# Cookiecutter output from `task template:generate` / template:test
+client/rendered/
+
 client/result.json
 client/baseline.json
 
