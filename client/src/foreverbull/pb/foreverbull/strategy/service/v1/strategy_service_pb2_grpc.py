@@ -14,17 +14,127 @@ class StrategyServicerStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.RunStrategy = channel.unary_stream(
-                '/foreverbull.strategy.StrategyServicer/RunStrategy',
-                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyRequest.SerializeToString,
-                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyResponse.FromString,
+        self.CreateStrategy = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/CreateStrategy',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyResponse.FromString,
+                _registered_method=True)
+        self.GetStrategy = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/GetStrategy',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyResponse.FromString,
+                _registered_method=True)
+        self.ListStrategies = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/ListStrategies',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesResponse.FromString,
+                _registered_method=True)
+        self.DeleteStrategy = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/DeleteStrategy',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyResponse.FromString,
+                _registered_method=True)
+        self.CreateVersion = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/CreateVersion',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionResponse.FromString,
+                _registered_method=True)
+        self.CreateExperiment = channel.unary_stream(
+                '/foreverbull.strategy.service.v1.StrategyServicer/CreateExperiment',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentResponse.FromString,
+                _registered_method=True)
+        self.GetExperiment = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/GetExperiment',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentResponse.FromString,
+                _registered_method=True)
+        self.ListExperiments = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/ListExperiments',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsResponse.FromString,
+                _registered_method=True)
+        self.Deploy = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/Deploy',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployResponse.FromString,
+                _registered_method=True)
+        self.StopDeployment = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/StopDeployment',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentResponse.FromString,
+                _registered_method=True)
+        self.ListDeploymentRuns = channel.unary_unary(
+                '/foreverbull.strategy.service.v1.StrategyServicer/ListDeploymentRuns',
+                request_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsRequest.SerializeToString,
+                response_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsResponse.FromString,
                 _registered_method=True)
 
 
 class StrategyServicerServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def RunStrategy(self, request, context):
+    def CreateStrategy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStrategy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListStrategies(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteStrategy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateVersion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateExperiment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetExperiment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListExperiments(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Deploy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopDeployment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDeploymentRuns(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -33,16 +143,66 @@ class StrategyServicerServicer(object):
 
 def add_StrategyServicerServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'RunStrategy': grpc.unary_stream_rpc_method_handler(
-                    servicer.RunStrategy,
-                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyRequest.FromString,
-                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyResponse.SerializeToString,
+            'CreateStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStrategy,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyResponse.SerializeToString,
+            ),
+            'GetStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStrategy,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyResponse.SerializeToString,
+            ),
+            'ListStrategies': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListStrategies,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesResponse.SerializeToString,
+            ),
+            'DeleteStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteStrategy,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyResponse.SerializeToString,
+            ),
+            'CreateVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateVersion,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionResponse.SerializeToString,
+            ),
+            'CreateExperiment': grpc.unary_stream_rpc_method_handler(
+                    servicer.CreateExperiment,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentResponse.SerializeToString,
+            ),
+            'GetExperiment': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetExperiment,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentResponse.SerializeToString,
+            ),
+            'ListExperiments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListExperiments,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsResponse.SerializeToString,
+            ),
+            'Deploy': grpc.unary_unary_rpc_method_handler(
+                    servicer.Deploy,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployResponse.SerializeToString,
+            ),
+            'StopDeployment': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopDeployment,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentResponse.SerializeToString,
+            ),
+            'ListDeploymentRuns': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDeploymentRuns,
+                    request_deserializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsRequest.FromString,
+                    response_serializer=foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'foreverbull.strategy.StrategyServicer', rpc_method_handlers)
+            'foreverbull.strategy.service.v1.StrategyServicer', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('foreverbull.strategy.StrategyServicer', rpc_method_handlers)
+    server.add_registered_method_handlers('foreverbull.strategy.service.v1.StrategyServicer', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -50,7 +210,142 @@ class StrategyServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def RunStrategy(request,
+    def CreateStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/CreateStrategy',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateStrategyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/GetStrategy',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetStrategyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListStrategies(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/ListStrategies',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListStrategiesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/DeleteStrategy',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeleteStrategyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateVersion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/CreateVersion',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateVersionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateExperiment(request,
             target,
             options=(),
             channel_credentials=None,
@@ -63,9 +358,144 @@ class StrategyServicer(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/foreverbull.strategy.StrategyServicer/RunStrategy',
-            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyRequest.SerializeToString,
-            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.RunStrategyResponse.FromString,
+            '/foreverbull.strategy.service.v1.StrategyServicer/CreateExperiment',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.CreateExperimentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetExperiment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/GetExperiment',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.GetExperimentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListExperiments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/ListExperiments',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListExperimentsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Deploy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/Deploy',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.DeployResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopDeployment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/StopDeployment',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.StopDeploymentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDeploymentRuns(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/foreverbull.strategy.service.v1.StrategyServicer/ListDeploymentRuns',
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsRequest.SerializeToString,
+            foreverbull_dot_strategy_dot_service_dot_v1_dot_strategy__service__pb2.ListDeploymentRunsResponse.FromString,
             options,
             channel_credentials,
             insecure,

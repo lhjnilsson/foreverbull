@@ -2,13 +2,10 @@ package api_test
 
 import (
 	"context"
-	"io"
 	"net"
 	"testing"
 
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
-	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"github.com/stretchr/testify/suite"
@@ -65,20 +62,11 @@ func (test *StrategyServerTest) TearDownTest() {
 	}
 }
 
-func (test *StrategyServerTest) TestRunStrategyUnimplemented() {
-	req := &pb.RunStrategyRequest{
-		Symbols:   []string{"AAPL"},
-		StartDate: &common_pb.Date{Year: 2024, Month: 1, Day: 1},
-		Algorithm: &service_pb.Algorithm{},
-	}
-
-	stream, err := test.client.RunStrategy(context.Background(), req)
-	test.Require().NoError(err)
-
-	msg, err := stream.Recv()
-	test.Nil(msg)
+func (test *StrategyServerTest) TestCreateStrategyUnimplemented() {
+	_, err := test.client.CreateStrategy(context.Background(), &pb.CreateStrategyRequest{
+		Name: "mean-rev",
+	})
 	test.Require().Error(err)
-	test.Require().NotErrorIs(err, io.EOF)
 	st, ok := status.FromError(err)
 	test.True(ok)
 	test.Equal(codes.Unimplemented, st.Code())

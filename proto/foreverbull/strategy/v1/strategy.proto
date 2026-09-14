@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package foreverbull.strategy.v1;
+
+import "foreverbull/common.proto";
+import "foreverbull/finance/v1/marketdata.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/strategy";
+
+message Strategy {
+  string id = 1;
+  string name = 2;
+  optional string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message Version {
+  string id = 1;
+  string strategy_id = 2;
+  string strategy_name = 3;
+  int32 rev = 4;
+  string service_image = 5;
+  google.protobuf.Struct parameters = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message Experiment {
+  enum Status {
+    QUEUED = 0;
+    RUNNING = 1;
+    COMPLETED = 2;
+    FAILED = 3;
+  }
+  string id = 1;
+  string strategy_id = 2;
+  string strategy_name = 3;
+  string version_id = 4;
+  int32 version_rev = 5;
+  string backtest_name = 6;
+  optional string execution_id = 7;
+  Status status = 8;
+  optional string error = 9;
+  google.protobuf.Timestamp created_at = 10;
+  optional google.protobuf.Timestamp completed_at = 11;
+}
+
+message Deployment {
+  enum Mode {
+    PAPER = 0;
+    LIVE = 1;
+  }
+  enum Status {
+    STOPPED = 0;
+    RUNNING = 1;
+    ERROR = 2;
+  }
+  enum ScheduleKind {
+    SESSION_CLOSE = 0;
+  }
+  string id = 1;
+  string strategy_id = 2;
+  string strategy_name = 3;
+  string version_id = 4;
+  int32 version_rev = 5;
+  Mode mode = 6;
+  string backend = 7;
+  string calendar_code = 8;
+  repeated string symbols = 9;
+  ScheduleKind schedule_kind = 10;
+  bool dry_run = 11;
+  Status status = 12;
+  optional string error = 13;
+  optional foreverbull.common.Date last_session_date = 14;
+  optional google.protobuf.Timestamp started_at = 15;
+  optional google.protobuf.Timestamp stopped_at = 16;
+}
+
+message DeploymentRun {
+  string id = 1;
+  string deployment_id = 2;
+  foreverbull.common.Date session_date = 3;
+  google.protobuf.Timestamp started_at = 4;
+  repeated foreverbull.finance.v1.Order orders = 5;
+  bool skipped = 6;
+  optional string error = 7;
+}

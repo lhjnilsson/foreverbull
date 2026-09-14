@@ -15,8 +15,8 @@ type MockStrategyServicerClient struct {
 	mock.Mock
 }
 
-// RunStrategy provides a mock function with given fields: ctx, in, opts
-func (_m *MockStrategyServicerClient) RunStrategy(ctx context.Context, in *RunStrategyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RunStrategyResponse], error) {
+// CreateExperiment provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) CreateExperiment(ctx context.Context, in *CreateExperimentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateExperimentResponse], error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -27,23 +27,393 @@ func (_m *MockStrategyServicerClient) RunStrategy(ctx context.Context, in *RunSt
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RunStrategy")
+		panic("no return value specified for CreateExperiment")
 	}
 
-	var r0 grpc.ServerStreamingClient[RunStrategyResponse]
+	var r0 grpc.ServerStreamingClient[CreateExperimentResponse]
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *RunStrategyRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[RunStrategyResponse], error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateExperimentRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[CreateExperimentResponse], error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *RunStrategyRequest, ...grpc.CallOption) grpc.ServerStreamingClient[RunStrategyResponse]); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateExperimentRequest, ...grpc.CallOption) grpc.ServerStreamingClient[CreateExperimentResponse]); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(grpc.ServerStreamingClient[RunStrategyResponse])
+			r0 = ret.Get(0).(grpc.ServerStreamingClient[CreateExperimentResponse])
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *RunStrategyRequest, ...grpc.CallOption) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *CreateExperimentRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateStrategy provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) CreateStrategy(ctx context.Context, in *CreateStrategyRequest, opts ...grpc.CallOption) (*CreateStrategyResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateStrategy")
+	}
+
+	var r0 *CreateStrategyResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateStrategyRequest, ...grpc.CallOption) (*CreateStrategyResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateStrategyRequest, ...grpc.CallOption) *CreateStrategyResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*CreateStrategyResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *CreateStrategyRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateVersion provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) CreateVersion(ctx context.Context, in *CreateVersionRequest, opts ...grpc.CallOption) (*CreateVersionResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateVersion")
+	}
+
+	var r0 *CreateVersionResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateVersionRequest, ...grpc.CallOption) (*CreateVersionResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *CreateVersionRequest, ...grpc.CallOption) *CreateVersionResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*CreateVersionResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *CreateVersionRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteStrategy provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) DeleteStrategy(ctx context.Context, in *DeleteStrategyRequest, opts ...grpc.CallOption) (*DeleteStrategyResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteStrategy")
+	}
+
+	var r0 *DeleteStrategyResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *DeleteStrategyRequest, ...grpc.CallOption) (*DeleteStrategyResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *DeleteStrategyRequest, ...grpc.CallOption) *DeleteStrategyResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*DeleteStrategyResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *DeleteStrategyRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Deploy provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) Deploy(ctx context.Context, in *DeployRequest, opts ...grpc.CallOption) (*DeployResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Deploy")
+	}
+
+	var r0 *DeployResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *DeployRequest, ...grpc.CallOption) (*DeployResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *DeployRequest, ...grpc.CallOption) *DeployResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*DeployResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *DeployRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetExperiment provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) GetExperiment(ctx context.Context, in *GetExperimentRequest, opts ...grpc.CallOption) (*GetExperimentResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExperiment")
+	}
+
+	var r0 *GetExperimentResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *GetExperimentRequest, ...grpc.CallOption) (*GetExperimentResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *GetExperimentRequest, ...grpc.CallOption) *GetExperimentResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*GetExperimentResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *GetExperimentRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetStrategy provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) GetStrategy(ctx context.Context, in *GetStrategyRequest, opts ...grpc.CallOption) (*GetStrategyResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetStrategy")
+	}
+
+	var r0 *GetStrategyResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *GetStrategyRequest, ...grpc.CallOption) (*GetStrategyResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *GetStrategyRequest, ...grpc.CallOption) *GetStrategyResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*GetStrategyResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *GetStrategyRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListDeploymentRuns provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) ListDeploymentRuns(ctx context.Context, in *ListDeploymentRunsRequest, opts ...grpc.CallOption) (*ListDeploymentRunsResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListDeploymentRuns")
+	}
+
+	var r0 *ListDeploymentRunsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ListDeploymentRunsRequest, ...grpc.CallOption) (*ListDeploymentRunsResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ListDeploymentRunsRequest, ...grpc.CallOption) *ListDeploymentRunsResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ListDeploymentRunsResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ListDeploymentRunsRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListExperiments provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) ListExperiments(ctx context.Context, in *ListExperimentsRequest, opts ...grpc.CallOption) (*ListExperimentsResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListExperiments")
+	}
+
+	var r0 *ListExperimentsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExperimentsRequest, ...grpc.CallOption) (*ListExperimentsResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ListExperimentsRequest, ...grpc.CallOption) *ListExperimentsResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ListExperimentsResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ListExperimentsRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListStrategies provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) ListStrategies(ctx context.Context, in *ListStrategiesRequest, opts ...grpc.CallOption) (*ListStrategiesResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListStrategies")
+	}
+
+	var r0 *ListStrategiesResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ListStrategiesRequest, ...grpc.CallOption) (*ListStrategiesResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ListStrategiesRequest, ...grpc.CallOption) *ListStrategiesResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ListStrategiesResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ListStrategiesRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// StopDeployment provides a mock function with given fields: ctx, in, opts
+func (_m *MockStrategyServicerClient) StopDeployment(ctx context.Context, in *StopDeploymentRequest, opts ...grpc.CallOption) (*StopDeploymentResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StopDeployment")
+	}
+
+	var r0 *StopDeploymentResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *StopDeploymentRequest, ...grpc.CallOption) (*StopDeploymentResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *StopDeploymentRequest, ...grpc.CallOption) *StopDeploymentResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*StopDeploymentResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *StopDeploymentRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
