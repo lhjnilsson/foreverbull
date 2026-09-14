@@ -1,15 +1,22 @@
 package api
 
 import (
+	"github.com/jackc/pgx/v5/pgxpool"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/stream"
 )
 
-// StrategyServer is a gRPC stub. Lifecycle RPCs are unimplemented until later
-// PoC steps; strategy.Module is not registered on the broker.
+// StrategyServer implements lifecycle RPCs. Deploy/Stop are still unimplemented.
 type StrategyServer struct {
 	pb.UnimplementedStrategyServicerServer
+
+	pgx      *pgxpool.Pool
+	launcher stream.ExperimentLauncher
 }
 
-func NewStrategyServer() *StrategyServer {
-	return &StrategyServer{}
+func NewStrategyServer(pgx *pgxpool.Pool, launcher stream.ExperimentLauncher) *StrategyServer {
+	return &StrategyServer{
+		pgx:      pgx,
+		launcher: launcher,
+	}
 }
