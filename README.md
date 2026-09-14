@@ -88,11 +88,28 @@ From GitHub (picks the same two templates via the root `cookiecutter.json`):
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
 
-The generated project README shows `fbull backtest create` and `fbull backtest run`. `fbull` is the Python CLI against a running broker (`uv run fbull --help`).
+The generated project README shows `fbull backtest create` and `fbull backtest run` for local-file hacking. When the algorithm is a READY service image, use `fbull strategy` instead of a one-shot live run.
+
+### Strategy lifecycle
+
+A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper dry-run. The same version is runnable against different universes (SPY vs EU vs commodities) via separate `--backtest` experiments. Live is off. Contract: [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+
+```bash
+uv run fbull strategy create mean-rev
+uv run fbull strategy version add mean-rev --image lhjnilsson/my-algo:local
+uv run fbull strategy experiment mean-rev --backtest spy
+uv run fbull strategy experiment mean-rev --backtest eu-small
+uv run fbull strategy experiments mean-rev
+uv run fbull strategy deploy mean-rev --mode paper --dry-run
+uv run fbull strategy status mean-rev
+uv run fbull strategy stop mean-rev
+```
+
+`deploy` is paper + `--dry-run` only. The runner calls `Process` and does not call `PlaceOrder`.
 
 ## Architecture
 
-The Python client and `fbull` call the broker over gRPC. Inside the broker process, Backtest, Finance, and Service domains publish and subscribe on NATS JetStream. During a backtest, Python workers (host processes or extra Kubernetes pods) attach to the broker over NNG on ports `27000`–`27015`. Zipline is a separate gRPC engine pod. Grafana reads the broker through a custom datasource. Persistence is cluster PVCs, not host binds under `.foreverbull`. The broker does not mount `/var/run/docker.sock`; extra worker pods use the in-cluster Kubernetes API.
+The Python client and `fbull` call the broker over gRPC. Inside the broker process, Backtest, Finance, Service, and Strategy domains publish and subscribe on NATS JetStream. During a backtest, Python workers (host processes or extra Kubernetes pods) attach to the broker over NNG on ports `27000`–`27015`. Zipline is a separate gRPC engine pod. Grafana reads the broker through a custom datasource. Persistence is cluster PVCs, not host binds under `.foreverbull`. The broker does not mount `/var/run/docker.sock`; extra worker pods use the in-cluster Kubernetes API.
 
 ```mermaid
 flowchart LR
@@ -122,7 +139,7 @@ flowchart LR
 
 ### Domains
 
-Go domains live under `pkg/`. The server in `cmd/server` registers Backtest, Finance, and Service. Strategy is not wired.
+Go domains live under `pkg/`. The server in `cmd/server` registers Backtest, Finance, Service, and Strategy.
 
 ```mermaid
 flowchart TB
@@ -136,12 +153,13 @@ flowchart TB
   Backtest <--> NATS
   Finance <--> NATS
   Service <--> NATS
+  Strategy <--> NATS
 ```
 
 - **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. Can seed a universe from iShares ETF holdings.
 - **Finance**: Market data (Yahoo by default; Alpaca is an alternate provider) and a trading API. Alpaca live/paper trading is compiled in but `TRADING_ENABLED` defaults to `false`.
 - **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
-- **Strategy**: Quarantined stub. `pkg/strategy.Module` is empty; `RunStrategy` returns unimplemented and is not registered on the gRPC server.
+- **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests, paper dry-run. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
 
 ## Development
 

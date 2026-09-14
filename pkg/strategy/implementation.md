@@ -413,4 +413,4 @@ Optional later workflow (not PoC): `strategy-live` (confirm flags, real `PlaceOr
 
 ## 14. Status
 
-Design only. `pkg/strategy` remains quarantined until step 5 of the PoC workflow registers the module again.
+PoC implemented through CLI. Registry, experiments on any number of backtests, and paper dry-run are in. Live is still a later workflow. User API: `fbull strategy` (create, version add, experiment `--backtest`, experiments, deploy `--dry-run`, stop, status). Same version, different universes via separate experiments. `deploy` is paper + dry-run only; `PlaceOrder` is not called.

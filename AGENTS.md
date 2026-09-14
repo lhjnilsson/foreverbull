@@ -250,7 +250,7 @@ Package docs: [client/README.md](client/README.md), [client/cli/README.md](clien
 
 Both live in `client/cli/` (`foreverbull-cli`). Entry points in `client/cli/pyproject.toml`:
 
-- `fbull` → `foreverbull_cli.bull.cli:cli` — backtests and trading against a running broker (`fbull backtest …`, `fbull trading …`)
+- `fbull` → `foreverbull_cli.bull.cli:cli` — backtests, strategy lifecycle, and trading against a running broker (`fbull backtest …`, `fbull strategy …`, `fbull trading …`)
 - `fbenv` → `foreverbull_cli.env.cli:cli` — Kind/Helm environment (`local` Kind cluster or `remote` kubeconfig)
 
 After `uv sync` in `client/`:
@@ -259,6 +259,23 @@ After `uv sync` in `client/`:
 uv run fbull --help
 uv run fbenv --help
 ```
+
+### Strategy lifecycle
+
+`fbull strategy` is register → experiment on existing backtests → paper dry-run. Live is off. The same service version is runnable against different universes via separate `--backtest` experiments. Contract: [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+
+```bash
+uv run fbull strategy create mean-rev
+uv run fbull strategy version add mean-rev --image lhjnilsson/my-algo:local
+uv run fbull strategy experiment mean-rev --backtest spy
+uv run fbull strategy experiment mean-rev --backtest eu-small
+uv run fbull strategy experiments mean-rev
+uv run fbull strategy deploy mean-rev --mode paper --dry-run
+uv run fbull strategy status mean-rev
+uv run fbull strategy stop mean-rev
+```
+
+`deploy` refuses live and `--no-dry-run`. Do not enable `TRADING_ENABLED` for this PoC. Local-file hacking still uses `fbull backtest run`.
 
 ## Python lint
 
