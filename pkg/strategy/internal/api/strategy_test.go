@@ -28,11 +28,27 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+type recordingRunner struct {
+	added   []*pb.Deployment
+	removed []string
+}
+
+func (r *recordingRunner) Add(_ context.Context, d *pb.Deployment) error {
+	r.added = append(r.added, d)
+	return nil
+}
+
+func (r *recordingRunner) Remove(_ context.Context, deploymentID string) error {
+	r.removed = append(r.removed, deploymentID)
+	return nil
+}
+
 type StrategyServerTest struct {
 	suite.Suite
 
 	pgx      *pgxpool.Pool
 	launcher *ss.MockExperimentLauncher
+	runner   *recordingRunner
 
 	listener *bufconn.Listener
 	server   *grpc.Server
@@ -56,11 +72,12 @@ func (test *StrategyServerTest) SetupSubTest() {
 	test.Require().NoError(repository.Recreate(context.Background(), test.pgx))
 
 	test.launcher = new(ss.MockExperimentLauncher)
+	test.runner = &recordingRunner{}
 	test.listener = bufconn.Listen(1024 * 1024)
 	test.server, err = internalGrpc.NewServer()
 	test.Require().NoError(err)
 
-	servicePb.RegisterStrategyServicerServer(test.server, api.NewStrategyServer(test.pgx, test.launcher))
+	servicePb.RegisterStrategyServicerServer(test.server, api.NewStrategyServer(test.pgx, test.launcher, test.runner))
 
 	go func() {
 		test.NoError(test.server.Serve(test.listener))
@@ -342,5 +359,140 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 		st, ok := status.FromError(err)
 		test.True(ok)
 		test.Equal(codes.NotFound, st.Code())
+	})
+}
+
+func (test *StrategyServerTest) seedDeployableVersion(name, image string) *pb.Version {
+	test.T().Helper()
+	version := test.seedVersion(name, image, service.Service_Status_READY)
+	experiments := repository.Experiment{Conn: test.pgx}
+	created, err := experiments.Create(context.Background(), version.Id, "spy")
+	test.Require().NoError(err)
+	test.Require().NoError(experiments.UpdateStatus(context.Background(), created.Id, pb.Experiment_COMPLETED, nil))
+	return version
+}
+
+func (test *StrategyServerTest) TestDeploy() {
+	test.Run("defaults paper dry-run", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+
+		rsp, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Symbols:      []string{"AAPL"},
+		})
+		test.Require().NoError(err)
+		d := rsp.GetDeployment()
+		test.Equal(pb.Deployment_PAPER, d.GetMode())
+		test.True(d.GetDryRun())
+		test.Equal("default", d.GetBackend())
+		test.Equal("XNYS", d.GetCalendarCode())
+		test.Equal(pb.Deployment_SESSION_CLOSE, d.GetScheduleKind())
+		test.Equal(pb.Deployment_RUNNING, d.GetStatus())
+		test.Equal([]string{"AAPL"}, d.GetSymbols())
+		test.Require().Len(test.runner.added, 1)
+		test.Equal(d.Id, test.runner.added[0].Id)
+	})
+
+	test.Run("rejects live", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Mode:         pb.Deployment_LIVE,
+			Confirm:      true,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "live")
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("rejects dry_run false", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			DryRun:       &dry,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "dry_run")
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("requires completed experiment", func() {
+		version := test.seedVersion("mean-rev", "algo:local", service.Service_Status_READY)
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "completed experiment")
+	})
+
+	test.Run("one running deployment per strategy", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+		})
+		test.Require().NoError(err)
+
+		_, err = test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "already has a running deployment")
+	})
+}
+
+func (test *StrategyServerTest) TestStopAndListDeploymentRuns() {
+	test.Run("stop is idempotent and lists runs", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		deployed, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Symbols:      []string{"SPY"},
+		})
+		test.Require().NoError(err)
+
+		runs := repository.DeploymentRun{Conn: test.pgx}
+		_, err = runs.Create(context.Background(), deployed.Deployment.Id,
+			&common.Date{Year: 2024, Month: 3, Day: 4}, nil, false, nil)
+		test.Require().NoError(err)
+
+		stopped, err := test.client.StopDeployment(context.Background(), &servicePb.StopDeploymentRequest{
+			StrategyName: "mean-rev",
+		})
+		test.Require().NoError(err)
+		test.Equal(pb.Deployment_STOPPED, stopped.GetDeployment().GetStatus())
+		test.Equal([]string{deployed.Deployment.Id}, test.runner.removed)
+
+		again, err := test.client.StopDeployment(context.Background(), &servicePb.StopDeploymentRequest{
+			StrategyName: "mean-rev",
+		})
+		test.Require().NoError(err)
+		test.Equal(pb.Deployment_STOPPED, again.GetDeployment().GetStatus())
+
+		listed, err := test.client.ListDeploymentRuns(context.Background(), &servicePb.ListDeploymentRunsRequest{
+			StrategyName: "mean-rev",
+		})
+		test.Require().NoError(err)
+		test.Len(listed.Runs, 1)
+		test.Equal(deployed.Deployment.Id, listed.Runs[0].DeploymentId)
+		test.False(listed.Runs[0].Skipped)
 	})
 }

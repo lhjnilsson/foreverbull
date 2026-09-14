@@ -36,7 +36,7 @@ func (s *StrategyServer) CreateExperiment(
 		COMPLETED: &common.Step{State: common.State_STATE_UNSPECIFIED},
 	}
 
-	version, err := s.resolveVersion(ctx, req)
+	version, err := s.resolveVersion(ctx, req.GetStrategyName(), req.GetVersionId(), req.GetVersionRev())
 	if err != nil {
 		return err
 	}
@@ -149,36 +149,36 @@ func (s *StrategyServer) ListExperiments(ctx context.Context, req *servicePb.Lis
 	return &servicePb.ListExperimentsResponse{Experiments: list}, nil
 }
 
-func (s *StrategyServer) resolveVersion(ctx context.Context, req *servicePb.CreateExperimentRequest) (*pb.Version, error) {
+func (s *StrategyServer) resolveVersion(ctx context.Context, strategyName, versionID string, versionRev int32) (*pb.Version, error) {
 	strategies := repository.Strategy{Conn: s.pgx}
-	if _, err := strategies.Get(ctx, req.GetStrategyName()); err != nil {
+	if _, err := strategies.Get(ctx, strategyName); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, status.Errorf(codes.NotFound, "strategy %q not found", req.GetStrategyName())
+			return nil, status.Errorf(codes.NotFound, "strategy %q not found", strategyName)
 		}
 		return nil, status.Errorf(codes.Internal, "get strategy: %v", err)
 	}
 
 	versions := repository.Version{Conn: s.pgx}
 	switch {
-	case req.GetVersionId() != "":
-		version, err := versions.Get(ctx, req.GetVersionId())
+	case versionID != "":
+		version, err := versions.Get(ctx, versionID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, status.Errorf(codes.NotFound, "version %q not found", req.GetVersionId())
+				return nil, status.Errorf(codes.NotFound, "version %q not found", versionID)
 			}
 			return nil, status.Errorf(codes.Internal, "get version: %v", err)
 		}
-		if version.StrategyName != req.GetStrategyName() {
+		if version.StrategyName != strategyName {
 			return nil, status.Errorf(codes.InvalidArgument, "version %q does not belong to strategy %q",
-				req.GetVersionId(), req.GetStrategyName())
+				versionID, strategyName)
 		}
 		return version, nil
-	case req.GetVersionRev() != 0:
-		version, err := versions.GetByStrategyAndRev(ctx, req.GetStrategyName(), req.GetVersionRev())
+	case versionRev != 0:
+		version, err := versions.GetByStrategyAndRev(ctx, strategyName, versionRev)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, status.Errorf(codes.NotFound, "strategy %q rev %d not found",
-					req.GetStrategyName(), req.GetVersionRev())
+					strategyName, versionRev)
 			}
 			return nil, status.Errorf(codes.Internal, "get version: %v", err)
 		}
