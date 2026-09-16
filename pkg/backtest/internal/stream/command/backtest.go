@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sync"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -53,107 +54,279 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error unmarshalling CreateBacktest payload: %w", err)
 	}
 
+	start, err := time.Parse("2006-01-02", command.StartDate)
+	if err != nil {
+		return fmt.Errorf("error parsing start date: %w", err)
+	}
+	end, err := time.Parse("2006-01-02", command.EndDate)
+	if err != nil {
+		return fmt.Errorf("error parsing end date: %w", err)
+	}
+	if end.Before(start) {
+		return fmt.Errorf("end date %s is before start date %s", command.EndDate, command.StartDate)
+	}
+
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
 
-	// construct backtest
-	b := backtest.Backtest{
-		Name:    command.BacktestName,
-		Periods: []*backtest.Backtest_Period{},
-	}
-
-	startYear := pb.DateStringToDate(command.StartDate).Year
-	endYear := pb.DateStringToDate(command.EndDate).Year
-	years := []string{}
-	for year := startYear; year <= endYear; year++ {
-		b.Periods = append(b.Periods, &backtest.Backtest_Period{
-			StartDate: &pb.Date{
-				Year:  year,
-				Month: 1,
-				Day:   1,
-			},
-			EndDate: &pb.Date{
-				Year:  year,
-				Month: 12,
-				Day:   31,
-			},
-		})
-		years = append(years, fmt.Sprintf("%d", year))
-	}
-
-	// Get ETF Symbols
 	etfscraper, isETFScraper := msg.MustGet(dependency.GetETFScraper).(dependency.ETFScraper)
 	if !isETFScraper {
 		return errors.New("error casting ETFScraper")
 	}
-	periodsAndAssets, err := etfscraper.GetAssets(command.ETFName, years...)
+
+	snapshots, err := loadETFSnapshots(etfscraper, command.ETFName, start, end)
 	if err != nil {
-		return fmt.Errorf("error getting assets: %w", err)
+		return err
 	}
-	b.Benchmark, err = etfscraper.GetBenchmark(command.ETFName)
+	result := universe.Diff(snapshots)
+
+	benchmark, err := etfscraper.GetBenchmark(command.ETFName)
 	if err != nil {
 		return fmt.Errorf("error getting benchmark: %w", err)
 	}
 
-	// Fetch Symbols from Finance
 	marketdataClient, isMarketdataClient := msg.MustGet(dependency.GetMarketdataClient).(financeServicePB.MarketdataClient)
 	if !isMarketdataClient {
 		return errors.New("error casting marketdata client")
 	}
-	for period, assets := range periodsAndAssets {
-		start, err := time.Parse("2006-01-02", fmt.Sprintf("%s-01-01", period))
-		if err != nil {
-			return fmt.Errorf("error parsing start date: %w", err)
-		}
-		end, err := time.Parse("2006-01-02", fmt.Sprintf("%s-12-31", period))
-		if err != nil {
-			return fmt.Errorf("error parsing end date: %w", err)
-		}
-		backtet_period := backtest.Backtest_Period{
-			StartDate: pb.GoTimeToDate(start),
-			EndDate:   pb.GoTimeToDate(end),
-		}
-		var wg sync.WaitGroup
-		for _, asset := range assets {
-			if asset.AssetType != "Equity" {
-				continue
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				rsp, err := marketdataClient.GetAsset(ctx, &financeServicePB.GetAssetRequest{
-					Identifier: &financeServicePB.GetAssetRequest_Symbol{
-						Symbol: asset.Symbol,
-					},
-				})
-				if err != nil {
-					log.Warn().Err(err).Msg("error getting asset, marking as disabled")
-					backtet_period.Assets = append(backtet_period.Assets, &backtest.Backtest_Period_Asset{
-						Symbol:  asset.Symbol,
-						Enabled: false,
-					})
-				}
-				backtet_period.Assets = append(backtet_period.Assets, &backtest.Backtest_Period_Asset{
-					Symbol:  rsp.Asset.Symbol,
-					Enabled: true,
-				})
-			}()
-		}
-		wg.Wait()
-		for _, p := range b.Periods {
-			if p.StartDate.Year == backtet_period.StartDate.Year {
-				p.Assets = append(p.Assets, backtet_period.Assets...)
-				break
-			}
-		}
+
+	symbols := uniqueAliasSymbols(result.Aliases)
+	hasData := vendorHasData(ctx, marketdataClient, symbols)
+
+	b := backtest.Backtest{
+		Name:      command.BacktestName,
+		Benchmark: benchmark,
+		Periods:   calendarYearPeriods(start, end),
 	}
+	fillPeriodAssets(b.Periods, result.Aliases, hasData)
 
 	_, err = backtests.Create(ctx, &b)
 	if err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 
+	if err := persistUniverse(ctx, db, command.BacktestName, snapshots, result); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time.Time) ([]universe.Snapshot, error) {
+	dates, err := scraper.ListSnapshotDates(etf, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("error listing snapshot dates: %w", err)
+	}
+
+	snaps := make([]universe.Snapshot, 0, len(dates))
+	for _, asOf := range dates {
+		assets, err := scraper.GetSnapshot(etf, asOf)
+		if err != nil {
+			return nil, fmt.Errorf("error getting snapshot for %s: %w", asOf.Format("2006-01-02"), err)
+		}
+		holdings := holdingsFromAssets(assets)
+		if len(holdings) == 0 {
+			continue
+		}
+		snaps = append(snaps, universe.Snapshot{AsOf: asOf, Holdings: holdings})
+	}
+	if len(snaps) == 0 {
+		return nil, fmt.Errorf("no published ETF snapshots for %s between %s and %s",
+			etf, start.Format("2006-01-02"), end.Format("2006-01-02"))
+	}
+	return snaps, nil
+}
+
+func holdingsFromAssets(assets []dependency.Asset) []universe.Holding {
+	holdings := make([]universe.Holding, 0, len(assets))
+	for _, asset := range assets {
+		holdings = append(holdings, universe.Holding{
+			ISIN:      asset.ISIN,
+			Symbol:    asset.Symbol,
+			Name:      asset.Name,
+			AssetType: asset.AssetType,
+		})
+	}
+	return holdings
+}
+
+func calendarYearPeriods(start, end time.Time) []*backtest.Backtest_Period {
+	periods := make([]*backtest.Backtest_Period, 0, end.Year()-start.Year()+1)
+	for year := start.Year(); year <= end.Year(); year++ {
+		periods = append(periods, &backtest.Backtest_Period{
+			StartDate: &pb.Date{Year: int32(year), Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: int32(year), Month: 12, Day: 31},
+		})
+	}
+	return periods
+}
+
+func uniqueAliasSymbols(aliases []universe.Alias) []string {
+	seen := make(map[string]struct{}, len(aliases))
+	symbols := make([]string, 0, len(aliases))
+	for _, alias := range aliases {
+		if alias.Symbol == "" {
+			continue
+		}
+		if _, ok := seen[alias.Symbol]; ok {
+			continue
+		}
+		seen[alias.Symbol] = struct{}{}
+		symbols = append(symbols, alias.Symbol)
+	}
+	sort.Strings(symbols)
+	return symbols
+}
+
+func vendorHasData(ctx context.Context, client financeServicePB.MarketdataClient, symbols []string) map[string]bool {
+	hasData := make(map[string]bool, len(symbols))
+	for _, symbol := range symbols {
+		_, err := client.GetAsset(ctx, &financeServicePB.GetAssetRequest{
+			Identifier: &financeServicePB.GetAssetRequest_Symbol{Symbol: symbol},
+		})
+		if err != nil {
+			log.Warn().Err(err).Str("symbol", symbol).Msg("error getting asset, marking as no data")
+			hasData[symbol] = false
+			continue
+		}
+		hasData[symbol] = true
+	}
+	return hasData
+}
+
+func fillPeriodAssets(periods []*backtest.Backtest_Period, aliases []universe.Alias, hasData map[string]bool) {
+	for _, period := range periods {
+		start := pb.DateToTime(period.StartDate)
+		end := pb.DateToTime(period.EndDate)
+		seen := make(map[string]struct{})
+		assets := make([]*backtest.Backtest_Period_Asset, 0)
+		for _, alias := range aliases {
+			if alias.Symbol == "" || !intervalOverlapsPeriod(alias.FromDate, alias.ToDate, start, end) {
+				continue
+			}
+			if _, ok := seen[alias.Symbol]; ok {
+				continue
+			}
+			seen[alias.Symbol] = struct{}{}
+			assets = append(assets, &backtest.Backtest_Period_Asset{
+				Symbol:  alias.Symbol,
+				Enabled: hasData[alias.Symbol],
+			})
+		}
+		sort.Slice(assets, func(i, j int) bool { return assets[i].Symbol < assets[j].Symbol })
+		period.Assets = assets
+	}
+}
+
+func intervalOverlapsPeriod(from time.Time, to *time.Time, start, end time.Time) bool {
+	from = dateOnly(from)
+	start = dateOnly(start)
+	end = dateOnly(end)
+	if from.After(end) {
+		return false
+	}
+	if to == nil {
+		return true
+	}
+	return dateOnly(*to).After(start)
+}
+
+func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName string, snaps []universe.Snapshot, result universe.Result) error {
+	names := instrumentNames(snaps)
+	instruments := repository.Instrument{Conn: db}
+	for _, member := range result.Members {
+		if err := instruments.Upsert(ctx, member.ISIN, names[member.ISIN]); err != nil {
+			return fmt.Errorf("error storing instrument %s: %w", member.ISIN, err)
+		}
+	}
+	for _, alias := range result.Aliases {
+		if err := instruments.StoreAlias(ctx, repository.AliasInterval{
+			ISIN:     alias.ISIN,
+			Symbol:   alias.Symbol,
+			FromDate: alias.FromDate,
+			ToDate:   alias.ToDate,
+		}); err != nil {
+			return fmt.Errorf("error recording symbol %s for %s: %w", alias.Symbol, alias.ISIN, err)
+		}
+	}
+
+	intervals := make([]repository.MemberInterval, 0, len(result.Members))
+	for _, member := range result.Members {
+		intervals = append(intervals, repository.MemberInterval{
+			ISIN:     member.ISIN,
+			FromDate: member.FromDate,
+			ToDate:   member.ToDate,
+		})
+	}
+	members := repository.UniverseMember{Conn: db}
+	if err := members.Replace(ctx, backtestName, intervals); err != nil {
+		return fmt.Errorf("error storing universe members: %w", err)
+	}
+	return nil
+}
+
+func instrumentNames(snaps []universe.Snapshot) map[string]string {
+	names := make(map[string]string)
+	for _, snap := range snaps {
+		for _, holding := range snap.Holdings {
+			if holding.ISIN == "" {
+				continue
+			}
+			names[holding.ISIN] = holding.Name
+		}
+	}
+	return names
+}
+
+func dateOnly(t time.Time) time.Time {
+	year, month, day := t.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest) ([]string, error) {
+	symbols := []string{b.Benchmark}
+
+	rows, err := db.Query(ctx, `
+		SELECT DISTINCT s.symbol
+		  FROM universe_member m
+		  JOIN asset_symbol s ON s.isin = m.isin
+		 WHERE m.backtest_name = $1
+		 ORDER BY s.symbol`, b.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	aliases := make([]string, 0)
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, err
+		}
+		aliases = append(aliases, symbol)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(aliases) > 0 {
+		for _, symbol := range aliases {
+			if slices.Contains(symbols, symbol) {
+				continue
+			}
+			symbols = append(symbols, symbol)
+		}
+		return symbols, nil
+	}
+
+	for _, period := range b.Periods {
+		for _, asset := range period.Assets {
+			if slices.Contains(symbols, asset.Symbol) {
+				continue
+			}
+			symbols = append(symbols, asset.Symbol)
+		}
+	}
+	return symbols, nil
 }
 
 func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
@@ -175,17 +348,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
 
-	symbols := []string{b.Benchmark}
-	for _, period := range b.Periods {
-		for _, asset := range period.Assets {
-			if !asset.Enabled {
-				continue
-			}
-			if slices.Contains(symbols, asset.Symbol) {
-				continue
-			}
-			symbols = append(symbols, asset.Symbol)
-		}
+	symbols, err := ingestSymbols(ctx, db, b)
+	if err != nil {
+		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
 
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
