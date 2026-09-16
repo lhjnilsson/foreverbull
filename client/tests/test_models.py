@@ -18,6 +18,8 @@ from foreverbull.models import Assets
 from foreverbull.models import Function
 from foreverbull.models import Portfolio
 from foreverbull.models import _get_postgres_urls
+from foreverbull.models import deployable_value
+from foreverbull.models import equal_weight_percent
 from foreverbull.models import get_engine
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
 from foreverbull.pb import pb_utils
@@ -284,6 +286,39 @@ class TestPortfolio:
         order = uut.order_target_value("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
+
+
+class TestAllocation:
+    @pytest.mark.parametrize(
+        "n_selected,cash_reserve,max_positions,expected",
+        [
+            (10, 0.05, 10, 0.095),
+            (3, 0.05, 10, 0.95 / 3),
+            (50, 0.10, 10, 0.09),
+            (1, 0.0, 10, 1.0),
+            (10, 0.0, 10, 0.1),
+            (0, 0.05, 10, 0.0),
+            (5, 1.0, 10, 0.0),
+        ],
+    )
+    def test_equal_weight_percent(self, n_selected, cash_reserve, max_positions, expected):
+        weight = equal_weight_percent(n_selected, cash_reserve, max_positions)
+        assert weight == pytest.approx(expected)
+        n = min(max_positions, n_selected)
+        if n >= 1:
+            assert n * weight == pytest.approx(1.0 - cash_reserve)
+            assert n * weight <= 1.0 - cash_reserve + 1e-12
+
+    def test_deployable_value(self):
+        assert deployable_value(100_000, 0.05) == 95_000
+        assert deployable_value(100_000, 0.0) == 100_000
+        assert deployable_value(100_000, 1.0) == 0.0
+
+    def test_portfolio_helpers_match_module(self):
+        portfolio = Portfolio(marketdata_pb2.Portfolio(portfolio_value=200_000), cast(Connection, None))
+        assert portfolio.deployable_value(0.10) == deployable_value(200_000, 0.10)
+        assert portfolio.equal_weight_percent(10, 0.10, 10) == equal_weight_percent(10, 0.10, 10)
+        assert portfolio.equal_weight_percent(0, 0.05, 10) == 0.0
 
 
 def test_algorithm_parameter_parsing():

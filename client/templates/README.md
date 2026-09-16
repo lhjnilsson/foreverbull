@@ -84,15 +84,18 @@ not acceptable as the only knobs.
 | `order_target(symbol, 0)` | Flatten a leaver. |
 | `order_target(symbol, 10)` | **Forbidden** as a position size. |
 | `order` / `order_percent` / `order_value` | Delta orders; templates should not use these for target book construction. |
+| `deployable_value(cash_reserve)` | `portfolio_value * (1 - cash_reserve)`. |
+| `equal_weight_percent(n_selected, cash_reserve, max_positions)` | Per-name target: `(1 - cash_reserve) / n`. |
 
 Percent sizing is `portfolio_value * percent` then `int(value / close)`.
 Protobuf `Portfolio` also carries `cash`; templates still size from
 `portfolio_value` and `cash_reserve`, not from leftover cash after a previous
 bar's mistakes.
 
-Do not rewrite the `order_*` API for this contract. If every template would
-copy the same ten lines to turn `cash_reserve` + `max_positions` into per-name
-weights, a tiny helper on `Portfolio` may be added later — not in this file.
+Do not rewrite the `order_*` API for this contract. Per-name weights come from
+`deployable_value` and `equal_weight_percent` (on `Portfolio`, and in
+`allocation.py` copied next to each strategy). Integer shares still go through
+`order_target_percent`.
 
 ## Current bugs (must be fixed in the templates)
 

@@ -158,6 +158,17 @@ class Positions:
         return self[symbol] is not None
 
 
+def deployable_value(portfolio_value: float, cash_reserve: float) -> float:
+    return portfolio_value * (1.0 - cash_reserve)
+
+
+def equal_weight_percent(n_selected: int, cash_reserve: float, max_positions: int) -> float:
+    n = min(max_positions, n_selected)
+    if n < 1:
+        return 0.0
+    return (1.0 - cash_reserve) / n
+
+
 class Portfolio:
     def __init__(self, pb: marketdata_pb2.Portfolio, db: engine.Connection):
         self._pb = pb
@@ -167,6 +178,12 @@ class Portfolio:
     @property
     def positions(self) -> Positions:
         return Positions(self._pb.positions)
+
+    def deployable_value(self, cash_reserve: float) -> float:
+        return deployable_value(self._pb.portfolio_value, cash_reserve)
+
+    def equal_weight_percent(self, n_selected: int, cash_reserve: float, max_positions: int) -> float:
+        return equal_weight_percent(n_selected, cash_reserve, max_positions)
 
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
         q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
