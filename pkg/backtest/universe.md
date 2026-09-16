@@ -95,7 +95,21 @@ Source of truth for a holdings row is iShares `row[8]` (`dependency.Asset.ISIN`)
 
 `asset.symbol` stays the finance primary key. Ingest (`repository.Asset.Store(symbol, name)`, `ohlc.Store(symbol, …)`, `DownloadHistoricalDataRequest.symbols`) does not change. Yahoo `GetAsset(symbol)` and Alpaca `GetAsset(symbol)` stay symbol-keyed.
 
-### 4.2 `asset_symbol`
+### 4.2 `instrument`
+
+Stable identity. One iShares ISIN is one instrument. `id` equals `isin` (text, not uuid). `name` is the issuer string from iShares; it is not identity.
+
+```sql
+CREATE TABLE IF NOT EXISTS instrument (
+    id text PRIMARY KEY,
+    isin text UNIQUE,
+    name text
+);
+```
+
+FB then META is one `instrument` row. A new ticker is a new `asset_symbol` interval, not a new instrument.
+
+### 4.3 `asset_symbol`
 
 Ticker history for one ISIN. Half-open `[from_date, to_date)`. `to_date` NULL means current.
 
@@ -109,7 +123,7 @@ CREATE TABLE IF NOT EXISTS asset_symbol (
 );
 ```
 
-`symbol` is the same `text` as `asset.symbol` / `ohlc.symbol`. `from_date` / `to_date` are `date`, same as `backtest_period.start_date`. Do not FK `symbol` to `asset(symbol)` at write time: the alias can exist before `Store` creates the asset row.
+`isin` matches `instrument.isin`. `symbol` is the same `text` as `asset.symbol` / `ohlc.symbol`. `from_date` / `to_date` are `date`, same as `backtest_period.start_date`. Do not FK `symbol` to `asset(symbol)` at write time: the alias can exist before `Store` creates the asset row.
 
 Example: FB then META is one ISIN, two rows. Membership does not close.
 
@@ -122,7 +136,16 @@ SELECT symbol FROM asset_symbol
    AND (to_date IS NULL OR $2 < to_date);
 ```
 
+Mapping helpers (`pkg/finance/internal/repository.Instruments`):
+
+- `Resolve(symbol, t)` → the `instrument` whose alias at `t` is that ticker
+- `Symbols(instrument, t)` → the ticker of that ISIN at `t`
+
 Ingest unions `DISTINCT symbol` for every ISIN that appears in `universe_member` for that backtest, including expired aliases, plus `backtest.benchmark`.
+
+### 4.4 Missing ISIN
+
+A holdings row with empty `ISIN` is skipped. It does not create an `instrument` and does not get a synthetic id. Do not match or merge rows by ticker or issuer name. FB and META are one instrument only when iShares supplies the same ISIN.
 
 ## 5. Snapshots
 
@@ -301,6 +324,12 @@ Reuse these as-is where the new tables touch them:
 | `backtest_period_asset.enabled` | `boolean NOT NULL DEFAULT false` | `BacktestTable` |
 | `asset.symbol` | `text primary key` | `AssetTable` |
 | `asset.name` | `text` | `AssetTable` |
+| `instrument.id` | `text PRIMARY KEY` (equals `isin`) | `InstrumentTable` |
+| `instrument.isin` | `text UNIQUE` | `InstrumentTable` |
+| `instrument.name` | `text` | `InstrumentTable` |
+| `asset_symbol.isin` | `text NOT NULL` | `AssetSymbolTable` |
+| `asset_symbol.symbol` | `text NOT NULL` | `AssetSymbolTable` |
+| `asset_symbol.from_date` / `to_date` | `date` (`to_date` nullable) | `AssetSymbolTable` |
 | `ohlc.symbol` | `TEXT references asset(symbol)` | `OHLCTable` |
 | `ohlc.time` | `timestamp` | `OHLCTable` |
 | `ohlc` uniqueness | `UNIQUE (symbol, time)` | `OHLCTable` |

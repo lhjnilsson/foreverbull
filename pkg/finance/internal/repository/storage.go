@@ -16,6 +16,14 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to drop ohlc table: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS asset_symbol`); err != nil {
+		return fmt.Errorf("failed to drop asset_symbol table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS instrument`); err != nil {
+		return fmt.Errorf("failed to drop instrument table: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS asset`); err != nil {
 		return fmt.Errorf("failed to drop asset table: %w", err)
 	}
@@ -30,6 +38,14 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, InstrumentTable); err != nil {
+		return fmt.Errorf("failed to create instrument table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, AssetSymbolTable); err != nil {
+		return fmt.Errorf("failed to create asset_symbol table: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, OHLCTable); err != nil {
@@ -54,6 +70,14 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, InstrumentTable); err != nil {
+		return fmt.Errorf("failed to create instrument table: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, AssetSymbolTable); err != nil {
+		return fmt.Errorf("failed to create asset_symbol table: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, OHLCTable); err != nil {
