@@ -23,6 +23,8 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 | `grafana/` | Grafana image + datasource plugin |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not in this work. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md).
+
 ## Prerequisites
 
 - Docker (unit tests use Testcontainers; Kind also needs a Docker daemon; integration/e2e need local images)

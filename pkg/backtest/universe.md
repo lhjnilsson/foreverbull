@@ -76,7 +76,7 @@ Zipline equity metadata computes `auto_close_date = end_date + 1 day` and then o
 
 | Capability | Where | Universe should |
 | --- | --- | --- |
-| iShares holdings + ISIN | `ISharesETFLoopup.GetSnapshot` / `ListSnapshotDates`; `dependency.Asset.{Symbol,Name,Sector,AssetType,ISIN}` | Keep the product URL and JSON parse. Sample month-end `asOfDate`s (not `day := 0; day <= 365`). `GetSnapshot` is Equity-only and includes ISIN. `GetAssets(years)` remains a year-keyed union until `CreateBacktestFromETF` is rewired |
+| iShares holdings + ISIN | `ISharesETFLoopup.GetSnapshot` / `ListSnapshotDates`; `dependency.Asset.{Symbol,Name,Sector,AssetType,ISIN}` | Keep the product URL and JSON parse. Sample month-end `asOfDate`s (not `day := 0; day <= 365`). `GetSnapshot` is Equity-only and includes ISIN. `CreateBacktestFromETF` uses those APIs. `GetAssets(years)` is a year-keyed compatibility wrapper |
 | ETF → benchmark ticker | `GetBenchmark` (`iShares S&P 100` → `OEF`) | Unchanged; `backtest.benchmark text NOT NULL` |
 | Yearly period + membership | `backtest_period` / `backtest_period_asset` | Stop using calendar-year lists as membership. Keep `backtest(name, benchmark)` |
 | Vendor asset lookup | `Marketdata.GetAsset(symbol)`; RPC oneof already has `isin` | Do not switch Yahoo/Alpaca. Do not add a provider. ISIN comes from iShares, not from `GetAsset` |
@@ -239,7 +239,7 @@ Seed from S0: every Equity ISIN opens a member interval at S0.`as_of_date` and a
 
 Adds/drops change membership. Ticker changes do not.
 
-`pkg/backtest/internal/universe.Diff` is the consecutive-snapshot differ. It emits half-open `universe_member` intervals (and ticker alias intervals). Persistence is `universe_member` in the backtest repository. `CreateBacktestFromETF` is not wired yet.
+`pkg/backtest/internal/universe.Diff` is the consecutive-snapshot differ. It emits half-open `universe_member` intervals (and ticker alias intervals). Persistence is `universe_member` in the backtest repository. `CreateBacktestFromETF` loads month-end snapshots, diffs them, and writes `instrument` / `asset_symbol` / `universe_member`.
 
 ### 6.3 Hysteresis (optional)
 
@@ -343,4 +343,9 @@ Reuse these as-is where the new tables touch them:
 | `trading_calendar_date.code` | `TEXT NOT NULL` | `CalendarTable` |
 | `trading_calendar_date.date` | `date NOT NULL` | `CalendarTable` |
 | ISIN | `string` / `text` | proto `Asset.ISIN`; iShares `row[8]` |
-)
+
+## 12. Status
+
+Landed. ETF create samples month-end iShares as-of dates (filesystem JSON cache; Equity rows with ISIN). Identity is ISIN (`instrument` + `asset_symbol`); ticker is a dated alias (FB then META is one asset). Membership is half-open `universe_member` intervals from consecutive as-of diffs: adds/drops change membership, ticker changes do not. Ingest unions every alias plus the benchmark; the session maps members through `asset_symbol` at `t` into `Process` (empty universe stays `[]`). SQLIngester writes `auto_close_date` on a drop and keeps one sid across a rename. `GetAsset` failure is not a membership drop. Yearly `backtest_period` / `backtest_period_asset` rows remain for ingest windows; they are not membership.
+
+Not in this work: Stooq or any new `MARKET_DATA_PROVIDER` (Yahoo/Alpaca unchanged); daily holdings dumps; the `etf_holdings_snapshot` table (raw JSON cache is enough); hysteresis; rewriting `ohlc` off `symbol`.

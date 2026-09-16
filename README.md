@@ -1,6 +1,6 @@
 # Foreverbull
 
-Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. ETF universes can be built from the iShares API. Alpaca trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (do not enable live trading from this README).
+Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Alpaca trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (do not enable live trading from this README).
 
 The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote cluster. One chart deploys Postgres, NATS JetStream, Minio, Zipline, the broker, and Grafana.
 
@@ -156,7 +156,7 @@ flowchart TB
   Strategy <--> NATS
 ```
 
-- **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. Can seed a universe from iShares ETF holdings.
+- **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. ETF create is point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 - **Finance**: Market data (Yahoo by default; Alpaca is an alternate provider) and a trading API. Alpaca live/paper trading is compiled in but `TRADING_ENABLED` defaults to `false`.
 - **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
 - **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests, paper dry-run. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
