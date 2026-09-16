@@ -1,0 +1,9 @@
+{
+  "as_of": "2022-12-31",
+  "holdings": [
+    {"isin": "US0378331005", "symbol": "AAPL", "name": "Apple Inc.", "asset_type": "Equity"},
+    {"isin": "US30303M1027", "symbol": "FB", "name": "Meta Platforms Inc.", "asset_type": "Equity"},
+    {"isin": "", "symbol": "CASH_USD", "name": "USD Cash", "asset_type": "Cash"},
+    {"isin": "US0000000001", "symbol": "BOND", "name": "Some Bond", "asset_type": "Fixed Income"}
+  ]
+}

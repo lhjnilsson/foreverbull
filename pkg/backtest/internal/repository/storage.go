@@ -8,6 +8,10 @@ import (
 )
 
 func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS universe_member;`); err != nil {
+		return fmt.Errorf("failed to drop table universe_member: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution;`); err != nil {
 		return fmt.Errorf("failed to drop table execution: %w", err)
 	}
@@ -36,6 +40,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to create table backtest: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
+		return fmt.Errorf("failed to create table universe_member: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, SessionTable); err != nil {
 		return fmt.Errorf("failed to create table session: %w", err)
 	}
@@ -54,6 +62,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
 		return fmt.Errorf("failed to create table backtest: %w", err)
+	}
+
+	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
+		return fmt.Errorf("failed to create table universe_member: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, SessionTable); err != nil {

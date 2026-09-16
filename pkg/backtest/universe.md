@@ -239,6 +239,8 @@ Seed from S0: every Equity ISIN opens a member interval at S0.`as_of_date` and a
 
 Adds/drops change membership. Ticker changes do not.
 
+`pkg/backtest/internal/universe.Diff` is the consecutive-snapshot differ. It emits half-open `universe_member` intervals (and ticker alias intervals). Persistence is `universe_member` in the backtest repository. `CreateBacktestFromETF` is not wired yet.
+
 ### 6.3 Hysteresis (optional)
 
 To ignore a one-off as-of glitch, require two consecutive snapshots before committing an add or a drop:
@@ -247,6 +249,8 @@ To ignore a one-off as-of glitch, require two consecutive snapshots before commi
 - Drop: ISIN absent in Si and Si+1, present before Si → `to_date = Si.as_of_date`.
 
 Renames still apply on the first snapshot that shows the new ticker (the ISIN never left). Default the flag off until a product proves noisy; the schema does not change.
+
+This step leaves hysteresis off. Month-end (and cached reconstitution) as-of dates are already sampled, so a two-snapshot confirmation would lag a genuine add/drop by a month. Enable per product if a feed is noisy.
 
 ## 7. Ingest union vs session PIT
 
@@ -330,6 +334,9 @@ Reuse these as-is where the new tables touch them:
 | `asset_symbol.isin` | `text NOT NULL` | `AssetSymbolTable` |
 | `asset_symbol.symbol` | `text NOT NULL` | `AssetSymbolTable` |
 | `asset_symbol.from_date` / `to_date` | `date` (`to_date` nullable) | `AssetSymbolTable` |
+| `universe_member.backtest_name` | `text` FK `backtest(name)` | `UniverseMemberTable` |
+| `universe_member.isin` | `text NOT NULL` | `UniverseMemberTable` |
+| `universe_member.from_date` / `to_date` | `date` (`to_date` nullable) | `UniverseMemberTable` |
 | `ohlc.symbol` | `TEXT references asset(symbol)` | `OHLCTable` |
 | `ohlc.time` | `timestamp` | `OHLCTable` |
 | `ohlc` uniqueness | `UNIQUE (symbol, time)` | `OHLCTable` |
