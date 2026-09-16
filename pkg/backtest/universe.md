@@ -76,7 +76,7 @@ Zipline equity metadata computes `auto_close_date = end_date + 1 day` and then o
 
 | Capability | Where | Universe should |
 | --- | --- | --- |
-| iShares holdings + ISIN | `ISharesETFLoopup.GetAssets`; `dependency.Asset.{Symbol,Name,Sector,AssetType,ISIN}` | Keep the product URL and JSON parse; change the date loop and the map key from year → as-of date |
+| iShares holdings + ISIN | `ISharesETFLoopup.GetSnapshot` / `ListSnapshotDates`; `dependency.Asset.{Symbol,Name,Sector,AssetType,ISIN}` | Keep the product URL and JSON parse. Sample month-end `asOfDate`s (not `day := 0; day <= 365`). `GetSnapshot` is Equity-only and includes ISIN. `GetAssets(years)` remains a year-keyed union until `CreateBacktestFromETF` is rewired |
 | ETF → benchmark ticker | `GetBenchmark` (`iShares S&P 100` → `OEF`) | Unchanged; `backtest.benchmark text NOT NULL` |
 | Yearly period + membership | `backtest_period` / `backtest_period_asset` | Stop using calendar-year lists as membership. Keep `backtest(name, benchmark)` |
 | Vendor asset lookup | `Marketdata.GetAsset(symbol)`; RPC oneof already has `isin` | Do not switch Yahoo/Alpaca. Do not add a provider. ISIN comes from iShares, not from `GetAsset` |
@@ -128,7 +128,22 @@ Ingest unions `DISTINCT symbol` for every ISIN that appears in `universe_member`
 
 ### 5.1 Cache
 
-Do not refetch iShares on every `CreateBacktestFromETF`. Persist each sampled as-of:
+Do not refetch iShares on every `CreateBacktestFromETF`. Two layers:
+
+**Raw JSON (scraper, this step).** `ISharesETFLoopup` caches each successful iShares `aaData` response on the filesystem, keyed by ETF slug and `asOfDate`:
+
+```text
+{cacheDir}/{etf_slug}/{YYYYMMDD}.json
+# example: iShares_S_P_100/20221231.json
+```
+
+- Runtime dir: `$FOREVERBULL_ETF_SNAPSHOT_CACHE`, else `{os.UserCacheDir()}/foreverbull/etf_snapshots` (temp dir if the user cache is unavailable).
+- Tests: `pkg/backtest/internal/stream/dependency/testdata/etf_snapshots` fixtures, or a temp dir. Unit tests use `httptest`; they must not hit live iShares.
+- Empty `aaData` is unpublished: do not cache it. `GetSnapshot` then walks back at most 6 calendar days and caches the first published body under the requested as-of.
+- Request shape stays `tab=all`, `fileType=json`, `asOfDate=YYYYMMDD`.
+- API: `GetSnapshot(etf, asOf) ([]Asset, error)` (Equity-only, includes ISIN) and `ListSnapshotDates(etf, start, end) ([]time.Time, error)` (last calendar day of each month in range, plus any dates already in the cache).
+
+**Parsed holdings table (later).** Persist membership rows once `CreateBacktestFromETF` is rewired:
 
 ```sql
 CREATE TABLE IF NOT EXISTS etf_holdings_snapshot (
@@ -143,19 +158,21 @@ CREATE TABLE IF NOT EXISTS etf_holdings_snapshot (
 );
 ```
 
-Column types match `dependency.Asset` and `backtest.name` (`text` / `date`). `etf_name` is the product key already used by `GetAssets` (e.g. `iShares S&P 100`). Request shape stays `tab=all`, `fileType=json`, `asOfDate=YYYYMMDD`. Empty `aaData` means that as-of is unpublished; do not cache an empty snapshot, try the previous session on `trading_calendar_date`.
+Column types match `dependency.Asset` and `backtest.name` (`text` / `date`). `etf_name` is the product key already used by `GetAssets` (e.g. `iShares S&P 100`). When the table exists, empty `aaData` should try the previous session on `trading_calendar_date` instead of a 6-day lookback.
 
 ### 5.2 Sampling
 
-Replace the yearly first-hit loop. For `[start_date, end_date]`:
+Replace the yearly first-hit loop. The scraper now samples; it does not walk every calendar day.
 
-1. Load `trading_calendar_date` for `XNYS` in range (`code text`, `date date`).
-2. Take the last session of each month (month-end). Optionally include known iShares reconstitution dates if they are already in the cache.
-3. GET each as-of once; insert into `etf_holdings_snapshot`.
+For `[start_date, end_date]`:
 
-Do not sample every calendar day. Do not keep “first published day of the year” as a special case.
+1. `ListSnapshotDates` takes the last calendar day of each month in range. Cached reconstitution dates in that range are included.
+2. `GetSnapshot` GETs each as-of once (filesystem cache on repeat).
+3. Later: load `trading_calendar_date` for `XNYS` (`code text`, `date date`) and use the last session of each month; insert parsed rows into `etf_holdings_snapshot`.
 
-Tests of the scraper use `httptest` or cached fixtures. Do not hit live iShares in unit tests (existing `backtest_test.go` already uses `httptest`).
+Do not sample every calendar day. Do not keep “first published day of the year” as a special case. A year of snapshots is 12 month-ends (plus lookback only when a month-end is unpublished), never `day := 0; day <= 365`.
+
+Tests of the scraper use `httptest` or cached fixtures. Do not hit live iShares in unit tests.
 
 ## 6. Diff → membership intervals
 
