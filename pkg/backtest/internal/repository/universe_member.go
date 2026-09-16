@@ -131,3 +131,40 @@ func (db *UniverseMember) At(ctx context.Context, backtestName string, t time.Ti
 
 	return isins, nil
 }
+
+// SymbolsAt returns the ticker of each member on date t via asset_symbol.
+// Ticker changes do not drop a name; a missing alias omits that ISIN.
+func (db *UniverseMember) SymbolsAt(ctx context.Context, backtestName string, t time.Time) ([]string, error) {
+	rows, err := db.Conn.Query(ctx, `
+		SELECT s.symbol
+		  FROM universe_member m
+		  JOIN asset_symbol s ON s.isin = m.isin
+		 WHERE m.backtest_name = $1
+		   AND m.from_date <= $2::date
+		   AND (m.to_date IS NULL OR $2::date < m.to_date)
+		   AND s.from_date <= $2::date
+		   AND (s.to_date IS NULL OR $2::date < s.to_date)
+		 ORDER BY s.symbol`,
+		backtestName, dateString(t))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query member symbols: %w", err)
+	}
+	defer rows.Close()
+
+	symbols := make([]string, 0)
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan member symbol: %w", err)
+		}
+		if symbol == "" {
+			continue
+		}
+		symbols = append(symbols, symbol)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to query member symbols: %w", err)
+	}
+
+	return symbols, nil
+}

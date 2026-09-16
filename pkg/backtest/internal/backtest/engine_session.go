@@ -3,9 +3,13 @@ package backtest
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -13,6 +17,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// MemberSymbols maps a backtest's universe_member rows through asset_symbol at t.
+type MemberSymbols interface {
+	SymbolsAt(ctx context.Context, backtestName string, t time.Time) ([]string, error)
+}
 
 func NewZiplineEngineSession(ctx context.Context, connStr string) (engine.EngineSession, error) {
 	conn, err := grpc.NewClient(
@@ -29,7 +38,8 @@ func NewZiplineEngineSession(ctx context.Context, connStr string) (engine.Engine
 }
 
 type ZipelineSession struct {
-	client servicePb.EngineSessionClient
+	client    servicePb.EngineSessionClient
+	symbolsAt MemberSymbols
 }
 
 func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Execution, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error) {
@@ -47,7 +57,20 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 
 	ch := make(chan *servicePb.RunExecutionResponse)
 
+	lookup := z.symbolsAt
+	var pool *pgxpool.Pool
+	if lookup == nil {
+		pool, err = pgxpool.New(ctx, environment.GetPostgresURL())
+		if err != nil {
+			return nil, fmt.Errorf("error connecting to postgres for membership: %w", err)
+		}
+		lookup = &repository.UniverseMember{Conn: pool}
+	}
+
 	runner := func() {
+		if pool != nil {
+			defer pool.Close()
+		}
 		var currentPeriod int64 = 0
 		for {
 			period, err := z.client.GetCurrentPeriod(ctx, &servicePb.GetCurrentPeriodRequest{})
@@ -71,7 +94,14 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 			case ch <- &excRsp:
 			default:
 			}
-			orders, err := workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), []string{}, period.Portfolio)
+			t := period.Portfolio.Timestamp.AsTime()
+			symbols, err := memberSymbolsAt(ctx, lookup, execution.GetBacktest(), t)
+			if err != nil {
+				log.Error().Err(err).Msg("error listing members at timestamp")
+				close(ch)
+				return
+			}
+			orders, err := workers.Process(ctx, t, symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
 				close(ch)
@@ -94,6 +124,20 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	go runner()
 
 	return ch, nil
+}
+
+func memberSymbolsAt(ctx context.Context, lookup MemberSymbols, backtestName string, t time.Time) ([]string, error) {
+	if lookup == nil || backtestName == "" {
+		return []string{}, nil
+	}
+	symbols, err := lookup.SymbolsAt(ctx, backtestName, t)
+	if err != nil {
+		return nil, err
+	}
+	if symbols == nil {
+		return []string{}, nil
+	}
+	return symbols, nil
 }
 
 func (z *ZipelineSession) GetResult(ctx context.Context, executionId string) (*servicePb.GetResultResponse, error) {

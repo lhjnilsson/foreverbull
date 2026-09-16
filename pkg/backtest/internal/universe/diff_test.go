@@ -103,6 +103,31 @@ func TestDiffFixtureRenameAddDrop(t *testing.T) {
 	require.Equal(t, []string{metaISIN, msftISIN}, universe.MembersAt(got.Members, s2))
 	require.Empty(t, universe.MembersAt(got.Members, date(t, "2022-12-30")))
 	require.Equal(t, []string{aaplISIN, metaISIN}, universe.MembersAt(got.Members, date(t, "2023-01-30")))
+
+	require.Equal(t, []string{"AAPL", "FB"}, universe.SymbolsAt(got.Members, got.Aliases, s0))
+	require.Equal(t, []string{"AAPL", "META", "MSFT"}, universe.SymbolsAt(got.Members, got.Aliases, s1))
+	require.Equal(t, []string{"META", "MSFT"}, universe.SymbolsAt(got.Members, got.Aliases, s2))
+	require.Empty(t, universe.SymbolsAt(got.Members, got.Aliases, date(t, "2022-12-30")))
+	require.Equal(t, []string{"AAPL", "FB"}, universe.SymbolsAt(got.Members, got.Aliases, date(t, "2023-01-30")))
+}
+
+func TestSymbolsAtTickerChangeIsNotMembershipDrop(t *testing.T) {
+	t.Parallel()
+
+	s0 := date(t, "2021-06-30")
+	s1 := date(t, "2021-10-31")
+	members := []universe.Member{{ISIN: metaISIN, FromDate: s0, ToDate: nil}}
+	aliases := []universe.Alias{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: s0, ToDate: toPtr(s1)},
+		{ISIN: metaISIN, Symbol: "META", FromDate: s1, ToDate: nil},
+	}
+
+	require.Equal(t, []string{"FB"}, universe.SymbolsAt(members, aliases, s0))
+	require.Equal(t, []string{"FB"}, universe.SymbolsAt(members, aliases, date(t, "2021-10-30")))
+	require.Equal(t, []string{"META"}, universe.SymbolsAt(members, aliases, s1))
+	require.Empty(t, universe.SymbolsAt(members, aliases, date(t, "2021-06-29")))
+	require.Empty(t, universe.SymbolsAt(nil, aliases, s0))
+	require.Empty(t, universe.SymbolsAt(members, nil, s0))
 }
 
 func TestDiffTickerChangeDoesNotSplitMembership(t *testing.T) {

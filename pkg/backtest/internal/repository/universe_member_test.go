@@ -140,6 +140,66 @@ func (test *UniverseMemberTest) TestReplaceListAndAtFromDiffer() {
 	test.Empty(at)
 }
 
+func (test *UniverseMemberTest) TestSymbolsAtMapsTickerAtT() {
+	ctx := context.Background()
+	test.createBacktest("sp100")
+
+	result := universe.Diff([]universe.Snapshot{
+		{
+			AsOf: test.date("2022-12-31"),
+			Holdings: []universe.Holding{
+				{ISIN: aaplISIN, Symbol: "AAPL", AssetType: "Equity"},
+				{ISIN: metaISIN, Symbol: "FB", AssetType: "Equity"},
+			},
+		},
+		{
+			AsOf: test.date("2023-01-31"),
+			Holdings: []universe.Holding{
+				{ISIN: aaplISIN, Symbol: "AAPL", AssetType: "Equity"},
+				{ISIN: metaISIN, Symbol: "META", AssetType: "Equity"},
+				{ISIN: msftISIN, Symbol: "MSFT", AssetType: "Equity"},
+			},
+		},
+		{
+			AsOf: test.date("2023-02-28"),
+			Holdings: []universe.Holding{
+				{ISIN: metaISIN, Symbol: "META", AssetType: "Equity"},
+				{ISIN: msftISIN, Symbol: "MSFT", AssetType: "Equity"},
+			},
+		},
+	})
+
+	err := test.members.Replace(ctx, "sp100", intervalsFrom(result))
+	test.Require().NoError(err)
+
+	instruments := repository.Instrument{Conn: test.conn}
+	for _, alias := range result.Aliases {
+		test.Require().NoError(instruments.Upsert(ctx, alias.ISIN, alias.Symbol))
+		test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+			ISIN:     alias.ISIN,
+			Symbol:   alias.Symbol,
+			FromDate: alias.FromDate,
+			ToDate:   alias.ToDate,
+		}))
+	}
+
+	symbols, err := test.members.SymbolsAt(ctx, "sp100", test.date("2022-12-31"))
+	test.Require().NoError(err)
+	test.Equal([]string{"AAPL", "FB"}, symbols)
+
+	symbols, err = test.members.SymbolsAt(ctx, "sp100", test.date("2023-01-31"))
+	test.Require().NoError(err)
+	test.Equal([]string{"AAPL", "META", "MSFT"}, symbols)
+
+	symbols, err = test.members.SymbolsAt(ctx, "sp100", test.date("2023-02-28"))
+	test.Require().NoError(err)
+	test.Equal([]string{"META", "MSFT"}, symbols)
+
+	symbols, err = test.members.SymbolsAt(ctx, "sp100", test.date("2022-12-30"))
+	test.Require().NoError(err)
+	test.Empty(symbols)
+}
+
 func (test *UniverseMemberTest) TestReplaceClearsPreviousIntervals() {
 	ctx := context.Background()
 	test.createBacktest("sp100")

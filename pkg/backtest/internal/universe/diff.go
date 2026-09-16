@@ -119,6 +119,34 @@ func MembersAt(members []Member, t time.Time) []string {
 	return isins
 }
 
+// SymbolsAt returns the ticker of each member on t via dated aliases.
+// Adds and drops change the list; a rename (FB then META) keeps one name.
+// Members with no alias at t are omitted. Empty membership is an empty slice.
+func SymbolsAt(members []Member, aliases []Alias, t time.Time) []string {
+	t = dateOnly(t)
+	wanted := make(map[string]struct{})
+	for _, isin := range MembersAt(members, t) {
+		wanted[isin] = struct{}{}
+	}
+	symbols := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, alias := range aliases {
+		if _, ok := wanted[alias.ISIN]; !ok {
+			continue
+		}
+		if alias.Symbol == "" || !contains(alias.FromDate, alias.ToDate, t) {
+			continue
+		}
+		if _, dup := seen[alias.Symbol]; dup {
+			continue
+		}
+		seen[alias.Symbol] = struct{}{}
+		symbols = append(symbols, alias.Symbol)
+	}
+	sort.Strings(symbols)
+	return symbols
+}
+
 func contains(from time.Time, to *time.Time, t time.Time) bool {
 	if from.After(t) {
 		return false
