@@ -117,21 +117,17 @@ Keep this template pandas-only. Fix sizing and parameters without TA-Lib.
 
 ### Advanced — `macd.py` and `rsi.py`
 
-Both pick a top 10 and call `order_target_percent(symbol, 0.1)` **only when
-`symbol not in portfolio.positions`**. That is two bugs:
+Sized and parameterized. Both leave `cash_reserve` (default `0.05`), cap at
+`max_positions` (default `10`), equal-weight deployable capital across the
+names that actually qualify this bar, rebalance keepers every bar (including
+names already held), and flatten leavers with `order_target(symbol, 0)`.
 
-- **No rebalance** of names already held. Drift and a changing `n` are ignored.
-- **No cash reserve.** Ten names at `0.1` sums to `1.0`. Fewer than ten
-  qualifying names deploys less than 100% by accident, not because of
-  `cash_reserve`. There is no `max_positions` parameter — `head(10)` is
-  hardcoded.
-
-They do flatten leavers (`order_target(symbol, 0)` for symbols not in
-`to_hold`). Keep that behavior, but apply it after recomputing equal-weight
-targets from deployable capital.
-
-MACD periods (`12`, `26`, `9`), RSI `timeperiod=14` / threshold `30`, and the
-`0.1` weight are literals, not `Function` parameters. Advanced stays on
+RSI keeps an oversold rank (`rsi < oversold`). If fewer than `max_positions`
+qualify, remaining deployable is concentrated across those names. MACD ranks
+positive MACD and equal-weights the same way (the unused volatility helper
+was dead code and is gone). Lookbacks and risk knobs are `Function` defaults:
+RSI `timeperiod` / `oversold`, MACD `fastperiod` / `slowperiod` /
+`signalperiod`, plus `max_positions` and `cash_reserve`. Advanced stays on
 TA-Lib; simple must not.
 
 ## Out of scope for these templates

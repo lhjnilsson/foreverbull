@@ -8,31 +8,42 @@ from foreverbull import Function
 from foreverbull import Portfolio
 
 
-def calculate_rsi(asset: Asset, portfolio: Portfolio):
-    rsi = talib.RSI(asset.stock_data["close"], timeperiod=14)  # type: ignore
-    asset.set_metric("rsi", rsi.iat[-1])  # type: ignore
+def calculate_rsi(asset: Asset, portfolio: Portfolio, timeperiod: int = 14):
+    close = asset.stock_data["close"]
+    if len(close) <= timeperiod:
+        return
+    rsi = talib.RSI(close, timeperiod=timeperiod)  # type: ignore
+    last = rsi.iat[-1] if hasattr(rsi, "iat") else rsi[-1]
+    if last is None or last != last:
+        return
+    asset.set_metric("rsi", float(last))
 
 
-# Find assets with RSI value under 30
-# Buy top 10 stocks with lowest rsi(oversold)
-def place_orders(assets: Assets, portfolio: Portfolio):
-    rsi = assets.get_metrics("rsi")
+def select_oversold(rsi: pd.Series, oversold: float, max_positions: int) -> list[str]:
+    qualified = rsi.dropna()
+    qualified = qualified[qualified < oversold].sort_values(ascending=True)
+    return [str(symbol) for symbol in qualified.index[:max_positions]]
 
-    rsi = rsi[rsi < 30]
-    assert isinstance(rsi, pd.Series)
 
-    rsi.sort_values(ascending=True, inplace=True)
+def place_orders(
+    assets: Assets,
+    portfolio: Portfolio,
+    oversold: float = 30.0,
+    max_positions: int = 10,
+    cash_reserve: float = 0.05,
+):
+    selected = select_oversold(assets.get_metrics("rsi"), oversold, max_positions)
+    # n = min(max_positions, len(selected)): fewer oversold names concentrate
+    # remaining deployable instead of leaving most of the book in cash.
+    weight = portfolio.equal_weight_percent(len(selected), cash_reserve, max_positions)
+    targets = {symbol: weight for symbol in selected}
 
-    to_hold = [str(s) for s in rsi.head(10).keys()]
-    to_not_hold = [s for s in assets.symbols if s not in to_hold]
+    for symbol, target in targets.items():
+        portfolio.order_target_percent(symbol, target)
 
-    for symbol in to_hold:
-        if symbol not in portfolio.positions:
-            portfolio.order_target_percent(symbol, 0.1)
-
-    for symbol in to_not_hold:
-        if symbol in portfolio.positions:
-            portfolio.order_target(symbol, 0)
+    for position in list(portfolio.positions):
+        if position.symbol not in targets:
+            portfolio.order_target(position.symbol, 0)
 
 
 algo = Algorithm(

@@ -42,5 +42,13 @@ def test_advanced_template_renders_files(tmp_path):
     assert (project / "README.md").is_file()
     assert (project / "backtest.yaml").is_file()
     assert (project / "requirements.txt").is_file()
-    assert "talib" in (project / "advanced" / "macd.py").read_text()
-    assert "talib" in (project / "advanced" / "rsi.py").read_text()
+    macd = (project / "advanced" / "macd.py").read_text()
+    rsi = (project / "advanced" / "rsi.py").read_text()
+    assert "talib" in macd
+    assert "talib" in rsi
+    assert "order_target_percent" in macd
+    assert "order_target_percent" in rsi
+    assert "cash_reserve" in macd and "max_positions" in macd
+    assert "cash_reserve" in rsi and "max_positions" in rsi
+    assert "equal_weight_percent" in macd
+    assert "equal_weight_percent" in rsi
