@@ -3,6 +3,7 @@ from inspect import signature
 
 import pandas as pd
 
+from capital import assert_deploys_capital
 from {{cookiecutter.project_slug}}.allocation import equal_weight_percent
 from {{cookiecutter.project_slug}}.macd import algo
 from {{cookiecutter.project_slug}}.macd import calculate_macd
@@ -67,6 +68,7 @@ def test_handle_data_rebalances_held_and_flattens_leavers(
     weight = equal_weight_percent(len(selected), 0.05, 10)
     if selected:
         assert len(selected) * weight <= 0.95 + 1e-12
+        assert_deploys_capital(portfolio, assets, 0.05)
     for symbol in selected:
         close = float(assets.stock_data.xs(symbol, level="symbol")["close"].iloc[-1])
         held = 10 if symbol == "AAPL" else 0
@@ -103,3 +105,4 @@ def test_handle_data_respects_max_positions(asset_manager: AssetManager, portfol
         close = float(assets.stock_data.xs(buys[0], level="symbol")["close"].iloc[-1])
         assert equal_weight_percent(1, 0.10, 1) == 0.90
         assert orders[buys[0]] == int(100_000 * 0.90 / close)
+        assert_deploys_capital(portfolio, assets, 0.10)

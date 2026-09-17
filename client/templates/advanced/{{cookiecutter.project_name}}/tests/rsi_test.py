@@ -3,6 +3,7 @@ from inspect import signature
 
 import pandas as pd
 
+from capital import assert_deploys_capital
 from {{cookiecutter.project_slug}}.allocation import equal_weight_percent
 from {{cookiecutter.project_slug}}.rsi import algo
 from {{cookiecutter.project_slug}}.rsi import calculate_rsi
@@ -82,8 +83,13 @@ def _assets(asset_manager: AssetManager):
 def test_place_orders_buys_oversold_and_flattens_leavers(
     asset_manager: AssetManager, portfolio_manager: PortfolioManager
 ):
-    portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
-    place_orders(_assets(asset_manager), portfolio)
+    assets = _assets(asset_manager)
+    portfolio = portfolio_manager.get_portfolio(
+        datetime(2021, 3, 31),
+        portfolio_value=100_000,
+        positions=[Position(symbol="AAPL", amount=10)],
+    )
+    place_orders(assets, portfolio)
 
     orders = {order.symbol: order.amount for order in portfolio.pending_orders}
     assert orders["AAPL"] == -10
@@ -91,6 +97,7 @@ def test_place_orders_buys_oversold_and_flattens_leavers(
         assert orders[symbol] > 0
     assert "MSFT" not in orders
     assert "GOOGL" not in orders
+    assert_deploys_capital(portfolio, assets, 0.05)
 
 
 def test_place_orders_rebalances_held_oversold(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
@@ -110,6 +117,7 @@ def test_place_orders_rebalances_held_oversold(asset_manager: AssetManager, port
     expected = int(100_000 * weight / close) - 10
     assert orders["MMM"] == expected
     assert expected != 0
+    assert_deploys_capital(portfolio, assets, 0.05)
 
 
 def test_place_orders_concentrates_when_few_qualify(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
@@ -127,11 +135,17 @@ def test_place_orders_concentrates_when_few_qualify(asset_manager: AssetManager,
     assert buys["VZ"] == int(100_000 * weight / close)
     capped = int(100_000 * equal_weight_percent(10, 0.05, 10) / close)
     assert buys["VZ"] > capped
+    assert_deploys_capital(portfolio, assets, 0.05)
 
 
 def test_place_orders_respects_max_positions(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
-    place_orders(_assets(asset_manager), portfolio, max_positions=2, cash_reserve=0.05)
+    assets = _assets(asset_manager)
+    portfolio = portfolio_manager.get_portfolio(
+        datetime(2021, 3, 31),
+        portfolio_value=100_000,
+        positions=[Position(symbol="AAPL", amount=10)],
+    )
+    place_orders(assets, portfolio, max_positions=2, cash_reserve=0.05)
 
     orders = {order.symbol: order.amount for order in portfolio.pending_orders}
     buys = {symbol for symbol, amount in orders.items() if amount > 0}
@@ -139,3 +153,4 @@ def test_place_orders_respects_max_positions(asset_manager: AssetManager, portfo
     assert orders["AAPL"] == -10
     assert "MMM" not in orders
     assert "TSM" not in orders
+    assert_deploys_capital(portfolio, assets, 0.05)
