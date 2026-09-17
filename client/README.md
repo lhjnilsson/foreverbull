@@ -58,7 +58,9 @@ From the repo root: `task client:test`. SQL fixtures (`fb_database`) need a Dock
 
 ## Strategy projects
 
-Cookiecutter templates under `templates/` are the supported way to start an algorithm:
+Cookiecutter templates under `templates/` are the supported way to start an algorithm.
+Generated strategies size from `portfolio_value` (equal-weight deployable capital,
+cash reserve, max positions, rebalance every bar). See [templates/README.md](templates/README.md).
 
 ```bash
 uv run cookiecutter templates/simple      # no TA-Lib

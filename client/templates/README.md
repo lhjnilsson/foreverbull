@@ -97,35 +97,34 @@ Do not rewrite the `order_*` API for this contract. Per-name weights come from
 `allocation.py` copied next to each strategy). Integer shares still go through
 `order_target_percent`.
 
-## Current bugs (must be fixed in the templates)
+## Status
 
-The samples today are demos, not backtests. They violate the contract above.
+Generated strategies are backtests, not fixed-lot demos. They must follow the
+contract above. Do not describe or implement a buy as a magic share count.
 
 ### Simple — `simple/{{cookiecutter.project_name}}/{{cookiecutter.project_slug}}/crossover.py`
 
-- Buys with **`order_target(10)`** shares whenever the short SMA is above the
-  long SMA and the name is not already held. That is a fixed lot, independent
-  of `portfolio_value`, price, `cash_reserve`, and `max_positions`.
-- Never rebalances an existing long toward a percent target; it only sells to
-  zero on a cross down (`order_target(symbol, 0)`).
-- Lookbacks are hardcoded (`tail(10)`, `tail(30)`). `Function` has no
-  parameters at all (`Algorithm(functions=[Function(callable=handle_data)])`).
-- No `cash_reserve`, no `max_positions`, no equal-weight book. A wide universe
-  can buy 10 shares of every name that crosses, which is not a portfolio.
+Pandas SMA crossover (no TA-Lib). Long when the short window is above the long
+window; drop the name when it is not. Size with `order_target_percent` from
+`equal_weight_percent`, leave `cash_reserve`, cap at `max_positions`, rebalance
+keepers every bar, and flatten leavers with `order_target(symbol, 0)`. Lookbacks
+(`short_window` / `long_window`) and the risk knobs are `Function` parameters.
 
-Keep this template pandas-only. Fix sizing and parameters without TA-Lib.
+The checked-in file still uses `order_target(symbol, 10)` instead of that
+contract: no percent targets, no rebalance of keepers, hardcoded `tail(10)` /
+`tail(30)`, no `cash_reserve` or `max_positions`. Generated `tests/capital_test.py`
+fails until `crossover.py` is sized. Keep this template pandas-only.
 
 ### Advanced — `macd.py` and `rsi.py`
 
-Sized and parameterized. Both leave `cash_reserve` (default `0.05`), cap at
+Meets the contract. Both leave `cash_reserve` (default `0.05`), cap at
 `max_positions` (default `10`), equal-weight deployable capital across the
-names that actually qualify this bar, rebalance keepers every bar (including
-names already held), and flatten leavers with `order_target(symbol, 0)`.
+names that qualify this bar, rebalance keepers every bar (including names
+already held), and flatten leavers with `order_target(symbol, 0)`.
 
-RSI keeps an oversold rank (`rsi < oversold`). If fewer than `max_positions`
+RSI ranks oversold names (`rsi < oversold`). If fewer than `max_positions`
 qualify, remaining deployable is concentrated across those names. MACD ranks
-positive MACD and equal-weights the same way (the unused volatility helper
-was dead code and is gone). Lookbacks and risk knobs are `Function` defaults:
+positive MACD the same way. Lookbacks and risk knobs are `Function` defaults:
 RSI `timeperiod` / `oversold`, MACD `fastperiod` / `slowperiod` /
 `signalperiod`, plus `max_positions` and `cash_reserve`. Advanced stays on
 TA-Lib; simple must not.

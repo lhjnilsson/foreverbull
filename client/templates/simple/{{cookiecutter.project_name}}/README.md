@@ -1,7 +1,14 @@
 # {{ cookiecutter.project_slug }}
 
 Generated from the Foreverbull **simple** cookiecutter template (no TA-Lib).
-The sample algorithm buys when a short moving average crosses above a long one.
+The strategy is a long-only pandas SMA crossover: a name is in when the short
+window is above the long window, and out otherwise.
+
+It sizes from `portfolio_value`: it leaves a `cash_reserve` (default `0.05`),
+caps the book at `max_positions` (default `10`), equal-weight deployable capital
+across the names that qualify this bar, rebalances those targets every bar, and
+flattens names that leave the set. Lookbacks (`short_window` / `long_window`)
+and the risk knobs are `Function` parameters. Do not buy a fixed share lot.
 
 Cookiecutter plus `foreverbull-testing` is the supported way to write algorithms.
 
@@ -52,7 +59,7 @@ fbull backtest create --file backtest.yaml
 fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py --yes
 ```
 
-`backtest.yaml` is a small demo universe. Change dates and symbols as needed.
+`backtest.yaml` is a small sample universe. Change dates and symbols as needed.
 
 Remote cluster: `fbenv use remote …` then `fbenv create`. Set `FOREVERBULL_BROKER_ADDRESS` or `remote.broker_address`. See the clone's [deploy/README.md](https://github.com/lhjnilsson/foreverbull/blob/main/deploy/README.md).
 

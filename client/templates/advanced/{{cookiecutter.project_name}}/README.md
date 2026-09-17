@@ -1,20 +1,21 @@
 # {{ cookiecutter.project_slug }}
 
 Generated from the Foreverbull **advanced** cookiecutter template.
-Sample strategies use [TA-Lib](https://ta-lib.org/) (`macd.py` and `rsi.py`).
+The strategies use [TA-Lib](https://ta-lib.org/) (`macd.py` and `rsi.py`).
 
 Both size from `portfolio_value`: they leave a `cash_reserve` (default `0.05`),
 cap the book at `max_positions` (default `10`), equal-weight deployable capital
 across the names that qualify this bar, rebalance those targets every bar, and
-flatten names that leave the set. RSI ranks oversold names and concentrates
-remaining deployable if fewer than `max_positions` qualify. MACD ranks positive
-MACD the same way. Lookbacks and risk knobs are `Function` parameters
-(`timeperiod` / `oversold`, MACD periods, `max_positions`, `cash_reserve`).
+flatten names that leave the set. Do not buy a fixed share lot. RSI ranks
+oversold names and concentrates remaining deployable if fewer than
+`max_positions` qualify. MACD ranks positive MACD the same way. Lookbacks and
+risk knobs are `Function` parameters (`timeperiod` / `oversold`, MACD periods,
+`max_positions`, `cash_reserve`).
 
 Cookiecutter plus `foreverbull-testing` is the supported way to write algorithms.
 
 Install TA-Lib (the C library and the `TA-Lib` Python package) before running
-the sample strategies. If you do not have TA-Lib, use the simple template instead.
+the strategies. If you do not have TA-Lib, use the simple template instead.
 
 ## Requirements
 
