@@ -2,27 +2,48 @@ import {
   DataSourceInstanceSettings,
   CoreApp,
   ScopedVars,
-  SelectableValue,
   CustomVariableSupport,
   DataQueryRequest,
   DataQueryResponse,
+  arrayToDataFrame,
 } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
-
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
-
-export interface ResourceDefinition {
-  value?: string;
-  label?: string;
-  description?: string;
-}
-
-import VariableQueryEditor from './components/VariableQueryEditor';
-
 import { Observable, from } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-export class DatasourceVariableSupport extends CustomVariableSupport<DataSource> {
+import VariableQueryEditor from './components/VariableQueryEditor';
+import {
+  applyExecutionTemplates,
+  isRunnableQuery,
+  listVariableOptions,
+} from './query';
+import {
+  DEFAULT_QUERY,
+  DEFAULT_VARIABLE_QUERY,
+  MyQuery,
+  MyDataSourceOptions,
+  ResourceDefinition,
+  ResourceFilter,
+  ResourcePath,
+} from './types';
+
+function interpolateFilter(filter?: ResourceFilter): ResourceFilter | undefined {
+  if (!filter) {
+    return undefined;
+  }
+  const replace = (value?: string) => (value ? getTemplateSrv().replace(value) : '');
+  const interpolated: ResourceFilter = {
+    strategy: replace(filter.strategy),
+    version: replace(filter.version),
+    backtest: replace(filter.backtest),
+    session_id: replace(filter.session_id),
+    experiment: replace(filter.experiment),
+  };
+  const hasValue = Object.values(interpolated).some((value) => Boolean(value));
+  return hasValue ? interpolated : undefined;
+}
+
+export class DatasourceVariableSupport extends CustomVariableSupport<DataSource, MyQuery> {
   editor = VariableQueryEditor;
 
   constructor(private datasource: DataSource) {
@@ -30,14 +51,23 @@ export class DatasourceVariableSupport extends CustomVariableSupport<DataSource>
     this.query = this.query.bind(this);
   }
 
+  getDefaultQuery(): Partial<MyQuery> {
+    return DEFAULT_VARIABLE_QUERY;
+  }
+
   async execute(query: MyQuery) {
-    return this.datasource.getExecutions();
+    const replace = (value?: string) => (value ? getTemplateSrv().replace(value) : value);
+    return listVariableOptions(this.datasource, {
+      ...query,
+      strategy: replace(query.strategy),
+      version: replace(query.version),
+      backtest: replace(query.backtest),
+    });
   }
 
   query(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
     const result = this.execute(request.targets[0]);
-
-    return from(result).pipe(map((data) => ({ data })));
+    return from(result).pipe(map((data) => ({ data: [arrayToDataFrame(data)] })));
   }
 }
 
@@ -52,21 +82,30 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
-    return {
-      ...query,
-      execution: { ID: getTemplateSrv().replace(query.execution?.ID, scopedVars) },
-    };
+    return applyExecutionTemplates(query, (value) => getTemplateSrv().replace(value, scopedVars));
   }
 
-  async getExecutions(): Promise<ResourceDefinition[]> {
-    return this.postResource<ResourceDefinition[]>('executions');
+  async getExecutions(filter?: ResourceFilter): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Executions, interpolateFilter(filter) ?? {});
   }
 
   async getMetrics(): Promise<ResourceDefinition[]> {
-    return this.postResource<ResourceDefinition[]>('metrics');
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Metrics);
+  }
+
+  async getStrategies(): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Strategies);
+  }
+
+  async getVersions(filter?: ResourceFilter): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Versions, interpolateFilter(filter) ?? {});
+  }
+
+  async getExperiments(filter?: ResourceFilter): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Experiments, interpolateFilter(filter) ?? {});
   }
 
   filterQuery(query: MyQuery): boolean {
-    return !!query.execution;
+    return isRunnableQuery(query);
   }
 }

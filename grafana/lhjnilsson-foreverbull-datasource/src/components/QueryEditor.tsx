@@ -1,72 +1,72 @@
-import React, { ChangeEvent, useState } from 'react';
-import { InlineField, Input, Stack, Select, AsyncMultiSelect, AsyncSelect, SelectValue, QueryField } from '@grafana/ui';
+import React, { useState } from 'react';
+import { AsyncMultiSelect, AsyncSelect, InlineField, InlineFieldRow } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
-import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery, ResourceDefinition } from '../types';
-import defaults from 'lodash/defaults';
-
-export interface QueryTypeInfo extends SelectableValue<ResourceDefinition> {
-  value: ResourceDefinition;
-}
+import type { DataSource } from '../datasource';
+import { executionRefId, toExecution, toMetrics, withExecutionMetric } from '../query';
+import { MyDataSourceOptions, MyQuery } from '../types';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
 export function QueryEditor({ datasource, query, onChange, onRunQuery }: Props) {
-  const loadExecutions = (): Promise<Array<SelectableValue<string>>> => {
-    return datasource.getExecutions();
+  const [executionOptions, setExecutionOptions] = useState<Array<SelectableValue<string>>>([]);
+
+  const loadExecutions = async (): Promise<Array<SelectableValue<string>>> => {
+    const items = await datasource.getExecutions();
+    setExecutionOptions(items);
+    return items;
   };
 
   const loadMetrics = (): Promise<Array<SelectableValue<string>>> => {
     return datasource.getMetrics();
   };
 
-  const onExecutionChange = async (execution: SelectableValue<string>) => {
-    onChange({ ...query, execution: { ID: execution.value } });
+  const onExecutionChange = (execution: SelectableValue<string> | null) => {
+    onChange(withExecutionMetric(query, { execution: toExecution(execution?.value) }));
     onRunQuery();
   };
 
-  const onMetricChange = async (evt: Array<SelectableValue<string>>) => {
-    const m = evt.map((x) => ({ name: x.value }));
-    onChange({ ...query, metrics: m });
+  const onMetricChange = (evt: Array<SelectableValue<string>>) => {
+    onChange(withExecutionMetric(query, { metrics: toMetrics(evt.map((x) => x.value)) }));
     onRunQuery();
   };
 
-  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, execution: { ID: event.target.value } });
-    onRunQuery();
-  };
-
-  const selectedMetrics = query.metrics?.map((x) => ({ label: x.name, value: x.name }));
-  const selectedExecution = query.execution ? { label: query.execution.ID, value: query.execution.ID } : null;
+  const selectedId = executionRefId(query.execution);
+  const selectedExecution = selectedId
+    ? executionOptions.find((item) => item.value === selectedId) ?? { label: selectedId, value: selectedId }
+    : null;
+  const selectedMetrics = query.metrics?.map((metric) => ({ label: metric.name, value: metric.name }));
 
   return (
-    <Stack gap={0}>
-      <AsyncSelect
-        loadOptions={loadExecutions}
-        value={selectedExecution}
-        defaultOptions={true}
-        onChange={(evt) => onExecutionChange(evt)}
-        width={32}
-        required={false}
-        allowCustomValue={true}
-      />
-      <AsyncMultiSelect
-        loadOptions={loadMetrics}
-        value={selectedMetrics}
-        defaultOptions={true}
-        onChange={(evt) => onMetricChange(evt)}
-        width={32}
-        required={false}
-        allowCustomValue={true}
-      />
-      <InlineField label="Execution">
-        <Input
-          onChange={onQueryTextChange}
-          value={selectedExecution ? selectedExecution.value : ''}
-          required
-          placeholder="Enter a query"
+    <InlineFieldRow>
+      <InlineField
+        label="Execution"
+        tooltip="Execution UUID. Use $execution for the dashboard variable. Overlay another run as query B."
+      >
+        <AsyncSelect
+          inputId="query-editor-execution"
+          aria-label="Execution"
+          loadOptions={loadExecutions}
+          value={selectedExecution}
+          defaultOptions={true}
+          onChange={onExecutionChange}
+          width={40}
+          allowCustomValue={true}
+          placeholder="Select execution or $execution"
         />
       </InlineField>
-    </Stack>
+      <InlineField label="Metrics" tooltip="Period columns from GetExecution. Overlay is a second GetExecutionMetric query.">
+        <AsyncMultiSelect
+          inputId="query-editor-metrics"
+          aria-label="Metrics"
+          loadOptions={loadMetrics}
+          value={selectedMetrics}
+          defaultOptions={true}
+          onChange={onMetricChange}
+          width={40}
+          allowCustomValue={true}
+          placeholder="Select metrics"
+        />
+      </InlineField>
+    </InlineFieldRow>
   );
 }
