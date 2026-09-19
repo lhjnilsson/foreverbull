@@ -10,6 +10,7 @@ import (
 func TestSetupForTestFillsDefaultsWithoutDocker(t *testing.T) {
 	t.Setenv(HTTPPort, "")
 	t.Setenv(GRPCPort, "")
+	t.Setenv(GrafanaURL, "")
 	t.Setenv(PostgresURL, "")
 	t.Setenv(NatsURL, "")
 	t.Setenv(MinioURL, "")
@@ -22,6 +23,7 @@ func TestSetupForTestFillsDefaultsWithoutDocker(t *testing.T) {
 
 	require.Equal(t, HTTPPortDefault, GetHTTPPort())
 	require.Equal(t, GRPCPortDefault, GetGRPCPort())
+	require.Equal(t, GrafanaURLDefault, GetGrafanaURL())
 	require.Equal(t, PostgresURLDefault, GetPostgresURL())
 	require.Equal(t, NatsURLDefault, GetNATSURL())
 	require.Equal(t, MinioURLDefault, GetMinioURL())

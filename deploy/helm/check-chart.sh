@@ -36,4 +36,9 @@ for kind in ServiceAccount Role RoleBinding; do
   fi
 done
 
+if ! grep -q 'name: GRAFANA_URL' "${rendered}"; then
+  echo "broker must set GRAFANA_URL" >&2
+  exit 1
+fi
+
 echo "helm chart checks passed"

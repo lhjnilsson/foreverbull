@@ -403,7 +403,9 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 		test.Equal(spy.Id, got.GetExperiment().GetId())
 		test.Equal(executionID, got.GetExperiment().GetExecutionId())
 		test.Require().NotNil(got.GrafanaPath)
-		test.Contains(*got.GrafanaPath, executionID)
+		test.Equal(api.GrafanaExecutionURL(environment.GetGrafanaURL(), executionID), *got.GrafanaPath)
+		test.Contains(*got.GrafanaPath, "/d/ee9ep4jxtwkcgf?")
+		test.Contains(*got.GrafanaPath, "var-execution="+executionID)
 		test.Nil(got.LastPeriod)
 		test.Nil(got.GetExperiment().GetStats())
 

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	common "github.com/lhjnilsson/foreverbull/pkg/pb"
 	service "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
@@ -16,7 +19,30 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const grafanaExecutionPath = "http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution="
+// grafanaDashboardUID is the provisioned Backtest execution dashboard.
+// Deep links must keep this UID and the var-execution query key.
+const grafanaDashboardUID = "ee9ep4jxtwkcgf"
+
+// GrafanaExecutionURL builds a Grafana inspect-one-run deep link.
+// grafanaURL is the Grafana origin (GRAFANA_URL); empty uses the Kind default.
+func GrafanaExecutionURL(grafanaURL, executionID string) string {
+	base := strings.TrimSpace(grafanaURL)
+	if base == "" {
+		base = environment.GrafanaURLDefault
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		u, err = url.Parse(environment.GrafanaURLDefault)
+		if err != nil {
+			u = &url.URL{Scheme: "http", Host: "localhost:3000"}
+		}
+	}
+	built := u.JoinPath("d", grafanaDashboardUID)
+	q := built.Query()
+	q.Set("var-execution", executionID)
+	built.RawQuery = q.Encode()
+	return built.String()
+}
 
 func (s *StrategyServer) CreateExperiment(
 	req *servicePb.CreateExperimentRequest,
@@ -130,7 +156,7 @@ func (s *StrategyServer) GetExperiment(ctx context.Context, req *servicePb.GetEx
 
 	rsp := &servicePb.GetExperimentResponse{Experiment: experiment}
 	if experiment.GetExecutionId() != "" {
-		path := grafanaExecutionPath + experiment.GetExecutionId()
+		path := GrafanaExecutionURL(environment.GetGrafanaURL(), experiment.GetExecutionId())
 		rsp.GrafanaPath = &path
 		lastPeriod, err := experiments.GetLastPeriod(ctx, experiment.GetExecutionId())
 		if err != nil {

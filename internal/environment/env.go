@@ -19,6 +19,11 @@ const (
 	GRPCPort        = "GRPC_PORT"
 	GRPCPortDefault = "50055"
 
+	// GrafanaURL is the Grafana origin used in broker-emitted deep links.
+	// Kind host-port default is localhost:3000; remote installs override it.
+	GrafanaURL        = "GRAFANA_URL"
+	GrafanaURLDefault = "http://localhost:3000"
+
 	// DockerNetwork is the Testcontainers network name. The Kubernetes broker
 	// runtime does not use it.
 	DockerNetwork        = "DOCKER_NETWORK"
@@ -78,6 +83,7 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{ServerAddress, func() (string, error) { return ServerAddressDefault, nil }},
 	{HTTPPort, func() (string, error) { return HTTPPortDefault, nil }},
 	{GRPCPort, func() (string, error) { return GRPCPortDefault, nil }},
+	{GrafanaURL, func() (string, error) { return GrafanaURLDefault, nil }},
 	{BacktestIngestionDefaultName, func() (string, error) { return BacktestIngestionDefaultNameDefault, nil }},
 	{ZiplineContainerName, func() (string, error) { return ZiplineContainerNameDefault, nil }},
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
@@ -172,6 +178,10 @@ func GetHTTPPort() string {
 
 func GetGRPCPort() string {
 	return os.Getenv(GRPCPort)
+}
+
+func GetGrafanaURL() string {
+	return os.Getenv(GrafanaURL)
 }
 
 func GetServerGRPCURL() string {

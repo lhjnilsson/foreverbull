@@ -82,6 +82,7 @@ zipline:
 grafana:
   port: 3000
   brokerUrl: foreverbull:50055
+  url: http://localhost:3000  # GRAFANA_URL on the broker; Kind host port
 
 serviceAccount:
   create: true

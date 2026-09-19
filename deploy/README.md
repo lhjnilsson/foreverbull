@@ -292,6 +292,7 @@ zipline:
 grafana:
   port: 3000
   brokerUrl: foreverbull:50055
+  url: http://localhost:3000  # GRAFANA_URL on the broker; Kind host port
 
 serviceAccount:
   create: true
@@ -308,7 +309,10 @@ Workload object names (Deployment + Service): `postgres`, `nats`, `minio`,
 `zipline`, `foreverbull`, `grafana`.
 
 NATS, Minio, and Postgres keep the commands, credentials, and volume paths
-above. Grafana gets `BROKER_URL` from `grafana.brokerUrl`.
+above. Grafana gets `BROKER_URL` from `grafana.brokerUrl`. The broker gets `GRAFANA_URL`
+from `grafana.url` for `GetExperiment` deep links. CLI on the laptop still
+defaults to `http://localhost:3000`; remote installs should set `grafana.url`
+to the public Grafana origin.
 
 ## Broker RBAC
 

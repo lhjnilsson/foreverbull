@@ -1,6 +1,6 @@
 # Grafana analysis — implementation contract
 
-This document is the implementation contract for how users **analyze** backtests and strategies in Grafana. It is not code. Read it before changing the datasource plugin (`grafana/lhjnilsson-foreverbull-datasource`), the provisioned dashboard, `GetExperiment.grafana_path`, or CLI `GRAFANA_DASHBOARD_URL`.
+This document is the implementation contract for how users **analyze** backtests and strategies in Grafana. It is not code. Read it before changing the datasource plugin (`grafana/lhjnilsson-foreverbull-datasource`), the provisioned dashboard, `GetExperiment.grafana_path`, or CLI `execution_link` / `GRAFANA_URL`.
 
 Grafana is the visual analysis surface. One execution time series is not enough. Users need readable execution labels, overlay/compare, strategy/experiment variables, dashboards that are not leftover Grafana exports, and links that actually open a working panel.
 
@@ -52,7 +52,7 @@ flowchart LR
 
 **Loop:**
 
-1. CLI prints `http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution={id}` (`client/cli/src/foreverbull_cli/output.py` `execution_link`).
+1. CLI prints `{GRAFANA_URL}/d/ee9ep4jxtwkcgf?var-execution={id}` (`client/cli/src/foreverbull_cli/output.py` `execution_link`). Default origin is `http://localhost:3000`.
 2. Grafana opens dashboard UID `ee9ep4jxtwkcgf` with template variable `execution` set to that id.
 3. The panel runs `GetExecutionMetric` for that id and plots the selected metrics over the execution’s own dates.
 4. The execution picker shows a readable label (`{backtest} {start}–{end}`, session if useful) while the value remains the UUID.
@@ -93,8 +93,8 @@ Do not invent a Grafana-only experiment id that is not the broker’s `strategy_
 | List executions | `BacktestServicer.ListExecutions` (`backtest` / `session_id` optional filters) | Use filters when variables supply them. **Labels** must use `Execution.backtest`, `start_date`, `end_date`, not `Id` twice |
 | Dashboard UID | `provisioning/dashboards/executions.json` `"uid": "ee9ep4jxtwkcgf"` | Keep. Rewrite the JSON; do not change the uid |
 | Template variable name | `templating.list[].name` = `execution`; links use `var-execution` | Keep the name |
-| CLI link | `GRAFANA_DASHBOARD_URL = "http://localhost:3000/d/ee9ep4jxtwkcgf"` + `?var-execution=` | Keep path and query key. Host is local Kind; remote installs are a later config, not a silent UID change |
-| Experiment Grafana path | `grafanaExecutionPath = "http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution="` in `experiment.go` | Keep. Same UID and `var-execution` |
+| CLI link | `execution_link` reads `GRAFANA_URL` (default `http://localhost:3000`) + `/d/ee9ep4jxtwkcgf?var-execution=` | Keep path, UID, and query key. Override the origin with `GRAFANA_URL`, not the UID |
+| Experiment Grafana path | `GrafanaExecutionURL` in `experiment.go` via `environment.GetGrafanaURL()` | Keep. Same UID and `var-execution`. Helm `grafana.url` sets broker `GRAFANA_URL` |
 | Strategy experiments | `ListExperiments` / `GetExperiment` / `Experiment.execution_id` / `ExperimentStats` | Grafana lists/filters; CLI keeps the compare table |
 | Image | `grafana/Dockerfile` → `lhjnilsson/fb-grafana`, Helm `BROKER_URL=foreverbull:50055`, host port 3000 | Keep. Plugin tests use fakes/bufconn, not this image |
 
@@ -120,11 +120,11 @@ New resource routes are allowed for strategy/version/experiment pickers. They mu
 
 | UID | File / consumers | Keep? |
 | --- | --- | --- |
-| `ee9ep4jxtwkcgf` | `provisioning/dashboards/executions.json`; CLI `GRAFANA_DASHBOARD_URL`; `grafanaExecutionPath`; plugin READMEs | **Yes.** Inspect-one-run and every printed `Link:` |
+| `ee9ep4jxtwkcgf` | `provisioning/dashboards/executions.json`; CLI `execution_link`; `GrafanaExecutionURL`; plugin READMEs | **Yes.** Inspect-one-run and every printed `Link:` |
 
 Additional dashboards (dedicated compare, strategy-version overlay) may get **new** UIDs. They must not steal `ee9ep4jxtwkcgf`. A single-execution URL into `ee9ep4jxtwkcgf` remains the compatibility contract.
 
-If `ee9ep4jxtwkcgf` is ever replaced, ship a Grafana dashboard redirect (or a stub dashboard with that UID) and update this document, CLI, and `grafanaExecutionPath` in the same change. Until then: no new host path, no new UID in those three callers.
+If `ee9ep4jxtwkcgf` is ever replaced, ship a Grafana dashboard redirect (or a stub dashboard with that UID) and update this document, CLI, and `GrafanaExecutionURL` in the same change. Until then: no new host path, no new UID in those three callers.
 
 Datasource plugin id `lhjnilsson-foreverbull-datasource` stays. Provisioned datasource name is `foreverbull`. Do not hard-code Grafana’s generated datasource UID (`P7866CEC33224B4CB` in the export) — `datasources.yml` does not set a uid.
 
@@ -234,19 +234,20 @@ Plugin Go module (`grafana/lhjnilsson-foreverbull-datasource/go.mod`) pins `gith
 
 ## 9. Deep links
 
-Hardcoded host `http://localhost:3000` is the local Kind host port (`deploy/README.md`, Helm `grafana.port: 3000`, `expose.hostPort`). Call sites:
+`GRAFANA_URL` is the Grafana origin. Default `http://localhost:3000` (Kind host port: `deploy/README.md`, Helm `grafana.port: 3000`, `expose.hostPort`). Path contract: `/d/ee9ep4jxtwkcgf?var-execution={execution_id}`.
 
-- `client/cli/src/foreverbull_cli/output.py` `GRAFANA_DASHBOARD_URL`
-- `pkg/strategy/internal/api/experiment.go` `grafanaExecutionPath`
+Call sites:
+
+- `client/cli/src/foreverbull_cli/output.py` `execution_link` reads `GRAFANA_URL`
+- `pkg/strategy/internal/api/experiment.go` `GrafanaExecutionURL` via `environment.GetGrafanaURL()`
+- Helm `grafana.url` → broker env `GRAFANA_URL` for `GetExperiment.grafana_path`
 - Plugin READMEs
 
-Path contract: `/d/ee9ep4jxtwkcgf?var-execution={execution_id}`.
+That URL is what users click after `fbull backtest run` and `fbull strategy experiments`. It must land on a panel that queries `execution.id = {execution_id}`.
 
-That URL is what users click after `fbull backtest run` and `fbull strategy experiments`. It must land on a panel that queries `execution.id = {execution_id}`. Today it sets the template variable and the panel ignores it (`executionId` vs `execution`).
+CLI on the laptop still wants localhost for Kind. Remote clusters set `grafana.url` / `GRAFANA_URL` to the public Grafana origin. Do not change the dashboard UID or `var-execution`.
 
-Plugin-dev compose publishes Grafana on **3001** and is not the product URL. Do not point CLI or `grafanaExecutionPath` at 3001.
-
-Remote clusters (`expose.hostPort=false`) cannot use `localhost:3000`. Fixing that host is allowed later (env/config). Changing the dashboard UID or `var-execution` to do it is not.
+Plugin-dev compose publishes Grafana on **3001** and is not the product URL. Do not point CLI or `GrafanaExecutionURL` at 3001.
 
 ## 10. Tests (later code, not this file)
 

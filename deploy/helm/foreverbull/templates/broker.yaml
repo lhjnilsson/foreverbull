@@ -100,6 +100,8 @@ spec:
               value: {{ .Values.broker.trading.alpaca.apiKey | quote }}
             - name: ALPACA_MARKETS_API_SECRET
               value: {{ .Values.broker.trading.alpaca.apiSecret | quote }}
+            - name: GRAFANA_URL
+              value: {{ .Values.grafana.url | default (printf "http://localhost:%v" .Values.grafana.port) | quote }}
           startupProbe:
             exec:
               command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.broker.grpcPort | quote }}]
