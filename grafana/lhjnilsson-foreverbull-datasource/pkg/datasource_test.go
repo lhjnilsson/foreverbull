@@ -12,7 +12,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	fbPb "github.com/lhjnilsson/foreverbull/pkg/pb"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestsvc "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	strategysvc "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -21,8 +23,22 @@ func floatPtr(v float64) *float64 {
 	return &v
 }
 
-var exc1 = pb.GetExecutionResponse{
-	Periods: []*pb.Period{
+var exc1 = backtestsvc.GetExecutionResponse{
+	Execution: &backtestpb.Execution{
+		Id:       "123",
+		Backtest: "spy",
+		StartDate: &fbPb.Date{
+			Year:  2023,
+			Month: 1,
+			Day:   3,
+		},
+		EndDate: &fbPb.Date{
+			Year:  2023,
+			Month: 12,
+			Day:   25,
+		},
+	},
+	Periods: []*backtestpb.Period{
 		{
 			Date:                  &fbPb.Date{Year: 2024, Month: 1, Day: 2},
 			Returns:               1.0,
@@ -39,12 +55,13 @@ var exc1 = pb.GetExecutionResponse{
 	},
 }
 
-func newTestDatasource(t *testing.T, backendClient pb.BacktestServicerClient) *Datasource {
+func newTestDatasource(t *testing.T, backendClient backtestAPI, strategyClient strategyAPI) *Datasource {
 	t.Helper()
 	mux := datasource.NewQueryTypeMux()
 	ds := &Datasource{
 		queryMux: mux,
 		backend:  backendClient,
+		strategy: strategyClient,
 		log:      log.DefaultLogger.With("datasource", "foreverbull"),
 	}
 	ds.registerResources()
@@ -55,13 +72,15 @@ func newTestDatasource(t *testing.T, backendClient pb.BacktestServicerClient) *D
 type DatasouceTest struct {
 	suite.Suite
 
-	backend *pb.MockBacktestServicerClient
-	uut     *Datasource
+	backend  *backtestsvc.MockBacktestServicerClient
+	strategy *strategysvc.MockStrategyServicerClient
+	uut      *Datasource
 }
 
 func (test *DatasouceTest) SetupTest() {
-	test.backend = pb.NewMockBacktestServicerClient(test.T())
-	test.uut = newTestDatasource(test.T(), test.backend)
+	test.backend = backtestsvc.NewMockBacktestServicerClient(test.T())
+	test.strategy = strategysvc.NewMockStrategyServicerClient(test.T())
+	test.uut = newTestDatasource(test.T(), test.backend, test.strategy)
 }
 
 func TestDatasource(t *testing.T) {
@@ -70,7 +89,7 @@ func TestDatasource(t *testing.T) {
 
 func (test *DatasouceTest) TestCheckHealthOK() {
 	test.backend.On("ListBacktests", mock.Anything, mock.Anything).
-		Return(&pb.ListBacktestsResponse{}, nil)
+		Return(&backtestsvc.ListBacktestsResponse{}, nil)
 
 	res, err := test.uut.CheckHealth(context.Background(), &grafana.CheckHealthRequest{})
 	test.Require().NoError(err)
@@ -80,7 +99,7 @@ func (test *DatasouceTest) TestCheckHealthOK() {
 
 func (test *DatasouceTest) TestCheckHealthBrokerError() {
 	test.backend.On("ListBacktests", mock.Anything, mock.Anything).
-		Return((*pb.ListBacktestsResponse)(nil), errors.New("connection refused"))
+		Return((*backtestsvc.ListBacktestsResponse)(nil), errors.New("connection refused"))
 
 	res, err := test.uut.CheckHealth(context.Background(), &grafana.CheckHealthRequest{})
 	test.Require().NoError(err)
@@ -171,7 +190,7 @@ func (test *DatasouceTest) TestHandleExecutionMetric() {
 	for i, tc := range testCases {
 		test.Run(fmt.Sprintf("Test_%d", i), func() {
 			test.backend.ExpectedCalls = nil
-			test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *pb.GetExecutionRequest) bool {
+			test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetExecutionRequest) bool {
 				return req.GetExecutionId() == "123"
 			})).Return(&exc1, nil).Once()
 
@@ -206,4 +225,67 @@ func (test *DatasouceTest) TestHandleExecutionMetricMissingExecution() {
 	test.Require().NoError(err)
 	test.Equal(grafana.StatusBadRequest, resp.Responses["A"].Status)
 	test.Contains(resp.Responses["A"].Error.Error(), "executionId is missing")
+}
+
+func (test *DatasouceTest) TestHandleExecutionMetricOverlay() {
+	execA := exc1
+	execA.Execution = &backtestpb.Execution{
+		Id:       "exec-a",
+		Backtest: "spy",
+		StartDate: &fbPb.Date{
+			Year:  2023,
+			Month: 1,
+			Day:   3,
+		},
+		EndDate: &fbPb.Date{
+			Year:  2023,
+			Month: 12,
+			Day:   25,
+		},
+	}
+	execB := exc1
+	execB.Execution = &backtestpb.Execution{
+		Id:       "exec-b",
+		Backtest: "eu",
+		StartDate: &fbPb.Date{
+			Year:  2023,
+			Month: 1,
+			Day:   3,
+		},
+		EndDate: &fbPb.Date{
+			Year:  2023,
+			Month: 12,
+			Day:   25,
+		},
+	}
+
+	test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetExecutionRequest) bool {
+		return req.GetExecutionId() == "exec-a"
+	})).Return(&execA, nil).Once()
+	test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetExecutionRequest) bool {
+		return req.GetExecutionId() == "exec-b"
+	})).Return(&execB, nil).Once()
+
+	resp, err := test.uut.QueryData(context.Background(), &grafana.QueryDataRequest{
+		Queries: []backend.DataQuery{
+			{
+				RefID:     "A",
+				QueryType: GetExecutionMetric,
+				JSON:      json.RawMessage(`{"queryType":"GetExecutionMetric","execution":{"id":"exec-a"},"metrics":[{"name":"returns"}]}`),
+			},
+			{
+				RefID:     "B",
+				QueryType: GetExecutionMetric,
+				JSON:      json.RawMessage(`{"queryType":"GetExecutionMetric","execution":{"id":"exec-b"},"metrics":[{"name":"returns"}]}`),
+			},
+		},
+	})
+	test.Require().NoError(err)
+	test.Equal(grafana.StatusOK, resp.Responses["A"].Status)
+	test.Equal(grafana.StatusOK, resp.Responses["B"].Status)
+
+	test.Equal("spy 2023-01-03–2023-12-25 exec-a", resp.Responses["A"].Frames[0].Name)
+	test.Equal("eu 2023-01-03–2023-12-25 exec-b", resp.Responses["B"].Frames[0].Name)
+	test.Equal("spy 2023-01-03–2023-12-25 exec-a", resp.Responses["A"].Frames[0].Fields[1].Labels["execution"])
+	test.Equal("eu 2023-01-03–2023-12-25 exec-b", resp.Responses["B"].Frames[0].Fields[1].Labels["execution"])
 }

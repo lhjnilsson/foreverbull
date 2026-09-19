@@ -12,7 +12,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestsvc "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	strategysvc "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -42,12 +44,11 @@ func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (ins
 		return nil, fmt.Errorf("could not connect: %w", err)
 	}
 
-	client := pb.NewBacktestServicerClient(conn)
-
 	mux := datasource.NewQueryTypeMux()
 	ds := &Datasource{
 		queryMux: mux,
-		backend:  client,
+		backend:  backtestsvc.NewBacktestServicerClient(conn),
+		strategy: strategysvc.NewStrategyServicerClient(conn),
 		conn:     conn,
 		log:      log,
 	}
@@ -75,9 +76,24 @@ func processQueries(ctx context.Context, req *grafana.QueryDataRequest, handler 
 	}
 }
 
+// backtestAPI is the BacktestServicer methods this plugin calls.
+type backtestAPI interface {
+	ListBacktests(ctx context.Context, in *backtestsvc.ListBacktestsRequest, opts ...grpc.CallOption) (*backtestsvc.ListBacktestsResponse, error)
+	ListExecutions(ctx context.Context, in *backtestsvc.ListExecutionsRequest, opts ...grpc.CallOption) (*backtestsvc.ListExecutionsResponse, error)
+	GetExecution(ctx context.Context, in *backtestsvc.GetExecutionRequest, opts ...grpc.CallOption) (*backtestsvc.GetExecutionResponse, error)
+}
+
+// strategyAPI is the StrategyServicer methods this plugin calls.
+// Unimplemented (strategy.Module not registered) is treated as an empty list.
+type strategyAPI interface {
+	ListStrategies(ctx context.Context, in *strategysvc.ListStrategiesRequest, opts ...grpc.CallOption) (*strategysvc.ListStrategiesResponse, error)
+	ListExperiments(ctx context.Context, in *strategysvc.ListExperimentsRequest, opts ...grpc.CallOption) (*strategysvc.ListExperimentsResponse, error)
+}
+
 type Datasource struct {
 	queryMux *datasource.QueryTypeMux
-	backend  pb.BacktestServicerClient
+	backend  backtestAPI
+	strategy strategyAPI
 	conn     *grpc.ClientConn
 	grafana.CallResourceHandler
 	log log.Logger
@@ -105,7 +121,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, _ *grafana.CheckHealthRequ
 		}, nil
 	}
 
-	if _, err := d.backend.ListBacktests(ctx, &pb.ListBacktestsRequest{}); err != nil {
+	if _, err := d.backend.ListBacktests(ctx, &backtestsvc.ListBacktestsRequest{}); err != nil {
 		return &grafana.CheckHealthResult{
 			Status:  grafana.HealthStatusError,
 			Message: fmt.Sprintf("broker unreachable: %v", err),
@@ -234,7 +250,7 @@ func (q *queryModel) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func periodTime(period *pb.Period) time.Time {
+func periodTime(period *backtestpb.Period) time.Time {
 	if period == nil || period.Date == nil {
 		return time.Time{}
 	}
@@ -261,9 +277,19 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, "metrics is missing")
 	}
 
-	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionID})
+	execution, err := d.backend.GetExecution(ctx, &backtestsvc.GetExecutionRequest{ExecutionId: qm.ExecutionID})
 	if err != nil {
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("get execution: %v", err.Error()))
+	}
+
+	// Overlay is repeated GetExecutionMetric targets (refId A/B), not a second query type.
+	seriesLabel := executionLabel(execution.GetExecution())
+	if seriesLabel == "" {
+		seriesLabel = qm.ExecutionID
+	}
+	seriesLabels := data.Labels{
+		"execution":    seriesLabel,
+		"execution_id": qm.ExecutionID,
 	}
 
 	periods := execution.GetPeriods()
@@ -303,40 +329,40 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 		shortValue[i] = period.ShortValue
 	}
 
-	frame := data.NewFrame("response")
+	frame := data.NewFrame(seriesLabel)
 	frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
 	for _, metric := range qm.Metrics {
 		switch metric.Name {
 		case PortfolioValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(PortfolioValue), nil, portfolioValue))
+			appendMetricField(frame, string(PortfolioValue), seriesLabels, portfolioValue)
 		case Returns:
-			frame.Fields = append(frame.Fields, data.NewField(string(Returns), nil, returns))
+			appendMetricField(frame, string(Returns), seriesLabels, returns)
 		case PnL:
-			frame.Fields = append(frame.Fields, data.NewField(string(PnL), nil, pnl))
+			appendMetricField(frame, string(PnL), seriesLabels, pnl)
 		case Cash:
-			frame.Fields = append(frame.Fields, data.NewField(string(Cash), nil, cash))
+			appendMetricField(frame, string(Cash), seriesLabels, cash)
 		case MaxDrawdown:
-			frame.Fields = append(frame.Fields, data.NewField(string(MaxDrawdown), nil, maxDrawdown))
+			appendMetricField(frame, string(MaxDrawdown), seriesLabels, maxDrawdown)
 		case Benchmark:
-			frame.Fields = append(frame.Fields, data.NewField(string(Benchmark), nil, benchmark))
+			appendMetricField(frame, string(Benchmark), seriesLabels, benchmark)
 		case Alpha:
-			frame.Fields = append(frame.Fields, data.NewField(string(Alpha), nil, alpha))
+			appendMetricField(frame, string(Alpha), seriesLabels, alpha)
 		case Beta:
-			frame.Fields = append(frame.Fields, data.NewField(string(Beta), nil, beta))
+			appendMetricField(frame, string(Beta), seriesLabels, beta)
 		case Sharpe:
-			frame.Fields = append(frame.Fields, data.NewField(string(Sharpe), nil, sharpe))
+			appendMetricField(frame, string(Sharpe), seriesLabels, sharpe)
 		case Sortino:
-			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortino))
+			appendMetricField(frame, string(Sortino), seriesLabels, sortino)
 		case CapitalUsed:
-			frame.Fields = append(frame.Fields, data.NewField(string(CapitalUsed), nil, capitalUsed))
+			appendMetricField(frame, string(CapitalUsed), seriesLabels, capitalUsed)
 		case LongCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongCount), nil, longCount))
+			appendMetricField(frame, string(LongCount), seriesLabels, longCount)
 		case ShortCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortCount), nil, shortCount))
+			appendMetricField(frame, string(ShortCount), seriesLabels, shortCount)
 		case LongValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongValue), nil, longValue))
+			appendMetricField(frame, string(LongValue), seriesLabels, longValue)
 		case ShortValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortValue), nil, shortValue))
+			appendMetricField(frame, string(ShortValue), seriesLabels, shortValue)
 		}
 	}
 
@@ -344,4 +370,12 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 		Frames: []*data.Frame{frame},
 		Status: grafana.StatusOK,
 	}
+}
+
+func appendMetricField(frame *data.Frame, name string, labels data.Labels, values interface{}) {
+	field := data.NewField(name, labels, values)
+	if label := labels["execution"]; label != "" {
+		field.SetConfig(&data.FieldConfig{DisplayNameFromDS: label + " " + name})
+	}
+	frame.Fields = append(frame.Fields, field)
 }

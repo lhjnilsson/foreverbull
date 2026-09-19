@@ -5,6 +5,15 @@ export enum QueryType {
   GetExecutionMetric = 'GetExecutionMetric',
 }
 
+/** Backend resource routes. Execution and experiment values are execution UUIDs. */
+export const ResourcePath = {
+  Executions: 'executions',
+  Metrics: 'metrics',
+  Strategies: 'strategies',
+  Versions: 'versions',
+  Experiments: 'experiments',
+} as const;
+
 export interface ResourceDefinition {
   value: string;
   label: string;
