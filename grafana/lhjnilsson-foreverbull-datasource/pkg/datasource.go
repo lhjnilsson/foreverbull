@@ -48,6 +48,7 @@ func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (ins
 	ds := &Datasource{
 		queryMux: mux,
 		backend:  client,
+		conn:     conn,
 		log:      log,
 	}
 	ds.registerResources()
@@ -77,26 +78,38 @@ func processQueries(ctx context.Context, req *grafana.QueryDataRequest, handler 
 type Datasource struct {
 	queryMux *datasource.QueryTypeMux
 	backend  pb.BacktestServicerClient
+	conn     *grpc.ClientConn
 	grafana.CallResourceHandler
 	log log.Logger
 }
 
 func (d *Datasource) Dispose() {
-	// Clean up datasource instance resources.
+	if d == nil || d.conn == nil {
+		return
+	}
+	if err := d.conn.Close(); err != nil {
+		d.log.Error("fail to close broker connection", err)
+	}
+	d.conn = nil
 }
 
 func (d *Datasource) QueryData(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
 	return d.queryMux.QueryData(ctx, req)
 }
 
-func (d *Datasource) CheckHealth(_ context.Context, req *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {
-	res := &grafana.CheckHealthResult{}
-	_, err := LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
+func (d *Datasource) CheckHealth(ctx context.Context, _ *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {
+	if d == nil || d.backend == nil {
+		return &grafana.CheckHealthResult{
+			Status:  grafana.HealthStatusError,
+			Message: "broker client is not configured",
+		}, nil
+	}
 
-	if err != nil {
-		res.Status = grafana.HealthStatusError
-		res.Message = "Unable to load settings"
-		return res, nil
+	if _, err := d.backend.ListBacktests(ctx, &pb.ListBacktestsRequest{}); err != nil {
+		return &grafana.CheckHealthResult{
+			Status:  grafana.HealthStatusError,
+			Message: fmt.Sprintf("broker unreachable: %v", err),
+		}, nil
 	}
 
 	return &grafana.CheckHealthResult{
@@ -113,6 +126,11 @@ type QueryMetric string
 
 const (
 	PortfolioValue QueryMetric = "portfolio_value"
+	Returns        QueryMetric = "returns"
+	PnL            QueryMetric = "pnl"
+	Cash           QueryMetric = "cash"
+	MaxDrawdown    QueryMetric = "max_drawdown"
+	Benchmark      QueryMetric = "benchmark"
 	Alpha          QueryMetric = "alpha"
 	Beta           QueryMetric = "beta"
 	Sharpe         QueryMetric = "sharpe"
@@ -124,6 +142,30 @@ const (
 	ShortValue     QueryMetric = "short_value"
 )
 
+var listedMetrics = []QueryMetric{
+	PortfolioValue,
+	Returns,
+	PnL,
+	Cash,
+	MaxDrawdown,
+	Benchmark,
+	Alpha,
+	Beta,
+	Sharpe,
+	Sortino,
+	CapitalUsed,
+	LongCount,
+	ShortCount,
+	LongValue,
+	ShortValue,
+}
+
+// Execution is the canonical query-JSON object for an execution id.
+// Canonical body (ANALYSIS.md §6):
+//
+//	{"queryType":"GetExecutionMetric","execution":{"id":"<uuid>"},"metrics":[{"name":"portfolio_value"}]}
+//
+// Legacy dashboards may send "executionId" as a string; that is still accepted.
 type Execution struct {
 	ID string `json:"id"`
 }
@@ -133,23 +175,83 @@ type Metric struct {
 }
 
 type queryModel struct {
-	ExecutionId *Execution `json:"execution"`
-	Metrics     []Metric   `json:"metrics"`
+	ExecutionID string
+	Metrics     []Metric
 }
 
-func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
+func parseExecutionRef(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var id string
+	if err := json.Unmarshal(raw, &id); err == nil {
+		return id
+	}
+	var obj Execution
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
+}
+
+func parseMetrics(raw json.RawMessage) ([]Metric, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err == nil {
+		metrics := make([]Metric, 0, len(names))
+		for _, name := range names {
+			metrics = append(metrics, Metric{Name: QueryMetric(name)})
+		}
+		return metrics, nil
+	}
+	var metrics []Metric
+	if err := json.Unmarshal(raw, &metrics); err != nil {
+		return nil, err
+	}
+	return metrics, nil
+}
+
+func (q *queryModel) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Execution   json.RawMessage `json:"execution"`
+		ExecutionID json.RawMessage `json:"executionId"`
+		Metrics     json.RawMessage `json:"metrics"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	q.ExecutionID = parseExecutionRef(raw.Execution)
+	if q.ExecutionID == "" {
+		q.ExecutionID = parseExecutionRef(raw.ExecutionID)
+	}
+	metrics, err := parseMetrics(raw.Metrics)
+	if err != nil {
+		return err
+	}
+	q.Metrics = metrics
+	return nil
+}
+
+func periodTime(period *pb.Period) time.Time {
+	if period == nil || period.Date == nil {
+		return time.Time{}
+	}
+	return time.Date(int(period.Date.Year), time.Month(int(period.Date.Month)), int(period.Date.Day), 0, 0, 0, 0, time.UTC)
+}
+
+func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
 	log := d.log.With("GetExecutionMetric")
 
-	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
-
 	err := json.Unmarshal(q.JSON, &qm)
 	if err != nil {
 		log.Error("fail to parse json", err)
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	if qm.ExecutionId == nil || qm.ExecutionId.ID == "" {
+	if qm.ExecutionID == "" {
 		log.Error("executionId is missing")
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, "executionId is missing")
 	}
@@ -159,36 +261,46 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, "metrics is missing")
 	}
 
-	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionId.ID})
+	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionID})
 	if err != nil {
-		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("get execution: %v", err.Error()))
 	}
 
-	times := make([]time.Time, len(execution.Periods))
-	portfolio_value := make([]float64, len(execution.Periods))
-	alpha := make([]*float64, len(execution.Periods))
-	beta := make([]*float64, len(execution.Periods))
-	sharpe := make([]*float64, len(execution.Periods))
-	sortio := make([]*float64, len(execution.Periods))
-	capital_used := make([]float64, len(execution.Periods))
-	long_count := make([]int32, len(execution.Periods))
-	short_count := make([]int32, len(execution.Periods))
-	long_value := make([]float64, len(execution.Periods))
-	short_value := make([]float64, len(execution.Periods))
+	periods := execution.GetPeriods()
+	times := make([]time.Time, len(periods))
+	portfolioValue := make([]float64, len(periods))
+	returns := make([]float64, len(periods))
+	pnl := make([]float64, len(periods))
+	cash := make([]float64, len(periods))
+	maxDrawdown := make([]float64, len(periods))
+	benchmark := make([]*float64, len(periods))
+	alpha := make([]*float64, len(periods))
+	beta := make([]*float64, len(periods))
+	sharpe := make([]*float64, len(periods))
+	sortino := make([]*float64, len(periods))
+	capitalUsed := make([]float64, len(periods))
+	longCount := make([]int32, len(periods))
+	shortCount := make([]int32, len(periods))
+	longValue := make([]float64, len(periods))
+	shortValue := make([]float64, len(periods))
 
-	for i, period := range execution.Periods {
-		times[i] = time.Date(int(period.Date.Year), time.Month(int(period.Date.Month)), int(period.Date.Day), 0, 0, 0, 0, time.UTC)
-		portfolio_value[i] = period.PortfolioValue
+	for i, period := range periods {
+		times[i] = periodTime(period)
+		portfolioValue[i] = period.PortfolioValue
+		returns[i] = period.Returns
+		pnl[i] = period.PNL
+		cash[i] = period.EndingCash
+		maxDrawdown[i] = period.MaxDrawdown
+		benchmark[i] = period.BenchmarkPeriodReturn
 		alpha[i] = period.Alpha
 		beta[i] = period.Beta
 		sharpe[i] = period.Sharpe
-		sortio[i] = period.Sortino
-		capital_used[i] = period.CapitalUsed
-		long_count[i] = period.LongsCount
-		short_count[i] = period.ShortsCount
-		long_value[i] = period.LongValue
-		short_value[i] = period.ShortValue
-
+		sortino[i] = period.Sortino
+		capitalUsed[i] = period.CapitalUsed
+		longCount[i] = period.LongsCount
+		shortCount[i] = period.ShortsCount
+		longValue[i] = period.LongValue
+		shortValue[i] = period.ShortValue
 	}
 
 	frame := data.NewFrame("response")
@@ -196,7 +308,17 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 	for _, metric := range qm.Metrics {
 		switch metric.Name {
 		case PortfolioValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(PortfolioValue), nil, portfolio_value))
+			frame.Fields = append(frame.Fields, data.NewField(string(PortfolioValue), nil, portfolioValue))
+		case Returns:
+			frame.Fields = append(frame.Fields, data.NewField(string(Returns), nil, returns))
+		case PnL:
+			frame.Fields = append(frame.Fields, data.NewField(string(PnL), nil, pnl))
+		case Cash:
+			frame.Fields = append(frame.Fields, data.NewField(string(Cash), nil, cash))
+		case MaxDrawdown:
+			frame.Fields = append(frame.Fields, data.NewField(string(MaxDrawdown), nil, maxDrawdown))
+		case Benchmark:
+			frame.Fields = append(frame.Fields, data.NewField(string(Benchmark), nil, benchmark))
 		case Alpha:
 			frame.Fields = append(frame.Fields, data.NewField(string(Alpha), nil, alpha))
 		case Beta:
@@ -204,17 +326,17 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 		case Sharpe:
 			frame.Fields = append(frame.Fields, data.NewField(string(Sharpe), nil, sharpe))
 		case Sortino:
-			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortio))
+			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortino))
 		case CapitalUsed:
-			frame.Fields = append(frame.Fields, data.NewField(string(CapitalUsed), nil, capital_used))
+			frame.Fields = append(frame.Fields, data.NewField(string(CapitalUsed), nil, capitalUsed))
 		case LongCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongCount), nil, long_count))
+			frame.Fields = append(frame.Fields, data.NewField(string(LongCount), nil, longCount))
 		case ShortCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortCount), nil, short_count))
+			frame.Fields = append(frame.Fields, data.NewField(string(ShortCount), nil, shortCount))
 		case LongValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongValue), nil, long_value))
+			frame.Fields = append(frame.Fields, data.NewField(string(LongValue), nil, longValue))
 		case ShortValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortValue), nil, short_value))
+			frame.Fields = append(frame.Fields, data.NewField(string(ShortValue), nil, shortValue))
 		}
 	}
 

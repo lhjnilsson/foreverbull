@@ -2,16 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
-	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	fbPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/test/bufconn"
 )
 
 type mockCallResourceResponseSender struct {
@@ -30,33 +29,55 @@ func TestResources(t *testing.T) {
 type ResourceTest struct {
 	suite.Suite
 
-	listener *bufconn.Listener
-	server   *grpc.Server
-	backend  *pb.MockBacktestServicerClient
-	uut      *Datasource
+	backend *pb.MockBacktestServicerClient
+	uut     *Datasource
 }
 
 func (test *ResourceTest) SetupTest() {
-	settings := grafana.DataSourceInstanceSettings{}
-
-	dsInstance, err := NewDatasource(context.Background(), settings)
-	test.Require().NoError(err, "fail to create datasource")
-
-	ds, isDataSource := dsInstance.(*Datasource)
-	test.Require().True(isDataSource, "Datasource must be an instance of Datasource")
-
-	test.listener = bufconn.Listen(1024 * 1024)
-	test.server = grpc.NewServer()
-	test.Require().NoError(err)
-
 	test.backend = pb.NewMockBacktestServicerClient(test.T())
-	ds.backend = test.backend
+	test.uut = newTestDatasource(test.T(), test.backend)
+}
 
-	test.uut = ds
+func (test *ResourceTest) TestExecutionLabel() {
+	id := "84753648-1bba-4a76-8c5f-c0631204633e"
+	label := executionLabel(&pb.Execution{
+		Id:       id,
+		Backtest: "spy",
+		StartDate: &fbPb.Date{
+			Year:  2023,
+			Month: 1,
+			Day:   3,
+		},
+		EndDate: &fbPb.Date{
+			Year:  2023,
+			Month: 12,
+			Day:   25,
+		},
+	})
+	test.Equal("spy 2023-01-03–2023-12-25 84753648", label)
+	test.Equal("84753648", shortExecutionID(id))
 }
 
 func (test *ResourceTest) TestListExecutions() {
-	test.backend.On("ListExecutions", mock.Anything, mock.Anything).Return(&backtestPb.ListExecutionsResponse{}, nil)
+	id := "84753648-1bba-4a76-8c5f-c0631204633e"
+	test.backend.On("ListExecutions", mock.Anything, mock.Anything).Return(&pb.ListExecutionsResponse{
+		Executions: []*pb.Execution{
+			{
+				Id:       id,
+				Backtest: "spy",
+				StartDate: &fbPb.Date{
+					Year:  2023,
+					Month: 1,
+					Day:   3,
+				},
+				EndDate: &fbPb.Date{
+					Year:  2023,
+					Month: 12,
+					Day:   25,
+				},
+			},
+		},
+	}, nil)
 
 	req := &grafana.CallResourceRequest{
 		Method: http.MethodGet,
@@ -68,6 +89,12 @@ func (test *ResourceTest) TestListExecutions() {
 	test.Require().NoError(err, "fail to call resource")
 
 	test.Equal(http.StatusOK, r.response.Status, "unexpected status")
+
+	var got []ResourceDefinition
+	test.Require().NoError(json.Unmarshal(r.response.Body, &got))
+	test.Equal([]ResourceDefinition{
+		{Value: id, Label: "spy 2023-01-03–2023-12-25 84753648"},
+	}, got)
 }
 
 func (test *ResourceTest) TestListMetrics() {
@@ -81,4 +108,17 @@ func (test *ResourceTest) TestListMetrics() {
 	test.Require().NoError(err, "fail to call resource")
 
 	test.Equal(http.StatusOK, r.response.Status, "unexpected status")
+
+	var got []ResourceDefinition
+	test.Require().NoError(json.Unmarshal(r.response.Body, &got))
+	values := make([]string, 0, len(got))
+	for _, def := range got {
+		values = append(values, def.Value)
+	}
+	test.Contains(values, string(Returns))
+	test.Contains(values, string(PnL))
+	test.Contains(values, string(Cash))
+	test.Contains(values, string(MaxDrawdown))
+	test.Contains(values, string(Benchmark))
+	test.Contains(values, string(PortfolioValue))
 }

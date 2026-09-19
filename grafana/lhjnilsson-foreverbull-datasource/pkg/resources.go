@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
+	fbPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	backtestPb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
@@ -21,6 +24,46 @@ func (ds *Datasource) registerResources() {
 	ds.CallResourceHandler = httpadapter.New(httpMux)
 }
 
+func formatDate(d *fbPb.Date) string {
+	if d == nil || d.Year == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
+}
+
+func shortExecutionID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+// executionLabel is the human picker text. Value stays the execution UUID.
+// Format: "{backtest} {start}–{end} {short id}"
+func executionLabel(execution *backtestPb.Execution) string {
+	if execution == nil {
+		return ""
+	}
+	parts := make([]string, 0, 3)
+	if execution.Backtest != "" {
+		parts = append(parts, execution.Backtest)
+	}
+	start := formatDate(execution.StartDate)
+	end := formatDate(execution.EndDate)
+	switch {
+	case start != "" && end != "":
+		parts = append(parts, start+"–"+end)
+	case start != "":
+		parts = append(parts, start)
+	case end != "":
+		parts = append(parts, end)
+	}
+	if short := shortExecutionID(execution.Id); short != "" {
+		parts = append(parts, short)
+	}
+	return strings.Join(parts, " ")
+}
+
 func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 	log := ds.log.With("method", "ListExecutions")
 
@@ -35,7 +78,7 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 	for _, execution := range rsp.Executions {
 		definitions = append(definitions, ResourceDefinition{
 			Value: execution.Id,
-			Label: execution.Id,
+			Label: executionLabel(execution),
 		})
 	}
 
@@ -50,17 +93,12 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {
-	definitions := []ResourceDefinition{
-		{Value: string(PortfolioValue), Label: string(PortfolioValue)},
-		{Value: string(Alpha), Label: string(Alpha)},
-		{Value: string(Beta), Label: string(Beta)},
-		{Value: string(Sharpe), Label: string(Sharpe)},
-		{Value: string(Sortino), Label: string(Sortino)},
-		{Value: string(CapitalUsed), Label: string(CapitalUsed)},
-		{Value: string(LongCount), Label: string(LongCount)},
-		{Value: string(ShortCount), Label: string(ShortCount)},
-		{Value: string(LongValue), Label: string(LongValue)},
-		{Value: string(ShortValue), Label: string(ShortValue)},
+	definitions := make([]ResourceDefinition, 0, len(listedMetrics))
+	for _, metric := range listedMetrics {
+		definitions = append(definitions, ResourceDefinition{
+			Value: string(metric),
+			Label: string(metric),
+		})
 	}
 
 	data, err := json.Marshal(definitions)
