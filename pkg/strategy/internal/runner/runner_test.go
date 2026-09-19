@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -254,4 +255,96 @@ func TestProcessSessionNilTrading(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, processor.CallCount())
+}
+
+func (test *RunnerTest) TestProcessSessionPaperPlaceOrder() {
+	d := test.deployment()
+	d.DryRun = false
+	test.store.Put(d)
+	test.processor.Orders = []*financepb.Order{
+		{Symbol: "AAPL", Amount: 10},
+		{Symbol: "MSFT", Amount: 5},
+	}
+
+	ctx := context.Background()
+	err := test.runner.ProcessSession(ctx, "dep-1", test.mon)
+	test.Require().NoError(err)
+
+	test.Equal(1, test.processor.CallCount())
+	test.Equal(len(test.processor.Orders), test.trading.PlaceCalls())
+	placed := test.trading.Placed()
+	test.Require().Len(placed, 2)
+	test.Equal("AAPL", placed[0].Symbol)
+	test.Equal(int32(10), placed[0].Amount)
+	test.Equal("MSFT", placed[1].Symbol)
+	test.Equal(int32(5), placed[1].Amount)
+
+	runs, err := test.store.ListRuns(ctx, "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 1)
+	test.False(runs[0].Skipped)
+	test.Nil(runs[0].Error)
+	test.Require().Len(runs[0].Orders, 2)
+	test.Equal("AAPL", runs[0].Orders[0].Symbol)
+	test.Equal("MSFT", runs[0].Orders[1].Symbol)
+}
+
+func (test *RunnerTest) TestProcessSessionPlaceOrderErrorStopsSession() {
+	d := test.deployment()
+	d.DryRun = false
+	test.store.Put(d)
+	test.processor.Orders = []*financepb.Order{
+		{Symbol: "AAPL", Amount: 10},
+		{Symbol: "MSFT", Amount: 5},
+	}
+	test.trading.PlaceErr = errors.New("broker down")
+	test.trading.FailAfter = 1
+
+	err := test.runner.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().Error(err)
+	test.Contains(err.Error(), "place order")
+	test.Equal(2, test.trading.PlaceCalls())
+	test.Len(test.trading.Placed(), 1)
+	test.Equal("AAPL", test.trading.Placed()[0].Symbol)
+
+	runs, err := test.store.ListRuns(context.Background(), "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 1)
+	test.Require().NotNil(runs[0].Error)
+	test.Contains(*runs[0].Error, "place order")
+	test.Require().Len(runs[0].Orders, 2)
+	test.Equal("AAPL", runs[0].Orders[0].Symbol)
+	test.Equal("MSFT", runs[0].Orders[1].Symbol)
+
+	got, err := test.store.GetDeployment(context.Background(), "dep-1")
+	test.Require().NoError(err)
+	test.Equal(int32(4), got.LastSessionDate.Day)
+}
+
+func (test *RunnerTest) TestProcessSessionPaperNilTrading() {
+	d := test.deployment()
+	d.DryRun = false
+	test.store.Put(d)
+	r := New(test.store, test.clock, nil, test.processor)
+
+	err := r.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().Error(err)
+	test.Contains(err.Error(), "Trading")
+	test.Equal(0, test.trading.PlaceCalls())
+
+	runs, err := test.store.ListRuns(context.Background(), "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 1)
+	test.Require().NotNil(runs[0].Error)
+}
+
+func (test *RunnerTest) TestSkipMissedClosePaperDoesNotPlaceOrder() {
+	d := test.deployment()
+	d.DryRun = false
+	test.store.Put(d)
+
+	err := test.runner.SkipMissed(context.Background(), "dep-1", test.mon)
+	test.Require().NoError(err)
+	test.Equal(0, test.processor.CallCount())
+	test.Equal(0, test.trading.PlaceCalls())
 }

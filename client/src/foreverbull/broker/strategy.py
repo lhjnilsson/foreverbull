@@ -100,6 +100,7 @@ def deploy(
     version_id: str | None = None,
     version_rev: int | None = None,
     dry_run: bool = True,
+    confirm: bool = False,
     backend: str | None = None,
     calendar_code: str | None = None,
     symbols: list[str] | None = None,
@@ -108,6 +109,7 @@ def deploy(
         strategy_name=strategy_name,
         mode=strategy_pb2.Deployment.PAPER,
         dry_run=dry_run,
+        confirm=confirm,
         symbols=symbols or [],
     )
     if version_id:

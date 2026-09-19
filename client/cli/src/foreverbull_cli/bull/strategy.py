@@ -277,27 +277,47 @@ def deploy(
     name: Annotated[str, typer.Argument(help="name of the strategy")],
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run/--no-dry-run", help="run Process but skip PlaceOrder (required for PoC)"),
+        typer.Option(
+            "--dry-run/--no-dry-run",
+            help="run Process but skip PlaceOrder (default true). --no-dry-run requires --yes",
+        ),
     ] = True,
-    mode: Annotated[DeployMode, typer.Option(help="paper (default) or live")] = DeployMode.PAPER,
+    mode: Annotated[DeployMode, typer.Option(help="paper (default). live is not supported")] = DeployMode.PAPER,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "--confirm", help="confirm paper PlaceOrder (required with --no-dry-run)"),
+    ] = False,
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
     backend: Annotated[str | None, typer.Option(help="trading backend name")] = None,
     calendar: Annotated[str | None, typer.Option(help="trading calendar code (e.g. XNYS)")] = None,
     symbols: Annotated[str | None, typer.Option(help="comma-separated symbols the deployment may trade")] = None,
 ):
+    """Deploy a strategy version onto paper trading.
+
+    Dry-run (default) records Process orders without PlaceOrder:
+
+        fbull strategy deploy mean-rev --mode paper --dry-run
+
+    Paper PlaceOrder requires TRADING_ENABLED and --yes (or --confirm):
+
+        fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
+
+    Live mode is not supported.
+    """
     if mode == DeployMode.LIVE:
-        console.print("[red]live mode is not enabled in this PoC; deploy with --mode paper --dry-run")
+        console.print("[red]live mode is not enabled; deploy with --mode paper")
         return
-    if not dry_run:
-        console.print("[red]PoC deployments must use --dry-run; PlaceOrder is disabled")
+    if not dry_run and not yes:
+        console.print("[red]paper PlaceOrder requires --yes or --confirm")
         return
 
     entity = broker.strategy.deploy(
         strategy_name=name,
         version_id=version,
         version_rev=rev,
-        dry_run=True,
+        dry_run=dry_run,
+        confirm=yes,
         backend=backend,
         calendar_code=calendar,
         symbols=_parse_symbols(symbols),

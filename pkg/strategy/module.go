@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
+	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/runner"
@@ -23,6 +25,16 @@ type runnerParams struct {
 	Store   runner.Store
 	Clock   runner.Clock
 	Trading supplier.Trading `optional:"true"`
+	Pool    worker.Pool      `optional:"true"`
+}
+
+type serverParams struct {
+	fx.In
+
+	Pgx      *pgxpool.Pool
+	Launcher ss.ExperimentLauncher
+	Runner   *runner.InProcess
+	Trading  supplier.Trading `optional:"true"`
 }
 
 var Module = fx.Options( //nolint: gochecknoglobals
@@ -40,10 +52,18 @@ var Module = fx.Options( //nolint: gochecknoglobals
 			return runner.NewPostgresStore(conn)
 		},
 		func(p runnerParams) *runner.InProcess {
-			return runner.New(p.Store, p.Clock, p.Trading, nil)
+			var processor runner.Processor
+			if p.Pool != nil {
+				processor = p.Pool
+			}
+			return runner.New(p.Store, p.Clock, p.Trading, processor)
 		},
-		func(pgx *pgxpool.Pool, launcher ss.ExperimentLauncher, r *runner.InProcess) *api.StrategyServer {
-			return api.NewStrategyServer(pgx, launcher, r)
+		func(p serverParams) *api.StrategyServer {
+			srv := api.NewStrategyServer(p.Pgx, p.Launcher, p.Runner)
+			if environment.GetTradingEnabled() && p.Trading != nil {
+				return srv.WithTrading(p.Trading)
+			}
+			return srv
 		},
 	),
 	fx.Invoke(

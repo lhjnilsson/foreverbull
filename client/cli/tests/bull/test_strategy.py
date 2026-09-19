@@ -406,6 +406,7 @@ def test_strategy_deploy_dry_run(runner):
         version_id=None,
         version_rev=1,
         dry_run=True,
+        confirm=False,
         backend=None,
         calendar_code="XNYS",
         symbols=["SPY", "QQQ"],
@@ -426,13 +427,64 @@ def test_strategy_deploy_refuses_live(runner):
     mock_deploy.assert_not_called()
 
 
-def test_strategy_deploy_refuses_non_dry_run(runner):
+def test_strategy_deploy_refuses_live_with_yes(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        result = runner(strategy, ["deploy", "mean-rev", "--mode", "live", "--no-dry-run", "--yes"])
+
+    assert result.exit_code == 0
+    assert "live mode is not enabled" in result.stdout
+    mock_deploy.assert_not_called()
+
+
+def test_strategy_deploy_refuses_non_dry_run_without_yes(runner):
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
         result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run"])
 
     assert result.exit_code == 0
-    assert "must use --dry-run" in result.stdout
+    assert "requires --yes" in result.stdout
     mock_deploy.assert_not_called()
+
+
+def test_strategy_deploy_paper_place_order_yes(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        mock_deploy.return_value = _sample_deployment()
+        result = runner(
+            strategy,
+            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--yes"],
+        )
+
+    assert result.exit_code == 0
+    mock_deploy.assert_called_once_with(
+        strategy_name="mean-rev",
+        version_id=None,
+        version_rev=None,
+        dry_run=False,
+        confirm=True,
+        backend=None,
+        calendar_code=None,
+        symbols=[],
+    )
+
+
+def test_strategy_deploy_paper_place_order_confirm(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        mock_deploy.return_value = _sample_deployment()
+        result = runner(
+            strategy,
+            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--confirm"],
+        )
+
+    assert result.exit_code == 0
+    mock_deploy.assert_called_once_with(
+        strategy_name="mean-rev",
+        version_id=None,
+        version_rev=None,
+        dry_run=False,
+        confirm=True,
+        backend=None,
+        calendar_code=None,
+        symbols=[],
+    )
 
 
 def test_strategy_stop(runner):

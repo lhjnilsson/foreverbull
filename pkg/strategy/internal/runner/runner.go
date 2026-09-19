@@ -20,12 +20,13 @@ var ErrSkippedMissedClose = errors.New("skipped_missed_close")
 const defaultPollInterval = time.Minute
 
 // Processor turns a session close into orders. Matches worker.Pool.Process.
-// Tests inject a fake; production may be nil (log-only dry-run).
+// Tests inject a fake; production uses an optional worker.Pool when provided.
 type Processor interface {
 	Process(ctx context.Context, timestamp time.Time, symbols []string, portfolio *financepb.Portfolio) ([]*financepb.Order, error)
 }
 
-// InProcess runs one goroutine per running deployment. It never calls PlaceOrder.
+// InProcess runs one goroutine per running deployment.
+// PlaceOrder is called only when the deployment is paper with dry_run=false.
 type InProcess struct {
 	store     Store
 	clock     Clock
@@ -208,7 +209,7 @@ func (r *InProcess) SkipMissed(ctx context.Context, deploymentID string, session
 }
 
 // ProcessSession runs GetPortfolio + Process and persists strategy_deployment_run.
-// It never calls PlaceOrder. Duplicate ticks (same last_session_date / unique run) no-op.
+// When dry_run is false it calls Trading.PlaceOrder for each order. Duplicate ticks no-op.
 func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, session SessionClose) error {
 	d, err := r.store.GetDeployment(ctx, deploymentID)
 	if err != nil {
@@ -236,7 +237,10 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 		}
 	}
 
-	// PoC: never PlaceOrder. dry_run paper logs would-be orders only.
+	if runErr == nil && !d.DryRun {
+		orders, runErr = r.placeOrders(orders)
+	}
+
 	_, err = r.store.CreateRun(ctx, deploymentID, session.Date, orders, false, runErr)
 	if errors.Is(err, ErrDuplicateRun) {
 		return r.store.SetLastSessionDate(ctx, deploymentID, session.Date)
@@ -244,5 +248,31 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	if err != nil {
 		return err
 	}
-	return r.store.SetLastSessionDate(ctx, deploymentID, session.Date)
+	if err := r.store.SetLastSessionDate(ctx, deploymentID, session.Date); err != nil {
+		return err
+	}
+	if runErr != nil && !d.DryRun {
+		return runErr
+	}
+	return nil
+}
+
+func (r *InProcess) placeOrders(orders []*financepb.Order) ([]*financepb.Order, error) {
+	if r.trading == nil {
+		return orders, errors.New("PlaceOrder requires a Trading backend")
+	}
+	attempted := make([]*financepb.Order, 0, len(orders))
+	for _, order := range orders {
+		placed, err := r.trading.PlaceOrder(order)
+		if err != nil {
+			attempted = append(attempted, order)
+			return attempted, fmt.Errorf("place order: %w", err)
+		}
+		if placed != nil {
+			attempted = append(attempted, placed)
+			continue
+		}
+		attempted = append(attempted, order)
+	}
+	return attempted, nil
 }

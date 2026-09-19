@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -92,13 +91,16 @@ func (f *FakeClock) Advance(now time.Time) {
 	f.waiters = rest
 }
 
-// FakeTrading records GetPortfolio and fails if PlaceOrder is called.
+// FakeTrading records GetPortfolio and PlaceOrder calls.
 type FakeTrading struct {
 	mu                sync.Mutex
 	Portfolio         *financepb.Portfolio
 	GetPortfolioCalls int
 	PlaceOrderCalls   int
 	GetOrdersCalls    int
+	PlacedOrders      []*financepb.Order
+	PlaceErr          error
+	FailAfter         int
 }
 
 var _ supplier.Trading = (*FakeTrading)(nil)
@@ -113,11 +115,15 @@ func (f *FakeTrading) GetPortfolio() (*financepb.Portfolio, error) {
 	return f.Portfolio, nil
 }
 
-func (f *FakeTrading) PlaceOrder(_ *financepb.Order) (*financepb.Order, error) {
+func (f *FakeTrading) PlaceOrder(order *financepb.Order) (*financepb.Order, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.PlaceOrderCalls++
-	return nil, errors.New("PlaceOrder must not be called in dry-run")
+	if f.PlaceErr != nil && (f.FailAfter == 0 || f.PlaceOrderCalls > f.FailAfter) {
+		return nil, f.PlaceErr
+	}
+	f.PlacedOrders = append(f.PlacedOrders, order)
+	return order, nil
 }
 
 func (f *FakeTrading) GetOrders() ([]*financepb.Order, error) {
@@ -131,6 +137,14 @@ func (f *FakeTrading) PlaceCalls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.PlaceOrderCalls
+}
+
+func (f *FakeTrading) Placed() []*financepb.Order {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*financepb.Order, len(f.PlacedOrders))
+	copy(out, f.PlacedOrders)
+	return out
 }
 
 func (f *FakeTrading) PortfolioCalls() int {

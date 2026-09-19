@@ -11,7 +11,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	common "github.com/lhjnilsson/foreverbull/pkg/pb"
+	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	service "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
@@ -43,6 +45,22 @@ func (r *recordingRunner) Remove(_ context.Context, deploymentID string) error {
 	return nil
 }
 
+type stubTrading struct{}
+
+func (stubTrading) GetPortfolio() (*financepb.Portfolio, error) {
+	return &financepb.Portfolio{}, nil
+}
+
+func (stubTrading) PlaceOrder(order *financepb.Order) (*financepb.Order, error) {
+	return order, nil
+}
+
+func (stubTrading) GetOrders() ([]*financepb.Order, error) {
+	return nil, nil
+}
+
+var _ supplier.Trading = stubTrading{}
+
 type StrategyServerTest struct {
 	suite.Suite
 
@@ -73,14 +91,34 @@ func (test *StrategyServerTest) SetupSubTest() {
 
 	test.launcher = new(ss.MockExperimentLauncher)
 	test.runner = &recordingRunner{}
+	test.startServer(nil)
+}
+
+func (test *StrategyServerTest) startServer(trading supplier.Trading) {
+	if test.server != nil {
+		test.server.Stop()
+		test.server = nil
+	}
+	if test.listener != nil {
+		_ = test.listener.Close()
+		test.listener = nil
+	}
+
+	var err error
 	test.listener = bufconn.Listen(1024 * 1024)
 	test.server, err = internalGrpc.NewServer()
 	test.Require().NoError(err)
 
-	servicePb.RegisterStrategyServicerServer(test.server, api.NewStrategyServer(test.pgx, test.launcher, test.runner))
+	srv := api.NewStrategyServer(test.pgx, test.launcher, test.runner)
+	if trading != nil {
+		srv = srv.WithTrading(trading)
+	}
+	servicePb.RegisterStrategyServicerServer(test.server, srv)
 
+	server := test.server
+	listener := test.listener
 	go func() {
-		test.NoError(test.server.Serve(test.listener))
+		_ = server.Serve(listener)
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
@@ -514,7 +552,27 @@ func (test *StrategyServerTest) TestDeploy() {
 		test.Empty(test.runner.added)
 	})
 
-	test.Run("rejects dry_run false", func() {
+	test.Run("rejects live even with trading", func() {
+		test.startServer(stubTrading{})
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Mode:         pb.Deployment_LIVE,
+			DryRun:       &dry,
+			Confirm:      true,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "live")
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("rejects dry_run false without confirm", func() {
+		test.startServer(stubTrading{})
 		version := test.seedDeployableVersion("mean-rev", "algo:local")
 		dry := false
 		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
@@ -526,8 +584,46 @@ func (test *StrategyServerTest) TestDeploy() {
 		st, ok := status.FromError(err)
 		test.True(ok)
 		test.Equal(codes.FailedPrecondition, st.Code())
-		test.Contains(st.Message(), "dry_run")
+		test.Contains(st.Message(), "confirm")
 		test.Empty(test.runner.added)
+	})
+
+	test.Run("rejects dry_run false when trading disabled", func() {
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			DryRun:       &dry,
+			Confirm:      true,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "TRADING_ENABLED")
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("allows paper dry_run false with confirm and trading", func() {
+		test.startServer(stubTrading{})
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		rsp, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			DryRun:       &dry,
+			Confirm:      true,
+			Symbols:      []string{"AAPL"},
+		})
+		test.Require().NoError(err)
+		d := rsp.GetDeployment()
+		test.Equal(pb.Deployment_PAPER, d.GetMode())
+		test.False(d.GetDryRun())
+		test.Equal(pb.Deployment_RUNNING, d.GetStatus())
+		test.Require().Len(test.runner.added, 1)
+		test.Equal(d.Id, test.runner.added[0].Id)
+		test.False(test.runner.added[0].GetDryRun())
 	})
 
 	test.Run("requires completed experiment", func() {

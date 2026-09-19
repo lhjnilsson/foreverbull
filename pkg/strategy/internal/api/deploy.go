@@ -25,7 +25,7 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 
 	if req.GetMode() == pb.Deployment_LIVE {
 		return nil, status.Error(codes.FailedPrecondition,
-			"live mode is not enabled in this PoC; deploy with paper and dry_run=true")
+			"live mode is not enabled; deploy with paper")
 	}
 
 	dryRun := true
@@ -33,8 +33,14 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 		dryRun = *req.DryRun
 	}
 	if !dryRun {
-		return nil, status.Error(codes.FailedPrecondition,
-			"PoC deployments must use dry_run=true; PlaceOrder is disabled")
+		if !req.GetConfirm() {
+			return nil, status.Error(codes.FailedPrecondition,
+				"confirm is required when dry_run=false")
+		}
+		if s.trading == nil {
+			return nil, status.Error(codes.FailedPrecondition,
+				"paper PlaceOrder requires TRADING_ENABLED and a configured Trading backend")
+		}
 	}
 
 	version, err := s.resolveVersion(ctx, req.GetStrategyName(), req.GetVersionId(), req.GetVersionRev())
@@ -60,7 +66,7 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	deployments := repository.Deployment{Conn: s.pgx}
 	deployment, err := deployments.Create(
 		ctx, version.Id, backend, calendar,
-		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, dryRun,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
