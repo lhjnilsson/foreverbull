@@ -20,7 +20,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 | `client/testing/` | Pytest plugin/fixtures (`fb_database`, etc.) |
 | `deploy/` | Kind config, Helm chart, cluster-config example |
 | `docker/Dockerfile` | Local `lhjnilsson/foreverbull` image |
-| `grafana/` | Grafana image + datasource plugin |
+| `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
 ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). Daily bars may use `MARKET_DATA_PROVIDER=stooq` (GetOHLC only; Yahoo stays for metadata).
@@ -109,6 +109,19 @@ task grafana:build:docker     # build lhjnilsson/fb-grafana:local
 
 `task client:docker:zipline` is the Zipline image used by Go backtest integration tests.
 
+Plugin-only rebuild (frontend + Go binary into `grafana/lhjnilsson-foreverbull-datasource/dist/`, then the image):
+
+```bash
+cd grafana/lhjnilsson-foreverbull-datasource
+npm install
+npm run build    # frontend
+mage -v          # gpx_foreverbull_*  (go install github.com/magefile/mage@latest)
+# from repository root:
+task grafana:build:docker
+```
+
+The Dockerfile also runs `npm run build` and `mage` itself. Product Grafana is Kind/Helm (`lhjnilsson/fb-grafana` on host port 3000). Plugin `docker-compose.yaml` is a leftover UI harness on port 3001; Kind/`fbenv` does **not** create a Docker network named `foreverbull`.
+
 ### Python integration / end-to-end
 
 These are **not** part of default `uv run pytest`:
@@ -184,7 +197,20 @@ CLI flags `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-add
 
 Published host ports (Kind `extraPortMappings` + chart `expose.hostPort=true`): Postgres `5432`, NATS `4222`, Minio `9000`, Foreverbull gRPC `50055`, backtest `27000–27015`, Grafana `3000`. Persistence is cluster PVCs (`persistence.*`), not host binds under `.foreverbull/{postgres,minio,nats}`.
 
-Python broker stubs resolve the address in this order: `FOREVERBULL_BROKER_ADDRESS` → `remote.broker_address` when `cluster: remote` → `localhost:50055` when `cluster: local`. Grafana in-cluster uses `BROKER_URL=foreverbull:50055`.
+Python broker stubs resolve the address in this order: `FOREVERBULL_BROKER_ADDRESS` → `remote.broker_address` when `cluster: remote` → `localhost:50055` when `cluster: local`. Grafana in-cluster uses `BROKER_URL=foreverbull:50055`. Host Grafana is `http://localhost:3000`.
+
+### Grafana analysis
+
+Grafana is how users inspect a backtest run and overlay strategy experiments. CLI `fbull strategy experiments` stays the non-Grafana compare table. Live trading UI is out. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md).
+
+| UID | Dashboard | Who deep-links it |
+| --- | --- | --- |
+| `ee9ep4jxtwkcgf` | Backtest execution (`provisioning/dashboards/executions.json`) | CLI `execution_link`, `GetExperiment.grafana_path`. **Keep this UID.** |
+| `fb-strategy-compare` | Strategy compare (`provisioning/dashboards/strategy-compare.json`) | Overlay two executions. Must not steal `ee9ep4jxtwkcgf`. |
+
+Path contract: `{GRAFANA_URL}/d/ee9ep4jxtwkcgf?var-execution={execution_id}`. `GRAFANA_URL` is the origin only (default `http://localhost:3000`). Helm `grafana.url` sets broker `GRAFANA_URL`. CLI reads the same env. Remote clusters set `grafana.url` to the public Grafana origin. Do not point those links at compose port 3001.
+
+Query type `GetExecutionMetric` JSON is `{"execution":{"id":"<uuid>"},"metrics":[{"name":"portfolio_value"}]}`. Variable values are execution UUIDs; labels are `{backtest} {start}–{end}`. Plugin tests: `go test ./pkg/...` under the datasource (fakes/bufconn) and `npm run test:ci`. Do not add Kind e2e for Grafana.
 
 ### Cluster config
 
@@ -232,6 +258,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `TRADING_PROVIDER` | `alpaca` |
 | `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` |
 | `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled |
+| `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task env` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
