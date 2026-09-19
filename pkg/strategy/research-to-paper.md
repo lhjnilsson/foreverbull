@@ -322,4 +322,8 @@ Agent policy: do not mock Postgres for repository tests; no live HTTP in default
 
 ## 11. Status
 
-Chapter 1 wiring is in: Stooq daily GetOHLC plus composite (`MARKET_DATA_PROVIDER=stooq` → Stooq bars, Yahoo metadata). Default `MARKET_DATA_PROVIDER` remains `yahoo`. Compare JOIN and paper `dry_run=false` are not implemented. Live is out.
+All three chapters are in. Live is out.
+
+- **Stooq (ch. 1).** `MARKET_DATA_PROVIDER=stooq` wires daily GetOHLC through Stooq CSV and metadata (`GetAsset` / `SearchAsset` / `GetIndex`) through Yahoo (`composite.go` / `NewStooqYahoo`). Default remains `yahoo`. Yahoo is kept. Stooq does not scrape search or index membership. Helm does not template `MARKET_DATA_PROVIDER`.
+- **Compare (ch. 2).** `ListExperiments` JOIN-fills `Experiment.stats` from the last `backtest_execution_period` row (`portfolio_value`, `max_drawdown`, `sharpe`, `algorithm_period_return`, `benchmark_period_return`). `GetExperiment` fills `last_period` the same way. Missing `execution_id` or no period rows → empty stats. CLI `fbull strategy experiments` prints Sharpe, max drawdown, end value, and benchmark.
+- **Paper (ch. 3).** `Deploy` accepts `mode=paper` + `dry_run=false` when `confirm` is set and `supplier.Trading` is configured (`TRADING_ENABLED`). CLI: `fbull strategy deploy … --mode paper --no-dry-run --yes` (or `--confirm`). Default deploy stays paper + dry-run. Runner calls `Trading.PlaceOrder` on paper sessions, persists attempted orders, stops on first error without retry. Missed closes stay `skipped_missed_close`. `mode=live` is still refused even with confirm.

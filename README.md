@@ -1,6 +1,6 @@
 # Foreverbull
 
-Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Alpaca trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (do not enable live trading from this README).
+Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. `MARKET_DATA_PROVIDER=stooq` is daily GetOHLC only; Yahoo remains for asset/search/index metadata. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Alpaca paper trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (live trading is not supported; do not enable it from this README).
 
 The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote cluster. One chart deploys Postgres, NATS JetStream, Minio, Zipline, the broker, and Grafana.
 
@@ -92,7 +92,7 @@ The generated project README shows `fbull backtest create` and `fbull backtest r
 
 ### Strategy lifecycle
 
-A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper dry-run. The same version is runnable against different universes (SPY vs EU vs commodities) via separate `--backtest` experiments. Live is off. Contract: [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper deploy. The same version is runnable against different universes (SPY vs EU vs commodities) via separate `--backtest` experiments. Live is off. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 
 ```bash
 uv run fbull strategy create mean-rev
@@ -101,11 +101,12 @@ uv run fbull strategy experiment mean-rev --backtest spy
 uv run fbull strategy experiment mean-rev --backtest eu-small
 uv run fbull strategy experiments mean-rev
 uv run fbull strategy deploy mean-rev --mode paper --dry-run
+uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
 uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-`deploy` is paper + `--dry-run` only. The runner calls `Process` and does not call `PlaceOrder`.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder: `--mode paper --no-dry-run --yes` (or `--confirm`) with `TRADING_ENABLED`. `--mode live` is refused.
 
 ## Architecture
 
@@ -157,9 +158,9 @@ flowchart TB
 ```
 
 - **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. ETF create is point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). See [pkg/backtest/universe.md](pkg/backtest/universe.md).
-- **Finance**: Market data (Yahoo by default; Alpaca is an alternate provider) and a trading API. Alpaca live/paper trading is compiled in but `TRADING_ENABLED` defaults to `false`.
+- **Finance**: Market data (Yahoo by default; `stooq` is daily GetOHLC only with Yahoo metadata; `alpaca` is an alternate provider) and a trading API. Alpaca paper trading is compiled in but `TRADING_ENABLED` defaults to `false`. Live trading is not supported.
 - **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
-- **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests, paper dry-run. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+- **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests (period stats on list/get), paper dry-run or confirmed paper PlaceOrder. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md) and [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 
 ## Development
 

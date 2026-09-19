@@ -23,7 +23,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 | `grafana/` | Grafana image + datasource plugin |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
-ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not in this work. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md).
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). Daily bars may use `MARKET_DATA_PROVIDER=stooq` (GetOHLC only; Yahoo stays for metadata).
 
 ## Prerequisites
 
@@ -227,8 +227,8 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `MINIO_URL` | `localhost:9000` (in-cluster: `minio:9000`) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
 | `POD_NAMESPACE` / `KUBERNETES_NAMESPACE` | Broker chart sets `POD_NAMESPACE` from the pod namespace; `internal/container` uses it for the in-cluster client |
-| `MARKET_DATA_PROVIDER` | `yahoo` |
-| `TRADING_ENABLED` | `false` — do not enable live trading unless explicitly requested; never put real Alpaca keys in the chart |
+| `MARKET_DATA_PROVIDER` | `yahoo` (default). `stooq` is daily GetOHLC only; Yahoo stays for `GetAsset` / `SearchAsset` / `GetIndex`. `alpaca` is Alpaca-only. Helm does not template this var. |
+| `TRADING_ENABLED` | `false`. Required for paper `PlaceOrder` (`deploy --no-dry-run`). Live trading is not supported. Never put real Alpaca keys in the chart. |
 | `TRADING_PROVIDER` | `alpaca` |
 | `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` |
 | `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled |
@@ -264,7 +264,7 @@ uv run fbenv --help
 
 ### Strategy lifecycle
 
-`fbull strategy` is register → experiment on existing backtests → paper dry-run. Live is off. The same service version is runnable against different universes via separate `--backtest` experiments. Contract: [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+`fbull strategy` is register → experiment on existing backtests → compare period stats → paper deploy. Live is off. The same service version is runnable against different universes via separate `--backtest` experiments. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 
 ```bash
 uv run fbull strategy create mean-rev
@@ -273,11 +273,12 @@ uv run fbull strategy experiment mean-rev --backtest spy
 uv run fbull strategy experiment mean-rev --backtest eu-small
 uv run fbull strategy experiments mean-rev
 uv run fbull strategy deploy mean-rev --mode paper --dry-run
+uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
 uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-`deploy` refuses live and `--no-dry-run`. Do not enable `TRADING_ENABLED` for this PoC. Local-file hacking still uses `fbull backtest run`.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder needs `--no-dry-run` plus `--yes` or `--confirm`, and `TRADING_ENABLED=true` with a configured Trading backend. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
 
 ## Python lint
 
