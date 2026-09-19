@@ -1,36 +1,83 @@
 {
+  "uid": "ee9ep4jxtwkcgf",
+  "title": "Backtest execution",
+  "description": "Inspect one backtest run. CLI and GetExperiment deep-link here as ?var-execution=. Default time range is 30 years so period series stay on screen; zoom to the run.",
+  "tags": ["foreverbull", "backtest"],
+  "schemaVersion": 40,
+  "refresh": "",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "timezone": "utc",
+  "weekStart": "",
+  "time": {
+    "from": "now-30y",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": false,
+    "refresh_intervals": []
+  },
   "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Strategy compare",
+      "tooltip": "Overlay two executions",
+      "type": "link",
+      "url": "/d/fb-strategy-compare"
+    }
+  ],
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
+        "name": "execution",
+        "label": "Execution",
+        "description": "Backtest execution UUID. Deep links set this with ?var-execution=.",
+        "type": "query",
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
         },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "definition": "executions",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "executions"
+        },
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": 1,
-  "links": [],
   "panels": [
     {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Portfolio value",
+      "description": "Execution period portfolio_value",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
       "datasource": {
         "type": "lhjnilsson-foreverbull-datasource",
-        "uid": "P7866CEC33224B4CB"
+        "uid": "foreverbull"
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -40,139 +87,254 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 0,
+            "fillOpacity": 10,
             "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
             "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
           },
+          "decimals": 2,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
         },
-        "overrides": [
-          {
-            "__systemRef": "hideSeriesFrom",
-            "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": ["portfolio value"],
-                "prefix": "All except:",
-                "readOnly": true
-              }
-            },
-            "properties": [
-              {
-                "id": "custom.hideFrom",
-                "value": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": true
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
-      "gridPos": {
-        "h": 16,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
       "options": {
         "legend": {
-          "calcs": [],
+          "calcs": ["lastNotNull"],
           "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "tooltip": { "mode": "multi", "sort": "none" }
       },
-      "pluginVersion": "11.3.2",
       "targets": [
         {
           "datasource": {
             "type": "lhjnilsson-foreverbull-datasource",
-            "uid": "P7866CEC33224B4CB"
+            "uid": "foreverbull"
           },
-          "executionId": "$execution",
+          "refId": "A",
           "queryType": "GetExecutionMetric",
-          "refId": "A"
+          "execution": { "id": "$execution" },
+          "metrics": [{ "name": "portfolio_value" }]
         }
-      ],
-      "title": "Panel Title",
-      "type": "timeseries"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Drawdown",
+      "description": "Period max_drawdown",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "red", "value": null }]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$execution" },
+          "metrics": [{ "name": "max_drawdown" }]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Sharpe",
+      "description": "Period sharpe",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$execution" },
+          "metrics": [{ "name": "sharpe" }]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Long / short exposure",
+      "description": "Period long_value and short_value",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$execution" },
+          "metrics": [
+            { "name": "long_value" },
+            { "name": "short_value" }
+          ]
+        }
+      ]
     }
-  ],
-  "preload": false,
-  "schemaVersion": 40,
-  "tags": [],
-  "templating": {
-    "list": [
-      {
-        "current": {
-          "text": "a5f5dde9-e45c-462b-9c83-68cbe29b9bd7",
-          "value": "a5f5dde9-e45c-462b-9c83-68cbe29b9bd7"
-        },
-        "datasource": {
-          "type": "lhjnilsson-foreverbull-datasource",
-          "uid": "P7866CEC33224B4CB"
-        },
-        "definition": "",
-        "name": "execution",
-        "options": [],
-        "query": {
-          "executionId": "84753648-1bba-4a76-8c5f-c0631204633e"
-        },
-        "refresh": 1,
-        "regex": "",
-        "type": "query"
-      }
-    ]
-  },
-  "time": {
-    "from": "2023-10-30T05:33:35.444Z",
-    "to": "2023-12-25T19:45:02.482Z"
-  },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "Foreverbull",
-  "uid": "ee9ep4jxtwkcgf",
-  "version": 6,
-  "weekStart": ""
+  ]
 }
