@@ -41,7 +41,7 @@ class Version(_message.Message):
     def __init__(self, id: _Optional[str] = ..., strategy_id: _Optional[str] = ..., strategy_name: _Optional[str] = ..., rev: _Optional[int] = ..., service_image: _Optional[str] = ..., parameters: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class Experiment(_message.Message):
-    __slots__ = ("id", "strategy_id", "strategy_name", "version_id", "version_rev", "backtest_name", "execution_id", "status", "error", "created_at", "completed_at")
+    __slots__ = ("id", "strategy_id", "strategy_name", "version_id", "version_rev", "backtest_name", "execution_id", "status", "error", "created_at", "completed_at", "stats")
     class Status(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         QUEUED: _ClassVar[Experiment.Status]
@@ -63,6 +63,7 @@ class Experiment(_message.Message):
     ERROR_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     COMPLETED_AT_FIELD_NUMBER: _ClassVar[int]
+    STATS_FIELD_NUMBER: _ClassVar[int]
     id: str
     strategy_id: str
     strategy_name: str
@@ -74,7 +75,22 @@ class Experiment(_message.Message):
     error: str
     created_at: _timestamp_pb2.Timestamp
     completed_at: _timestamp_pb2.Timestamp
-    def __init__(self, id: _Optional[str] = ..., strategy_id: _Optional[str] = ..., strategy_name: _Optional[str] = ..., version_id: _Optional[str] = ..., version_rev: _Optional[int] = ..., backtest_name: _Optional[str] = ..., execution_id: _Optional[str] = ..., status: _Optional[_Union[Experiment.Status, str]] = ..., error: _Optional[str] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., completed_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    stats: ExperimentStats
+    def __init__(self, id: _Optional[str] = ..., strategy_id: _Optional[str] = ..., strategy_name: _Optional[str] = ..., version_id: _Optional[str] = ..., version_rev: _Optional[int] = ..., backtest_name: _Optional[str] = ..., execution_id: _Optional[str] = ..., status: _Optional[_Union[Experiment.Status, str]] = ..., error: _Optional[str] = ..., created_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., completed_at: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., stats: _Optional[_Union[ExperimentStats, _Mapping]] = ...) -> None: ...
+
+class ExperimentStats(_message.Message):
+    __slots__ = ("portfolio_value", "max_drawdown", "sharpe", "algorithm_period_return", "benchmark_period_return")
+    PORTFOLIO_VALUE_FIELD_NUMBER: _ClassVar[int]
+    MAX_DRAWDOWN_FIELD_NUMBER: _ClassVar[int]
+    SHARPE_FIELD_NUMBER: _ClassVar[int]
+    ALGORITHM_PERIOD_RETURN_FIELD_NUMBER: _ClassVar[int]
+    BENCHMARK_PERIOD_RETURN_FIELD_NUMBER: _ClassVar[int]
+    portfolio_value: float
+    max_drawdown: float
+    sharpe: float
+    algorithm_period_return: float
+    benchmark_period_return: float
+    def __init__(self, portfolio_value: _Optional[float] = ..., max_drawdown: _Optional[float] = ..., sharpe: _Optional[float] = ..., algorithm_period_return: _Optional[float] = ..., benchmark_period_return: _Optional[float] = ...) -> None: ...
 
 class Deployment(_message.Message):
     __slots__ = ("id", "strategy_id", "strategy_name", "version_id", "version_rev", "mode", "backend", "calendar_code", "symbols", "schedule_kind", "dry_run", "status", "error", "last_session_date", "started_at", "stopped_at")

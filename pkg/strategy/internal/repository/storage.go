@@ -34,6 +34,61 @@ CREATE TABLE IF NOT EXISTS backtest_execution (
 	start_date date NOT NULL,
 	end_date date NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS backtest_execution_period (
+	id serial primary key,
+	backtest_execution text not null,
+
+	date date not null,
+	pnl numeric  not null,
+	returns numeric  not null,
+	portfolio_value numeric  not null,
+
+	longs_count integer,
+	shorts_count integer,
+	long_value numeric  not null,
+	short_value numeric  not null,
+	starting_exposure numeric  not null,
+	ending_exposure numeric  not null,
+	long_exposure numeric  not null,
+	short_exposure numeric  not null,
+
+	capital_used numeric  not null,
+	gross_leverage numeric  not null,
+	net_leverage numeric  not null,
+
+	starting_value numeric  not null,
+	ending_value numeric  not null,
+	starting_cash numeric  not null,
+	ending_cash numeric  not null,
+
+	max_drawdown numeric  not null,
+	max_leverage numeric  not null,
+	excess_returns numeric  not null,
+	treasury_period_return numeric  not null,
+	algorithm_period_return numeric  not null,
+
+	algo_volatility numeric,
+	sharpe numeric,
+	sortino numeric,
+
+	benchmark_period_return numeric,
+	benchmark_volatility numeric,
+	alpha numeric,
+	beta numeric
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'unique_backtest_execution_period'
+        AND conrelid = 'backtest_execution_period'::regclass
+    ) THEN
+        ALTER TABLE backtest_execution_period ADD CONSTRAINT unique_backtest_execution_period UNIQUE(backtest_execution, date);
+    END IF;
+END $$;
 `
 
 func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
@@ -43,6 +98,7 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		`DROP TABLE IF EXISTS strategy_experiment`,
 		`DROP TABLE IF EXISTS strategy_version`,
 		`DROP TABLE IF EXISTS strategy`,
+		`DROP TABLE IF EXISTS backtest_execution_period`,
 	}
 	for _, q := range drops {
 		if _, err := conn.Exec(ctx, q); err != nil {

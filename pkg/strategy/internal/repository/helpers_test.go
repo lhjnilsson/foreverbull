@@ -14,6 +14,38 @@ func insertService(ctx context.Context, conn *pgxpool.Pool, image string) error 
 	return err
 }
 
+func insertPeriod(
+	ctx context.Context,
+	conn *pgxpool.Pool,
+	executionID, date string,
+	portfolioValue, maxDrawdown, algorithmPeriodReturn float64,
+	sharpe, benchmark *float64,
+) error {
+	_, err := conn.Exec(ctx, `
+		INSERT INTO backtest_execution_period (
+			backtest_execution, date, pnl, returns, portfolio_value,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+			capital_used, gross_leverage, net_leverage,
+			starting_value, ending_value, starting_cash, ending_cash,
+			max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			sharpe, benchmark_period_return
+		) VALUES (
+			$1, $2, 0, 0, $3,
+			0, 0, 0, 0, 0, 0,
+			0, 0, 0,
+			0, 0, 0, 0,
+			$4, 0, 0, 0, $5,
+			$6, $7
+		)`,
+		executionID, date, portfolioValue, maxDrawdown, algorithmPeriodReturn, sharpe, benchmark,
+	)
+	return err
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
+}
+
 func insertExecution(ctx context.Context, conn *pgxpool.Pool, backtestName string) (string, error) {
 	_, err := conn.Exec(ctx,
 		`INSERT INTO backtest (name, benchmark) VALUES ($1, $2)`,

@@ -44,6 +44,17 @@ message Experiment {
   optional string error = 9;
   google.protobuf.Timestamp created_at = 10;
   optional google.protobuf.Timestamp completed_at = 11;
+  // Last backtest_execution_period row via JOIN on execution_id. Unset when
+  // the experiment has no execution or no period rows.
+  ExperimentStats stats = 12;
+}
+
+message ExperimentStats {
+  double portfolio_value = 1;
+  double max_drawdown = 2;
+  optional double sharpe = 3;
+  double algorithm_period_return = 4;
+  optional double benchmark_period_return = 5;
 }
 
 message Deployment {

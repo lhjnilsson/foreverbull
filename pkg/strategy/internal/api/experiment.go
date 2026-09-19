@@ -132,6 +132,11 @@ func (s *StrategyServer) GetExperiment(ctx context.Context, req *servicePb.GetEx
 	if experiment.GetExecutionId() != "" {
 		path := grafanaExecutionPath + experiment.GetExecutionId()
 		rsp.GrafanaPath = &path
+		lastPeriod, err := experiments.GetLastPeriod(ctx, experiment.GetExecutionId())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "get last period: %v", err)
+		}
+		rsp.LastPeriod = lastPeriod
 	}
 	return rsp, nil
 }

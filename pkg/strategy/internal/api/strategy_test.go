@@ -126,6 +126,37 @@ func (test *StrategyServerTest) insertBacktest(name string) {
 	test.Require().NoError(err)
 }
 
+func (test *StrategyServerTest) insertPeriod(
+	executionID, date string,
+	portfolioValue, maxDrawdown, algorithmPeriodReturn float64,
+	sharpe, benchmark *float64,
+) {
+	test.T().Helper()
+	_, err := test.pgx.Exec(context.Background(), `
+		INSERT INTO backtest_execution_period (
+			backtest_execution, date, pnl, returns, portfolio_value,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+			capital_used, gross_leverage, net_leverage,
+			starting_value, ending_value, starting_cash, ending_cash,
+			max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+			sharpe, benchmark_period_return
+		) VALUES (
+			$1, $2, 0, 0, $3,
+			0, 0, 0, 0, 0, 0,
+			0, 0, 0,
+			0, 0, 0, 0,
+			$4, 0, 0, 0, $5,
+			$6, $7
+		)`,
+		executionID, date, portfolioValue, maxDrawdown, algorithmPeriodReturn, sharpe, benchmark,
+	)
+	test.Require().NoError(err)
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
+}
+
 func (test *StrategyServerTest) insertExecution(backtestName string) string {
 	test.T().Helper()
 	ctx := context.Background()
@@ -335,6 +366,8 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 		test.Equal(executionID, got.GetExperiment().GetExecutionId())
 		test.Require().NotNil(got.GrafanaPath)
 		test.Contains(*got.GrafanaPath, executionID)
+		test.Nil(got.LastPeriod)
+		test.Nil(got.GetExperiment().GetStats())
 
 		listed, err := test.client.ListExperiments(context.Background(), &servicePb.ListExperimentsRequest{
 			StrategyName: "mean-rev",
@@ -359,6 +392,77 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 		st, ok := status.FromError(err)
 		test.True(ok)
 		test.Equal(codes.NotFound, st.Code())
+	})
+
+	test.Run("joins last period stats", func() {
+		version := test.seedVersion("mean-rev", "algo:local", service.Service_Status_READY)
+		spyExec := test.insertExecution("spy")
+		euExec := test.insertExecution("eu")
+		test.insertPeriod(spyExec, "2020-01-02", 1000, -0.1, 0.01, floatPtr(0.5), nil)
+		test.insertPeriod(spyExec, "2020-06-01", 1100, -0.2, 0.05, floatPtr(1.25), floatPtr(0.03))
+		test.insertPeriod(euExec, "2020-06-01", 900, -0.15, 0.02, nil, floatPtr(0.01))
+
+		experiments := repository.Experiment{Conn: test.pgx}
+		spy, err := experiments.Create(context.Background(), version.Id, "spy")
+		test.Require().NoError(err)
+		test.Require().NoError(experiments.SetExecutionID(context.Background(), spy.Id, spyExec))
+		test.Require().NoError(experiments.UpdateStatus(context.Background(), spy.Id, pb.Experiment_COMPLETED, nil))
+		eu, err := experiments.Create(context.Background(), version.Id, "eu")
+		test.Require().NoError(err)
+		test.Require().NoError(experiments.SetExecutionID(context.Background(), eu.Id, euExec))
+		test.Require().NoError(experiments.UpdateStatus(context.Background(), eu.Id, pb.Experiment_COMPLETED, nil))
+		queued, err := experiments.Create(context.Background(), version.Id, "commodities")
+		test.Require().NoError(err)
+
+		got, err := test.client.GetExperiment(context.Background(), &servicePb.GetExperimentRequest{
+			ExperimentId: spy.Id,
+		})
+		test.Require().NoError(err)
+		test.Require().NotNil(got.GetExperiment().GetStats())
+		test.InDelta(1100, got.GetExperiment().GetStats().GetPortfolioValue(), 1e-9)
+		test.InDelta(-0.2, got.GetExperiment().GetStats().GetMaxDrawdown(), 1e-9)
+		test.InDelta(1.25, got.GetExperiment().GetStats().GetSharpe(), 1e-9)
+		test.InDelta(0.05, got.GetExperiment().GetStats().GetAlgorithmPeriodReturn(), 1e-9)
+		test.InDelta(0.03, got.GetExperiment().GetStats().GetBenchmarkPeriodReturn(), 1e-9)
+		test.Require().NotNil(got.LastPeriod)
+		test.Equal(int32(2020), got.LastPeriod.Date.Year)
+		test.Equal(int32(6), got.LastPeriod.Date.Month)
+		test.Equal(int32(1), got.LastPeriod.Date.Day)
+		test.InDelta(1100, got.LastPeriod.PortfolioValue, 1e-9)
+		test.InDelta(-0.2, got.LastPeriod.MaxDrawdown, 1e-9)
+		test.Require().NotNil(got.LastPeriod.Sharpe)
+		test.InDelta(1.25, *got.LastPeriod.Sharpe, 1e-9)
+		test.InDelta(0.05, got.LastPeriod.AlgorithmPeriodReturn, 1e-9)
+		test.Require().NotNil(got.LastPeriod.BenchmarkPeriodReturn)
+		test.InDelta(0.03, *got.LastPeriod.BenchmarkPeriodReturn, 1e-9)
+
+		listed, err := test.client.ListExperiments(context.Background(), &servicePb.ListExperimentsRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+		})
+		test.Require().NoError(err)
+		test.Len(listed.Experiments, 3)
+		byID := map[string]*pb.Experiment{}
+		for _, e := range listed.Experiments {
+			byID[e.Id] = e
+		}
+
+		test.Require().NotNil(byID[spy.Id].Stats)
+		test.InDelta(1100, byID[spy.Id].Stats.PortfolioValue, 1e-9)
+		test.InDelta(1.25, byID[spy.Id].Stats.GetSharpe(), 1e-9)
+		test.Require().NotNil(byID[eu.Id].Stats)
+		test.InDelta(900, byID[eu.Id].Stats.PortfolioValue, 1e-9)
+		test.Nil(byID[eu.Id].Stats.Sharpe)
+		test.InDelta(-0.15, byID[eu.Id].Stats.MaxDrawdown, 1e-9)
+		test.Nil(byID[queued.Id].Stats)
+
+		empty, err := test.client.GetExperiment(context.Background(), &servicePb.GetExperimentRequest{
+			ExperimentId: queued.Id,
+		})
+		test.Require().NoError(err)
+		test.Nil(empty.GetExperiment().GetStats())
+		test.Nil(empty.LastPeriod)
+		test.Nil(empty.GrafanaPath)
 	})
 }
 
