@@ -45,12 +45,37 @@ def _sample_version(name="mean-rev", rev=1) -> strategy_pb2.Version:
     )
 
 
+def _sample_stats(
+    portfolio_value=1100.0,
+    max_drawdown=-0.2,
+    sharpe: float | None = 1.25,
+    algorithm_period_return=0.05,
+    benchmark_period_return: float | None = 0.03,
+) -> strategy_pb2.ExperimentStats:
+    stats = strategy_pb2.ExperimentStats(
+        portfolio_value=portfolio_value,
+        max_drawdown=max_drawdown,
+        algorithm_period_return=algorithm_period_return,
+    )
+    if sharpe is not None:
+        stats.sharpe = sharpe
+    if benchmark_period_return is not None:
+        stats.benchmark_period_return = benchmark_period_return
+    return stats
+
+
 def _sample_experiment(
     experiment_id="exp-1",
     backtest_name="spy",
     execution_id="exec-1",
     status=strategy_pb2.Experiment.COMPLETED,
+    stats: strategy_pb2.ExperimentStats | None = None,
 ) -> strategy_pb2.Experiment:
+    kwargs = {}
+    if execution_id:
+        kwargs["execution_id"] = execution_id
+    if stats is not None:
+        kwargs["stats"] = stats
     return strategy_pb2.Experiment(
         id=experiment_id,
         strategy_id="strat-1",
@@ -58,9 +83,9 @@ def _sample_experiment(
         version_id="ver-1",
         version_rev=1,
         backtest_name=backtest_name,
-        execution_id=execution_id,
         status=status,
         created_at=_timestamp(),
+        **kwargs,
     )
 
 
@@ -243,17 +268,116 @@ def test_strategy_experiment_same_version_many_backtests(runner):
 def test_strategy_experiments(runner):
     with patch("foreverbull.broker.strategy.list_experiments") as mock_list:
         mock_list.return_value = [
-            _sample_experiment(experiment_id="exp-spy", backtest_name="spy", execution_id="exec-spy"),
-            _sample_experiment(experiment_id="exp-eu", backtest_name="eu-small", execution_id="exec-eu"),
+            _sample_experiment(
+                experiment_id="exp-spy",
+                backtest_name="spy",
+                execution_id="exec-spy",
+                stats=_sample_stats(portfolio_value=1100.0, max_drawdown=-0.2, sharpe=1.25),
+            ),
+            _sample_experiment(
+                experiment_id="exp-eu",
+                backtest_name="eu-small",
+                execution_id="exec-eu",
+                stats=_sample_stats(
+                    portfolio_value=980.0,
+                    max_drawdown=-0.15,
+                    sharpe=0.8,
+                    benchmark_period_return=None,
+                ),
+            ),
         ]
         result = runner(strategy, ["experiments", "mean-rev"])
 
     assert result.exit_code == 0
     mock_list.assert_called_once_with(strategy_name="mean-rev", version_id=None, backtest_name=None)
+    assert "Strategy" in result.stdout
+    assert "mean-rev" in result.stdout
+    assert "1 (ver-1)" in result.stdout
     assert "spy" in result.stdout
     assert "eu-small" in result.stdout
+    assert "exec-spy" in result.stdout
+    assert "exec-eu" in result.stdout
+    assert "1.25000" in result.stdout
+    assert "-0.20000" in result.stdout
+    assert "1100.00000" in result.stdout
+    assert "0.80000" in result.stdout
+    assert "-0.15000" in result.stdout
+    assert "980.00000" in result.stdout
+    assert "0.03000" in result.stdout
     assert f"Link: {execution_link('exec-spy')}" in result.stdout
     assert f"Link: {execution_link('exec-eu')}" in result.stdout
+
+
+def test_strategy_experiments_compare_one_version_two_backtests(runner):
+    with patch("foreverbull.broker.strategy.list_experiments") as mock_list:
+        mock_list.return_value = [
+            _sample_experiment(
+                experiment_id="exp-spy",
+                backtest_name="spy",
+                execution_id="exec-spy",
+                stats=_sample_stats(portfolio_value=1100.0, max_drawdown=-0.2, sharpe=1.25),
+            ),
+            _sample_experiment(
+                experiment_id="exp-eu",
+                backtest_name="eu-small",
+                execution_id="exec-eu",
+                stats=_sample_stats(
+                    portfolio_value=980.0,
+                    max_drawdown=-0.15,
+                    sharpe=0.8,
+                    benchmark_period_return=0.01,
+                ),
+            ),
+        ]
+        result = runner(strategy, ["experiments", "mean-rev", "--version", "ver-1"])
+
+    assert result.exit_code == 0
+    mock_list.assert_called_once_with(strategy_name="mean-rev", version_id="ver-1", backtest_name=None)
+    assert "spy" in result.stdout
+    assert "eu-small" in result.stdout
+    assert "1.25000" in result.stdout
+    assert "0.80000" in result.stdout
+    assert "1100.00000" in result.stdout
+    assert "980.00000" in result.stdout
+    assert f"Link: {execution_link('exec-spy')}" in result.stdout
+    assert f"Link: {execution_link('exec-eu')}" in result.stdout
+
+
+def test_strategy_experiments_filter_backtest(runner):
+    with patch("foreverbull.broker.strategy.list_experiments") as mock_list:
+        mock_list.return_value = [
+            _sample_experiment(
+                experiment_id="exp-spy",
+                backtest_name="spy",
+                execution_id="exec-spy",
+                stats=_sample_stats(),
+            ),
+        ]
+        result = runner(strategy, ["experiments", "mean-rev", "--backtest", "spy"])
+
+    assert result.exit_code == 0
+    mock_list.assert_called_once_with(strategy_name="mean-rev", version_id=None, backtest_name="spy")
+    assert "spy" in result.stdout
+    assert "eu-small" not in result.stdout
+
+
+def test_strategy_experiments_empty_stats_without_execution(runner):
+    with patch("foreverbull.broker.strategy.list_experiments") as mock_list:
+        mock_list.return_value = [
+            _sample_experiment(
+                experiment_id="exp-queued",
+                backtest_name="spy",
+                execution_id="",
+                status=strategy_pb2.Experiment.QUEUED,
+            ),
+        ]
+        result = runner(strategy, ["experiments", "mean-rev"])
+
+    assert result.exit_code == 0
+    mock_list.assert_called_once_with(strategy_name="mean-rev", version_id=None, backtest_name=None)
+    assert "QUEUED" in result.stdout
+    assert "1.25000" not in result.stdout
+    assert "Link:" not in result.stdout
 
 
 def test_strategy_deploy_dry_run(runner):

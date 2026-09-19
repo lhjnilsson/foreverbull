@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from rich.console import Console
 from rich.table import Table
 
 from foreverbull import broker
@@ -13,6 +14,7 @@ from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
 from foreverbull_cli.output import format_date_field
+from foreverbull_cli.output import format_optional_float
 
 
 strategy = typer.Typer()
@@ -107,24 +109,58 @@ def _print_experiment_links(experiments: list[strategy_pb2.Experiment]) -> None:
             console.print(f"Link: {execution_link(execution_id)}")
 
 
+def _format_version(experiment: strategy_pb2.Experiment) -> str:
+    return f"{experiment.version_rev} ({experiment.version_id})"
+
+
+def _format_stat(experiment: strategy_pb2.Experiment, field: str, *, optional: bool = False) -> str:
+    if not experiment.HasField("stats"):
+        return ""
+    if optional:
+        return format_optional_float(experiment.stats, field)
+    return f"{getattr(experiment.stats, field):.5f}"
+
+
+_EXPERIMENT_TABLE_WIDTH = 160
+
+
+def _print_compare_table(table: Table) -> None:
+    # Dumb/piped terminals report width 80 and would crop Sharpe/drawdown.
+    printer = Console(
+        file=console.file,
+        width=max(console.width, _EXPERIMENT_TABLE_WIDTH),
+        height=max(console.height, 25),
+        highlight=False,
+    )
+    printer.print(table)
+
+
 def _print_experiments(experiments: list[strategy_pb2.Experiment], title: str = "Experiments") -> None:
     table = Table(title=title)
     table.add_column("ID")
-    table.add_column("Rev")
+    table.add_column("Strategy")
+    table.add_column("Version")
     table.add_column("Backtest")
     table.add_column("Status")
     table.add_column("Execution")
-    table.add_column("Error")
+    table.add_column("Sharpe")
+    table.add_column("Max Drawdown")
+    table.add_column("End Value")
+    table.add_column("Benchmark")
     for experiment in experiments:
         table.add_row(
             experiment.id,
-            str(experiment.version_rev),
+            experiment.strategy_name,
+            _format_version(experiment),
             experiment.backtest_name,
             _enum_name(strategy_pb2.Experiment.Status, experiment.status),
             _optional_text(experiment, "execution_id"),
-            _optional_text(experiment, "error"),
+            _format_stat(experiment, "sharpe", optional=True),
+            _format_stat(experiment, "max_drawdown"),
+            _format_stat(experiment, "portfolio_value"),
+            _format_stat(experiment, "benchmark_period_return", optional=True),
         )
-    console.print(table)
+    _print_compare_table(table)
     _print_experiment_links(experiments)
 
 
