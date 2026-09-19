@@ -39,6 +39,12 @@ var Module = fx.Options( //nolint: gochecknoglobals
 					return nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 				}
 				return marketData, nil
+			case "stooq":
+				marketData, err := marketdata.NewStooqYahoo(marketdata.NewYahooClient)
+				if err != nil {
+					return nil, err
+				}
+				return marketData, nil
 			default:
 				return nil, fmt.Errorf("unknown market data provider: %s", environment.GetMarketDataProvider())
 			}

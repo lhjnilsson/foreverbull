@@ -45,8 +45,8 @@ flowchart LR
 | Yahoo `GetOHLC` | `yahoo.go`: `GET query2.finance.yahoo.com/v8/finance/chart/{SYMBOL}` with `period1`/`period2` unix, `interval=1d`, symbol uppercased | Keep as default. Stooq is an alternate **daily** bar source, same `[]*pb.OHLC` |
 | Yahoo metadata | `GetAsset` (quoteSummary), `SearchAsset`, `GetIndex` (components) | Keep. Composite uses this when provider is `stooq` |
 | Alpaca market data | `alpaca.go` — full interface; `SearchAsset`/`GetIndex` already return empty | Unchanged. Not the Stooq composite |
-| Provider switch | `pkg/finance/module.go` `switch environment.GetMarketDataProvider()`: `alpaca` / `yahoo` / unknown error | Add `stooq` → composite. Default env value stays `yahoo` |
-| `MARKET_DATA_PROVIDER` | `internal/environment/env.go` default `"yahoo"` | Keep default. New value `stooq`. Helm does **not** currently template this var — do not add it unless the chart already does |
+| Provider switch | `pkg/finance/module.go` `switch environment.GetMarketDataProvider()`: `alpaca` / `yahoo` / `stooq` / unknown error | `stooq` → composite. Default env value stays `yahoo` |
+| `MARKET_DATA_PROVIDER` | `internal/environment/env.go` default `"yahoo"` | Keep default. Value `stooq` is wired. Helm does **not** currently template this var — do not add it unless the chart already does |
 | Ingest | `pkg/finance/internal/api/marketdata.go` `downloadSymbol`: `GetAsset` then `GetOHLC(asset.Symbol, start, end)` into `ohlc` | No second ingest pipeline. Composite makes that `GetOHLC` hit Stooq while `GetAsset` stays Yahoo |
 | Live Yahoo tests | `yahoo_test.go` skips unless `FOREVERBULL_LIVE_HTTP` is set | Stooq default tests use `httptest`/fixtures. Do not add live Stooq to unit tests |
 | Strategy lifecycle | `pkg/strategy/implementation.md`, tables, gRPC, CLI | Do not rebuild. Extend List/Get experiments and Deploy/runner |
@@ -96,6 +96,18 @@ Rules:
 
 ### 4.3 Composite provider
 
+Wired: `pkg/finance/internal/suppliers/marketdata/composite.go` (`NewStooqYahoo`) and `case "stooq"` in `pkg/finance/module.go`.
+
+**`MARKET_DATA_PROVIDER`** (`internal/environment/env.go`, default `"yahoo"`):
+
+| Value | GetOHLC | GetAsset / SearchAsset / GetIndex |
+| --- | --- | --- |
+| unset / empty after `environment.Setup` | Yahoo | Yahoo |
+| `yahoo` | Yahoo | Yahoo |
+| `stooq` | Stooq daily CSV | Yahoo (constructor required; fail closed) |
+| `alpaca` | Alpaca | Alpaca |
+| anything else | process fails to start | |
+
 When `MARKET_DATA_PROVIDER=stooq`:
 
 ```text
@@ -109,7 +121,7 @@ Construct **both**. If the Yahoo constructor fails, **fail closed** with a clear
 
 `MARKET_DATA_PROVIDER=yahoo` (default, including unset/empty after `environment.Setup`) stays a Yahoo-only client. `alpaca` stays Alpaca-only. Unknown values still error.
 
-**Default provider stays yahoo.** Do not change `MarketDataProviderDefault`. Do not switch production or Helm to Stooq in this workflow.
+**Default provider stays yahoo.** Do not change `MarketDataProviderDefault`. Do not switch production or Helm to Stooq in this workflow. Helm does not template this variable.
 
 Ingest already calls `GetOHLC`; no second download path, no change to `ohlc` schema, no rewrite off `symbol`.
 
@@ -279,8 +291,8 @@ Missed closes stay `skipped_missed_close` (no Process, no PlaceOrder). Catch-up 
 | Path | Fate |
 | --- | --- |
 | `pkg/finance/internal/suppliers/marketdata/stooq.go` | New: CSV GetOHLC + ticker map. Tests/fixtures beside it |
-| Composite type next to Stooq | New: Stooq OHLC + Yahoo metadata |
-| `pkg/finance/module.go` | `case "stooq":` composite. `yahoo` / `alpaca` unchanged |
+| Composite type next to Stooq | `composite.go`: Stooq OHLC + Yahoo metadata; fail closed if Yahoo ctor fails |
+| `pkg/finance/module.go` | `case "stooq":` `NewStooqYahoo(NewYahooClient)`. `yahoo` / `alpaca` unchanged |
 | `internal/environment/env.go` | Default remains `yahoo`. No new default |
 | Helm `MARKET_DATA_PROVIDER` | Not templated today — leave unless already present |
 | `pkg/strategy/internal/api/experiment.go` + repository | JOIN period stats; fill `last_period` / list summary |
@@ -310,4 +322,4 @@ Agent policy: do not mock Postgres for repository tests; no live HTTP in default
 
 ## 11. Status
 
-Not implemented. Strategy-poc is in: registry, experiments on any number of backtests, paper **dry-run**. Yahoo is the default market-data provider and is kept. Stooq is not in the tree. ListExperiments has no period JOIN. Deploy still rejects `dry_run=false`. Live is out.
+Chapter 1 wiring is in: Stooq daily GetOHLC plus composite (`MARKET_DATA_PROVIDER=stooq` → Stooq bars, Yahoo metadata). Default `MARKET_DATA_PROVIDER` remains `yahoo`. Compare JOIN and paper `dry_run=false` are not implemented. Live is out.
