@@ -74,7 +74,7 @@ func WaitTillContainersAreRemoved(t *testing.T, networkID string, timeout time.D
 const (
 	PostgresImage = "postgres:alpine"
 	NatsImage     = "nats:alpine"
-	MinioImage    = "minio/minio:latest"
+	MinioImage    = "pgsty/silo:RELEASE.2026-09-16T00-00-00Z"
 )
 
 // PostgresContainer starts or reuses the named Postgres test container on

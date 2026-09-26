@@ -16,8 +16,11 @@ images:
     repository: nats
     tag: 2.10-alpine
   minio:
-    repository: minio/minio
-    tag: latest
+    # Anonymous pulls of the MinIO community image fail (Docker Hub removed
+    # minio/minio; quay.io/minio/minio returns 401). Silo keeps the S3 API,
+    # MINIO_ROOT_* env, `server` command, and /minio/health/live probe.
+    repository: pgsty/silo
+    tag: RELEASE.2026-09-16T00-00-00Z
   broker:
     repository: lhjnilsson/foreverbull
     tag: ""                 # empty → global.imageTag

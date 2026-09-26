@@ -37,7 +37,7 @@ def engine_stub(zipline):
 
 @pytest.fixture(scope="function")
 def storage():
-    with MinioContainer("minio/minio:latest") as storage:
+    with MinioContainer("pgsty/silo:RELEASE.2026-09-16T00-00-00Z") as storage:
         wait_container_is_ready(storage, 9000)
         client = storage.get_client()
         client.make_bucket("ingestion")
