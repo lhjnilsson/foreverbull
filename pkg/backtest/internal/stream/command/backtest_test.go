@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
 )
@@ -334,4 +336,73 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().NoError(err)
 	test.mdclient.AssertExpectations(test.T())
+}
+
+func civilToday() string {
+	year, month, day := time.Now().Date()
+	return fmt.Sprintf("%04d-%02d-%02d", year, int(month), day)
+}
+
+func etfCreateMessage(t *testing.T, name, etf, start, end string) *stream.MockMessage {
+	t.Helper()
+	message := new(stream.MockMessage)
+	message.On("ParsePayload", &bs.CreateBacktestFromETFCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromETFCommand)
+		payload.BacktestName = name
+		payload.ETFName = etf
+		payload.StartDate = start
+		payload.EndDate = end
+	})
+	return message
+}
+
+func TestCreateBacktestFromETFRejectsInvalidInput(t *testing.T) {
+	today := civilToday()
+	cases := []struct {
+		name  string
+		etf   string
+		start string
+		end   string
+		want  string
+	}{
+		{"", "iShares S&P 100", "2020-01-01", "2020-12-31", "Enter a name for the backtest."},
+		{"   ", "iShares S&P 100", "2020-01-01", "2020-12-31", "Enter a name for the backtest."},
+		{"demo", "not-a-fund", "2020-01-01", "2020-12-31", "Unknown ETF 'not-a-fund'. Known funds: iShares S&P 100."},
+		{"demo", "iShares S&P 100", "not-a-date", "2020-12-31", "'not-a-date' is not a date. Use YYYY-MM-DD, for example 2024-01-31."},
+		{"demo", "iShares S&P 100", "20200101", "2020-12-31", "'20200101' is not a date. Use YYYY-MM-DD, for example 2024-01-31."},
+		{"demo", "iShares S&P 100", "2020-02-31", "2020-03-31", "'2020-02-31' is not a date. Use YYYY-MM-DD, for example 2024-01-31."},
+		{"demo", "iShares S&P 100", "1999-01-01", "2020-12-31", "iShares S&P 100 started on 2000-10-23. Choose a start date on or after that day."},
+		{"demo", "iShares S&P 100", "2999-01-01", "2999-12-31", "2999-01-01 is after today (" + today + ")."},
+		{"demo", "iShares S&P 100", "2020-06-01", "2020-01-01", "End date 2020-01-01 is before start date 2020-06-01."},
+		{"demo", "iShares S&P 100", "2020-01-01", "not-a-date", "'not-a-date' is not a date. Use YYYY-MM-DD, for example 2024-01-31."},
+		{"demo", "iShares S&P 100", "2020-01-01", "2999-01-01", "End date 2999-01-01 is after today (" + today + ")."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			message := etfCreateMessage(t, tc.name, tc.etf, tc.start, tc.end)
+			err := command.CreateBacktestFromETF(context.Background(), message)
+			require.EqualError(t, err, tc.want)
+			require.NotContains(t, err.Error(), "json")
+			require.NotContains(t, err.Error(), "parsing time")
+			message.AssertNumberOfCalls(t, "MustGet", 0)
+		})
+	}
+}
+
+func TestCreateBacktestFromETFLongRangeIsNotInvalid(t *testing.T) {
+	message := etfCreateMessage(t, "sp100", "iShares S&P 100", "2020-01-01", "2025-12-31")
+	scraper := new(dependency.MockETFScraper)
+	message.On("MustGet", dependency.GetETFScraper).Return(scraper)
+	start := time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, time.December, 31, 0, 0, 0, 0, time.UTC)
+	scraper.On("ListSnapshotDates", "iShares S&P 100", start, end).Return(nil, errors.New("sentinel"))
+
+	err := command.CreateBacktestFromETF(context.Background(), message)
+	require.ErrorContains(t, err, "sentinel")
+	require.NotContains(t, err.Error(), "is not a date")
+	require.NotContains(t, err.Error(), "after today")
+	require.NotContains(t, err.Error(), "started on")
+	require.NotContains(t, err.Error(), "Unknown ETF")
+	message.AssertNotCalled(t, "MustGet", stream.DBDep)
+	scraper.AssertExpectations(t)
 }

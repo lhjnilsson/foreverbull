@@ -1,4 +1,5 @@
 import logging
+import re
 
 from datetime import date
 from enum import Enum
@@ -34,23 +35,48 @@ from foreverbull_cli.output import format_proto_date
 
 backtest = typer.Typer(help="Create and inspect backtests. `etfs` lists known iShares funds.")
 log = logging.getLogger().getChild(__name__)
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _ask_name() -> str:
+def _read_line(prompt: Prompt, default: str | None = None) -> str | None:
+    shown = default if default is not None else ...
+    try:
+        line = Prompt.get_input(console, prompt.make_prompt(shown), password=False)
+    except EOFError:
+        return None
+    return line.strip()
+
+
+def _ask_name() -> str | None:
+    prompt = Prompt("What name do you want to give the backtest?", console=console)
     while True:
-        name = Prompt.ask("What name do you want to give the backtest?").strip()
+        name = _read_line(prompt)
+        if name is None:
+            return None
         if name:
             return name
         console.print("Enter a name for the backtest.")
 
 
-def _ask_date(prompt: str) -> date:
+def _parse_iso_date(raw: str) -> date | None:
+    if _ISO_DATE.fullmatch(raw) is None:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _ask_date(prompt_text: str) -> date | None:
+    prompt = Prompt(prompt_text, console=console)
     while True:
-        raw = Prompt.ask(prompt).strip()
-        try:
-            return date.fromisoformat(raw)
-        except ValueError:
-            console.print(f"{raw!r} is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
+        raw = _read_line(prompt)
+        if raw is None:
+            return None
+        parsed = _parse_iso_date(raw)
+        if parsed is not None:
+            return parsed
+        console.print(f"{raw!r} is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
 
 
 def _ask_etf() -> str | None:
@@ -64,24 +90,29 @@ def _ask_etf() -> str | None:
         console=console,
         choices=names,
     )
-    raw = Prompt.get_input(console, prompt.make_prompt(default), password=False).strip()
-    if raw == "":
-        raw = default
-    if raw not in names:
-        console.print(f"Unknown ETF {raw!r}. Known funds: {known_etf_names()}.")
-        return None
-    return raw
+    while True:
+        raw = _read_line(prompt, default)
+        if raw is None:
+            return None
+        if raw == "":
+            raw = default
+        if raw not in names:
+            console.print(f"Unknown ETF {raw!r}. Known funds: {known_etf_names()}.")
+            continue
+        return raw
 
 
-def _ask_backtest_dates(etf: str) -> tuple[date, date]:
+def _ask_backtest_dates(etf: str) -> tuple[date, date] | None:
     fund = etf_by_name(etf)
     if fund is None:
         console.print(f"Unknown ETF {etf!r}. Known funds: {known_etf_names()}.")
-        raise typer.Exit(code=1)
+        return None
     inception = fund.inception
     today = date.today()
     while True:
         start = _ask_date("What is the start date of the backtest? (YYYY-MM-DD)")
+        if start is None:
+            return None
         if start < inception:
             console.print(f"{etf} started on {inception.isoformat()}. Choose a start date on or after that day.")
             continue
@@ -90,6 +121,8 @@ def _ask_backtest_dates(etf: str) -> tuple[date, date]:
             continue
         while True:
             end = _ask_date("What is the end date of the backtest? (YYYY-MM-DD)")
+            if end is None:
+                return None
             if end < start:
                 console.print(f"End date {end.isoformat()} is before start date {start.isoformat()}.")
                 continue
@@ -185,7 +218,7 @@ def create(
     """Create a backtest from a YAML file or a known iShares ETF.
 
     Without --file, ETF prompt choices come from `fbull backtest etfs`.
-    An unknown name stops before any download.
+    A bad name, fund, or date is re-asked before any download.
     """
     entity: (
         backtest_service_pb2.CreateBacktestRequest.CreateFromETF
@@ -218,10 +251,15 @@ def create(
         )
     else:
         name = _ask_name()
+        if name is None:
+            return
         base_etf = _ask_etf()
         if base_etf is None:
             return
-        start, end = _ask_backtest_dates(base_etf)
+        dates = _ask_backtest_dates(base_etf)
+        if dates is None:
+            return
+        start, end = dates
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
             name=name,
             base_etf=base_etf,

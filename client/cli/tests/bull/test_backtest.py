@@ -4,6 +4,7 @@ import traceback
 
 from concurrent import futures
 from datetime import date
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -144,15 +145,120 @@ def test_backtest_etfs(runner):
     assert "2000-10-23" in result.stdout
 
 
+def _created_backtest_response():
+    return iter(
+        [
+            backtest_service_pb2.CreateBacktestResponse(
+                CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest=_sample_backtest(),
+            )
+        ]
+    )
+
+
 def test_backtest_create_unknown_etf_does_not_call_broker(runner):
     with patch("foreverbull.broker.backtest.create") as mock_create:
         result = runner(backtest, ["create"], input="demo\nnot-a-fund\n")
 
     assert result.exit_code == 0
     mock_create.assert_not_called()
-    assert "Unknown ETF" in result.stdout
-    assert "iShares S&P 100" in result.stdout
-    assert "Known funds" in result.stdout
+    assert "Unknown ETF 'not-a-fund'. Known funds: iShares S&P 100." in result.stdout
+    assert "Creating" not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_backtest_create_reprompts_unknown_etf(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input="demo\nnot-a-fund\niShares S&P 100\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert "Unknown ETF 'not-a-fund'. Known funds: iShares S&P 100." in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.base_etf == "iShares S&P 100"
+    assert request.name == "demo"
+
+
+def test_backtest_create_reprompts_end_after_today(runner):
+    future = date.today() + timedelta(days=1)
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input=f"demo\niShares S&P 100\n2020-01-01\n{future.isoformat()}\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert f"End date {future.isoformat()} is after today ({date.today().isoformat()})." in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.end_date.year == 2020
+    assert request.end_date.month == 1
+    assert request.end_date.day == 31
+    assert mock_create.call_count == 1
+
+
+def test_backtest_create_reprompts_start_after_today(runner):
+    future = date.today() + timedelta(days=1)
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input=f"demo\niShares S&P 100\n{future.isoformat()}\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert f"{future.isoformat()} is after today ({date.today().isoformat()})." in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.start_date.year == 2020
+    assert request.start_date.day == 1
+
+
+def test_backtest_create_reprompts_non_iso_date(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input="demo\niShares S&P 100\n20200101\n2020-02-31\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert "'20200101' is not a date. Use YYYY-MM-DD, for example 2024-01-31." in result.stdout
+    assert "'2020-02-31' is not a date. Use YYYY-MM-DD, for example 2024-01-31." in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.start_date.year == 2020
+    assert request.start_date.month == 1
+    assert request.start_date.day == 1
+
+
+def test_backtest_create_accepts_long_range(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input="long\niShares S&P 100\n2020-01-01\n2025-12-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert "is not a date" not in result.stdout
+    assert "after today" not in result.stdout
+    assert "before start date" not in result.stdout
+    assert "started on" not in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.name == "long"
+    assert request.base_etf == "iShares S&P 100"
+    assert (request.start_date.year, request.start_date.month, request.start_date.day) == (2020, 1, 1)
+    assert (request.end_date.year, request.end_date.month, request.end_date.day) == (2025, 12, 31)
 
 
 def test_backtest_create_from_file(runner):

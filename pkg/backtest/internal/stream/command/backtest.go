@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,21 +55,16 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshalling CreateBacktest payload: %w", err)
 	}
+	command.BacktestName = strings.TrimSpace(command.BacktestName)
+	command.ETFName = strings.TrimSpace(command.ETFName)
+	command.StartDate = strings.TrimSpace(command.StartDate)
+	command.EndDate = strings.TrimSpace(command.EndDate)
 
-	start, err := time.Parse("2006-01-02", command.StartDate)
+	// Same sentences as the create prompt. Fail before any holdings download.
+	start, end, err := validateETFCreateInput(command.BacktestName, command.ETFName, command.StartDate, command.EndDate, time.Now())
 	if err != nil {
-		return fmt.Errorf("error parsing start date: %w", err)
+		return err
 	}
-	end, err := time.Parse("2006-01-02", command.EndDate)
-	if err != nil {
-		return fmt.Errorf("error parsing end date: %w", err)
-	}
-	if end.Before(start) {
-		return fmt.Errorf("end date %s is before start date %s", command.EndDate, command.StartDate)
-	}
-
-	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
-	backtests := repository.Backtest{Conn: db}
 
 	etfscraper, isETFScraper := msg.MustGet(dependency.GetETFScraper).(dependency.ETFScraper)
 	if !isETFScraper {
@@ -100,6 +97,8 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 	fillPeriodAssets(b.Periods, result.Aliases, hasData)
 
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	backtests := repository.Backtest{Conn: db}
 	_, err = backtests.Create(ctx, &b)
 	if err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
@@ -110,6 +109,124 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 
 	return nil
+}
+
+var isoDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+func validateETFCreateInput(name, etf, startRaw, endRaw string, now time.Time) (time.Time, time.Time, error) {
+	name = strings.TrimSpace(name)
+	etf = strings.TrimSpace(etf)
+	startRaw = strings.TrimSpace(startRaw)
+	endRaw = strings.TrimSpace(endRaw)
+	if name == "" {
+		return time.Time{}, time.Time{}, plainSentence("Enter a name for the backtest.")
+	}
+	product, ok := etfByName(etf)
+	if !ok {
+		return time.Time{}, time.Time{}, plainSentence("Unknown ETF " + pythonRepr(etf) + ". Known funds: " + knownETFNames() + ".")
+	}
+	start, ok := parseISODate(startRaw)
+	if !ok {
+		return time.Time{}, time.Time{}, plainSentence(pythonRepr(startRaw) + " is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
+	}
+	if start.Before(product.Inception) {
+		return time.Time{}, time.Time{}, plainSentence(etf + " started on " + product.Inception.Format("2006-01-02") + ". Choose a start date on or after that day.")
+	}
+	today := dateOnly(now)
+	if start.After(today) {
+		return time.Time{}, time.Time{}, plainSentence(start.Format("2006-01-02") + " is after today (" + today.Format("2006-01-02") + ").")
+	}
+	end, ok := parseISODate(endRaw)
+	if !ok {
+		return time.Time{}, time.Time{}, plainSentence(pythonRepr(endRaw) + " is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
+	}
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, plainSentence("End date " + end.Format("2006-01-02") + " is before start date " + start.Format("2006-01-02") + ".")
+	}
+	if end.After(today) {
+		return time.Time{}, time.Time{}, plainSentence("End date " + end.Format("2006-01-02") + " is after today (" + today.Format("2006-01-02") + ").")
+	}
+	return start, end, nil
+}
+
+// plainSentence is the prompt text. It is not wrapped, so callers see that sentence only.
+func plainSentence(text string) error {
+	return errors.New(text)
+}
+
+func etfByName(name string) (dependency.ETFProduct, bool) {
+	for _, product := range dependency.ETFCatalog() {
+		if product.Name == name {
+			return product, true
+		}
+	}
+	return dependency.ETFProduct{}, false
+}
+
+func knownETFNames() string {
+	products := dependency.ETFCatalog()
+	names := make([]string, len(products))
+	for i, product := range products {
+		names[i] = product.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+func parseISODate(raw string) (time.Time, bool) {
+	if !isoDatePattern.MatchString(raw) {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	parsed = dateOnly(parsed)
+	if parsed.Format("2006-01-02") != raw {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+// pythonRepr matches Python str repr so the server sentence is the prompt sentence.
+func pythonRepr(s string) string {
+	quote := "'"
+	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
+		quote = `"`
+	}
+	var b strings.Builder
+	b.WriteString(quote)
+	for _, r := range s {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '\'':
+			if quote == "'" {
+				b.WriteString(`\'`)
+			} else {
+				b.WriteRune(r)
+			}
+		case '"':
+			if quote == `"` {
+				b.WriteString(`\"`)
+			} else {
+				b.WriteRune(r)
+			}
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&b, `\x%02x`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteString(quote)
+	return b.String()
 }
 
 func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time.Time) ([]universe.Snapshot, error) {
