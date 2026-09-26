@@ -299,8 +299,11 @@ class TestClusterManager:
         runner = FakeRunner()
         runner.on(["kind", "get", "clusters"], _completed(stdout=""))
         uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
-        uut.create(start=True)
+        uut.create()
         assert runner.calls_starting_with("kind", "create", "cluster")
+        create_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["kind", "create", "cluster"])
+        load_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["kind", "load", "docker-image"])
+        assert create_at < load_at
         kind_create = runner.calls_starting_with("kind", "create", "cluster")[0]
         assert "--name" in kind_create
         assert kind_create[kind_create.index("--name") + 1] == "foreverbull"
@@ -315,7 +318,7 @@ class TestClusterManager:
         assert helm[0][helm[0].index("--kube-context") + 1] == "kind-foreverbull"
         assert "--namespace" in helm[0]
         assert helm[0][helm[0].index("--namespace") + 1] == "foreverbull"
-        assert "replicaCount=0" not in helm[0]
+        assert "replicaCount=0" in helm[0]
 
     def test_create_skips_kind_create_when_cluster_exists(self, tmp_path: Path):
         runner = FakeRunner()
@@ -324,14 +327,6 @@ class TestClusterManager:
         uut.create()
         assert runner.calls_starting_with("kind", "create", "cluster") == []
         assert runner.calls_starting_with("helm", "upgrade", "--install")
-
-    def test_create_no_start_sets_replica_count_zero(self, tmp_path: Path):
-        runner = FakeRunner()
-        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
-        uut = _manager(tmp_path, runner)
-        uut.create(start=False)
-        helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
-        assert "replicaCount=0" in helm
 
     def test_create_uses_cli_overrides_for_remote(self, tmp_path: Path):
         runner = FakeRunner()
@@ -389,13 +384,14 @@ class TestClusterManager:
         runner = FakeRunner()
         uut = _manager(tmp_path, runner)
         uut.start()
-        scale = runner.calls_starting_with("kubectl")[0]
-        assert scale[:2] == ["kubectl", "--context"]
-        assert scale[2] == "kind-foreverbull"
-        assert "scale" in scale
-        assert "--replicas=1" in scale
-        assert "postgres" in scale
-        wait = runner.calls_starting_with("kubectl")[1]
+        helm = runner.calls_starting_with("helm", "upgrade")[0]
+        assert "--install" not in helm
+        assert "--reuse-values" in helm
+        assert "replicaCount=1" in helm
+        assert helm[helm.index("--kube-context") + 1] == "kind-foreverbull"
+        wait = runner.calls_starting_with("kubectl")[0]
+        assert wait[:2] == ["kubectl", "--context"]
+        assert wait[2] == "kind-foreverbull"
         assert "wait" in wait
         assert "--for=condition=available" in wait
         assert "deployment/foreverbull" in wait
@@ -415,13 +411,14 @@ class TestClusterManager:
         runner = FakeRunner()
         uut = _manager(tmp_path, runner)
         uut.stop()
-        scale = runner.calls_starting_with("kubectl")[0]
-        assert "scale" in scale
-        assert "--replicas=0" in scale
+        helm = runner.calls_starting_with("helm", "upgrade")[0]
+        assert "--reuse-values" in helm
+        assert "replicaCount=0" in helm
+        assert runner.calls_starting_with("kubectl") == []
 
-    def test_stop_missing_deployments_is_ok(self, tmp_path: Path):
+    def test_stop_missing_release_is_ok(self, tmp_path: Path):
         runner = FakeRunner()
-        runner.on(["kubectl"], _completed(returncode=1, stderr='deployments.apps "postgres" not found'))
+        runner.on(["helm", "upgrade"], _completed(returncode=1, stderr="Error: release: not found"))
         uut = _manager(tmp_path, runner)
         uut.stop()
 
@@ -462,6 +459,7 @@ class TestClusterManager:
         helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
         assert "--reuse-values" in helm
         assert "global.imageTag=local" in helm
+        assert "replicaCount=" not in " ".join(helm)
 
     def test_status_from_kubectl_json(self, tmp_path: Path):
         items = [
@@ -532,11 +530,18 @@ class TestClusterManager:
         assert uut.postgres.container_id() == "abcdef123456"
         assert uut.postgres.name == "postgres"
 
-    def test_verify_images_requires_tools(self, tmp_path: Path):
+    def test_verify_images_checks_docker_without_kind_load(self, tmp_path: Path):
         runner = FakeRunner()
         uut = _manager(tmp_path, runner)
         uut.verify_images()
-        assert runner.calls_starting_with("kind", "load", "docker-image")
+        assert runner.calls_starting_with("docker", "image", "inspect")
+        assert runner.calls_starting_with("kind", "load", "docker-image") == []
+
+    def test_verify_images_requires_tools(self, tmp_path: Path):
+        runner = FakeRunner(tools=set())
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(MissingToolError, match="kind is not installed"):
+            uut.verify_images()
 
     def test_missing_kind_config(self, tmp_path: Path):
         runner = FakeRunner()
@@ -563,7 +568,10 @@ class TestClusterManager:
         rows = local.status_rows()
         assert local_runner.calls_starting_with("kind", "load")
         assert local_runner.calls_starting_with("helm", "upgrade", "--install")
-        assert any("scale" in call and "--replicas=0" in call for call in local_runner.calls_starting_with("kubectl"))
+        assert any(
+            "--reuse-values" in call and "replicaCount=0" in call
+            for call in local_runner.calls_starting_with("helm", "upgrade")
+        )
         assert len(rows) == 6
         assert all(row.status == WorkloadStatus.NOT_FOUND for row in rows)
 

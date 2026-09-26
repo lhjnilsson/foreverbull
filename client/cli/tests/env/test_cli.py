@@ -74,15 +74,16 @@ def test_create(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "create")
     assert result.exit_code == 0
     mocked_container_manager.verify_images.assert_called_once()
-    mocked_container_manager.create.assert_called_once_with(start=True)
-    mocked_container_manager.start.assert_called_once()
-
-
-def test_create_no_start(runner, mocked_container_manager: MagicMock):
-    result = runner(cli.cli, "create --no-start")
-    assert result.exit_code == 0
-    mocked_container_manager.create.assert_called_once_with(start=False)
+    mocked_container_manager.create.assert_called_once_with()
     mocked_container_manager.start.assert_not_called()
+    assert "fbenv start" in result.stdout
+
+
+def test_create_start(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "create --start")
+    assert result.exit_code == 0
+    mocked_container_manager.create.assert_called_once_with()
+    mocked_container_manager.start.assert_called_once()
 
 
 def test_start(runner, mocked_container_manager: MagicMock):
@@ -120,7 +121,8 @@ def test_update(runner, mocked_container_manager: MagicMock):
 def test_create_cluster_flag(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, ["create", "--cluster", "remote", "--context", "prod"])
     assert result.exit_code == 0
-    mocked_container_manager.create.assert_called_once_with(start=True)
+    mocked_container_manager.create.assert_called_once_with()
+    mocked_container_manager.start.assert_not_called()
     mocked_container_manager.config.apply_cli_overrides.assert_called()
     kwargs = mocked_container_manager.config.apply_cli_overrides.call_args.kwargs
     assert kwargs["cluster"] == "remote"

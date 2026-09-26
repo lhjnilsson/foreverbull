@@ -57,6 +57,9 @@ def test_start_stop(runner, simple_algorithm):
     result = runner(env_cli.cli, "create", env={"VERSION": "local"})
     assert result.exit_code == 0
 
+    result = runner(env_cli.cli, "start", env={"VERSION": "local"})
+    assert result.exit_code == 0
+
     result = runner(backtest_cli, f"create --file {backtest_file}")
     assert result.exit_code == 0
 

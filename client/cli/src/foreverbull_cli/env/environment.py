@@ -430,25 +430,26 @@ class ClusterManager:
         return ("helm", "kubectl")
 
     def verify_images(self) -> None:
+        """Confirm app images exist locally. Kind load waits until the cluster exists."""
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
-            self.load_images()
+            self._local_images()
 
-    def create(self, start: bool = True) -> None:
+    def create(self) -> None:
+        """Install the cluster and chart with workloads stopped."""
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self.ensure_kind_cluster()
             self.load_images()
-        self.helm_upgrade(start=start)
+        self.helm_upgrade(replicas=0)
 
     def start(self) -> None:
-        self.require_tools("kubectl")
-        self._scale(1)
+        self.require_tools("helm", "kubectl")
+        self._set_replicas(1)
         self._wait_until_ready()
 
     def stop(self) -> None:
-        self.require_tools("kubectl")
-        self._scale(0, missing_ok=True)
+        self._set_replicas(0, missing_ok=True)
 
     def remove(self, purge: bool = False) -> None:
         self.require_tools("helm")
@@ -464,7 +465,7 @@ class ClusterManager:
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self.load_images()
-        self.helm_upgrade(start=True, reuse_values=True)
+        self.helm_upgrade(reuse_values=True)
         self._status_cache = None
 
     def status_rows(self) -> list[WorkloadRow]:
@@ -495,10 +496,8 @@ class ClusterManager:
             ]
         )
 
-    def load_images(self) -> None:
-        if not self.config.is_local:
-            return
-        self.require_tools("kind")
+    def _local_images(self) -> list[str]:
+        """Return images present in the local Docker daemon. Pull non-local tags that are missing."""
         images = list(self.config.app_images)
         present: list[str] = []
         missing: list[str] = []
@@ -529,10 +528,17 @@ class ClusterManager:
                 self.runner.run(["docker", "pull", image])
                 present.append(image)
 
+        return present
+
+    def load_images(self) -> None:
+        if not self.config.is_local:
+            return
+        self.require_tools("kind")
+        present = self._local_images()
         if present:
             self.runner.run(["kind", "load", "docker-image", *present, "--name", self.config.kind_name])
 
-    def helm_upgrade(self, *, start: bool = True, reuse_values: bool = False) -> None:
+    def helm_upgrade(self, *, replicas: int | None = None, reuse_values: bool = False) -> None:
         self.require_tools("helm")
         chart = self.chart_path
         if not chart.is_dir():
@@ -552,11 +558,35 @@ class ClusterManager:
         ]
         if self.config.is_local:
             cmd.extend(["--set", "broker.logLevel=debug"])
-        if not start:
-            cmd.extend(["--set", "replicaCount=0"])
+        if replicas is not None:
+            cmd.extend(["--set", f"replicaCount={replicas}"])
         if reuse_values:
             cmd.append("--reuse-values")
         self.runner.run(cmd)
+        self._status_cache = None
+
+    def _set_replicas(self, replicas: int, *, missing_ok: bool = False) -> None:
+        """Record the replica count on the Helm release so later upgrades keep it."""
+        self.require_tools("helm")
+        chart = self.chart_path
+        if not chart.is_dir():
+            raise FileNotFoundError(f"Helm chart not found: {chart}")
+        cmd = [
+            "helm",
+            "upgrade",
+            self.config.release_name,
+            str(chart),
+            *self._kube_flags(helm=True),
+            "--reuse-values",
+            "--set",
+            f"replicaCount={replicas}",
+        ]
+        result = self.runner.run(cmd, check=not missing_ok)
+        if missing_ok and result.returncode != 0:
+            combined = f"{result.stdout} {result.stderr}".lower()
+            if "not found" in combined:
+                return
+            raise CommandError(cmd, result)
         self._status_cache = None
 
     def _kind_cluster_exists(self) -> bool:
@@ -581,23 +611,6 @@ class ClusterManager:
             return
         raise CommandError(cmd, result)
 
-    def _scale(self, replicas: int, *, missing_ok: bool = False) -> None:
-        cmd = [
-            "kubectl",
-            *self._kube_flags(),
-            "scale",
-            "deployment",
-            *DEPLOYMENTS,
-            f"--replicas={replicas}",
-        ]
-        result = self.runner.run(cmd, check=not missing_ok)
-        if missing_ok and result.returncode != 0:
-            combined = f"{result.stdout} {result.stderr}".lower()
-            if "not found" in combined:
-                return
-            raise CommandError(cmd, result)
-        self._status_cache = None
-
     def _wait_until_ready(self) -> None:
         cmd = [
             "kubectl",
@@ -610,7 +623,24 @@ class ClusterManager:
         try:
             self.runner.run(cmd)
         except CommandError as exc:
-            raise TimeoutError(f"Timed out waiting for healthy: {', '.join(DEPLOYMENTS)}") from exc
+            detail = (exc.completed.stderr or exc.completed.stdout or "").strip()
+            status = self._deployment_status()
+            message = f"Timed out waiting for healthy: {', '.join(DEPLOYMENTS)}"
+            if detail:
+                message = f"{message}\n{detail}"
+            if status:
+                message = f"{message}\n{status}"
+            raise TimeoutError(message) from exc
+
+    def _deployment_status(self) -> str:
+        try:
+            result = self.runner.run(
+                ["kubectl", *self._kube_flags(), "get", "deploy,pods", "-o", "wide"],
+                check=False,
+            )
+        except CommandError:
+            return ""
+        return (result.stdout or result.stderr or "").strip()
 
     def _query_status(self) -> dict[str, WorkloadRow]:
         not_found = {

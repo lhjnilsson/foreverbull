@@ -114,10 +114,10 @@ def status(
     print_status(cm)
 
 
-@cli.command(help="create new environment")
+@cli.command(help="Install the Kind cluster and Helm release. Workloads stay stopped.")
 def create(
     ctx: typer.Context,
-    start: bool = True,
+    start: Annotated[bool, typer.Option("--start", help="Start workloads after install")] = False,
     cluster: ClusterFlag = None,
     kubeconfig: KubeconfigFlag = None,
     context: ContextFlag = None,
@@ -146,7 +146,7 @@ def create(
         progress.update(verify_images, completed=2)
 
         progress.update(create_task, completed=1)
-        cm.create(start=start)
+        cm.create()
 
         progress.update(create_task, completed=2)
         if start_task:
@@ -155,9 +155,11 @@ def create(
             progress.update(start_task, completed=2)
 
     print_status(cm)
+    if not start:
+        console.print("Workloads are stopped. Start them with `fbenv start`.")
 
 
-@cli.command(help="start environment")
+@cli.command(help="Scale workloads to 1 and wait until they are ready.")
 def start(
     ctx: typer.Context,
     cluster: ClusterFlag = None,
@@ -175,16 +177,20 @@ def start(
         broker_address=broker_address,
     )
 
-    with FBProgress() as progress:
-        start_task = progress.add_task("Starting environment", total=2)
-        progress.update(start_task, completed=1)
-        cm.start()
-        progress.update(start_task, completed=2)
+    try:
+        with FBProgress() as progress:
+            start_task = progress.add_task("Starting environment", total=2)
+            progress.update(start_task, completed=1)
+            cm.start()
+            progress.update(start_task, completed=2)
+    except TimeoutError as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from exc
 
     print_status(cm)
 
 
-@cli.command(help="stop environment")
+@cli.command(help="Scale workloads to 0.")
 def stop(
     ctx: typer.Context,
     remove: bool = typer.Option(False, "--remove", help="Uninstall the Helm release"),
