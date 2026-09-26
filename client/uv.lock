@@ -451,6 +451,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "cookiecutter" },
+    { name = "foreverbull-cli" },
     { name = "grpcio-testing" },
     { name = "grpcio-tools" },
     { name = "pytest" },
@@ -481,6 +482,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "cookiecutter", specifier = ">=2.6.0" },
+    { name = "foreverbull-cli", editable = "cli" },
     { name = "grpcio-testing", specifier = ">=1.71.2" },
     { name = "grpcio-tools", specifier = ">=1.71.2" },
     { name = "pytest", specifier = ">=8.4.1" },
@@ -493,12 +495,14 @@ name = "foreverbull-cli"
 version = "0.0.0"
 source = { editable = "cli" }
 dependencies = [
+    { name = "foreverbull" },
     { name = "pyyaml" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "foreverbull", editable = "." },
     { name = "pyyaml" },
     { name = "typer", extras = ["all"] },
 ]

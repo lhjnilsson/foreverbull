@@ -38,11 +38,13 @@ members = [
 ]
 
 [tool.uv.sources]
+foreverbull-cli = { workspace = true }
 foreverbull-zipline = { workspace = true }
 
 [dependency-groups]
 dev = [
     "cookiecutter>=2.6.0",
+    "foreverbull-cli",
     "grpcio-testing>=1.71.2",
     "grpcio-tools>=1.71.2",
     "pytest>=8.4.1",
