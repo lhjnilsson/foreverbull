@@ -40,8 +40,8 @@ If this repo is checked out locally, `uv sync` in `client/` puts `fbull` and `fb
 The platform is Kubernetes, not Docker Compose. From a Foreverbull clone:
 
 ```bash
-# repository root — builds :local images and installs the Helm chart into Kind
-task env
+# repository root — builds :local images and syncs the client. Does not start the cluster.
+task build
 ```
 
 If those images already exist:
@@ -49,6 +49,7 @@ If those images already exist:
 ```bash
 cd client
 VERSION=local uv run fbenv create
+uv run fbenv start
 uv run fbenv status
 ```
 
@@ -61,7 +62,7 @@ fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py --yes
 
 `backtest.yaml` is a small sample universe. Change dates and symbols as needed.
 
-Remote cluster: `fbenv use remote …` then `fbenv create`. Set `FOREVERBULL_BROKER_ADDRESS` or `remote.broker_address`. See the clone's [deploy/README.md](https://github.com/lhjnilsson/foreverbull/blob/main/deploy/README.md).
+Remote cluster: `fbenv use remote …`, then `fbenv create` and `fbenv start`. Set `FOREVERBULL_BROKER_ADDRESS` or `remote.broker_address`. See the clone's [deploy/README.md](https://github.com/lhjnilsson/foreverbull/blob/main/deploy/README.md).
 
 Do not enable live trading from this template.
 

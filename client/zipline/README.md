@@ -26,7 +26,7 @@ uv build
 docker build -t lhjnilsson/zipline:local -f zipline/Dockerfile .
 ```
 
-From the repo root: `task client:docker:zipline` (builds the wheel, then the image). `task env` / `fbenv create` load that tag into Kind.
+From the repo root: `task client:docker:zipline` (builds the wheel, then the image). `task build` builds that image with the others. `fbenv create` loads the tag into Kind. `fbenv start` runs the workloads.
 
 ## Tests
 

@@ -23,7 +23,7 @@ In-cluster DNS names match the Service object names.
 | --- | --- | --- | --- |
 | Postgres | `postgres` | `postgres:13.3-alpine` | `5432` |
 | NATS JetStream | `nats` | `nats:2.10-alpine` | `4222` |
-| Minio | `minio` | `minio/minio:latest` | `9000` |
+| Minio | `minio` | `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` | `9000` |
 | Zipline | `zipline` | `lhjnilsson/zipline:{tag}` | none (in-cluster gRPC `:50055`) |
 | Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `27000`–`27015` |
 | Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
@@ -126,7 +126,8 @@ comes from the Helm release (`--namespace`, default `foreverbull`).
 CLI (from `client/` after `uv sync`):
 
 ```bash
-VERSION=local uv run fbenv create
+VERSION=local uv run fbenv create   # workloads stay stopped
+uv run fbenv start
 ```
 
 Equivalent by hand:
@@ -181,6 +182,7 @@ uv run fbenv use remote \
   --namespace my-namespace \
   --broker-address host:50055
 uv run fbenv create
+uv run fbenv start
 ```
 
 Or install the chart against a real cluster:
@@ -226,8 +228,8 @@ images:
     repository: nats
     tag: 2.10-alpine
   minio:
-    repository: minio/minio
-    tag: latest
+    repository: pgsty/silo
+    tag: RELEASE.2026-09-16T00-00-00Z
   broker:
     repository: lhjnilsson/foreverbull
     tag: ""                 # empty → global.imageTag

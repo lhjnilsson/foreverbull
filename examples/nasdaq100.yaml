@@ -1,0 +1,211 @@
+# Fixed Nasdaq-100 constituent list for `fbull backtest create`.
+# Benchmark QQQ has daily bars on both Yahoo and Stooq.
+# Widen end_date to download a longer history.
+name: nasdaq100
+benchmark: QQQ
+periods:
+  - start_date: "2023-01-01"
+    end_date: "2023-03-31"
+    assets:
+      - symbol: AAPL
+        enabled: true
+      - symbol: NVDA
+        enabled: true
+      - symbol: MSFT
+        enabled: true
+      - symbol: AVGO
+        enabled: true
+      - symbol: META
+        enabled: true
+      - symbol: AMZN
+        enabled: true
+      - symbol: TSLA
+        enabled: true
+      - symbol: COST
+        enabled: true
+      - symbol: GOOGL
+        enabled: true
+      - symbol: GOOG
+        enabled: true
+      - symbol: NFLX
+        enabled: true
+      - symbol: AMD
+        enabled: true
+      - symbol: TMUS
+        enabled: true
+      - symbol: PEP
+        enabled: true
+      - symbol: LIN
+        enabled: true
+      - symbol: CSCO
+        enabled: true
+      - symbol: ADBE
+        enabled: true
+      - symbol: QCOM
+        enabled: true
+      - symbol: TXN
+        enabled: true
+      - symbol: ISRG
+        enabled: true
+      - symbol: INTU
+        enabled: true
+      - symbol: AMGN
+        enabled: true
+      - symbol: CMCSA
+        enabled: true
+      - symbol: AMAT
+        enabled: true
+      - symbol: BKNG
+        enabled: true
+      - symbol: HON
+        enabled: true
+      - symbol: VRTX
+        enabled: true
+      - symbol: MU
+        enabled: true
+      - symbol: PANW
+        enabled: true
+      - symbol: ADP
+        enabled: true
+      - symbol: ADI
+        enabled: true
+      - symbol: SBUX
+        enabled: true
+      - symbol: GILD
+        enabled: true
+      - symbol: MELI
+        enabled: true
+      - symbol: LRCX
+        enabled: true
+      - symbol: REGN
+        enabled: true
+      - symbol: INTC
+        enabled: true
+      - symbol: KLAC
+        enabled: true
+      - symbol: MDLZ
+        enabled: true
+      - symbol: CTAS
+        enabled: true
+      - symbol: PDD
+        enabled: true
+      - symbol: CEG
+        enabled: true
+      - symbol: PYPL
+        enabled: true
+      - symbol: SNPS
+        enabled: true
+      - symbol: CDNS
+        enabled: true
+      - symbol: MAR
+        enabled: true
+      - symbol: MRVL
+        enabled: true
+      - symbol: CRWD
+        enabled: true
+      - symbol: ORLY
+        enabled: true
+      - symbol: ASML
+        enabled: true
+      - symbol: NXPI
+        enabled: true
+      - symbol: CSX
+        enabled: true
+      - symbol: ADSK
+        enabled: true
+      - symbol: FTNT
+        enabled: true
+      - symbol: ABNB
+        enabled: true
+      - symbol: DASH
+        enabled: true
+      - symbol: ROP
+        enabled: true
+      - symbol: PCAR
+        enabled: true
+      - symbol: TTD
+        enabled: true
+      - symbol: AEP
+        enabled: true
+      - symbol: FANG
+        enabled: true
+      - symbol: MNST
+        enabled: true
+      - symbol: PAYX
+        enabled: true
+      - symbol: WDAY
+        enabled: true
+      - symbol: CPRT
+        enabled: true
+      - symbol: CHTR
+        enabled: true
+      - symbol: ROST
+        enabled: true
+      - symbol: KDP
+        enabled: true
+      - symbol: FAST
+        enabled: true
+      - symbol: AZN
+        enabled: true
+      - symbol: ODFL
+        enabled: true
+      - symbol: MCHP
+        enabled: true
+      - symbol: KHC
+        enabled: true
+      - symbol: DDOG
+        enabled: true
+      - symbol: EXC
+        enabled: true
+      - symbol: GEHC
+        enabled: true
+      - symbol: EA
+        enabled: true
+      - symbol: VRSK
+        enabled: true
+      - symbol: CTSH
+        enabled: true
+      - symbol: IDXX
+        enabled: true
+      - symbol: BKR
+        enabled: true
+      - symbol: LULU
+        enabled: true
+      - symbol: XEL
+        enabled: true
+      - symbol: CCEP
+        enabled: true
+      - symbol: ON
+        enabled: true
+      - symbol: TEAM
+        enabled: true
+      - symbol: CSGP
+        enabled: true
+      - symbol: CDW
+        enabled: true
+      - symbol: DXCM
+        enabled: true
+      - symbol: SMCI
+        enabled: true
+      - symbol: ANSS
+        enabled: true
+      - symbol: ZS
+        enabled: true
+      - symbol: TTWO
+        enabled: true
+      - symbol: BIIB
+        enabled: true
+      - symbol: ILMN
+        enabled: true
+      - symbol: GFS
+        enabled: true
+      - symbol: MRNA
+        enabled: true
+      - symbol: MDB
+        enabled: true
+      - symbol: ARM
+        enabled: true
+      - symbol: WBD
+        enabled: true
+      - symbol: DLTR
+        enabled: true

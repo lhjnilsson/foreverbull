@@ -11,10 +11,10 @@ The image Helm installs is `lhjnilsson/fb-grafana`. In-cluster it sets `BROKER_U
 ## Prerequisites
 
 - Node.js 22+ (see `engines` in `package.json`) and npm
-- Go 1.23+ (plugin `go.mod` is 1.24; the image builder is `golang:1.23-alpine`)
+- Go 1.24+ (plugin `go.mod` toolchain is go1.24.5; the image builder is `golang:1.24-alpine`)
 - [Mage](https://magefile.org/): `go install github.com/magefile/mage@latest`
 
-For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbull stack (`task env` / `fbenv`). That is **not** this `docker-compose.yaml`.
+For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbull stack (`task build`, then `fbenv create` and `fbenv start`). That is **not** this `docker-compose.yaml`.
 
 ## Layout
 
@@ -58,7 +58,7 @@ Platform image (from the **repository root**):
 task grafana:build:docker    # lhjnilsson/fb-grafana:local
 ```
 
-Equivalent from `grafana/`: `task build:docker`. Then load it with `fbenv` / `task env` / `uv run fbenv update`. Signing is not required for local Kind.
+Equivalent from `grafana/`: `task build:docker`. Then load it with `uv run fbenv update` (or `task build`, then `uv run fbenv create` and `uv run fbenv start`). Signing is not required for local Kind.
 
 Do not commit `node_modules`. Commit updated `dist/` only when the image build needs a frontend/backend you actually built and the Dockerfile copies it (the image build runs `npm run build` and `mage` itself).
 

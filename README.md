@@ -18,31 +18,27 @@ This is not a Docker Compose / Docker-network stack. Tests still use Testcontain
 
 ## Quickstart
 
-From a clone of this repository:
+From a clone of this repository, build the `:local` images and sync the Python workspace (this installs the Kind/Helm `fbenv` in that workspace):
 
 ```bash
-cd client
-uv sync
+# repository root
+task build
 ```
 
-Build `:local` images and install the chart into a Kind cluster named `foreverbull` (namespace `foreverbull`):
+`task build` builds `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` at tag `local`, then runs `uv sync` in `client/`. It does not start the cluster.
 
-```bash
-# from the repository root
-task env
-```
-
-`task env` builds `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` at tag `local`, then from `client/` runs `fbenv stop --remove` and `VERSION=local uv run fbenv create`.
-
-If those images already exist on the Docker host:
+Install the chart into a Kind cluster named `foreverbull` (namespace `foreverbull`):
 
 ```bash
 cd client
 VERSION=local uv run fbenv create
+uv run fbenv start
 uv run fbenv status
 ```
 
-`fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
+`fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
+
+`fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` at `replicaCount=0`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
 
 Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055`. Override with `FOREVERBULL_BROKER_ADDRESS`.
 
@@ -55,6 +51,7 @@ uv run fbenv use remote \
   --namespace my-namespace \
   --broker-address host:50055
 uv run fbenv create
+uv run fbenv start
 ```
 
 You can also `helm upgrade --install` against a kubeconfig directly. See [deploy/README.md](deploy/README.md).
@@ -67,6 +64,69 @@ uv run fbenv start                 # scale deployments to 1
 uv run fbenv stop                  # scale to 0
 uv run fbenv stop --remove         # helm uninstall
 uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind cluster
+```
+
+### Ingest data and create a backtest
+
+`fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle.
+
+The broker reads `MARKET_DATA_PROVIDER` when it starts. Set that variable before create. Bars already stored for a symbol and day are kept, so pick one price source for a database. Both recipes below use the same Nasdaq-100 file, [examples/nasdaq100.yaml](examples/nasdaq100.yaml): name `nasdaq100`, benchmark `QQQ`, and a fixed list of 101 constituents (both `GOOG` and `GOOGL`). The sample window is 2023-01-01 through 2023-03-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host. Downloading the full list takes a few minutes.
+
+Commands below are from `client/` after `uv sync`, with the platform already running.
+
+#### Yahoo
+
+Yahoo is the default. With `MARKET_DATA_PROVIDER` unset, or set to `yahoo`, asset lookup and daily bars both come from Yahoo.
+
+```bash
+cd client
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+uv run fbull backtest get nasdaq100
+```
+
+#### Stooq
+
+`MARKET_DATA_PROVIDER=stooq` loads daily bars from Stooq. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. On the local Kind cluster the kubectl context is `kind-foreverbull`. On a remote cluster, use that cluster's context and namespace.
+
+Set Stooq before the first create for these symbols:
+
+```bash
+kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
+kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
+
+cd client
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+uv run fbull backtest get nasdaq100
+```
+
+If this database already has bars for these symbols, replace the local cluster first. `fbenv stop --remove --purge` deletes the Kind cluster. Then install again, set Stooq, and create:
+
+```bash
+cd client
+uv run fbenv stop --remove --purge
+VERSION=local uv run fbenv create
+kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
+uv run fbenv start
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+```
+
+`fbenv create` and `fbenv update` reinstall the chart. The chart leaves `MARKET_DATA_PROVIDER` unset, so the broker comes back on Yahoo. Run the `kubectl set env` command again after either of those when you still want Stooq.
+
+To put the broker back on Yahoo:
+
+```bash
+kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=yahoo
+kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
+```
+
+Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` removes the backtest record. Stored bars stay in Postgres until you replace the database.
+
+Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. The prompt choice is `iShares S&P 100` (benchmark `OEF`). That path builds point-in-time membership from iShares month-end holdings. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
+
+After create, run a strategy file against the ingested backtest:
+
+```bash
+uv run fbull backtest run nasdaq100 path/to/strategy.py --yes
 ```
 
 ### Strategy projects
@@ -92,7 +152,7 @@ The generated project README shows `fbull backtest create` and `fbull backtest r
 
 ### Strategy lifecycle
 
-A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper deploy. The same version is runnable against different universes (SPY vs EU vs commodities) via separate `--backtest` experiments. Live is off. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
+A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper deploy. The `--backtest` value is the name from `fbull backtest create` (the Nasdaq-100 quickstart above stores `nasdaq100`). The same version is runnable against different universes via separate `--backtest` experiments. Live is off. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 
 ```bash
 uv run fbull strategy create mean-rev
@@ -169,7 +229,7 @@ The broker is Go (`cmd/server`, `pkg/`, `internal/`). The Python workspace is `c
 Install Task to run the root `taskfile.yaml` (it includes `client/taskfile.yaml` and `grafana/taskfile.yaml`).
 
 ```bash
-task env                      # local images + Kind + Helm
+task build                    # local images + uv sync (client/)
 task kind:create              # Kind cluster only
 task kind:load                # load :local images into Kind
 task helm:install             # helm upgrade --install into Kind

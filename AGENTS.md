@@ -165,17 +165,19 @@ Hand-written helpers next to generated code (safe to edit):
 
 The platform install is **Kind + Helm**, not a Docker Compose / Docker-network stack. `fbenv` creates a Kind cluster named `foreverbull` (default), then `helm upgrade --install`s `deploy/helm/foreverbull` into namespace `foreverbull`. The broker pod does **not** mount `/var/run/docker.sock`. Extra strategy-worker pods are created with the in-cluster Kubernetes API (ServiceAccount RBAC). Do not add a docker.sock volume to the broker, and do not talk to the Docker API from the broker runtime.
 
-Bring up the full stack (local images + `fbenv`):
+Build local images and sync the client (does not start the cluster):
 
 ```bash
-task env
+task build
 ```
 
-That builds Zipline, Grafana, and Foreverbull `:local` images, `uv sync`s the client, then from `client/`:
+That builds Zipline, Grafana, and Foreverbull `:local` images and runs `uv sync` in `client/`. `uv sync` installs `foreverbull-cli`, so `uv run fbenv` is the Kind/Helm installer in this repo. A `fbenv` already on `PATH` may be an older Docker-container installer. Do not call that one.
+
+Then from `client/`:
 
 ```bash
-uv run fbenv stop --remove
-VERSION=local uv run fbenv create
+VERSION=local uv run fbenv create   # Kind + Helm, workloads stopped
+uv run fbenv start                  # scale deployments to 1
 ```
 
 Useful `fbenv` commands (from `client/`):
@@ -185,8 +187,8 @@ uv run fbenv status
 uv run fbenv use                         # print selected cluster
 uv run fbenv use local                   # Kind (default); writes .foreverbull/config.yaml
 uv run fbenv use remote --kubeconfig … --context … --namespace … --broker-address host:50055
-VERSION=local uv run fbenv create        # Kind cluster + helm upgrade --install (default start)
-uv run fbenv start                       # scale deployments to 1
+VERSION=local uv run fbenv create        # Kind cluster + helm upgrade --install, workloads stopped
+uv run fbenv start                       # scale deployments to 1 and wait until ready
 uv run fbenv stop                        # scale to 0
 uv run fbenv stop --remove               # helm uninstall
 uv run fbenv stop --remove --purge       # uninstall; local also deletes the Kind cluster; deletes .foreverbull data except config.yaml
@@ -233,7 +235,7 @@ bash deploy/helm/check-chart.sh
 # equivalent: helm template … and assert RBAC exists and docker.sock is not mounted
 ```
 
-Manual Kind/Helm (same as `fbenv create` local): `task kind:create`, `task kind:load`, `task helm:install`. Recipes: `deploy/README.md`.
+Manual Kind/Helm: `task kind:create`, `task kind:load`, `task helm:install` (chart default `replicaCount` is 1). `fbenv create` installs the same chart with workloads stopped; `fbenv start` scales them to 1. Recipes: `deploy/README.md`.
 
 ### Environment variables
 
@@ -259,7 +261,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` |
 | `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
-| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task env` / locally built images; default `latest` |
+| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
 | `DOCKER_NETWORK` | Legacy default `foreverbull`. Used by Testcontainers helpers, **not** by `fbenv` or the broker |

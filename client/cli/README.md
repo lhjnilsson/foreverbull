@@ -18,7 +18,7 @@ Entry points (`client/cli/pyproject.toml`):
 
 Requires Python 3.12+. Local `fbenv` also needs Docker, Kind, Helm, and kubectl.
 
-`fbull` does not start the cluster. `fbenv` does not run algorithms. Use both: `fbenv create`, then `fbull backtest …`.
+`fbull` does not start the cluster. `fbenv` does not run algorithms. Use both: `fbenv create`, `fbenv start`, then `fbull backtest …`.
 
 ## fbull
 
@@ -46,9 +46,33 @@ uv run fbull backtest execution EXECUTION_ID
 uv run fbull backtest delete demo
 ```
 
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`). Without `--file`, create prompts for an iShares ETF universe.
+`create` stores the universe, downloads daily bars, and ingests them into Zipline (progress: Creating, Downloading, Ingesting, Storing). A symbol whose download fails is stored with `enabled: false`.
 
-`run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). `--yes` skips the confirmation prompt. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
+The broker environment variable `MARKET_DATA_PROVIDER` selects the price source. Set it before create. Bars already stored for a symbol and day are kept.
+
+| Provider | Broker setting | What it prices |
+| --- | --- | --- |
+| Yahoo (default) | unset, or `yahoo` | Asset lookup and daily bars |
+| Stooq | `stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
+
+Both providers can ingest the same Nasdaq-100 file, [examples/nasdaq100.yaml](../../examples/nasdaq100.yaml) (name `nasdaq100`, benchmark `QQQ`, 101 constituents, 2023-01-01 through 2023-03-31). From `client/`:
+
+```bash
+# Yahoo (default after fbenv create)
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+uv run fbull backtest get nasdaq100
+
+# Stooq on the local Kind cluster (context kind-foreverbull)
+kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
+kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+```
+
+`fbenv create` and `fbenv update` reinstall the chart and leave `MARKET_DATA_PROVIDER` unset, which selects Yahoo. Set `stooq` again after those commands when you still want Stooq bars. Use an empty database for the Stooq create when Yahoo bars for these symbols are already stored (`fbenv stop --remove --purge` on local deletes the Kind cluster).
+
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`). Without `--file`, create prompts for an iShares ETF. The prompt choice is `iShares S&P 100` (benchmark `OEF`), built from point-in-time iShares holdings.
+
+`run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. `--yes` skips the confirmation prompt. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 
 ### Trading
 
@@ -70,8 +94,9 @@ uv run fbenv status
 uv run fbenv use                         # print selected cluster
 uv run fbenv use local                   # writes .foreverbull/config.yaml
 uv run fbenv use remote --kubeconfig PATH --context NAME --namespace NS --broker-address host:50055
-VERSION=local uv run fbenv create        # Kind + helm upgrade --install (starts by default)
-uv run fbenv start                       # scale deployments to 1
+VERSION=local uv run fbenv create        # Kind + helm upgrade --install, workloads stopped
+uv run fbenv create --start              # same install, then start
+uv run fbenv start                       # scale deployments to 1 and wait until ready
 uv run fbenv stop                        # scale to 0
 uv run fbenv stop --remove               # helm uninstall
 uv run fbenv stop --remove --purge       # uninstall; local also deletes the Kind cluster
@@ -80,7 +105,7 @@ uv run fbenv update                      # reload images (local) and helm upgrad
 
 `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-address` override the selected cluster for one command.
 
-`VERSION` is the image tag (`lhjnilsson/foreverbull|zipline|fb-grafana:{VERSION}`). Use `local` with images built via `task env` / `task build:docker`.
+`VERSION` is the image tag (`lhjnilsson/foreverbull|zipline|fb-grafana:{VERSION}`). Use `local` with images built via `task build` / `task build:docker`. `task build` does not create the cluster.
 
 Cluster config files and Helm recipes: [deploy/README.md](../../deploy/README.md).
 

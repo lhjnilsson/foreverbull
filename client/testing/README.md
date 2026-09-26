@@ -43,7 +43,7 @@ Namespace-only tests request `namespace_server` (and optionally `fb_env`) instea
 
 ## Live backtests
 
-Pass `--backtest <name>` to opt into tests that talk to a running Foreverbull broker. Without that flag, those tests skip so unit tests stay local. The broker is the Kind/Helm stack (`fbenv create` / `task env`), not this plugin.
+Pass `--backtest <name>` to opt into tests that talk to a running Foreverbull broker. Without that flag, those tests skip so unit tests stay local. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
 
 ```bash
 uv run pytest --backtest demo

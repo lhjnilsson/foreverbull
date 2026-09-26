@@ -19,7 +19,7 @@ From this directory:
 uv sync
 ```
 
-That installs all four workspace members plus dev tools (pytest, cookiecutter, grpcio-tools).
+That installs the client library, dev tools (pytest, cookiecutter, grpcio-tools), and `foreverbull-cli` (`fbull` and `fbenv`).
 
 ## fbull vs fbenv
 
@@ -33,12 +33,19 @@ uv run fbenv --help    # Kind (local) or Helm (remote) install
 - **`fbenv`** installs the platform. Local default is a Kind cluster named `foreverbull` and Helm chart `deploy/helm/foreverbull`. It is not a Docker Compose / Docker-network stack.
 - **`fbull`** talks to that broker over gRPC (`localhost:50055` when `cluster: local`). It does not start the cluster.
 
-Bring up local images + Kind from the repository root with `task env`, or from here:
+From the repository root, `task build` builds the `:local` images and syncs this workspace. It does not start the cluster. Then:
 
 ```bash
 VERSION=local uv run fbenv create
+uv run fbenv start
 uv run fbenv status
 ```
+
+`create` installs the release with the workloads stopped. `start` scales them to 1.
+
+`uv run fbenv` is the Kind/Helm installer. A `fbenv` already on `PATH` can be an older program that starts Docker containers directly.
+
+`fbull backtest create` downloads daily bars and ingests them. Yahoo is the default price source. `MARKET_DATA_PROVIDER=stooq` uses Stooq for those bars. The [root quickstart](../README.md#ingest-data-and-create-a-backtest) creates a Nasdaq-100 backtest with either source.
 
 Details: [cli/README.md](cli/README.md), [deploy/README.md](../deploy/README.md).
 
