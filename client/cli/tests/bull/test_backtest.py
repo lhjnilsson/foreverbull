@@ -136,6 +136,25 @@ def test_backtest_create_reprompts_invalid_dates(runner):
     assert request.end_date.day == 31
 
 
+def test_backtest_etfs(runner):
+    result = runner(backtest, ["etfs"])
+    assert result.exit_code == 0
+    assert "iShares S&P 100" in result.stdout
+    assert "OEF" in result.stdout
+    assert "2000-10-23" in result.stdout
+
+
+def test_backtest_create_unknown_etf_does_not_call_broker(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        result = runner(backtest, ["create"], input="demo\nnot-a-fund\n")
+
+    assert result.exit_code == 0
+    mock_create.assert_not_called()
+    assert "Unknown ETF" in result.stdout
+    assert "iShares S&P 100" in result.stdout
+    assert "Known funds" in result.stdout
+
+
 def test_backtest_create_from_file(runner):
     payload = {
         "name": "from_file",

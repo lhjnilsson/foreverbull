@@ -50,9 +50,12 @@ func NewETFScaper() ETFScraper {
 }
 
 func defaultETFProducts() map[string]string {
-	return map[string]string{
-		"iShares S&P 100": "https://www.ishares.com/us/products/239723/ishares-sp-100-etf/1467271812596.ajax",
+	products := ETFCatalog()
+	urls := make(map[string]string, len(products))
+	for _, product := range products {
+		urls[product.Name] = product.URL
 	}
+	return urls
 }
 
 func defaultSnapshotCacheDir() string {
@@ -120,8 +123,10 @@ func (e *ISharesETFLoopup) GetAssets(etf string, years ...string) (map[string][]
 }
 
 func (e *ISharesETFLoopup) GetBenchmark(etf string) (string, error) {
-	if etf == "iShares S&P 100" {
-		return "OEF", nil
+	for _, product := range etfCatalog {
+		if product.Name == etf {
+			return product.Benchmark, nil
+		}
 	}
 	return "", fmt.Errorf("ETF not found: %s", etf)
 }

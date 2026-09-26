@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -107,6 +108,22 @@ func TestGetBenchmark(t *testing.T) {
 
 	_, err = uut.GetBenchmark("unknown")
 	require.ErrorContains(t, err, "ETF not found")
+}
+
+func TestETFCatalogSP100(t *testing.T) {
+	t.Parallel()
+
+	var sp100 ETFProduct
+	for _, product := range ETFCatalog() {
+		if product.Name == "iShares S&P 100" {
+			sp100 = product
+		}
+	}
+	require.Equal(t, "iShares S&P 100", sp100.Name)
+	require.Equal(t, "OEF", sp100.Benchmark)
+	require.Equal(t, "https://www.ishares.com/us/products/239723/ishares-sp-100-etf/1467271812596.ajax", sp100.URL)
+	require.True(t, sp100.Inception.Equal(time.Date(2000, time.October, 23, 0, 0, 0, 0, time.UTC)))
+	require.Equal(t, sp100.URL, defaultETFProducts()[sp100.Name])
 }
 
 func TestDefaultSnapshotCacheDir(t *testing.T) {

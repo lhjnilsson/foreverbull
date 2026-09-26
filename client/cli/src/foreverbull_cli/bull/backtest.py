@@ -21,6 +21,9 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backt
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
+from foreverbull_cli.bull.etf_catalog import etf_by_name
+from foreverbull_cli.bull.etf_catalog import etf_catalog
+from foreverbull_cli.bull.etf_catalog import known_etf_names
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -29,13 +32,8 @@ from foreverbull_cli.output import format_optional_float
 from foreverbull_cli.output import format_proto_date
 
 
-backtest = typer.Typer()
+backtest = typer.Typer(help="Create and inspect backtests. `etfs` lists known iShares funds.")
 log = logging.getLogger().getChild(__name__)
-
-# Inception dates for the ETFs the prompt can select.
-_ETF_INCEPTION = {
-    "iShares S&P 100": date(2000, 10, 23),
-}
 
 
 def _ask_name() -> str:
@@ -55,8 +53,32 @@ def _ask_date(prompt: str) -> date:
             console.print(f"{raw!r} is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
 
 
+def _ask_etf() -> str | None:
+    names = [fund.name for fund in etf_catalog()]
+    if not names:
+        console.print("No ETFs are configured.")
+        return None
+    default = "iShares S&P 100" if "iShares S&P 100" in names else names[0]
+    prompt = Prompt(
+        "What ETF do you want to base the backtest on?",
+        console=console,
+        choices=names,
+    )
+    raw = Prompt.get_input(console, prompt.make_prompt(default), password=False).strip()
+    if raw == "":
+        raw = default
+    if raw not in names:
+        console.print(f"Unknown ETF {raw!r}. Known funds: {known_etf_names()}.")
+        return None
+    return raw
+
+
 def _ask_backtest_dates(etf: str) -> tuple[date, date]:
-    inception = _ETF_INCEPTION[etf]
+    fund = etf_by_name(etf)
+    if fund is None:
+        console.print(f"Unknown ETF {etf!r}. Known funds: {known_etf_names()}.")
+        raise typer.Exit(code=1)
+    inception = fund.inception
     today = date.today()
     while True:
         start = _ask_date("What is the start date of the backtest? (YYYY-MM-DD)")
@@ -141,10 +163,30 @@ def list_backtests():
     console.print(table)
 
 
+@backtest.command("etfs")
+def list_etfs() -> None:
+    """List known iShares ETFs (name, benchmark, and inception)."""
+    table = Table(title="ETFs")
+    table.add_column("Name")
+    table.add_column("Benchmark")
+    table.add_column("Inception")
+    for fund in etf_catalog():
+        table.add_row(fund.name, fund.benchmark, fund.inception.isoformat())
+    console.print(table)
+
+
 @backtest.command()
 def create(
-    file: Annotated[Path | None, typer.Option(help="path to the backtest file[YAML]")] = None,
+    file: Annotated[
+        Path | None,
+        typer.Option(help="path to the backtest file[YAML]. Omit to choose an ETF from `fbull backtest etfs`"),
+    ] = None,
 ):
+    """Create a backtest from a YAML file or a known iShares ETF.
+
+    Without --file, ETF prompt choices come from `fbull backtest etfs`.
+    An unknown name stops before any download.
+    """
     entity: (
         backtest_service_pb2.CreateBacktestRequest.CreateFromETF
         | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest
@@ -176,11 +218,9 @@ def create(
         )
     else:
         name = _ask_name()
-        base_etf = Prompt.ask(
-            "What ETF do you want to base the backtest on?",
-            choices=list(_ETF_INCEPTION),
-            default="iShares S&P 100",
-        )
+        base_etf = _ask_etf()
+        if base_etf is None:
+            return
         start, end = _ask_backtest_dates(base_etf)
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
             name=name,
