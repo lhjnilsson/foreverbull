@@ -106,6 +106,36 @@ def test_backtest_create(runner):
         assert "SPY" in result.stdout
 
 
+def test_backtest_create_reprompts_invalid_dates(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb2.CreateBacktestResponse(
+                    CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    backtest=_sample_backtest(),
+                )
+            ]
+        )
+        result = runner(
+            backtest,
+            ["create"],
+            input="\ndemo\niShares S&P 100\nnot-a-date\n1999-01-01\n2020-01-01\n2019-12-31\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    assert "Enter a name" in result.stdout
+    assert "not a date" in result.stdout
+    assert "started on 2000-10-23" in result.stdout
+    assert "before start date" in result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.name == "demo"
+    assert request.start_date.year == 2020
+    assert request.end_date.day == 31
+
+
 def test_backtest_create_from_file(runner):
     payload = {
         "name": "from_file",

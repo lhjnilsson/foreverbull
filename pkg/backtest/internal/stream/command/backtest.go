@@ -122,7 +122,7 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 	for _, asOf := range dates {
 		assets, err := scraper.GetSnapshot(etf, asOf)
 		if err != nil {
-			return nil, fmt.Errorf("error getting snapshot for %s: %w", asOf.Format("2006-01-02"), err)
+			return nil, err
 		}
 		holdings := holdingsFromAssets(assets)
 		if len(holdings) == 0 {

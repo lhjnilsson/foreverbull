@@ -32,6 +32,50 @@ from foreverbull_cli.output import format_proto_date
 backtest = typer.Typer()
 log = logging.getLogger().getChild(__name__)
 
+# Inception dates for the ETFs the prompt can select.
+_ETF_INCEPTION = {
+    "iShares S&P 100": date(2000, 10, 23),
+}
+
+
+def _ask_name() -> str:
+    while True:
+        name = Prompt.ask("What name do you want to give the backtest?").strip()
+        if name:
+            return name
+        console.print("Enter a name for the backtest.")
+
+
+def _ask_date(prompt: str) -> date:
+    while True:
+        raw = Prompt.ask(prompt).strip()
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            console.print(f"{raw!r} is not a date. Use YYYY-MM-DD, for example 2024-01-31.")
+
+
+def _ask_backtest_dates(etf: str) -> tuple[date, date]:
+    inception = _ETF_INCEPTION[etf]
+    today = date.today()
+    while True:
+        start = _ask_date("What is the start date of the backtest? (YYYY-MM-DD)")
+        if start < inception:
+            console.print(f"{etf} started on {inception.isoformat()}. Choose a start date on or after that day.")
+            continue
+        if start > today:
+            console.print(f"{start.isoformat()} is after today ({today.isoformat()}).")
+            continue
+        while True:
+            end = _ask_date("What is the end date of the backtest? (YYYY-MM-DD)")
+            if end < start:
+                console.print(f"End date {end.isoformat()} is before start date {start.isoformat()}.")
+                continue
+            if end > today:
+                console.print(f"End date {end.isoformat()} is after today ({today.isoformat()}).")
+                continue
+            return start, end
+
 
 def _enabled_symbols(entity: backtest_pb2.Backtest) -> str:
     symbols: list[str] = []
@@ -131,19 +175,18 @@ def create(
             )
         )
     else:
-        name = Prompt.ask("What name do you want to give the backtest?")
+        name = _ask_name()
         base_etf = Prompt.ask(
             "What ETF do you want to base the backtest on?",
-            choices=["iShares S&P 100"],
+            choices=list(_ETF_INCEPTION),
             default="iShares S&P 100",
         )
-        start_date_str = Prompt.ask("What is the start date of the backtest?")
-        end_date_str = Prompt.ask("What is the end date of the backtest?")
+        start, end = _ask_backtest_dates(base_etf)
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
             name=name,
             base_etf=base_etf,
-            start_date=from_pydate_to_proto_date(date.fromisoformat(start_date_str)),
-            end_date=from_pydate_to_proto_date(date.fromisoformat(end_date_str)),
+            start_date=from_pydate_to_proto_date(start),
+            end_date=from_pydate_to_proto_date(end),
         )
 
     created: backtest_pb2.Backtest | None = None

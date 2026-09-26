@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -176,10 +178,23 @@ func assetFromRow(row []interface{}) (Asset, bool) {
 	}, true
 }
 
+// errHoldingsPage means the holdings URL returned the product web page.
+// iShares does that for as-of dates it does not publish.
+var errHoldingsPage = errors.New("iShares returned a web page instead of holdings")
+
+var holdingsDateListPattern = regexp.MustCompile(`initAsOfDateList"\s*:\s*\{\s*"all"\s*:\s*\[([0-9,]+)\]`)
+
 func parseHoldings(body []byte) (assets []Asset, published bool, err error) {
+	body = bytes.TrimSpace(trapBOM(body))
+	if len(body) == 0 {
+		return nil, false, errors.New("iShares returned an empty holdings response")
+	}
+	if body[0] == '<' {
+		return nil, false, errHoldingsPage
+	}
 	var data Response
-	if err := json.Unmarshal(trapBOM(body), &data); err != nil {
-		return nil, false, fmt.Errorf("error unmarshalling json: %w", err)
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, false, fmt.Errorf("iShares holdings were not valid JSON: %w", err)
 	}
 	if len(data.Data) == 0 {
 		return nil, false, nil
@@ -263,6 +278,9 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 		return nil, err
 	} else if ok {
 		assets, _, err := parseHoldings(body)
+		if errors.Is(err, errHoldingsPage) {
+			return nil, e.holdingsPageError(etf, baseurl, asOf)
+		}
 		return assets, err
 	}
 	for i := 0; i <= snapshotLookbackDays; i++ {
@@ -282,6 +300,9 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 			}
 		}
 		assets, body, published, err := e.fetchHoldings(baseurl, day)
+		if errors.Is(err, errHoldingsPage) {
+			return nil, e.holdingsPageError(etf, baseurl, asOf)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -294,6 +315,78 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 		return assets, nil
 	}
 	return []Asset{}, nil
+}
+
+func (e *ISharesETFLoopup) holdingsPageError(etf, baseurl string, asOf time.Time) error {
+	when := dateOnly(asOf).Format("2006-01-02")
+	dates, err := e.publishedHoldingDates(baseurl)
+	if err != nil || len(dates) == 0 {
+		return fmt.Errorf("iShares has no holdings file for %s on %s. The site returned a web page instead of holdings. Choose another date range, or pass a symbol file with --file", etf, when)
+	}
+	formatted := make([]string, len(dates))
+	for i, d := range dates {
+		formatted[i] = d.Format("2006-01-02")
+	}
+	return fmt.Errorf("iShares has no holdings file for %s on %s. Published holdings dates: %s. Choose a range that includes one of those, or pass a symbol file with --file",
+		etf, when, strings.Join(formatted, ", "))
+}
+
+func (e *ISharesETFLoopup) publishedHoldingDates(baseurl string) ([]time.Time, error) {
+	pageURL, err := productPageURL(baseurl)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, pageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := e.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("product page status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return parsePublishedHoldingDates(body)
+}
+
+func productPageURL(baseurl string) (string, error) {
+	u, err := url.Parse(baseurl)
+	if err != nil {
+		return "", err
+	}
+	u.Path = path.Dir(u.Path)
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+func parsePublishedHoldingDates(body []byte) ([]time.Time, error) {
+	text := strings.ReplaceAll(string(body), "&quot;", `"`)
+	match := holdingsDateListPattern.FindStringSubmatch(text)
+	if match == nil {
+		return nil, errors.New("published holdings dates were not on the product page")
+	}
+	parts := strings.Split(match[1], ",")
+	dates := make([]time.Time, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		asOf, err := time.Parse("20060102", part)
+		if err != nil {
+			return nil, fmt.Errorf("published holdings date %s: %w", part, err)
+		}
+		dates = append(dates, dateOnly(asOf))
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+	return dates, nil
 }
 
 // ListSnapshotDates returns last-calendar-day-of-month dates in [start, end],

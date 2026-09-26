@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -294,4 +295,43 @@ func TestYearOfSnapshotsIsNotDailyScan(t *testing.T) {
 func TestEtfCacheSlug(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "iShares_S_P_100", etfCacheSlug("iShares S&P 100"))
+}
+
+func TestGetSnapshotHTMLNamesPublishedDates(t *testing.T) {
+	t.Parallel()
+
+	const page = `<html><body>initAsOfDateList":{"all":[20260924,20260831,20260630,20251231]}</body></html>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if strings.HasSuffix(r.URL.Path, ".ajax") {
+			_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
+			return
+		}
+		_, _ = w.Write([]byte(page))
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL + "/ishares-sp-100-etf/1467271812596.ajax"},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+
+	_, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2020-01-31"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no holdings file for iShares S&P 100 on 2020-01-31")
+	require.ErrorContains(t, err, "2025-12-31")
+	require.ErrorContains(t, err, "2026-09-24")
+	require.NotContains(t, err.Error(), "invalid character")
+}
+
+func TestParsePublishedHoldingDates(t *testing.T) {
+	t.Parallel()
+
+	dates, err := parsePublishedHoldingDates([]byte(`initAsOfDateList&quot;:{&quot;all&quot;:[20260924,20251231]}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"2025-12-31", "2026-09-24"}, []string{
+		dates[0].Format("2006-01-02"),
+		dates[1].Format("2006-01-02"),
+	})
 }
