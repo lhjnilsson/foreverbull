@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	"github.com/stretchr/testify/require"
 )
 
@@ -297,17 +297,14 @@ func TestEtfCacheSlug(t *testing.T) {
 	require.Equal(t, "iShares_S_P_100", etfCacheSlug("iShares S&P 100"))
 }
 
-func TestGetSnapshotHTMLNamesPublishedDates(t *testing.T) {
+func TestGetSnapshotHTMLIsAGap(t *testing.T) {
 	t.Parallel()
 
-	const page = `<html><body>initAsOfDateList":{"all":[20260924,20260831,20260630,20251231]}</body></html>`
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		w.Header().Set("Content-Type", "text/html")
-		if strings.HasSuffix(r.URL.Path, ".ajax") {
-			_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
-			return
-		}
-		_, _ = w.Write([]byte(page))
+		_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -317,21 +314,128 @@ func TestGetSnapshotHTMLNamesPublishedDates(t *testing.T) {
 		client:   srv.Client(),
 	}
 
-	_, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2020-01-31"))
-	require.Error(t, err)
-	require.ErrorContains(t, err, "no holdings file for iShares S&P 100 on 2020-01-31")
-	require.ErrorContains(t, err, "2025-12-31")
-	require.ErrorContains(t, err, "2026-09-24")
+	assets, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2020-01-31"))
+	require.NoError(t, err)
+	require.Empty(t, assets)
+	require.Equal(t, int32(1), calls.Load())
+}
+
+func TestLoadSnapshotWindowFillsLeadingHTMLFromLaterListing(t *testing.T) {
+	t.Parallel()
+
+	const isin = "US0378331005"
+	body := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", isin},
+		{"CASH_USD", "USD Cash", "-", "Cash", "", "", "", "", ""},
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("asOfDate") == "20200229" {
+			_, _ = w.Write(body)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	start := testDate(t, "2020-01-01")
+	end := testDate(t, "2020-02-29")
+	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", start, end)
+	require.NoError(t, err)
+	require.Len(t, listings, 2)
+	require.Equal(t, "2020-01-31", listings[0].AsOf.Format("2006-01-02"))
+	require.True(t, listings[0].Leading)
+	require.Equal(t, "2020-02-29", listings[0].FilledFrom.Format("2006-01-02"))
+	require.Equal(t, isin, listings[0].Assets[0].ISIN)
+	require.Equal(t, "AAPL", listings[0].Assets[0].Symbol)
+	require.Equal(t, listings[1].Assets, listings[0].Assets)
+	require.False(t, listings[1].Leading)
+	require.True(t, listings[1].FilledFrom.IsZero())
+
+	snaps := listingsToSnapshots(listings)
+	result := universe.Diff(snaps)
+	require.Len(t, result.Members, 1)
+	require.Equal(t, isin, result.Members[0].ISIN)
+	require.Equal(t, "2020-01-31", result.Members[0].FromDate.Format("2006-01-02"))
+	require.Nil(t, result.Members[0].ToDate)
+	require.Equal(t, []universe.Alias{{
+		ISIN:     isin,
+		Symbol:   "AAPL",
+		FromDate: testDate(t, "2020-01-31"),
+		ToDate:   nil,
+	}}, result.Aliases)
+}
+
+func TestLoadSnapshotWindowNoHoldingsNamesWindow(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html></html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	_, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-03-31"))
+	require.EqualError(t, err, "iShares has no holdings file for iShares S&P 100 between 2020-01-01 and 2020-03-31")
 	require.NotContains(t, err.Error(), "invalid character")
 }
 
-func TestParsePublishedHoldingDates(t *testing.T) {
+func TestFillListingsCarryForwardIsNotADropOrRename(t *testing.T) {
 	t.Parallel()
 
-	dates, err := parsePublishedHoldingDates([]byte(`initAsOfDateList&quot;:{&quot;all&quot;:[20260924,20251231]}`))
+	const metaISIN = "US30303M1027"
+	fb := []Asset{{Symbol: "FB", Name: "Meta Platforms Inc.", Sector: "Communication", AssetType: "Equity", ISIN: metaISIN}}
+	meta := []Asset{{Symbol: "META", Name: "Meta Platforms Inc.", Sector: "Communication", AssetType: "Equity", ISIN: metaISIN}}
+	listings := []Listing{
+		{AsOf: testDate(t, "2020-01-31"), Assets: fb},
+		{AsOf: testDate(t, "2020-02-29")},
+		{AsOf: testDate(t, "2020-03-31"), Assets: meta},
+	}
+	err := fillListings("iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-03-31"), listings)
 	require.NoError(t, err)
-	require.Equal(t, []string{"2025-12-31", "2026-09-24"}, []string{
-		dates[0].Format("2006-01-02"),
-		dates[1].Format("2006-01-02"),
-	})
+	require.Equal(t, "FB", listings[1].Assets[0].Symbol)
+	require.Equal(t, metaISIN, listings[1].Assets[0].ISIN)
+	require.False(t, listings[1].Leading)
+	require.Equal(t, "2020-01-31", listings[1].FilledFrom.Format("2006-01-02"))
+	require.Equal(t, "FB", fb[0].Symbol)
+
+	result := universe.Diff(listingsToSnapshots(listings))
+	require.Equal(t, []universe.Member{{
+		ISIN:     metaISIN,
+		FromDate: testDate(t, "2020-01-31"),
+		ToDate:   nil,
+	}}, result.Members)
+	mar := testDate(t, "2020-03-31")
+	require.Equal(t, []universe.Alias{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: testDate(t, "2020-01-31"), ToDate: &mar},
+		{ISIN: metaISIN, Symbol: "META", FromDate: mar, ToDate: nil},
+	}, result.Aliases)
+}
+
+func listingsToSnapshots(listings []Listing) []universe.Snapshot {
+	snaps := make([]universe.Snapshot, 0, len(listings))
+	for _, listing := range listings {
+		holdings := make([]universe.Holding, 0, len(listing.Assets))
+		for _, asset := range listing.Assets {
+			holdings = append(holdings, universe.Holding{
+				ISIN:      asset.ISIN,
+				Symbol:    asset.Symbol,
+				Name:      asset.Name,
+				AssetType: asset.AssetType,
+			})
+		}
+		snaps = append(snaps, universe.Snapshot{AsOf: listing.AsOf, Holdings: holdings})
+	}
+	return snaps
 }

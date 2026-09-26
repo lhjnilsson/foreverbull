@@ -9,9 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -182,8 +180,6 @@ func assetFromRow(row []interface{}) (Asset, bool) {
 // iShares does that for as-of dates it does not publish.
 var errHoldingsPage = errors.New("iShares returned a web page instead of holdings")
 
-var holdingsDateListPattern = regexp.MustCompile(`initAsOfDateList"\s*:\s*\{\s*"all"\s*:\s*\[([0-9,]+)\]`)
-
 func parseHoldings(body []byte) (assets []Asset, published bool, err error) {
 	body = bytes.TrimSpace(trapBOM(body))
 	if len(body) == 0 {
@@ -267,7 +263,9 @@ func (e *ISharesETFLoopup) storeCached(etf string, asOf time.Time, body []byte) 
 }
 
 // GetSnapshot returns Equity holdings (with ISIN) for etf as of asOf.
-// Unpublished as-of dates (empty aaData) are not cached; the previous 6 calendar days are tried.
+// Empty aaData is unpublished and is not cached; the previous 6 calendar days are tried.
+// An HTML product page means that day has no holdings file. It is not cached and is not an error:
+// the caller fills that month from another published listing.
 func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, error) {
 	baseurl, err := e.productURL(etf)
 	if err != nil {
@@ -278,10 +276,9 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 		return nil, err
 	} else if ok {
 		assets, _, err := parseHoldings(body)
-		if errors.Is(err, errHoldingsPage) {
-			return nil, e.holdingsPageError(etf, baseurl, asOf)
+		if !errors.Is(err, errHoldingsPage) {
+			return assets, err
 		}
-		return assets, err
 	}
 	for i := 0; i <= snapshotLookbackDays; i++ {
 		day := asOf.AddDate(0, 0, -i)
@@ -290,6 +287,10 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 				return nil, err
 			} else if ok {
 				assets, published, err := parseHoldings(body)
+				if errors.Is(err, errHoldingsPage) {
+					err = nil
+					published = false
+				}
 				if err != nil {
 					return nil, err
 				}
@@ -301,7 +302,12 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 		}
 		assets, body, published, err := e.fetchHoldings(baseurl, day)
 		if errors.Is(err, errHoldingsPage) {
-			return nil, e.holdingsPageError(etf, baseurl, asOf)
+			// The product page is not a file for this day. The requested as-of is a gap;
+			// a lookback day is just unpublished, so keep walking.
+			if i == 0 {
+				return []Asset{}, nil
+			}
+			continue
 		}
 		if err != nil {
 			return nil, err
@@ -317,76 +323,101 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 	return []Asset{}, nil
 }
 
-func (e *ISharesETFLoopup) holdingsPageError(etf, baseurl string, asOf time.Time) error {
-	when := dateOnly(asOf).Format("2006-01-02")
-	dates, err := e.publishedHoldingDates(baseurl)
-	if err != nil || len(dates) == 0 {
-		return fmt.Errorf("iShares has no holdings file for %s on %s. The site returned a web page instead of holdings. Choose another date range, or pass a symbol file with --file", etf, when)
-	}
-	formatted := make([]string, len(dates))
-	for i, d := range dates {
-		formatted[i] = d.Format("2006-01-02")
-	}
-	return fmt.Errorf("iShares has no holdings file for %s on %s. Published holdings dates: %s. Choose a range that includes one of those, or pass a symbol file with --file",
-		etf, when, strings.Join(formatted, ", "))
+// Listing is the equity holdings used for one as-of in a create window.
+// A gap month keeps a copy of another listing. FilledFrom is that as-of.
+// Leading is set when the copy comes from a later listing because nothing earlier was published.
+type Listing struct {
+	AsOf       time.Time
+	Assets     []Asset
+	FilledFrom time.Time
+	Leading    bool
 }
 
-func (e *ISharesETFLoopup) publishedHoldingDates(baseurl string) ([]time.Time, error) {
-	pageURL, err := productPageURL(baseurl)
+// LoadSnapshotWindow loads each sampled as-of in [start, end].
+// A month with no holdings file is filled from the latest published listing on or
+// before that date, or from the earliest listing after it when the window has not
+// reached a published file yet. The error names the ETF and the window only when
+// nothing in the range parsed.
+func LoadSnapshotWindow(scraper ETFScraper, etf string, start, end time.Time) ([]Listing, error) {
+	dates, err := scraper.ListSnapshotDates(etf, start, end)
 	if err != nil {
+		return nil, fmt.Errorf("error listing snapshot dates: %w", err)
+	}
+	listings := make([]Listing, 0, len(dates))
+	for _, asOf := range dates {
+		assets, err := scraper.GetSnapshot(etf, asOf)
+		if err != nil {
+			return nil, err
+		}
+		listings = append(listings, Listing{AsOf: dateOnly(asOf), Assets: assets})
+	}
+	sort.Slice(listings, func(i, j int) bool { return listings[i].AsOf.Before(listings[j].AsOf) })
+	if err := fillListings(etf, start, end, listings); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, pageURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := e.httpClient().Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("product page status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return parsePublishedHoldingDates(body)
+	return listings, nil
 }
 
-func productPageURL(baseurl string) (string, error) {
-	u, err := url.Parse(baseurl)
-	if err != nil {
-		return "", err
+func fillListings(etf string, start, end time.Time, listings []Listing) error {
+	published := make([]int, 0, len(listings))
+	for i := range listings {
+		listings[i].AsOf = dateOnly(listings[i].AsOf)
+		if len(listings[i].Assets) > 0 {
+			published = append(published, i)
+		}
 	}
-	u.Path = path.Dir(u.Path)
-	u.RawQuery = ""
-	u.Fragment = ""
-	return u.String(), nil
-}
-
-func parsePublishedHoldingDates(body []byte) ([]time.Time, error) {
-	text := strings.ReplaceAll(string(body), "&quot;", `"`)
-	match := holdingsDateListPattern.FindStringSubmatch(text)
-	if match == nil {
-		return nil, errors.New("published holdings dates were not on the product page")
+	if len(published) == 0 {
+		return fmt.Errorf("iShares has no holdings file for %s between %s and %s",
+			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
 	}
-	parts := strings.Split(match[1], ",")
-	dates := make([]time.Time, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
+	sort.Slice(published, func(i, j int) bool {
+		return listings[published[i]].AsOf.Before(listings[published[j]].AsOf)
+	})
+	for i := range listings {
+		if len(listings[i].Assets) > 0 {
 			continue
 		}
-		asOf, err := time.Parse("20060102", part)
-		if err != nil {
-			return nil, fmt.Errorf("published holdings date %s: %w", part, err)
+		gap := listings[i].AsOf
+		src := latestPublishedOnOrBefore(listings, published, gap)
+		leading := false
+		if src < 0 {
+			src = earliestPublishedAfter(listings, published, gap)
+			leading = src >= 0
 		}
-		dates = append(dates, dateOnly(asOf))
+		if src < 0 {
+			continue
+		}
+		listings[i].Assets = cloneAssets(listings[src].Assets)
+		listings[i].FilledFrom = listings[src].AsOf
+		listings[i].Leading = leading
 	}
-	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
-	return dates, nil
+	return nil
+}
+
+func latestPublishedOnOrBefore(listings []Listing, published []int, gap time.Time) int {
+	src := -1
+	for _, j := range published {
+		if listings[j].AsOf.After(gap) {
+			break
+		}
+		src = j
+	}
+	return src
+}
+
+func earliestPublishedAfter(listings []Listing, published []int, gap time.Time) int {
+	for _, j := range published {
+		if listings[j].AsOf.After(gap) {
+			return j
+		}
+	}
+	return -1
+}
+
+func cloneAssets(in []Asset) []Asset {
+	out := make([]Asset, len(in))
+	copy(out, in)
+	return out
 }
 
 // ListSnapshotDates returns last-calendar-day-of-month dates in [start, end],

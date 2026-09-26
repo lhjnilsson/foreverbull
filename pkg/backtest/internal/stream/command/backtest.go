@@ -230,28 +230,54 @@ func pythonRepr(s string) string {
 }
 
 func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time.Time) ([]universe.Snapshot, error) {
-	dates, err := scraper.ListSnapshotDates(etf, start, end)
+	listings, err := dependency.LoadSnapshotWindow(scraper, etf, start, end)
 	if err != nil {
-		return nil, fmt.Errorf("error listing snapshot dates: %w", err)
+		return nil, err
 	}
+	recordLeadingHoldingsGap(etf, listings)
 
-	snaps := make([]universe.Snapshot, 0, len(dates))
-	for _, asOf := range dates {
-		assets, err := scraper.GetSnapshot(etf, asOf)
-		if err != nil {
-			return nil, err
-		}
-		holdings := holdingsFromAssets(assets)
+	snaps := make([]universe.Snapshot, 0, len(listings))
+	for _, listing := range listings {
+		holdings := holdingsFromAssets(listing.Assets)
 		if len(holdings) == 0 {
 			continue
 		}
-		snaps = append(snaps, universe.Snapshot{AsOf: asOf, Holdings: holdings})
+		// Copied rows keep the source ISIN and ticker, so a gap is not a drop or a rename.
+		snaps = append(snaps, universe.Snapshot{AsOf: listing.AsOf, Holdings: holdings})
 	}
 	if len(snaps) == 0 {
-		return nil, fmt.Errorf("no published ETF snapshots for %s between %s and %s",
-			etf, start.Format("2006-01-02"), end.Format("2006-01-02"))
+		return nil, fmt.Errorf("iShares has no holdings file for %s between %s and %s",
+			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
 	}
 	return snaps, nil
+}
+
+// recordLeadingHoldingsGap logs that a leading gap kept a later published listing.
+func recordLeadingHoldingsGap(etf string, listings []dependency.Listing) {
+	var first, last, from time.Time
+	count := 0
+	for _, listing := range listings {
+		if !listing.Leading || listing.FilledFrom.IsZero() {
+			continue
+		}
+		count++
+		if count == 1 || listing.AsOf.Before(first) {
+			first = listing.AsOf
+			from = listing.FilledFrom
+		}
+		if !listing.AsOf.Before(last) {
+			last = listing.AsOf
+		}
+	}
+	if count == 0 {
+		return
+	}
+	log.Warn().
+		Str("etf", etf).
+		Str("gap_start", first.Format("2006-01-02")).
+		Str("gap_end", last.Format("2006-01-02")).
+		Str("filled_from", from.Format("2006-01-02")).
+		Msg("leading holdings gap filled from a later published listing")
 }
 
 func holdingsFromAssets(assets []dependency.Asset) []universe.Holding {
