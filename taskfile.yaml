@@ -116,17 +116,24 @@ tasks:
     cmds:
       - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
 
-  env:
-    desc: Build local images and create a development environment
-    dir: client/
+  build:
+    desc: Build local images and sync the Python workspace
     deps:
       - client:docker:zipline
       - grafana:build:docker
       - build:docker
+      - client:venv
+
+  env:
+    desc: Removed. Run task build, then uv run fbenv create
     cmds:
-      - uv sync
-      - uv run fbenv stop --remove
-      - VERSION=local uv run fbenv create
+      - |
+        echo "task env no longer installs the platform." >&2
+        echo "Build local images and sync the client:" >&2
+        echo "  task build" >&2
+        echo "Install into Kind, then start the workloads:" >&2
+        echo "  cd client && VERSION=local uv run fbenv create && uv run fbenv start" >&2
+        exit 1
 
   kind:create:
     desc: Create the local Kind cluster (idempotent)
