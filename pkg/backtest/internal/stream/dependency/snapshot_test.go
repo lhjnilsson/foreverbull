@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -438,4 +439,95 @@ func listingsToSnapshots(listings []Listing) []universe.Snapshot {
 		snaps = append(snaps, universe.Snapshot{AsOf: listing.AsOf, Holdings: holdings})
 	}
 	return snaps
+}
+
+func TestProductDataHoldingsRequest(t *testing.T) {
+	t.Parallel()
+
+	got, ok, err := productDataHoldingsRequest(
+		"https://www.ishares.com/us/products/239723/ishares-sp-100-etf/1467271812596.ajax",
+		testDate(t, "2025-12-31"),
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	require.Equal(t, "239723", u.Query().Get("portfolioId"))
+	require.Equal(t, "holdings.all", u.Query().Get("component"))
+	require.Equal(t, "20251231", u.Query().Get("asOfDate"))
+	require.Contains(t, u.Path, "/get-product-data")
+
+	_, ok, err = productDataHoldingsRequest("http://127.0.0.1:9/holdings", testDate(t, "2025-12-31"))
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestParseProductDataHoldings(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"componentsByNameMap": {
+			"holdings": {
+				"containersByNameMap": {
+					"all": {
+						"dataPointsByNameMap": {
+							"asOfDate": {"value": 20251231},
+							"ticker": {"value": ["AAPL", "CASH", "FUT"]},
+							"issueName": {"value": ["APPLE INC", "USD Cash", "Future"]},
+							"sectorName": {"value": ["Information Technology", "Cash", "Cash"]},
+							"assetClass": {"value": ["Equity", "Cash", "Futures"]},
+							"isin": {"value": ["US0378331005", null, null]}
+						}
+					}
+				}
+			}
+		}
+	}`)
+	assets, asOf, err := parseProductDataHoldings(body)
+	require.NoError(t, err)
+	require.Equal(t, "20251231", asOf)
+	require.Equal(t, []Asset{{
+		Symbol:    "AAPL",
+		Name:      "APPLE INC",
+		Sector:    "Information Technology",
+		AssetType: "Equity",
+		ISIN:      "US0378331005",
+	}}, assets)
+}
+
+func TestGetSnapshotRejectsMismatchedProductDataAsOf(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"componentsByNameMap": {
+			"holdings": {
+				"containersByNameMap": {
+					"all": {
+						"dataPointsByNameMap": {
+							"asOfDate": {"value": 20260924},
+							"ticker": {"value": []},
+							"issueName": {"value": []},
+							"sectorName": {"value": []},
+							"assetClass": {"value": []},
+							"isin": {"value": []}
+						}
+					}
+				}
+			}
+		}
+	}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	assets, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2025-11-30"))
+	require.NoError(t, err)
+	require.Empty(t, assets)
 }

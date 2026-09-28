@@ -206,7 +206,12 @@ func parseHoldings(body []byte) (assets []Asset, published bool, err error) {
 	return assets, true, nil
 }
 
+const productDataHoldingsURL = "https://www.ishares.com/varnish-api/blk-one01-product-data/product-data/api/v2/get-product-data"
+
 func holdingsURL(baseurl string, asOf time.Time) (string, error) {
+	if resolved, ok, err := productDataHoldingsRequest(baseurl, asOf); ok || err != nil {
+		return resolved, err
+	}
 	u, err := url.Parse(baseurl)
 	if err != nil {
 		return "", fmt.Errorf("error creating request: %w", err)
@@ -219,6 +224,54 @@ func holdingsURL(baseurl string, asOf time.Time) (string, error) {
 	return u.String(), nil
 }
 
+// productDataHoldingsRequest is the holdings call the iShares product page uses.
+// The old *.ajax?fileType=json URL now returns the HTML product page for every as-of.
+func productDataHoldingsRequest(baseurl string, asOf time.Time) (string, bool, error) {
+	u, err := url.Parse(baseurl)
+	if err != nil {
+		return "", false, fmt.Errorf("error creating request: %w", err)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "www.ishares.com" && host != "ishares.com" {
+		return "", false, nil
+	}
+	portfolioID := ""
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i, part := range parts {
+		if part == "products" && i+1 < len(parts) && isDigits(parts[i+1]) {
+			portfolioID = parts[i+1]
+			break
+		}
+	}
+	if portfolioID == "" {
+		return "", false, nil
+	}
+	q := url.Values{}
+	q.Set("appSubType", "ISHARES")
+	q.Set("appType", "PRODUCT_PAGE")
+	q.Set("component", "holdings.all")
+	q.Set("locale", "en_US")
+	q.Set("portfolioId", portfolioID)
+	q.Set("targetSite", "us-ishares")
+	q.Set("userType", "individual")
+	q.Set("excludeContent", "true")
+	q.Set("includeConfig", "true")
+	q.Set("asOfDate", dateOnly(asOf).Format("20060102"))
+	return productDataHoldingsURL + "?" + q.Encode(), true, nil
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asset, []byte, bool, error) {
 	rawURL, err := holdingsURL(baseurl, asOf)
 	if err != nil {
@@ -228,6 +281,8 @@ func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asse
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("error creating request: %w", err)
 	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("x-application-id", "pp-ui-csr")
 	resp, err := e.httpClient().Do(req)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("error doing request: %w", err)
@@ -241,11 +296,117 @@ func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asse
 		return nil, nil, false, fmt.Errorf("error reading body: %w", err)
 	}
 	body = trapBOM(body)
+	if isProductDataHoldings(body) {
+		assets, gotAsOf, err := parseProductDataHoldings(body)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		want := dateOnly(asOf).Format("20060102")
+		if gotAsOf != want || len(assets) == 0 {
+			return nil, nil, false, nil
+		}
+		return assets, body, true, nil
+	}
 	assets, published, err := parseHoldings(body)
 	if err != nil {
 		return nil, nil, false, err
 	}
 	return assets, body, published, nil
+}
+
+func parseCachedHoldings(body []byte) ([]Asset, bool, error) {
+	if isProductDataHoldings(body) {
+		assets, _, err := parseProductDataHoldings(body)
+		if err != nil {
+			return nil, false, err
+		}
+		return assets, len(assets) > 0, nil
+	}
+	return parseHoldings(body)
+}
+
+func isProductDataHoldings(body []byte) bool {
+	return bytes.Contains(body, []byte(`"componentsByNameMap"`))
+}
+
+func parseProductDataHoldings(body []byte) ([]Asset, string, error) {
+	var payload struct {
+		Components map[string]struct {
+			Containers map[string]struct {
+				Points map[string]struct {
+					Value json.RawMessage `json:"value"`
+				} `json:"dataPointsByNameMap"`
+			} `json:"containersByNameMap"`
+		} `json:"componentsByNameMap"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, "", fmt.Errorf("iShares holdings were not valid JSON: %w", err)
+	}
+	all := payload.Components["holdings"].Containers["all"].Points
+	asOf := rawScalar(all["asOfDate"].Value)
+	tickers := rawStrings(all["ticker"].Value)
+	names := rawStrings(all["issueName"].Value)
+	sectors := rawStrings(all["sectorName"].Value)
+	classes := rawStrings(all["assetClass"].Value)
+	isins := rawStrings(all["isin"].Value)
+	assets := make([]Asset, 0, len(tickers))
+	for i, ticker := range tickers {
+		if ticker == "" || fieldAt(classes, i) != "Equity" {
+			continue
+		}
+		isin := fieldAt(isins, i)
+		if isin == "" {
+			continue
+		}
+		assets = append(assets, Asset{
+			Symbol:    ticker,
+			Name:      fieldAt(names, i),
+			Sector:    fieldAt(sectors, i),
+			AssetType: "Equity",
+			ISIN:      isin,
+		})
+	}
+	return assets, asOf, nil
+}
+
+func fieldAt(values []string, i int) string {
+	if i < 0 || i >= len(values) {
+		return ""
+	}
+	return values[i]
+}
+
+func rawStrings(raw json.RawMessage) []string {
+	if len(bytes.TrimSpace(raw)) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	out := make([]string, len(items))
+	for i, item := range items {
+		out[i] = rawScalar(item)
+	}
+	return out
+}
+
+func rawScalar(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	var number json.Number
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&number); err == nil {
+		return number.String()
+	}
+	return ""
 }
 
 func (e *ISharesETFLoopup) loadCached(etf string, asOf time.Time) ([]byte, bool, error) {
@@ -275,7 +436,7 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 	if body, ok, err := e.loadCached(etf, asOf); err != nil {
 		return nil, err
 	} else if ok {
-		assets, _, err := parseHoldings(body)
+		assets, _, err := parseCachedHoldings(body)
 		if !errors.Is(err, errHoldingsPage) {
 			return assets, err
 		}
@@ -286,7 +447,7 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 			if body, ok, err := e.loadCached(etf, day); err != nil {
 				return nil, err
 			} else if ok {
-				assets, published, err := parseHoldings(body)
+				assets, published, err := parseCachedHoldings(body)
 				if errors.Is(err, errHoldingsPage) {
 					err = nil
 					published = false
