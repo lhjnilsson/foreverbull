@@ -74,7 +74,7 @@ uv run cookiecutter templates/simple      # no TA-Lib
 uv run cookiecutter templates/advanced    # needs TA-Lib
 ```
 
-The generated directory is the project slug (`simple_foreverbull` or `advanced_foreverbull` with the defaults). From that directory, run `fbull backtest run demo <slug>/crossover.py` (simple) or `<slug>/macd.py` (advanced).
+The generated directory is the project slug. From `client/`, the strategy file is `simple_foreverbull/crossover.py` (or `advanced_foreverbull/macd.py`).
 
 From GitHub (root `cookiecutter.json` picks the same two):
 

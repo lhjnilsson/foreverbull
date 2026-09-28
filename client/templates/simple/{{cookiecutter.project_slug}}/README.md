@@ -53,11 +53,11 @@ uv run fbenv start
 uv run fbenv status
 ```
 
-`fbull` talks to `localhost:50055` when cluster is `local`. The generated directory is `{{ cookiecutter.project_slug }}`. From that directory:
+`fbull` talks to `localhost:50055` when cluster is `local`. From the directory where you ran cookiecutter:
 
 ```bash
-fbull backtest create --file backtest.yaml
-fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py --yes
+fbull backtest create --file {{ cookiecutter.project_slug }}/backtest.yaml
+fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py
 ```
 
 `backtest.yaml` is a small sample universe. Change dates and symbols as needed.

@@ -29,10 +29,9 @@ if _flag("{{ cookiecutter.install_dependencies }}"):
 
 if _flag("{{ cookiecutter.run_setup }}"):
     print("This template expects TA-Lib for macd.py and rsi.py.")
-    print("Next steps:")
+    print("Next steps, from the directory where you ran cookiecutter:")
     print("  fbenv create")
     print("  fbenv start")
-    print("  cd {{ cookiecutter.project_slug }}")
-    print("  fbull backtest create --file backtest.yaml")
-    print("  fbull backtest run demo {{ cookiecutter.project_slug }}/macd.py --yes")
-    print("  python -m pytest")
+    print("  fbull backtest create --file {{ cookiecutter.project_slug }}/backtest.yaml")
+    print("  fbull backtest run demo {{ cookiecutter.project_slug }}/macd.py")
+    print("  cd {{ cookiecutter.project_slug }} && python -m pytest")

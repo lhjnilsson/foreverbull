@@ -4,11 +4,11 @@ from inspect import signature
 import pandas as pd
 
 from capital import assert_deploys_capital
-from {{cookiecutter.project_slug}}.allocation import equal_weight_percent
-from {{cookiecutter.project_slug}}.rsi import algo
-from {{cookiecutter.project_slug}}.rsi import calculate_rsi
-from {{cookiecutter.project_slug}}.rsi import place_orders
-from {{cookiecutter.project_slug}}.rsi import select_oversold
+from allocation import equal_weight_percent
+from rsi import algo
+from rsi import calculate_rsi
+from rsi import place_orders
+from rsi import select_oversold
 
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager

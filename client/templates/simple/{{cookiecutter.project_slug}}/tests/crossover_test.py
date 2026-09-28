@@ -3,9 +3,9 @@ from datetime import datetime
 import numpy
 import pytest
 
-from {{cookiecutter.project_slug}}.crossover import algo
-from {{cookiecutter.project_slug}}.crossover import get_means
-from {{cookiecutter.project_slug}}.crossover import should_buy
+from crossover import algo
+from crossover import get_means
+from crossover import should_buy
 
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import Backtest

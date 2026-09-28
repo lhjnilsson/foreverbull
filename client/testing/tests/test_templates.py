@@ -41,13 +41,13 @@ def test_generated_directory_uses_project_slug(tmp_path):
             output_dir=str(dest),
             overwrite_if_exists=True,
         )
-        assert (dest / slug / slug / package_file).is_file()
+        assert (dest / slug / package_file).is_file()
         assert list(dest.iterdir()) == [dest / slug]
 
 
 def test_simple_template_renders_algorithm(tmp_path):
     project = _render("simple", tmp_path)
-    crossover = project / "simple" / "crossover.py"
+    crossover = project / "crossover.py"
     assert crossover.is_file()
     assert (project / "README.md").is_file()
     assert (project / "backtest.yaml").is_file()
@@ -58,13 +58,13 @@ def test_simple_template_renders_algorithm(tmp_path):
 
 def test_advanced_template_renders_files(tmp_path):
     project = _render("advanced", tmp_path)
-    assert (project / "advanced" / "macd.py").is_file()
-    assert (project / "advanced" / "rsi.py").is_file()
+    assert (project / "macd.py").is_file()
+    assert (project / "rsi.py").is_file()
     assert (project / "README.md").is_file()
     assert (project / "backtest.yaml").is_file()
     assert (project / "requirements.txt").is_file()
-    macd = (project / "advanced" / "macd.py").read_text()
-    rsi = (project / "advanced" / "rsi.py").read_text()
+    macd = (project / "macd.py").read_text()
+    rsi = (project / "rsi.py").read_text()
     assert "talib" in macd
     assert "talib" in rsi
     assert "order_target_percent" in macd

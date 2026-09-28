@@ -4,11 +4,11 @@ import pytest
 
 from capital import assert_deploys_capital
 from capital import long_notional
-from {{cookiecutter.project_slug}}.macd import calculate_macd
-from {{cookiecutter.project_slug}}.macd import handle_data as macd_handle_data
-from {{cookiecutter.project_slug}}.macd import select_positive_macd
-from {{cookiecutter.project_slug}}.rsi import place_orders
-from {{cookiecutter.project_slug}}.rsi import select_oversold
+from macd import calculate_macd
+from macd import handle_data as macd_handle_data
+from macd import select_positive_macd
+from rsi import place_orders
+from rsi import select_oversold
 
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager

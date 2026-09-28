@@ -74,7 +74,7 @@ def simple_crossover_path(tmp_path_factory):
         output_dir=str(output),
         overwrite_if_exists=True,
     )
-    return output / "simple" / "simple" / "crossover.py"
+    return output / "simple" / "crossover.py"
 
 
 def test_baseline_performance(

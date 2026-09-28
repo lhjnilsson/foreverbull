@@ -1,8 +1,8 @@
 import pytest
 
-from {{cookiecutter.project_slug}}.allocation import deployable_value
-from {{cookiecutter.project_slug}}.allocation import equal_weight_percent
-from {{cookiecutter.project_slug}}.allocation import equal_weight_targets
+from allocation import deployable_value
+from allocation import equal_weight_percent
+from allocation import equal_weight_targets
 
 
 def test_deployable_value():

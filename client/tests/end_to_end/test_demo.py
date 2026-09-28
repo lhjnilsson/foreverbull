@@ -45,7 +45,7 @@ def simple_algorithm(tmp_path):
         overwrite_if_exists=True,
     )
     project = tmp_path / "simple"
-    return project / "simple" / "crossover.py", project / "backtest.yaml"
+    return project / "crossover.py", project / "backtest.yaml"
 
 
 def test_start_stop(runner, simple_algorithm):

@@ -4,11 +4,11 @@ from inspect import signature
 import pandas as pd
 
 from capital import assert_deploys_capital
-from {{cookiecutter.project_slug}}.allocation import equal_weight_percent
-from {{cookiecutter.project_slug}}.macd import algo
-from {{cookiecutter.project_slug}}.macd import calculate_macd
-from {{cookiecutter.project_slug}}.macd import handle_data
-from {{cookiecutter.project_slug}}.macd import select_positive_macd
+from allocation import equal_weight_percent
+from macd import algo
+from macd import calculate_macd
+from macd import handle_data
+from macd import select_positive_macd
 
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager

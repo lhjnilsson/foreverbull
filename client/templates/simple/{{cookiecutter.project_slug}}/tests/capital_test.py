@@ -4,8 +4,8 @@ import pytest
 
 from capital import assert_deploys_capital
 from capital import long_notional
-from {{cookiecutter.project_slug}}.crossover import get_means
-from {{cookiecutter.project_slug}}.crossover import handle_data
+from crossover import get_means
+from crossover import handle_data
 
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager

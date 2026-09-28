@@ -59,12 +59,12 @@ uv run fbenv start
 uv run fbenv status
 ```
 
-`fbull` talks to `localhost:50055` when cluster is `local`. The generated directory is `{{ cookiecutter.project_slug }}`. From that directory:
+`fbull` talks to `localhost:50055` when cluster is `local`. From the directory where you ran cookiecutter:
 
 ```bash
-fbull backtest create --file backtest.yaml
-fbull backtest run demo {{ cookiecutter.project_slug }}/macd.py --yes
-fbull backtest run demo {{ cookiecutter.project_slug }}/rsi.py --yes
+fbull backtest create --file {{ cookiecutter.project_slug }}/backtest.yaml
+fbull backtest run demo {{ cookiecutter.project_slug }}/macd.py
+fbull backtest run demo {{ cookiecutter.project_slug }}/rsi.py
 ```
 
 Remote cluster: `fbenv use remote …`, then `fbenv create` and `fbenv start`. Set `FOREVERBULL_BROKER_ADDRESS` or `remote.broker_address`. See the clone's [deploy/README.md](https://github.com/lhjnilsson/foreverbull/blob/main/deploy/README.md).
