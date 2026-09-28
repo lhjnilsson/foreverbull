@@ -31,6 +31,7 @@ if _flag("{{ cookiecutter.run_setup }}"):
     print("Next steps:")
     print("  fbenv create")
     print("  fbenv start")
+    print("  cd {{ cookiecutter.project_slug }}")
     print("  fbull backtest create --file backtest.yaml")
     print("  fbull backtest run demo {{ cookiecutter.project_slug }}/crossover.py --yes")
     print("  python -m pytest")

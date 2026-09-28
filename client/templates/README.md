@@ -102,7 +102,7 @@ Do not rewrite the `order_*` API for this contract. Per-name weights come from
 Generated strategies are backtests, not fixed-lot demos. They must follow the
 contract above. Do not describe or implement a buy as a magic share count.
 
-### Simple — `simple/{{cookiecutter.project_name}}/{{cookiecutter.project_slug}}/crossover.py`
+### Simple — `simple/{{cookiecutter.project_slug}}/{{cookiecutter.project_slug}}/crossover.py`
 
 Pandas SMA crossover (no TA-Lib). Long when the short window is above the long
 window; drop the name when it is not. Size with `order_target_percent` from

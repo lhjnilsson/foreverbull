@@ -24,6 +24,27 @@ def _render(name: str, dest: Path) -> Path:
     return dest / name
 
 
+def test_generated_directory_uses_project_slug(tmp_path):
+    for name, slug, package_file in (
+        ("simple", "simple_foreverbull", "crossover.py"),
+        ("advanced", "advanced_foreverbull", "macd.py"),
+    ):
+        dest = tmp_path / name
+        dest.mkdir()
+        cookiecutter(
+            str(TEMPLATES / name),
+            no_input=True,
+            extra_context={
+                "install_dependencies": False,
+                "run_setup": False,
+            },
+            output_dir=str(dest),
+            overwrite_if_exists=True,
+        )
+        assert (dest / slug / slug / package_file).is_file()
+        assert list(dest.iterdir()) == [dest / slug]
+
+
 def test_simple_template_renders_algorithm(tmp_path):
     project = _render("simple", tmp_path)
     crossover = project / "simple" / "crossover.py"
