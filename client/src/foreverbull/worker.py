@@ -18,6 +18,7 @@ import sqlalchemy
 
 from foreverbull import exceptions
 from foreverbull import models
+from foreverbull.broker.utils import database_url_for_host
 from foreverbull.broker.utils import get_engine
 from foreverbull.broker.utils import nng_hostname
 from foreverbull.pb.foreverbull import common_pb2
@@ -75,12 +76,13 @@ class WorkerInstance(Worker):
         except Exception as e:
             raise exceptions.ConfigurationError("Unable to connect to namespace") from e
 
+        database_url = database_url_for_host(req.databaseURL)
         try:
-            engine = get_engine(req.databaseURL)
+            engine = get_engine(database_url)
             with engine.connect() as connection:
                 connection.execute(sqlalchemy.text("SELECT 1 from asset;"))
             self._database_engine = engine
-            self.logger.debug(f"connected to database: {req.databaseURL}")
+            self.logger.debug(f"connected to database: {database_url}")
         except Exception as e:
             raise exceptions.ConfigurationError("Unable to connect to database") from e
 

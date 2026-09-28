@@ -8,6 +8,9 @@ import pynng
 
 from sqlalchemy import create_engine
 from sqlalchemy import engine
+from sqlalchemy.engine.url import make_url
+
+from foreverbull.broker.config import load_cluster_config
 
 
 DEFAULT_NNG_HOSTNAME = "127.0.0.1"
@@ -25,6 +28,25 @@ def _postgres_url(url: str) -> str:
 
 def _get_postgres_urls(base_url: str) -> Iterator[str]:
     yield _postgres_url(base_url)
+
+
+def database_url_for_host(url: str) -> str:
+    """Use the Kind host port when a local worker is given the in-cluster Service host.
+
+    The broker runs in the cluster and publishes ``postgres://...@postgres:5432/...``.
+    ``fbull backtest run`` executes the algorithm on the host, where that name does not
+    resolve. Local Kind maps Postgres to ``127.0.0.1:5432``. In-cluster workers set
+    ``BROKER_HOSTNAME`` and keep the Service name. Remote clusters keep the URL the
+    broker sent.
+    """
+    if not url or nng_hostname() != DEFAULT_NNG_HOSTNAME:
+        return url
+    if load_cluster_config().get("cluster") != "local":
+        return url
+    parsed = make_url(_postgres_url(url))
+    if parsed.host != "postgres":
+        return url
+    return parsed.set(host="127.0.0.1").render_as_string(hide_password=False)
 
 
 def get_engine(url: str) -> engine.Engine:

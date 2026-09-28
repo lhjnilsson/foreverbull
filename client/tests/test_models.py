@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from foreverbull.broker.utils import database_url_for_host
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
@@ -47,6 +48,36 @@ from foreverbull.pb.foreverbull.service.v1 import worker_pb2
 )
 def test_get_postgres_urls(input, expected_output):
     assert [u for u in _get_postgres_urls(input)] == expected_output
+
+
+def test_database_url_for_host_uses_kind_localhost(monkeypatch):
+    monkeypatch.delenv("BROKER_HOSTNAME", raising=False)
+    monkeypatch.setattr(
+        "foreverbull.broker.utils.load_cluster_config",
+        lambda **kwargs: {"cluster": "local"},
+    )
+    url = database_url_for_host("postgres://foreverbull:foreverbull@postgres:5432/foreverbull")
+    assert url == "postgresql://foreverbull:foreverbull@127.0.0.1:5432/foreverbull"
+
+
+def test_database_url_for_host_keeps_remote_and_incluster_urls(monkeypatch):
+    monkeypatch.setattr(
+        "foreverbull.broker.utils.load_cluster_config",
+        lambda **kwargs: {"cluster": "remote"},
+    )
+    remote = "postgres://foreverbull:foreverbull@postgres:5432/foreverbull"
+    assert database_url_for_host(remote) == remote
+
+    monkeypatch.setenv("BROKER_HOSTNAME", "foreverbull")
+    monkeypatch.setattr(
+        "foreverbull.broker.utils.load_cluster_config",
+        lambda **kwargs: {"cluster": "local"},
+    )
+    assert database_url_for_host(remote) == remote
+    assert (
+        database_url_for_host("postgres://foreverbull:foreverbull@127.0.0.1:5432/foreverbull")
+        == "postgres://foreverbull:foreverbull@127.0.0.1:5432/foreverbull"
+    )
 
 
 def test_get_engine_uses_provided_url_only(monkeypatch):
