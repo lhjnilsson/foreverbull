@@ -40,7 +40,7 @@ uv run fbull backtest etfs
 uv run fbull backtest create --file backtest.yaml
 uv run fbull backtest get demo
 uv run fbull backtest get demo --output yaml
-uv run fbull backtest run demo path/to/strategy.py --yes
+uv run fbull backtest run demo path/to/strategy.py
 uv run fbull backtest run demo path/to/strategy.py --start 2021-01-01 --end 2021-03-31 --dry
 uv run fbull backtest executions --backtest demo
 uv run fbull backtest execution EXECUTION_ID
@@ -73,7 +73,7 @@ uv run fbull backtest create --file ../examples/nasdaq100.yaml
 
 `--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`). Without `--file`, create prompts for a name, an ETF, and dates. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
 
-`run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. `--yes` skips the confirmation prompt. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
+`run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 
 ### Trading
 

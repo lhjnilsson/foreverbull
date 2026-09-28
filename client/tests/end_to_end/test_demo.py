@@ -63,5 +63,5 @@ def test_start_stop(runner, simple_algorithm):
     result = runner(backtest_cli, f"create --file {backtest_file}")
     assert result.exit_code == 0
 
-    result = runner(backtest_cli, f"run demo {crossover} --yes")
+    result = runner(backtest_cli, f"run demo {crossover}")
     assert result.exit_code == 0

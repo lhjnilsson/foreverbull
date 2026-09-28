@@ -396,7 +396,7 @@ def test_backtest_run(runner):
             [backtest_service_pb2.CreateSessionResponse(session=session_pb2.Session(port=7878))]
         )
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
-        result = runner(backtest, ["run", "test_name", "demo.py", "--yes"])
+        result = runner(backtest, ["run", "test_name", "demo.py"])
         assert result.exit_code == 0
         assert "exec-1" in result.stdout
         assert "test_name" in result.stdout
@@ -420,21 +420,10 @@ def test_backtest_run_dry(runner):
         create_session.assert_not_called()
 
 
-def test_backtest_run_requires_confirmation(runner):
-    with (
-        patch("foreverbull.broker.backtest.get") as get,
-        patch("foreverbull.broker.backtest.create_session") as create_session,
-    ):
-        get.return_value = _sample_backtest()
-        result = runner(backtest, ["run", "test_name", "demo.py"], input="n\n")
-        assert result.exit_code == 0
-        create_session.assert_not_called()
-
-
 def test_backtest_run_invalid_start(runner):
     with patch("foreverbull.broker.backtest.get") as get:
         get.return_value = _sample_backtest()
-        result = runner(backtest, ["run", "test_name", "demo.py", "--start", "not-a-date", "--yes"])
+        result = runner(backtest, ["run", "test_name", "demo.py", "--start", "not-a-date"])
         assert result.exit_code == 0
         assert "Invalid start date" in result.stdout
 

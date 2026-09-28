@@ -126,7 +126,7 @@ Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, an
 After create, run a strategy file against the ingested backtest:
 
 ```bash
-uv run fbull backtest run nasdaq100 path/to/strategy.py --yes
+uv run fbull backtest run nasdaq100 path/to/strategy.py
 ```
 
 ### Strategy projects

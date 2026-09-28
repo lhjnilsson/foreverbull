@@ -414,7 +414,6 @@ def run(
     start: Annotated[str | None, typer.Option(help="start date of the backtest")] = None,
     end: Annotated[str | None, typer.Option(help="end date of the backtest")] = None,
     dry: Annotated[bool, typer.Option("--dry", help="print the execution plan without running")] = False,
-    yes: Annotated[bool, typer.Option("--yes", help="skip confirmation prompt")] = False,
 ):
     entity = broker.backtest.get(name)
     dates = _parse_run_dates(entity, start, end)
@@ -433,14 +432,6 @@ def run(
         table.add_row(entity.name, file_path, start_iso, end_iso)
         console.print(table)
         return
-
-    if not yes:
-        shall_run = Confirm.ask(
-            f"Run backtest {entity.name} from {start_iso} to {end_iso}?",
-            default=False,
-        )
-        if not shall_run:
-            return
 
     execution_id = None
     with LiveProgress() as progress:
