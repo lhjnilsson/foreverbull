@@ -2,7 +2,7 @@ from datetime import UTC
 from datetime import datetime
 from itertools import pairwise
 
-from foreverbull_testing.plugin import expected_shares
+from foreverbull_testing.assertions import expected_shares
 from foreverbull_testing.session import Session
 
 from foreverbull import Algorithm

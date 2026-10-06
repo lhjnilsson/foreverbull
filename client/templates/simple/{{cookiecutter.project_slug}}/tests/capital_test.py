@@ -1,74 +1,77 @@
-from datetime import datetime
-
 import pytest
 
-from capital import assert_deploys_capital
-from capital import long_notional
 from crossover import get_means
 from crossover import handle_data
 
-from foreverbull_testing.models import AssetManager
-from foreverbull_testing.models import PortfolioManager
+from foreverbull_testing.assertions import assert_at_most_max_positions
+from foreverbull_testing.assertions import assert_flat
+from foreverbull_testing.assertions import assert_not_magic_lot
+from foreverbull_testing.assertions import assert_positive_weights_within_reserve
+from foreverbull_testing.assertions import assert_targets_sized
+from foreverbull_testing.assertions import long_notional
 from foreverbull_testing.models import Position
+from foreverbull_testing.session import Session
 
 
-AS_OF = datetime(2021, 3, 31)
-START = datetime(2021, 1, 1)
-UNIVERSE = ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "XOM", "WMT", "KO", "PEP"]
 CASH_RESERVE = 0.05
+MAX_POSITIONS = 10
 
 
-def _selected(assets) -> list[str]:
-    names = []
-    for asset in assets:
-        if len(asset.stock_data) < 30:
-            continue
-        short_mean, long_mean = get_means(asset)
-        if short_mean > long_mean:
-            names.append(asset.symbol)
-    return names
+def test_handle_data_deploys_capital(session: Session):
+    times = session.cross_up("XUP", 10, 30)
+    as_of = times[-1]
+    assets = session.assets(["XUP"], as_of)
+    short_mean, long_mean = get_means(next(iter(assets)))
+    assert short_mean > long_mean
 
-
-def test_handle_data_deploys_capital(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    assets = asset_manager.get_assets(START, AS_OF, UNIVERSE)
-    selected = _selected(assets)
-    assert selected, "expected short>long names in this window"
-
-    portfolio = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
+    portfolio = session.portfolio(as_of, 100_000)
     handle_data(assets, portfolio)
 
-    assert_deploys_capital(portfolio, assets, CASH_RESERVE)
+    assert_not_magic_lot(portfolio)
+    weight = (1.0 - CASH_RESERVE) / 1
+    assert_at_most_max_positions(portfolio, max_positions=MAX_POSITIONS)
+    assert_positive_weights_within_reserve(portfolio, cash_reserve=CASH_RESERVE)
+    assert_targets_sized(portfolio, weight, ["XUP"])
 
 
-def test_handle_data_scales_with_portfolio_value(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    assets = asset_manager.get_assets(START, AS_OF, UNIVERSE)
-    assert _selected(assets), "expected short>long names in this window"
+def test_handle_data_scales_with_portfolio_value(session: Session):
+    times = session.cross_up("XUP", 10, 30)
+    as_of = times[-1]
+    assets = session.assets(["XUP"], as_of)
+    short_mean, long_mean = get_means(next(iter(assets)))
+    assert short_mean > long_mean
 
-    small = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    large = portfolio_manager.get_portfolio(AS_OF, portfolio_value=400_000)
+    small = session.portfolio(as_of, 100_000)
+    large = session.portfolio(as_of, 400_000)
     handle_data(assets, small)
     handle_data(assets, large)
 
-    n_small = long_notional(small, assets)
-    n_large = long_notional(large, assets)
-    assert n_small > 0
-    assert_deploys_capital(small, assets, CASH_RESERVE)
-    assert_deploys_capital(large, assets, CASH_RESERVE)
-    assert n_large / n_small == pytest.approx(4.0, rel=0.10)
+    assert_not_magic_lot(small)
+    assert_not_magic_lot(large)
+    weight = 1.0 - CASH_RESERVE
+    assert_targets_sized(small, weight, ["XUP"])
+    assert_targets_sized(large, weight, ["XUP"])
+    assert_positive_weights_within_reserve(small, cash_reserve=CASH_RESERVE)
+    assert_positive_weights_within_reserve(large, cash_reserve=CASH_RESERVE)
+    assert long_notional(large) / long_notional(small) == pytest.approx(4.0, rel=0.10)
 
 
-def test_handle_data_not_magic_lot(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    assets = asset_manager.get_assets(START, AS_OF, UNIVERSE)
-    selected = _selected(assets)
-    assert selected, "expected short>long names in this window"
+def test_handle_data_not_magic_lot(session: Session):
+    times = session.cross_up("XUP", 10, 30)
+    session.trend("XDN", len(times), 50.0, 10.0)
+    as_of = times[-1]
+    assets = session.assets(["XUP", "XDN"], as_of)
+    by_symbol = {asset.symbol: asset for asset in assets}
+    up_short, up_long = get_means(by_symbol["XUP"])
+    down_short, down_long = get_means(by_symbol["XDN"])
+    assert up_short > up_long
+    assert down_short < down_long
 
-    portfolio = portfolio_manager.get_portfolio(
-        AS_OF,
-        portfolio_value=100_000,
-        positions=[Position(symbol="AAPL", amount=10)],
-    )
+    portfolio = session.portfolio(as_of, 100_000, positions=[Position(symbol="XDN", amount=10)])
     handle_data(assets, portfolio)
 
-    buys = [order.amount for order in portfolio.pending_orders if order.amount > 0]
-    assert buys, "expected buys when names qualify"
-    assert_deploys_capital(portfolio, assets, CASH_RESERVE)
+    assert_flat(portfolio, ["XDN"])
+    assert_not_magic_lot(portfolio)
+    assert_at_most_max_positions(portfolio, max_positions=MAX_POSITIONS)
+    assert_positive_weights_within_reserve(portfolio, cash_reserve=CASH_RESERVE)
+    assert_targets_sized(portfolio, 1.0 - CASH_RESERVE, ["XUP"])

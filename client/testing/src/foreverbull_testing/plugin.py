@@ -1,4 +1,5 @@
 import os
+import socket
 
 from datetime import date
 from datetime import datetime
@@ -51,7 +52,8 @@ def namespace_server():
     s.recv_timeout = 500
     s.send_timeout = 500
     previous_port = os.environ.get("NAMESPACE_PORT")
-    os.environ["NAMESPACE_PORT"] = str(s.listeners[0].local_address.port)
+    # pynng InAddr.port is network byte order. ntohs is the port clients dial.
+    os.environ["NAMESPACE_PORT"] = str(socket.ntohs(s.listeners[0].local_address.port))
 
     def runner(s, namespace):
         while True:
@@ -172,11 +174,6 @@ def portfolio_manager(fb_database):
     engine, _ = fb_database
     with engine.connect() as conn:
         yield PortfolioManager(conn)
-
-
-def expected_shares(portfolio_value: float, percent: float, close: float) -> int:
-    """Share count from order_target_percent: int(portfolio_value * percent / close)."""
-    return int(portfolio_value * percent / close)
 
 
 @pytest.fixture

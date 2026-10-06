@@ -1,43 +1,26 @@
-from datetime import datetime
-
 import pytest
 
-from capital import assert_deploys_capital
-from capital import long_notional
+from allocation import equal_weight_percent
 from macd import calculate_macd
 from macd import handle_data as macd_handle_data
 from macd import select_positive_macd
 from rsi import place_orders
 from rsi import select_oversold
 
-from foreverbull_testing.models import AssetManager
-from foreverbull_testing.models import PortfolioManager
+from foreverbull_testing.assertions import assert_at_most_max_positions
+from foreverbull_testing.assertions import assert_positive_weights_within_reserve
+from foreverbull_testing.assertions import assert_targets_sized
+from foreverbull_testing.assertions import expected_shares
+from foreverbull_testing.assertions import long_notional
+from foreverbull_testing.assertions import order_close
+from foreverbull_testing.assertions import parameter_default
+from foreverbull_testing.assertions import positive_targets
+from foreverbull_testing.session import Session
 
 
-AS_OF = datetime(2021, 3, 31)
-START = datetime(2021, 1, 1)
-UNIVERSE = [
-    "AAPL",
-    "MSFT",
-    "GOOGL",
-    "AMZN",
-    "META",
-    "NFLX",
-    "NVDA",
-    "JPM",
-    "JNJ",
-    "XOM",
-    "WMT",
-    "KO",
-    "PEP",
-    "MCD",
-    "VZ",
-    "T",
-    "MMM",
-    "TSM",
-]
-OVERSOLD = {
-    "AAPL": 70,
+# Injected RSI. Names under 30 are the book; AAPL is omitted so this file does not
+# replace downloaded AAPL bars used by the indicator test.
+METRICS = {
     "MSFT": 30,
     "GOOGL": 100,
     "MMM": 20,
@@ -56,80 +39,120 @@ OVERSOLD = {
     "WMT": 45,
     "COST": 65,
 }
+PRICES = {symbol: 25.0 + index * 10.0 for index, symbol in enumerate(METRICS)}
 
 
-def _rsi_assets(asset_manager: AssetManager):
-    return asset_manager.get_assets(START, AS_OF, list(OVERSOLD), metrics={"rsi": OVERSOLD})
+def _rsi_book(session: Session):
+    times = None
+    for symbol, price in PRICES.items():
+        times = session.constant(symbol, 5, price)
+    assert times is not None
+    assets = session.assets(list(PRICES), times[-1])
+    assets.set_metrics("rsi", dict(METRICS))
+    return assets, times[-1]
 
 
-def test_rsi_place_orders_deploys_capital(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    cash_reserve = 0.05
-    selected = select_oversold(_rsi_assets(asset_manager).get_metrics("rsi"), 30.0, 10)
-    assert len(selected) >= 3
-
-    portfolio = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    assets = _rsi_assets(asset_manager)
-    place_orders(assets, portfolio, oversold=30.0, max_positions=10, cash_reserve=cash_reserve)
-
-    assert_deploys_capital(portfolio, assets, cash_reserve)
+def _macd_book(session: Session):
+    steep = session.trend("STEEP", 60, 20.0, 80.0)
+    session.trend("MILD", 60, 20.0, 40.0)
+    session.trend("SLOW", 60, 30.0, 45.0)
+    as_of = steep[-1]
+    assets = session.assets(["STEEP", "MILD", "SLOW"], as_of)
+    return assets, as_of
 
 
-def test_rsi_place_orders_scales_with_portfolio_value(
-    asset_manager: AssetManager, portfolio_manager: PortfolioManager
-):
-    cash_reserve = 0.05
-    assets = _rsi_assets(asset_manager)
-    small = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    large = portfolio_manager.get_portfolio(AS_OF, portfolio_value=400_000)
-    place_orders(assets, small, oversold=30.0, max_positions=10, cash_reserve=cash_reserve)
-    place_orders(assets, large, oversold=30.0, max_positions=10, cash_reserve=cash_reserve)
-
-    n_small = long_notional(small, assets)
-    n_large = long_notional(large, assets)
-    assert_deploys_capital(small, assets, cash_reserve)
-    assert_deploys_capital(large, assets, cash_reserve)
-    assert n_large / n_small == pytest.approx(4.0, rel=0.10)
-
-
-def test_rsi_place_orders_concentrated_book_still_deploys_capital(
-    asset_manager: AssetManager, portfolio_manager: PortfolioManager
-):
-    cash_reserve = 0.05
-    assets = _rsi_assets(asset_manager)
-    portfolio = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    place_orders(assets, portfolio, oversold=30.0, max_positions=10, cash_reserve=cash_reserve)
-
-    buys = {order.symbol for order in portfolio.pending_orders if order.amount > 0}
-    assert buys == {"VZ", "MCD", "MMM", "TSM"}
-    assert_deploys_capital(portfolio, assets, cash_reserve)
-
-
-def test_macd_handle_data_deploys_capital(asset_manager: AssetManager, portfolio_manager: PortfolioManager):
-    cash_reserve = 0.05
-    assets = asset_manager.get_assets(START, AS_OF, UNIVERSE)
-    portfolio = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    macd_handle_data(assets, portfolio, max_positions=10, cash_reserve=cash_reserve)
-
+def _macd_selected(assets, max_positions: int) -> list[str]:
     df = assets.stock_data.groupby(level="symbol", group_keys=False).apply(calculate_macd)
-    latest = df.groupby(level="symbol", group_keys=False).apply(lambda x: x.iloc[-1]["macd"])
-    selected = select_positive_macd(latest, 10)
-    assert selected, "expected positive MACD names in this window"
-    assert_deploys_capital(portfolio, assets, cash_reserve)
+    latest = df.groupby(level="symbol", group_keys=False).apply(lambda frame: frame.iloc[-1]["macd"])
+    return select_positive_macd(latest, max_positions)
 
 
-def test_macd_handle_data_scales_with_portfolio_value(
-    asset_manager: AssetManager, portfolio_manager: PortfolioManager
-):
+def test_rsi_place_orders_deploys_capital(session: Session, namespace_server):
+    assets, as_of = _rsi_book(session)
+    portfolio = session.portfolio(as_of, 100_000)
+    place_orders(assets, portfolio)
+
+    cash_reserve = parameter_default(place_orders, "cash_reserve")
+    max_positions = parameter_default(place_orders, "max_positions")
+    selected = select_oversold(assets.get_metrics("rsi"), parameter_default(place_orders, "oversold"), max_positions)
+    assert selected
+    assert_at_most_max_positions(portfolio, fn=place_orders)
+    assert_positive_weights_within_reserve(portfolio, fn=place_orders)
+    weight = equal_weight_percent(len(selected), cash_reserve, max_positions)
+    assert_targets_sized(portfolio, weight, selected)
+    assert namespace_server.get("rsi")
+
+
+def test_rsi_place_orders_scales_with_portfolio_value(session: Session, namespace_server):
+    assets, as_of = _rsi_book(session)
+    small = session.portfolio(as_of, 100_000)
+    large = session.portfolio(as_of, 400_000)
+    place_orders(assets, small)
+    place_orders(assets, large)
+
+    max_positions = parameter_default(place_orders, "max_positions")
+    cash_reserve = parameter_default(place_orders, "cash_reserve")
+    selected = select_oversold(assets.get_metrics("rsi"), parameter_default(place_orders, "oversold"), max_positions)
+    weight = equal_weight_percent(len(selected), cash_reserve, max_positions)
+    assert_targets_sized(small, weight, selected)
+    assert_targets_sized(large, weight, selected)
+    assert_positive_weights_within_reserve(small, fn=place_orders)
+    assert_positive_weights_within_reserve(large, fn=place_orders)
+    assert long_notional(large) / long_notional(small) == pytest.approx(4.0, rel=0.10)
+    assert namespace_server.get("rsi")
+
+
+def test_rsi_place_orders_concentrated_book_still_deploys_capital(session: Session, namespace_server):
+    assets, as_of = _rsi_book(session)
+    portfolio = session.portfolio(as_of, 100_000)
+    place_orders(assets, portfolio)
+
+    buys = set(positive_targets(portfolio))
+    assert buys == {"VZ", "MCD", "MMM", "TSM"}
+    cash_reserve = parameter_default(place_orders, "cash_reserve")
+    max_positions = parameter_default(place_orders, "max_positions")
+    weight = equal_weight_percent(len(buys), cash_reserve, max_positions)
+    capped = equal_weight_percent(max_positions, cash_reserve, max_positions)
+    assert weight > capped
+    assert_targets_sized(portfolio, weight, sorted(buys))
+    assert_positive_weights_within_reserve(portfolio, fn=place_orders)
+    assert_at_most_max_positions(portfolio, fn=place_orders)
+    for symbol in buys:
+        close = order_close(portfolio, symbol)
+        assert positive_targets(portfolio)[symbol] > expected_shares(100_000, capped, close)
+    assert namespace_server.get("rsi")
+
+
+def test_macd_handle_data_deploys_capital(session: Session):
+    assets, as_of = _macd_book(session)
+    portfolio = session.portfolio(as_of, 100_000)
+    macd_handle_data(assets, portfolio)
+
+    max_positions = parameter_default(macd_handle_data, "max_positions")
+    cash_reserve = parameter_default(macd_handle_data, "cash_reserve")
+    selected = _macd_selected(assets, max_positions)
+    assert selected
+    assert_at_most_max_positions(portfolio, fn=macd_handle_data)
+    assert_positive_weights_within_reserve(portfolio, fn=macd_handle_data)
+    weight = equal_weight_percent(len(selected), cash_reserve, max_positions)
+    assert_targets_sized(portfolio, weight, selected)
+
+
+def test_macd_handle_data_scales_with_portfolio_value(session: Session):
+    assets, as_of = _macd_book(session)
     cash_reserve = 0.10
-    assets = asset_manager.get_assets(START, AS_OF, UNIVERSE)
-    small = portfolio_manager.get_portfolio(AS_OF, portfolio_value=100_000)
-    large = portfolio_manager.get_portfolio(AS_OF, portfolio_value=400_000)
-    macd_handle_data(assets, small, max_positions=10, cash_reserve=cash_reserve)
-    macd_handle_data(assets, large, max_positions=10, cash_reserve=cash_reserve)
+    max_positions = parameter_default(macd_handle_data, "max_positions")
+    small = session.portfolio(as_of, 100_000)
+    large = session.portfolio(as_of, 400_000)
+    macd_handle_data(assets, small, max_positions=max_positions, cash_reserve=cash_reserve)
+    macd_handle_data(assets, large, max_positions=max_positions, cash_reserve=cash_reserve)
 
-    n_small = long_notional(small, assets)
-    n_large = long_notional(large, assets)
-    assert n_small > 0
-    assert_deploys_capital(small, assets, cash_reserve)
-    assert_deploys_capital(large, assets, cash_reserve)
-    assert n_large / n_small == pytest.approx(4.0, rel=0.10)
+    selected = _macd_selected(assets, max_positions)
+    assert selected
+    weight = equal_weight_percent(len(selected), cash_reserve, max_positions)
+    assert_targets_sized(small, weight, selected)
+    assert_targets_sized(large, weight, selected)
+    assert_positive_weights_within_reserve(small, cash_reserve=cash_reserve)
+    assert_positive_weights_within_reserve(large, cash_reserve=cash_reserve)
+    assert long_notional(small) > 0
+    assert long_notional(large) / long_notional(small) == pytest.approx(4.0, rel=0.10)
