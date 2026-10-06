@@ -15,10 +15,10 @@ The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures 
 | `fb_database` | session | yes | Postgres Testcontainer plus `verify_or_populate` for OHLC data |
 | `asset_manager` | function | yes | Load `Asset` / `Assets` windows from that database |
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
-| `session` | function | yes | Insert synthetic OHLC bars and call production `Assets`, `Portfolio`, and `Algorithm.process` |
+| `session` | function | yes | Insert synthetic OHLC bars (`constant`, `trend`, `cross_up`) and call production `Assets`, `Portfolio`, and `Algorithm.process` |
 | `backtest` | function | no | Live broker run; skipped unless `--backtest <name>` is passed |
 
-`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. `session` inserts `ohlc` rows through that engine and does not call yfinance. `database.populate` remains the downloader for `verify_or_populate`. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
+`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. `session` inserts `ohlc` rows through that engine and does not call yfinance. `Session.constant`, `Session.trend`, and `Session.cross_up` build weekday bars (open, high, and low equal close, volume 1) and replace that symbol's rows on the test connection. `expected_shares(portfolio_value, percent, close)` is `int(portfolio_value * percent / close)`. `database.populate` remains the downloader for `verify_or_populate`. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
 ## Example
 

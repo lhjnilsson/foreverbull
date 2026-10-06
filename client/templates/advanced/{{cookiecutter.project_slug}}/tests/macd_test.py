@@ -13,6 +13,7 @@ from macd import select_positive_macd
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.models import Position
+from foreverbull_testing.session import Session
 
 
 def test_macd_function_parameters():
@@ -77,11 +78,11 @@ def test_handle_data_rebalances_held_and_flattens_leavers(
         assert orders["AAPL"] == -10
 
 
-def test_handle_data_flattens_when_max_positions_zero(
-    asset_manager: AssetManager, portfolio_manager: PortfolioManager
-):
-    portfolio = portfolio_manager.get_portfolio(datetime(2021, 3, 31), positions=[Position(symbol="AAPL", amount=10)])
-    assets = asset_manager.get_assets(datetime(2021, 1, 1), datetime(2021, 3, 31), ["AAPL", "MSFT"])
+def test_handle_data_flattens_when_max_positions_zero(session: Session):
+    times = session.constant("AAPL", 60, 100.0)
+    session.constant("MSFT", 60, 100.0)
+    portfolio = session.portfolio(times[-1], 100_000, positions=[Position(symbol="AAPL", amount=10)])
+    assets = session.assets(["AAPL", "MSFT"], times[-1])
 
     handle_data(assets, portfolio, max_positions=0, cash_reserve=0.05)
 

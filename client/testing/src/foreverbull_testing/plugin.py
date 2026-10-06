@@ -174,9 +174,17 @@ def portfolio_manager(fb_database):
         yield PortfolioManager(conn)
 
 
+def expected_shares(portfolio_value: float, percent: float, close: float) -> int:
+    """Share count from order_target_percent: int(portfolio_value * percent / close)."""
+    return int(portfolio_value * percent / close)
+
+
 @pytest.fixture
 def session(fb_database):
-    """Synthetic OHLC bars and production Algorithm.process. Not autouse. No price download."""
+    """Synthetic OHLC bars and production Algorithm.process. Not autouse. No price download.
+
+    The yielded Session builds weekday bars with constant, trend, and cross_up.
+    """
     engine, _ = fb_database
     with engine.connect() as conn:
         yield Session(conn)
