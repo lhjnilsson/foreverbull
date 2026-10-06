@@ -16,7 +16,7 @@ The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures 
 | `asset_manager` | function | yes | Load `Asset` / `Assets` windows from that database |
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
 | `session` | function | yes | Insert synthetic OHLC bars (`constant`, `trend`, `cross_up`), call production `Algorithm.process`, and `replay` that order trace |
-| `backtest` | function | no | Live broker run; skipped unless `--backtest <name>` is passed |
+| `backtest` | function | no | Optional broker run via `create_session` when `--backtest <name>` is passed; otherwise skipped |
 
 `fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. `session` inserts `ohlc` rows through that engine and does not call yfinance. `Session.constant`, `Session.trend`, and `Session.cross_up` build weekday bars (open, high, and low equal close, volume 1) and replace that symbol's rows on the test connection. `expected_shares(portfolio_value, percent, close)` is `int(portfolio_value * percent / close)`. `Session.replay(algorithm, as_of_dates, portfolio_value)` walks those dates. For each day it calls production `Algorithm.process` with that day's as_of and the carried positions. Pending `order.amount` is a delta, not a target: add it to the position and fill at that day's close. There is no slippage and no commission. Cash starts equal to `portfolio_value` when there are no positions. The next portfolio value is cash plus the sum of shares times that day's close. That result is an order trace for tests, not the broker or Zipline result. `database.populate` remains the downloader for `verify_or_populate`. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
@@ -44,13 +44,13 @@ Namespace-only tests request `namespace_server` (and optionally `fb_env`) instea
 
 ## Live backtests
 
-Pass `--backtest <name>` to opt into tests that talk to a running Foreverbull broker. Without that flag, those tests skip so unit tests stay local. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
+`--backtest` is optional. Without `--backtest <name>`, the `backtest` fixture skips with `pass --backtest <name> to run live backtest tests against a broker`. Package tests do not pass the flag, so they stay local and do not need a broker or Kind.
 
 ```bash
 uv run pytest --backtest demo
 ```
 
-Do not enable live trading from this plugin.
+With a name, the fixture looks the backtest up with `foreverbull.broker.backtest.get`. If the broker is unreachable or the name is missing, the test skips with that reason and does not error. If the broker returns the backtest, the fixture opens `broker.backtest.create_session`, connects with `Foreverbull.backtest_session`, and yields the existing `foreverbull_testing.models.Backtest`. Runs go through `Backtest.run_execution`. The fixture does not call `trading_session` or `PlaceOrder`, and it does not set `TRADING_ENABLED`. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
 
 ## Tests for this package
 

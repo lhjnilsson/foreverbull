@@ -4,15 +4,20 @@ import socket
 from datetime import date
 from datetime import datetime
 from threading import Thread
+from typing import cast
 
 import pynng
 import pytest
 
+from foreverbull import broker
+from foreverbull.foreverbull import Foreverbull
+from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
 from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import AssetManager
+from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager
 from foreverbull_testing.session import Session
 
@@ -189,9 +194,77 @@ def session(fb_database):
         yield Session(conn)
 
 
-@pytest.fixture
-def backtest(request):
+class _UnsetAlgorithm:
+    """Stand-in until Backtest.run_execution installs the algorithm."""
+
+
+def _broker_skip_reason(exc: Exception) -> str:
+    details = getattr(exc, "details", None)
+    message = details() if callable(details) else None
+    if not message:
+        message = str(exc).strip()
+    return str(message) if message else exc.__class__.__name__
+
+
+def _close_stream(stream) -> None:
+    # The session server is already up once a port arrives. Swallow close errors
+    # so a stream cancel cannot mask the lookup failure or fail the test.
+    closer = getattr(stream, "close", None)
+    if not callable(closer):
+        return
+    try:
+        closer()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _started_session(name: str):
+    stream = broker.backtest.create_session(name)
+    try:
+        for msg in stream:
+            if msg.session.port:
+                return msg
+    finally:
+        _close_stream(stream)
+    return None
+
+
+def _backtest(request):
+    """Open the optional broker backtest described by request's --backtest option."""
     name = request.config.getoption("--backtest")
     if not name:
         pytest.skip("pass --backtest <name> to run live backtest tests against a broker")
-    pytest.skip(f"live backtest {name!r} requires a running Foreverbull broker")
+
+    try:
+        entity = broker.backtest.get(name)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(_broker_skip_reason(exc))
+
+    if entity is None or not entity.name:
+        pytest.skip(f"backtest {name!r} was not found")
+
+    try:
+        started = _started_session(name)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(_broker_skip_reason(exc))
+
+    if started is None:
+        pytest.skip(f"backtest {name!r} session did not start")
+
+    # Foreverbull requires a model. The test algorithm replaces it inside run_execution.
+    with Foreverbull(cast(Algorithm, _UnsetAlgorithm())).backtest_session(entity, started.session) as live:
+        yield Backtest(live)
+
+
+@pytest.fixture
+def backtest(request):
+    """Optional broker backtest. Skips unless --backtest <name> is passed.
+
+    Looks the name up with foreverbull.broker.backtest.get. An unreachable
+    broker or a missing name skips with that reason and does not error. A found
+    backtest is yielded as models.Backtest, connected with
+    broker.backtest.create_session and Foreverbull.backtest_session.
+    Backtest.run_execution is the only runner. Does not call trading_session
+    or PlaceOrder, and does not set TRADING_ENABLED.
+    """
+    yield from _backtest(request)
