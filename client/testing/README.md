@@ -6,18 +6,19 @@ Install it with the rest of the client workspace (`uv sync` from `client/`) or a
 
 ## Fixtures
 
-The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures are autouse. Tests that do not execute SQL — CLI rendering, proto utils, and in-process namespace socket fakes — must not request `fb_database`, `asset_manager`, or `portfolio_manager`, and will not start Docker.
+The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures are autouse. Tests that do not execute SQL — CLI rendering, proto utils, and in-process namespace socket fakes — must not request `fb_database`, `asset_manager`, `portfolio_manager`, or `session`, and will not start Docker.
 
 | Fixture | Scope | Docker | Purpose |
 | --- | --- | --- | --- |
 | `fb_env` | function | no | Process env defaults (`setup_env`) |
-| `namespace_server` | function | no | In-process pynng namespace fake |
+| `namespace_server` | function | no | In-process pynng namespace fake on an ephemeral port |
 | `fb_database` | session | yes | Postgres Testcontainer plus `verify_or_populate` for OHLC data |
 | `asset_manager` | function | yes | Load `Asset` / `Assets` windows from that database |
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
+| `session` | function | yes | Insert synthetic OHLC bars and call production `Assets`, `Portfolio`, and `Algorithm.process` |
 | `backtest` | function | no | Live broker run; skipped unless `--backtest <name>` is passed |
 
-`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
+`fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg` and can download prices through yfinance when a window is missing. `session` inserts `ohlc` rows through that engine and does not call yfinance. `database.populate` remains the downloader for `verify_or_populate`. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
 ## Example
 

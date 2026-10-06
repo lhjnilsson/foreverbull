@@ -13,6 +13,7 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_s
 from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import PortfolioManager
+from foreverbull_testing.session import Session
 
 from . import database
 
@@ -46,10 +47,11 @@ def namespace_server():
     """In-process pynng namespace fake. Does not start Docker or query SQL."""
     namespace = {}
 
-    s = pynng.Rep0(listen="tcp://0.0.0.0:7878")
+    s = pynng.Rep0(listen="tcp://0.0.0.0:0")
     s.recv_timeout = 500
     s.send_timeout = 500
-    os.environ["NAMESPACE_PORT"] = "7878"
+    previous_port = os.environ.get("NAMESPACE_PORT")
+    os.environ["NAMESPACE_PORT"] = str(s.listeners[0].local_address.port)
 
     def runner(s, namespace):
         while True:
@@ -79,6 +81,10 @@ def namespace_server():
     finally:
         s.close()
         thread.join()
+        if previous_port is None:
+            os.environ.pop("NAMESPACE_PORT", None)
+        else:
+            os.environ["NAMESPACE_PORT"] = previous_port
 
 
 @pytest.fixture(scope="session")
@@ -166,6 +172,14 @@ def portfolio_manager(fb_database):
     engine, _ = fb_database
     with engine.connect() as conn:
         yield PortfolioManager(conn)
+
+
+@pytest.fixture
+def session(fb_database):
+    """Synthetic OHLC bars and production Algorithm.process. Not autouse. No price download."""
+    engine, _ = fb_database
+    with engine.connect() as conn:
+        yield Session(conn)
 
 
 @pytest.fixture
