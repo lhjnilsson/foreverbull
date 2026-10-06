@@ -1,7 +1,7 @@
 {
   "uid": "fb-strategy-compare",
   "title": "Strategy compare",
-  "description": "Overlay two executions. Cascade strategy → version to narrow the pickers, or leave those on All and pick any two runs. Default time range is 30 years so period series stay on screen; zoom to the runs.",
+  "description": "Overlay two executions. Cascade strategy → version to narrow the pickers, or leave those on All and pick any two runs. The time axis is the exact union of those runs, earliest timestamp through latest, with no pad. Saved time now/now is not kept once the runs are known.",
   "tags": ["foreverbull", "strategy"],
   "schemaVersion": 40,
   "refresh": "",
@@ -11,7 +11,7 @@
   "timezone": "utc",
   "weekStart": "",
   "time": {
-    "from": "now-30y",
+    "from": "now",
     "to": "now"
   },
   "timepicker": {
@@ -157,7 +157,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Portfolio value",
-      "description": "Overlay of left and right execution portfolio_value",
+      "description": "Equity curve for the left and right runs. Dollars, thicker line, light fill. Not on one axis with a return series.",
       "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
       "datasource": {
         "type": "lhjnilsson-foreverbull-datasource",
@@ -175,12 +175,12 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 8,
-            "gradientMode": "none",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
             "lineInterpolation": "linear",
-            "lineWidth": 2,
+            "lineWidth": 3,
             "pointSize": 5,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "never",
@@ -194,7 +194,7 @@
             "mode": "absolute",
             "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "short"
+          "unit": "currencyUSD"
         },
         "overrides": []
       },
@@ -234,7 +234,7 @@
       "id": 2,
       "type": "table",
       "title": "Last Sharpe / drawdown",
-      "description": "Last non-null sharpe, max_drawdown, and portfolio_value for each execution",
+      "description": "Last non-null sharpe (ratio), max_drawdown (fraction), and portfolio_value (dollars). Each series keeps its own unit.",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
       "datasource": {
         "type": "lhjnilsson-foreverbull-datasource",
@@ -248,14 +248,36 @@
             "filterable": true,
             "inspect": false
           },
-          "decimals": 4,
+          "decimals": 2,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [{ "color": "text", "value": null }]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "sharpe" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_drawdown" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "portfolio_value" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 }
+            ]
+          }
+        ]
       },
       "options": {
         "cellHeight": "sm",
@@ -271,8 +293,7 @@
         {
           "id": "reduce",
           "options": {
-            "includeTimeField": false,
-            "mode": "seriesToRows",
+            "mode": "reduceFields",
             "reducers": ["lastNotNull"]
           }
         }
@@ -312,7 +333,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Drawdown",
-      "description": "Overlay of left and right execution max_drawdown",
+      "description": "Underwater max drawdown for the left and right runs, filled to zero. A fraction: 0.01 is 1%. Not on the portfolio value axis. Series colors stay distinct so the two runs can be told apart.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "datasource": {
         "type": "lhjnilsson-foreverbull-datasource",
@@ -327,10 +348,11 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMax": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 35,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
@@ -341,13 +363,16 @@
             "showPoints": "never",
             "spanNulls": true,
             "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
+            "thresholdsStyle": { "mode": "line" }
           },
           "decimals": 2,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "red", "value": null }]
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "rgba(204, 204, 220, 0.65)", "value": 0 }
+            ]
           },
           "unit": "percentunit"
         },
@@ -389,7 +414,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Sharpe",
-      "description": "Overlay of left and right execution sharpe",
+      "description": "Overlay of left and right execution Sharpe. A ratio, not a percent.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "datasource": {
         "type": "lhjnilsson-foreverbull-datasource",
@@ -426,7 +451,7 @@
             "mode": "absolute",
             "steps": [{ "color": "green", "value": null }]
           },
-          "unit": "short"
+          "unit": "none"
         },
         "overrides": []
       },

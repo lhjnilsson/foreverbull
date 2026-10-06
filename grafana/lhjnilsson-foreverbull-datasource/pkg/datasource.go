@@ -141,21 +141,28 @@ func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *grafana.
 type QueryMetric string
 
 const (
-	PortfolioValue QueryMetric = "portfolio_value"
-	Returns        QueryMetric = "returns"
-	PnL            QueryMetric = "pnl"
-	Cash           QueryMetric = "cash"
-	MaxDrawdown    QueryMetric = "max_drawdown"
-	Benchmark      QueryMetric = "benchmark"
-	Alpha          QueryMetric = "alpha"
-	Beta           QueryMetric = "beta"
-	Sharpe         QueryMetric = "sharpe"
-	Sortino        QueryMetric = "sortino"
-	CapitalUsed    QueryMetric = "capital_used"
-	LongCount      QueryMetric = "long_count"
-	ShortCount     QueryMetric = "short_count"
-	LongValue      QueryMetric = "long_value"
-	ShortValue     QueryMetric = "short_value"
+	PortfolioValue   QueryMetric = "portfolio_value"
+	Returns          QueryMetric = "returns"
+	PnL              QueryMetric = "pnl"
+	Cash             QueryMetric = "cash"
+	MaxDrawdown      QueryMetric = "max_drawdown"
+	Benchmark        QueryMetric = "benchmark"
+	Alpha            QueryMetric = "alpha"
+	Beta             QueryMetric = "beta"
+	Sharpe           QueryMetric = "sharpe"
+	Sortino          QueryMetric = "sortino"
+	CapitalUsed      QueryMetric = "capital_used"
+	LongCount        QueryMetric = "long_count"
+	ShortCount       QueryMetric = "short_count"
+	LongValue        QueryMetric = "long_value"
+	ShortValue       QueryMetric = "short_value"
+	GrossLeverage    QueryMetric = "gross_leverage"
+	NetLeverage      QueryMetric = "net_leverage"
+	MaxLeverage      QueryMetric = "max_leverage"
+	LongExposure     QueryMetric = "long_exposure"
+	ShortExposure    QueryMetric = "short_exposure"
+	EndingExposure   QueryMetric = "ending_exposure"
+	StartingExposure QueryMetric = "starting_exposure"
 )
 
 var listedMetrics = []QueryMetric{
@@ -174,6 +181,13 @@ var listedMetrics = []QueryMetric{
 	ShortCount,
 	LongValue,
 	ShortValue,
+	GrossLeverage,
+	NetLeverage,
+	MaxLeverage,
+	LongExposure,
+	ShortExposure,
+	EndingExposure,
+	StartingExposure,
 }
 
 // Execution is the canonical query-JSON object for an execution id.
@@ -309,6 +323,13 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 	shortCount := make([]int32, len(periods))
 	longValue := make([]float64, len(periods))
 	shortValue := make([]float64, len(periods))
+	grossLeverage := make([]float64, len(periods))
+	netLeverage := make([]float64, len(periods))
+	maxLeverage := make([]float64, len(periods))
+	longExposure := make([]float64, len(periods))
+	shortExposure := make([]float64, len(periods))
+	endingExposure := make([]float64, len(periods))
+	startingExposure := make([]float64, len(periods))
 
 	for i, period := range periods {
 		times[i] = periodTime(period)
@@ -327,6 +348,13 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 		shortCount[i] = period.ShortsCount
 		longValue[i] = period.LongValue
 		shortValue[i] = period.ShortValue
+		grossLeverage[i] = period.GrossLeverage
+		netLeverage[i] = period.NetLeverage
+		maxLeverage[i] = period.MaxLeverage
+		longExposure[i] = period.LongExposure
+		shortExposure[i] = period.ShortExposure
+		endingExposure[i] = period.EndingExposure
+		startingExposure[i] = period.StartingExposure
 	}
 
 	frame := data.NewFrame(seriesLabel)
@@ -363,6 +391,20 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 			appendMetricField(frame, string(LongValue), seriesLabels, longValue)
 		case ShortValue:
 			appendMetricField(frame, string(ShortValue), seriesLabels, shortValue)
+		case GrossLeverage:
+			appendMetricField(frame, string(GrossLeverage), seriesLabels, grossLeverage)
+		case NetLeverage:
+			appendMetricField(frame, string(NetLeverage), seriesLabels, netLeverage)
+		case MaxLeverage:
+			appendMetricField(frame, string(MaxLeverage), seriesLabels, maxLeverage)
+		case LongExposure:
+			appendMetricField(frame, string(LongExposure), seriesLabels, longExposure)
+		case ShortExposure:
+			appendMetricField(frame, string(ShortExposure), seriesLabels, shortExposure)
+		case EndingExposure:
+			appendMetricField(frame, string(EndingExposure), seriesLabels, endingExposure)
+		case StartingExposure:
+			appendMetricField(frame, string(StartingExposure), seriesLabels, startingExposure)
 		}
 	}
 
@@ -374,8 +416,28 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 
 func appendMetricField(frame *data.Frame, name string, labels data.Labels, values interface{}) {
 	field := data.NewField(name, labels, values)
+	// Display unit only. Stored numbers are not rescaled.
+	cfg := &data.FieldConfig{Unit: metricUnit(name)}
 	if label := labels["execution"]; label != "" {
-		field.SetConfig(&data.FieldConfig{DisplayNameFromDS: label + " " + name})
+		cfg.DisplayNameFromDS = label + " " + name
 	}
+	field.SetConfig(cfg)
 	frame.Fields = append(frame.Fields, field)
+}
+
+// metricUnit matches the zipline period writer (engine.py copies the columns unchanged).
+// returns, max_drawdown, benchmark_period_return, and annualized alpha are fractions (0.01 is 1 percent).
+// Sharpe, Sortino, and beta are ratios. gross/net/max leverage are exposure/portfolio_value (1 is 1x).
+// portfolio_value, pnl, cash, capital_used, long_value, short_value, and exposure fields are currency.
+func metricUnit(name string) string {
+	switch QueryMetric(name) {
+	case PortfolioValue, PnL, Cash, CapitalUsed, LongValue, ShortValue, LongExposure, ShortExposure, EndingExposure, StartingExposure:
+		return "currencyUSD"
+	case Returns, MaxDrawdown, Benchmark, Alpha:
+		return "percentunit"
+	case Sharpe, Sortino, Beta, GrossLeverage, NetLeverage, MaxLeverage:
+		return "none"
+	default:
+		return ""
+	}
 }

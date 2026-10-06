@@ -110,7 +110,12 @@ func (test *ResourceTest) TestListExecutions() {
 
 	got := test.callResource("executions", "/executions", nil)
 	test.Equal([]ResourceDefinition{
-		{Value: id, Label: "spy 2023-01-03–2023-12-25 84753648"},
+		{
+			Value: id,
+			Label: "spy 2023-01-03–2023-12-25 84753648",
+			Start: "2023-01-03",
+			End:   "2023-12-25",
+		},
 	}, got)
 }
 
@@ -156,6 +161,17 @@ func (test *ResourceTest) TestListMetrics() {
 	test.Contains(values, string(MaxDrawdown))
 	test.Contains(values, string(Benchmark))
 	test.Contains(values, string(PortfolioValue))
+	test.Contains(values, string(Alpha))
+	test.Contains(values, string(Beta))
+	test.Contains(values, string(Sortino))
+	test.Contains(values, string(CapitalUsed))
+	test.Contains(values, string(GrossLeverage))
+	test.Contains(values, string(NetLeverage))
+	test.Contains(values, string(MaxLeverage))
+	test.Contains(values, string(LongExposure))
+	test.Contains(values, string(ShortExposure))
+	test.Contains(values, string(EndingExposure))
+	test.Contains(values, string(StartingExposure))
 }
 
 func (test *ResourceTest) TestListStrategies() {

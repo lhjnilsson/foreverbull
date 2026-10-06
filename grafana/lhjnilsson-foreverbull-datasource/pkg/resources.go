@@ -21,6 +21,10 @@ type ResourceDefinition struct {
 	Value       string `json:"value"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
+	// Start and End are YYYY-MM-DD from ListExecutions. The time axis uses them
+	// before period frames return. Other resources leave them empty.
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
 }
 
 // resourceFilter is accepted as query params or a JSON POST body.
@@ -213,6 +217,8 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 		definitions = append(definitions, ResourceDefinition{
 			Value: execution.Id,
 			Label: executionLabel(execution),
+			Start: formatDate(execution.StartDate),
+			End:   formatDate(execution.EndDate),
 		})
 	}
 

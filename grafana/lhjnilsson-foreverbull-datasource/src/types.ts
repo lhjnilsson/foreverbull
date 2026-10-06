@@ -24,6 +24,10 @@ export interface ResourceDefinition {
   value: string;
   label: string;
   description?: string;
+  /** YYYY-MM-DD from ListExecutions start_date. Execution options only. */
+  start?: string;
+  /** YYYY-MM-DD from ListExecutions end_date. Execution options only. */
+  end?: string;
 }
 
 export interface ResourceFilter {
