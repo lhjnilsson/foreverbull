@@ -184,6 +184,8 @@ def session(fb_database):
     """Synthetic OHLC bars and production Algorithm.process. Not autouse. No price download.
 
     The yielded Session builds weekday bars with constant, trend, and cross_up.
+    replay fills each pending order.amount as a delta at that day's close. The
+    result is an order trace for tests, not a broker or Zipline result.
     """
     engine, _ = fb_database
     with engine.connect() as conn:

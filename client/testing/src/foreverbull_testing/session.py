@@ -9,6 +9,7 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from typing import Any
+from typing import NamedTuple
 
 from sqlalchemy import Connection
 from sqlalchemy import text
@@ -35,6 +36,18 @@ _INSERT_OHLC = text(
     VALUES (:symbol, :time, :open, :high, :low, :close, :volume)
     """
 )
+
+_CLOSE_ON_DAY = text("SELECT close FROM ohlc WHERE symbol=:symbol AND time::DATE=:dt")
+
+
+class ReplayDay(NamedTuple):
+    """Post-fill snapshot for one as_of. An order trace for tests, not a broker or Zipline result."""
+
+    as_of: datetime
+    orders: tuple[Any, ...]
+    positions: dict[str, int]
+    portfolio_value: float
+    cash: float
 
 
 class Session:
@@ -139,6 +152,58 @@ class Session:
         for function in functions:
             orders.extend(algorithm.process(function.name, self._conn, message, symbols))
         return orders
+
+    def replay(
+        self,
+        algorithm: Algorithm,
+        as_of_dates: Sequence[datetime],
+        portfolio_value: float,
+    ) -> list[ReplayDay]:
+        """Walk inserted dates and trace orders. Not a broker or Zipline result.
+
+        For each day, call Algorithm.process with that day's as_of and the carried
+        positions. Pending order.amount is a delta, not a target: add it to the
+        position and fill at that day's close. No slippage and no commission.
+        Cash starts at portfolio_value when there are no positions. The next
+        portfolio_value is cash plus the sum of shares times that day's close.
+        """
+        cash = float(portfolio_value)
+        value = cash
+        held: dict[str, int] = {}
+        trace: list[ReplayDay] = []
+        for as_of in as_of_dates:
+            orders = tuple(self.run(algorithm, as_of, value, list(held.items())))
+            for order in orders:
+                amount = int(order.amount)
+                if amount == 0:
+                    continue
+                symbol = str(order.symbol)
+                close = self._close_on(symbol, as_of)
+                held[symbol] = held.get(symbol, 0) + amount
+                cash -= amount * close
+                if held[symbol] == 0:
+                    del held[symbol]
+            market_value = 0.0
+            for symbol, shares in held.items():
+                market_value += shares * self._close_on(symbol, as_of)
+            value = cash + market_value
+            trace.append(
+                ReplayDay(
+                    as_of=as_of,
+                    orders=orders,
+                    positions=dict(held),
+                    portfolio_value=value,
+                    cash=cash,
+                )
+            )
+        return trace
+
+    def _close_on(self, symbol: str, as_of: datetime) -> float:
+        day = _as_utc(as_of).strftime("%Y-%m-%d")
+        close = self._conn.execute(_CLOSE_ON_DAY, {"symbol": symbol, "dt": day}).scalar()
+        if close is None:
+            raise ValueError(f"no close for {symbol} on {day}")
+        return float(close)
 
     def _portfolio_message(
         self,
