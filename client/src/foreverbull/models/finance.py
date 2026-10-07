@@ -31,10 +31,12 @@ def _exchange_namespace(request: worker_service_pb2.NamespaceRequest) -> worker_
 
 
 class Asset:
-    def __init__(self, as_of: datetime, db: engine.Connection, symbol: str):
+    def __init__(self, as_of: datetime, db: engine.Connection, symbol: str, *, _stock_data_loader=None):
         self._as_of = as_of
         self._db = db
         self._symbol = symbol
+        # Set only for Assets iteration. A direct Asset keeps the single-symbol query.
+        self._stock_data_loader = _stock_data_loader
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
         request = worker_service_pb2.NamespaceRequest(
@@ -60,6 +62,8 @@ class Asset:
 
     @property
     def stock_data(self) -> DataFrame:
+        if self._stock_data_loader is not None:
+            return self._stock_data_loader(self._symbol)
         query = text(
             """
             SELECT symbol, time, high, low, open, close, volume
@@ -67,7 +71,7 @@ class Asset:
                 SELECT symbol, time, high, low, open, close, volume
                 FROM ohlc
                 WHERE time <= :as_of AND symbol = :symbol
-                ORDER BY time DESC
+                ORDER BY time DESC, ctid DESC
                 LIMIT :limit
             ) recent
             ORDER BY time ASC
@@ -81,6 +85,7 @@ class Assets:
         self._as_of = as_of
         self._db = db
         self._symbols = symbols
+        self._asset_frames: dict[str, DataFrame] | None = None
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
         request = worker_service_pb2.NamespaceRequest(
@@ -106,7 +111,27 @@ class Assets:
 
     def __iter__(self):
         for symbol in self.symbols:
-            yield Asset(self._as_of, self._db, symbol)
+            yield Asset(self._as_of, self._db, symbol, _stock_data_loader=self._asset_frame)
+
+    def _asset_frame(self, symbol: str) -> DataFrame:
+        if self._asset_frames is None:
+            self._asset_frames = self._load_asset_frames()
+        return self._asset_frames[symbol]
+
+    def _load_asset_frames(self) -> dict[str, DataFrame]:
+        # One statement. ohlc is UNIQUE(symbol, time), so this window matches
+        # Asset.stock_data's ORDER BY time DESC LIMIT, and time ASC is a total order.
+        batched = self.stock_data
+        empty = batched.iloc[0:0].reset_index()
+        present = set(batched.index.get_level_values("symbol"))
+        frames: dict[str, DataFrame] = {}
+        for symbol in self._symbols:
+            if symbol in present:
+                frame = batched.loc[[symbol]].reset_index()
+                frames[symbol] = frame.sort_values("time", kind="mergesort").reset_index(drop=True)
+            else:
+                frames[symbol] = empty.copy()
+        return frames
 
     @property
     def stock_data(self) -> DataFrame:
@@ -115,7 +140,7 @@ class Assets:
             SELECT symbol, time, high, low, open, close, volume
             FROM (
                 SELECT symbol, time, high, low, open, close, volume,
-                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC, ctid DESC) AS rn
                 FROM ohlc
                 WHERE time <= :as_of AND symbol IN :symbols
             ) bounded
@@ -174,6 +199,7 @@ class Portfolio:
         self._pb = pb
         self._db = db
         self.pending_orders: list[marketdata_pb2.Order] = []
+        self._close_by_symbol_day: dict[tuple[str, str], float] = {}
 
     @property
     def positions(self) -> Positions:
@@ -185,12 +211,19 @@ class Portfolio:
     def equal_weight_percent(self, n_selected: int, cash_reserve: float, max_positions: int) -> float:
         return equal_weight_percent(n_selected, cash_reserve, max_positions)
 
+    def _close_on_bar(self, symbol: str):
+        day = self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
+        key = (symbol, day)
+        if key not in self._close_by_symbol_day:
+            q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
+            q = q.bindparams(symbol=symbol, dt=day)
+            latest_close = self._db.execute(q).scalar()
+            assert latest_close is not None, f"unable to find latest close price for {symbol}"
+            self._close_by_symbol_day[key] = float(latest_close)
+        return self._close_by_symbol_day[key]
+
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
-        q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
-        q = q.bindparams(symbol=symbol, dt=self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d"))
-        latest_close = self._db.execute(q).scalar()
-        assert latest_close is not None, f"unable to find latest close price for {symbol}"
-        return int(value / float(latest_close))
+        return int(value / self._close_on_bar(symbol))
 
     def _calculate_order_percent_amount(self, symbol: str, percent: float) -> int:
         value = self._pb.portfolio_value * percent

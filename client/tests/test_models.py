@@ -9,8 +9,10 @@ from unittest import mock
 import pandas
 import pytest
 
+from sqlalchemy import event
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from foreverbull.broker.utils import database_url_for_host
 from foreverbull.models import Algorithm
@@ -186,6 +188,78 @@ class TestAssets:
                 stock_data.index.get_level_values("symbol") if not stock_data.empty else []
             )
 
+    def test_ohlc_rejects_a_second_bar_at_the_same_time(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        with database.connect() as conn:
+            row = conn.execute(text("SELECT symbol, time FROM ohlc LIMIT 1")).one()
+            with pytest.raises(IntegrityError):
+                conn.execute(
+                    text(
+                        """INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+                        VALUES (:symbol, :time, 1, 1, 1, 1, 1)"""
+                    ),
+                    {"symbol": row.symbol, "time": row.time},
+                )
+            conn.rollback()
+
+    def test_iterated_stock_data_matches_direct_asset(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        as_of = datetime.now()
+        with database.connect() as conn:
+            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
+            assert symbols
+            assets = Assets(as_of, conn, symbols)
+            for asset in assets:
+                direct = Asset(as_of, conn, asset.symbol).stock_data
+                pandas.testing.assert_frame_equal(asset.stock_data, direct, check_dtype=True)
+
+    def test_assets_stock_data_one_symbol_matches_asset_query(
+        self, fb_database, backtest_entity: backtest_pb2.Backtest
+    ):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        as_of = datetime.now()
+        with database.connect() as conn:
+            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
+            symbol = symbols[0]
+            batched = Assets(as_of, conn, symbols).stock_data
+            direct = Asset(as_of, conn, symbol).stock_data
+            # symbol, time are the index on the batched frame; Asset keeps them as columns.
+            one = batched.loc[[symbol]].reset_index()
+            pandas.testing.assert_frame_equal(one, direct, check_dtype=True)
+
+    def test_iterated_stock_data_is_one_statement(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+        database, ensure_data = fb_database
+        ensure_data(backtest_entity)
+        as_of = datetime.now()
+        with database.connect() as conn:
+            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
+            assert len(symbols) >= 2
+            executions: list[str] = []
+
+            def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+                executions.append(statement)
+
+            event.listen(conn, "before_cursor_execute", before_cursor_execute)
+            try:
+                assets = Assets(as_of, conn, symbols)
+                frames = []
+                for asset in assets:
+                    frames.append(asset.stock_data)
+                    frames.append(asset.stock_data)
+                assert len(frames) == len(symbols) * 2
+                assert len(executions) == 1
+                assert "row_number" in executions[0].lower()
+
+                direct = Asset(as_of, conn, symbols[0]).stock_data
+                assert isinstance(direct, pandas.DataFrame)
+                assert len(executions) == 2
+                assert "row_number" not in executions[1].lower()
+            finally:
+                event.remove(conn, "before_cursor_execute", before_cursor_execute)
+
 
 class TestPortfolio:
     @pytest.fixture(scope="session")
@@ -317,6 +391,49 @@ class TestPortfolio:
         order = uut.order_target_value("ptest", order_target_amount)
         assert order
         assert order.amount == expected_order_amount
+
+    @pytest.mark.parametrize("percent", [0.10, 0.5, 1.0])
+    def test_order_share_counts_follow_portfolio_value_percent_over_close(self, uut: Portfolio, percent: float):
+        close = uut._db.execute(
+            text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
+            {"symbol": "ptest", "dt": uut._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")},
+        ).scalar()
+        assert close is not None
+        expected = int(uut._pb.portfolio_value * percent / float(close))
+
+        by_value = uut.order_value("ptest", uut._pb.portfolio_value * percent)
+        by_value_again = uut.order_value("ptest", uut._pb.portfolio_value * percent)
+        assert by_value.amount == expected
+        assert by_value_again.amount == expected
+
+        by_target = uut.order_target_percent("ptest", percent)
+        by_target_again = uut.order_target_percent("ptest", percent)
+        assert by_target.amount == expected
+        assert by_target_again.amount == expected
+
+    def test_repeated_order_value_reuses_close(self, uut: Portfolio):
+        day = uut._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
+        close = uut._db.execute(
+            text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
+            {"symbol": "ptest", "dt": day},
+        ).scalar()
+        assert close is not None
+        executions: list[str] = []
+
+        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            executions.append(statement)
+
+        event.listen(uut._db, "before_cursor_execute", before_cursor_execute)
+        try:
+            first = uut.order_value("ptest", 50000)
+            second = uut.order_value("ptest", 50000)
+            other = uut.order_value("ptest", 100000)
+        finally:
+            event.remove(uut._db, "before_cursor_execute", before_cursor_execute)
+
+        assert first.amount == second.amount == int(50000 / float(close))
+        assert other.amount == int(100000 / float(close))
+        assert len(executions) == 1
 
 
 class TestAllocation:
