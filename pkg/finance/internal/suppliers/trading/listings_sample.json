@@ -1,0 +1,35 @@
+[
+  {
+    "isin": "US0378331005",
+    "symbol": "AAPL",
+    "currency": "USD",
+    "alpaca_symbol": "AAPL",
+    "saxo_uic": 211,
+    "saxo_asset_type": "Stock",
+    "ibkr_conid": 265598,
+    "ig_epic": "UA.D.AAPL.DAILY.IP",
+    "ig_share_size": 1
+  },
+  {
+    "isin": "US5949181045",
+    "symbol": "MSFT",
+    "currency": "USD",
+    "alpaca_symbol": "MSFT",
+    "saxo_uic": 261,
+    "saxo_asset_type": "Stock",
+    "ibkr_conid": 272093,
+    "ig_epic": "UA.D.MSFT.DAILY.IP",
+    "ig_share_size": 1
+  },
+  {
+    "isin": "US1912161007",
+    "symbol": "KO",
+    "currency": "USD",
+    "alpaca_symbol": "KO",
+    "saxo_uic": 0,
+    "saxo_asset_type": "",
+    "ibkr_conid": 0,
+    "ig_epic": "UA.D.KO.DAILY.IP",
+    "ig_share_size": 10
+  }
+]

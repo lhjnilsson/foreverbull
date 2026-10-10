@@ -49,7 +49,7 @@ func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.Confi
 }
 
 func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest) (*servicePb.RunResponse, error) {
-	portfolio, err := gs.trading.GetPortfolio()
+	portfolio, err := gs.trading.GetPortfolio(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +69,11 @@ func (gs *grpcSessionServer) PlaceOrders(ctx context.Context, req *servicePb.Pla
 		Orders: make([]*pb.Order, len(req.Orders)),
 	}
 	for i, order := range req.Orders {
-		_, err := gs.trading.PlaceOrder(order)
+		placed, err := gs.trading.PlaceOrder(ctx, order)
 		if err != nil {
 			return nil, err
 		}
-		rsp.Orders[i] = order
+		rsp.Orders[i] = placed
 	}
 	return rsp, nil
 }

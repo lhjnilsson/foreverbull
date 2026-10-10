@@ -37,7 +37,7 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 		return nil, fmt.Errorf("trading is not enabled")
 	}
 
-	orders, err := ts.trading.GetOrders()
+	orders, err := ts.trading.GetOrders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting orders: %w", err)
 	}
@@ -52,7 +52,7 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 		return nil, fmt.Errorf("trading is not enabled")
 	}
 
-	portfolio, err := ts.trading.GetPortfolio()
+	portfolio, err := ts.trading.GetPortfolio(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting portfolio: %w", err)
 	}

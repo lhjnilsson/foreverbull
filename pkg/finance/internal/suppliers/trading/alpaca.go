@@ -1,16 +1,20 @@
 package trading
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/shopspring/decimal"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var _ supplier.Trading = (*AlpacaClient)(nil)
 
 type AlpacaClient struct {
 	client *alpaca.Client
@@ -52,7 +56,10 @@ func NewAlpacaClient() (*AlpacaClient, error) {
 	return &AlpacaClient{client: client}, nil
 }
 
-func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
+func (c *AlpacaClient) GetPortfolio(ctx context.Context) (*pb.Portfolio, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	acc, err := c.client.GetAccount()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
@@ -80,7 +87,10 @@ func (c *AlpacaClient) GetPortfolio() (*pb.Portfolio, error) {
 	}, nil
 }
 
-func (c *AlpacaClient) PlaceOrder(order *pb.Order) (*pb.Order, error) {
+func (c *AlpacaClient) PlaceOrder(ctx context.Context, order *pb.Order) (*pb.Order, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	qty := decimal.NewFromInt32(order.Amount)
 	var side alpaca.Side
 	if qty.IsNegative() {
@@ -143,7 +153,10 @@ func (c *AlpacaClient) PlaceOrder(order *pb.Order) (*pb.Order, error) {
 	return order, nil
 }
 
-func (c *AlpacaClient) GetOrders() ([]*pb.Order, error) {
+func (c *AlpacaClient) GetOrders(ctx context.Context) ([]*pb.Order, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	_, err := c.client.GetOrders(alpaca.GetOrdersRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)

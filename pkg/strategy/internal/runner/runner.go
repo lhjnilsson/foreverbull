@@ -222,7 +222,7 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	var runErr error
 	var portfolio *financepb.Portfolio
 	if r.trading != nil {
-		portfolio, err = r.trading.GetPortfolio()
+		portfolio, err = r.trading.GetPortfolio(ctx)
 		if err != nil {
 			runErr = fmt.Errorf("get portfolio: %w", err)
 		}
@@ -238,7 +238,7 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	}
 
 	if runErr == nil && !d.DryRun {
-		orders, runErr = r.placeOrders(orders)
+		orders, runErr = r.placeOrders(ctx, orders)
 	}
 
 	_, err = r.store.CreateRun(ctx, deploymentID, session.Date, orders, false, runErr)
@@ -257,13 +257,13 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	return nil
 }
 
-func (r *InProcess) placeOrders(orders []*financepb.Order) ([]*financepb.Order, error) {
+func (r *InProcess) placeOrders(ctx context.Context, orders []*financepb.Order) ([]*financepb.Order, error) {
 	if r.trading == nil {
 		return orders, errors.New("PlaceOrder requires a Trading backend")
 	}
 	attempted := make([]*financepb.Order, 0, len(orders))
 	for _, order := range orders {
-		placed, err := r.trading.PlaceOrder(order)
+		placed, err := r.trading.PlaceOrder(ctx, order)
 		if err != nil {
 			attempted = append(attempted, order)
 			return attempted, fmt.Errorf("place order: %w", err)

@@ -47,15 +47,15 @@ func (r *recordingRunner) Remove(_ context.Context, deploymentID string) error {
 
 type stubTrading struct{}
 
-func (stubTrading) GetPortfolio() (*financepb.Portfolio, error) {
+func (stubTrading) GetPortfolio(context.Context) (*financepb.Portfolio, error) {
 	return &financepb.Portfolio{}, nil
 }
 
-func (stubTrading) PlaceOrder(order *financepb.Order) (*financepb.Order, error) {
+func (stubTrading) PlaceOrder(_ context.Context, order *financepb.Order) (*financepb.Order, error) {
 	return order, nil
 }
 
-func (stubTrading) GetOrders() ([]*financepb.Order, error) {
+func (stubTrading) GetOrders(context.Context) ([]*financepb.Order, error) {
 	return nil, nil
 }
 

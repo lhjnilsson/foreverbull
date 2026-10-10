@@ -1,6 +1,7 @@
 package trading_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestAlpacaClient(t *testing.T) {
 }
 
 func (test *AlpacaClientTest) TestGetPortfolio() {
-	portfolio, err := test.client.GetPortfolio()
+	portfolio, err := test.client.GetPortfolio(context.Background())
 	test.Require().NoError(err)
 	test.T().Log(portfolio)
 }

@@ -105,7 +105,10 @@ type FakeTrading struct {
 
 var _ supplier.Trading = (*FakeTrading)(nil)
 
-func (f *FakeTrading) GetPortfolio() (*financepb.Portfolio, error) {
+func (f *FakeTrading) GetPortfolio(ctx context.Context) (*financepb.Portfolio, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.GetPortfolioCalls++
@@ -115,7 +118,10 @@ func (f *FakeTrading) GetPortfolio() (*financepb.Portfolio, error) {
 	return f.Portfolio, nil
 }
 
-func (f *FakeTrading) PlaceOrder(order *financepb.Order) (*financepb.Order, error) {
+func (f *FakeTrading) PlaceOrder(ctx context.Context, order *financepb.Order) (*financepb.Order, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.PlaceOrderCalls++
@@ -126,7 +132,10 @@ func (f *FakeTrading) PlaceOrder(order *financepb.Order) (*financepb.Order, erro
 	return order, nil
 }
 
-func (f *FakeTrading) GetOrders() ([]*financepb.Order, error) {
+func (f *FakeTrading) GetOrders(ctx context.Context) ([]*financepb.Order, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.GetOrdersCalls++

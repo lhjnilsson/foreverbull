@@ -89,7 +89,7 @@ func (suite *TradingServerTest) SetupSubTest() {
 
 func (test *TradingServerTest) TestGetOrders() {
 	test.Run("error getting orders", func() {
-		test.trading.On("GetOrders", mock.Anything, mock.Anything).Return(nil, errors.New("error getting orders"))
+		test.trading.On("GetOrders", mock.Anything).Return(nil, errors.New("error getting orders"))
 
 		req := &servicePb.GetOrdersRequest{}
 		rsp, err := test.client.GetOrders(context.Background(), req)
@@ -103,7 +103,7 @@ func (test *TradingServerTest) TestGetOrders() {
 				Amount: 10,
 			},
 		}
-		test.trading.On("GetOrders", mock.Anything, mock.Anything).Return(orders, nil)
+		test.trading.On("GetOrders", mock.Anything).Return(orders, nil)
 
 		req := &servicePb.GetOrdersRequest{}
 		rsp, err := test.client.GetOrders(context.Background(), req)
@@ -115,7 +115,7 @@ func (test *TradingServerTest) TestGetOrders() {
 
 func (test *TradingServerTest) TestGetPortfolio() {
 	test.Run("error getting portfolio", func() {
-		test.trading.On("GetPortfolio", mock.Anything, mock.Anything).Return(nil, errors.New("error getting portfolio"))
+		test.trading.On("GetPortfolio", mock.Anything).Return(nil, errors.New("error getting portfolio"))
 
 		req := &servicePb.GetPortfolioRequest{}
 		rsp, err := test.client.GetPortfolio(context.Background(), req)
@@ -124,7 +124,7 @@ func (test *TradingServerTest) TestGetPortfolio() {
 	})
 	test.Run("normal", func() {
 		portfolio := &pb.Portfolio{}
-		test.trading.On("GetPortfolio", mock.Anything, mock.Anything).Return(portfolio, nil)
+		test.trading.On("GetPortfolio", mock.Anything).Return(portfolio, nil)
 
 		req := &servicePb.GetPortfolioRequest{}
 		rsp, err := test.client.GetPortfolio(context.Background(), req)

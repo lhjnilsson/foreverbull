@@ -3,6 +3,8 @@
 package supplier
 
 import (
+	context "context"
+
 	finance "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -12,9 +14,9 @@ type MockTrading struct {
 	mock.Mock
 }
 
-// GetOrders provides a mock function with no fields
-func (_m *MockTrading) GetOrders() ([]*finance.Order, error) {
-	ret := _m.Called()
+// GetOrders provides a mock function with given fields: ctx
+func (_m *MockTrading) GetOrders(ctx context.Context) ([]*finance.Order, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrders")
@@ -22,19 +24,19 @@ func (_m *MockTrading) GetOrders() ([]*finance.Order, error) {
 
 	var r0 []*finance.Order
 	var r1 error
-	if rf, ok := ret.Get(0).(func() ([]*finance.Order, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) ([]*finance.Order, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() []*finance.Order); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) []*finance.Order); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*finance.Order)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -42,9 +44,9 @@ func (_m *MockTrading) GetOrders() ([]*finance.Order, error) {
 	return r0, r1
 }
 
-// GetPortfolio provides a mock function with no fields
-func (_m *MockTrading) GetPortfolio() (*finance.Portfolio, error) {
-	ret := _m.Called()
+// GetPortfolio provides a mock function with given fields: ctx
+func (_m *MockTrading) GetPortfolio(ctx context.Context) (*finance.Portfolio, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetPortfolio")
@@ -52,19 +54,19 @@ func (_m *MockTrading) GetPortfolio() (*finance.Portfolio, error) {
 
 	var r0 *finance.Portfolio
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*finance.Portfolio, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) (*finance.Portfolio, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() *finance.Portfolio); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) *finance.Portfolio); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*finance.Portfolio)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -72,9 +74,9 @@ func (_m *MockTrading) GetPortfolio() (*finance.Portfolio, error) {
 	return r0, r1
 }
 
-// PlaceOrder provides a mock function with given fields: _a0
-func (_m *MockTrading) PlaceOrder(_a0 *finance.Order) (*finance.Order, error) {
-	ret := _m.Called(_a0)
+// PlaceOrder provides a mock function with given fields: ctx, order
+func (_m *MockTrading) PlaceOrder(ctx context.Context, order *finance.Order) (*finance.Order, error) {
+	ret := _m.Called(ctx, order)
 
 	if len(ret) == 0 {
 		panic("no return value specified for PlaceOrder")
@@ -82,19 +84,19 @@ func (_m *MockTrading) PlaceOrder(_a0 *finance.Order) (*finance.Order, error) {
 
 	var r0 *finance.Order
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*finance.Order) (*finance.Order, error)); ok {
-		return rf(_a0)
+	if rf, ok := ret.Get(0).(func(context.Context, *finance.Order) (*finance.Order, error)); ok {
+		return rf(ctx, order)
 	}
-	if rf, ok := ret.Get(0).(func(*finance.Order) *finance.Order); ok {
-		r0 = rf(_a0)
+	if rf, ok := ret.Get(0).(func(context.Context, *finance.Order) *finance.Order); ok {
+		r0 = rf(ctx, order)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*finance.Order)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(*finance.Order) error); ok {
-		r1 = rf(_a0)
+	if rf, ok := ret.Get(1).(func(context.Context, *finance.Order) error); ok {
+		r1 = rf(ctx, order)
 	} else {
 		r1 = ret.Error(1)
 	}
