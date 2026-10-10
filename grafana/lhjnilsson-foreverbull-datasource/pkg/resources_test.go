@@ -119,6 +119,36 @@ func (test *ResourceTest) TestListExecutions() {
 	}, got)
 }
 
+func (test *ResourceTest) TestListExecutionsFiltersByBacktest() {
+	spyID := "84753648-1bba-4a76-8c5f-c0631204633e"
+	test.backend.On("ListExecutions", mock.Anything, mock.MatchedBy(func(req *backtestsvc.ListExecutionsRequest) bool {
+		return req.GetBacktest() == "spy" && req.GetSessionId() == ""
+	})).Return(&backtestsvc.ListExecutionsResponse{
+		Executions: []*backtestpb.Execution{
+			{
+				Id:       spyID,
+				Backtest: "spy",
+				StartDate: &fbPb.Date{
+					Year:  2023,
+					Month: 1,
+					Day:   3,
+				},
+				EndDate: &fbPb.Date{
+					Year:  2023,
+					Month: 12,
+					Day:   25,
+				},
+			},
+		},
+	}, nil)
+
+	got := test.callResource("executions", "/executions", []byte(`{"backtest":"spy"}`))
+	test.Len(got, 1)
+	test.Equal(spyID, got[0].Value)
+	test.Equal("spy 2023-01-03–2023-12-25 84753648", got[0].Label)
+	test.NotContains(got[0].Label, "eu")
+}
+
 func (test *ResourceTest) TestListExecutionsFiltersByStrategyExperiments() {
 	execID := "exec-spy"
 	otherID := "exec-other"
@@ -288,4 +318,153 @@ func (test *ResourceTest) TestListExperimentsFromJSONBody() {
 	test.Equal([]ResourceDefinition{
 		{Value: execID, Label: "mean-rev / rev 2 / eu", Description: "exp-eu"},
 	}, got)
+}
+
+func (test *ResourceTest) callRaw(method, path, rawURL string, body []byte) *grafana.CallResourceResponse {
+	test.T().Helper()
+	req := &grafana.CallResourceRequest{
+		Method: method,
+		Path:   path,
+		URL:    rawURL,
+		Body:   body,
+	}
+	var sender mockCallResourceResponseSender
+	err := test.uut.CallResource(context.Background(), req, &sender)
+	test.Require().NoError(err)
+	test.Require().NotNil(sender.response)
+	return sender.response
+}
+
+func (test *ResourceTest) TestListBacktests() {
+	test.backend.On("ListBacktests", mock.Anything, mock.Anything).Return(&backtestsvc.ListBacktestsResponse{
+		Backtests: []*backtestpb.Backtest{
+			{Name: "spy", Benchmark: "SPY"},
+			{Name: ""},
+			{Name: "eu-small", Benchmark: "EXUS"},
+		},
+	}, nil)
+
+	rsp := test.callRaw(http.MethodGet, "backtests", "/backtests", nil)
+	test.Equal(http.StatusOK, rsp.Status)
+	test.NotContains(string(rsp.Body), "SPY")
+	test.NotContains(string(rsp.Body), "EXUS")
+	var got []ResourceDefinition
+	test.Require().NoError(json.Unmarshal(rsp.Body, &got))
+	test.Equal([]ResourceDefinition{
+		{Value: "spy", Label: "spy"},
+		{Value: "eu-small", Label: "eu-small"},
+	}, got)
+}
+
+func (test *ResourceTest) TestGetExecutionArguments() {
+	id := "84753648-1bba-4a76-8c5f-c0631204633e"
+	test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetExecutionRequest) bool {
+		return req.GetExecutionId() == id
+	})).Return(&backtestsvc.GetExecutionResponse{
+		Execution: &backtestpb.Execution{
+			Id:       id,
+			Backtest: "spy",
+			Session:  "sess-1",
+			StartDate: &fbPb.Date{
+				Year:  2023,
+				Month: 1,
+				Day:   3,
+			},
+			EndDate: &fbPb.Date{
+				Year:  2023,
+				Month: 12,
+				Day:   25,
+			},
+		},
+		Functions: []*backtestpb.ExecutionFunction{
+			{
+				Name: "rebalance",
+				Parameters: []*backtestpb.ExecutionFunction_Parameter{
+					{Key: "fastperiod", Value: "12", ValueType: "int"},
+					{Key: "oversold", Value: "", ValueType: "int"},
+				},
+			},
+			{Name: "screen", Parameters: []*backtestpb.ExecutionFunction_Parameter{}},
+		},
+	}, nil)
+
+	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+		return req.GetName() == "spy"
+	})).Return(&backtestsvc.GetBacktestResponse{
+		Name:     "spy",
+		Backtest: &backtestpb.Backtest{Name: "spy", Benchmark: "SPY"},
+	}, nil)
+
+	rsp := test.callRaw(http.MethodGet, "execution", "/execution?id="+id, nil)
+	test.Equal(http.StatusOK, rsp.Status)
+	body := string(rsp.Body)
+	test.NotContains(body, "database")
+	test.NotContains(body, "brokerPort")
+	test.NotContains(body, "namespacePort")
+	test.NotContains(body, "databaseURL")
+	var got executionArgumentsView
+	test.Require().NoError(json.Unmarshal(rsp.Body, &got))
+	test.Equal(executionArgumentsView{
+		ID:        id,
+		Session:   "sess-1",
+		Backtest:  "spy",
+		Benchmark: "SPY",
+		Start:     "2023-01-03",
+		End:       "2023-12-25",
+		Functions: []executionFunctionView{
+			{
+				Name: "rebalance",
+				Parameters: []executionParameterView{
+					{Key: "fastperiod", Value: "12", ValueType: "int"},
+					{Key: "oversold", Value: "", ValueType: "int"},
+				},
+			},
+			{Name: "screen", Parameters: []executionParameterView{}},
+		},
+	}, got)
+}
+
+func (test *ResourceTest) TestGetExecutionArgumentsLegacyEmpty() {
+	id := "legacy-exec"
+	test.backend.On("GetExecution", mock.Anything, mock.Anything).Return(&backtestsvc.GetExecutionResponse{
+		Execution: &backtestpb.Execution{
+			Id:       id,
+			Backtest: "spy",
+			Session:  "sess-old",
+			StartDate: &fbPb.Date{
+				Year:  2020,
+				Month: 1,
+				Day:   1,
+			},
+			EndDate: &fbPb.Date{
+				Year:  2020,
+				Month: 12,
+				Day:   31,
+			},
+		},
+	}, nil)
+
+	test.backend.On("GetBacktest", mock.Anything, mock.Anything).
+		Return((*backtestsvc.GetBacktestResponse)(nil), status.Error(codes.NotFound, "missing"))
+
+	rsp := test.callRaw(http.MethodPost, "execution", "/execution", []byte(`{"execution":"legacy-exec"}`))
+	test.Equal(http.StatusOK, rsp.Status)
+	var got executionArgumentsView
+	test.Require().NoError(json.Unmarshal(rsp.Body, &got))
+	test.Equal("legacy-exec", got.ID)
+	test.Equal("sess-old", got.Session)
+	test.Equal("spy", got.Backtest)
+	test.Equal("", got.Benchmark)
+	test.Equal("2020-01-01", got.Start)
+	test.Equal("2020-12-31", got.End)
+	test.NotNil(got.Functions)
+	test.Empty(got.Functions)
+	test.Contains(string(rsp.Body), `"functions":[]`)
+	test.NotContains(string(rsp.Body), "fastperiod")
+	test.NotContains(string(rsp.Body), "database")
+}
+
+func (test *ResourceTest) TestGetExecutionArgumentsRequiresID() {
+	rsp := test.callRaw(http.MethodGet, "execution", "/execution", nil)
+	test.Equal(http.StatusBadRequest, rsp.Status)
 }

@@ -3,11 +3,15 @@ import { DataQuery } from '@grafana/schema';
 
 export enum QueryType {
   GetExecutionMetric = 'GetExecutionMetric',
+  /** Table of executions overlapping the dashboard time picker. Not a metric series. */
+  ListExecutionOverview = 'ListExecutionOverview',
 }
 
 /** Backend resource routes. Execution and experiment values are execution UUIDs. */
 export const ResourcePath = {
   Executions: 'executions',
+  Execution: 'execution',
+  Backtests: 'backtests',
   Metrics: 'metrics',
   Strategies: 'strategies',
   Versions: 'versions',
@@ -16,9 +20,38 @@ export const ResourcePath = {
 
 export type VariableSource =
   | typeof ResourcePath.Executions
+  | typeof ResourcePath.Backtests
   | typeof ResourcePath.Strategies
   | typeof ResourcePath.Versions
   | typeof ResourcePath.Experiments;
+
+/** Execution-dashboard picker text. `dates` is start–end and a short id. */
+export type ExecutionLabelStyle = 'full' | 'dates';
+
+/** Panel target that reads /execution instead of plotting GetExecutionMetric. */
+export type ConfigurationView = 'metadata' | 'arguments';
+
+export interface ExecutionParameter {
+  key: string;
+  value: string;
+  value_type: string;
+}
+
+export interface ExecutionFunction {
+  name: string;
+  parameters?: ExecutionParameter[];
+}
+
+/** One run from GET/POST /execution. No database URL or ports. */
+export interface ExecutionArguments {
+  id: string;
+  session: string;
+  backtest: string;
+  benchmark?: string;
+  start: string;
+  end: string;
+  functions?: ExecutionFunction[];
+}
 
 export interface ResourceDefinition {
   value: string;
@@ -56,6 +89,10 @@ export interface MyQuery extends DataQuery {
   strategy?: string;
   version?: string;
   backtest?: string;
+  /** Execution variable text. `dates` drops the backtest name (it has its own selector). */
+  label?: ExecutionLabelStyle;
+  /** When set, the panel lists stored run metadata or worker arguments. Not a metric series. */
+  configuration?: ConfigurationView;
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {

@@ -1,8 +1,10 @@
 import {
   applyExecutionTemplates,
   executionRefId,
+  isOverviewQuery,
   isRunnableQuery,
   listVariableOptions,
+  shouldForwardQuery,
   toExecution,
   toMetrics,
   variableDefinition,
@@ -58,11 +60,34 @@ describe('execution query JSON', () => {
       })
     ).toBe(true);
   });
+
+  it('keeps ListExecutionOverview and interpolates the backtest filter', () => {
+    const query = applyExecutionTemplates(
+      { refId: 'A', queryType: QueryType.ListExecutionOverview, backtest: '$backtest' },
+      (value) => (value === '$backtest' ? '*' : value)
+    );
+
+    expect(query.queryType).toBe(QueryType.ListExecutionOverview);
+    expect(query.backtest).toBe('*');
+    expect(isOverviewQuery(query)).toBe(true);
+    expect(shouldForwardQuery(query)).toBe(true);
+    expect(query).not.toHaveProperty('executionId');
+    expect(JSON.stringify(query)).not.toContain('executionId');
+  });
+
+  it('does not require an execution id for the overview table', () => {
+    expect(shouldForwardQuery({ refId: 'A', queryType: QueryType.ListExecutionOverview })).toBe(true);
+    expect(shouldForwardQuery({ refId: 'A', queryType: QueryType.GetExecutionMetric })).toBe(false);
+  });
 });
 
 describe('variable queries', () => {
   const ds = {
     getExecutions: jest.fn().mockResolvedValue([{ value: 'exec-1', label: 'spy 2020-01-01–2020-12-31 exec-1' }]),
+    getBacktests: jest.fn().mockResolvedValue([
+      { value: 'spy', label: 'spy' },
+      { value: 'eu-small', label: 'eu-small' },
+    ]),
     getStrategies: jest.fn().mockResolvedValue([{ value: 'mean-rev', label: 'mean-rev' }]),
     getVersions: jest.fn().mockResolvedValue([{ value: 'ver-1', label: 'rev 1' }]),
     getExperiments: jest.fn().mockResolvedValue([{ value: 'exec-1', label: 'mean-rev / rev 1 / spy' }]),
@@ -101,5 +126,19 @@ describe('variable queries', () => {
       version: 'ver-1',
       backtest: undefined,
     });
+  });
+
+  it('lists backtest names as value and label', async () => {
+    const values = await listVariableOptions(ds, {
+      refId: 'A',
+      queryType: QueryType.GetExecutionMetric,
+      source: ResourcePath.Backtests,
+    });
+    expect(ds.getBacktests).toHaveBeenCalled();
+    expect(values).toEqual([
+      { text: 'spy', value: 'spy' },
+      { text: 'eu-small', value: 'eu-small' },
+    ]);
+    expect(JSON.stringify(values)).not.toContain('executionId');
   });
 });

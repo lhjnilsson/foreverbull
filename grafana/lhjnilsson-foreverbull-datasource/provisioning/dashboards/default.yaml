@@ -1,8 +1,9 @@
 apiVersion: 1
 
 # File provider: every *.json in this directory.
-#   executions.json        uid ee9ep4jxtwkcgf  (CLI / GetExperiment deep links)
-#   strategy-compare.json  uid fb-strategy-compare
+#   executions.json         uid ee9ep4jxtwkcgf       (CLI / GetExperiment deep links)
+#   strategy-compare.json   uid fb-strategy-compare
+#   backtest-overview.json  uid fb-backtest-overview
 providers:
   - name: Foreverbull
     orgId: 1

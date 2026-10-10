@@ -54,6 +54,7 @@ func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (ins
 	}
 	ds.registerResources()
 	mux.HandleFunc(GetExecutionMetric, ds.HandleGetExecutionMetric)
+	mux.HandleFunc(ListExecutionOverview, ds.HandleListExecutionOverview)
 
 	return ds, nil
 }
@@ -79,6 +80,7 @@ func processQueries(ctx context.Context, req *grafana.QueryDataRequest, handler 
 // backtestAPI is the BacktestServicer methods this plugin calls.
 type backtestAPI interface {
 	ListBacktests(ctx context.Context, in *backtestsvc.ListBacktestsRequest, opts ...grpc.CallOption) (*backtestsvc.ListBacktestsResponse, error)
+	GetBacktest(ctx context.Context, in *backtestsvc.GetBacktestRequest, opts ...grpc.CallOption) (*backtestsvc.GetBacktestResponse, error)
 	ListExecutions(ctx context.Context, in *backtestsvc.ListExecutionsRequest, opts ...grpc.CallOption) (*backtestsvc.ListExecutionsResponse, error)
 	GetExecution(ctx context.Context, in *backtestsvc.GetExecutionRequest, opts ...grpc.CallOption) (*backtestsvc.GetExecutionResponse, error)
 }

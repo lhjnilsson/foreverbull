@@ -6,6 +6,7 @@ import { variableDefinition, variableSource } from '../query';
 import { MyDataSourceOptions, MyQuery, ResourcePath, VariableSource } from '../types';
 
 const SOURCE_OPTIONS: Array<SelectableValue<VariableSource>> = [
+  { label: 'Backtests', value: ResourcePath.Backtests, description: 'Populates $backtest with backtest names' },
   { label: 'Executions', value: ResourcePath.Executions, description: 'Populates $execution with execution UUIDs' },
   { label: 'Strategies', value: ResourcePath.Strategies, description: 'Populates $strategy with strategy names' },
   { label: 'Versions', value: ResourcePath.Versions, description: 'Populates $version with version ids' },
@@ -35,7 +36,7 @@ export function VariableQueryEditor({ query, onChange }: Props) {
     update({ [key]: event.currentTarget.value });
   };
 
-  const showFilters = source !== ResourcePath.Strategies;
+  const showFilters = source !== ResourcePath.Strategies && source !== ResourcePath.Backtests;
 
   return (
     <>

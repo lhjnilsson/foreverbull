@@ -35,13 +35,38 @@ export function withExecutionMetric(query: MyQuery, patch: Partial<MyQuery>): My
 }
 
 export function applyExecutionTemplates(query: MyQuery, replace: (value: string) => string): MyQuery {
-  return withExecutionMetric(query, {
+  const next = withExecutionMetric(query, {
     execution: { id: replace(executionRefId(query.execution)) },
   });
+  if (typeof query.backtest === 'string') {
+    next.backtest = replace(query.backtest);
+  }
+  return next;
 }
 
 export function isRunnableQuery(query: MyQuery): boolean {
   return Boolean(executionRefId(query.execution) && query.metrics?.length);
+}
+
+/** Run metadata / worker arguments. Must not be forwarded as GetExecutionMetric. */
+export function isConfigurationQuery(query: Partial<MyQuery> | undefined): boolean {
+  return query?.configuration === 'metadata' || query?.configuration === 'arguments';
+}
+
+/** Leaderboard table. Must not be forwarded as GetExecutionMetric and must not move the time axis. */
+export function isOverviewQuery(query: Partial<MyQuery> | undefined): boolean {
+  return query?.queryType === QueryType.ListExecutionOverview;
+}
+
+/** Queries the backend should receive. Overview does not need an execution id. */
+export function shouldForwardQuery(query: MyQuery): boolean {
+  if (isOverviewQuery(query)) {
+    return true;
+  }
+  if (isConfigurationQuery(query)) {
+    return Boolean(query.execution?.id);
+  }
+  return isRunnableQuery(query);
 }
 
 export function variableSource(query: Partial<MyQuery> | undefined): VariableSource {
@@ -73,6 +98,7 @@ export function toMetricFindValues(items: ResourceDefinition[]): MetricFindValue
 
 type VariableResourceClient = {
   getExecutions: (filter?: ResourceFilter) => Promise<ResourceDefinition[]>;
+  getBacktests: () => Promise<ResourceDefinition[]>;
   getStrategies: () => Promise<ResourceDefinition[]>;
   getVersions: (filter?: ResourceFilter) => Promise<ResourceDefinition[]>;
   getExperiments: (filter?: ResourceFilter) => Promise<ResourceDefinition[]>;
@@ -85,6 +111,9 @@ export async function listVariableOptions(
   const filter = resourceFilter(query);
   let items: ResourceDefinition[];
   switch (variableSource(query)) {
+    case ResourcePath.Backtests:
+      items = await ds.getBacktests();
+      break;
     case ResourcePath.Strategies:
       items = await ds.getStrategies();
       break;

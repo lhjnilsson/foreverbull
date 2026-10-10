@@ -74,6 +74,7 @@ func newTestDatasource(t *testing.T, backendClient backtestAPI, strategyClient s
 	}
 	ds.registerResources()
 	mux.HandleFunc(GetExecutionMetric, ds.HandleGetExecutionMetric)
+	mux.HandleFunc(ListExecutionOverview, ds.HandleListExecutionOverview)
 	return ds
 }
 

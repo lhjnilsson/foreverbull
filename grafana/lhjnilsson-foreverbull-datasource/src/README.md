@@ -26,6 +26,7 @@ Execution picker values are UUIDs. Labels are `{backtest} {start}–{end}` plus 
 | --- | --- | --- |
 | `ee9ep4jxtwkcgf` | Backtest execution | `{GRAFANA_URL}/d/ee9ep4jxtwkcgf?var-execution={id}` |
 | `fb-strategy-compare` | Strategy compare | `{GRAFANA_URL}/d/fb-strategy-compare` |
+| `fb-backtest-overview` | Backtest overview | `{GRAFANA_URL}/d/fb-backtest-overview` |
 
 `GRAFANA_URL` is the Grafana origin (default `http://localhost:3000` on local Kind). CLI `fbull backtest run` / `fbull strategy experiments` and `GetExperiment.grafana_path` print the first URL. Helm `grafana.url` sets broker `GRAFANA_URL` for remote origins. Do not change UID `ee9ep4jxtwkcgf` or the `var-execution` query key.
 

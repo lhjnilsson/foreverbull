@@ -41,6 +41,8 @@ type resourceFilter struct {
 func (ds *Datasource) registerResources() {
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/executions", ds.ListExecutions)
+	httpMux.HandleFunc("/execution", ds.GetExecutionArguments)
+	httpMux.HandleFunc("/backtests", ds.ListBacktests)
 	httpMux.HandleFunc("/metrics", ds.ListMetrics)
 	httpMux.HandleFunc("/strategies", ds.ListStrategies)
 	httpMux.HandleFunc("/versions", ds.ListVersions)
@@ -223,6 +225,149 @@ func (ds *Datasource) ListExecutions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, definitions)
+}
+
+type executionParameterView struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	ValueType string `json:"value_type"`
+}
+
+type executionFunctionView struct {
+	Name       string                   `json:"name"`
+	Parameters []executionParameterView `json:"parameters"`
+}
+
+// executionArgumentsView is one run's stored worker arguments.
+// It does not include database URL, broker port, or namespace port.
+type executionArgumentsView struct {
+	ID        string                  `json:"id"`
+	Session   string                  `json:"session"`
+	Backtest  string                  `json:"backtest"`
+	Benchmark string                  `json:"benchmark"`
+	Start     string                  `json:"start"`
+	End       string                  `json:"end"`
+	Functions []executionFunctionView `json:"functions"`
+}
+
+type executionArgumentsRequest struct {
+	ID        string `json:"id"`
+	Execution string `json:"execution"`
+}
+
+func executionArgumentsID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	q := r.URL.Query()
+	id := firstNonEmpty(q.Get("id"), q.Get("execution"))
+	if r.Body == nil {
+		return id
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil || len(body) == 0 {
+		return id
+	}
+	var posted executionArgumentsRequest
+	if json.Unmarshal(body, &posted) != nil {
+		return id
+	}
+	return firstNonEmpty(posted.ID, posted.Execution, id)
+}
+
+func (ds *Datasource) ListBacktests(w http.ResponseWriter, r *http.Request) {
+	log := ds.log.With("method", "ListBacktests")
+	rsp, err := ds.backend.ListBacktests(r.Context(), &backtestsvc.ListBacktestsRequest{})
+	if err != nil {
+		log.Error("fail to list backtests", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	definitions := make([]ResourceDefinition, 0, len(rsp.GetBacktests()))
+	for _, bt := range rsp.GetBacktests() {
+		name := bt.GetName()
+		if name == "" {
+			continue
+		}
+		definitions = append(definitions, ResourceDefinition{
+			Value: name,
+			Label: name,
+		})
+	}
+	writeJSON(w, definitions)
+}
+
+func (ds *Datasource) GetExecutionArguments(w http.ResponseWriter, r *http.Request) {
+	log := ds.log.With("method", "GetExecutionArguments")
+	id := executionArgumentsID(r)
+	if id == "" {
+		http.Error(w, "execution id is required", http.StatusBadRequest)
+		return
+	}
+
+	rsp, err := ds.backend.GetExecution(r.Context(), &backtestsvc.GetExecutionRequest{ExecutionId: id})
+	if err != nil {
+		log.Error("fail to get execution", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	execution := rsp.GetExecution()
+	if execution == nil {
+		http.Error(w, "execution not found", http.StatusInternalServerError)
+		return
+	}
+
+	functions := make([]executionFunctionView, 0, len(rsp.GetFunctions()))
+	for _, fn := range rsp.GetFunctions() {
+		if fn == nil {
+			continue
+		}
+		params := make([]executionParameterView, 0, len(fn.GetParameters()))
+		for _, p := range fn.GetParameters() {
+			if p == nil {
+				continue
+			}
+			params = append(params, executionParameterView{
+				Key:       p.GetKey(),
+				Value:     p.GetValue(),
+				ValueType: p.GetValueType(),
+			})
+		}
+		functions = append(functions, executionFunctionView{
+			Name:       fn.GetName(),
+			Parameters: params,
+		})
+	}
+
+	writeJSON(w, executionArgumentsView{
+		ID:        execution.GetId(),
+		Session:   execution.GetSession(),
+		Backtest:  execution.GetBacktest(),
+		Benchmark: ds.executionBenchmark(r, execution.GetBacktest()),
+		Start:     formatDate(execution.GetStartDate()),
+		End:       formatDate(execution.GetEndDate()),
+		Functions: functions,
+	})
+}
+
+// executionBenchmark reads the backtest row. A lookup failure leaves it empty.
+// Database URL and ports are not part of this view.
+func (ds *Datasource) executionBenchmark(r *http.Request, name string) string {
+	if ds == nil || ds.backend == nil || r == nil || name == "" {
+		return ""
+	}
+	rsp, err := ds.backend.GetBacktest(r.Context(), &backtestsvc.GetBacktestRequest{Name: name})
+	if err != nil || rsp == nil {
+		if err != nil && ds.log != nil {
+			ds.log.With("method", "GetExecutionArguments").Error("fail to get backtest", err)
+		}
+		return ""
+	}
+	if rsp.GetBacktest() == nil {
+		return ""
+	}
+	return rsp.GetBacktest().GetBenchmark()
 }
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {

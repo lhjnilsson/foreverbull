@@ -1,7 +1,7 @@
 {
   "uid": "ee9ep4jxtwkcgf",
   "title": "Backtest execution",
-  "description": "Inspect one backtest run. CLI and GetExperiment deep-link here as ?var-execution=. Once that execution is known, from and to are its exact earliest and latest timestamps (no pad). Saved time now/now is not kept. The link does not need from or to. Latest portfolio value, return, max drawdown, and Sharpe are stats. Portfolio value is the equity curve. Drawdown is underwater on its own axis. Returns are bars.",
+  "description": "Inspect one backtest run. CLI and GetExperiment deep-link here as ?var-execution= only; var-backtest is not required. The backtest selector is set from that run. Once that execution is known, from and to are its exact earliest and latest timestamps (no pad). Saved time now/now is not kept. The link does not need from or to. Worker arguments are the values stored for the run. Latest portfolio value, return, max drawdown, and Sharpe are stats. Portfolio value is the equity curve. Drawdown is underwater on its own axis. Returns are bars.",
   "tags": [
     "foreverbull",
     "backtest"
@@ -36,24 +36,63 @@
       "tooltip": "Overlay two executions",
       "type": "link",
       "url": "/d/fb-strategy-compare"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Backtest overview",
+      "tooltip": "Rank executions inside the time range",
+      "type": "link",
+      "url": "/d/fb-backtest-overview"
     }
   ],
   "templating": {
     "list": [
       {
-        "name": "execution",
-        "label": "Execution",
-        "description": "Backtest execution UUID. Deep links set this with ?var-execution=.",
+        "name": "backtest",
+        "label": "Backtest",
+        "description": "Backtest name. Value and label are the name. A ?var-execution= link sets this from that run and does not need var-backtest.",
         "type": "query",
         "datasource": {
           "type": "lhjnilsson-foreverbull-datasource",
           "uid": "foreverbull"
         },
-        "definition": "executions",
+        "definition": "backtests",
         "query": {
           "refId": "A",
           "queryType": "GetExecutionMetric",
-          "source": "executions"
+          "source": "backtests"
+        },
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "execution",
+        "label": "Execution",
+        "description": "Executions for the selected backtest. Label is the start date, the end date, and a short id. Value is the UUID. Deep links set this with ?var-execution=.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "executions ($backtest)",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "executions",
+          "backtest": "$backtest",
+          "label": "dates"
         },
         "current": {},
         "options": [],
@@ -1843,6 +1882,149 @@
               "name": "max_leverage"
             }
           ]
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 65
+      },
+      "id": 40,
+      "panels": [],
+      "title": "Run",
+      "type": "row"
+    },
+    {
+      "id": 41,
+      "type": "table",
+      "title": "Run",
+      "description": "Backtest name, benchmark, session id, start, end, and execution id. No database URL, broker port, or namespace port.",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 66
+      },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": {
+            "id": "$execution"
+          },
+          "configuration": "metadata"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "table",
+      "title": "Worker arguments",
+      "description": "Function name, parameter key, value used, and value type stored for this run. Empty when nothing was stored. Not template defaults. No database URL or ports.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": {
+            "id": "$execution"
+          },
+          "configuration": "arguments"
         }
       ]
     }

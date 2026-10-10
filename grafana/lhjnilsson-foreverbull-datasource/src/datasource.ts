@@ -10,9 +10,10 @@ import {
 } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv, locationService } from '@grafana/runtime';
 import { Observable, from } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, switchMap } from 'rxjs/operators';
 
 import VariableQueryEditor from './components/VariableQueryEditor';
+import { configurationFrame } from './configuration';
 import {
   decideExecutionTimeRange,
   idsFromLocationSearch,
@@ -23,13 +24,24 @@ import {
 } from './executionRange';
 import type { EpochRange, SpanSource } from './executionRange';
 import {
+  dashboardEntry,
+  loadExecutionVariableOptions,
+  shouldResetExecutionEntry,
+  usesExecutionBacktestSelector,
+} from './executionVariable';
+import type { DashboardEntry, ExecutionPin, ExecutionVariableResult, ExecutionVariableState } from './executionVariable';
+import {
   applyExecutionTemplates,
-  isRunnableQuery,
+  isConfigurationQuery,
+  isOverviewQuery,
   listVariableOptions,
+  shouldForwardQuery,
 } from './query';
 import {
   DEFAULT_QUERY,
   DEFAULT_VARIABLE_QUERY,
+  ExecutionArguments,
+  ExecutionLabelStyle,
   MyQuery,
   MyDataSourceOptions,
   ResourceDefinition,
@@ -67,6 +79,18 @@ export class DatasourceVariableSupport extends CustomVariableSupport<DataSource,
 
   async execute(query: MyQuery) {
     const replace = (value?: string) => (value ? getTemplateSrv().replace(value) : value);
+    this.datasource.syncExecutionEntry();
+    if (usesExecutionBacktestSelector(query)) {
+      const style: ExecutionLabelStyle = query.label === 'full' ? 'full' : 'dates';
+      const loaded = await loadExecutionVariableOptions(
+        this.datasource,
+        this.datasource.executionVariableState(),
+        replace(query.backtest),
+        style
+      );
+      this.datasource.applyExecutionVariable(loaded);
+      return loaded.options;
+    }
     return listVariableOptions(this.datasource, {
       ...query,
       strategy: replace(query.strategy),
@@ -82,6 +106,10 @@ export class DatasourceVariableSupport extends CustomVariableSupport<DataSource,
 }
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
+  /** Page URL at first variable load, before Grafana writes var-backtest for a deep link. */
+  private executionEntry: DashboardEntry | null = null;
+  /** Backtest locked from a var-execution link that did not include var-backtest. */
+  private executionPin: ExecutionPin | null = null;
   /** Execution key whose range we already wrote. A refresh must not snap a zoom back. */
   private appliedExecutionKey: string | null = null;
   /** Exact from/to last written for appliedExecutionKey. Series min/max replaces it when they differ. */
@@ -99,11 +127,58 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   /**
+   * Metric queries move the time axis. Configuration panels read /execution instead.
+   * Overview queries use the dashboard time picker as a filter and must not move it.
+   */
+  query(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
+    const targets = request.targets ?? [];
+    const overviewTargets = targets.filter((target) => isOverviewQuery(target));
+    const panelTargets = targets.filter((target) => !isOverviewQuery(target));
+    if (overviewTargets.length === 0) {
+      return this.queryExecutionPanels(request);
+    }
+    const overview = super.query({ ...request, targets: overviewTargets });
+    if (panelTargets.length === 0) {
+      return overview;
+    }
+    return overview.pipe(
+      switchMap((overviewResponse) =>
+        this.queryExecutionPanels({ ...request, targets: panelTargets }).pipe(
+          map((panels) => ({
+            ...panels,
+            data: [...(overviewResponse.data ?? []), ...(panels.data ?? [])],
+          }))
+        )
+      )
+    );
+  }
+
+  private queryExecutionPanels(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
+    const targets = request.targets ?? [];
+    const configTargets = targets.filter((target) => isConfigurationQuery(target));
+    if (configTargets.length === 0) {
+      return this.queryMetrics(request);
+    }
+    const metricTargets = targets.filter((target) => !isConfigurationQuery(target));
+    const config = from(this.loadConfigurationFrames(configTargets, request));
+    if (metricTargets.length === 0) {
+      return config.pipe(map((data) => ({ data })));
+    }
+    return config.pipe(
+      switchMap((frames) =>
+        this.queryMetrics({ ...request, targets: metricTargets }).pipe(
+          map((response) => ({ ...response, data: [...frames, ...(response.data ?? [])] }))
+        )
+      )
+    );
+  }
+
+  /**
    * ListExecutions start/end moves the axis as soon as the execution ids are known.
    * Period frames then replace that range when their min/max differ. No pad.
    * A deep link only needs var-execution; from/to are not required.
    */
-  query(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
+  private queryMetrics(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
     const ids = resolveExecutionIds(
       (request.targets ?? []).map((target) => target.execution?.id),
       (value) => getTemplateSrv().replace(value, request.scopedVars),
@@ -187,6 +262,48 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
   }
 
+  /** Remember a ?var-execution= link before Grafana selects the first backtest name. */
+  syncExecutionEntry(): void {
+    let path = '';
+    let search: Record<string, unknown> = {};
+    try {
+      path = locationService.getLocation()?.pathname ?? '';
+      search = (locationService.getSearchObject() ?? {}) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const next = dashboardEntry(path, search);
+    if (shouldResetExecutionEntry(this.executionEntry, next)) {
+      this.executionEntry = next;
+      this.executionPin = null;
+    }
+  }
+
+  executionVariableState(): ExecutionVariableState {
+    return {
+      entryExecutionId: this.executionEntry?.executionId ?? '',
+      entryHadBacktest: this.executionEntry?.hadBacktest ?? false,
+      pin: this.executionPin,
+    };
+  }
+
+  applyExecutionVariable(loaded: ExecutionVariableResult): void {
+    this.executionPin = loaded.state.pin;
+    if (loaded.injected) {
+      this.rememberExecutionSpans([loaded.injected]);
+      const ids = this.readSelectedExecutionIds();
+      this.applyKnownSpan(ids, this.catalogSpan(ids), 'catalog', null);
+    }
+    if (!loaded.setBacktest) {
+      return;
+    }
+    try {
+      locationService.partial({ 'var-backtest': loaded.setBacktest }, true);
+    } catch {
+      // Location service is not ready outside a dashboard.
+    }
+  }
+
   async getExecutions(filter?: ResourceFilter): Promise<ResourceDefinition[]> {
     const items = await this.postResource<ResourceDefinition[]>(
       ResourcePath.Executions,
@@ -196,6 +313,21 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     const ids = this.readSelectedExecutionIds();
     this.applyKnownSpan(ids, this.catalogSpan(ids), 'catalog', null);
     return items;
+  }
+
+  async getBacktests(): Promise<ResourceDefinition[]> {
+    return this.postResource<ResourceDefinition[]>(ResourcePath.Backtests, {});
+  }
+
+  async getExecutionArguments(id: string): Promise<ExecutionArguments | null> {
+    if (!id) {
+      return null;
+    }
+    const view = await this.postResource<ExecutionArguments>(ResourcePath.Execution, { id });
+    if (!view?.id) {
+      return null;
+    }
+    return { ...view, functions: view.functions ?? [] };
   }
 
   async getMetrics(): Promise<ResourceDefinition[]> {
@@ -215,7 +347,29 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   filterQuery(query: MyQuery): boolean {
-    return isRunnableQuery(query);
+    return shouldForwardQuery(query);
+  }
+
+  private async loadConfigurationFrames(
+    targets: MyQuery[],
+    request: DataQueryRequest<MyQuery>
+  ): Promise<DataFrame[]> {
+    const frames: DataFrame[] = [];
+    for (const target of targets) {
+      const raw = target.execution?.id ?? '';
+      const replaced = raw ? getTemplateSrv().replace(raw, request.scopedVars) : '';
+      const id = replaced.includes('$') ? '' : replaced.trim();
+      let view: ExecutionArguments | null = null;
+      if (id) {
+        try {
+          view = await this.getExecutionArguments(id);
+        } catch {
+          view = null;
+        }
+      }
+      frames.push(configurationFrame(target.configuration, target.refId, view));
+    }
+    return frames;
   }
 }
 

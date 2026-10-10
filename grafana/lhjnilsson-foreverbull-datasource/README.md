@@ -70,6 +70,7 @@ Provisioned under `provisioning/dashboards/`. Datasource name and uid: `foreverb
 | --- | --- | --- |
 | `ee9ep4jxtwkcgf` | `executions.json` | Inspect one run. CLI and `GetExperiment` deep-link this |
 | `fb-strategy-compare` | `strategy-compare.json` | Overlay two executions (strategy → version → left/right) |
+| `fb-backtest-overview` | `backtest-overview.json` | Leaderboard of runs that overlap the time picker (`now-2y` to `now`). Rows link back with `var-execution` |
 
 Do not change `ee9ep4jxtwkcgf`. If it ever moves, ship a redirect and update CLI `GRAFANA_DASHBOARD_UID` plus `GrafanaExecutionURL` in the same change.
 
