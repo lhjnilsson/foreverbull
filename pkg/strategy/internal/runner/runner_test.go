@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonpb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
@@ -315,6 +316,41 @@ func (test *RunnerTest) TestProcessSessionPlaceOrderErrorStopsSession() {
 	test.Require().Len(runs[0].Orders, 2)
 	test.Equal("AAPL", runs[0].Orders[0].Symbol)
 	test.Equal("MSFT", runs[0].Orders[1].Symbol)
+
+	got, err := test.store.GetDeployment(context.Background(), "dep-1")
+	test.Require().NoError(err)
+	test.Equal(int32(4), got.LastSessionDate.Day)
+}
+
+func (test *RunnerTest) TestProcessSessionErrNotTradableStopsBeforeNextOrder() {
+	d := test.deployment()
+	d.DryRun = false
+	test.store.Put(d)
+	test.processor.Orders = []*financepb.Order{
+		{Symbol: "AAPL", Amount: 10},
+		{Symbol: "MSFT", Amount: 5},
+	}
+	test.trading.PlaceErr = supplier.ErrNotTradable
+
+	err := test.runner.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().Error(err)
+	test.Require().ErrorIs(err, supplier.ErrNotTradable)
+	test.Equal(1, test.trading.PlaceCalls())
+	test.Empty(test.trading.Placed())
+
+	runs, err := test.store.ListRuns(context.Background(), "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 1)
+	test.False(runs[0].Skipped)
+	test.Require().NotNil(runs[0].Error)
+	test.Contains(*runs[0].Error, "not tradable")
+	test.Require().Len(runs[0].Orders, 1)
+	test.Equal("AAPL", runs[0].Orders[0].GetSymbol())
+	test.Equal(int32(10), runs[0].Orders[0].GetAmount())
+
+	test.Require().NoError(test.runner.ProcessSession(context.Background(), "dep-1", test.mon))
+	test.Equal(1, test.trading.PlaceCalls())
+	test.Empty(test.trading.Placed())
 
 	got, err := test.store.GetDeployment(context.Background(), "dep-1")
 	test.Require().NoError(err)
