@@ -133,9 +133,11 @@ class GetExecutionRequest(_message.Message):
     def __init__(self, execution_id: _Optional[str] = ...) -> None: ...
 
 class GetExecutionResponse(_message.Message):
-    __slots__ = ("execution", "periods")
+    __slots__ = ("execution", "periods", "functions")
     EXECUTION_FIELD_NUMBER: _ClassVar[int]
     PERIODS_FIELD_NUMBER: _ClassVar[int]
+    FUNCTIONS_FIELD_NUMBER: _ClassVar[int]
     execution: _execution_pb2.Execution
     periods: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Period]
-    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...) -> None: ...
+    functions: _containers.RepeatedCompositeFieldContainer[_execution_pb2.ExecutionFunction]
+    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ..., functions: _Optional[_Iterable[_Union[_execution_pb2.ExecutionFunction, _Mapping]]] = ...) -> None: ...

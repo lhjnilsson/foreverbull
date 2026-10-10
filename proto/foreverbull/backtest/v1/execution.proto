@@ -16,6 +16,20 @@ message Execution {
   optional Period result = 7;
 }
 
+// ExecutionFunction is one worker function stored when an execution is created.
+// Parameter value is the supplied value, otherwise the default. Runs created
+// before arguments were stored have an empty list. Broker port, namespace port,
+// and database URL are not stored here.
+message ExecutionFunction {
+  message Parameter {
+    string key = 1;
+    string value = 2;
+    string value_type = 3;
+  }
+  string name = 1;
+  repeated Parameter parameters = 2;
+}
+
 message Period {
   foreverbull.common.Date date = 1;
   double PNL = 2;

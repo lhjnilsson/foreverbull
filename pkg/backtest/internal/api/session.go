@@ -71,7 +71,7 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 		EndDate:   req.EndDate,
 	}
 
-	execution, err := executions.Create(ctx, &e)
+	execution, err := executions.Create(ctx, &e, executionFunctionsFromAlgorithm(req.GetAlgorithm()))
 	if err != nil {
 		log.Error().Err(err).Msg("error creating execution")
 		return nil, fmt.Errorf("error creating execution: %w", err)
@@ -84,7 +84,7 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	}
 
 	configuration := s.wp.Configure()
-	log.Debug().Any("execution", execution).Any("configuration", configuration).Msg("execution created")
+	log.Debug().Str("execution_id", execution.GetId()).Msg("execution created")
 
 	return &servicePb.CreateExecutionResponse{
 		Execution:     execution,
@@ -143,10 +143,15 @@ func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.Get
 	if err != nil {
 		return nil, fmt.Errorf("error getting execution: %w", err)
 	}
+	functions, err := executions.GetFunctions(ctx, req.ExecutionId)
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution functions: %w", err)
+	}
 
 	return &servicePb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   []*backtest.Period{},
+		Functions: functions,
 	}, nil
 }
 

@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 )
 
 type SessionTest struct {
@@ -131,6 +132,78 @@ func (s *SessionTest) TestCreateExecution() {
 	}
 }
 
+func (s *SessionTest) TestCreateExecutionStoresUsedArguments() {
+	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+		Algorithm: &service_pb.Algorithm{
+			Functions: []*service_pb.Algorithm_Function{
+				{
+					Name: "rebalance",
+					Parameters: []*service_pb.Algorithm_FunctionParameter{
+						{Key: "fastperiod", Value: strp("12"), DefaultValue: strp("10"), ValueType: "int"},
+						{Key: "slowperiod", DefaultValue: strp("26"), ValueType: "int"},
+						{Key: "signalperiod", ValueType: "int"},
+						{Key: "oversold", Value: strp(""), DefaultValue: strp("30"), ValueType: "int"},
+					},
+				},
+				{Name: "screen"},
+			},
+		},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(rsp.GetExecution())
+
+	select {
+	case <-s.activity:
+	case <-time.After(5 * time.Second):
+		s.Require().Fail("timeout waiting for activity")
+	}
+
+	want := []*backtest.ExecutionFunction{
+		{
+			Name: "rebalance",
+			Parameters: []*backtest.ExecutionFunction_Parameter{
+				{Key: "fastperiod", Value: "12", ValueType: "int"},
+				{Key: "slowperiod", Value: "26", ValueType: "int"},
+				{Key: "signalperiod", Value: "", ValueType: "int"},
+				{Key: "oversold", Value: "", ValueType: "int"},
+			},
+		},
+		{Name: "screen", Parameters: []*backtest.ExecutionFunction_Parameter{}},
+	}
+
+	executions := repository.Execution{Conn: s.conn}
+	stored, err := executions.GetFunctions(context.Background(), rsp.Execution.Id)
+	s.Require().NoError(err)
+	s.Len(stored, len(want))
+	for i := range want {
+		s.True(proto.Equal(want[i], stored[i]))
+	}
+
+	reader := api.NewBacktestServer(s.conn, nil)
+	got, err := reader.GetExecution(context.Background(), &servicePb.GetExecutionRequest{ExecutionId: rsp.Execution.Id})
+	s.Require().NoError(err)
+	s.Equal(rsp.Execution.Id, got.GetExecution().GetId())
+	s.Equal(s.session.Id, got.GetExecution().GetSession())
+	s.Equal("backtest", got.GetExecution().GetBacktest())
+	s.Equal(int32(2024), got.GetExecution().GetStartDate().GetYear())
+	s.Equal(int32(1), got.GetExecution().GetStartDate().GetMonth())
+	s.Equal(int32(2), got.GetExecution().GetStartDate().GetDay())
+	s.Equal(int32(2024), got.GetExecution().GetEndDate().GetYear())
+	s.Equal(int32(6), got.GetExecution().GetEndDate().GetMonth())
+	s.Equal(int32(30), got.GetExecution().GetEndDate().GetDay())
+	s.Len(got.GetFunctions(), len(want))
+	for i := range want {
+		s.True(proto.Equal(want[i], got.GetFunctions()[i]))
+	}
+}
+
+func strp(v string) *string {
+	return &v
+}
+
 func (s *SessionTest) TestRunExecution() {
 	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
 		Id:        "execution_123",
@@ -153,7 +226,7 @@ func (s *SessionTest) TestRunExecution() {
 		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 	}
-	execution, err := executions.Create(context.Background(), &e)
+	execution, err := executions.Create(context.Background(), &e, nil)
 	s.Require().NoError(err)
 
 	ch := make(chan *servicePb.RunExecutionResponse, 5)

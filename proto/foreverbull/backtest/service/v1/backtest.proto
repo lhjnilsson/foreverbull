@@ -123,6 +123,8 @@ message GetExecutionRequest {
 message GetExecutionResponse {
   foreverbull.backtest.v1.Execution execution = 1;
   repeated foreverbull.backtest.v1.Period periods = 2;
+  // functions were stored at create time. Empty when the run has none.
+  repeated foreverbull.backtest.v1.ExecutionFunction functions = 3;
 }
 
 service BacktestServicer {

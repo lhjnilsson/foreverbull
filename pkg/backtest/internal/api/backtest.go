@@ -245,9 +245,14 @@ func (bs *BacktestServer) GetExecution(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error getting execution periods: %w", err)
 	}
+	functions, err := storage.GetFunctions(ctx, req.GetExecutionId())
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution functions: %w", err)
+	}
 
 	return &servicePb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   periods,
+		Functions: functions,
 	}, nil
 }

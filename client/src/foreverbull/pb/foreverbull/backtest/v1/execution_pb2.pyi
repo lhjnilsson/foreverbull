@@ -23,6 +23,23 @@ class Execution(_message.Message):
     result: Period
     def __init__(self, id: _Optional[str] = ..., backtest: _Optional[str] = ..., session: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., result: _Optional[_Union[Period, _Mapping]] = ...) -> None: ...
 
+class ExecutionFunction(_message.Message):
+    __slots__ = ("name", "parameters")
+    class Parameter(_message.Message):
+        __slots__ = ("key", "value", "value_type")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        VALUE_TYPE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        value_type: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ..., value_type: _Optional[str] = ...) -> None: ...
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    PARAMETERS_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    parameters: _containers.RepeatedCompositeFieldContainer[ExecutionFunction.Parameter]
+    def __init__(self, name: _Optional[str] = ..., parameters: _Optional[_Iterable[_Union[ExecutionFunction.Parameter, _Mapping]]] = ...) -> None: ...
+
 class Period(_message.Message):
     __slots__ = ("date", "PNL", "returns", "portfolio_value", "longs_count", "shorts_count", "long_value", "short_value", "starting_exposure", "ending_exposure", "long_exposure", "short_exposure", "capital_used", "gross_leverage", "net_leverage", "starting_value", "ending_value", "starting_cash", "ending_cash", "max_drawdown", "max_leverage", "excess_return", "treasury_period_return", "algorithm_period_return", "algo_volatility", "sharpe", "sortino", "benchmark_period_return", "benchmark_volatility", "alpha", "beta", "positions")
     DATE_FIELD_NUMBER: _ClassVar[int]
