@@ -72,6 +72,36 @@ const (
 	AlpacaBaseURLDefault = "https://paper-api.alpaca.markets"
 	AlpacaApiKey         = "ALPACA_MARKETS_API_KEY"
 	AlpacaApiSecret      = "ALPACA_MARKETS_API_SECRET"
+
+	// TradingCurrency is the account currency. Adapters do not convert FX.
+	TradingCurrency        = "TRADING_CURRENCY"
+	TradingCurrencyDefault = "USD"
+
+	// TradingAllowLiveURL permits known live broker endpoints and
+	// IBKR_ACCOUNT_MODE=live. It does not unlock deploy mode LIVE.
+	TradingAllowLiveURL        = "TRADING_ALLOW_LIVE_URL"
+	TradingAllowLiveURLDefault = "false"
+
+	// TradingListingsFile replaces the embedded listing sample when set.
+	TradingListingsFile = "TRADING_LISTINGS_FILE"
+
+	SaxoBaseURL        = "SAXO_BASE_URL"
+	SaxoBaseURLDefault = "https://gateway.saxobank.com/sim/openapi"
+	SaxoAccessToken    = "SAXO_ACCESS_TOKEN"
+	SaxoAccountKey     = "SAXO_ACCOUNT_KEY"
+
+	IGBaseURL        = "IG_BASE_URL"
+	IGBaseURLDefault = "https://demo-api.ig.com/gateway/deal"
+	IGAPIKey         = "IG_API_KEY"
+	IGIdentifier     = "IG_IDENTIFIER"
+	IGPassword       = "IG_PASSWORD"
+
+	IBKRBaseURL            = "IBKR_BASE_URL"
+	IBKRBaseURLDefault     = "https://localhost:5000/v1/api"
+	IBKRAccountID          = "IBKR_ACCOUNT_ID"
+	IBKRAccountMode        = "IBKR_ACCOUNT_MODE"
+	IBKRAccountModeDefault = "paper"
+	IBKRAccessToken        = "IBKR_ACCESS_TOKEN"
 )
 
 type envVar struct {
@@ -103,6 +133,20 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{AlpacaBaseURL, func() (string, error) { return AlpacaBaseURLDefault, nil }},
 	{AlpacaApiKey, func() (string, error) { return "", nil }},
 	{AlpacaApiSecret, func() (string, error) { return "", nil }},
+	{TradingCurrency, func() (string, error) { return TradingCurrencyDefault, nil }},
+	{TradingAllowLiveURL, func() (string, error) { return TradingAllowLiveURLDefault, nil }},
+	{TradingListingsFile, func() (string, error) { return "", nil }},
+	{SaxoBaseURL, func() (string, error) { return SaxoBaseURLDefault, nil }},
+	{SaxoAccessToken, func() (string, error) { return "", nil }},
+	{SaxoAccountKey, func() (string, error) { return "", nil }},
+	{IGBaseURL, func() (string, error) { return IGBaseURLDefault, nil }},
+	{IGAPIKey, func() (string, error) { return "", nil }},
+	{IGIdentifier, func() (string, error) { return "", nil }},
+	{IGPassword, func() (string, error) { return "", nil }},
+	{IBKRBaseURL, func() (string, error) { return IBKRBaseURLDefault, nil }},
+	{IBKRAccountID, func() (string, error) { return "", nil }},
+	{IBKRAccountMode, func() (string, error) { return IBKRAccountModeDefault, nil }},
+	{IBKRAccessToken, func() (string, error) { return "", nil }},
 }
 
 type envSetter interface {
@@ -280,4 +324,64 @@ func GetAlpacaAPIKey() string {
 
 func GetAlpacaAPISecret() string {
 	return os.Getenv(AlpacaApiSecret)
+}
+
+func GetTradingCurrency() string {
+	return os.Getenv(TradingCurrency)
+}
+
+func GetTradingAllowLiveURL() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(TradingAllowLiveURL))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetTradingListingsFile() string {
+	return os.Getenv(TradingListingsFile)
+}
+
+func GetSaxoBaseURL() string {
+	return os.Getenv(SaxoBaseURL)
+}
+
+func GetSaxoAccessToken() string {
+	return os.Getenv(SaxoAccessToken)
+}
+
+func GetSaxoAccountKey() string {
+	return os.Getenv(SaxoAccountKey)
+}
+
+func GetIGBaseURL() string {
+	return os.Getenv(IGBaseURL)
+}
+
+func GetIGAPIKey() string {
+	return os.Getenv(IGAPIKey)
+}
+
+func GetIGIdentifier() string {
+	return os.Getenv(IGIdentifier)
+}
+
+func GetIGPassword() string {
+	return os.Getenv(IGPassword)
+}
+
+func GetIBKRBaseURL() string {
+	return os.Getenv(IBKRBaseURL)
+}
+
+func GetIBKRAccountID() string {
+	return os.Getenv(IBKRAccountID)
+}
+
+func GetIBKRAccountMode() string {
+	return os.Getenv(IBKRAccountMode)
+}
+
+func GetIBKRAccessToken() string {
+	return os.Getenv(IBKRAccessToken)
 }
