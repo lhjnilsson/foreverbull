@@ -3,6 +3,8 @@ package finance
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -56,7 +58,15 @@ var Module = fx.Options( //nolint: gochecknoglobals
 
 			switch environment.GetTradingProvider() {
 			case "alpaca":
-				t, err := trading.NewAlpacaClient()
+				book, err := trading.Load("")
+				if err != nil {
+					return nil, fmt.Errorf("failed to load trading listings: %w", err)
+				}
+				t, err := trading.NewAlpaca(trading.AlpacaConfig{
+					BaseURL:   environment.GetAlpacaBaseURL(),
+					APIKey:    environment.GetAlpacaAPIKey(),
+					APISecret: environment.GetAlpacaAPISecret(),
+				}, book, &http.Client{Timeout: 30 * time.Second})
 				if err != nil {
 					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
 				}
