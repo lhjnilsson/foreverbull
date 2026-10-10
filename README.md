@@ -220,7 +220,7 @@ flowchart TB
 ```
 
 - **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. ETF create is point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). See [pkg/backtest/universe.md](pkg/backtest/universe.md).
-- **Finance**: Market data (Yahoo by default; `stooq` is daily GetOHLC only with Yahoo metadata; `alpaca` is an alternate provider) and a trading API. Alpaca paper trading is compiled in but `TRADING_ENABLED` defaults to `false`. Live trading is not supported.
+- **Finance**: Market data (Yahoo by default; `stooq` is daily GetOHLC only with Yahoo metadata; `alpaca` is an alternate provider) and a trading API. Alpaca paper trading is compiled in but `TRADING_ENABLED` defaults to `false`. Live trading is not supported. Four paper adapters (`alpaca`, `saxo`, `ibkr`, and `ig`) sit behind `supplier.Trading`, and live deploy is off.
 - **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
 - **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests (period stats on list/get), paper dry-run or confirmed paper PlaceOrder. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md) and [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 

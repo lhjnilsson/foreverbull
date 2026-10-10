@@ -68,8 +68,18 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
+| `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
+| `TRADING_CURRENCY` | `USD` |
+| `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |
+| `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` (paper) |
+| `SAXO_BASE_URL` | `https://gateway.saxobank.com/sim/openapi` (simulation) |
+| `IG_BASE_URL` | `https://demo-api.ig.com/gateway/deal` (demo) |
+| `IBKR_BASE_URL` | `https://localhost:5000/v1/api` |
+| `IBKR_ACCOUNT_MODE` | `paper` |
 | Grafana `BROKER_URL` | `foreverbull:50055` |
 | Zipline `DATABASE_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
+
+Deploy mode LIVE is refused. `TRADING_ALLOW_LIVE_URL` does not enable it. Broker credentials in the chart stay empty.
 
 Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
 `BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,
@@ -282,11 +292,28 @@ broker:
   ziplineServiceName: zipline   # ZIPLINE_CONTAINER_NAME
   trading:
     enabled: false          # TRADING_ENABLED; never default true
-    provider: alpaca
+    provider: alpaca        # TRADING_PROVIDER: alpaca, saxo, ibkr, or ig
+    currency: USD           # TRADING_CURRENCY
+    allowLiveURL: false     # TRADING_ALLOW_LIVE_URL; does not unlock mode LIVE
+    listingsFile: ""        # TRADING_LISTINGS_FILE; empty uses the embedded sample
     alpaca:
       baseUrl: https://paper-api.alpaca.markets
-      apiKey: ""            # no real keys in the chart
-      apiSecret: ""
+      apiKey: ""            # ALPACA_MARKETS_API_KEY; no keys in the chart
+      apiSecret: ""         # ALPACA_MARKETS_API_SECRET; no secrets in the chart
+    saxo:
+      baseUrl: https://gateway.saxobank.com/sim/openapi
+      accessToken: ""       # SAXO_ACCESS_TOKEN; no tokens in the chart
+      accountKey: ""        # SAXO_ACCOUNT_KEY; empty uses the client default account
+    ig:
+      baseUrl: https://demo-api.ig.com/gateway/deal
+      apiKey: ""            # IG_API_KEY; no keys in the chart
+      identifier: ""        # IG_IDENTIFIER; empty
+      password: ""          # IG_PASSWORD; no passwords in the chart
+    ibkr:
+      baseUrl: https://localhost:5000/v1/api
+      accountId: ""         # IBKR_ACCOUNT_ID; required when provider is ibkr
+      accountMode: paper    # IBKR_ACCOUNT_MODE; account mode live is refused unless allowLiveURL. That flag does not unlock deploy mode LIVE.
+      accessToken: ""       # IBKR_ACCESS_TOKEN; no tokens in the chart
 
 zipline:
   grpcPort: 50055

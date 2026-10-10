@@ -197,6 +197,8 @@ Users must compare one version on two backtest names (`--backtest` filter option
 
 ## 6. Chapter 3 — Paper PlaceOrder
 
+Paper `PlaceOrder` uses `supplier.Trading` ([pkg/finance/trading.md](../finance/trading.md)).
+
 ### 6.1 Current behavior (PoC)
 
 - `Deploy` rejects `Deployment_LIVE` with FailedPrecondition.
@@ -326,4 +328,4 @@ All three chapters are in. Live is out.
 
 - **Stooq (ch. 1).** `MARKET_DATA_PROVIDER=stooq` wires daily GetOHLC through Stooq CSV and metadata (`GetAsset` / `SearchAsset` / `GetIndex`) through Yahoo (`composite.go` / `NewStooqYahoo`). Default remains `yahoo`. Yahoo is kept. Stooq does not scrape search or index membership. Helm does not template `MARKET_DATA_PROVIDER`.
 - **Compare (ch. 2).** `ListExperiments` JOIN-fills `Experiment.stats` from the last `backtest_execution_period` row (`portfolio_value`, `max_drawdown`, `sharpe`, `algorithm_period_return`, `benchmark_period_return`). `GetExperiment` fills `last_period` the same way. Missing `execution_id` or no period rows → empty stats. CLI `fbull strategy experiments` prints Sharpe, max drawdown, end value, and benchmark.
-- **Paper (ch. 3).** `Deploy` accepts `mode=paper` + `dry_run=false` when `confirm` is set and `supplier.Trading` is configured (`TRADING_ENABLED`). CLI: `fbull strategy deploy … --mode paper --no-dry-run --yes` (or `--confirm`). Default deploy stays paper + dry-run. Runner calls `Trading.PlaceOrder` on paper sessions, persists attempted orders, stops on first error without retry. Missed closes stay `skipped_missed_close`. `mode=live` is still refused even with confirm.
+- **Paper (ch. 3).** `Deploy` accepts `mode=paper` + `dry_run=false` when `confirm` is set and `supplier.Trading` is configured (`TRADING_ENABLED`). CLI: `fbull strategy deploy … --mode paper --no-dry-run --yes` (or `--confirm`). Default deploy stays paper + dry-run. Runner calls `Trading.PlaceOrder` on paper sessions, persists attempted orders, stops on first error without retry. Missed closes stay `skipped_missed_close`. `mode=live` is still refused even with confirm. Paper PlaceOrder uses `supplier.Trading` ([pkg/finance/trading.md](../finance/trading.md)).

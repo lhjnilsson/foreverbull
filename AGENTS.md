@@ -256,10 +256,16 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
 | `POD_NAMESPACE` / `KUBERNETES_NAMESPACE` | Broker chart sets `POD_NAMESPACE` from the pod namespace; `internal/container` uses it for the in-cluster client |
 | `MARKET_DATA_PROVIDER` | `yahoo` (default). `stooq` is daily GetOHLC only; Yahoo stays for `GetAsset` / `SearchAsset` / `GetIndex`. `alpaca` is Alpaca-only. Helm does not template this var. |
-| `TRADING_ENABLED` | `false`. Required for paper `PlaceOrder` (`deploy --no-dry-run`). Live trading is not supported. Never put real Alpaca keys in the chart. |
-| `TRADING_PROVIDER` | `alpaca` |
-| `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` |
-| `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled |
+| `TRADING_ENABLED` | `false`. Required for paper `PlaceOrder` (`deploy --no-dry-run`). A nil Trading backend stays valid. Deploy mode LIVE is refused. Never put API keys, tokens, or passwords in the chart. |
+| `TRADING_PROVIDER` | `alpaca`. Known values: `alpaca`, `saxo`, `ibkr`, `ig`. Unknown is a startup error. |
+| `TRADING_CURRENCY` | `USD`. Account currency must match. Adapters do not convert FX. |
+| `TRADING_ALLOW_LIVE_URL` | `false`. Permits known live broker endpoints and `IBKR_ACCOUNT_MODE=live`. It does not enable deploy mode LIVE. |
+| `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` (paper). Host `api.alpaca.markets` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
+| `SAXO_BASE_URL` | `https://gateway.saxobank.com/sim/openapi` (simulation). A path without `/sim/` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
+| `IG_BASE_URL` | `https://demo-api.ig.com/gateway/deal` (demo). Host `api.ig.com` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
+| `IBKR_BASE_URL` | `https://localhost:5000/v1/api` (Client Portal). |
+| `IBKR_ACCOUNT_MODE` | `paper`. `live` is refused unless `TRADING_ALLOW_LIVE_URL=true`. The adapter does not place an order when the mode is unset. |
+| `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled and the provider is `alpaca`. Other broker credentials (`SAXO_ACCESS_TOKEN`, `SAXO_ACCOUNT_KEY`, `IG_API_KEY`, `IG_IDENTIFIER`, `IG_PASSWORD`, `IBKR_ACCOUNT_ID`, `IBKR_ACCESS_TOKEN`) stay empty. |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
@@ -307,7 +313,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder needs `--no-dry-run` plus `--yes` or `--confirm`, and `TRADING_ENABLED=true` with a configured Trading backend. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder needs `--no-dry-run` plus `--yes` or `--confirm`, and `TRADING_ENABLED=true` with a configured Trading backend. `--mode live` is refused. `TRADING_ALLOW_LIVE_URL` does not enable it. Local-file hacking still uses `fbull backtest run`.
 
 ## Python lint
 
