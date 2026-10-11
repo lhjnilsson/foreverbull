@@ -1,3 +1,5 @@
+import re
+
 from datetime import date
 from datetime import datetime
 from unittest.mock import patch
@@ -509,7 +511,10 @@ def test_strategy_deploy_help_refuses_live(runner):
     result = runner(strategy, ["deploy", "--help"])
 
     assert result.exit_code == 0
-    help_text = " ".join(result.stdout.replace("│", " ").split())
+    # Colored help (forced on GitHub Actions) puts ANSI codes between wrapped
+    # words and inside highlighted options such as --backend.
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", result.stdout)
+    help_text = " ".join(plain.replace("│", " ").split())
     assert "Live mode is not supported" in help_text
     assert "live is not supported" in help_text
     assert "--backend" in help_text
