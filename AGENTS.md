@@ -23,7 +23,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
-ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). Daily bars may use `MARKET_DATA_PROVIDER=stooq` (GetOHLC only; Yahoo stays for metadata).
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `yahoo` (default when omitted), `stooq` (daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
 
 ## Prerequisites
 
@@ -255,17 +255,10 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `MINIO_URL` | `localhost:9000` (in-cluster: `minio:9000`) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
 | `POD_NAMESPACE` / `KUBERNETES_NAMESPACE` | Broker chart sets `POD_NAMESPACE` from the pod namespace; `internal/container` uses it for the in-cluster client |
-| `MARKET_DATA_PROVIDER` | `yahoo` (default). `stooq` is daily GetOHLC only; Yahoo stays for `GetAsset` / `SearchAsset` / `GetIndex`. `alpaca` is Alpaca-only. Helm does not template this var. |
-| `TRADING_ENABLED` | `false`. Required for paper `PlaceOrder` (`deploy --no-dry-run`). A nil Trading backend stays valid. Deploy mode LIVE is refused. Never put API keys, tokens, or passwords in the chart. |
-| `TRADING_PROVIDER` | `alpaca`. Known values: `alpaca`, `saxo`, `ibkr`, `ig`. Unknown is a startup error. |
-| `TRADING_CURRENCY` | `USD`. Account currency must match. Adapters do not convert FX. |
-| `TRADING_ALLOW_LIVE_URL` | `false`. Permits known live broker endpoints and `IBKR_ACCOUNT_MODE=live`. It does not enable deploy mode LIVE. |
-| `ALPACA_MARKETS_BASE_URL` | `https://paper-api.alpaca.markets` (paper). Host `api.alpaca.markets` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
-| `SAXO_BASE_URL` | `https://gateway.saxobank.com/sim/openapi` (simulation). A path without `/sim/` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
-| `IG_BASE_URL` | `https://demo-api.ig.com/gateway/deal` (demo). Host `api.ig.com` is refused unless `TRADING_ALLOW_LIVE_URL=true`. |
-| `IBKR_BASE_URL` | `https://localhost:5000/v1/api` (Client Portal). |
-| `IBKR_ACCOUNT_MODE` | `paper`. `live` is refused unless `TRADING_ALLOW_LIVE_URL=true`. The adapter does not place an order when the mode is unset. |
-| `ALPACA_MARKETS_API_KEY` / `ALPACA_MARKETS_API_SECRET` | unset; required only if trading is enabled and the provider is `alpaca`. Other broker credentials (`SAXO_ACCESS_TOKEN`, `SAXO_ACCOUNT_KEY`, `IG_API_KEY`, `IG_IDENTIFIER`, `IG_PASSWORD`, `IBKR_ACCOUNT_ID`, `IBKR_ACCESS_TOKEN`) stay empty. |
+| `TRADING_ENABLED` | `false`. Kill switch for paper `PlaceOrder` (`deploy --no-dry-run`). Not a provider. Deploy mode LIVE is refused. Never put API keys, tokens, or passwords in the chart, Postgres, or `.foreverbull/config.yaml`. |
+| `TRADING_PROFILES_FILE` | Profiles YAML. In-cluster path `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading` key `profiles.yaml`. The Secret is optional. Absent file plus `TRADING_ENABLED=false` starts with an empty registry; `TRADING_ENABLED=true` and a missing or invalid file is a startup error. Local Kind: if `.foreverbull/trading-profiles.yaml` exists, `fbenv` applies it as that Secret and does not print the file. Example: `deploy/trading-profiles.example.yaml` (empty credentials, no `baseUrl`). A profile names an adapter (`alpaca`, `saxo`, `ibkr`, or `ig`), currency (default `USD`), and credentials. Two deployments on one profile share that account. `GetPortfolio` still returns `ErrCurrency` when the account currency differs. |
+| `TRADING_LISTINGS_FILE` | Optional replacement for the embedded ISIN listing sample when a profile does not set its own listings path. |
+| `OHLC_PROVIDER` | Set on a worker pod from the backtest `provider` when the pod is created. Python and Zipline default it to `yahoo` only when unset. Not a broker-wide price switch. |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
@@ -278,6 +271,8 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `LOGGING_LEVEL` | Python client/CLI logging (`fbull -v/-vv/-vvv`) |
 | `ECHO` | If set, CLI tests print stdout |
 | `BACKTEST_IMAGE` / `BROKER_IMAGE` | Override images in some Python fixtures |
+
+`MARKET_DATA_PROVIDER`, `TRADING_PROVIDER`, `TRADING_ALLOW_LIVE_URL`, `TRADING_CURRENCY`, and broker base-URL or credential variables are not read. Paper and demo URLs are constants in the adapters. There is no live URL switch.
 
 Python Minio client (`Storage.from_environment`) also reads `STORAGE_ENDPOINT` (default `localhost:9000`), `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_SECURE`.
 
@@ -308,12 +303,14 @@ uv run fbull strategy experiment mean-rev --backtest spy
 uv run fbull strategy experiment mean-rev --backtest eu-small
 uv run fbull strategy experiments mean-rev
 uv run fbull strategy deploy mean-rev --mode paper --dry-run
-uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
+uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --backend alpaca-paper --yes
 uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder needs `--no-dry-run` plus `--yes` or `--confirm`, and `TRADING_ENABLED=true` with a configured Trading backend. `--mode live` is refused. `TRADING_ALLOW_LIVE_URL` does not enable it. Local-file hacking still uses `fbull backtest run`.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `yahoo`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
+
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--no-dry-run`, `--backend <profile>`, and `--yes` or `--confirm`, plus `TRADING_ENABLED=true`. The profile is a name in the profiles file. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
 
 ## Python lint
 

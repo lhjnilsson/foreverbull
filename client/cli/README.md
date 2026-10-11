@@ -49,29 +49,26 @@ uv run fbull backtest delete demo
 
 `create` stores the universe, downloads daily bars, and ingests them into Zipline (progress: Creating, Downloading, Ingesting, Storing). A symbol whose download fails is stored with `enabled: false`.
 
-The broker environment variable `MARKET_DATA_PROVIDER` selects the price source. Set it before create. Bars already stored for a symbol and day are kept.
+`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `yahoo`. The printed backtest includes the provider. `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
 
-| Provider | Broker setting | What it prices |
+| Provider | How to select it | What it prices |
 | --- | --- | --- |
-| Yahoo (default) | unset, or `yahoo` | Asset lookup and daily bars |
-| Stooq | `stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
+| Yahoo (default) | omit `provider`, or `yahoo` | Asset lookup and daily bars |
+| Stooq | `provider: stooq` or `--provider stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
+| Alpaca | `provider: alpaca` and optional `profile` | Daily bars with that profile's key. Asset lookup stays on Yahoo |
 
-Both providers can ingest the same Nasdaq-100 file, [examples/nasdaq100.yaml](../../examples/nasdaq100.yaml) (name `nasdaq100`, benchmark `QQQ`, 101 constituents, 2023-01-01 through 2023-03-31). From `client/`:
+Bars are stored per provider, so Yahoo and Stooq can both keep a close for the same symbol and day. A run reads only its backtest's provider. The Nasdaq-100 file is [examples/nasdaq100.yaml](../../examples/nasdaq100.yaml) (name `nasdaq100`, benchmark `QQQ`, 101 constituents, 2023-01-01 through 2023-03-31). From `client/`:
 
 ```bash
-# Yahoo (default after fbenv create)
+# Yahoo (provider omitted)
 uv run fbull backtest create --file ../examples/nasdaq100.yaml
 uv run fbull backtest get nasdaq100
 
-# Stooq on the local Kind cluster (context kind-foreverbull)
-kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
-kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
+# Stooq. Use another backtest name when nasdaq100 already exists.
+uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
 ```
 
-`fbenv create` and `fbenv update` reinstall the chart and leave `MARKET_DATA_PROVIDER` unset, which selects Yahoo. Set `stooq` again after those commands when you still want Stooq bars. Use an empty database for the Stooq create when Yahoo bars for these symbols are already stored (`fbenv stop --remove --purge` on local deletes the Kind cluster).
-
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`). Without `--file`, create prompts for a name, an ETF, and dates. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
 
 `run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 
@@ -81,7 +78,9 @@ uv run fbull backtest create --file ../examples/nasdaq100.yaml
 uv run fbull trading run demo path/to/strategy.py --dry
 ```
 
-This talks to a running broker. Alpaca live/paper trading stays off unless the broker has `TRADING_ENABLED=true`. Do not enable live trading from this README. Do not put Alpaca keys in the Helm chart.
+This talks to a running broker. Paper trading stays off unless `TRADING_ENABLED=true`. That flag is a kill switch, not a provider. `fbull strategy deploy --no-dry-run` requires `--backend <profile>` plus `--yes` or `--confirm`. Dry-run may omit `--backend`. `--mode live` is refused.
+
+Credentials live only in the profiles file. In the cluster, `TRADING_PROFILES_FILE` is `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading`, key `profiles.yaml`. On local Kind, `fbenv` applies `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and does not print it. The committed example is [deploy/trading-profiles.example.yaml](../../deploy/trading-profiles.example.yaml) and its credential fields are empty. Do not put keys in the Helm chart, Postgres, or `.foreverbull/config.yaml`.
 
 ## fbenv
 

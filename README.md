@@ -1,6 +1,6 @@
 # Foreverbull
 
-Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. Market data defaults to Yahoo Finance. `MARKET_DATA_PROVIDER=stooq` is daily GetOHLC only; Yahoo remains for asset/search/index metadata. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Alpaca paper trading exists in the Finance domain but is off unless you set `TRADING_ENABLED` (live trading is not supported; do not enable it from this README).
+Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. A backtest's `provider` chooses its bars: `yahoo` (stored when the field is omitted), `stooq` (daily GetOHLC only; Yahoo stays for asset, search, and index metadata), or `alpaca`. Bars are stored per provider. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Paper trading is off unless `TRADING_ENABLED` is true. That flag is a kill switch, not a broker. A deployment's backend is a trading profile name. Credentials live only in the profiles file, which the cluster mounts from Kubernetes Secret `foreverbull-trading`. Live trading is not supported; do not enable it from this README.
 
 The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote cluster. One chart deploys Postgres, NATS JetStream, Minio, Zipline, the broker, and Grafana.
 
@@ -70,13 +70,15 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 `fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle.
 
-The broker reads `MARKET_DATA_PROVIDER` when it starts. Set that variable before create. Bars already stored for a symbol and day are kept, so pick one price source for a database. Both recipes below use the same Nasdaq-100 file, [examples/nasdaq100.yaml](examples/nasdaq100.yaml): name `nasdaq100`, benchmark `QQQ`, and a fixed list of 101 constituents (both `GOOG` and `GOOGL`). The sample window is 2023-01-01 through 2023-03-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host. Downloading the full list takes a few minutes.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. The printed backtest includes the provider. `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
+
+Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. Both recipes below use the same Nasdaq-100 file, [examples/nasdaq100.yaml](examples/nasdaq100.yaml): name `nasdaq100`, benchmark `QQQ`, and a fixed list of 101 constituents (both `GOOG` and `GOOGL`). The sample window is 2023-01-01 through 2023-03-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host. Downloading the full list takes a few minutes.
 
 Commands below are from `client/` after `uv sync`, with the platform already running.
 
 #### Yahoo
 
-Yahoo is the default. With `MARKET_DATA_PROVIDER` unset, or set to `yahoo`, asset lookup and daily bars both come from Yahoo.
+Yahoo is the default. Leave `provider` out of the file, or pass `--provider yahoo`.
 
 ```bash
 cd client
@@ -86,40 +88,17 @@ uv run fbull backtest get nasdaq100
 
 #### Stooq
 
-`MARKET_DATA_PROVIDER=stooq` loads daily bars from Stooq. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. On the local Kind cluster the kubectl context is `kind-foreverbull`. On a remote cluster, use that cluster's context and namespace.
-
-Set Stooq before the first create for these symbols:
+`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `nasdaq100` is already stored; the Yahoo rows stay.
 
 ```bash
-kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
-kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
-
 cd client
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
+uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
 uv run fbull backtest get nasdaq100
 ```
 
-If this database already has bars for these symbols, replace the local cluster first. `fbenv stop --remove --purge` deletes the Kind cluster. Then install again, set Stooq, and create:
+Alpaca bars use `provider: alpaca`. Set `profile` to an Alpaca profile name when more than one Alpaca profile is configured. The key is read from the profiles file, not from this YAML.
 
-```bash
-cd client
-uv run fbenv stop --remove --purge
-VERSION=local uv run fbenv create
-kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=stooq
-uv run fbenv start
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
-```
-
-`fbenv create` and `fbenv update` reinstall the chart. The chart leaves `MARKET_DATA_PROVIDER` unset, so the broker comes back on Yahoo. Run the `kubectl set env` command again after either of those when you still want Stooq.
-
-To put the broker back on Yahoo:
-
-```bash
-kubectl --context kind-foreverbull -n foreverbull set env deployment/foreverbull MARKET_DATA_PROVIDER=yahoo
-kubectl --context kind-foreverbull -n foreverbull rollout status deployment/foreverbull
-```
-
-Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` removes the backtest record. Stored bars stay in Postgres until you replace the database.
+Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` removes the backtest record. Stored bars stay in Postgres under the provider they were downloaded with.
 
 Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. A month-end with no holdings file keeps the latest published listing on or before that date, or the earliest published listing after it when nothing earlier exists. You do not have to pick a range that includes a published date; the create fails only when the whole range has no holdings file. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 
@@ -163,12 +142,18 @@ uv run fbull strategy experiment mean-rev --backtest spy
 uv run fbull strategy experiment mean-rev --backtest eu-small
 uv run fbull strategy experiments mean-rev
 uv run fbull strategy deploy mean-rev --mode paper --dry-run
-uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
+uv run fbull strategy deploy mean-rev --mode paper --no-dry-run --backend alpaca-paper --yes
 uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Paper PlaceOrder: `--mode paper --no-dry-run --yes` (or `--confirm`) with `TRADING_ENABLED`. `--mode live` is refused.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--mode paper --no-dry-run --backend <profile> --yes` (or `--confirm`) and `TRADING_ENABLED=true`. `--backend` is a profile name, not a key. `--mode live` is refused.
+
+### Trading profiles
+
+Paper orders use a profile name. The broker reads `TRADING_PROFILES_FILE`. In the cluster that path is `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading`, key `profiles.yaml`. The Secret is optional. When the file is absent and `TRADING_ENABLED` is false, the process starts with an empty registry. When `TRADING_ENABLED` is true, a missing or invalid file is a startup error.
+
+On local Kind, if `.foreverbull/trading-profiles.yaml` exists, `fbenv` applies it as that Secret before `helm upgrade` and does not print the file. `.foreverbull` is gitignored. The committed example is [deploy/trading-profiles.example.yaml](deploy/trading-profiles.example.yaml). Its credential fields are empty. Do not commit keys. The file has no `baseUrl` field and no live URL switch. Two deployments that name the same profile share that account. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
 
 ## Architecture
 
@@ -220,7 +205,7 @@ flowchart TB
 ```
 
 - **Backtest**: Creates backtests and sessions, ingests data, and runs Zipline simulations. ETF create is point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). See [pkg/backtest/universe.md](pkg/backtest/universe.md).
-- **Finance**: Market data (Yahoo by default; `stooq` is daily GetOHLC only with Yahoo metadata; `alpaca` is an alternate provider) and a trading API. Alpaca paper trading is compiled in but `TRADING_ENABLED` defaults to `false`. Live trading is not supported. Four paper adapters (`alpaca`, `saxo`, `ibkr`, and `ig`) sit behind `supplier.Trading`, and live deploy is off.
+- **Finance**: Market data is chosen per backtest (`provider` `yahoo`, `stooq`, or `alpaca`). Stooq is daily GetOHLC only; Yahoo stays for search, `GetAsset`, and `GetIndex`. Alpaca bars use a profile from the profiles file. `TRADING_ENABLED` defaults to `false` and is the kill switch, not a provider. Credentials live only in that file, mounted from Secret `foreverbull-trading`. Live trading is not supported. Four paper adapters (`alpaca`, `saxo`, `ibkr`, and `ig`) sit behind `supplier.Trading`. Two deployments that name the same profile share that account. Live deploy is off.
 - **Service**: Starts and stops algorithm-worker pods through the Kubernetes container runtime (`internal/container`).
 - **Strategy**: Lifecycle for a registered algorithm: versions, experiments on existing backtests (period stats on list/get), paper dry-run or confirmed paper PlaceOrder. One version can run on many universes (`--backtest spy` vs `--backtest eu-small`). Live is off. See [pkg/strategy/implementation.md](pkg/strategy/implementation.md) and [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 

@@ -279,7 +279,7 @@ def deploy(
         bool,
         typer.Option(
             "--dry-run/--no-dry-run",
-            help="run Process but skip PlaceOrder (default true). --no-dry-run requires --yes",
+            help="run Process but skip PlaceOrder (default true). --no-dry-run requires --yes and --backend",
         ),
     ] = True,
     mode: Annotated[DeployMode, typer.Option(help="paper (default). live is not supported")] = DeployMode.PAPER,
@@ -289,19 +289,26 @@ def deploy(
     ] = False,
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
-    backend: Annotated[str | None, typer.Option(help="trading backend name")] = None,
+    backend: Annotated[
+        str | None,
+        typer.Option(
+            "--backend",
+            help="trading profile name. Required with --no-dry-run. Dry-run may omit it",
+        ),
+    ] = None,
     calendar: Annotated[str | None, typer.Option(help="trading calendar code (e.g. XNYS)")] = None,
     symbols: Annotated[str | None, typer.Option(help="comma-separated symbols the deployment may trade")] = None,
 ):
     """Deploy a strategy version onto paper trading.
 
-    Dry-run (default) records Process orders without PlaceOrder:
+    Dry-run (default) records Process orders without PlaceOrder.
+    It may omit --backend:
 
         fbull strategy deploy mean-rev --mode paper --dry-run
 
-    Paper PlaceOrder requires TRADING_ENABLED and --yes (or --confirm):
+    Paper PlaceOrder requires TRADING_ENABLED, --backend <profile>, and --yes (or --confirm):
 
-        fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
+        fbull strategy deploy mean-rev --mode paper --no-dry-run --backend alpaca-paper --yes
 
     Live mode is not supported.
     """
@@ -311,6 +318,10 @@ def deploy(
     if not dry_run and not yes:
         console.print("[red]paper PlaceOrder requires --yes or --confirm")
         return
+    profile = backend.strip() if backend else ""
+    if not dry_run and not profile:
+        console.print("[red]paper PlaceOrder requires --backend <profile>")
+        return
 
     entity = broker.strategy.deploy(
         strategy_name=name,
@@ -318,7 +329,7 @@ def deploy(
         version_rev=rev,
         dry_run=dry_run,
         confirm=yes,
-        backend=backend,
+        backend=profile or None,
         calendar_code=calendar,
         symbols=_parse_symbols(symbols),
     )

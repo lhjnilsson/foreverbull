@@ -450,7 +450,7 @@ def test_strategy_deploy_paper_place_order_yes(runner):
         mock_deploy.return_value = _sample_deployment()
         result = runner(
             strategy,
-            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--yes"],
+            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--backend", "alpaca-paper", "--yes"],
         )
 
     assert result.exit_code == 0
@@ -460,7 +460,7 @@ def test_strategy_deploy_paper_place_order_yes(runner):
         version_rev=None,
         dry_run=False,
         confirm=True,
-        backend=None,
+        backend="alpaca-paper",
         calendar_code=None,
         symbols=[],
     )
@@ -471,7 +471,7 @@ def test_strategy_deploy_paper_place_order_confirm(runner):
         mock_deploy.return_value = _sample_deployment()
         result = runner(
             strategy,
-            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--confirm"],
+            ["deploy", "mean-rev", "--mode", "paper", "--no-dry-run", "--backend", "alpaca-paper", "--confirm"],
         )
 
     assert result.exit_code == 0
@@ -481,10 +481,39 @@ def test_strategy_deploy_paper_place_order_confirm(runner):
         version_rev=None,
         dry_run=False,
         confirm=True,
-        backend=None,
+        backend="alpaca-paper",
         calendar_code=None,
         symbols=[],
     )
+
+
+def test_strategy_deploy_no_dry_run_requires_backend(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run", "--yes"])
+
+    assert result.exit_code == 0
+    assert "--backend" in result.stdout
+    mock_deploy.assert_not_called()
+
+
+def test_strategy_deploy_no_dry_run_rejects_blank_backend(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run", "--backend", "  ", "--yes"])
+
+    assert result.exit_code == 0
+    assert "--backend" in result.stdout
+    mock_deploy.assert_not_called()
+
+
+def test_strategy_deploy_help_refuses_live(runner):
+    result = runner(strategy, ["deploy", "--help"])
+
+    assert result.exit_code == 0
+    help_text = " ".join(result.stdout.replace("│", " ").split())
+    assert "Live mode is not supported" in help_text
+    assert "live is not supported" in help_text
+    assert "--backend" in help_text
+    assert "Required with --no-dry-run" in help_text
 
 
 def test_strategy_stop(runner):

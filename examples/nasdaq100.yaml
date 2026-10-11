@@ -1,6 +1,10 @@
 # Fixed Nasdaq-100 constituent list for `fbull backtest create`.
 # Benchmark QQQ has daily bars on both Yahoo and Stooq.
 # Widen end_date to download a longer history.
+# Optional price source: yahoo (default), stooq, or alpaca.
+# `fbull backtest create --provider` overrides this field.
+# provider: yahoo
+# profile is an Alpaca profile name when provider is alpaca. It is not a credential.
 name: nasdaq100
 benchmark: QQQ
 periods:

@@ -6,7 +6,7 @@ Read this before changing market-data providers, experiment RPCs, `Deploy`, or t
 
 **Hard facts this contract must not contradict:**
 
-- **Yahoo is kept.** It remains the default `MARKET_DATA_PROVIDER` and the metadata implementation (`GetAsset` / `SearchAsset` / `GetIndex`).
+- **Yahoo is kept.** It remains the default backtest price source (an omitted `provider` stores `yahoo`) and the metadata implementation (`GetAsset` / `SearchAsset` / `GetIndex`).
 - **Stooq is GetOHLC-only.** It must not scrape search or index membership. It must not replace Yahoo.
 - **Live is out.** No live Alpaca URL, no `mode=live` orders, no k8s CronJob, no catch-up replay of missed sessions.
 
@@ -31,10 +31,10 @@ flowchart LR
 ## 2. Design principles
 
 1. **Compose, do not fork.** Strategy-poc already has registry, experiments, paper dry-run, CLI. ETF-universe already has ISIN membership. This work adds a market-data impl, a read-only JOIN, and a `PlaceOrder` branch.
-2. **Yahoo is kept.** Default provider stays `yahoo`. Stooq is opt-in via `MARKET_DATA_PROVIDER=stooq`. Deleting or bypassing Yahoo is out of scope.
-3. **Stooq is GetOHLC-only.** Metadata (`GetAsset`, `SearchAsset`, `GetIndex`) stays on Yahoo (or Alpaca if that provider is selected). A composite `Marketdata` is how `stooq` is wired.
+2. **Yahoo is kept.** Default backtest `provider` stays `yahoo`. Stooq is opt-in by setting that backtest's `provider` to `stooq`. Deleting or bypassing Yahoo is out of scope. `MARKET_DATA_PROVIDER` is not read.
+3. **Stooq is GetOHLC-only.** Metadata (`GetAsset`, `SearchAsset`, `GetIndex`) stays on Yahoo for every backtest provider, including `alpaca`. A composite `Marketdata` is how `stooq` is wired.
 4. **Metrics are a JOIN, not a copy.** Strategy does not duplicate `backtest_execution_period`. Analysis reads through `strategy_experiment.execution_id`.
-5. **Paper is not live.** `mode=paper` + `dry_run=false` + explicit confirm + `TRADING_ENABLED=true`. Live mode stays refused. Default Alpaca URL stays the paper endpoint.
+5. **Paper is not live.** `mode=paper` + `dry_run=false` + explicit confirm + a trading profile name (`--backend`) + `TRADING_ENABLED=true`. Live mode stays refused. Paper and demo base URLs are adapter constants. There is no live URL switch.
 6. **No Alpaca import in `pkg/strategy`.** Orders go through `pkg/finance/supplier.Trading`.
 
 ## 3. What already exists (reuse)
@@ -45,8 +45,8 @@ flowchart LR
 | Yahoo `GetOHLC` | `yahoo.go`: `GET query2.finance.yahoo.com/v8/finance/chart/{SYMBOL}` with `period1`/`period2` unix, `interval=1d`, symbol uppercased | Keep as default. Stooq is an alternate **daily** bar source, same `[]*pb.OHLC` |
 | Yahoo metadata | `GetAsset` (quoteSummary), `SearchAsset`, `GetIndex` (components) | Keep. Composite uses this when provider is `stooq` |
 | Alpaca market data | `alpaca.go` — full interface; `SearchAsset`/`GetIndex` already return empty | Unchanged. Not the Stooq composite |
-| Provider switch | `pkg/finance/module.go` `switch environment.GetMarketDataProvider()`: `alpaca` / `yahoo` / `stooq` / unknown error | `stooq` → composite. Default env value stays `yahoo` |
-| `MARKET_DATA_PROVIDER` | `internal/environment/env.go` default `"yahoo"` | Keep default. Value `stooq` is wired. Helm does **not** currently template this var — do not add it unless the chart already does |
+| Provider selection | `Backtest.provider` (`yahoo`, `stooq`, or `alpaca`). Empty at create stores `yahoo` | Not a process-wide env var. Do not reintroduce `MARKET_DATA_PROVIDER` |
+| Trading profile | `Deployment.backend` names a profile in `TRADING_PROFILES_FILE` | Credentials stay in that file, mounted from Secret `foreverbull-trading`. `TRADING_PROVIDER` is not read |
 | Ingest | `pkg/finance/internal/api/marketdata.go` `downloadSymbol`: `GetAsset` then `GetOHLC(asset.Symbol, start, end)` into `ohlc` | No second ingest pipeline. Composite makes that `GetOHLC` hit Stooq while `GetAsset` stays Yahoo |
 | Live Yahoo tests | `yahoo_test.go` skips unless `FOREVERBULL_LIVE_HTTP` is set | Stooq default tests use `httptest`/fixtures. Do not add live Stooq to unit tests |
 | Strategy lifecycle | `pkg/strategy/implementation.md`, tables, gRPC, CLI | Do not rebuild. Extend List/Get experiments and Deploy/runner |
@@ -58,7 +58,7 @@ flowchart LR
 | `DeployRequest.confirm` | Proto: “Required when mode is LIVE” | Also required when paper `dry_run=false`. Live still refused even with confirm |
 | Runner | `runner.InProcess`: calendar `session_close`, `GetPortfolio` + `Process`, **never** `PlaceOrder`; missed closes → `skipped_missed_close` | Call `Trading.PlaceOrder` only when `dry_run=false`. Do not add catch-up replay |
 | `supplier.Trading` | `GetPortfolio`, `PlaceOrder`, `GetOrders`. Alpaca impl in `pkg/finance/internal/suppliers/trading`. Constructed only if `TRADING_ENABLED` | Strategy calls the interface. `TRADING_ENABLED` default `false`. Paper URL default `https://paper-api.alpaca.markets` |
-| CLI | `fbull strategy experiments` prints id/rev/backtest/status/execution; `deploy` refuses live and `--no-dry-run` | Table gains metrics. Deploy gains `--yes`/`--confirm` for paper PlaceOrder |
+| CLI | `fbull strategy experiments` prints id/rev/backtest/status/execution; `deploy` refuses live | Table gains metrics. Paper PlaceOrder requires `--yes`/`--confirm` and `--backend`. Dry-run may omit `--backend`. Live stays refused |
 | Fake Trading | `runner.FakeTrading.PlaceOrder` errors if called | Paper tests need a recording fake. Dry-run tests keep asserting zero `PlaceOrder` |
 
 ## 4. Chapter 1 — Stooq daily GetOHLC
@@ -94,21 +94,19 @@ Rules:
 - Unknown symbol: try a documented fallback (e.g. `lower(symbol)+".us"`) **or** fail with an explicit “no Stooq code for X” — pick one and test it. Do not silently hit Yahoo from the Stooq type.
 - This map is **not** ISIN identity (that is etf-universe). It is only a vendor ticker translation for daily bars.
 
-### 4.3 Composite provider
+### 4.3 Price source
 
-Wired: `pkg/finance/internal/suppliers/marketdata/composite.go` (`NewStooqYahoo`) and `case "stooq"` in `pkg/finance/module.go`.
+Search, `GetAsset`, and `GetIndex` stay on Yahoo. `GetOHLC` follows `Backtest.provider`. Create stores `yahoo` when the caller omits it. `MARKET_DATA_PROVIDER` is not read.
 
-**`MARKET_DATA_PROVIDER`** (`internal/environment/env.go`, default `"yahoo"`):
-
-| Value | GetOHLC | GetAsset / SearchAsset / GetIndex |
+| `Backtest.provider` | GetOHLC | GetAsset / SearchAsset / GetIndex |
 | --- | --- | --- |
-| unset / empty after `environment.Setup` | Yahoo | Yahoo |
-| `yahoo` | Yahoo | Yahoo |
+| omitted / `yahoo` | Yahoo | Yahoo |
 | `stooq` | Stooq daily CSV | Yahoo (constructor required; fail closed) |
-| `alpaca` | Alpaca | Alpaca |
-| anything else | process fails to start | |
+| `alpaca` | Alpaca bars for `profile`, or the only configured Alpaca profile | Yahoo |
 
-When `MARKET_DATA_PROVIDER=stooq`:
+`profile` on a `yahoo` or `stooq` backtest is ignored. Zero Alpaca profiles, or more than one with `profile` empty, fails ingest before any download. Unknown providers fail create before download.
+
+For `stooq`:
 
 ```text
 GetOHLC              → Stooq client
@@ -119,11 +117,9 @@ GetIndex             → Yahoo client
 
 Construct **both**. If the Yahoo constructor fails, **fail closed** with a clear error. Do not serve Stooq OHLC without metadata. Do not silently drop `GetAsset`.
 
-`MARKET_DATA_PROVIDER=yahoo` (default, including unset/empty after `environment.Setup`) stays a Yahoo-only client. `alpaca` stays Alpaca-only. Unknown values still error.
+**Default provider stays yahoo.** Do not switch production to Stooq. The backtest field is the switch.
 
-**Default provider stays yahoo.** Do not change `MarketDataProviderDefault`. Do not switch production or Helm to Stooq in this workflow. Helm does not template this variable.
-
-Ingest already calls `GetOHLC`; no second download path, no change to `ohlc` schema, no rewrite off `symbol`.
+`ohlc` is unique on `(provider, symbol, time)`. Existing rows stay and default to `yahoo`. Ingest still calls `GetOHLC`; there is no second download path and no rewrite off `symbol`. A run reads only its own provider.
 
 ### 4.4 Tests (Stooq)
 
@@ -218,15 +214,17 @@ Paper `PlaceOrder` uses `supplier.Trading` ([pkg/finance/trading.md](../finance/
 | `mode` | paper (default) | paper | **refuse** |
 | `dry_run` | true (default / unset) | false | n/a |
 | `confirm` | not required | **required** (`DeployRequest.confirm` / CLI `--yes` or `--confirm`) | refuse even with confirm |
-| `TRADING_ENABLED` | may be false (log-only) | **must be true** and `supplier.Trading` non-nil | refuse |
+| `backend` | may be empty | **required** profile name (`--backend`) | refuse |
+| `TRADING_ENABLED` | may be false (log-only) | **must be true** and the named profile must exist | refuse |
 | completed experiment on the version | required (existing PoC rule) | required | n/a |
 
 Refuse with FailedPrecondition (or CLI red error, no RPC) when:
 
 - `mode=live` (any dry_run / confirm)
 - `dry_run=false` and `confirm` is false
-- `dry_run=false` and `TRADING_ENABLED` is false or Trading is nil
-- live Alpaca URL / live mode flags — **out of scope**; do not add a live URL switch
+- `dry_run=false` and `TRADING_ENABLED` is false or the profile is missing or unknown
+- `dry_run=false` and `backend` is empty
+- live URL switches — **out of scope**; do not add a live URL switch
 
 Default new deployments stay `paper` + `dry_run=true`.
 
@@ -234,7 +232,7 @@ CLI (illustrative):
 
 ```text
 fbull strategy deploy mean-rev --mode paper --dry-run
-fbull strategy deploy mean-rev --mode paper --no-dry-run --yes
+fbull strategy deploy mean-rev --mode paper --no-dry-run --backend alpaca-paper --yes
 ```
 
 `--mode live` stays rejected. Document `--yes` / `--confirm`; do not document live trading as supported.
@@ -267,9 +265,9 @@ Missed closes stay `skipped_missed_close` (no Process, no PlaceOrder). Catch-up 
 
 | Case | Behavior |
 | --- | --- |
-| Yahoo constructor fails under `MARKET_DATA_PROVIDER=stooq` | Fail closed; do not start with OHLC-only |
+| Yahoo constructor fails for a `stooq` backtest | Fail closed; do not ingest OHLC without metadata |
 | Stooq CSV empty / 404 | `GetOHLC` error; ingest marks that symbol the way it already does on `GetOHLC` error |
-| Unknown `MARKET_DATA_PROVIDER` | Existing error path |
+| Unknown `Backtest.provider` | Create fails before download |
 | Experiment with no execution / no periods | Empty summary |
 | `PlaceOrder` fails | Stop session, record error, no retry |
 | Live mode | Always refuse |
@@ -294,15 +292,16 @@ Missed closes stay `skipped_missed_close` (no Process, no PlaceOrder). Catch-up 
 | --- | --- |
 | `pkg/finance/internal/suppliers/marketdata/stooq.go` | New: CSV GetOHLC + ticker map. Tests/fixtures beside it |
 | Composite type next to Stooq | `composite.go`: Stooq OHLC + Yahoo metadata; fail closed if Yahoo ctor fails |
-| `pkg/finance/module.go` | `case "stooq":` `NewStooqYahoo(NewYahooClient)`. `yahoo` / `alpaca` unchanged |
-| `internal/environment/env.go` | Default remains `yahoo`. No new default |
-| Helm `MARKET_DATA_PROVIDER` | Not templated today — leave unless already present |
+| `pkg/finance/module.go` | Yahoo client for search, `GetAsset`, and `GetIndex`. `GetOHLC` follows `Backtest.provider`. Trading clients come from the profiles registry |
+| `internal/environment/env.go` | No `MARKET_DATA_PROVIDER`. `TRADING_ENABLED` and `TRADING_PROFILES_FILE` remain |
+| Helm broker | Mounts Secret `foreverbull-trading` and sets `TRADING_PROFILES_FILE`. No trading credential `value:` fields |
 | `pkg/strategy/internal/api/experiment.go` + repository | JOIN period stats; fill `last_period` / list summary |
 | `proto/foreverbull/strategy/**` | Only if List/Get need a summary message. `task proto` |
-| `pkg/strategy/internal/api/deploy.go` | Allow paper `dry_run=false` + confirm; refuse live; refuse if trading disabled |
+| `pkg/strategy/internal/api/deploy.go` | Allow paper `dry_run=false` + confirm + a known profile; refuse live; refuse if trading is disabled or the profile is missing |
 | `pkg/strategy/internal/runner/` | `PlaceOrder` when `!dry_run`; keep skip-missed; fake Trading records calls |
 | `pkg/strategy/module.go` | Wire Processor for paper; Trading already optional |
-| CLI `client/cli/.../bull/strategy.py` | Experiments table; deploy `--yes` / `--no-dry-run` for paper only |
+| CLI `client/cli/.../bull/strategy.py` | Experiments table; deploy `--yes` / `--no-dry-run` / `--backend` for paper only. Live refused |
+| CLI `client/cli/.../bull/backtest.py` | `create` sends `provider` (default `yahoo`) and optional `profile`. `--provider` overrides the file |
 | `pkg/strategy/implementation.md` | PoC contract; this file is the follow-on. Do not rewrite PoC history |
 | Yahoo / Alpaca marketdata files | Keep |
 
@@ -326,6 +325,6 @@ Agent policy: do not mock Postgres for repository tests; no live HTTP in default
 
 All three chapters are in. Live is out.
 
-- **Stooq (ch. 1).** `MARKET_DATA_PROVIDER=stooq` wires daily GetOHLC through Stooq CSV and metadata (`GetAsset` / `SearchAsset` / `GetIndex`) through Yahoo (`composite.go` / `NewStooqYahoo`). Default remains `yahoo`. Yahoo is kept. Stooq does not scrape search or index membership. Helm does not template `MARKET_DATA_PROVIDER`.
+- **Stooq (ch. 1).** A backtest with `provider=stooq` uses Stooq for daily GetOHLC and Yahoo for metadata (`GetAsset` / `SearchAsset` / `GetIndex`). Default provider is `yahoo`. Yahoo is kept. Stooq does not scrape search or index membership. `MARKET_DATA_PROVIDER` is not read. Bars are stored per provider.
 - **Compare (ch. 2).** `ListExperiments` JOIN-fills `Experiment.stats` from the last `backtest_execution_period` row (`portfolio_value`, `max_drawdown`, `sharpe`, `algorithm_period_return`, `benchmark_period_return`). `GetExperiment` fills `last_period` the same way. Missing `execution_id` or no period rows → empty stats. CLI `fbull strategy experiments` prints Sharpe, max drawdown, end value, and benchmark.
-- **Paper (ch. 3).** `Deploy` accepts `mode=paper` + `dry_run=false` when `confirm` is set and `supplier.Trading` is configured (`TRADING_ENABLED`). CLI: `fbull strategy deploy … --mode paper --no-dry-run --yes` (or `--confirm`). Default deploy stays paper + dry-run. Runner calls `Trading.PlaceOrder` on paper sessions, persists attempted orders, stops on first error without retry. Missed closes stay `skipped_missed_close`. `mode=live` is still refused even with confirm. Paper PlaceOrder uses `supplier.Trading` ([pkg/finance/trading.md](../finance/trading.md)).
+- **Paper (ch. 3).** `Deploy` accepts `mode=paper` + `dry_run=false` when `confirm` is set, `TRADING_ENABLED` is true, and `backend` is a known profile name. CLI: `fbull strategy deploy … --mode paper --no-dry-run --backend alpaca-paper --yes` (or `--confirm`). Dry-run may omit `--backend`. Default deploy stays paper + dry-run. Runner calls `Trading.PlaceOrder` on paper sessions, persists attempted orders, stops on first error without retry. Missed closes stay `skipped_missed_close`. `mode=live` is still refused even with confirm. Credentials stay in the profiles file. Paper PlaceOrder uses `supplier.Trading` ([pkg/finance/trading.md](../finance/trading.md), [pkg/finance/profiles.md](../finance/profiles.md)).

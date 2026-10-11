@@ -35,10 +35,11 @@ START = date(2020, 1, 1)
 END = date(2020, 1, 31)
 
 
-def _sample_backtest(name="test_name", benchmark="SPY") -> backtest_pb2.Backtest:
+def _sample_backtest(name="test_name", benchmark="SPY", provider="") -> backtest_pb2.Backtest:
     return backtest_pb2.Backtest(
         name=name,
         benchmark=benchmark,
+        provider=provider,
         periods=[
             backtest_pb2.Backtest.Period(
                 start_date=from_pydate_to_proto_date(START),
@@ -133,6 +134,7 @@ def test_backtest_create_reprompts_invalid_dates(runner):
     assert "before start date" in result.stdout
     request = mock_create.call_args.kwargs["entity"]
     assert request.name == "demo"
+    assert request.provider == "yahoo"
     assert request.start_date.year == 2020
     assert request.end_date.day == 31
 
@@ -308,10 +310,107 @@ def test_backtest_create_from_file(runner):
 
     Path(cfg_file.name).unlink(missing_ok=True)
     assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.backtest.provider == "yahoo"
+    assert request.backtest.profile == ""
     assert "from_file" in result.stdout
     assert "2021-01-01" in result.stdout
     assert "QQQ" in result.stdout
     assert "AAPL" in result.stdout
+    assert "yahoo" in result.stdout
+
+
+def _file_payload(**extra: object) -> dict:
+    payload = {
+        "name": "from_file",
+        "benchmark": "QQQ",
+        "periods": [
+            {
+                "start_date": "2021-01-01",
+                "end_date": "2021-01-31",
+                "assets": [
+                    {"symbol": "AAPL", "enabled": True},
+                ],
+            }
+        ],
+    }
+    payload.update(extra)
+    return payload
+
+
+def test_backtest_create_from_file_reads_provider_and_profile(runner):
+    created = _sample_backtest(name="from_file", benchmark="QQQ", provider="alpaca")
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(provider="alpaca", profile="alpaca-paper"), cfg_file)
+        cfg_file.flush()
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb2.CreateBacktestResponse(
+                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    backtest=created,
+                )
+            ]
+        )
+        result = runner(backtest, ["create", "--file", cfg_file.name])
+
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.backtest.provider == "alpaca"
+    assert request.backtest.profile == "alpaca-paper"
+    assert "alpaca" in result.stdout
+
+
+def test_backtest_create_provider_flag_overrides_file(runner):
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(provider="yahoo", profile="alpaca-paper"), cfg_file)
+        cfg_file.flush()
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb2.CreateBacktestResponse(
+                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                    backtest=_sample_backtest(name="from_file", benchmark="QQQ", provider="stooq"),
+                )
+            ]
+        )
+        result = runner(backtest, ["create", "--file", cfg_file.name, "--provider", "stooq"])
+
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.backtest.provider == "stooq"
+    assert request.backtest.profile == "alpaca-paper"
+    assert "stooq" in result.stdout
+
+
+def test_backtest_create_unknown_provider_does_not_call_broker(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        result = runner(backtest, ["create", "--provider", "binance"])
+
+    assert result.exit_code == 0
+    mock_create.assert_not_called()
+    assert "Unknown price provider 'binance'" in result.stdout
+
+
+def test_backtest_create_etf_sends_provider_flag(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create", "--provider", "stooq"],
+            input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.provider == "stooq"
+    assert request.name == "demo"
 
 
 def test_backtest_get(runner):
@@ -334,6 +433,7 @@ def test_backtest_get(runner):
         assert "exec-1" in result.stdout
         assert f"Link: {execution_link('exec-1')}" in result.stdout
         assert "SPY" in result.stdout
+        assert "yahoo" in result.stdout
 
 
 def test_backtest_get_yaml(runner):
@@ -348,6 +448,8 @@ def test_backtest_get_yaml(runner):
         dumped = yaml.safe_load(result.stdout)
         assert dumped["name"] == "test_name"
         assert dumped["benchmark"] == "SPY"
+        assert dumped["provider"] == "yahoo"
+        assert "profile" not in dumped
         assert dumped["periods"][0]["start_date"] == "2020-01-01"
         assert dumped["periods"][0]["assets"][0]["symbol"] == "AAPL"
 

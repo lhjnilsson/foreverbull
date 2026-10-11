@@ -36,6 +36,28 @@ from foreverbull_cli.output import format_proto_date
 backtest = typer.Typer(help="Create and inspect backtests. `etfs` lists known iShares funds.")
 log = logging.getLogger().getChild(__name__)
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_PRICE_PROVIDERS = frozenset({"yahoo", "stooq", "alpaca"})
+
+
+def _normalize_provider(raw: object) -> str | None:
+    provider = "" if raw is None else str(raw).strip().lower()
+    if provider == "":
+        provider = "yahoo"
+    if provider not in _PRICE_PROVIDERS:
+        console.print(f"[red]Unknown price provider {provider!r}. Use yahoo, stooq, or alpaca.")
+        return None
+    return provider
+
+
+def _optional_profile(raw: object) -> str:
+    if raw is None:
+        return ""
+    return str(raw).strip()
+
+
+def _shown_provider(entity: backtest_pb2.Backtest) -> str:
+    provider = entity.provider.strip().lower()
+    return provider or "yahoo"
 
 
 def _read_line(prompt: Prompt, default: str | None = None) -> str | None:
@@ -187,12 +209,13 @@ def list_backtests():
     table.add_column("Start")
     table.add_column("End")
     table.add_column("Benchmark")
+    table.add_column("Provider")
     for entity in broker.backtest.list_backtests():
         if not len(entity.periods):
             console.print(f"Backtest {entity.name} has no periods")
             continue
         start, end = _backtest_range(entity)
-        table.add_row(entity.name, start, end, entity.benchmark)
+        table.add_row(entity.name, start, end, entity.benchmark, _shown_provider(entity))
     console.print(table)
 
 
@@ -214,12 +237,27 @@ def create(
         Path | None,
         typer.Option(help="path to the backtest file[YAML]. Omit to choose an ETF from `fbull backtest etfs`"),
     ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="price source yahoo, stooq, or alpaca. Overrides provider in the YAML. Omitted sends yahoo",
+        ),
+    ] = None,
 ):
     """Create a backtest from a YAML file or a known iShares ETF.
 
     Without --file, ETF prompt choices come from `fbull backtest etfs`.
     A bad name, fund, or date is re-asked before any download.
+    Optional YAML fields `provider` and `profile` are sent on the create request.
+    `--provider` overrides the file. An omitted provider is sent as yahoo.
     """
+    flag_provider: str | None = None
+    if provider is not None:
+        flag_provider = _normalize_provider(provider)
+        if flag_provider is None:
+            return
+
     entity: (
         backtest_service_pb2.CreateBacktestRequest.CreateFromETF
         | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest
@@ -229,10 +267,15 @@ def create(
             raise FileNotFoundError(f"File {file} not found")
         with open(file, "r") as f:
             data = yaml.safe_load(f)
+        chosen = flag_provider if flag_provider is not None else _normalize_provider(data.get("provider"))
+        if chosen is None:
+            return
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest(
             backtest=backtest_pb2.Backtest(
                 name=data["name"],
                 benchmark=data["benchmark"],
+                provider=chosen,
+                profile=_optional_profile(data.get("profile")),
                 periods=[
                     backtest_pb2.Backtest.Period(
                         start_date=from_pydate_to_proto_date(date.fromisoformat(period["start_date"])),
@@ -265,6 +308,7 @@ def create(
             base_etf=base_etf,
             start_date=from_pydate_to_proto_date(start),
             end_date=from_pydate_to_proto_date(end),
+            provider=flag_provider or "yahoo",
         )
 
     created: backtest_pb2.Backtest | None = None
@@ -287,12 +331,14 @@ def create(
     table.add_column("End")
     table.add_column("Symbols", overflow="fold")
     table.add_column("Benchmark")
+    table.add_column("Provider")
     table.add_row(
         created.name,
         start,
         end,
         _enabled_symbols(created),
         created.benchmark,
+        _shown_provider(created),
     )
     console.print(table)
 
@@ -312,8 +358,12 @@ def get(
         backtest_dict = {
             "name": entity.name,
             "benchmark": entity.benchmark,
+            "provider": _shown_provider(entity),
             "periods": [],
         }
+        profile = entity.profile.strip()
+        if profile:
+            backtest_dict["profile"] = profile
         for period in entity.periods:
             backtest_dict["periods"].append(
                 {
@@ -338,12 +388,14 @@ def get(
     backtest_table.add_column("End")
     backtest_table.add_column("Symbols", overflow="fold")
     backtest_table.add_column("Benchmark")
+    backtest_table.add_column("Provider")
     backtest_table.add_row(
         entity.name,
         start,
         end,
         _enabled_symbols(entity),
         entity.benchmark,
+        _shown_provider(entity),
     )
     periods_table = Table(title="periods", expand=True, show_lines=True)
     periods_table.add_column("Start")
