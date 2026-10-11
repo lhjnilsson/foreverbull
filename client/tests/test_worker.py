@@ -54,9 +54,8 @@ class TestWorkerInstance:
 class TestWorkerPool:
     def test_bad_algorithm_file_path(self):
         pool = worker.WorkerPool("bad_file")
-        with pytest.raises(exceptions.ConfigurationError):
-            with pool:
-                pass
+        with pytest.raises(exceptions.ConfigurationError), pool:
+            pass
 
     def test_configure_not_running(self, parallel_algo_file):
         algorithm, _, _ = parallel_algo_file
@@ -82,9 +81,8 @@ class TestWorkerPool:
         algorithm, request, _ = parallel_algo_file
         setattr(request, *new_attr)
         pool = worker.WorkerPool(algorithm._file_path, executors=1)
-        with pool:
-            with pytest.raises(exceptions.ConfigurationError, match=exc_msg):
-                pool.configure_execution(request)
+        with pool, pytest.raises(exceptions.ConfigurationError, match=exc_msg):
+            pool.configure_execution(request)
 
     def test_run_not_running(self, parallel_algo_file):
         algorithm, _, _ = parallel_algo_file
@@ -95,12 +93,11 @@ class TestWorkerPool:
     def test_run_not_configured(self, parallel_algo_file):
         algorithm, _, _ = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
-        with pool:
-            with pytest.raises(exceptions.ConfigurationError):
-                pool.run_execution(Event())
+        with pool, pytest.raises(exceptions.ConfigurationError):
+            pool.run_execution(Event())
 
     def test_run_stop_before_process(self, fb_env, fb_database, namespace_server, parallel_algo_file):
-        algorithm, request, process_symbols = parallel_algo_file
+        algorithm, request, _process_symbols = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pool:
             pool.configure_execution(request)
