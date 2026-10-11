@@ -67,10 +67,10 @@ target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-exclude = ["src/foreverbull/pb/*", "templates/*"]
+exclude = ["src/foreverbull/pb/*", "templates/*", "simple_foreverbull/*", "advanced_foreverbull/*"]
 
 [tool.ruff.format]
-exclude = ["src/foreverbull/pb/*", "templates/*"]
+exclude = ["src/foreverbull/pb/*", "templates/*", "simple_foreverbull/*", "advanced_foreverbull/*"]
 
 [tool.ruff.lint.isort]
 force-single-line = true

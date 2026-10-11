@@ -11,13 +11,14 @@ from typer.testing import CliRunner
 def runner(fb_env):
     runner = CliRunner()
 
-    def invoke(app: typer.Typer, args: list[str], input=None, kwargs: dict = {}) -> Result:
+    def invoke(app: typer.Typer, args: list[str], input=None, kwargs: dict | None = None) -> Result:
+        if kwargs is None:
+            kwargs = {}
         result = runner.invoke(app, args, input=input, **kwargs)
         if result.exception:
             raise result.exception
-        echo_stdout = os.environ.get("ECHO", False)
-        if echo_stdout:
-            print("")
+        if os.environ.get("ECHO"):
+            print()
             print(result.stdout)
 
         return result

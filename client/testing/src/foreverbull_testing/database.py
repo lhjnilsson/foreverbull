@@ -140,9 +140,7 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
             return False
         if start.date() != start_date:
             return False
-        if end.date() != end_date:
-            return False
-        return True
+        return end.date() == end_date
 
 
 def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):

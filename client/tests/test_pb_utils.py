@@ -1,6 +1,6 @@
+from datetime import UTC
 from datetime import date
 from datetime import datetime
-from datetime import timezone
 
 import pandas
 import pytest
@@ -17,11 +17,11 @@ from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 def test_from_proto_timestamp():
     ts = Timestamp()
     ts.seconds = 1704110400
-    assert pb_utils.from_proto_timestamp(ts) == datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    assert pb_utils.from_proto_timestamp(ts) == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def test_to_proto_timestamp():
-    dt = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    dt = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     ts = Timestamp()
     ts.seconds = 1704110400
     assert pb_utils.to_proto_timestamp(dt) == ts

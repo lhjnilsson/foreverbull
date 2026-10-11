@@ -1,4 +1,5 @@
 from typing import Annotated
+from typing import Self
 
 import typer
 
@@ -20,8 +21,9 @@ class FBProgress(Progress):
         text = TextColumn("[progress.description]{task.description}")
         super().__init__(spinner, text)
 
-    def __enter__(self) -> "FBProgress":
-        return super().__enter__()
+    def __enter__(self) -> Self:
+        super().__enter__()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if isinstance(exc_val, _InactiveRpcError):

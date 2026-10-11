@@ -237,8 +237,8 @@ task grafana:build:docker     # lhjnilsson/fb-grafana:local
 
 task proto                    # regenerate Go + Python protobuf from proto/ (Buf)
 task mock:generate            # mockery
-task client:lint              # ruff check
-task client:format            # ruff format
+task client:lint              # uvx ruff@0.17.0 check
+task client:format            # uvx ruff@0.17.0 format
 ```
 
 Go and Python unit tests start Postgres/NATS/Minio with Testcontainers. Have Docker running. They are not live-trading tests.

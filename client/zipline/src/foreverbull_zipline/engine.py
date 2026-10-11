@@ -9,13 +9,6 @@ import pandas as pd
 import pynng
 import six
 
-from foreverbull.broker.storage import Storage
-from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from zipline import TradingAlgorithm
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -25,6 +18,14 @@ from zipline.finance.trading import SimulationParameters
 from zipline.protocol import BarData
 from zipline.protocol import Portfolio
 from zipline.utils.calendar_utils import get_calendar
+
+from foreverbull.broker.storage import Storage
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from zipline import TradingAlgorithm
 
 
 class ConfigError(Exception):
@@ -45,7 +46,7 @@ class Engine(multiprocessing.Process):
         self._logging_queue = logging_queue
         self.logger = logging.getLogger().getChild(__name__)
         self.is_ready = multiprocessing.Event()
-        super(Engine, self).__init__()
+        super().__init__()
 
     def run_backtest(self, backtest: engine_service_pb2.RunBacktestRequest) -> engine_service_pb2.RunBacktestResponse:
         with pynng.Req0(
@@ -240,10 +241,10 @@ class Engine(multiprocessing.Process):
         req = engine_service_pb2.PlaceOrdersAndContinueRequest()
         req.ParseFromString(data)
         for order in req.orders:
-            logging.info("Placing order: %s", order)
+            self.log.info("Placing order: %s", order)
             asset = trading_algorithm.symbol(order.symbol)
             order_id = trading_algorithm.order(asset=asset, amount=order.amount)
-            logging.debug("Placed order: %s", order_id)
+            self.log.debug("Placed order: %s", order_id)
 
         return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
 
@@ -377,9 +378,9 @@ class Engine(multiprocessing.Process):
                         case "get_result":
                             rsp.data = self._get_execution_result(req.data)
                             context_socket.send(rsp.SerializeToString())
-                except StopExcecution as e:
-                    raise e
+                except StopExcecution:
+                    raise
                 except Exception as e:
-                    self.log.error(f"Error processing request {req.task}: {e}")
+                    self.log.exception("Error processing request %s", req.task)
                     rsp.error = str(e)
                     context_socket.send(rsp.SerializeToString())

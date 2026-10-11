@@ -314,9 +314,11 @@ Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may om
 
 ## Python lint
 
+Ruff is pinned to **0.17.0** in `.pre-commit-config.yaml`, `.github/workflows/on_commit.yaml`, and `client/taskfile.yaml`. The commit hook and CI both run `ruff check` and `ruff format --check` on the whole `client/` tree whenever a client file is staged.
+
 ```bash
-task client:lint              # uvx ruff check
-task client:format            # uvx ruff format
+task client:lint              # uvx ruff@0.17.0 check
+task client:format            # uvx ruff@0.17.0 format
 ```
 
-Ruff ignores generated `client/src/foreverbull/pb/` and cookiecutter `templates/`.
+Ruff ignores generated `client/src/foreverbull/pb/`, cookiecutter `templates/`, and local cookiecutter output `client/simple_foreverbull/` and `client/advanced_foreverbull/`.

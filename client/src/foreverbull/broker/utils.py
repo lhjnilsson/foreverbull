@@ -11,6 +11,8 @@ from sqlalchemy import engine
 from sqlalchemy.engine.url import make_url
 
 from foreverbull.broker.config import load_cluster_config
+from foreverbull.exceptions import ConfigurationError
+from foreverbull.exceptions import ConnectionError
 
 
 DEFAULT_NNG_HOSTNAME = "127.0.0.1"
@@ -59,14 +61,14 @@ def get_engine(url: str) -> engine.Engine:
         return db_engine
     except Exception as exc:
         log.error("Could not connect to database at %s", url)
-        raise Exception(f"Could not connect to database at {url}") from exc
+        raise ConnectionError(f"Could not connect to database at {url}") from exc
 
 
 @contextmanager
 def namespace_socket() -> Iterator[pynng.Socket]:
     port = os.environ.get("NAMESPACE_PORT", None)
     if port is None:
-        raise Exception("Namespace port not set")
+        raise ConfigurationError("Namespace port not set")
     socket = pynng.Req0(dial=f"tcp://{nng_hostname()}:{port}", block_on_dial=True)
     socket.recv_timeout = 5000
     socket.send_timeout = 5000

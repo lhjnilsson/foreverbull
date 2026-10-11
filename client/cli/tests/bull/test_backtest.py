@@ -69,7 +69,7 @@ def test_backtest_list(runner):
         mock_list.return_value = [_sample_backtest()]
         result = runner(backtest, ["list"])
 
-        if not result.exit_code == 0 and result.exc_info:
+        if result.exit_code != 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
         assert "SPY" in result.stdout
@@ -98,7 +98,7 @@ def test_backtest_create(runner):
             input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
         )
 
-        if not result.exit_code == 0:
+        if result.exit_code != 0:
             traceback.print_exception(*result.exc_info)  # type: ignore
         assert "test_name" in result.stdout
         assert "2020-01-01" in result.stdout
@@ -422,7 +422,7 @@ def test_backtest_get(runner):
         mock_list_executions.return_value = [_sample_execution()]
         result = runner(backtest, ["get", "test_name"])
 
-        if not result.exit_code == 0 and result.exc_info:
+        if result.exit_code != 0 and result.exc_info:
             traceback.print_exception(*result.exc_info)
         assert "test_name" in result.stdout
         assert "AAPL" in result.stdout

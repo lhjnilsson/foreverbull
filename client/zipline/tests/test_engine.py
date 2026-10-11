@@ -10,12 +10,12 @@ import pytest
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.service import BacktestService
+from zipline.data import bundles
 
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from zipline.data import bundles
 
 
 def test_start_stop(fb_env, spawn_process):

@@ -9,6 +9,7 @@ from inspect import signature
 
 from sqlalchemy import Connection
 
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.models.finance import Asset
 from foreverbull.models.finance import Assets
 from foreverbull.models.finance import Portfolio
@@ -38,10 +39,10 @@ def _eval_param(type: str, val: str):
 
 
 class Algorithm:
-    def __init__(self, functions: list[Function], namespaces: list[str] = []):
+    def __init__(self, functions: list[Function], namespaces: list[str] | None = None):
         self._file_path = getabsfile(functions[0].callable)
         self._functions = {}
-        self._namespaces = namespaces
+        self._namespaces = [] if namespaces is None else namespaces
 
         for f in functions:
             self._functions[f.callable.__name__] = self._function_entry(f)
@@ -117,9 +118,9 @@ class Algorithm:
             file_path,
         )
         if spec is None:
-            raise Exception(f"No spec found in {file_path}")
+            raise ConfigurationError(f"No spec found in {file_path}")
         if spec.loader is None:
-            raise Exception(f"No loader found in {file_path}")
+            raise ConfigurationError(f"No loader found in {file_path}")
         source = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(source)
 
@@ -129,7 +130,7 @@ class Algorithm:
         for obj in declared_variables.values():
             if isinstance(obj, Algorithm):
                 return obj
-        raise Exception(f"No algorithm found in {file_path}")
+        raise ConfigurationError(f"No algorithm found in {file_path}")
 
     def _parameter_type(self, function_name: str, param_key: str) -> str:
         for f in self._functions.values():

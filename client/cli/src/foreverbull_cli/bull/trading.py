@@ -1,11 +1,10 @@
 import logging
 
-from typing import List
+from typing import Annotated
 
 import typer
 
 from rich.table import Table
-from typing_extensions import Annotated
 
 from foreverbull import broker
 from foreverbull import models
@@ -58,7 +57,7 @@ class PositionAndOrder:
         cls,
         positions: list[marketdata_pb2.Position],
         orders: list[marketdata_pb2.Order],
-    ) -> List["PositionAndOrder"]:
+    ) -> list["PositionAndOrder"]:
         items = []
         for position in positions:
             for order in orders:

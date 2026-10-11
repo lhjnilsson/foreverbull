@@ -18,10 +18,11 @@ TEMPLATES = pathlib.Path(__file__).resolve().parents[2] / "templates" / "simple"
 def runner():
     runner = CliRunner()
 
-    def invoke(app: typer.Typer, args: list[str], env: dict[str, str] = {}) -> Result:
+    def invoke(app: typer.Typer, args: list[str], env: dict[str, str] | None = None) -> Result:
+        if env is None:
+            env = {}
         result = runner.invoke(app, args, env=env)
-        echo_stdout = os.environ.get("ECHO", False)
-        if echo_stdout:
+        if os.environ.get("ECHO"):
             print()
             print(result.stdout)
 

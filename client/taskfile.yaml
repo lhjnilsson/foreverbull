@@ -9,12 +9,12 @@ tasks:
   lint:
     desc: Lint Python with ruff
     cmds:
-      - uvx ruff check
+      - uvx ruff@0.17.0 check
 
   format:
     desc: Format Python with ruff
     cmds:
-      - uvx ruff format
+      - uvx ruff@0.17.0 format
 
   test:
     desc: Run Python unit tests

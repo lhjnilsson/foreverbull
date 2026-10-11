@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from math import isnan
+from typing import Any
 from typing import cast
 
 import numpy as np
@@ -13,12 +14,13 @@ import pandas as pd
 
 from pandas import read_sql_query
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from zipline.utils.cli import maybe_show_progress
 
 from foreverbull.models import get_engine
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from zipline.utils.cli import maybe_show_progress
 
 
 warnings.filterwarnings("ignore")
@@ -73,9 +75,10 @@ def group_symbols_by_instrument(
     by_isin: dict[str, list[AliasSpec]] = {}
     member_to: dict[str, date | None] = {}
     symbol_isin: dict[str, str] = {}
-    for row in aliases.itertuples(index=False):
-        isin = str(getattr(row, "isin"))
-        symbol = str(getattr(row, "symbol"))
+    # itertuples is typed as a plain tuple; the names are the query columns.
+    for row in cast(Iterable[Any], aliases.itertuples(index=False)):
+        isin = str(row.isin)
+        symbol = str(row.symbol)
         from_date = _as_date(getattr(row, "from_date", None))
         to_date = _as_date(getattr(row, "to_date", None))
         dropped = _as_date(getattr(row, "member_to", None))
@@ -193,7 +196,7 @@ class SQLIngester:
             WHERE m.backtest_name = '{self.backtest.name}'
             ORDER BY s.isin, s.from_date"""
             return read_sql_query(query, self.engine._engine)
-        except Exception:
+        except SQLAlchemyError:
             return None
 
     def ingest_groups(self) -> list[InstrumentGroup]:

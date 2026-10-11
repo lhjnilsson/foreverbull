@@ -184,10 +184,10 @@ def assert_not_magic_lot(portfolio: Any) -> None:
     buy_sizes = [int(order.amount) for order in portfolio.pending_orders if order.amount > 0]
     long_targets = list(positive_targets(portfolio).values())
     if buy_sizes:
-        assert not all(
-            size == MAGIC_LOT for size in buy_sizes
-        ), f"buy orders are a magic {MAGIC_LOT}-share lot; size from portfolio_value"
+        assert not all(size == MAGIC_LOT for size in buy_sizes), (
+            f"buy orders are a magic {MAGIC_LOT}-share lot; size from portfolio_value"
+        )
     if long_targets:
-        assert not all(
-            size == MAGIC_LOT for size in long_targets
-        ), f"long targets are a magic {MAGIC_LOT}-share lot; size from portfolio_value"
+        assert not all(size == MAGIC_LOT for size in long_targets), (
+            f"long targets are a magic {MAGIC_LOT}-share lot; size from portfolio_value"
+        )

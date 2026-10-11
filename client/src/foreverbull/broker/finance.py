@@ -40,5 +40,4 @@ def create_session(
     stub: trading_service_pb2_grpc.TradingServicerStub, symbols: list[str]
 ) -> Generator[trading_service_pb2.CreateSessionResponse, None, None]:
     rsp = stub.CreateSession(trading_service_pb2.CreateSessionRequest(symbols=symbols))
-    for msg in rsp:
-        yield msg
+    yield from rsp

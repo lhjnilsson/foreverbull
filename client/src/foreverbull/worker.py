@@ -132,7 +132,7 @@ class WorkerInstance(Worker):
             except pynng.exceptions.Timeout:
                 pass
             except Exception as e:
-                self.logger.exception(repr(e))
+                self.logger.exception("Worker request failed")
                 if request:
                     response = worker_service_pb2.WorkerResponse()
                     response.error = repr(e)
@@ -174,8 +174,8 @@ class WorkerDaemon(WorkerInstance):
                 send_timeout=500,
                 recv_timeout=500,
             )
-        except Exception as e:
-            self.logger.error(f"Unable to connect to surveyor: {e}")
+        except pynng.exceptions.NNGException as e:
+            self.logger.error("Unable to connect to surveyor: %s", e)
             return
 
         self._running_event.set()
@@ -200,8 +200,7 @@ class WorkerDaemon(WorkerInstance):
             except pynng.exceptions.Timeout:
                 continue
             except Exception as e:
-                self.logger.error("Error processing request")
-                self.logger.exception(repr(e))
+                self.logger.exception("Error processing request")
                 response = common_pb2.Response(task=request.task, error=repr(e))
                 responder.send(response.SerializeToString())
             self.logger.debug(f"Request processed: {request.task}")
@@ -253,7 +252,7 @@ class WorkerPool(Worker):
         try:
             models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}")
+            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}") from e
         self._worker_surveyor_socket = pynng.Surveyor0(
             listen=self._worker_surveyor_address, send_timeout=30000, recv_timeout=30000
         )

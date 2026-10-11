@@ -7,11 +7,6 @@ import pytest
 
 from foreverbull_zipline import service
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
-
-from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from zipline.api import order_target
 from zipline.api import symbol
 from zipline.data import bundles
@@ -20,6 +15,11 @@ from zipline.errors import SymbolNotFound
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.run_algo import BenchmarkSpec
 from zipline.utils.run_algo import _run
+
+from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 
 
 @pytest.fixture(scope="session")

@@ -12,6 +12,9 @@ import pandas as pd
 
 from grpc_health.v1 import health_pb2
 from grpc_health.v1 import health_pb2_grpc
+from zipline.data import bundles
+from zipline.utils.paths import data_path
+from zipline.utils.paths import data_root
 
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
@@ -19,13 +22,11 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2 as calendar_service_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2_grpc as calendar_service_pb2_grpc
-from foreverbull.pb.foreverbull.finance.v1 import calendar_pb2 as calendar_pb2
+from foreverbull.pb.foreverbull.finance.v1 import calendar_pb2
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
+from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
-from zipline.data import bundles
-from zipline.utils.paths import data_path
-from zipline.utils.paths import data_root
 
 
 @dataclass
@@ -89,7 +90,7 @@ class BacktestService(engine_service_pb2_grpc.EngineServicer, health_pb2_grpc.He
         )
         engine.start()
         if not engine.is_ready.wait(5.0):
-            raise Exception("Timeout when creating engine")
+            raise ConfigError("Timeout when creating engine")
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = SessionServiceServicer(engine)
         engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)

@@ -13,6 +13,7 @@ from sqlalchemy import engine
 from sqlalchemy import text
 
 from foreverbull.broker.utils import namespace_socket
+from foreverbull.exceptions import RuntimeError
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
@@ -39,7 +40,7 @@ def _exchange_namespace(request: worker_service_pb2.NamespaceRequest) -> worker_
         response = worker_service_pb2.NamespaceResponse()
         response.ParseFromString(s.recv())
         if response.HasField("error"):
-            raise Exception(response.error)
+            raise RuntimeError(response.error)
         return response
 
 

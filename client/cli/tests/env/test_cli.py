@@ -31,8 +31,7 @@ def runner(fb_env):
 
     def invoke(app: typer.Typer, args: list[str]) -> Result:
         result = runner.invoke(app, args)
-        echo_stdout = os.environ.get("ECHO", False)
-        if echo_stdout:
+        if os.environ.get("ECHO"):
             print()
             print(result.stdout)
 

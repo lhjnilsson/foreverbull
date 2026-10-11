@@ -1,6 +1,7 @@
 import os
 
 from contextlib import contextmanager
+from typing import Self
 from urllib.parse import urlencode
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
@@ -91,7 +92,7 @@ class LiveProgress(Live):
         g = Group(self.progress, self._bar_progress)
         super().__init__(g)
 
-    def __enter__(self) -> "LiveProgress":
+    def __enter__(self) -> Self:
         super().__enter__()
         return self
 

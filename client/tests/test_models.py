@@ -15,6 +15,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from foreverbull.broker.utils import database_url_for_host
+from foreverbull.exceptions import ConnectionError
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
@@ -87,11 +88,11 @@ def test_get_engine_uses_provided_url_only(monkeypatch):
 
     def fake_create_engine(url):
         attempted.append(url)
-        raise Exception("refused")
+        raise OSError("refused")
 
     monkeypatch.setattr("foreverbull.broker.utils.create_engine", fake_create_engine)
     with pytest.raises(
-        Exception,
+        ConnectionError,
         match="Could not connect to database at postgresql://user:password@db.internal:5656/demo",
     ):
         get_engine("postgres://user:password@db.internal:5656/demo")
