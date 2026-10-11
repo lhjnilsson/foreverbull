@@ -59,7 +59,7 @@ func (db *Calendar) ListCalendarDates(ctx context.Context, calendarCode string, 
 	return dates, nil
 }
 
-func (db *Calendar) CalendarHasTradingDates(ctx context.Context, calendarCode string, symbols []string, fromDate, toDate *commonpb.Date) (bool, error) {
+func (db *Calendar) CalendarHasTradingDates(ctx context.Context, calendarCode, provider string, symbols []string, fromDate, toDate *commonpb.Date) (bool, error) {
 	var MissingTradingDates bool
 	var MissingCalendarDates bool
 	strFromDate, strToDate := commonpb.DateToDateString(fromDate), commonpb.DateToDateString(toDate)
@@ -70,7 +70,7 @@ func (db *Calendar) CalendarHasTradingDates(ctx context.Context, calendarCode st
 	),
 	ohlc_dates as (
 		select distinct time::date as ohlc_date from ohlc
-		where symbol = any($2) and time::date >= $3 and time::date <= $4
+		where symbol = any($2) and provider = $5 and time::date >= $3 and time::date <= $4
 	),
 	missing_trading_dates as (
 		select count(*) > 0 as has_missing_trading
@@ -92,7 +92,7 @@ func (db *Calendar) CalendarHasTradingDates(ctx context.Context, calendarCode st
 		t.has_missing_trading as missing_trading_dates
 	from missing_trading_dates t
 	cross join missing_calendar_dates m
-	`, calendarCode, symbols, strFromDate, strToDate).Scan(&MissingCalendarDates, &MissingTradingDates)
+	`, calendarCode, symbols, strFromDate, strToDate, priceProvider(provider)).Scan(&MissingCalendarDates, &MissingTradingDates)
 	if err != nil {
 		return false, err
 	}

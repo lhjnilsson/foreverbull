@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from foreverbull.pb.foreverbull import common_pb2 as foreverbull_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xfc\x02\n\x08\x42\x61\x63ktest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12\x42\n\x07periods\x18\x06 \x03(\x0b\x32(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x1a\xf9\x01\n\x06Period\x12\x37\n\nstart_date\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.DateR\tstartDate\x12\x33\n\x08\x65nd_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.DateR\x07\x65ndDate\x12\x46\n\x06\x61ssets\x18\x03 \x03(\x0b\x32..foreverbull.backtest.v1.Backtest.Period.AssetR\x06\x61ssets\x1a\x39\n\x05\x41sset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07\x65nabled\x18\x02 \x01(\x08R\x07\x65nabledB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17\x66oreverbull.backtest.v1\x1a\x18\x66oreverbull/common.proto\"\xb2\x03\n\x08\x42\x61\x63ktest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12\x42\n\x07periods\x18\x06 \x03(\x0b\x32(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x12\x1a\n\x08provider\x18\x07 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x08 \x01(\tR\x07profile\x1a\xf9\x01\n\x06Period\x12\x37\n\nstart_date\x18\x01 \x01(\x0b\x32\x18.foreverbull.common.DateR\tstartDate\x12\x33\n\x08\x65nd_date\x18\x02 \x01(\x0b\x32\x18.foreverbull.common.DateR\x07\x65ndDate\x12\x46\n\x06\x61ssets\x18\x03 \x03(\x0b\x32..foreverbull.backtest.v1.Backtest.Period.AssetR\x06\x61ssets\x1a\x39\n\x05\x41sset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07\x65nabled\x18\x02 \x01(\x08R\x07\x65nabledB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,9 +34,9 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtest'
   _globals['_BACKTEST']._serialized_start=94
-  _globals['_BACKTEST']._serialized_end=474
-  _globals['_BACKTEST_PERIOD']._serialized_start=225
-  _globals['_BACKTEST_PERIOD']._serialized_end=474
-  _globals['_BACKTEST_PERIOD_ASSET']._serialized_start=417
-  _globals['_BACKTEST_PERIOD_ASSET']._serialized_end=474
+  _globals['_BACKTEST']._serialized_end=528
+  _globals['_BACKTEST_PERIOD']._serialized_start=279
+  _globals['_BACKTEST_PERIOD']._serialized_end=528
+  _globals['_BACKTEST_PERIOD_ASSET']._serialized_start=471
+  _globals['_BACKTEST_PERIOD_ASSET']._serialized_end=528
 # @@protoc_insertion_point(module_scope)

@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from foreverbull.models.finance import Assets
 from foreverbull.models.finance import Portfolio
+from foreverbull.models.finance import ohlc_provider
 from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -26,18 +27,18 @@ _OHLC_COLUMNS = ("symbol", "time", "open", "high", "low", "close", "volume")
 # Monday, so a series can end on a weekday the production time <= as_of query includes.
 _SERIES_END = datetime(2024, 5, 6, tzinfo=UTC)
 
-_DELETE_SYMBOL = text("DELETE FROM ohlc WHERE symbol = :symbol")
+_DELETE_SYMBOL = text("DELETE FROM ohlc WHERE symbol = :symbol AND provider = :provider")
 
-_DELETE_OHLC = text("DELETE FROM ohlc WHERE symbol = :symbol AND time = :time")
+_DELETE_OHLC = text("DELETE FROM ohlc WHERE symbol = :symbol AND provider = :provider AND time = :time")
 
 _INSERT_OHLC = text(
     """
-    INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
-    VALUES (:symbol, :time, :open, :high, :low, :close, :volume)
+    INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+    VALUES (:provider, :symbol, :time, :open, :high, :low, :close, :volume)
     """
 )
 
-_CLOSE_ON_DAY = text("SELECT close FROM ohlc WHERE symbol=:symbol AND time::DATE=:dt")
+_CLOSE_ON_DAY = text("SELECT close FROM ohlc WHERE symbol=:symbol AND provider=:provider AND time::DATE=:dt")
 
 
 class ReplayDay(NamedTuple):
@@ -66,7 +67,9 @@ class Session:
             when = _stored_time(row["time"])
             if symbol not in self._symbols:
                 self._symbols.append(symbol)
+            provider = ohlc_provider()
             values = {
+                "provider": provider,
                 "symbol": symbol,
                 "time": when,
                 "open": row["open"],
@@ -75,7 +78,7 @@ class Session:
                 "close": row["close"],
                 "volume": int(row["volume"]),
             }
-            self._conn.execute(_DELETE_OHLC, {"symbol": symbol, "time": when})
+            self._conn.execute(_DELETE_OHLC, {"symbol": symbol, "provider": provider, "time": when})
             payload.append(values)
         if payload:
             self._conn.execute(_INSERT_OHLC, payload)
@@ -108,7 +111,7 @@ class Session:
 
     def _insert_closes(self, symbol: str, closes: list[float]) -> list[datetime]:
         times = _weekday_timestamps(len(closes))
-        self._conn.execute(_DELETE_SYMBOL, {"symbol": symbol})
+        self._conn.execute(_DELETE_SYMBOL, {"symbol": symbol, "provider": ohlc_provider()})
         self.bars(
             [
                 {
@@ -200,7 +203,7 @@ class Session:
 
     def _close_on(self, symbol: str, as_of: datetime) -> float:
         day = _as_utc(as_of).strftime("%Y-%m-%d")
-        close = self._conn.execute(_CLOSE_ON_DAY, {"symbol": symbol, "dt": day}).scalar()
+        close = self._conn.execute(_CLOSE_ON_DAY, {"symbol": symbol, "provider": ohlc_provider(), "dt": day}).scalar()
         if close is None:
             raise ValueError(f"no close for {symbol} on {day}")
         return float(close)

@@ -127,7 +127,7 @@ func (test *CalendarTest) TestCalendarHasTradingDates() {
 		ohlc := repository.OHLC{
 			Conn: test.conn,
 		}
-		err := ohlc.Store(context.Background(), "ABC", time.Now().Add(time.Hour*24*time.Duration(day)), 1.2, 1.3, 1.1, 1.2, 1000)
+		err := ohlc.Store(context.Background(), "yahoo", "ABC", time.Now().Add(time.Hour*24*time.Duration(day)), 1.2, 1.3, 1.1, 1.2, 1000)
 		test.Require().NoError(err)
 	}
 	type TestCase struct {
@@ -167,7 +167,7 @@ func (test *CalendarTest) TestCalendarHasTradingDates() {
 
 	for i, tc := range testCases {
 		test.Run(fmt.Sprintf("case %d", i), func() {
-			missing, err := test.uut.CalendarHasTradingDates(context.Background(), tc.CalendarCode, tc.Symbols, tc.FromDate, tc.ToDate)
+			missing, err := test.uut.CalendarHasTradingDates(context.Background(), tc.CalendarCode, "yahoo", tc.Symbols, tc.FromDate, tc.ToDate)
 			test.Equal(tc.Expected, missing)
 			if tc.ExpectedErr != nil {
 				test.ErrorIs(err, tc.ExpectedErr)

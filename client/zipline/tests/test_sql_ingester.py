@@ -4,9 +4,11 @@ from datetime import datetime
 import pandas as pd
 
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
+from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 
+from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 
@@ -52,6 +54,36 @@ def _backtest() -> backtest_pb2.Backtest:
             )
         ],
     )
+
+
+def test_ohlc_provider_unset_defaults_to_yahoo(monkeypatch):
+    monkeypatch.delenv("OHLC_PROVIDER", raising=False)
+    assert ohlc_provider() == "yahoo"
+    monkeypatch.setenv("OHLC_PROVIDER", "  ")
+    assert ohlc_provider() == "yahoo"
+
+
+def test_bundle_provider_uses_backtest_before_env(monkeypatch):
+    monkeypatch.setenv("OHLC_PROVIDER", "stooq")
+    assert bundle_provider(backtest_pb2.Backtest(provider="alpaca")) == "alpaca"
+    assert bundle_provider(backtest_pb2.Backtest()) == "stooq"
+    monkeypatch.delenv("OHLC_PROVIDER", raising=False)
+    assert bundle_provider(backtest_pb2.Backtest()) == "yahoo"
+
+
+class _ProviderEngine:
+    def __init__(self):
+        self.provider = ""
+
+    def get_data(self, symbol, from_date, to_date):
+        return None
+
+
+def test_sql_ingester_threads_backtest_provider(monkeypatch):
+    monkeypatch.setenv("OHLC_PROVIDER", "stooq")
+    engine = _ProviderEngine()
+    SQLIngester(backtest_pb2.Backtest(name="sp100", provider="yahoo"), engine=engine)
+    assert engine.provider == "yahoo"
 
 
 def test_membership_auto_close_date_uses_drop_not_last_bar():

@@ -48,6 +48,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to create table backtest: %w", err)
 	}
 
+	if err := migrateBacktestPriceSource(ctx, conn); err != nil {
+		return err
+	}
+
 	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
 		return fmt.Errorf("failed to create table universe_member: %w", err)
 	}
@@ -71,6 +75,16 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 	return nil
 }
 
+func migrateBacktestPriceSource(ctx context.Context, conn *pgxpool.Pool) error {
+	if _, err := conn.Exec(ctx, `ALTER TABLE backtest ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'yahoo'`); err != nil {
+		return fmt.Errorf("failed to add backtest.provider: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `ALTER TABLE backtest ADD COLUMN IF NOT EXISTS profile text NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("failed to add backtest.profile: %w", err)
+	}
+	return nil
+}
+
 func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
 		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
@@ -78,6 +92,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
 		return fmt.Errorf("failed to create table backtest: %w", err)
+	}
+
+	if err := migrateBacktestPriceSource(ctx, conn); err != nil {
+		return err
 	}
 
 	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {

@@ -59,9 +59,6 @@ const (
 	MinioSecretKey        = "MINIO_SECRET"
 	MinioSecretKeyDefault = "minioadmin"
 
-	MarketDataProvider        = "MARKET_DATA_PROVIDER"
-	MarketDataProviderDefault = "yahoo"
-
 	TradingEnabled        = "TRADING_ENABLED"
 	TradingEnabledDefault = "false"
 
@@ -97,7 +94,6 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{MinioURL, func() (string, error) { return MinioURLDefault, nil }},
 	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
 	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
-	{MarketDataProvider, func() (string, error) { return MarketDataProviderDefault, nil }},
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
 	{TradingProfilesFile, func() (string, error) { return "", nil }},
 	{TradingListingsFile, func() (string, error) { return "", nil }},
@@ -250,10 +246,6 @@ func GetMinioAccessKey() string {
 
 func GetMinioSecretKey() string {
 	return os.Getenv(MinioSecretKey)
-}
-
-func GetMarketDataProvider() string {
-	return os.Getenv(MarketDataProvider)
 }
 
 func GetTradingEnabled() bool {

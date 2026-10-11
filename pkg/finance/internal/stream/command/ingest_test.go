@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -59,11 +60,11 @@ func (test *IngestCommandTest) SetupTest() {
 	test.Require().NoError(test.assets.Store(context.Background(), test.storedAsset.Symbol, test.storedAsset.Name))
 
 	test.storedOHLCStart = &internal_pb.Date{Year: 2020, Month: 1, Day: 1}
-	test.Require().NoError(test.ohlc.Store(context.Background(),
+	test.Require().NoError(test.ohlc.Store(context.Background(), "",
 		"Stored123", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
-	test.Require().NoError(test.ohlc.Store(context.Background(),
+	test.Require().NoError(test.ohlc.Store(context.Background(), "",
 		"Stored123", time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
-	test.Require().NoError(test.ohlc.Store(context.Background(),
+	test.Require().NoError(test.ohlc.Store(context.Background(), "",
 		"Stored123", time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
 
 	test.storedOHLCEnd = &internal_pb.Date{Year: 2020, Month: 1, Day: 3}
@@ -115,9 +116,30 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 	test.Require().NoError(err)
 	test.Equal(newAsset.Name, asset.Name)
 
-	exists, err := test.ohlc.Exists(context.Background(), []string{"NEW123"}, test.storedOHLCStart, test.storedOHLCEnd)
+	exists, err := test.ohlc.Exists(context.Background(), "yahoo", []string{"NEW123"}, test.storedOHLCStart, test.storedOHLCEnd)
 	test.Require().NoError(err)
 	test.True(exists)
 
 	test.marketdata.AssertExpectations(test.T())
+}
+
+func (test *IngestCommandTest) TestAlpacaFailsBeforeDownload() {
+	test.T().Setenv(environment.TradingProfilesFile, filepath.Join(test.T().TempDir(), "profiles.yaml"))
+
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Symbols = []string{"NEW123"}
+		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
+		end := internal_pb.DateToDateString(test.storedOHLCEnd)
+		command.End = &end
+		command.Provider = "alpaca"
+	})
+
+	err := command.Ingest(context.Background(), message)
+	test.Require().Error(err)
+	test.marketdata.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+	test.marketdata.AssertNotCalled(test.T(), "GetAsset", mock.Anything)
 }

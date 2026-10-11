@@ -43,6 +43,10 @@ message DownloadHistoricalDataRequest {
     }
   }];
   foreverbull.common.Date end_date = 3;
+  // yahoo, stooq, or alpaca. Empty means yahoo.
+  string provider = 4;
+  // Profile name when provider is alpaca. Ignored for yahoo and stooq.
+  string profile = 5;
 }
 
 message DownloadHistoricalDataResponse {

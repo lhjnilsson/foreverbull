@@ -22,6 +22,10 @@ message CreateBacktestRequest {
     foreverbull.common.Date start_date = 2;
     foreverbull.common.Date end_date = 3;
     string base_etf = 4;
+    // yahoo, stooq, or alpaca. Empty means yahoo.
+    string provider = 5;
+    // Profile name when provider is alpaca. Ignored for yahoo and stooq.
+    string profile = 6;
   }
   message CreateFromBacktest {
     foreverbull.backtest.v1.Backtest backtest = 1;

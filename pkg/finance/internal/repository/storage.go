@@ -52,6 +52,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
 	}
 
+	if err := MigrateOHLC(ctx, conn); err != nil {
+		return err
+	}
+
 	if _, err := conn.Exec(ctx, TradingTable); err != nil {
 		return fmt.Errorf("failed to create trading table: %w", err)
 	}
@@ -82,6 +86,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, OHLCTable); err != nil {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
+	}
+
+	if err := MigrateOHLC(ctx, conn); err != nil {
+		return err
 	}
 
 	if _, err := conn.Exec(ctx, TradingTable); err != nil {

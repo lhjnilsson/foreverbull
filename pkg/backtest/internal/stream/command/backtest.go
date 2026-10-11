@@ -19,6 +19,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -93,6 +94,8 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	b := backtest.Backtest{
 		Name:      command.BacktestName,
 		Benchmark: benchmark,
+		Provider:  command.Provider,
+		Profile:   command.Profile,
 		Periods:   calendarYearPeriods(start, end),
 	}
 	fillPeriodAssets(b.Periods, result.Aliases, hasData)
@@ -496,10 +499,20 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
 
+	provider := strings.TrimSpace(b.GetProvider())
+	if provider == "" {
+		provider = "yahoo"
+	}
+	if err := finance.ValidatePriceSource(provider, b.GetProfile()); err != nil {
+		return fmt.Errorf("price source: %w", err)
+	}
+
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: b.Periods[0].StartDate,
 		EndDate:   b.Periods[len(b.Periods)-1].EndDate,
+		Provider:  provider,
+		Profile:   b.GetProfile(),
 	})
 	if err != nil {
 		return fmt.Errorf("error downloading financial data: %w", err)

@@ -9,9 +9,9 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
-// ErrYahooMetadataRequired is returned when MARKET_DATA_PROVIDER=stooq cannot
+// ErrYahooMetadataRequired is returned when a stooq price source cannot
 // construct Yahoo for GetAsset/SearchAsset/GetIndex. The process must fail closed.
-var ErrYahooMetadataRequired = errors.New("MARKET_DATA_PROVIDER=stooq requires Yahoo for GetAsset/SearchAsset/GetIndex")
+var ErrYahooMetadataRequired = errors.New("stooq price source requires Yahoo for GetAsset/SearchAsset/GetIndex")
 
 var _ supplier.Marketdata = (*Composite)(nil)
 

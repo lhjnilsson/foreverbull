@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,9 @@ import (
 const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-	benchmark text NOT NULL
+	benchmark text NOT NULL,
+	provider text NOT NULL DEFAULT 'yahoo',
+	profile text NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS backtest_period (
@@ -40,11 +43,28 @@ type Backtest struct {
 	Conn postgres.Query
 }
 
+func normalizeBacktestProvider(provider string) (string, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	switch provider {
+	case "", "yahoo":
+		return "yahoo", nil
+	case "stooq", "alpaca":
+		return provider, nil
+	default:
+		return "", fmt.Errorf("unknown price provider %q", provider)
+	}
+}
+
 func (db *Backtest) Create(ctx context.Context, backtest *backtest.Backtest) (*backtest.Backtest, error) {
-	_, err := db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, benchmark)
-		VALUES ($1, $2)`,
-		backtest.Name, backtest.Benchmark)
+	provider, err := normalizeBacktestProvider(backtest.GetProvider())
+	if err != nil {
+		return nil, err
+	}
+	profile := strings.TrimSpace(backtest.GetProfile())
+	_, err = db.Conn.Exec(ctx,
+		`INSERT INTO backtest (name, benchmark, provider, profile)
+		VALUES ($1, $2, $3, $4)`,
+		backtest.Name, backtest.Benchmark, provider, profile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create backtest: %w", err)
 	}
@@ -73,6 +93,8 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 	type rowData struct {
 		Name      string
 		Benchmark string
+		Provider  string
+		Profile   string
 		StartDate *time.Time
 		EndDate   *time.Time
 		Symbol    *string
@@ -82,6 +104,8 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 	    SELECT 
 			backtest.name,
 			backtest.benchmark,
+			backtest.provider,
+			backtest.profile,
 			backtest_period.start_date,
 			backtest_period.end_date,
 			backtest_period_asset.symbol,
@@ -102,13 +126,15 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 
 	for rows.Next() {
 		var row rowData
-		err = rows.Scan(&row.Name, &row.Benchmark, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
 
 		b.Name = row.Name
 		b.Benchmark = row.Benchmark
+		b.Provider = row.Provider
+		b.Profile = row.Profile
 
 		if row.StartDate == nil || row.EndDate == nil {
 			continue
@@ -179,6 +205,8 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	type rowData struct {
 		Name      string
 		Benchmark string
+		Provider  string
+		Profile   string
 		StartDate *time.Time
 		EndDate   *time.Time
 		Symbol    *string
@@ -188,6 +216,8 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	    SELECT 
 			backtest.name,
 			backtest.benchmark,
+			backtest.provider,
+			backtest.profile,
 			backtest_period.start_date,
 			backtest_period.end_date,
 			backtest_period_asset.symbol,
@@ -205,7 +235,7 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	backtests := make([]*backtest.Backtest, 0)
 	for rows.Next() {
 		var row rowData
-		err = rows.Scan(&row.Name, &row.Benchmark, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
@@ -220,6 +250,8 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 			b = &backtest.Backtest{
 				Name:      row.Name,
 				Benchmark: row.Benchmark,
+				Provider:  row.Provider,
+				Profile:   row.Profile,
 			}
 			backtests = append(backtests, b)
 		}

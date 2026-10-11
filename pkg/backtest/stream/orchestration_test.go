@@ -12,7 +12,7 @@ import (
 func TestCreateBacktestFromETFOrchestration(t *testing.T) {
 	t.Parallel()
 
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01", "", "")
 	require.NoError(t, err)
 	require.Len(t, o.Steps, 3)
 	require.Equal(t, int32(1), o.Steps[0].Num)

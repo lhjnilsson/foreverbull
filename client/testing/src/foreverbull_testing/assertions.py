@@ -13,6 +13,8 @@ from typing import Any
 
 from sqlalchemy import text
 
+from foreverbull.models.finance import ohlc_provider
+
 
 SHARE_TOLERANCE = 1
 MAGIC_LOT = 10
@@ -54,8 +56,9 @@ def order_close(portfolio: Any, symbol: str) -> float:
         price: Any = closer(symbol)
         return float(price)
     day = portfolio._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
-    query = text("SELECT close FROM ohlc WHERE symbol=:symbol AND time::DATE=:dt").bindparams(
+    query = text("SELECT close FROM ohlc WHERE symbol=:symbol AND provider=:provider AND time::DATE=:dt").bindparams(
         symbol=symbol,
+        provider=ohlc_provider(),
         dt=day,
     )
     close = portfolio._db.execute(query).scalar()

@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.types import Numeric
 
+from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -38,20 +39,81 @@ class OHLC(Base):
     close = Column(Numeric())
     volume = Column(Integer())
     time = Column(DateTime())
+    provider = Column(String(), nullable=False, server_default="yahoo")
 
-    __table_args__ = (UniqueConstraint("symbol", "time", name="symbol_time_uc"),)
+    __table_args__ = (UniqueConstraint("provider", "symbol", "time", name="ohlc_provider_symbol_time_key"),)
+
+
+_OHLC_PROVIDER_COLUMN = text("ALTER TABLE ohlc ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'yahoo'")
+
+_OHLC_PROVIDER_KEY = text(
+    """
+    DO $$
+    DECLARE
+        r record;
+    BEGIN
+        FOR r IN
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE t.relname = 'ohlc'
+              AND n.nspname = current_schema()
+              AND c.contype = 'u'
+              AND (
+                c.conname IN ('ohlc_symbol_time_key', 'symbol_time_uc')
+                OR regexp_replace(pg_get_constraintdef(c.oid), '\\s+', ' ', 'g') IN (
+                    'UNIQUE (symbol, time)',
+                    'UNIQUE (symbol, "time")'
+                )
+              )
+        LOOP
+            EXECUTE format('ALTER TABLE ohlc DROP CONSTRAINT %I', r.conname);
+        END LOOP;
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE t.relname = 'ohlc'
+              AND n.nspname = current_schema()
+              AND c.conname = 'ohlc_provider_symbol_time_key'
+        ) THEN
+            ALTER TABLE ohlc
+                ADD CONSTRAINT ohlc_provider_symbol_time_key UNIQUE (provider, symbol, time);
+        END IF;
+    END $$
+    """
+)
+
+
+def prepare(database: engine.Engine) -> None:
+    """Create tables and add ohlc.provider on a database that already has the old unique key."""
+    Base.metadata.create_all(database)
+    with database.begin() as conn:
+        conn.execute(_OHLC_PROVIDER_COLUMN)
+        conn.execute(_OHLC_PROVIDER_KEY)
+
+
+def _bars_provider(backtest: backtest_pb2.Backtest) -> str:
+    named = (getattr(backtest, "provider", "") or "").strip().lower()
+    if named:
+        return named
+    return ohlc_provider()
 
 
 def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
     # TODO: Refactor using exchange calendar
     with database.connect() as conn:
+        provider = _bars_provider(backtest)
         for period in backtest.periods:
             for asset in period.assets:
                 if not asset.enabled:
                     continue
                 result = conn.execute(
-                    text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
-                    {"symbol": asset.symbol},
+                    text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol AND provider = :provider"),
+                    {"symbol": asset.symbol, "provider": provider},
                 )
                 res = result.fetchone()
                 if res is None:
@@ -67,8 +129,8 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
         start_date = pb_utils.from_proto_date_to_pydate(backtest.periods[0].start_date)
         end_date = pb_utils.from_proto_date_to_pydate(backtest.periods[-1].end_date)
         result = conn.execute(
-            text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol"),
-            {"symbol": backtest.benchmark},
+            text("SELECT min(time), max(time) FROM ohlc WHERE symbol = :symbol AND provider = :provider"),
+            {"symbol": backtest.benchmark, "provider": provider},
         )
         res = result.fetchone()
         if res is None:
@@ -105,6 +167,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                 backtest.benchmark,
             )
 
+    provider = _bars_provider(backtest)
     with database.connect() as conn:
         for start, end, symbol in what_to_populate():
             feed = yfinance.Ticker(symbol)
@@ -135,10 +198,12 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
                 )
                 conn.execute(
                     text(
-                        """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)
-                        VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
+                        """INSERT INTO ohlc (provider, symbol, open, high, low, close, volume, time)
+                        VALUES (:provider, :symbol, :open, :high, :low, :close, :volume, :time)
+                        ON CONFLICT (provider, symbol, time) DO NOTHING"""
                     ),
                     {
+                        "provider": provider,
                         "symbol": asset.symbol,
                         "open": row.Open.item(),
                         "high": row.High.item(),

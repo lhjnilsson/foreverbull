@@ -111,7 +111,7 @@ func (test *BacktestTest) TestCreateBacktestFromBacktest() {
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETF() {
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01", "", "")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 
@@ -128,7 +128,7 @@ func (test *BacktestTest) TestCreateBacktestFromETF() {
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETFBadETF() {
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01", "", "")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 

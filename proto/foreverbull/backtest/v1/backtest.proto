@@ -21,4 +21,9 @@ message Backtest {
   string benchmark = 5;
 
   repeated Period periods = 6;
+
+  // yahoo, stooq, or alpaca. Empty on the wire means yahoo at create time.
+  string provider = 7;
+  // Profile name for an alpaca price source. Not a credential.
+  string profile = 8;
 }

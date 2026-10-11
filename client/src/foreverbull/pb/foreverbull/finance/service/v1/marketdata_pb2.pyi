@@ -36,14 +36,18 @@ class GetIndexResponse(_message.Message):
     def __init__(self, assets: _Optional[_Iterable[_Union[_marketdata_pb2.Asset, _Mapping]]] = ...) -> None: ...
 
 class DownloadHistoricalDataRequest(_message.Message):
-    __slots__ = ("symbols", "start_date", "end_date")
+    __slots__ = ("symbols", "start_date", "end_date", "provider", "profile")
     SYMBOLS_FIELD_NUMBER: _ClassVar[int]
     START_DATE_FIELD_NUMBER: _ClassVar[int]
     END_DATE_FIELD_NUMBER: _ClassVar[int]
+    PROVIDER_FIELD_NUMBER: _ClassVar[int]
+    PROFILE_FIELD_NUMBER: _ClassVar[int]
     symbols: _containers.RepeatedScalarFieldContainer[str]
     start_date: _common_pb2.Date
     end_date: _common_pb2.Date
-    def __init__(self, symbols: _Optional[_Iterable[str]] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ...) -> None: ...
+    provider: str
+    profile: str
+    def __init__(self, symbols: _Optional[_Iterable[str]] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., provider: _Optional[str] = ..., profile: _Optional[str] = ...) -> None: ...
 
 class DownloadHistoricalDataResponse(_message.Message):
     __slots__ = ("symbol", "status", "error")

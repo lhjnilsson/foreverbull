@@ -128,7 +128,7 @@ def fb_database():
         testcontainers_config.ryuk_disabled = True
         postgres.start()
         engine = create_engine(postgres.get_connection_url())
-    database.Base.metadata.create_all(engine)
+    database.prepare(engine)
 
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
 

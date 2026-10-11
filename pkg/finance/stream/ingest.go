@@ -11,6 +11,8 @@ type IngestCommand struct {
 	Symbols  []string `json:"symbols"`
 	Start    string   `json:"start"`
 	End      *string  `json:"end"`
+	Provider string   `json:"provider,omitempty"`
+	Profile  string   `json:"profile,omitempty"`
 }
 
 func NewIngestCommand(calendar string, symbols []string, start string, end *string) (stream.Message, error) {

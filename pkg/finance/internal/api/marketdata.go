@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -98,8 +100,10 @@ func (fs *MarketdataServer) downloadSymbol(
 	symbol string,
 	start time.Time,
 	end *time.Time,
+	provider string,
 	assetRepo repository.Asset,
 	ohlcRepo repository.OHLC,
+	bars supplier.Marketdata,
 ) {
 	rsp := &servicePb.DownloadHistoricalDataResponse{
 		Symbol: symbol,
@@ -119,7 +123,7 @@ func (fs *MarketdataServer) downloadSymbol(
 		return
 	}
 
-	ohlcs, err := fs.marketdata.GetOHLC(asset.Symbol, start, end)
+	ohlcs, err := bars.GetOHLC(asset.Symbol, start, end)
 	if err != nil {
 		failDownload(rsp, err)
 		sendDownloadResponse(serverStream, rsp)
@@ -127,7 +131,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	for _, ohlc := range ohlcs {
-		if err := ohlcRepo.Store(ctx, asset.Symbol, ohlc.Timestamp.AsTime(),
+		if err := ohlcRepo.Store(ctx, provider, asset.Symbol, ohlc.Timestamp.AsTime(),
 			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
 			failDownload(rsp, err)
 			sendDownloadResponse(serverStream, rsp)
@@ -140,6 +144,19 @@ func (fs *MarketdataServer) downloadSymbol(
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
 	ctx := serverStream.Context()
+
+	provider, err := marketdata.NormalizeProvider(req.GetProvider())
+	if err != nil {
+		return err
+	}
+	profilesFile := environment.GetTradingProfilesFile()
+	if err := marketdata.ValidatePriceSource(provider, req.GetProfile(), profilesFile); err != nil {
+		return err
+	}
+	bars, err := marketdata.OHLCClient(provider, req.GetProfile(), profilesFile, fs.marketdata)
+	if err != nil {
+		return err
+	}
 
 	start := internal_pb.DateToTime(req.GetStartDate())
 	var end *time.Time
@@ -158,7 +175,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		go func() {
 			defer wg.Done()
 			for symbol := range assetCh {
-				fs.downloadSymbol(ctx, serverStream, symbol, start, end, assetRepo, ohlcRepo)
+				fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars)
 			}
 		}()
 	}

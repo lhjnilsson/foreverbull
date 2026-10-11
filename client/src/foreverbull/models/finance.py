@@ -1,3 +1,5 @@
+import os
+
 from datetime import datetime
 
 import pandas
@@ -18,6 +20,17 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_s
 
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
+
+
+def ohlc_provider() -> str:
+    """Price source for bar reads. Unset or blank is yahoo, matching the ohlc default."""
+    raw = os.environ.get("OHLC_PROVIDER")
+    if raw is None:
+        return "yahoo"
+    provider = raw.strip().lower()
+    if provider == "":
+        return "yahoo"
+    return provider
 
 
 def _exchange_namespace(request: worker_service_pb2.NamespaceRequest) -> worker_service_pb2.NamespaceResponse:
@@ -70,13 +83,13 @@ class Asset:
             FROM (
                 SELECT symbol, time, high, low, open, close, volume
                 FROM ohlc
-                WHERE time <= :as_of AND symbol = :symbol
+                WHERE time <= :as_of AND symbol = :symbol AND provider = :provider
                 ORDER BY time DESC, ctid DESC
                 LIMIT :limit
             ) recent
             ORDER BY time ASC
             """
-        ).bindparams(as_of=self._as_of, symbol=self.symbol, limit=_STOCK_DATA_LOOKBACK)
+        ).bindparams(as_of=self._as_of, symbol=self.symbol, provider=ohlc_provider(), limit=_STOCK_DATA_LOOKBACK)
         return read_sql_query(query, self._db)
 
 
@@ -119,7 +132,7 @@ class Assets:
         return self._asset_frames[symbol]
 
     def _load_asset_frames(self) -> dict[str, DataFrame]:
-        # One statement. ohlc is UNIQUE(symbol, time), so this window matches
+        # One statement. ohlc is UNIQUE(provider, symbol, time), so this window matches
         # Asset.stock_data's ORDER BY time DESC LIMIT, and time ASC is a total order.
         batched = self.stock_data
         empty = batched.iloc[0:0].reset_index()
@@ -142,7 +155,7 @@ class Assets:
                 SELECT symbol, time, high, low, open, close, volume,
                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC, ctid DESC) AS rn
                 FROM ohlc
-                WHERE time <= :as_of AND symbol IN :symbols
+                WHERE time <= :as_of AND symbol IN :symbols AND provider = :provider
             ) bounded
             WHERE rn <= :limit
             ORDER BY symbol, time
@@ -150,6 +163,7 @@ class Assets:
         ).bindparams(
             bindparam("as_of", value=self._as_of),
             bindparam("symbols", value=list(self.symbols), expanding=True),
+            bindparam("provider", value=ohlc_provider()),
             bindparam("limit", value=_STOCK_DATA_LOOKBACK),
         )
         df = read_sql_query(query, self._db)
@@ -199,7 +213,7 @@ class Portfolio:
         self._pb = pb
         self._db = db
         self.pending_orders: list[marketdata_pb2.Order] = []
-        self._close_by_symbol_day: dict[tuple[str, str], float] = {}
+        self._close_by_symbol_day: dict[tuple[str, str, str], float] = {}
 
     @property
     def positions(self) -> Positions:
@@ -213,10 +227,11 @@ class Portfolio:
 
     def _close_on_bar(self, symbol: str):
         day = self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
-        key = (symbol, day)
+        provider = ohlc_provider()
+        key = (provider, symbol, day)
         if key not in self._close_by_symbol_day:
-            q = text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt")
-            q = q.bindparams(symbol=symbol, dt=day)
+            q = text("SELECT close FROM ohlc WHERE symbol=:symbol AND provider=:provider AND time::DATE=:dt")
+            q = q.bindparams(symbol=symbol, provider=provider, dt=day)
             latest_close = self._db.execute(q).scalar()
             assert latest_close is not None, f"unable to find latest close price for {symbol}"
             self._close_by_symbol_day[key] = float(latest_close)

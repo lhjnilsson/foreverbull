@@ -15,8 +15,10 @@ type UpdateServiceStatusCommand struct {
 }
 
 type ServiceStartCommand struct {
-	Image      string
-	InstanceID string
+	Image        string
+	InstanceID   string
+	OHLCProvider string
+	Backtest     string
 }
 
 func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status, err error) (stream.Message, error) {

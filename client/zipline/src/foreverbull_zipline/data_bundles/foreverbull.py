@@ -1,19 +1,21 @@
 import os
 import warnings
 
+from collections.abc import Iterable
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from math import isnan
-from typing import Iterable
-from typing import Iterator
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
 from pandas import read_sql_query
+from sqlalchemy import text
 
 from foreverbull.models import get_engine
+from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from zipline.utils.cli import maybe_show_progress
@@ -42,6 +44,14 @@ def membership_auto_close_date(end_date, membership_to: date | None):
     if membership_to is not None:
         return pd.Timestamp(membership_to)
     return pd.Timestamp(end_date) + pd.Timedelta(days=1)
+
+
+def bundle_provider(backtest: backtest_pb2.Backtest) -> str:
+    """Bar provider for a bundle. The backtest field wins. Otherwise OHLC_PROVIDER, else yahoo."""
+    named = (getattr(backtest, "provider", "") or "").strip().lower()
+    if named:
+        return named
+    return ohlc_provider()
 
 
 def ingest_symbols(backtest: backtest_pb2.Backtest) -> list[str]:
@@ -112,12 +122,25 @@ class DatabaseEngine:
             raise KeyError("DATABASE_URL environment variable not set")
 
         self._engine = get_engine(database_uri)
+        self.provider = ohlc_provider()
 
     def get_data(self, symbol, from_date, to_date):
-        query = f"""SELECT open, high, low, close, volume, time FROM ohlc
-        WHERE symbol='{symbol}' AND time BETWEEN '{from_date}' AND '{to_date}'
-        ORDER BY time asc"""
-        return read_sql_query(query, self._engine)
+        query = text(
+            """SELECT open, high, low, close, volume, time FROM ohlc
+            WHERE symbol = :symbol AND provider = :provider
+              AND time BETWEEN :from_date AND :to_date
+            ORDER BY time asc"""
+        )
+        return read_sql_query(
+            query,
+            self._engine,
+            params={
+                "symbol": symbol,
+                "provider": self.provider or ohlc_provider(),
+                "from_date": from_date,
+                "to_date": to_date,
+            },
+        )
 
 
 class SQLIngester:
@@ -134,6 +157,8 @@ class SQLIngester:
     ):
         self.backtest = backtest
         self.engine = engine or DatabaseEngine()
+        if hasattr(self.engine, "provider"):
+            self.engine.provider = bundle_provider(backtest)
         self._aliases = aliases
 
     def create_metadata(self) -> pd.DataFrame:

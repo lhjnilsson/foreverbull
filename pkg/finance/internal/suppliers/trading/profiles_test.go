@@ -171,6 +171,76 @@ func TestRegistryEnabledMissingFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAlpacaPriceCredentials(t *testing.T) {
+	_, _, err := trading.AlpacaPriceCredentials("", "")
+	require.Error(t, err)
+
+	missing := filepath.Join(t.TempDir(), "missing.yaml")
+	_, _, err = trading.AlpacaPriceCredentials(missing, "")
+	require.Error(t, err)
+
+	none := writeProfiles(t, `
+profiles:
+  - name: saxo-sim
+    provider: saxo
+    accessToken: ""
+    accountKey: ""
+`)
+	_, _, err = trading.AlpacaPriceCredentials(none, "")
+	require.ErrorContains(t, err, "no alpaca profile")
+
+	two := writeProfiles(t, `
+profiles:
+  - name: one
+    provider: alpaca
+    apiKey: ""
+    apiSecret: ""
+  - name: two
+    provider: alpaca
+    apiKey: ""
+    apiSecret: ""
+`)
+	_, _, err = trading.AlpacaPriceCredentials(two, "")
+	require.ErrorContains(t, err, "profile is required")
+
+	_, _, err = trading.AlpacaPriceCredentials(two, "saxo-sim")
+	require.ErrorContains(t, err, "was not found")
+
+	namedOther := writeProfiles(t, `
+profiles:
+  - name: saxo-sim
+    provider: saxo
+    accessToken: ""
+    accountKey: ""
+`)
+	_, _, err = trading.AlpacaPriceCredentials(namedOther, "saxo-sim")
+	require.ErrorContains(t, err, "not an alpaca profile")
+
+	only := writeProfiles(t, `
+profiles:
+  - name: only-paper
+    provider: alpaca
+    apiKey: ""
+    apiSecret: ""
+`)
+	_, _, err = trading.AlpacaPriceCredentials(only, "")
+	require.ErrorContains(t, err, `alpaca profile "only-paper" has no api key`)
+
+	_, _, err = trading.AlpacaPriceCredentials(only, "only-paper")
+	require.ErrorContains(t, err, `alpaca profile "only-paper" has no api key`)
+
+	secretOnly := writeProfiles(t, `
+profiles:
+  - name: only-paper
+    provider: alpaca
+    apiKey: " "
+    apiSecret: ""
+`)
+	_, _, err = trading.AlpacaPriceCredentials(secretOnly, "only-paper")
+	require.ErrorContains(t, err, "has no api key")
+	require.NotContains(t, err.Error(), "apiSecret")
+}
+
 func TestRegistryDisabledIgnoresMissingAndInvalidFile(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing.yaml")
 	reg, err := trading.NewRegistry(missing, false, trading.RegistryOptions{})

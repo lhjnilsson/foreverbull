@@ -7,7 +7,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class Backtest(_message.Message):
-    __slots__ = ("name", "benchmark", "periods")
+    __slots__ = ("name", "benchmark", "periods", "provider", "profile")
     class Period(_message.Message):
         __slots__ = ("start_date", "end_date", "assets")
         class Asset(_message.Message):
@@ -27,7 +27,11 @@ class Backtest(_message.Message):
     NAME_FIELD_NUMBER: _ClassVar[int]
     BENCHMARK_FIELD_NUMBER: _ClassVar[int]
     PERIODS_FIELD_NUMBER: _ClassVar[int]
+    PROVIDER_FIELD_NUMBER: _ClassVar[int]
+    PROFILE_FIELD_NUMBER: _ClassVar[int]
     name: str
     benchmark: str
     periods: _containers.RepeatedCompositeFieldContainer[Backtest.Period]
-    def __init__(self, name: _Optional[str] = ..., benchmark: _Optional[str] = ..., periods: _Optional[_Iterable[_Union[Backtest.Period, _Mapping]]] = ...) -> None: ...
+    provider: str
+    profile: str
+    def __init__(self, name: _Optional[str] = ..., benchmark: _Optional[str] = ..., periods: _Optional[_Iterable[_Union[Backtest.Period, _Mapping]]] = ..., provider: _Optional[str] = ..., profile: _Optional[str] = ...) -> None: ...

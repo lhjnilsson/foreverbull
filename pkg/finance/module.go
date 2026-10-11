@@ -28,28 +28,12 @@ type Subscriber stream.Subscriber
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
 		func() (supplier.Marketdata, error) {
-			switch environment.GetMarketDataProvider() {
-			case "alpaca":
-				marketData, err := marketdata.NewAlpacaClient()
-				if err != nil {
-					return nil, fmt.Errorf("failed to create Alpaca client: %w", err)
-				}
-				return marketData, nil
-			case "yahoo":
-				marketData, err := marketdata.NewYahooClient()
-				if err != nil {
-					return nil, fmt.Errorf("failed to create Yahoo client: %w", err)
-				}
-				return marketData, nil
-			case "stooq":
-				marketData, err := marketdata.NewStooqYahoo(marketdata.NewYahooClient)
-				if err != nil {
-					return nil, err
-				}
-				return marketData, nil
-			default:
-				return nil, fmt.Errorf("unknown market data provider: %s", environment.GetMarketDataProvider())
+			// Search, GetAsset, and GetIndex stay on Yahoo. Bar download picks the backtest provider.
+			marketData, err := marketdata.NewYahooClient()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create Yahoo client: %w", err)
 			}
+			return marketData, nil
 		},
 		func(conn *pgxpool.Pool) (supplier.Registry, error) {
 			reg, err := trading.NewRegistry(

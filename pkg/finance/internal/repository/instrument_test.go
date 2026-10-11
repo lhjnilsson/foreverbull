@@ -170,8 +170,8 @@ func (test *InstrumentTests) TestIngestAssetAndOHLCStillKeyedBySymbol() {
 
 	test.Require().NoError(test.assets.Store(ctx, "FB", "Facebook Inc"))
 	test.Require().NoError(test.assets.Store(ctx, "META", "Meta Platforms Inc"))
-	test.Require().NoError(test.ohlc.Store(ctx, "FB", test.date(2021, time.June, 30), 1, 1, 1, 1, 100))
-	test.Require().NoError(test.ohlc.Store(ctx, "META", test.date(2021, time.October, 31), 2, 2, 2, 2, 200))
+	test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "FB", test.date(2021, time.June, 30), 1, 1, 1, 1, 100))
+	test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "META", test.date(2021, time.October, 31), 2, 2, 2, 2, 200))
 
 	fb, err := test.assets.Get(ctx, "FB")
 	test.Require().NoError(err)

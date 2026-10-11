@@ -64,6 +64,31 @@ func TestStartCreatesLabeledPodWithBrokerEnv(t *testing.T) {
 	require.Equal(t, environment.GetMinioSecretKey(), envValue(t, env, "STORAGE_SECRET_KEY"))
 	require.Equal(t, environment.GetPostgresURL(), envValue(t, env, "DATABASE_URL"))
 	require.Equal(t, environment.GetLogLevel(), envValue(t, env, "LOGLEVEL"))
+	require.False(t, envSet(env, OHLCProviderEnv))
+}
+
+func TestStartSetsOHLCProviderFromContext(t *testing.T) {
+	environment.SetupForTest(t)
+
+	eng := testEngine(t)
+	ctx := WithOHLCProvider(context.Background(), "stooq")
+	_, err := eng.Start(ctx, "lhjnilsson/strategy:local", "worker-stooq")
+	require.NoError(t, err)
+
+	pod, err := eng.(*engine).client.CoreV1().Pods(testNamespace).Get(
+		context.Background(), "worker-stooq", metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "stooq", envValue(t, pod.Spec.Containers[0].Env, OHLCProviderEnv))
+}
+
+func envSet(env []corev1.EnvVar, name string) bool {
+	for _, item := range env {
+		if item.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGetByNameAndLabel(t *testing.T) {

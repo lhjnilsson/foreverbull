@@ -20,7 +20,30 @@ import (
 const (
 	defaultNamespace = "foreverbull"
 	saNamespaceFile  = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+	// OHLCProviderEnv is the backtest price source for a worker pod.
+	// Unset means yahoo. An empty value is not written.
+	OHLCProviderEnv = "OHLC_PROVIDER"
 )
+
+type ohlcProviderContextKey struct{}
+
+// WithOHLCProvider stores the backtest price source on ctx for Engine.Start.
+// An empty provider leaves OHLC_PROVIDER unset on the pod.
+func WithOHLCProvider(ctx context.Context, provider string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ohlcProviderContextKey{}, strings.TrimSpace(provider))
+}
+
+func ohlcProviderFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	provider, _ := ctx.Value(ohlcProviderContextKey{}).(string)
+	return strings.TrimSpace(provider)
+}
 
 var dns1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
@@ -141,8 +164,8 @@ func workerLabels(name string) map[string]string {
 	}
 }
 
-func serviceEnv() []corev1.EnvVar {
-	return []corev1.EnvVar{
+func serviceEnv(ohlcProvider string) []corev1.EnvVar {
+	env := []corev1.EnvVar{
 		{Name: "BROKER_HOSTNAME", Value: environment.GetServerAddress()},
 		{Name: "BROKER_PORT", Value: environment.GetGRPCPort()},
 		{Name: "STORAGE_ENDPOINT", Value: environment.GetMinioURL()},
@@ -151,6 +174,10 @@ func serviceEnv() []corev1.EnvVar {
 		{Name: "DATABASE_URL", Value: environment.GetPostgresURL()},
 		{Name: "LOGLEVEL", Value: environment.GetLogLevel()},
 	}
+	if provider := strings.TrimSpace(ohlcProvider); provider != "" {
+		env = append(env, corev1.EnvVar{Name: OHLCProviderEnv, Value: provider})
+	}
+	return env
 }
 
 func (e *engine) wrap(pod *corev1.Pod) Container {
@@ -214,7 +241,7 @@ func (e *engine) Start(ctx context.Context, image, name string) (Container, erro
 				Name:            "service",
 				Image:           image,
 				ImagePullPolicy: corev1.PullIfNotPresent,
-				Env:             serviceEnv(),
+				Env:             serviceEnv(ohlcProviderFromContext(ctx)),
 				Ports: []corev1.ContainerPort{{
 					Name:          "grpc",
 					ContainerPort: grpcPort,

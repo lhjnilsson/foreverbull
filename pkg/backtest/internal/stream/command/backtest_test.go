@@ -296,6 +296,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 		Symbols:   []string{"OEF", "AAPL", "FB", "META", "MSFT"},
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+		Provider:  "yahoo",
 	}).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(ctx, download)
@@ -331,6 +332,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 		Symbols:   []string{"SPY", "AAPL"},
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+		Provider:  "yahoo",
 	}).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(context.TODO(), msg)

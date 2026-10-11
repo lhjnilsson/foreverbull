@@ -217,3 +217,63 @@ func (spec profileSpec) config(opts RegistryOptions) Config {
 	}
 	return cfg
 }
+
+// AlpacaPriceCredentials reads the profiles file even when TRADING_ENABLED is false.
+// name empty selects the only alpaca profile. Zero profiles, or more than one with
+// name empty, is an error. A named profile must exist and be alpaca.
+// An empty key or secret is an error. The secret is not included in the error.
+func AlpacaPriceCredentials(path, name string) (string, string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", "", errors.New("alpaca price source requires a trading profiles file")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("trading profiles file: %w", err)
+	}
+	specs, err := parseProfiles(raw)
+	if err != nil {
+		return "", "", err
+	}
+
+	name = strings.TrimSpace(name)
+	alpaca := make([]profileSpec, 0, 1)
+	var named *profileSpec
+	for i := range specs {
+		spec := specs[i]
+		if spec.Provider == "alpaca" {
+			alpaca = append(alpaca, spec)
+		}
+		if name != "" && spec.Name == name {
+			copied := spec
+			named = &copied
+		}
+	}
+	if name != "" {
+		if named == nil {
+			return "", "", fmt.Errorf("profile %q was not found", name)
+		}
+		if named.Provider != "alpaca" {
+			return "", "", fmt.Errorf("profile %q is not an alpaca profile", name)
+		}
+		return alpacaCredentials(*named)
+	}
+	switch len(alpaca) {
+	case 0:
+		return "", "", errors.New("no alpaca profile is configured")
+	case 1:
+		return alpacaCredentials(alpaca[0])
+	default:
+		return "", "", errors.New("profile is required when more than one alpaca profile is configured")
+	}
+}
+
+func alpacaCredentials(spec profileSpec) (string, string, error) {
+	if strings.TrimSpace(spec.APIKey) == "" {
+		return "", "", fmt.Errorf("alpaca profile %q has no api key", spec.Name)
+	}
+	if strings.TrimSpace(spec.APISecret) == "" {
+		return "", "", fmt.Errorf("alpaca profile %q has no api secret", spec.Name)
+	}
+	return spec.APIKey, spec.APISecret, nil
+}
