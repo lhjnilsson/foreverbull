@@ -82,6 +82,7 @@ class CommandRunner:
         check: bool = True,
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
+        stdin: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         command = [str(a) for a in args]
         try:
@@ -90,6 +91,7 @@ class CommandRunner:
                 check=False,
                 capture_output=True,
                 text=True,
+                input=stdin,
                 env=None if env is None else {**os.environ, **env},
                 timeout=timeout,
             )
@@ -441,6 +443,7 @@ class ClusterManager:
         if self.config.is_local:
             self.ensure_kind_cluster()
             self.load_images()
+        self._apply_trading_profiles()
         self.helm_upgrade(replicas=0)
 
     def start(self) -> None:
@@ -465,6 +468,7 @@ class ClusterManager:
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self.load_images()
+        self._apply_trading_profiles()
         self.helm_upgrade(reuse_values=True)
         self._status_cache = None
 
@@ -564,6 +568,42 @@ class ClusterManager:
             cmd.append("--reuse-values")
         self.runner.run(cmd)
         self._status_cache = None
+
+    def _apply_trading_profiles(self) -> None:
+        # Absent file is not an error. kubectl reads the path; do not print the file.
+        path = self.environment.path / "trading-profiles.yaml"
+        if not path.is_file():
+            return
+        self.require_tools("kubectl")
+        self._ensure_namespace()
+        rendered = self.runner.run(
+            [
+                "kubectl",
+                *self._kube_flags(),
+                "create",
+                "secret",
+                "generic",
+                "foreverbull-trading",
+                f"--from-file=profiles.yaml={path}",
+                "--dry-run=client",
+                "-o",
+                "yaml",
+            ]
+        )
+        self.runner.run(
+            ["kubectl", *self._kube_flags(), "apply", "-f", "-"],
+            stdin=rendered.stdout,
+        )
+
+    def _ensure_namespace(self) -> None:
+        cmd = ["kubectl", *self._kube_flags(), "get", "namespace", self.config.namespace]
+        result = self.runner.run(cmd, check=False)
+        if result.returncode == 0:
+            return
+        combined = f"{result.stdout} {result.stderr}".lower()
+        if "not found" not in combined:
+            raise CommandError(cmd, result)
+        self.runner.run(["kubectl", *self._kube_flags(), "create", "namespace", self.config.namespace])
 
     def _set_replicas(self, replicas: int, *, missing_ok: bool = False) -> None:
         """Record the replica count on the Helm release so later upgrades keep it."""

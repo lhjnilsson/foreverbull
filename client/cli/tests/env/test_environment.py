@@ -28,6 +28,7 @@ class FakeRunner(CommandRunner):
     def __init__(self, tools: set[str] | None = None):
         self.tools = tools if tools is not None else {"kind", "helm", "kubectl", "docker"}
         self.calls: list[list[str]] = []
+        self.stdins: list[str | None] = []
         self.handlers: list[tuple] = []
         self.default = _completed()
 
@@ -50,9 +51,11 @@ class FakeRunner(CommandRunner):
         check: bool = True,
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
+        stdin: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         command = [str(a) for a in args]
         self.calls.append(command)
+        self.stdins.append(stdin)
         result: subprocess.CompletedProcess[str] | Exception = self.default
         for prefix, contains, handler in reversed(self.handlers):
             if command[: len(prefix)] == prefix and (contains is None or contains in command):
@@ -97,6 +100,23 @@ def _manager(
         repo_root=repo,
         ready_timeout_seconds=ready_timeout_seconds,
     )
+
+
+def _trading_secret_calls(runner: FakeRunner) -> list[list[str]]:
+    return [call for call in runner.calls if "foreverbull-trading" in call]
+
+
+def _trading_secret_index(runner: FakeRunner) -> int:
+    return next(i for i, call in enumerate(runner.calls) if "foreverbull-trading" in call)
+
+
+def _assert_secret_not_shown(runner: FakeRunner, secret: str, capsys: pytest.CaptureFixture[str]) -> None:
+    blob = "\n".join(" ".join(call) for call in runner.calls)
+    assert secret not in blob
+    assert all(secret not in (stdin or "") for stdin in runner.stdins)
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
 
 
 def _pod(
@@ -450,6 +470,111 @@ class TestClusterManager:
         uut = _manager(tmp_path, runner, config=config)
         uut.remove(purge=True)
         assert runner.calls_starting_with("kind") == []
+
+    def test_create_applies_trading_profiles_before_helm(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        secret = "apiSecret: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
+        uut.create()
+        secret_at = _trading_secret_index(runner)
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert secret_at < helm_at
+        create_cmd = runner.calls[secret_at]
+        assert create_cmd[create_cmd.index("create") + 1 : create_cmd.index("create") + 4] == [
+            "secret",
+            "generic",
+            "foreverbull-trading",
+        ]
+        assert f"--from-file=profiles.yaml={path}" in create_cmd
+        assert "--dry-run=client" in create_cmd
+        apply_at = next(i for i, call in enumerate(runner.calls) if call[-3:] == ["apply", "-f", "-"])
+        assert secret_at < apply_at < helm_at
+        assert runner.stdins[apply_at] == ""
+        _assert_secret_not_shown(runner, secret, capsys)
+
+    def test_create_skips_trading_profiles_when_file_absent(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        assert not (uut.environment.path / "trading-profiles.yaml").exists()
+        uut.create()
+        assert _trading_secret_calls(runner) == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
+
+    def test_create_trading_profiles_remote_flags(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        config = Config(
+            {
+                "cluster": "remote",
+                "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"},
+            },
+            load_files=False,
+            environ={},
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        secret = "password: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
+        runner.on(
+            ["kubectl"],
+            _completed(returncode=1, stderr='Error from server (NotFound): namespaces "fb" not found'),
+            contains="get",
+        )
+        uut.create()
+        create_ns = runner.calls_starting_with("kubectl")
+        assert any(
+            call[call.index("create") + 1 :][:2] == ["namespace", "fb"] for call in create_ns if "create" in call
+        )
+        secret_cmd = runner.calls[_trading_secret_index(runner)]
+        assert secret_cmd[secret_cmd.index("--kubeconfig") + 1] == "/tmp/kube"
+        assert secret_cmd[secret_cmd.index("--context") + 1] == "prod"
+        assert secret_cmd[secret_cmd.index("--namespace") + 1] == "fb"
+        assert f"--from-file=profiles.yaml={path}" in secret_cmd
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert _trading_secret_index(runner) < helm_at
+        _assert_secret_not_shown(runner, secret, capsys)
+
+    def test_create_trading_profiles_kubectl_failure_skips_helm(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        runner.on(
+            ["kubectl"],
+            _completed(returncode=1, stderr="secret failed"),
+            contains="foreverbull-trading",
+        )
+        uut = _manager(tmp_path, runner)
+        secret = "accessToken: do-not-print-this"
+        (uut.environment.path / "trading-profiles.yaml").write_text(secret + "\n")
+        with pytest.raises(CommandError, match="foreverbull-trading"):
+            uut.create()
+        assert runner.calls_starting_with("helm", "upgrade") == []
+        _assert_secret_not_shown(runner, secret, capsys)
+
+    def test_update_applies_trading_profiles_before_helm(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        secret = "apiKey: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
+        uut.update()
+        secret_at = _trading_secret_index(runner)
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert secret_at < helm_at
+        assert f"--from-file=profiles.yaml={path}" in runner.calls[secret_at]
+        assert "--reuse-values" in runner.calls[helm_at]
+        _assert_secret_not_shown(runner, secret, capsys)
+
+    def test_update_skips_trading_profiles_when_file_absent(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        uut.update()
+        assert _trading_secret_calls(runner) == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
 
     def test_update_loads_and_helm_upgrades(self, tmp_path: Path):
         runner = FakeRunner()

@@ -72,29 +72,8 @@ broker:
   serverAddress: foreverbull
   ziplineServiceName: zipline
   trading:
-    enabled: false          # TRADING_ENABLED; never default true
-    provider: alpaca        # TRADING_PROVIDER: alpaca, saxo, ibkr, or ig
-    currency: USD           # TRADING_CURRENCY
-    allowLiveURL: false     # TRADING_ALLOW_LIVE_URL; does not unlock mode LIVE
-    listingsFile: ""        # TRADING_LISTINGS_FILE; empty uses the embedded sample
-    alpaca:
-      baseUrl: https://paper-api.alpaca.markets
-      apiKey: ""            # ALPACA_MARKETS_API_KEY; no keys in the chart
-      apiSecret: ""         # ALPACA_MARKETS_API_SECRET; no secrets in the chart
-    saxo:
-      baseUrl: https://gateway.saxobank.com/sim/openapi
-      accessToken: ""       # SAXO_ACCESS_TOKEN; no tokens in the chart
-      accountKey: ""        # SAXO_ACCOUNT_KEY; empty uses the client default account
-    ig:
-      baseUrl: https://demo-api.ig.com/gateway/deal
-      apiKey: ""            # IG_API_KEY; no keys in the chart
-      identifier: ""        # IG_IDENTIFIER; empty
-      password: ""          # IG_PASSWORD; no passwords in the chart
-    ibkr:
-      baseUrl: https://localhost:5000/v1/api
-      accountId: ""         # IBKR_ACCOUNT_ID; required when provider is ibkr
-      accountMode: paper    # IBKR_ACCOUNT_MODE; live stays refused unless allowLiveURL
-      accessToken: ""       # IBKR_ACCESS_TOKEN; no tokens in the chart
+    # TRADING_ENABLED. Credentials are Secret foreverbull-trading, not chart values.
+    enabled: false
 
 zipline:
   grpcPort: 50055

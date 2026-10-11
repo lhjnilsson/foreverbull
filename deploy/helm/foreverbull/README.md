@@ -21,4 +21,5 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --set expose.hostPort=false
 ```
 
-Do not pass Alpaca keys as chart values. `broker.trading.enabled` stays false.
+Do not pass broker credentials as chart values. `broker.trading.enabled` stays false.
+Optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml`.

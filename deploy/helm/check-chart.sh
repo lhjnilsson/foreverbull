@@ -41,4 +41,35 @@ if ! grep -q 'name: GRAFANA_URL' "${rendered}"; then
   exit 1
 fi
 
+broker_manifest="$(mktemp)"
+trap 'rm -f "${rendered}" "${broker_manifest}"' EXIT
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: Deployment(\n|$)/ && doc ~ /(^|\n)  name: foreverbull(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${rendered}" > "${broker_manifest}"
+
+if [[ ! -s "${broker_manifest}" ]]; then
+  echo "rendered chart is missing the broker Deployment" >&2
+  exit 1
+fi
+
+for forbidden in \
+  ALPACA_MARKETS_API_KEY \
+  SAXO_ACCESS_TOKEN \
+  IG_PASSWORD \
+  IBKR_ACCESS_TOKEN \
+  api.alpaca.markets
+do
+  if grep -F "${forbidden}" "${broker_manifest}"; then
+    echo "broker manifest must not contain ${forbidden}" >&2
+    exit 1
+  fi
+done
+
 echo "helm chart checks passed"

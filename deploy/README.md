@@ -79,7 +79,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | Grafana `BROKER_URL` | `foreverbull:50055` |
 | Zipline `DATABASE_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
 
-Deploy mode LIVE is refused. `TRADING_ALLOW_LIVE_URL` does not enable it. Broker credentials in the chart stay empty.
+Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
 Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
 `BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,

@@ -85,10 +85,35 @@ def test_helm_template_has_rbac_and_no_docker_sock(chart: Path):
     broker = deployments["foreverbull"]
     spec = broker["spec"]["template"]["spec"]
     assert spec.get("serviceAccountName") == "foreverbull"
-    env = {item["name"]: item.get("value") for item in spec["containers"][0].get("env") or []}
+    container = spec["containers"][0]
+    env = {item["name"]: item.get("value") for item in container.get("env") or []}
     assert env.get("TRADING_ENABLED") == "false"
-    assert env.get("ALPACA_MARKETS_API_KEY") in (None, "")
-    assert env.get("ALPACA_MARKETS_API_SECRET") in (None, "")
+    assert env.get("TRADING_PROFILES_FILE") == "/etc/foreverbull/profiles.yaml"
+    for forbidden in (
+        "ALPACA_MARKETS_API_KEY",
+        "ALPACA_MARKETS_API_SECRET",
+        "SAXO_ACCESS_TOKEN",
+        "IG_PASSWORD",
+        "IBKR_ACCESS_TOKEN",
+        "TRADING_PROVIDER",
+        "TRADING_ALLOW_LIVE_URL",
+        "api.alpaca.markets",
+    ):
+        assert forbidden not in env
+        assert forbidden not in rendered
+    mounts = container.get("volumeMounts") or []
+    assert mounts == [{"name": "trading-profiles", "mountPath": "/etc/foreverbull", "readOnly": True}]
+    volumes = spec.get("volumes") or []
+    assert volumes == [
+        {
+            "name": "trading-profiles",
+            "secret": {
+                "secretName": "foreverbull-trading",
+                "optional": True,
+                "items": [{"key": "profiles.yaml", "path": "profiles.yaml"}],
+            },
+        }
+    ]
 
     grafana_env = {
         item["name"]: item.get("value")
@@ -116,7 +141,9 @@ def test_helm_template_hostport_still_has_no_docker_sock(chart: Path):
     ports = broker["spec"]["template"]["spec"]["containers"][0]["ports"]
     grpc = next(port for port in ports if port.get("name") == "grpc")
     assert grpc.get("hostPort") == 50055
-    volumes = broker["spec"]["template"]["spec"].get("volumes") or []
-    mounts = broker["spec"]["template"]["spec"]["containers"][0].get("volumeMounts") or []
-    assert volumes == []
-    assert mounts == []
+    spec = broker["spec"]["template"]["spec"]
+    volumes = spec.get("volumes") or []
+    mounts = spec["containers"][0].get("volumeMounts") or []
+    assert [volume["secret"]["secretName"] for volume in volumes] == ["foreverbull-trading"]
+    assert mounts == [{"name": "trading-profiles", "mountPath": "/etc/foreverbull", "readOnly": True}]
+    assert "/var/run/docker.sock" not in result.stdout

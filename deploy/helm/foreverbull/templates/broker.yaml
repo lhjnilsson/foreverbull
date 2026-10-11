@@ -92,44 +92,14 @@ spec:
               value: {{ .Values.broker.backtestPortEnd | quote }}
             - name: TRADING_ENABLED
               value: {{ .Values.broker.trading.enabled | quote }}
-            - name: TRADING_PROVIDER
-              value: {{ .Values.broker.trading.provider | quote }}
-            - name: TRADING_CURRENCY
-              value: {{ .Values.broker.trading.currency | quote }}
-            - name: TRADING_ALLOW_LIVE_URL
-              value: {{ .Values.broker.trading.allowLiveURL | quote }}
-            - name: TRADING_LISTINGS_FILE
-              value: {{ .Values.broker.trading.listingsFile | quote }}
-            - name: ALPACA_MARKETS_BASE_URL
-              value: {{ .Values.broker.trading.alpaca.baseUrl | quote }}
-            - name: ALPACA_MARKETS_API_KEY
-              value: {{ .Values.broker.trading.alpaca.apiKey | quote }}
-            - name: ALPACA_MARKETS_API_SECRET
-              value: {{ .Values.broker.trading.alpaca.apiSecret | quote }}
-            - name: SAXO_BASE_URL
-              value: {{ .Values.broker.trading.saxo.baseUrl | quote }}
-            - name: SAXO_ACCESS_TOKEN
-              value: {{ .Values.broker.trading.saxo.accessToken | quote }}
-            - name: SAXO_ACCOUNT_KEY
-              value: {{ .Values.broker.trading.saxo.accountKey | quote }}
-            - name: IG_BASE_URL
-              value: {{ .Values.broker.trading.ig.baseUrl | quote }}
-            - name: IG_API_KEY
-              value: {{ .Values.broker.trading.ig.apiKey | quote }}
-            - name: IG_IDENTIFIER
-              value: {{ .Values.broker.trading.ig.identifier | quote }}
-            - name: IG_PASSWORD
-              value: {{ .Values.broker.trading.ig.password | quote }}
-            - name: IBKR_BASE_URL
-              value: {{ .Values.broker.trading.ibkr.baseUrl | quote }}
-            - name: IBKR_ACCOUNT_ID
-              value: {{ .Values.broker.trading.ibkr.accountId | quote }}
-            - name: IBKR_ACCOUNT_MODE
-              value: {{ .Values.broker.trading.ibkr.accountMode | quote }}
-            - name: IBKR_ACCESS_TOKEN
-              value: {{ .Values.broker.trading.ibkr.accessToken | quote }}
+            - name: TRADING_PROFILES_FILE
+              value: "/etc/foreverbull/profiles.yaml"
             - name: GRAFANA_URL
               value: {{ .Values.grafana.url | default (printf "http://localhost:%v" .Values.grafana.port) | quote }}
+          volumeMounts:
+            - name: trading-profiles
+              mountPath: /etc/foreverbull
+              readOnly: true
           startupProbe:
             exec:
               command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.broker.grpcPort | quote }}]
@@ -150,3 +120,11 @@ spec:
             failureThreshold: 5
           resources:
             {{- toYaml .Values.resources.broker | nindent 12 }}
+      volumes:
+        - name: trading-profiles
+          secret:
+            secretName: foreverbull-trading
+            optional: true
+            items:
+              - key: profiles.yaml
+                path: profiles.yaml
