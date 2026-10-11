@@ -126,6 +126,9 @@ jobs:
         with:
           context: grafana
           file: ./grafana/Dockerfile
+          # COPY --from=foreverbull is the repo root (go.mod and pkg/), not an image.
+          build-contexts: |
+            foreverbull=${{ github.workspace }}
           platforms: linux/amd64,linux/arm64
           tags: |
             lhjnilsson/fb-grafana:${{ needs.version_tag.outputs.version }}
