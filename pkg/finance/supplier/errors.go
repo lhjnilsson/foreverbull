@@ -16,7 +16,8 @@ var (
 	// ErrUnmappedPosition is a live position that cannot be mapped to an ISIN.
 	ErrUnmappedPosition = errors.New("position is not mapped to an ISIN")
 
-	// ErrCurrency is an account currency other than TRADING_CURRENCY.
+	// ErrCurrency is an account currency other than the profile currency.
+	// An omitted profile currency means USD.
 	ErrCurrency = errors.New("account currency mismatch")
 
 	// ErrUnavailable is a network failure, HTTP 401, or HTTP 5xx. Do not retry.

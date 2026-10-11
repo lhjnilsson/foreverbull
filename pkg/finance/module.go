@@ -51,42 +51,27 @@ var Module = fx.Options( //nolint: gochecknoglobals
 				return nil, fmt.Errorf("unknown market data provider: %s", environment.GetMarketDataProvider())
 			}
 		},
-		func(conn *pgxpool.Pool) (supplier.Trading, error) {
-			if !environment.GetTradingEnabled() {
-				return nil, nil
-			}
-
-			client, err := trading.New(trading.Config{
-				Provider:        environment.GetTradingProvider(),
-				Currency:        environment.GetTradingCurrency(),
-				AllowLiveURL:    environment.GetTradingAllowLiveURL(),
-				ListingsFile:    environment.GetTradingListingsFile(),
-				Directory:       newSymbolDirectory(conn),
-				AlpacaBaseURL:   environment.GetAlpacaBaseURL(),
-				AlpacaAPIKey:    environment.GetAlpacaAPIKey(),
-				AlpacaAPISecret: environment.GetAlpacaAPISecret(),
-				SaxoBaseURL:     environment.GetSaxoBaseURL(),
-				SaxoAccessToken: environment.GetSaxoAccessToken(),
-				SaxoAccountKey:  environment.GetSaxoAccountKey(),
-				IBKRBaseURL:     environment.GetIBKRBaseURL(),
-				IBKRAccountID:   environment.GetIBKRAccountID(),
-				IBKRAccountMode: environment.GetIBKRAccountMode(),
-				IBKRAccessToken: environment.GetIBKRAccessToken(),
-				IGBaseURL:       environment.GetIGBaseURL(),
-				IGAPIKey:        environment.GetIGAPIKey(),
-				IGIdentifier:    environment.GetIGIdentifier(),
-				IGPassword:      environment.GetIGPassword(),
-			})
+		func(conn *pgxpool.Pool) (supplier.Registry, error) {
+			reg, err := trading.NewRegistry(
+				environment.GetTradingProfilesFile(),
+				environment.GetTradingEnabled(),
+				trading.RegistryOptions{
+					Directory:    newSymbolDirectory(conn),
+					ListingsFile: environment.GetTradingListingsFile(),
+				},
+			)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create trading client: %w", err)
+				return nil, fmt.Errorf("failed to load trading profiles: %w", err)
 			}
-			return client, nil
+			return reg, nil
 		},
-		func(conn *pgxpool.Pool, marketData supplier.Marketdata, trading supplier.Trading, eventStream stream.Stream) (Subscriber, error) {
+		func(conn *pgxpool.Pool, marketData supplier.Marketdata, eventStream stream.Stream) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
 			dc.AddSingleton(dependency.MarketDataDep, marketData)
-			dc.AddSingleton(dependency.TradingDep, trading)
+			// No process-wide trading client. Deployments resolve a profile name.
+			var tradingClient supplier.Trading
+			dc.AddSingleton(dependency.TradingDep, tradingClient)
 			sub, err := eventStream.NewSubscriber(StreamName, dc)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create subscriber: %w", err)
@@ -95,10 +80,10 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 	fx.Invoke(
-		func(s *grpc.Server, pgx *pgxpool.Pool, eventStream stream.Stream, md supplier.Marketdata, t supplier.Trading) error {
+		func(s *grpc.Server, pgx *pgxpool.Pool, eventStream stream.Stream, md supplier.Marketdata) error {
 			marketdataServer := api.NewMarketdataServer(pgx, md)
 			servicePb.RegisterMarketdataServer(s, marketdataServer)
-			tradingServer := api.NewTradingServer(pgx, eventStream, t)
+			tradingServer := api.NewTradingServer(pgx, eventStream, nil)
 			servicePb.RegisterTradingServicerServer(s, tradingServer)
 			return nil
 		},

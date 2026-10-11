@@ -61,6 +61,20 @@ func (stubTrading) GetOrders(context.Context) ([]*financepb.Order, error) {
 
 var _ supplier.Trading = stubTrading{}
 
+type profileRegistry map[string]supplier.Trading
+
+func (p profileRegistry) Get(name string) (supplier.Trading, bool) {
+	if p == nil {
+		return nil, false
+	}
+	client, ok := p[name]
+	return client, ok
+}
+
+func paperProfiles() supplier.Registry {
+	return profileRegistry{"alpaca-paper": stubTrading{}}
+}
+
 type StrategyServerTest struct {
 	suite.Suite
 
@@ -94,7 +108,7 @@ func (test *StrategyServerTest) SetupSubTest() {
 	test.startServer(nil)
 }
 
-func (test *StrategyServerTest) startServer(trading supplier.Trading) {
+func (test *StrategyServerTest) startServer(profiles supplier.Registry) {
 	if test.server != nil {
 		test.server.Stop()
 		test.server = nil
@@ -110,8 +124,8 @@ func (test *StrategyServerTest) startServer(trading supplier.Trading) {
 	test.Require().NoError(err)
 
 	srv := api.NewStrategyServer(test.pgx, test.launcher, test.runner)
-	if trading != nil {
-		srv = srv.WithTrading(trading)
+	if profiles != nil {
+		srv = srv.WithProfiles(profiles)
 	}
 	servicePb.RegisterStrategyServicerServer(test.server, srv)
 
@@ -529,7 +543,7 @@ func (test *StrategyServerTest) TestDeploy() {
 		d := rsp.GetDeployment()
 		test.Equal(pb.Deployment_PAPER, d.GetMode())
 		test.True(d.GetDryRun())
-		test.Equal("default", d.GetBackend())
+		test.Empty(d.GetBackend())
 		test.Equal("XNYS", d.GetCalendarCode())
 		test.Equal(pb.Deployment_SESSION_CLOSE, d.GetScheduleKind())
 		test.Equal(pb.Deployment_RUNNING, d.GetStatus())
@@ -555,7 +569,7 @@ func (test *StrategyServerTest) TestDeploy() {
 	})
 
 	test.Run("rejects live even with trading", func() {
-		test.startServer(stubTrading{})
+		test.startServer(paperProfiles())
 		version := test.seedDeployableVersion("mean-rev", "algo:local")
 		dry := false
 		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
@@ -574,7 +588,8 @@ func (test *StrategyServerTest) TestDeploy() {
 	})
 
 	test.Run("rejects dry_run false without confirm", func() {
-		test.startServer(stubTrading{})
+		test.T().Setenv(environment.TradingEnabled, "true")
+		test.startServer(paperProfiles())
 		version := test.seedDeployableVersion("mean-rev", "algo:local")
 		dry := false
 		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
@@ -608,12 +623,14 @@ func (test *StrategyServerTest) TestDeploy() {
 	})
 
 	test.Run("allows paper dry_run false with confirm and trading", func() {
-		test.startServer(stubTrading{})
+		test.T().Setenv(environment.TradingEnabled, "true")
+		test.startServer(paperProfiles())
 		version := test.seedDeployableVersion("mean-rev", "algo:local")
 		dry := false
 		rsp, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
 			StrategyName: "mean-rev",
 			VersionId:    version.Id,
+			Backend:      "alpaca-paper",
 			DryRun:       &dry,
 			Confirm:      true,
 			Symbols:      []string{"AAPL"},
@@ -622,10 +639,50 @@ func (test *StrategyServerTest) TestDeploy() {
 		d := rsp.GetDeployment()
 		test.Equal(pb.Deployment_PAPER, d.GetMode())
 		test.False(d.GetDryRun())
+		test.Equal("alpaca-paper", d.GetBackend())
 		test.Equal(pb.Deployment_RUNNING, d.GetStatus())
 		test.Require().Len(test.runner.added, 1)
 		test.Equal(d.Id, test.runner.added[0].Id)
 		test.False(test.runner.added[0].GetDryRun())
+	})
+
+	test.Run("rejects dry_run false with empty backend", func() {
+		test.T().Setenv(environment.TradingEnabled, "true")
+		test.startServer(paperProfiles())
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			DryRun:       &dry,
+			Confirm:      true,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "profile")
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("rejects dry_run false with unknown backend", func() {
+		test.T().Setenv(environment.TradingEnabled, "true")
+		test.startServer(paperProfiles())
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := false
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Backend:      "no-such",
+			DryRun:       &dry,
+			Confirm:      true,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Contains(st.Message(), "no-such")
+		test.Empty(test.runner.added)
 	})
 
 	test.Run("requires completed experiment", func() {

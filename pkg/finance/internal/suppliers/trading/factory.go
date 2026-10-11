@@ -12,7 +12,7 @@ import (
 const tradingHTTPTimeout = 30 * time.Second
 
 // Config selects one broker adapter. New does not read the environment.
-// module.go is the only caller that loads these fields from the process env.
+// Profile loading passes paper and demo URLs by leaving the base URL fields empty.
 type Config struct {
 	// Provider is alpaca, saxo, ibkr, or ig. Anything else is an error.
 	Provider string

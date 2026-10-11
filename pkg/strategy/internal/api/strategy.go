@@ -23,7 +23,7 @@ type StrategyServer struct {
 	pgx      *pgxpool.Pool
 	launcher stream.ExperimentLauncher
 	runner   DeploymentRunner
-	trading  supplier.Trading
+	profiles supplier.Registry
 }
 
 func NewStrategyServer(pgx *pgxpool.Pool, launcher stream.ExperimentLauncher, runner DeploymentRunner) *StrategyServer {
@@ -34,9 +34,9 @@ func NewStrategyServer(pgx *pgxpool.Pool, launcher stream.ExperimentLauncher, ru
 	}
 }
 
-// WithTrading enables paper PlaceOrder on Deploy when trading is non-nil.
-// Production only calls this when TRADING_ENABLED is true.
-func (s *StrategyServer) WithTrading(trading supplier.Trading) *StrategyServer {
-	s.trading = trading
+// WithProfiles resolves Deployment.backend to a trading client.
+// Paper PlaceOrder still requires TRADING_ENABLED and a known profile name.
+func (s *StrategyServer) WithProfiles(profiles supplier.Registry) *StrategyServer {
+	s.profiles = profiles
 	return s
 }

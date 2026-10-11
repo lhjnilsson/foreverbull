@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
@@ -13,10 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	defaultBackend  = "default"
-	defaultCalendar = "XNYS"
-)
+const defaultCalendar = "XNYS"
 
 func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployRequest) (*servicePb.DeployResponse, error) {
 	if s.pgx == nil {
@@ -32,14 +31,23 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	if req.DryRun != nil {
 		dryRun = *req.DryRun
 	}
+	backend := strings.TrimSpace(req.GetBackend())
 	if !dryRun {
 		if !req.GetConfirm() {
 			return nil, status.Error(codes.FailedPrecondition,
 				"confirm is required when dry_run=false")
 		}
-		if s.trading == nil {
+		if !environment.GetTradingEnabled() {
 			return nil, status.Error(codes.FailedPrecondition,
 				"paper PlaceOrder requires TRADING_ENABLED and a configured Trading backend")
+		}
+		if backend == "" || s.profiles == nil {
+			return nil, status.Error(codes.FailedPrecondition,
+				"paper PlaceOrder requires a trading profile name")
+		}
+		if _, ok := s.profiles.Get(backend); !ok {
+			return nil, status.Errorf(codes.FailedPrecondition,
+				"unknown trading profile %q", backend)
 		}
 	}
 
@@ -54,10 +62,6 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 		return nil, err
 	}
 
-	backend := req.GetBackend()
-	if backend == "" {
-		backend = defaultBackend
-	}
 	calendar := req.GetCalendarCode()
 	if calendar == "" {
 		calendar = defaultCalendar

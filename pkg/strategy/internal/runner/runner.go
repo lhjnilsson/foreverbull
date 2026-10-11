@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,11 +27,12 @@ type Processor interface {
 }
 
 // InProcess runs one goroutine per running deployment.
+// Each session resolves supplier.Trading from deployment.backend.
 // PlaceOrder is called only when the deployment is paper with dry_run=false.
 type InProcess struct {
 	store     Store
 	clock     Clock
-	trading   supplier.Trading
+	clients   supplier.Registry
 	processor Processor
 	poll      time.Duration
 
@@ -42,12 +44,12 @@ type InProcess struct {
 	wg    sync.WaitGroup
 }
 
-func New(store Store, clock Clock, trading supplier.Trading, processor Processor) *InProcess {
+func New(store Store, clock Clock, clients supplier.Registry, processor Processor) *InProcess {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &InProcess{
 		store:      store,
 		clock:      clock,
-		trading:    trading,
+		clients:    clients,
 		processor:  processor,
 		poll:       defaultPollInterval,
 		rootCtx:    ctx,
@@ -220,9 +222,13 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	}
 
 	var runErr error
+	client, err := r.clientFor(d)
+	if err != nil {
+		runErr = err
+	}
 	var portfolio *financepb.Portfolio
-	if r.trading != nil {
-		portfolio, err = r.trading.GetPortfolio(ctx)
+	if runErr == nil && client != nil {
+		portfolio, err = client.GetPortfolio(ctx)
 		if err != nil {
 			runErr = fmt.Errorf("get portfolio: %w", err)
 		}
@@ -238,7 +244,7 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	}
 
 	if runErr == nil && !d.DryRun {
-		orders, runErr = r.placeOrders(ctx, orders)
+		orders, runErr = r.placeOrders(ctx, client, orders)
 	}
 
 	_, err = r.store.CreateRun(ctx, deploymentID, session.Date, orders, false, runErr)
@@ -257,13 +263,28 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	return nil
 }
 
-func (r *InProcess) placeOrders(ctx context.Context, orders []*financepb.Order) ([]*financepb.Order, error) {
-	if r.trading == nil {
+func (r *InProcess) clientFor(d *pb.Deployment) (supplier.Trading, error) {
+	if d == nil {
+		return nil, errors.New("deployment is required")
+	}
+	name := strings.TrimSpace(d.Backend)
+	if name == "" || r.clients == nil {
+		return nil, nil
+	}
+	client, ok := r.clients.Get(name)
+	if !ok || client == nil {
+		return nil, fmt.Errorf("unknown trading profile %q", name)
+	}
+	return client, nil
+}
+
+func (r *InProcess) placeOrders(ctx context.Context, client supplier.Trading, orders []*financepb.Order) ([]*financepb.Order, error) {
+	if client == nil {
 		return orders, errors.New("PlaceOrder requires a Trading backend")
 	}
 	attempted := make([]*financepb.Order, 0, len(orders))
 	for _, order := range orders {
-		placed, err := r.trading.PlaceOrder(ctx, order)
+		placed, err := client.PlaceOrder(ctx, order)
 		if err != nil {
 			attempted = append(attempted, order)
 			return attempted, fmt.Errorf("place order: %w", err)

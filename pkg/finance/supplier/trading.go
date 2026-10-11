@@ -12,3 +12,9 @@ type Trading interface {
 	PlaceOrder(ctx context.Context, order *pb.Order) (*pb.Order, error)
 	GetOrders(ctx context.Context) ([]*pb.Order, error)
 }
+
+// Registry resolves a trading profile name to its client.
+// Two lookups of the same name return the same client.
+type Registry interface {
+	Get(name string) (Trading, bool)
+}

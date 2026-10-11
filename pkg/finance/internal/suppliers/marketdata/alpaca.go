@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -19,14 +19,20 @@ type AlpacaClient struct {
 }
 
 func NewAlpacaClient() (*AlpacaClient, error) {
+	baseURL := os.Getenv("ALPACA_MARKETS_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://paper-api.alpaca.markets"
+	}
+	apiKey := os.Getenv("ALPACA_MARKETS_API_KEY")
+	apiSecret := os.Getenv("ALPACA_MARKETS_API_SECRET")
 	client := alpaca.NewClient(alpaca.ClientOpts{
-		BaseURL:   environment.GetAlpacaBaseURL(),
-		APIKey:    environment.GetAlpacaAPIKey(),
-		APISecret: environment.GetAlpacaAPISecret(),
+		BaseURL:   baseURL,
+		APIKey:    apiKey,
+		APISecret: apiSecret,
 	})
 	mdclient := marketdata.NewClient(marketdata.ClientOpts{
-		APIKey:    environment.GetAlpacaAPIKey(),
-		APISecret: environment.GetAlpacaAPISecret(),
+		APIKey:    apiKey,
+		APISecret: apiSecret,
 	})
 
 	return &AlpacaClient{client: client, mdclient: mdclient}, nil

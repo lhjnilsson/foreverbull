@@ -28,6 +28,16 @@ type RunnerTest struct {
 	wed SessionClose
 }
 
+type profileRegistry map[string]supplier.Trading
+
+func (p profileRegistry) Get(name string) (supplier.Trading, bool) {
+	if p == nil {
+		return nil, false
+	}
+	client, ok := p[name]
+	return client, ok
+}
+
 func TestRunner(t *testing.T) {
 	suite.Run(t, new(RunnerTest))
 }
@@ -57,7 +67,7 @@ func (test *RunnerTest) SetupTest() {
 		}},
 	}
 	test.clock = NewFakeClock(test.mon.Close.Add(-time.Hour), test.mon, test.tue, test.wed)
-	test.runner = New(test.store, test.clock, test.trading, test.processor).WithPollInterval(5 * time.Millisecond)
+	test.runner = New(test.store, test.clock, profileRegistry{"alpaca-paper": test.trading}, test.processor).WithPollInterval(5 * time.Millisecond)
 	test.store.Put(test.deployment())
 }
 
@@ -74,7 +84,7 @@ func (test *RunnerTest) deployment() *pb.Deployment {
 		StrategyName: "mean-rev",
 		VersionId:    "v1",
 		Mode:         pb.Deployment_PAPER,
-		Backend:      "default",
+		Backend:      "alpaca-paper",
 		CalendarCode: "XNYS",
 		Symbols:      []string{"AAPL"},
 		ScheduleKind: pb.Deployment_SESSION_CLOSE,
@@ -164,7 +174,7 @@ func (test *RunnerTest) TestRestartUsesLastSessionDate() {
 	ctx := context.Background()
 	test.Require().NoError(test.runner.ProcessSession(ctx, "dep-1", test.mon))
 
-	restarted := New(test.store, test.clock, test.trading, test.processor)
+	restarted := New(test.store, test.clock, profileRegistry{"alpaca-paper": test.trading}, test.processor)
 	test.Require().NoError(restarted.ProcessSession(ctx, "dep-1", test.mon))
 	test.Equal(1, test.processor.CallCount())
 
@@ -256,6 +266,37 @@ func TestProcessSessionNilTrading(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, processor.CallCount())
+}
+
+func (test *RunnerTest) TestProcessSessionResolvesBackendEachSession() {
+	other := &FakeTrading{Portfolio: &financepb.Portfolio{Cash: 2}}
+	test.runner = New(test.store, test.clock, profileRegistry{
+		"alpaca-paper": test.trading,
+		"saxo-sim":     other,
+	}, test.processor)
+
+	d := test.deployment()
+	d.DryRun = false
+	d.Backend = "alpaca-paper"
+	test.store.Put(d)
+
+	ctx := context.Background()
+	test.Require().NoError(test.runner.ProcessSession(ctx, "dep-1", test.mon))
+	test.Equal(1, test.trading.PortfolioCalls())
+	test.Equal(1, test.trading.PlaceCalls())
+	test.Equal(0, other.PortfolioCalls())
+	test.Equal(0, other.PlaceCalls())
+
+	got, err := test.store.GetDeployment(ctx, "dep-1")
+	test.Require().NoError(err)
+	got.Backend = "saxo-sim"
+	test.store.Put(got)
+
+	test.Require().NoError(test.runner.ProcessSession(ctx, "dep-1", test.tue))
+	test.Equal(1, test.trading.PortfolioCalls())
+	test.Equal(1, test.trading.PlaceCalls())
+	test.Equal(1, other.PortfolioCalls())
+	test.Equal(1, other.PlaceCalls())
 }
 
 func (test *RunnerTest) TestProcessSessionPaperPlaceOrder() {
