@@ -1,18 +1,57 @@
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 
+from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.trading import PositionAndOrder
-from foreverbull_cli.bull.trading import trading
 
-from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
-from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
+
+
+pytestmark = pytest.mark.usefixtures("fb_env")
+
+
+def _sample_backtest(name="test_name") -> backtest_pb2.Backtest:
+    return backtest_pb2.Backtest(
+        name=name,
+        periods=[
+            backtest_pb2.Backtest.Period(
+                assets=[
+                    backtest_pb2.Backtest.Period.Asset(symbol="A", enabled=True),
+                    backtest_pb2.Backtest.Period.Asset(symbol="B", enabled=True),
+                    backtest_pb2.Backtest.Period.Asset(symbol="C", enabled=True),
+                    backtest_pb2.Backtest.Period.Asset(symbol="D", enabled=True),
+                    backtest_pb2.Backtest.Period.Asset(symbol="E", enabled=False),
+                ]
+            )
+        ],
+    )
+
+
+def _sample_orders() -> list[marketdata_pb2.Order]:
+    return [
+        marketdata_pb2.Order(symbol="A", amount=10),
+        marketdata_pb2.Order(symbol="B", amount=-10),
+        marketdata_pb2.Order(symbol="E", amount=10),
+        marketdata_pb2.Order(symbol="F", amount=10),
+    ]
+
+
+def _sample_portfolio() -> marketdata_pb2.Portfolio:
+    return marketdata_pb2.Portfolio(
+        positions=[
+            marketdata_pb2.Position(symbol="A", amount=10),
+            marketdata_pb2.Position(symbol="B", amount=10),
+            marketdata_pb2.Position(symbol="C", amount=10),
+            marketdata_pb2.Position(symbol="D", amount=10),
+        ]
+    )
 
 
 class TestPositionAndOrder:
@@ -39,80 +78,147 @@ class TestPositionAndOrder:
         items = PositionAndOrder.parse(positions, orders)
         assert len(items) == expected_length
 
+    @pytest.mark.parametrize(
+        "position,order,expected_intent",
+        [
+            (
+                None,
+                marketdata_pb2.Order(symbol="A", amount=10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_OPEN,
+            ),
+            (
+                None,
+                marketdata_pb2.Order(symbol="A", amount=-10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_OPEN,
+            ),
+            (
+                marketdata_pb2.Position(symbol="A", amount=10),
+                marketdata_pb2.Order(symbol="A", amount=-10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_CLOSE,
+            ),
+            (
+                marketdata_pb2.Position(symbol="A", amount=-10),
+                marketdata_pb2.Order(symbol="A", amount=10),
+                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_CLOSE,
+            ),
+        ],
+    )
+    def test_with_defaults_sets_position_intent(self, position, order, expected_intent):
+        item = PositionAndOrder.with_defaults(position, order)
+        assert item.order is not None
+        assert item.order.intent == expected_intent
+        assert item.order.type == marketdata_pb2.OrderType.ORDER_TYPE_MARKET
+        assert item.order.time_in_force == marketdata_pb2.TimeInForce.TIME_IN_FORCE_DAY
 
-def test_session_run(runner):
-    mock_trading_session = MagicMock(spec=TradingSession)
+    def test_display_and_rejects_both_none(self):
+        with pytest.raises(ValueError, match="Both position and order are None"):
+            PositionAndOrder(None, None)
 
-    mock_foreverbull = MagicMock(spec=Foreverbull)
-    mock_foreverbull.return_value.__enter__.return_value = mock_trading_session
+        held = PositionAndOrder(marketdata_pb2.Position(symbol="A", amount=10, cost_basis=12.5), None)
+        assert held.symbol == "A"
+        assert held.amount == "10"
+        assert held.cost_basis == "12.5"
+        assert held.order_type == "-"
+        assert held.time_in_force == "-"
+        assert held.position_intent == "-"
 
+        opening = PositionAndOrder.with_defaults(None, marketdata_pb2.Order(symbol="B", amount=5))
+        assert opening.symbol == "B"
+        assert opening.amount == "0 -> 5"
+        assert opening.cost_basis == "-"
+        assert opening.order_type == str(marketdata_pb2.OrderType.ORDER_TYPE_MARKET)
+
+
+@contextmanager
+def _mock_live_trading():
+    mock_session = MagicMock(spec=TradingSession)
+    place_orders = MagicMock()
+    mock_session.run_trading.return_value = (_sample_orders(), place_orders)
     with (
-        patch(
-            "foreverbull.foreverbull.Foreverbull.trading_session",
-            new_callable=lambda: mock_foreverbull,
-        ),
+        patch("foreverbull_cli.bull.trading.Foreverbull") as mock_foreverbull,
+        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
         patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
         patch("foreverbull.broker.backtest.get") as get_backtest,
         patch("foreverbull.broker.finance.create_session") as create_session,
-        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
     ):
         from_file_path.return_value = True
-        backtest = backtest_pb2.Backtest(
-            periods=[
-                backtest_pb2.Backtest.Period(
-                    start_date=common_pb2.Date(year=2022, month=1, day=1),
-                    end_date=common_pb2.Date(year=2022, month=12, day=31),
-                    assets=[
-                        backtest_pb2.Backtest.Period.Asset(
-                            symbol="A",
-                            enabled=True,
-                        ),
-                        backtest_pb2.Backtest.Period.Asset(
-                            symbol="B",
-                            enabled=True,
-                        ),
-                        backtest_pb2.Backtest.Period.Asset(
-                            symbol="C",
-                            enabled=True,
-                        ),
-                        backtest_pb2.Backtest.Period.Asset(
-                            symbol="D",
-                            enabled=True,
-                        ),
-                        backtest_pb2.Backtest.Period.Asset(
-                            symbol="E",
-                            enabled=True,
-                        ),
-                    ],
-                )
-            ]
-        )
-        get_backtest.return_value = backtest
+        get_backtest.return_value = _sample_backtest()
         create_session.return_value = iter(
             [trading_service_pb2.CreateSessionResponse(session=trading_pb2.Session(port=7878))]
         )
-        portfolio = marketdata_pb2.Portfolio(
-            positions=[
-                marketdata_pb2.Position(symbol="A", amount=10),
-                marketdata_pb2.Position(symbol="B", amount=10),
-                marketdata_pb2.Position(symbol="C", amount=10),
-                marketdata_pb2.Position(symbol="D", amount=10),
-            ]
-        )
-        get_portfolio.return_value = trading_service_pb2.GetPortfolioResponse(portfolio=portfolio)
-        place_orders = MagicMock()
-        mock_trading_session.run_trading.return_value = tuple(
-            [
-                [
-                    marketdata_pb2.Order(symbol="A", amount=10),
-                    marketdata_pb2.Order(symbol="B", amount=-10),
-                    marketdata_pb2.Order(symbol="E", amount=10),
-                    marketdata_pb2.Order(symbol="F", amount=10),
-                ],
-                place_orders,
-            ]
-        )
+        get_portfolio.return_value = trading_service_pb2.GetPortfolioResponse(portfolio=_sample_portfolio())
+        mock_foreverbull.return_value.trading_session.return_value.__enter__.return_value = mock_session
+        yield {
+            "place_orders": place_orders,
+            "create_session": create_session,
+            "get_portfolio": get_portfolio,
+            "session": mock_session,
+        }
 
-        result = runner(trading, ["run", "test"], input="yes")
+
+def test_trading_run_yes(runner):
+    with _mock_live_trading() as mocks:
+        result = runner(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
         assert result.exit_code == 0
-        assert place_orders.called
+        assert "Positions and Orders" in result.stdout
+        mocks["place_orders"].assert_called_once()
+        mocks["create_session"].assert_called_once()
+
+
+def test_trading_run_dry(runner):
+    with (
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
+        patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
+    ):
+        get_backtest.return_value = _sample_backtest()
+        result = runner(cli, ["trading", "run", "test_name", "demo.py", "--dry"])
+        assert result.exit_code == 0
+        assert "Dry Run" in result.stdout
+        assert "demo.py" in result.stdout
+        assert "test_name" in result.stdout
+        assert "A, B, C, D" in result.stdout
+        create_session.assert_not_called()
+        get_portfolio.assert_not_called()
+
+
+def test_trading_run_dry_overrides_yes(runner):
+    with (
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
+        patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
+    ):
+        get_backtest.return_value = _sample_backtest()
+        result = runner(cli, ["trading", "run", "test_name", "demo.py", "--dry", "--yes"])
+        assert result.exit_code == 0
+        assert "Dry Run" in result.stdout
+        create_session.assert_not_called()
+        get_portfolio.assert_not_called()
+
+
+def test_trading_run_requires_confirmation(runner):
+    with _mock_live_trading() as mocks:
+        result = runner(cli, ["trading", "run", "test_name", "demo.py"], input="n\n")
+        assert result.exit_code == 0
+        mocks["place_orders"].assert_not_called()
+
+
+def test_trading_run_confirm_places(runner):
+    with _mock_live_trading() as mocks:
+        result = runner(cli, ["trading", "run", "test_name", "demo.py"], input="y\n")
+        assert result.exit_code == 0
+        mocks["place_orders"].assert_called_once()
+
+
+def test_trading_run_no_periods(runner):
+    with (
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
+        patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
+    ):
+        get_backtest.return_value = backtest_pb2.Backtest(name="empty")
+        result = runner(cli, ["trading", "run", "empty", "demo.py", "--yes"])
+        assert result.exit_code == 0
+        assert "has no periods" in result.stdout
+        create_session.assert_not_called()
+        get_portfolio.assert_not_called()

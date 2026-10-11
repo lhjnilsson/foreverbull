@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -17,7 +18,10 @@ const ExecutionTable = `CREATE TABLE IF NOT EXISTS backtest_execution (
 id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
 start_date date NOT NULL,
-end_date date NOT NULL);
+end_date date NOT NULL,
+function_arguments jsonb);
+
+ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS function_arguments jsonb;
 
 
 CREATE TABLE IF NOT EXISTS backtest_execution_period (
@@ -80,18 +84,47 @@ type Execution struct {
 	Conn postgres.Query
 }
 
-func (db *Execution) Create(ctx context.Context, execution *backtest.Execution) (*backtest.Execution, error) {
+func (db *Execution) Create(ctx context.Context, execution *backtest.Execution, functions []*backtest.ExecutionFunction) (*backtest.Execution, error) {
 	var executionID string
 
+	// nil functions leaves the column null so a row matches runs stored before arguments existed.
+	// A non-nil slice, including empty, is what CreateExecution persists.
+	var arguments []byte
+	if functions != nil {
+		var err error
+		arguments, err = marshalFunctionArguments(functions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	err := db.Conn.QueryRow(ctx,
-		`INSERT INTO backtest_execution (session, start_date, end_date)
-		VALUES($1,$2,$3) RETURNING id`, execution.Session, internal_pb.DateToDateString(execution.StartDate), internal_pb.DateToDateString(execution.EndDate)).
+		`INSERT INTO backtest_execution (session, start_date, end_date, function_arguments)
+		VALUES($1,$2,$3,$4) RETURNING id`, execution.Session, internal_pb.DateToDateString(execution.StartDate), internal_pb.DateToDateString(execution.EndDate), arguments).
 		Scan(&executionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
 
 	return db.Get(ctx, executionID)
+}
+
+// GetFunctions returns the worker arguments stored at create time.
+// A null column (runs created before the column existed) is an empty list, not an error and not a default algorithm.
+func (db *Execution) GetFunctions(ctx context.Context, executionID string) ([]*backtest.ExecutionFunction, error) {
+	var raw []byte
+	err := db.Conn.QueryRow(ctx,
+		`SELECT function_arguments FROM backtest_execution WHERE id=$1`, executionID).Scan(&raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution functions: %w", err)
+	}
+
+	functions, err := unmarshalFunctionArguments(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return functions, nil
 }
 
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*backtest.Period) error {
@@ -561,4 +594,72 @@ func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*ba
 	defer rows.Close()
 
 	return db.parseRows(rows)
+}
+
+type storedParameter struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	ValueType string `json:"value_type"`
+}
+
+type storedFunction struct {
+	Name       string            `json:"name"`
+	Parameters []storedParameter `json:"parameters"`
+}
+
+func marshalFunctionArguments(functions []*backtest.ExecutionFunction) ([]byte, error) {
+	stored := make([]storedFunction, 0, len(functions))
+	for _, fn := range functions {
+		if fn == nil {
+			continue
+		}
+		params := make([]storedParameter, 0, len(fn.GetParameters()))
+		for _, p := range fn.GetParameters() {
+			if p == nil {
+				continue
+			}
+			params = append(params, storedParameter{
+				Key:       p.GetKey(),
+				Value:     p.GetValue(),
+				ValueType: p.GetValueType(),
+			})
+		}
+		stored = append(stored, storedFunction{Name: fn.GetName(), Parameters: params})
+	}
+
+	encoded, err := json.Marshal(stored)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode execution functions: %w", err)
+	}
+
+	return encoded, nil
+}
+
+func unmarshalFunctionArguments(raw []byte) ([]*backtest.ExecutionFunction, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []*backtest.ExecutionFunction{}, nil
+	}
+
+	var stored []storedFunction
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, fmt.Errorf("failed to decode execution functions: %w", err)
+	}
+
+	functions := make([]*backtest.ExecutionFunction, 0, len(stored))
+	for _, fn := range stored {
+		params := make([]*backtest.ExecutionFunction_Parameter, 0, len(fn.Parameters))
+		for _, p := range fn.Parameters {
+			params = append(params, &backtest.ExecutionFunction_Parameter{
+				Key:       p.Key,
+				Value:     p.Value,
+				ValueType: p.ValueType,
+			})
+		}
+		functions = append(functions, &backtest.ExecutionFunction{
+			Name:       fn.Name,
+			Parameters: params,
+		})
+	}
+
+	return functions, nil
 }

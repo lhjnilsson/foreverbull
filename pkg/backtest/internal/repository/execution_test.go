@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 )
 
 type ExecutionTest struct {
@@ -79,7 +80,7 @@ func (test *ExecutionTest) TestCreate() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
 
-	execution, err := executions.Create(ctx, test.execution)
+	execution, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 	test.NotNil(execution.Id)
 	test.Equal(test.storedSession.Id, execution.Session)
@@ -90,7 +91,7 @@ func (test *ExecutionTest) TestCreate() {
 func (test *ExecutionTest) TestGet() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.execution)
+	execution, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 	execution, err = executions.Get(ctx, execution.Id)
 	test.Require().NoError(err)
@@ -103,7 +104,7 @@ func (test *ExecutionTest) TestGet() {
 func (test *ExecutionTest) TestGetPeriods() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.execution)
+	execution, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 	periods, err := executions.GetPeriods(ctx, execution.Id)
 	test.Require().NoError(err)
@@ -113,7 +114,7 @@ func (test *ExecutionTest) TestGetPeriods() {
 func (test *ExecutionTest) TestUpdateSimulationDetails() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
-	execution, err := executions.Create(ctx, test.execution)
+	execution, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 	// e.StartDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
 	// e.EndDate = internal_pb.TimeToProtoTimestamp(&common_pb.Date{Year: 2024, Month: 01, Day: 01})
@@ -129,10 +130,10 @@ func (test *ExecutionTest) TestList() {
 	executions := repository.Execution{Conn: test.conn}
 	ctx := context.Background()
 
-	_, err := executions.Create(ctx, test.execution)
+	_, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 
-	_, err = executions.Create(ctx, test.execution)
+	_, err = executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.List(ctx)
@@ -152,7 +153,7 @@ func (test *ExecutionTest) TestListBySession() {
 
 	executions := repository.Execution{Conn: test.conn}
 	test.execution.Session = session1.Id
-	_, err = executions.Create(ctx, test.execution)
+	_, err = executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.ListBySession(ctx, session1.Id)
@@ -173,10 +174,56 @@ func (test *ExecutionTest) TestListByBacktest() {
 	test.execution.Session = session.Id
 
 	executions := repository.Execution{Conn: test.conn}
-	_, err = executions.Create(ctx, test.execution)
+	_, err = executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 
 	storedExecutions, err := executions.ListByBacktest(ctx, "backtest")
 	test.Require().NoError(err)
 	test.Len(storedExecutions, 1)
+}
+
+func (test *ExecutionTest) TestCreateStoresFunctionArguments() {
+	executions := repository.Execution{Conn: test.conn}
+	ctx := context.Background()
+	want := []*backtest.ExecutionFunction{
+		{
+			Name: "rebalance",
+			Parameters: []*backtest.ExecutionFunction_Parameter{
+				{Key: "fastperiod", Value: "12", ValueType: "int"},
+				{Key: "oversold", Value: "", ValueType: "int"},
+			},
+		},
+		{Name: "screen", Parameters: []*backtest.ExecutionFunction_Parameter{}},
+	}
+
+	execution, err := executions.Create(ctx, test.execution, want)
+	test.Require().NoError(err)
+
+	got, err := executions.GetFunctions(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.Len(got, len(want))
+	for i := range want {
+		test.True(proto.Equal(want[i], got[i]))
+	}
+}
+
+func (test *ExecutionTest) TestGetFunctionsEmptyWhenUnset() {
+	ctx := context.Background()
+	var id string
+	err := test.conn.QueryRow(ctx,
+		`INSERT INTO backtest_execution (session, start_date, end_date) VALUES ($1, $2, $3) RETURNING id`,
+		test.storedSession.Id, "2024-01-01", "2024-12-31").Scan(&id)
+	test.Require().NoError(err)
+
+	got, err := test.uut.GetFunctions(ctx, id)
+	test.Require().NoError(err)
+	test.NotNil(got)
+	test.Empty(got)
+
+	created, err := test.uut.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+	got, err = test.uut.GetFunctions(ctx, created.Id)
+	test.Require().NoError(err)
+	test.NotNil(got)
+	test.Empty(got)
 }

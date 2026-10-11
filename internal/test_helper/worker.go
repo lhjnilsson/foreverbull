@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Example is a no-op worker callback for tests.
 func Example(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 	return &servicePb.WorkerResponse{}
 }
@@ -22,6 +23,7 @@ type WorkerFunction struct {
 	RunLast  bool
 }
 
+// WorkerSimulator returns an algorithm description and a socket runner for tests.
 func WorkerSimulator(t *testing.T, functions ...*WorkerFunction) (*pb.Algorithm, func(socket mangos.Socket)) {
 	t.Helper()
 

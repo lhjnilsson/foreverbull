@@ -37,7 +37,7 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 		return nil, fmt.Errorf("trading is not enabled")
 	}
 
-	orders, err := ts.trading.GetOrders()
+	orders, err := ts.trading.GetOrders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting orders: %w", err)
 	}
@@ -52,7 +52,7 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 		return nil, fmt.Errorf("trading is not enabled")
 	}
 
-	portfolio, err := ts.trading.GetPortfolio()
+	portfolio, err := ts.trading.GetPortfolio(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting portfolio: %w", err)
 	}
@@ -62,10 +62,11 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 	return rsp, nil
 }
 
-func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, _stream servicePb.TradingServicer_CreateSessionServer) error {
+func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serverStream servicePb.TradingServicer_CreateSessionServer) error {
 	if ts.trading == nil {
 		return status.Error(codes.Unimplemented, "trading is not enabled")
 	}
+	ctx := serverStream.Context()
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &commonPb.Step{
 			State: commonPb.State_STATE_RUNNING,
@@ -81,34 +82,34 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, _str
 		},
 		Session: nil,
 	}
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 
-	repository := repository.Trading{Conn: ts.pgx}
-	s, err := repository.Create(_stream.Context())
+	sessions := repository.Trading{Conn: ts.pgx}
+	s, err := sessions.Create(ctx)
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
 	rsp.Session = s
 	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
-	if err := _stream.Send(rsp); err != nil {
+	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
 	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.Symbols)
 	if err != nil {
 		return err
 	}
-	ch := ts.stream.RunOrchestration(_stream.Context(), o)
+	ch := ts.stream.RunOrchestration(ctx, o)
 	for msg := range ch {
 		if err := stream.UpdateOrchestration(rsp, msg); err != nil {
 			return fmt.Errorf("error updating orchestration: %w", err)
 		}
-		rsp.Session, err = repository.Get(_stream.Context(), s.Id)
+		rsp.Session, err = sessions.Get(ctx, s.Id)
 		if err != nil {
 			return err
 		}
-		if err := _stream.Send(rsp); err != nil {
+		if err := serverStream.Send(rsp); err != nil {
 			return fmt.Errorf("error sending response: %w", err)
 		}
 	}

@@ -3,10 +3,12 @@ package command
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/service/stream"
@@ -22,7 +24,7 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		return fmt.Errorf("db dependency casting failed")
 	}
 
-	container := message.MustGet(dependency.ContainerDep).(container.Engine)
+	runtime := message.MustGet(dependency.ContainerDep).(container.Engine)
 
 	command := ss.ServiceStartCommand{}
 
@@ -41,10 +43,20 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 		}
 	}
 
+	provider := strings.TrimSpace(command.OHLCProvider)
+	if provider == "" && strings.TrimSpace(command.Backtest) != "" {
+		stored, getErr := backtest.NewStore(postgres).GetBacktest(ctx, strings.TrimSpace(command.Backtest))
+		if getErr != nil {
+			return fmt.Errorf("error getting backtest %s: %w", command.Backtest, getErr)
+		}
+		provider = strings.TrimSpace(stored.GetProvider())
+	}
+	ctx = container.WithOHLCProvider(ctx, provider)
+
 	/*extraLabels := map[string]string{
 	"orchestration_id": message.GetOrchestrationID(),
 	}*/
-	_, err = container.Start(ctx, command.Image, command.InstanceID)
+	_, err = runtime.Start(ctx, command.Image, command.InstanceID)
 	if err != nil {
 		return fmt.Errorf("error starting container: %w", err)
 	}

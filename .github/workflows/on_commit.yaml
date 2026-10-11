@@ -1,4 +1,8 @@
 name: "on commit jobs"
+# Kind/Helm e2e is not run here (local: task test:integration / task env).
+# Cluster smoke lives in kind_e2e.yaml (workflow_dispatch + push to main).
+# Go backtest tests tagged //go:build integration call container.NewEngine
+# and need a cluster; they stay off this workflow.
 on:
   push:
     branches-ignore:
@@ -13,11 +17,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22
+          go-version-file: go.mod
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test $(go list ./... | grep -v /tests/) -coverprofile=coverage.txt -covermode=atomic -timeout 180s
+        run: go test ./pkg/... ./internal/... -coverprofile=coverage.txt -covermode=atomic -timeout 180s
         env:
           DISABLE_LOKI_LOGGING: true
       - name: Archive code coverage results
@@ -35,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -43,11 +47,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install system dependencies (for TA-Lib(zipline))
+        working-directory: .
         run: |
           curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
           tar -xzf ta-lib-0.6.4-src.tar.gz
           cd ta-lib-0.6.4/
-          ./configure 
+          ./configure
           sudo make &&
           sudo make install &&
           sudo ldconfig
@@ -57,15 +62,64 @@ jobs:
         run: uv sync --all-packages --all-extras
       - name: Lint
         run: |
-          uvx ruff check
-          uvx ruff format --check
+          uvx ruff@0.17.0 check
+          uvx ruff@0.17.0 format --check
           uvx pyright
       - name: Unittest
-        run: | 
+        run: |
           uv run pytest tests/
           uv run pytest zipline/
           uv run pytest cli/
           uv run pytest testing/
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint and template chart
+        run: bash deploy/helm/check-chart.sh
+
+  proto-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Pin the same generators that produced the committed pb tree:
+      # buf 1.26.1, protoc 27.1 (python/pyi), protoc-gen-go v1.31.0,
+      # protoc-gen-go-grpc v1.5.1. Python gRPC is buf.build/grpc/python:v1.71.0.
+      - name: Install protoc
+        env:
+          PROTOC_VERSION: "27.1"
+        run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip" -o /tmp/protoc.zip
+          sudo unzip -o /tmp/protoc.zip -d /usr/local bin/protoc "include/*"
+          protoc --version
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          version: "1.26.1"
+          github_token: ${{ github.token }}
+      - name: Install Go protobuf plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.31.0
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      - name: Generate protobuf and fail if dirty
+        run: task proto:check
 
   build-docker-foreverbull:
     runs-on: ubuntu-latest
@@ -90,9 +144,6 @@ jobs:
   build-docker-grafana:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: ./grafana
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -102,6 +153,9 @@ jobs:
         with:
           context: grafana
           file: ./grafana/Dockerfile
+          # COPY --from=foreverbull is the repo root (go.mod and pkg/), not an image.
+          build-contexts: |
+            foreverbull=${{ github.workspace }}
           tags: lhjnilsson/fb-grafana:on_commit
           outputs: type=docker,dest=/tmp/fb_grafana.tar
       - name: Upload Grafana
@@ -110,40 +164,6 @@ jobs:
           name: fb-grafana
           path: /tmp/fb_grafana.tar
           retention-days: 1
-
-  go-module-tests:
-    needs: [build-docker-foreverbull, build-docker-zipline]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Download zipline
-        uses: actions/download-artifact@v4
-        with:
-          name: zipline
-          path: /tmp
-      - name: Load zipline
-        run: docker load -i /tmp/zipline.tar
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22
-      - name: Integration Tests
-        run: go test -timeout 300s -run TestModule  ./... -p 1
-        env:
-          ALPACA_MARKETS_API_KEY: ${{ secrets.ALPACA_MARKETS_API_KEY }}
-          ALPACA_MARKETS_API_SECRET: ${{ secrets.ALPACA_MARKETS_API_SECRET }}
-          ALPACA_MARKETS_BASE_URL: ${{ secrets.ALPACA_MARKETS_BASE_URL }}
-          IMAGES: lhjnilsson/parallel-example:on_commit,lhjnilsson/non-parallel-example:on_commit,lhjnilsson/multistep-with-namespace-example:on_commit
-          BACKTEST_IMAGE: lhjnilsson/zipline:on_commit
-          HOSTNAME: host.docker.internal
-          LOG_LEVEL: info
-          DISABLE_LOKI_LOGGING: true
-      - name: Sleep for 20 seconds to make all containers stop
-        run: sleep 20s
-        shell: bash
 
   build-python-packages:
     runs-on: ubuntu-latest
@@ -155,44 +175,35 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
       - name: Install uv
         uses: astral-sh/setup-uv@v6
       - name: Build
         run: uv build --all-packages
-      - name: Upload foreverbull
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull-0.0.0-py3-none-any.whl
-          retention-days: 1
-      - name: Upload foreverbull_testing
-        uses: actions/upload-artifact@v4
-        with:
-          name: foreverbull_testing-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull_testing-0.0.0-py3-none-any.whl
-          retention-days: 1
-      - name: Upload foreverbull_cli
-        uses: actions/upload-artifact@v4
-        with:
-          name: foreverbull_cli-0.0.0-py3-none-any.whl
-          path: client/dist/foreverbull_cli-0.0.0-py3-none-any.whl
+          name: dist
+          path: client/dist
           retention-days: 1
 
   build-docker-zipline:
     needs: [build-python-packages]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Download foreverbull pypi package
+      - name: Download Python packages
         uses: actions/download-artifact@v4
         with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: client
+          name: dist
+          path: /tmp/pypi
+      - name: Stage foreverbull wheel
+        run: |
+          set -euo pipefail
+          wheel="$(find /tmp/pypi -name 'foreverbull-0.0.0-py3-none-any.whl' -print -quit)"
+          test -s "${wheel}"
+          cp "${wheel}" client/foreverbull-0.0.0-py3-none-any.whl
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build Zipline
@@ -210,233 +221,3 @@ jobs:
           name: zipline
           path: /tmp/zipline.tar
           retention-days: 1
-
-  end-to-end-tests:
-    if: false
-    needs:
-      [
-        build-docker-foreverbull,
-        build-docker-zipline,
-        build-python-packages,
-        build-docker-grafana,
-      ]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Download foreverbull
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull
-          path: /tmp
-      - name: Download zipline
-        uses: actions/download-artifact@v4
-        with:
-          name: zipline
-          path: /tmp
-      - name: Download Grafana
-        uses: actions/download-artifact@v4
-        with:
-          name: fb-grafana
-          path: /tmp
-      - name: Load zipline
-        run: docker load -i /tmp/zipline.tar
-      - name: load foreverbull
-        run: docker load -i /tmp/foreverbull.tar
-      - name: load fb-grafana
-        run: docker load -i /tmp/fb_grafana.tar
-      - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download foreverbull-cli pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull_cli-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download foreverbull_testing pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull_testing-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download example_algorithms
-        uses: actions/download-artifact@v4
-        with:
-          name: example_algorithms
-          path: /tmp/example_algorithms
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install foreverbull and foreverbull_testing
-        run: |
-          pip install /tmp/foreverbull-0.0.0-py3-none-any.whl
-          pip install /tmp/foreverbull_cli-0.0.0-py3-none-any.whl
-          pip install /tmp/foreverbull_testing-0.0.0-py3-none-any.whl
-      - name: Install example algorithms dependencies
-        run: |
-          curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
-          tar -xzf ta-lib-0.6.4-src.tar.gz
-          cd ta-lib-0.6.4/
-          ./configure --prefix=/usr
-          make
-          sudo make install
-          apt upgrade -y
-          pip install ta-lib
-      - name: Create environment
-        run: |
-          fbenv create
-        env:
-          VERSION: on_commit
-      - name: create backtest
-        run: fbull backtest create /tmp/example_algorithms/nasdaq.json
-      - name: ingest
-        run: fbull backtest ingest
-      - name: Run backtest as pytest
-        working-directory: /tmp/example_algorithms
-        env:
-          PYTHONPATH: /tmp/example_algorithms/src
-        run: |
-          python -m pytest -vs
-      - name: Sleep for 20 seconds to make all containers stop
-        run: sleep 20s
-        shell: bash
-
-      - name: Collect docker logs on failure
-        if: failure()
-        uses: jwalton/gh-docker-logs@v2
-        with:
-          dest: "/tmp/docker_logs"
-      - name: Tar logs
-        if: failure()
-        run: tar cvzf /tmp/docker_logs.tgz /tmp/docker_logs
-      - name: Upload logs to GitHub
-        if: failure()
-        uses: actions/upload-artifact@master
-        with:
-          name: end_to_end.tgz
-          path: /tmp/docker_logs.tgz
-
-      - name: Stop Environment
-        run: foreverbull env stop
-        continue-on-error: true
-
-  run-manual-backtest:
-    if: false 
-    needs:
-      [
-        build-docker-foreverbull,
-        build-docker-zipline,
-        build-python-packages,
-        build-docker-grafana,
-      ]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Download foreverbull
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull
-          path: /tmp
-      - name: Download zipline
-        uses: actions/download-artifact@v4
-        with:
-          name: zipline
-          path: /tmp
-      - name: Download Grafana
-        uses: actions/download-artifact@v4
-        with:
-          name: fb-grafana
-          path: /tmp
-      - name: Load zipline
-        run: docker load -i /tmp/zipline.tar
-      - name: load foreverbull
-        run: docker load -i /tmp/foreverbull.tar
-      - name: load grafana
-        run: docker load -i /tmp/fb_grafana.tar
-      - name: Download foreverbull pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download foreverbull-cli pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull_cli-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download foreverbull_testing pypi package
-        uses: actions/download-artifact@v4
-        with:
-          name: foreverbull_testing-0.0.0-py3-none-any.whl
-          path: /tmp
-      - name: Download example_algorithms
-        uses: actions/download-artifact@v4
-        with:
-          name: example_algorithms
-          path: /tmp/example_algorithms
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install foreverbull and foreverbull_testing
-        run: |
-          pip install /tmp/foreverbull-0.0.0-py3-none-any.whl
-          pip install /tmp/foreverbull_cli-0.0.0-py3-none-any.whl
-          pip install /tmp/foreverbull_testing-0.0.0-py3-none-any.whl
-      - name: Create environment
-        run: |
-          fbenv create
-        env:
-          VERSION: on_commit
-      - name: create backtest
-        run: fbull backtest create /tmp/example_algorithms/nasdaq.json
-      - name: ingest
-        run: fbull backtest ingest
-      - name: Run backtest as pytest
-        working-directory: /tmp/example_algorithms
-        env:
-          PYTHONPATH: /tmp/example_algorithms/src
-        run: |
-          fbull backtest run nasdaq /tmp/example_algorithms/src/example_algorithms/parallel.py
-
-      - name: Collect docker logs on failure
-        if: failure()
-        uses: jwalton/gh-docker-logs@v2
-        with:
-          dest: "/tmp/manual_backtest_logs"
-      - name: Tar logs
-        if: failure()
-        run: tar cvzf /tmp/manual_backtest_logs.tgz /tmp/manual_backtest_logs
-      - name: Upload logs to GitHub
-        if: failure()
-        uses: actions/upload-artifact@master
-        with:
-          name: run_manual_backtest.tgz
-          path: /tmp/manual_backtest_logs.tgz
-
-      - name: Sleep for 20 seconds to make all containers stop
-        run: sleep 20s
-        shell: bash
-      - name: Stop Environment
-        run: foreverbull env stop
-        continue-on-error: true

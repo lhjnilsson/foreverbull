@@ -1,11 +1,14 @@
 import logging
 import os
 
+from typing import Annotated
+
 import typer
 
 from rich.logging import RichHandler
 
 from foreverbull_cli.bull.backtest import backtest
+from foreverbull_cli.bull.strategy import strategy
 from foreverbull_cli.bull.trading import trading
 from foreverbull_cli.output import console
 
@@ -13,28 +16,30 @@ from foreverbull_cli.output import console
 cli = typer.Typer()
 
 cli.add_typer(backtest, name="backtest")
+cli.add_typer(strategy, name="strategy")
 cli.add_typer(trading, name="trading")
+
+_LOG_LEVELS = {
+    0: "ERROR",
+    1: "WARNING",
+    2: "INFO",
+    3: "DEBUG",
+}
+
+
+def _logging_level(verbose: int) -> str:
+    return _LOG_LEVELS.get(verbose, "DEBUG")
 
 
 @cli.callback()
 def setup_logging(
-    ctx: typer.Context,
-    verbose: bool = typer.Option(False, "--verbose", "-v"),
-    very_verbose: bool = typer.Option(False, "--very-verbose", "-vv"),
-    debug: bool = typer.Option(False, "-vvv"),
+    verbose: Annotated[
+        int,
+        typer.Option("--verbose", "-v", count=True, help="Increase logging verbosity; repeat for more detail"),
+    ] = 0,
 ):
-    if verbose:
-        level = "WARNING"
-        os.environ["LOGGING_LEVEL"] = "WARNING"
-    elif very_verbose:
-        level = "INFO"
-        os.environ["LOGGING_LEVEL"] = "INFO"
-    elif debug:
-        level = "DEBUG"
-        os.environ["LOGGING_LEVEL"] = "DEBUG"
-    else:
-        level = "ERROR"
-        os.environ["LOGGING_LEVEL"] = "ERROR"
+    level = _logging_level(verbose)
+    os.environ["LOGGING_LEVEL"] = level
     logging.basicConfig(
         level=level,
         format="%(message)s",

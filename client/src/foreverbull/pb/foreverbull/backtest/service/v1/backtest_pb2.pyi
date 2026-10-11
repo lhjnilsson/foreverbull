@@ -23,16 +23,20 @@ class ListBacktestsResponse(_message.Message):
 class CreateBacktestRequest(_message.Message):
     __slots__ = ("etf", "backtest")
     class CreateFromETF(_message.Message):
-        __slots__ = ("name", "start_date", "end_date", "base_etf")
+        __slots__ = ("name", "start_date", "end_date", "base_etf", "provider", "profile")
         NAME_FIELD_NUMBER: _ClassVar[int]
         START_DATE_FIELD_NUMBER: _ClassVar[int]
         END_DATE_FIELD_NUMBER: _ClassVar[int]
         BASE_ETF_FIELD_NUMBER: _ClassVar[int]
+        PROVIDER_FIELD_NUMBER: _ClassVar[int]
+        PROFILE_FIELD_NUMBER: _ClassVar[int]
         name: str
         start_date: _common_pb2.Date
         end_date: _common_pb2.Date
         base_etf: str
-        def __init__(self, name: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., base_etf: _Optional[str] = ...) -> None: ...
+        provider: str
+        profile: str
+        def __init__(self, name: _Optional[str] = ..., start_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., end_date: _Optional[_Union[_common_pb2.Date, _Mapping]] = ..., base_etf: _Optional[str] = ..., provider: _Optional[str] = ..., profile: _Optional[str] = ...) -> None: ...
     class CreateFromBacktest(_message.Message):
         __slots__ = ("backtest",)
         BACKTEST_FIELD_NUMBER: _ClassVar[int]
@@ -133,9 +137,11 @@ class GetExecutionRequest(_message.Message):
     def __init__(self, execution_id: _Optional[str] = ...) -> None: ...
 
 class GetExecutionResponse(_message.Message):
-    __slots__ = ("execution", "periods")
+    __slots__ = ("execution", "periods", "functions")
     EXECUTION_FIELD_NUMBER: _ClassVar[int]
     PERIODS_FIELD_NUMBER: _ClassVar[int]
+    FUNCTIONS_FIELD_NUMBER: _ClassVar[int]
     execution: _execution_pb2.Execution
     periods: _containers.RepeatedCompositeFieldContainer[_execution_pb2.Period]
-    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ...) -> None: ...
+    functions: _containers.RepeatedCompositeFieldContainer[_execution_pb2.ExecutionFunction]
+    def __init__(self, execution: _Optional[_Union[_execution_pb2.Execution, _Mapping]] = ..., periods: _Optional[_Iterable[_Union[_execution_pb2.Period, _Mapping]]] = ..., functions: _Optional[_Iterable[_Union[_execution_pb2.ExecutionFunction, _Mapping]]] = ...) -> None: ...

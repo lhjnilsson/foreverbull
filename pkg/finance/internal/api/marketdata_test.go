@@ -14,22 +14,24 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type MarketdataTest struct {
 	suite.Suite
 
 	pgx        *pgxpool.Pool
-	marketdata supplier.Marketdata
+	marketdata *supplier.MockMarketdata
 
 	listener *bufconn.Listener
 	server   *grpc.Server
@@ -54,8 +56,7 @@ func (suite *MarketdataTest) SetupTest() {
 	suite.pgx, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	suite.Require().NoError(err)
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
-	suite.marketdata, err = marketdata.NewYahooClient()
-	suite.Require().NoError(err)
+	suite.marketdata = supplier.NewMockMarketdata(suite.T())
 
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
@@ -83,6 +84,8 @@ func (suite *MarketdataTest) SetupTest() {
 }
 
 func (suite *MarketdataTest) TestGetAsset() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+
 	req := &servicePb.GetAssetRequest{Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "AAPL"}}
 	rsp, err := suite.client.GetAsset(context.Background(), req)
 	suite.Require().NoError(err)
@@ -92,6 +95,10 @@ func (suite *MarketdataTest) TestGetAsset() {
 }
 
 func (suite *MarketdataTest) TestGetIndex() {
+	suite.marketdata.On("GetIndex", "^GDAXI").Return([]*pb.Asset{
+		{Symbol: "ADS.DE", Name: "Adidas AG"},
+	}, nil)
+
 	req := &servicePb.GetIndexRequest{Symbol: "^GDAXI"}
 	rsp, err := suite.client.GetIndex(context.Background(), req)
 	suite.Require().NoError(err)
@@ -100,6 +107,19 @@ func (suite *MarketdataTest) TestGetIndex() {
 }
 
 func (suite *MarketdataTest) TestDownloadHistoricalData() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetAsset", "NOCORP").Return(nil, errors.New("not found"))
+	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.Now(),
+			Open:      1,
+			High:      2,
+			Low:       0.5,
+			Close:     1.5,
+			Volume:    100,
+		},
+	}, nil)
+
 	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
@@ -126,6 +146,19 @@ func (suite *MarketdataTest) TestDownloadHistoricalData() {
 }
 
 func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetAsset", "NOCORP").Return(nil, errors.New("not found"))
+	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.Now(),
+			Open:      1,
+			High:      2,
+			Low:       0.5,
+			Close:     1.5,
+			Volume:    100,
+		},
+	}, nil)
+
 	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},

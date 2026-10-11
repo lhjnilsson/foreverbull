@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 )
 
 type BacktestServerTest struct {
@@ -124,7 +125,7 @@ func (test *BacktestServerTest) createExecution(session string) *backtest.Execut
 		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
 	}
 
-	execution, err := executions.Create(context.TODO(), &e)
+	execution, err := executions.Create(context.TODO(), &e, nil)
 	test.Require().NoError(err)
 	test.Require().NotNil(execution)
 
@@ -395,5 +396,38 @@ func (test *BacktestServerTest) TestGetExecution() {
 		test.Require().NoError(err)
 		test.NotNil(resp)
 		test.Equal(execution, resp.Execution)
+		test.Empty(resp.GetFunctions())
+	})
+	test.Run("stored arguments", func() {
+		backtestRow := test.createBacktest("test_1")
+		session := test.createSession(backtestRow.Name)
+		want := []*backtest.ExecutionFunction{
+			{
+				Name: "rebalance",
+				Parameters: []*backtest.ExecutionFunction_Parameter{
+					{Key: "fastperiod", Value: "12", ValueType: "int"},
+					{Key: "cash_reserve", Value: "0.05", ValueType: "float"},
+				},
+			},
+		}
+		executions := repository.Execution{Conn: test.pgx}
+		execution, err := executions.Create(context.TODO(), &backtest.Execution{
+			Session:   session.Id,
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
+		}, want)
+		test.Require().NoError(err)
+
+		resp, err := test.client.GetExecution(context.Background(), &servicePb.GetExecutionRequest{
+			ExecutionId: execution.Id,
+		})
+		test.Require().NoError(err)
+		test.Equal(execution.Id, resp.GetExecution().GetId())
+		test.Equal(session.Id, resp.GetExecution().GetSession())
+		test.Equal(backtestRow.Name, resp.GetExecution().GetBacktest())
+		test.Len(resp.GetFunctions(), len(want))
+		for i := range want {
+			test.True(proto.Equal(want[i], resp.GetFunctions()[i]))
+		}
 	})
 }

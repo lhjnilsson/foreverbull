@@ -1,14 +1,16 @@
 [project]
 name = "foreverbull-cli"
 version = "0.0.0"
-description = "Add your description here"
+description = "CLI for the Foreverbull broker (fbull) and Kind/Helm environments (fbenv)"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "typer[all]", "docker", "pyyaml"
+    "foreverbull",
+    "typer[all]",
+    "pyyaml",
 ]
 
 [project.scripts]
@@ -18,3 +20,6 @@ fbenv = "foreverbull_cli.env.cli:cli"
 [build-system]
 requires = ["uv_build>=0.8.4,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+foreverbull = { workspace = true }

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from typing import Any
-from typing import Union
 
 import pandas
 
@@ -36,7 +35,7 @@ class Asset(BaseAsset):
         start: str | datetime,
         end: str | datetime,
         symbol: str,
-        metrics: dict[str, Any] = {},
+        metrics: dict[str, Any] | None = None,
     ):
         self._start = start
         self._end = end
@@ -47,9 +46,9 @@ class Asset(BaseAsset):
             AND symbol='{symbol}'""",
             db,
         )
-        self.metrics = metrics
+        self.metrics = {} if metrics is None else metrics
 
-    def get_metric[T: (int, float, bool, str)](self, key: str) -> Union[T, None]:
+    def get_metric[T: (int, float, bool, str)](self, key: str) -> T | None:
         try:
             return self.metrics[key]
         except KeyError:
@@ -74,7 +73,7 @@ class Assets(BaseAssets):
         start: str | datetime,
         end: str | datetime,
         symbols: list[str],
-        metrics: dict[str, Any] = {},
+        metrics: dict[str, Any] | None = None,
     ):
         self._db = db
         self._start = start
@@ -87,7 +86,7 @@ class Assets(BaseAssets):
         )
         self._stock_data.set_index(["symbol", "time"], inplace=True)
         self._stock_data.sort_index(inplace=True)
-        self.metrics = metrics
+        self.metrics = {} if metrics is None else metrics
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
         try:
@@ -125,7 +124,7 @@ class AssetManager:
         start: str | datetime,
         end: str | datetime,
         symbols: list[str],
-        metrics: dict[str, Any] = {},
+        metrics: dict[str, Any] | None = None,
     ) -> Assets:
         self._vop(None, start, end, symbols)
         return Assets(self._db, start, end, symbols, metrics)
@@ -139,8 +138,10 @@ class PortfolioManager:
         self,
         dt: datetime | None = None,
         portfolio_value: float = 100_000,
-        positions: list[Position] = [],
+        positions: list[Position] | None = None,
     ) -> Portfolio:
+        if positions is None:
+            positions = []
         proto_positions = []
         for position in positions:
             proto_positions.append(

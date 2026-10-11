@@ -29,11 +29,14 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	repository := repository.Trading{Conn: db}
 
-	trading := msg.MustGet(dependency.TradingDep).(supplier.Trading)
+	trading, _ := msg.MustGet(dependency.TradingDep).(supplier.Trading)
 
 	_, err = repository.Get(ctx, cmd.Id)
 	if err != nil {
 		return fmt.Errorf("error getting session: %w", err)
+	}
+	if trading == nil {
+		return fmt.Errorf("trading is not enabled")
 	}
 
 	server, activity, err := api.NewGRPCSessionServer(trading)

@@ -1,8 +1,8 @@
 module github.com/lhjnilsson/foreverbull-grafana-datasource
 
-go 1.23
+go 1.24
 
-toolchain go1.23.2
+toolchain go1.24.5
 
 require (
 	github.com/grafana/grafana-plugin-sdk-go v0.263.0
@@ -10,6 +10,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.70.0
 )
+
+replace github.com/lhjnilsson/foreverbull => ../..
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.4-20241127180247-a33202765966.1 // indirect

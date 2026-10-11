@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -29,7 +31,7 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 	}
 }
 
-func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
 	identifier := req.GetIdentifier()
 	if identifier == nil {
 		return nil, fmt.Errorf("identifier is nil")
@@ -68,7 +70,7 @@ func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAsse
 	}, nil
 }
 
-func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
+func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", err)
@@ -79,8 +81,82 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 	}, nil
 }
 
-func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, _stream servicePb.Marketdata_DownloadHistoricalDataServer) error {
-	ctx := _stream.Context()
+const downloadWorkers = 10
+
+func sendDownloadResponse(serverStream servicePb.Marketdata_DownloadHistoricalDataServer, rsp *servicePb.DownloadHistoricalDataResponse) {
+	if err := serverStream.Send(rsp); err != nil {
+		log.Err(err).Msg("error sending response")
+	}
+}
+
+func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
+	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
+	rsp.Error = err.Error()
+}
+
+func (fs *MarketdataServer) downloadSymbol(
+	ctx context.Context,
+	serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
+	symbol string,
+	start time.Time,
+	end *time.Time,
+	provider string,
+	assetRepo repository.Asset,
+	ohlcRepo repository.OHLC,
+	bars supplier.Marketdata,
+) {
+	rsp := &servicePb.DownloadHistoricalDataResponse{
+		Symbol: symbol,
+		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
+	}
+
+	asset, err := fs.marketdata.GetAsset(symbol)
+	if err != nil {
+		failDownload(rsp, err)
+		sendDownloadResponse(serverStream, rsp)
+		return
+	}
+
+	if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
+		failDownload(rsp, err)
+		sendDownloadResponse(serverStream, rsp)
+		return
+	}
+
+	ohlcs, err := bars.GetOHLC(asset.Symbol, start, end)
+	if err != nil {
+		failDownload(rsp, err)
+		sendDownloadResponse(serverStream, rsp)
+		return
+	}
+
+	for _, ohlc := range ohlcs {
+		if err := ohlcRepo.Store(ctx, provider, asset.Symbol, ohlc.Timestamp.AsTime(),
+			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
+			failDownload(rsp, err)
+			sendDownloadResponse(serverStream, rsp)
+			continue
+		}
+	}
+
+	sendDownloadResponse(serverStream, rsp)
+}
+
+func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
+	ctx := serverStream.Context()
+
+	provider, err := marketdata.NormalizeProvider(req.GetProvider())
+	if err != nil {
+		return err
+	}
+	profilesFile := environment.GetTradingProfilesFile()
+	if err := marketdata.ValidatePriceSource(provider, req.GetProfile(), profilesFile); err != nil {
+		return err
+	}
+	bars, err := marketdata.OHLCClient(provider, req.GetProfile(), profilesFile, fs.marketdata)
+	if err != nil {
+		return err
+	}
 
 	start := internal_pb.DateToTime(req.GetStartDate())
 	var end *time.Time
@@ -93,56 +169,13 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
 	var wg sync.WaitGroup
-	assetCh := make(chan string, 10)
-	for range 10 {
+	assetCh := make(chan string, downloadWorkers)
+	for range downloadWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for symbol := range assetCh {
-				rsp := &servicePb.DownloadHistoricalDataResponse{
-					Symbol: symbol,
-					Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
-				}
-				asset, err := fs.marketdata.GetAsset(symbol)
-				if err != nil {
-					rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
-					rsp.Error = err.Error()
-					if err := _stream.Send(rsp); err != nil {
-						log.Err(err).Msg("error sending response")
-					}
-					continue
-				}
-				if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
-					rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
-					rsp.Error = err.Error()
-					if err := _stream.Send(rsp); err != nil {
-						log.Err(err).Msg("error sending response")
-					}
-					continue
-				}
-				ohlcs, err := fs.marketdata.GetOHLC(asset.Symbol, start, end)
-				if err != nil {
-					rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
-					rsp.Error = err.Error()
-					if err := _stream.Send(rsp); err != nil {
-						log.Err(err).Msg("error sending response")
-					}
-					continue
-				}
-				for _, ohlc := range ohlcs {
-					if err := ohlcRepo.Store(ctx, asset.Symbol, ohlc.Timestamp.AsTime(),
-						ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
-						rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
-						rsp.Error = err.Error()
-						if err := _stream.Send(rsp); err != nil {
-							log.Err(err).Msg("error sending response")
-						}
-						continue
-					}
-				}
-				if err := _stream.Send(rsp); err != nil {
-					log.Err(err).Msg("error sending response")
-				}
+				fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars)
 			}
 		}()
 	}

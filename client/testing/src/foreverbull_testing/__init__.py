@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from foreverbull-testing!")
+"""Pytest plugin and fixtures for Foreverbull algorithm tests."""

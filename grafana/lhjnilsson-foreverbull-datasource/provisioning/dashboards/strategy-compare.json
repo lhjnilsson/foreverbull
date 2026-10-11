@@ -1,0 +1,491 @@
+{
+  "uid": "fb-strategy-compare",
+  "title": "Strategy compare",
+  "description": "Overlay two executions. Cascade strategy → version to narrow the pickers, or leave those on All and pick any two runs. The time axis is the exact union of those runs, earliest timestamp through latest, with no pad. Saved time now/now is not kept once the runs are known.",
+  "tags": ["foreverbull", "strategy"],
+  "schemaVersion": 40,
+  "refresh": "",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "timezone": "utc",
+  "weekStart": "",
+  "time": {
+    "from": "now",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": false,
+    "refresh_intervals": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Backtest execution",
+      "tooltip": "Inspect a single run",
+      "type": "link",
+      "url": "/d/ee9ep4jxtwkcgf?var-execution=${left}"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "strategy",
+        "label": "Strategy",
+        "description": "Strategy name. All leaves the execution lists unfiltered.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "strategies",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "strategies"
+        },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": true,
+        "allValue": "",
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "version",
+        "label": "Version",
+        "description": "Strategy version id, filtered by $strategy.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "versions ($strategy)",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "versions",
+          "strategy": "$strategy"
+        },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": true,
+        "allValue": "",
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "left",
+        "label": "Left",
+        "description": "First execution to overlay. Value is the execution UUID.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "executions ($strategy, $version)",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "executions",
+          "strategy": "$strategy",
+          "version": "$version"
+        },
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "right",
+        "label": "Right",
+        "description": "Second execution to overlay. Value is the execution UUID.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "executions ($strategy, $version)",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "executions",
+          "strategy": "$strategy",
+          "version": "$version"
+        },
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Portfolio value",
+      "description": "Equity curve for the left and right runs. Dollars, thicker line, light fill. Not on one axis with a return series.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 3,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$left" },
+          "metrics": [{ "name": "portfolio_value" }]
+        },
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "B",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$right" },
+          "metrics": [{ "name": "portfolio_value" }]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Last Sharpe / drawdown",
+      "description": "Last non-null sharpe (ratio), max_drawdown (fraction), and portfolio_value (dollars). Each series keeps its own unit.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "sharpe" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_drawdown" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "portfolio_value" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "reduceFields",
+            "reducers": ["lastNotNull"]
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$left" },
+          "metrics": [
+            { "name": "sharpe" },
+            { "name": "max_drawdown" },
+            { "name": "portfolio_value" }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "B",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$right" },
+          "metrics": [
+            { "name": "sharpe" },
+            { "name": "max_drawdown" },
+            { "name": "portfolio_value" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Drawdown",
+      "description": "Underwater max drawdown for the left and right runs, filled to zero. A fraction: 0.01 is 1%. Not on the portfolio value axis. Series colors stay distinct so the two runs can be told apart.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMax": 0,
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 35,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "rgba(204, 204, 220, 0.65)", "value": 0 }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$left" },
+          "metrics": [{ "name": "max_drawdown" }]
+        },
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "B",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$right" },
+          "metrics": [{ "name": "max_drawdown" }]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Sharpe",
+      "description": "Overlay of left and right execution Sharpe. A ratio, not a percent.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": {
+        "type": "lhjnilsson-foreverbull-datasource",
+        "uid": "foreverbull"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$left" },
+          "metrics": [{ "name": "sharpe" }]
+        },
+        {
+          "datasource": {
+            "type": "lhjnilsson-foreverbull-datasource",
+            "uid": "foreverbull"
+          },
+          "refId": "B",
+          "queryType": "GetExecutionMetric",
+          "execution": { "id": "$right" },
+          "metrics": [{ "name": "sharpe" }]
+        }
+      ]
+    }
+  ]
+}

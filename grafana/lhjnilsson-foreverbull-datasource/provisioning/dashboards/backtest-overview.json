@@ -1,0 +1,321 @@
+{
+  "uid": "fb-backtest-overview",
+  "title": "Backtest overview",
+  "description": "Leaderboard of executions whose start_date..end_date overlaps the time picker. Saved time is the last two years, so older runs stay hidden until the range is widened. Figures are the last stored period and are not rescaled. Return and drawdown are fractions (percentunit). Sharpe and Sortino are ratios (none). Ending portfolio value is currencyUSD. A row opens /d/ee9ep4jxtwkcgf?var-execution={uuid} and adds var-backtest when the name is known. That execution page still works with only var-execution.",
+  "tags": ["foreverbull", "backtest"],
+  "schemaVersion": 40,
+  "refresh": "",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "timezone": "utc",
+  "weekStart": "",
+  "time": {
+    "from": "now-2y",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": false,
+    "refresh_intervals": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Backtest execution",
+      "tooltip": "Inspect one run. Each row on this board opens that run.",
+      "type": "link",
+      "url": "/d/ee9ep4jxtwkcgf"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "backtest",
+        "label": "Backtest",
+        "description": "Optional. All includes every backtest whose executions overlap the time picker.",
+        "type": "query",
+        "datasource": {
+          "type": "lhjnilsson-foreverbull-datasource",
+          "uid": "foreverbull"
+        },
+        "definition": "backtests",
+        "query": {
+          "refId": "A",
+          "queryType": "GetExecutionMetric",
+          "source": "backtests"
+        },
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "multi": false,
+        "includeAll": true,
+        "allValue": "*",
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Runs",
+      "description": "How many executions overlap the time picker.",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "unit": "none",
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["count"], "fields": "/^Backtest$/", "values": false },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+          "refId": "A",
+          "queryType": "ListExecutionOverview",
+          "backtest": "$backtest"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Best Sharpe",
+      "description": "Highest Sharpe in the window, from the last stored period of each run. Unit none. Not rescaled.",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "unit": "none",
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["max"], "fields": "/^Sharpe$/", "values": false },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+          "refId": "A",
+          "queryType": "ListExecutionOverview",
+          "backtest": "$backtest"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Worst drawdown",
+      "description": "Most negative max drawdown in the window. A fraction: -0.01 is -1%. Not rescaled.",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "unit": "percentunit",
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["min"], "fields": "/^Max drawdown$/", "values": false },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+          "refId": "A",
+          "queryType": "ListExecutionOverview",
+          "backtest": "$backtest"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Executions",
+      "description": "One row per execution that overlaps the picker. Columns are backtest, start, end, short id, algorithm period return (percentunit), max drawdown (percentunit), Sharpe (none), Sortino (none), and ending portfolio value (currencyUSD). Values are the last stored period and are not rescaled. The row links to /d/ee9ep4jxtwkcgf?var-execution={uuid}&var-backtest={name}.",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "backtest" },
+            "properties": [
+              { "id": "displayName", "value": "Backtest" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open execution",
+                    "url": "/d/ee9ep4jxtwkcgf?var-execution=${__data.fields.execution}&var-backtest=${__data.fields.backtest}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "start" },
+            "properties": [
+              { "id": "displayName", "value": "Start" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open execution",
+                    "url": "/d/ee9ep4jxtwkcgf?var-execution=${__data.fields.execution}&var-backtest=${__data.fields.backtest}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "end" },
+            "properties": [
+              { "id": "displayName", "value": "End" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open execution",
+                    "url": "/d/ee9ep4jxtwkcgf?var-execution=${__data.fields.execution}&var-backtest=${__data.fields.backtest}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "id" },
+            "properties": [
+              { "id": "displayName", "value": "ID" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open execution",
+                    "url": "/d/ee9ep4jxtwkcgf?var-execution=${__data.fields.execution}&var-backtest=${__data.fields.backtest}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "algorithm_period_return" },
+            "properties": [
+              { "id": "displayName", "value": "Algorithm period return" },
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_drawdown" },
+            "properties": [
+              { "id": "displayName", "value": "Max drawdown" },
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sharpe" },
+            "properties": [
+              { "id": "displayName", "value": "Sharpe" },
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sortino" },
+            "properties": [
+              { "id": "displayName", "value": "Sortino" },
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "portfolio_value" },
+            "properties": [
+              { "id": "displayName", "value": "Ending portfolio value" },
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "execution" },
+            "properties": [{ "id": "custom.hidden", "value": true }]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Sharpe" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
+          "refId": "A",
+          "queryType": "ListExecutionOverview",
+          "backtest": "$backtest"
+        }
+      ]
+    }
+  ]
+}

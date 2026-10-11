@@ -1,0 +1,9 @@
+{
+  "as_of": "2023-01-31",
+  "holdings": [
+    {"isin": "US0378331005", "symbol": "AAPL", "name": "Apple Inc.", "asset_type": "Equity"},
+    {"isin": "US30303M1027", "symbol": "META", "name": "Meta Platforms Inc.", "asset_type": "Equity"},
+    {"isin": "US5949181045", "symbol": "MSFT", "name": "Microsoft Corp.", "asset_type": "Equity"},
+    {"isin": "", "symbol": "CASH_USD", "name": "USD Cash", "asset_type": "Cash"}
+  ]
+}

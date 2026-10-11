@@ -51,7 +51,10 @@ func WaitForCompletion() PublishOpt {
 			}
 
 			if state.State == pb.State_STATE_ERROR {
-				return fmt.Errorf("error: %s", state.GetError())
+				if state.GetError() == "" {
+					return errors.New("command failed")
+				}
+				return errors.New(state.GetError())
 			}
 
 			if state.State == pb.State_STATE_CANCELED {
@@ -92,7 +95,7 @@ func (nn *NATSStream) Publish(ctx context.Context, msg Message, opts ...PublishO
 		})
 	}
 	if err := grp.Wait(); err != nil {
-		return fmt.Errorf("error executing opts: %w", err)
+		return err
 	}
 	return nil
 }

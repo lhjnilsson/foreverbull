@@ -1,101 +1,132 @@
-package dependency_test
+package dependency
 
 import (
-	"context"
-	"fmt"
-	"net"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
-	"github.com/lhjnilsson/foreverbull/internal/stream"
-	"github.com/lhjnilsson/foreverbull/internal/test_helper"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
-	"github.com/lhjnilsson/foreverbull/pkg/finance"
-	"github.com/stretchr/testify/suite"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/stretchr/testify/require"
 )
 
-type BacktestTest struct {
-	suite.Suite
+func TestGetAssetsUnknownETF(t *testing.T) {
+	t.Parallel()
 
-	pool *pgxpool.Pool
-	app  *fx.App
-
-	uut dependency.ETFScraper
+	_, err := NewETFScaper().GetAssets("unknown")
+	require.ErrorContains(t, err, "ETF not found")
 }
 
-func (test *BacktestTest) SetupTest() {
-	test.uut = dependency.NewETFScaper()
+func TestGetAssetsInvalidYear(t *testing.T) {
+	t.Parallel()
 
+	_, err := NewETFScaper().GetAssets("iShares S&P 100", "not-a-year")
+	require.ErrorContains(t, err, "error parsing date")
 }
 
-func (test *BacktestTest) NoSetupTest() {
-	var err error
+func TestGetAssets(t *testing.T) {
+	t.Parallel()
 
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{
-		Postgres: true,
-		NATS:     true,
-	})
+	body, err := json.Marshal(Response{Data: [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", "US0378331005"},
+		{"CASH_USD", "USD Cash", "-", "Cash", "", "", "", "", ""},
+	}})
+	require.NoError(t, err)
 
-	test.pool, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
-	test.Require().NoError(err)
-	err = repository.Recreate(context.Background(), test.pool)
-	test.Require().NoError(err)
-	test.app = fx.New(
-		fx.Provide(
-			func() *pgxpool.Pool {
-				return test.pool
-			},
-			func() *grpc.Server {
-				return grpc.NewServer()
-			},
-		),
-		fx.Invoke(
-			func(lc fx.Lifecycle, gServer *grpc.Server) error {
-				lc.Append(fx.Hook{
-					OnStart: func(context.Context) error {
-						listener, err := net.Listen("tcp", fmt.Sprintf(":%s", environment.GetGRPCPort()))
-						if err != nil {
-							return fmt.Errorf("failed to listen: %w", err)
-						}
-						go func() {
-							if err := gServer.Serve(listener); err != nil {
-								panic(err)
-							}
-						}()
-						return nil
-					},
-					OnStop: func(context.Context) error {
-						gServer.Stop()
-						return nil
-					},
-				})
-				return nil
-			},
-		),
-		stream.Module,
-		finance.Module,
-	)
-	test.Require().NoError(test.app.Start(context.TODO()))
+	var calls atomic.Int32
+	var mu sync.Mutex
+	var lastAsOf string
+	asOfs := make(map[string]struct{})
+	tabs := make(map[string]struct{})
+	fileTypes := make(map[string]struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		q := r.URL.Query()
+		mu.Lock()
+		tabs[q.Get("tab")] = struct{}{}
+		fileTypes[q.Get("fileType")] = struct{}{}
+		asOf := q.Get("asOfDate")
+		lastAsOf = asOf
+		asOfs[asOf] = struct{}{}
+		mu.Unlock()
 
-	_, err = grpc.NewClient(environment.GetServerGRPCURL(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	test.Require().NoError(err, "failed to create grpc client")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(append([]byte("\xef\xbb\xbf"), body...))
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{
+			"iShares S&P 100": srv.URL,
+		},
+		cache:  &fsSnapshotCache{dir: t.TempDir()},
+		client: srv.Client(),
+	}
+
+	assetMap, err := scraper.GetAssets("iShares S&P 100", "2022", "2023")
+	require.NoError(t, err)
+	mu.Lock()
+	require.Equal(t, map[string]struct{}{"all": {}}, tabs)
+	require.Equal(t, map[string]struct{}{"json": {}}, fileTypes)
+	require.Equal(t, "20231231", lastAsOf)
+	require.Len(t, asOfs, 24)
+	mu.Unlock()
+	require.Less(t, int(calls.Load()), 100)
+	require.Equal(t, 24, int(calls.Load()))
+	require.Len(t, assetMap, 2)
+
+	for _, year := range []string{"2022", "2023"} {
+		assets, ok := assetMap[year]
+		require.True(t, ok)
+		require.Equal(t, []Asset{{
+			Symbol:    "AAPL",
+			Name:      "Apple Inc.",
+			Sector:    "Technology",
+			AssetType: "Equity",
+			ISIN:      "US0378331005",
+		}}, assets)
+	}
+
+	calls.Store(0)
+	assetMap, err = scraper.GetAssets("iShares S&P 100", "2022", "2023")
+	require.NoError(t, err)
+	require.Equal(t, int32(0), calls.Load())
+	require.Len(t, assetMap, 2)
 }
 
-func TestBacktest(t *testing.T) {
-	suite.Run(t, new(BacktestTest))
+func TestGetBenchmark(t *testing.T) {
+	t.Parallel()
+
+	uut := NewETFScaper()
+
+	benchmark, err := uut.GetBenchmark("iShares S&P 100")
+	require.NoError(t, err)
+	require.Equal(t, "OEF", benchmark)
+
+	_, err = uut.GetBenchmark("unknown")
+	require.ErrorContains(t, err, "ETF not found")
 }
 
-func (test *BacktestTest) TestGetAssets() {
-	assetMap, err := test.uut.GetAssets("iShares S&P 100", "2022", "2023")
-	test.Require().NoError(err)
-	test.Len(assetMap, 2)
-	_, ok := assetMap["2022"]
-	test.Require().True(ok)
-	_, ok = assetMap["2023"]
-	test.Require().True(ok)
+func TestETFCatalogSP100(t *testing.T) {
+	t.Parallel()
+
+	var sp100 ETFProduct
+	for _, product := range ETFCatalog() {
+		if product.Name == "iShares S&P 100" {
+			sp100 = product
+		}
+	}
+	require.Equal(t, "iShares S&P 100", sp100.Name)
+	require.Equal(t, "OEF", sp100.Benchmark)
+	require.Equal(t, "https://www.ishares.com/us/products/239723/ishares-sp-100-etf/1467271812596.ajax", sp100.URL)
+	require.True(t, sp100.Inception.Equal(time.Date(2000, time.October, 23, 0, 0, 0, 0, time.UTC)))
+	require.Equal(t, sp100.URL, defaultETFProducts()[sp100.Name])
+}
+
+func TestDefaultSnapshotCacheDir(t *testing.T) {
+	t.Setenv(etfSnapshotCacheEnv, filepath.Join("tmp", "etf-cache"))
+	require.Equal(t, filepath.Join("tmp", "etf-cache"), defaultSnapshotCacheDir())
 }

@@ -32,6 +32,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// WaitTillContainersAreRemoved waits until no Foreverbull service containers
+// remain on networkID, or fails t after timeout.
 func WaitTillContainersAreRemoved(t *testing.T, networkID string, timeout time.Duration) {
 	t.Helper()
 
@@ -72,9 +74,11 @@ func WaitTillContainersAreRemoved(t *testing.T, networkID string, timeout time.D
 const (
 	PostgresImage = "postgres:alpine"
 	NatsImage     = "nats:alpine"
-	MinioImage    = "minio/minio:latest"
+	MinioImage    = "pgsty/silo:RELEASE.2026-09-16T00-00-00Z"
 )
 
+// PostgresContainer starts or reuses the named Postgres test container on
+// networkID and returns a connection string to a unique database for t.
 func PostgresContainer(t *testing.T, networkID string) (ConnectionString string) {
 	t.Helper()
 
@@ -125,6 +129,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	return strings.Replace(connectionString, "to_be_substituted", dbName, 1)
 }
 
+// NATSContainer starts or reuses the named NATS test container on networkID.
 func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	t.Helper()
 
@@ -167,6 +172,7 @@ func NATSContainer(t *testing.T, networkID string) (ConnectionString string) {
 	return connectionString
 }
 
+// MinioContainer starts or reuses the named Minio test container on networkID.
 func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey, SecretKey string) {
 	t.Helper()
 
@@ -198,6 +204,7 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 	return connectionString, "minioadmin", "minioadmin"
 }
 
+// LokiLogger buffers test log lines and publishes them to Loki on cleanup.
 type LokiLogger struct {
 	mu      sync.Mutex
 	LokiURL string
@@ -272,6 +279,8 @@ func (l *LokiLogger) Publish(t *testing.T) {
 	t.Logf("Pushed %d log entries to loki", len(values))
 }
 
+// LokiContainerAndLogging starts or reuses the named Loki container on networkID
+// and routes zerolog output through it for the rest of the test.
 func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString string) {
 	t.Helper()
 
@@ -326,6 +335,7 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 	return fmt.Sprintf("http://%s:%d", host, port.Int())
 }
 
+// ZiplineContainer starts or reuses the named Zipline container on network.
 func ZiplineContainer(t *testing.T, network string) string {
 	t.Helper()
 

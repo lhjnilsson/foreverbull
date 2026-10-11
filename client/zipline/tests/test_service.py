@@ -18,7 +18,7 @@ from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2_grpc as c
 
 class TestCalendarService:
     @pytest.fixture
-    def servicer(self):
+    def servicer(self, fb_env):
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = service.CalendarService()
         calendar_service_pb2_grpc.add_CalendarServicer_to_server(servicer, server)
@@ -46,10 +46,7 @@ class TestCalendarService:
 
 class TestBacktestService:
     @pytest.fixture
-    def servicer(self, backtest_entity, fb_database):
-        _, verify = fb_database
-        verify(backtest_entity)
-
+    def servicer(self):
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = service.BacktestService()
         engine_service_pb2_grpc.add_EngineServicer_to_server(servicer, server)
@@ -70,7 +67,10 @@ class TestBacktestService:
         self,
         stub: engine_service_pb2_grpc.EngineStub,
         backtest_entity: backtest_pb2.Backtest,
+        fb_database,
     ):
+        _, verify = fb_database
+        verify(backtest_entity)
         response = stub.Ingest(
             engine_service_pb2.IngestRequest(
                 backtest=backtest_entity,
@@ -81,6 +81,7 @@ class TestBacktestService:
     def test_new_session(
         self,
         stub: engine_service_pb2_grpc.EngineStub,
+        fb_env,
     ):
         response = stub.NewSession(engine_service_pb2.NewSessionRequest(id="test123"))
         assert response.port

@@ -1,11 +1,10 @@
 import logging
 
-from typing import List
+from typing import Annotated
 
 import typer
 
 from rich.table import Table
-from typing_extensions import Annotated
 
 from foreverbull import broker
 from foreverbull import models
@@ -58,7 +57,7 @@ class PositionAndOrder:
         cls,
         positions: list[marketdata_pb2.Position],
         orders: list[marketdata_pb2.Order],
-    ) -> List["PositionAndOrder"]:
+    ) -> list["PositionAndOrder"]:
         items = []
         for position in positions:
             for order in orders:
@@ -101,15 +100,52 @@ class PositionAndOrder:
         return str(self.order.intent) if self.order is not None else "-"
 
 
+def _print_orders_table(
+    positions: list[marketdata_pb2.Position],
+    orders: list[marketdata_pb2.Order],
+) -> None:
+    items = PositionAndOrder.parse(positions, orders)
+    orders_table = Table(title="Positions and Orders")
+    orders_table.add_column("Symbol")
+    orders_table.add_column("Amount")
+    orders_table.add_column("Cost Basis")
+    orders_table.add_column("Order Type")
+    orders_table.add_column("Time In Force")
+    orders_table.add_column("Position Intent")
+    for item in items:
+        orders_table.add_row(
+            item.symbol,
+            item.amount,
+            item.cost_basis,
+            item.order_type,
+            item.time_in_force,
+            item.position_intent,
+        )
+    console.print(orders_table)
+
+
 @trading.command()
 def run(
     backtest_name: Annotated[str, typer.Argument(help="name of the backtest which symbols to trade")],
     file_path: Annotated[str, typer.Argument(help="path to the trading strategy file")],
-    dry: Annotated[bool, typer.Option(help="dry run the strategy")] = False,
-    yes: Annotated[bool, typer.Option(help="skip confirmation prompt")] = False,
+    dry: Annotated[bool, typer.Option("--dry", help="print the trading plan without submitting orders")] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="skip confirmation prompt")] = False,
 ):
     _backtest = broker.backtest.get(backtest_name)
+    if not _backtest.periods:
+        console.print(f"[red]Backtest {backtest_name} has no periods")
+        return
     symbols = [a.symbol for a in _backtest.periods[-1].assets if a.enabled]
+
+    if dry:
+        table = Table(title="Dry Run")
+        table.add_column("Backtest")
+        table.add_column("File")
+        table.add_column("Symbols")
+        table.add_row(backtest_name, file_path, ", ".join(symbols) or "-")
+        console.print(table)
+        return
+
     portfolio = broker.finance.get_portfolio()
 
     with LiveProgress() as progress:
@@ -120,25 +156,7 @@ def run(
                 with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(msg.session) as session:
                     orders, place_orders = session.run_trading(symbols)
                     has_run = True
-
-                    items = PositionAndOrder.parse([p for p in portfolio.portfolio.positions], orders)
-                    orders_table = Table(title="Positions and Orders")
-                    orders_table.add_column("Symbol")
-                    orders_table.add_column("Amount")
-                    orders_table.add_column("Cost Basis")
-                    orders_table.add_column("Order Type")
-                    orders_table.add_column("Time In Force")
-                    orders_table.add_column("Position Intent")
-                    for item in items:
-                        orders_table.add_row(
-                            item.symbol,
-                            item.amount,
-                            item.cost_basis,
-                            item.order_type,
-                            item.time_in_force,
-                            item.position_intent,
-                        )
-                    console.print(orders_table)
-                    place_order = progress.confirm("Place order?")
-                    if place_order:
-                        place_orders(orders)
+                    _print_orders_table(list(portfolio.portfolio.positions), orders)
+                    if not yes and not progress.confirm("Place these orders?", default=False):
+                        return
+                    place_orders(orders)

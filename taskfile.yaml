@@ -10,34 +10,40 @@ includes:
 
 tasks:
   proto:clean:
+    desc: Remove generated protobuf files
     cmds:
-      - find client/foreverbull/src/foreverbull/pb/ -type f -name "*_pb2*" -delete
-      - find pkg/ -type f -name "*.pb.go" -delete
-      - find internal/ -type f -name "*.pb.go" -delete
+      - find client/src/foreverbull/pb -type f \( -name '*_pb2.py' -o -name '*_pb2.pyi' -o -name '*_pb2_grpc.py' \) -delete
+      - find pkg/pb -type f -name '*.pb.go' -delete
+      - find internal/stream/pb -type f -name '*.pb.go' -delete
 
   proto:generate:
+    desc: Generate Go protobuf code
     cmds:
-      - protoc -Iproto --go_out=pkg/pb/finance --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance proto/foreverbull/finance/v1/*.proto
-      - protoc -Iproto --go_out=pkg/pb/finance/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance/service --go-grpc_out=pkg/pb/finance/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/finance/service proto/foreverbull/finance/service/v1/*.proto 
-      
-      - protoc -Iproto --go_out=pkg/pb/backtest --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest proto/foreverbull/backtest/v1/*.proto
-      - protoc -Iproto --go_out=pkg/pb/backtest/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service --go-grpc_out=pkg/pb/backtest/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service proto/foreverbull/backtest/service/v1/*.proto
-       
-      - protoc -Iproto --go_out=pkg/pb/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service proto/foreverbull/service/v1/*.proto
-      - protoc -Iproto --go_out=pkg/pb/service/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service/service  --go-grpc_out=pkg/pb/service/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/service/service proto/foreverbull/service/service/v1/*.proto
-      
-      #- protoc -Iproto --go_out=pkg/pb/strategy --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy proto/foreverbull/strategy/v1/*.proto
-      - protoc -Iproto --go_out=pkg/pb/strategy/service --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service --go-grpc_out=pkg/pb/strategy/service --go-grpc_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service proto/foreverbull/strategy/service/v1/*.proto
-      
-      - protoc -Iproto --go_out=pkg/pb --go_opt=module=github.com/lhjnilsson/foreverbull/pkg/pb proto/foreverbull/common.proto
-      - protoc -Iproto --go_out=internal/stream/pb --go_opt=module=github.com/lhjnilsson/foreverbull/internal/stream/pb proto/foreverbull/internal/stream/*.proto
+      # Vendored protovalidate is a Python stub only; its go_package points at the BSR module.
+      - buf generate proto --exclude-path proto/buf
 
   proto:
-    deps:
-      - proto:generate
-      - client:proto:generate
+    desc: Generate Go and Python protobuf code
+    cmds:
+      - task: proto:clean
+      - task: proto:generate
+      - task: client:proto:generate
+
+  proto:check:
+    desc: Fail if generated protobuf is out of date
+    cmds:
+      - task: proto
+      - |
+        dirty="$(git status --porcelain -- pkg/pb client/src/foreverbull/pb internal/stream/pb)"
+        if [ -n "${dirty}" ]; then
+          echo "Generated protobuf is dirty. Run 'task proto' and commit the result." >&2
+          git status -- pkg/pb client/src/foreverbull/pb internal/stream/pb
+          git --no-pager diff -- pkg/pb client/src/foreverbull/pb internal/stream/pb
+          exit 1
+        fi
 
   backtest:test:integration:
+    desc: Run backtest integration tests
     dir: ./pkg/backtest
     deps:
       - client:docker:zipline
@@ -46,26 +52,31 @@ tasks:
       - go test ./stream/ -tags=integration {{.CLI_ARGS}}
 
   backtest:test:unit:
+    desc: Run backtest unit tests
     dir: ./pkg/backtest
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   finance:test:unit:
+    desc: Run finance unit tests
     dir: ./pkg/finance
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   service:test:unit:
+    desc: Run service unit tests
     dir: ./pkg/service
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   strategy:test:unit:
+    desc: Run strategy unit tests
     dir: ./pkg/strategy
     cmds:
       - go test ./... {{.CLI_ARGS}}
 
   test:unit:
+    desc: Run all Go unit tests
     deps:
       - backtest:test:unit
       - finance:test:unit
@@ -73,26 +84,30 @@ tasks:
       - strategy:test:unit
 
   test:integration:
+    desc: Run client end-to-end tests
     dir: client/
     deps:
       - build:docker
       - client:docker:zipline
       - grafana:build:docker
     cmds:
-      - rye sync
-      - VERSION=local ECHO=true rye test -- tests/end_to_end/test_demo.py -vs
+      - uv sync
+      - VERSION=local ECHO=true uv run pytest tests/end_to_end/test_demo.py -vs
 
   mock:clean:
+    desc: Remove generated mocks
     cmds:
       - find pkg/ -type f -name "mock_*.go" -delete
       - find internal/ -type f -name "mock_*.go" -delete
 
   mock:generate:
+    desc: Generate Go mocks
     cmds:
       - mockery --dir pkg --all --inpackage
       - mockery --dir internal --all --inpackage
 
   build:docker:
+    desc: Build the local Foreverbull image
     sources:
       - pkg/**/*.go
       - internal/**/*.go
@@ -101,13 +116,36 @@ tasks:
     cmds:
       - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
 
-  env:
-    dir: client/
+  build:
+    desc: Build local images and sync the Python workspace
     deps:
       - client:docker:zipline
       - grafana:build:docker
       - build:docker
+      - client:venv
+
+  env:
+    desc: Removed. Run task build, then uv run fbenv create
     cmds:
-      - rye sync
-      - rye run fbenv stop --remove
-      - VERSION=local rye run fbenv create
+      - |
+        echo "task env no longer installs the platform." >&2
+        echo "Build local images and sync the client:" >&2
+        echo "  task build" >&2
+        echo "Install into Kind, then start the workloads:" >&2
+        echo "  cd client && VERSION=local uv run fbenv create && uv run fbenv start" >&2
+        exit 1
+
+  kind:create:
+    desc: Create the local Kind cluster (idempotent)
+    cmds:
+      - bash deploy/kind/create-cluster.sh
+
+  kind:load:
+    desc: Load lhjnilsson/foreverbull, zipline, and fb-grafana into Kind
+    cmds:
+      - bash deploy/kind/load-images.sh
+
+  helm:install:
+    desc: helm upgrade --install Foreverbull into the local Kind cluster
+    cmds:
+      - bash deploy/kind/helm-install.sh {{.CLI_ARGS}}

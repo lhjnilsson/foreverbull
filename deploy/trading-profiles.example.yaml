@@ -1,0 +1,24 @@
+# The real file is .foreverbull/trading-profiles.yaml and is gitignored.
+# Credential fields stay empty here. Do not add baseUrl.
+profiles:
+  - name: alpaca-paper
+    provider: alpaca
+    currency: USD
+    apiKey: ""
+    apiSecret: ""
+  - name: saxo-sim
+    provider: saxo
+    currency: USD
+    accessToken: ""
+    accountKey: ""
+  - name: ig-demo
+    provider: ig
+    currency: USD
+    apiKey: ""
+    identifier: ""
+    password: ""
+  - name: ibkr-paper
+    provider: ibkr
+    currency: USD
+    accountId: ""
+    accessToken: ""

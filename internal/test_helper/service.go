@@ -22,6 +22,7 @@ type ServiceInstance struct {
 	Port   int
 }
 
+// NewServiceInstance listens on a free local port and returns a fake service socket.
 func NewServiceInstance(t *testing.T) *ServiceInstance {
 	t.Helper()
 
@@ -69,6 +70,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 	}
 }
 
+// Process replies to incoming requests using the provided task payloads until ctx is done.
 func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]byte) {
 	for {
 		select {
@@ -114,6 +116,7 @@ func (s *ServiceInstance) Process(ctx context.Context, responses map[string][]by
 	}
 }
 
+// Close shuts down the fake service socket.
 func (s *ServiceInstance) Close() error {
 	if s.socket == nil {
 		return nil

@@ -1,0 +1,8 @@
+{
+  "as_of": "2023-02-28",
+  "holdings": [
+    {"isin": "US30303M1027", "symbol": "META", "name": "Meta Platforms Inc.", "asset_type": "Equity"},
+    {"isin": "US5949181045", "symbol": "MSFT", "name": "Microsoft Corp.", "asset_type": "Equity"},
+    {"isin": "", "symbol": "CASH_USD", "name": "USD Cash", "asset_type": "Cash"}
+  ]
+}

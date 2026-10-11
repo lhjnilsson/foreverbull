@@ -1,0 +1,115 @@
+{{- $sel := dict "name" "nats" "root" . }}
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nats
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.nats.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: client
+      port: {{ .Values.nats.port }}
+      targetPort: client
+      protocol: TCP
+    - name: monitor
+      port: {{ .Values.nats.monitorPort }}
+      targetPort: monitor
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foreverbull.labels" . | nindent 8 }}
+        {{- include "foreverbull.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: nats
+          image: {{ include "foreverbull.image" (list .Values.images.nats.repository .Values.images.nats.tag .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          {{- if .Values.nats.jetstream }}
+          args:
+            - -js
+            - -sd
+            - {{ .Values.persistence.nats.path | quote }}
+            - -m
+            - {{ .Values.nats.monitorPort | quote }}
+          {{- end }}
+          ports:
+            - name: client
+              containerPort: {{ .Values.nats.port }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ .Values.nats.port }}
+              {{- end }}
+            - name: monitor
+              containerPort: {{ .Values.nats.monitorPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.nats.path }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            periodSeconds: 2
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources.nats | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: nats
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

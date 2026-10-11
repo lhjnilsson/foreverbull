@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
@@ -21,7 +23,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		return errors.New("db dependency casting failed")
 	}
 
-	marketdata, isMd := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
+	yahoo, isMd := message.MustGet(dependency.MarketDataDep).(supplier.Marketdata)
 	if !isMd {
 		return errors.New("marketdata dependency casting failed")
 	}
@@ -52,6 +54,19 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		end = &e
 	}
 
+	provider, err := marketdata.NormalizeProvider(command.Provider)
+	if err != nil {
+		return err
+	}
+	profilesFile := environment.GetTradingProfilesFile()
+	if err := marketdata.ValidatePriceSource(provider, command.Profile, profilesFile); err != nil {
+		return err
+	}
+	bars, err := marketdata.OHLCClient(provider, command.Profile, profilesFile, yahoo)
+	if err != nil {
+		return err
+	}
+
 	for _, symbol := range command.Symbols {
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
@@ -59,7 +74,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
 
-			a, err := marketdata.GetAsset(symbol)
+			a, err := yahoo.GetAsset(symbol)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
@@ -70,13 +85,13 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			}
 		}
 
-		ohlcs, err := marketdata.GetOHLC(symbol, start, end)
+		ohlcs, err := bars.GetOHLC(symbol, start, end)
 		if err != nil {
 			return fmt.Errorf("error getting OHLC: %w", err)
 		}
 
 		for _, o := range ohlcs {
-			err = ohlc.Store(ctx, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
+			err = ohlc.Store(ctx, provider, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 			if err != nil {
 				return fmt.Errorf("error creating OHLC: %w", err)
 			}

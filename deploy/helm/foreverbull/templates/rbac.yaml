@@ -1,0 +1,32 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "foreverbull.serviceAccountName" . }}
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "foreverbull.serviceAccountName" . }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "foreverbull.serviceAccountName" . }}
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "foreverbull.serviceAccountName" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "foreverbull.serviceAccountName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "foreverbull.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

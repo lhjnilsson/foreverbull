@@ -4,96 +4,80 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
-	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type AlpacaClient struct {
-	client   *alpaca.Client
-	mdclient *marketdata.Client
+// AlpacaBars downloads daily bars with a profile's key. Asset metadata stays on Yahoo.
+type AlpacaBars struct {
+	md *marketdata.Client
 }
 
-func NewAlpacaClient() (*AlpacaClient, error) {
-	client := alpaca.NewClient(alpaca.ClientOpts{
-		BaseURL:   environment.GetAlpacaBaseURL(),
-		APIKey:    environment.GetAlpacaAPIKey(),
-		APISecret: environment.GetAlpacaAPISecret(),
-	})
-	mdclient := marketdata.NewClient(marketdata.ClientOpts{
-		APIKey:    environment.GetAlpacaAPIKey(),
-		APISecret: environment.GetAlpacaAPISecret(),
-	})
-
-	return &AlpacaClient{client: client, mdclient: mdclient}, nil
-}
-
-func (a *AlpacaClient) GetAsset(symbol string) (*pb.Asset, error) {
-	asset, err := a.client.GetAsset(symbol)
-	if err != nil {
-		return nil, fmt.Errorf("error getting asset: %w", err)
+// NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
+func NewAlpacaBars(apiKey, apiSecret string) (*AlpacaBars, error) {
+	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" {
+		return nil, errors.New("alpaca price source requires an api key and secret")
 	}
+	return &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+		APIKey:    apiKey,
+		APISecret: apiSecret,
+	})}, nil
+}
 
-	storeAsset := pb.Asset{
-		Symbol: asset.Symbol,
-		Name:   asset.Name,
+func (a *AlpacaBars) GetAsset(string) (*pb.Asset, error) {
+	return nil, errors.New("alpaca price source does not serve asset metadata")
+}
+
+func (a *AlpacaBars) SearchAsset(string) ([]*pb.Asset, error) {
+	return nil, errors.New("alpaca price source does not serve asset search")
+}
+
+func (a *AlpacaBars) GetIndex(string) ([]*pb.Asset, error) {
+	return nil, errors.New("alpaca price source does not serve index membership")
+}
+
+func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+	endAt := time.Now().UTC()
+	if end != nil {
+		endAt = *end
 	}
-
-	return &storeAsset, nil
-}
-
-func (a *AlpacaClient) SearchAsset(q string) ([]*pb.Asset, error) {
-	var storeAssets []*pb.Asset
-	return storeAssets, nil
-}
-
-func (a *AlpacaClient) GetIndex(_ string) ([]*pb.Asset, error) {
-	var storeAssets []*pb.Asset
-	return storeAssets, nil
-}
-
-func (a *AlpacaClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	ohlcs := make([]*pb.OHLC, 0)
-
-	ohlc, err := a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
+	bars, err := a.md.GetBars(symbol, marketdata.GetBarsRequest{
 		Start: start,
-		End:   *end,
+		End:   endAt,
 	})
 	if err != nil {
-		alpacaErr := alpaca.APIError{}
-		if errors.Is(err, &alpacaErr) {
-			if alpacaErr.StatusCode == http.StatusUnprocessableEntity {
-				var innerErr error
-
-				e := end.Add(-15 * time.Minute)
-
-				ohlc, innerErr = a.mdclient.GetBars(symbol, marketdata.GetBarsRequest{
-					Start: start,
-					End:   e,
-				})
-				if innerErr != nil {
-					return nil, fmt.Errorf("error getting bars: %w", innerErr)
-				}
+		var apiErr *alpaca.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnprocessableEntity {
+			bars, err = a.md.GetBars(symbol, marketdata.GetBarsRequest{
+				Start: start,
+				End:   endAt.Add(-15 * time.Minute),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("error getting bars: %w", err)
 			}
+		} else {
+			return nil, fmt.Errorf("error getting bars: %w", err)
 		}
 	}
 
-	for _, bar := range ohlc {
-		ohlc := pb.OHLC{
+	ohlcs := make([]*pb.OHLC, 0, len(bars))
+	for _, bar := range bars {
+		ohlcs = append(ohlcs, &pb.OHLC{
 			Open:      bar.Open,
 			High:      bar.High,
 			Low:       bar.Low,
 			Close:     bar.Close,
 			Volume:    bar.Volume,
 			Timestamp: timestamppb.New(bar.Timestamp),
-		}
-
-		ohlcs = append(ohlcs, &ohlc)
+		})
 	}
-
 	return ohlcs, nil
 }
+
+var _ supplier.Marketdata = (*AlpacaBars)(nil)

@@ -19,6 +19,13 @@ const (
 	GRPCPort        = "GRPC_PORT"
 	GRPCPortDefault = "50055"
 
+	// GrafanaURL is the Grafana origin used in broker-emitted deep links.
+	// Kind host-port default is localhost:3000; remote installs override it.
+	GrafanaURL        = "GRAFANA_URL"
+	GrafanaURLDefault = "http://localhost:3000"
+
+	// DockerNetwork is the Testcontainers network name. The Kubernetes broker
+	// runtime does not use it.
 	DockerNetwork        = "DOCKER_NETWORK"
 	DockerNetworkDefault = "foreverbull"
 
@@ -52,19 +59,16 @@ const (
 	MinioSecretKey        = "MINIO_SECRET"
 	MinioSecretKeyDefault = "minioadmin"
 
-	MarketDataProvider        = "MARKET_DATA_PROVIDER"
-	MarketDataProviderDefault = "yahoo"
-
 	TradingEnabled        = "TRADING_ENABLED"
 	TradingEnabledDefault = "false"
 
-	TradingProvider        = "TRADING_PROVIDER"
-	TradingProviderDefault = "alpaca"
+	// TradingProfilesFile is the path of the trading profiles YAML.
+	// Credentials live in that file. Empty means the file is not configured.
+	TradingProfilesFile = "TRADING_PROFILES_FILE"
 
-	AlpacaBaseURL        = "ALPACA_MARKETS_BASE_URL"
-	AlpacaBaseURLDefault = "https://paper-api.alpaca.markets"
-	AlpacaApiKey         = "ALPACA_MARKETS_API_KEY"
-	AlpacaApiSecret      = "ALPACA_MARKETS_API_SECRET"
+	// TradingListingsFile replaces the embedded listing sample when a profile
+	// does not set its own listings path.
+	TradingListingsFile = "TRADING_LISTINGS_FILE"
 )
 
 type envVar struct {
@@ -76,6 +80,7 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{ServerAddress, func() (string, error) { return ServerAddressDefault, nil }},
 	{HTTPPort, func() (string, error) { return HTTPPortDefault, nil }},
 	{GRPCPort, func() (string, error) { return GRPCPortDefault, nil }},
+	{GrafanaURL, func() (string, error) { return GrafanaURLDefault, nil }},
 	{BacktestIngestionDefaultName, func() (string, error) { return BacktestIngestionDefaultNameDefault, nil }},
 	{ZiplineContainerName, func() (string, error) { return ZiplineContainerNameDefault, nil }},
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
@@ -89,15 +94,18 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{MinioURL, func() (string, error) { return MinioURLDefault, nil }},
 	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
 	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
-	{MarketDataProvider, func() (string, error) { return MarketDataProviderDefault, nil }},
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
-	{TradingProvider, func() (string, error) { return TradingProviderDefault, nil }},
-	{AlpacaBaseURL, func() (string, error) { return AlpacaBaseURLDefault, nil }},
-	{AlpacaApiKey, func() (string, error) { return "", nil }},
-	{AlpacaApiSecret, func() (string, error) { return "", nil }},
+	{TradingProfilesFile, func() (string, error) { return "", nil }},
+	{TradingListingsFile, func() (string, error) { return "", nil }},
 }
 
-func Setup() error {
+type envSetter interface {
+	Helper()
+	Setenv(key, value string)
+	Fatalf(format string, args ...any)
+}
+
+func applyEnvDefaults(setenv func(name, value string) error) error {
 	for _, envVar := range envVars {
 		if os.Getenv(envVar.name) == "" {
 			defaultEnv, err := envVar.getDefault()
@@ -105,12 +113,18 @@ func Setup() error {
 				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
 			}
 
-			if err := os.Setenv(envVar.name, defaultEnv); err != nil {
+			if err := setenv(envVar.name, defaultEnv); err != nil {
 				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
 			}
 		}
 	}
 
+	configureLogging()
+
+	return nil
+}
+
+func configureLogging() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
 	switch os.Getenv(LogLevel) {
@@ -126,8 +140,26 @@ func Setup() error {
 		log.Warn().Msgf("unknown log level: %s", os.Getenv(LogLevel))
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	}
+}
 
-	return nil
+// Setup fills empty process env vars with package defaults and configures logging.
+// It does not start Docker or any other infrastructure.
+func Setup() error {
+	return applyEnvDefaults(os.Setenv)
+}
+
+// SetupForTest applies the same empty-var defaults as Setup, using t.Setenv so
+// values are restored when the test ends. It does not start Docker or other
+// infrastructure. t is typically *testing.T.
+func SetupForTest(t envSetter) {
+	t.Helper()
+
+	if err := applyEnvDefaults(func(name, value string) error {
+		t.Setenv(name, value)
+		return nil
+	}); err != nil {
+		t.Fatalf("environment.SetupForTest: %v", err)
+	}
 }
 
 func GetServerAddress() string {
@@ -140,6 +172,10 @@ func GetHTTPPort() string {
 
 func GetGRPCPort() string {
 	return os.Getenv(GRPCPort)
+}
+
+func GetGrafanaURL() string {
+	return os.Getenv(GrafanaURL)
 }
 
 func GetServerGRPCURL() string {
@@ -212,10 +248,6 @@ func GetMinioSecretKey() string {
 	return os.Getenv(MinioSecretKey)
 }
 
-func GetMarketDataProvider() string {
-	return os.Getenv(MarketDataProvider)
-}
-
 func GetTradingEnabled() bool {
 	verdict, err := strconv.ParseBool(os.Getenv(TradingEnabled))
 	if err != nil {
@@ -224,18 +256,10 @@ func GetTradingEnabled() bool {
 	return verdict
 }
 
-func GetTradingProvider() string {
-	return os.Getenv(TradingProvider)
+func GetTradingProfilesFile() string {
+	return os.Getenv(TradingProfilesFile)
 }
 
-func GetAlpacaBaseURL() string {
-	return os.Getenv(AlpacaBaseURL)
-}
-
-func GetAlpacaAPIKey() string {
-	return os.Getenv(AlpacaApiKey)
-}
-
-func GetAlpacaAPISecret() string {
-	return os.Getenv(AlpacaApiSecret)
+func GetTradingListingsFile() string {
+	return os.Getenv(TradingListingsFile)
 }

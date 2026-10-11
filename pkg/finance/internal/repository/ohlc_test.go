@@ -59,7 +59,7 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 	ohlcTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	for i := 0; i <= count; i++ {
-		err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
+		err := test.ohlcStorage.Store(context.TODO(), "", test.asset.Symbol, ohlcTime, 1.2, 1.3, 1.1, 1.2, 1000)
 		test.Require().NoError(err)
 
 		if i != count {
@@ -71,13 +71,13 @@ func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Dat
 }
 
 func (test *OHLCTests) TestStore() {
-	err := test.ohlcStorage.Store(context.TODO(), test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
+	err := test.ohlcStorage.Store(context.TODO(), "", test.asset.Symbol, time.Now(), 1.2, 1.3, 1.1, 1.2, 1000)
 	test.Require().NoError(err)
 }
 
 func (test *OHLCTests) TestExists() {
 	symbol, start, end := test.SampleOHLC()
-	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
+	exists, err := test.ohlcStorage.Exists(context.TODO(), "", []string{symbol}, start, end)
 	test.Require().NoError(err)
 	test.True(exists)
 }
@@ -85,7 +85,7 @@ func (test *OHLCTests) TestExists() {
 func (test *OHLCTests) TestExistsNot() {
 	symbol, start, end := test.SampleOHLC()
 	end.Day++
-	exists, err := test.ohlcStorage.Exists(context.TODO(), []string{symbol}, start, end)
+	exists, err := test.ohlcStorage.Exists(context.TODO(), "", []string{symbol}, start, end)
 	test.Require().NoError(err)
 	test.False(exists)
 }
@@ -95,6 +95,93 @@ func (test *OHLCTests) TestMinMaxNothingStored() {
 	test.Require().NoError(err)
 	test.Nil(storedMin)
 	test.Nil(storedMax)
+}
+
+func (test *OHLCTests) TestYahooReadReturnsOnlyYahooClose() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE ohlc (
+			symbol TEXT REFERENCES asset(symbol),
+			open numeric,
+			high numeric,
+			low numeric,
+			close numeric,
+			volume bigint,
+			time timestamp,
+			UNIQUE (symbol, time)
+		)`)
+	test.Require().NoError(err)
+
+	day := time.Date(2021, 6, 1, 15, 0, 0, 0, time.UTC)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+		VALUES ($1, $2, 1, 1, 1, 11, 1)`, "ABC", day)
+	test.Require().NoError(err)
+
+	test.Require().NoError(repository.MigrateOHLC(ctx, test.conn))
+	test.Require().NoError(repository.MigrateOHLC(ctx, test.conn))
+
+	var storedProvider string
+	var storedClose float64
+	err = test.conn.QueryRow(ctx, `SELECT provider, close::float8 FROM ohlc WHERE symbol = $1`, "ABC").Scan(&storedProvider, &storedClose)
+	test.Require().NoError(err)
+	test.Equal("yahoo", storedProvider)
+	test.InDelta(11, storedClose, 0.0001)
+
+	err = test.ohlcStorage.Store(ctx, "stooq", "ABC", day, 1, 2, 0.5, 22, 3)
+	test.Require().NoError(err)
+
+	got, err := test.ohlcStorage.Close(ctx, "yahoo", "ABC", day)
+	test.Require().NoError(err)
+	test.InDelta(11, got, 0.0001)
+
+	other, err := test.ohlcStorage.Close(ctx, "stooq", "ABC", day)
+	test.Require().NoError(err)
+	test.InDelta(22, other, 0.0001)
+
+	var n int
+	err = test.conn.QueryRow(ctx, `SELECT count(*) FROM ohlc WHERE symbol = $1`, "ABC").Scan(&n)
+	test.Require().NoError(err)
+	test.Equal(2, n)
+}
+
+func (test *OHLCTests) TestMigrateDropsSymbolTimeUC() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE ohlc (
+			symbol TEXT REFERENCES asset(symbol),
+			open numeric,
+			high numeric,
+			low numeric,
+			close numeric,
+			volume bigint,
+			time timestamp
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `ALTER TABLE ohlc ADD CONSTRAINT symbol_time_uc UNIQUE (symbol, time)`)
+	test.Require().NoError(err)
+	day := time.Date(2021, 6, 2, 0, 0, 0, 0, time.UTC)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+		VALUES ($1, $2, 1, 1, 1, 7, 1)`, "ABC", day)
+	test.Require().NoError(err)
+
+	test.Require().NoError(repository.MigrateOHLC(ctx, test.conn))
+
+	var provider string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM ohlc WHERE symbol = $1`, "ABC").Scan(&provider)
+	test.Require().NoError(err)
+	test.Equal("yahoo", provider)
+
+	err = test.ohlcStorage.Store(ctx, "stooq", "ABC", day, 1, 1, 1, 8, 1)
+	test.Require().NoError(err)
+	got, err := test.ohlcStorage.Close(ctx, "yahoo", "ABC", day)
+	test.Require().NoError(err)
+	test.InDelta(7, got, 0.0001)
 }
 
 func (test *OHLCTests) TestMinMax() {

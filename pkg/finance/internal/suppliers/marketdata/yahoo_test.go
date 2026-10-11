@@ -2,6 +2,7 @@ package marketdata_test
 
 import (
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +17,9 @@ type YahooTest struct {
 }
 
 func (test *YahooTest) SetupTest() {
+	if os.Getenv("FOREVERBULL_LIVE_HTTP") == "" {
+		test.T().Skip("skipping live Yahoo HTTP; set FOREVERBULL_LIVE_HTTP=1 to run")
+	}
 	client, err := marketdata.NewYahooClient()
 	test.Require().NoError(err)
 	test.client = client.(*marketdata.YahooClient)

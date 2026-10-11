@@ -1,133 +1,130 @@
-# Grafana data source plugin template
+# Foreverbull Grafana datasource
 
-This template is a starting point for building a Data Source Plugin for Grafana.
+Backend Grafana datasource for Foreverbull backtest executions and strategy experiments (`lhjnilsson-foreverbull-datasource`).
 
-## What are Grafana data source plugins?
+Plugin ID: `lhjnilsson-foreverbull-datasource`. Grafana 10.4+. Product image is Grafana OSS 11.3.2 (`grafana/Dockerfile`).
 
-Grafana supports a wide range of data sources, including Prometheus, MySQL, and even Datadog. There’s a good chance you can already visualize metrics from the systems you have set up. In some cases, though, you already have an in-house metrics solution that you’d like to add to your Grafana dashboards. Grafana Data Source Plugins enables integrating such solutions with Grafana.
+The Go backend (`pkg/`) calls the Foreverbull gRPC broker (`BacktestServicer` and `StrategyServicer`). The React UI (`src/`) is a query editor: pick an execution and one or more metrics. Overlay is a second `GetExecutionMetric` query (refId B), not a second query type.
 
-## Getting started
+The image Helm installs is `lhjnilsson/fb-grafana`. In-cluster it sets `BROKER_URL=foreverbull:50055`. Local Kind publishes Grafana at `http://localhost:3000`. Contract: [grafana/ANALYSIS.md](../ANALYSIS.md).
 
-### Backend
+## Prerequisites
 
-1. Update [Grafana plugin SDK for Go](https://grafana.com/developers/plugin-tools/key-concepts/backend-plugins/grafana-plugin-sdk-for-go) dependency to the latest minor version:
+- Node.js 22+ (see `engines` in `package.json`) and npm
+- Go 1.24+ (plugin `go.mod` toolchain is go1.24.5; the image builder is `golang:1.24-alpine`)
+- [Mage](https://magefile.org/): `go install github.com/magefile/mage@latest`
 
-   ```bash
-   go get -u github.com/grafana/grafana-plugin-sdk-go
-   go mod tidy
-   ```
+For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbull stack (`task build`, then `fbenv create` and `fbenv start`). That is **not** this `docker-compose.yaml`.
 
-2. Build backend plugin binaries for Linux, Windows and Darwin:
+## Layout
 
-   ```bash
-   mage -v
-   ```
+| Path | What it is |
+| --- | --- |
+| `src/` | React / TypeScript UI (config editor, query editor, variable editor) |
+| `pkg/` | Backend datasource (gRPC client, `/executions`, `/metrics`, `/strategies`, `/versions`, `/experiments`) |
+| `provisioning/` | Datasource and dashboards baked into `lhjnilsson/fb-grafana` |
+| `docker-compose.yaml` | Isolated Grafana 11 for plugin UI work (see below). **Not** Kind/`fbenv` |
+| `Magefile.go` | Cross-compiles `gpx_foreverbull_*` into `dist/` |
 
-3. List all available Mage targets for additional commands:
+The backend reads `BROKER_URL`. Helm sets `foreverbull:50055`. If unset, the Go code defaults to `localhost:50055`.
 
-   ```bash
-   mage -l
-   ```
+`go.mod` has `replace github.com/lhjnilsson/foreverbull => ../..` so the plugin uses this checkout’s protobuf clients.
 
-### Frontend
+## Rebuild
 
-1. Install dependencies
+From this directory:
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+npm run build    # frontend → dist/
+mage -v          # backend binaries → dist/gpx_foreverbull_*
+```
 
-2. Build plugin in development mode and run in watch mode
+Watch the frontend:
 
-   ```bash
-   npm run dev
-   ```
+```bash
+npm run dev
+```
 
-3. Build plugin in production mode
+Rebuild Go after changes under `pkg/`:
 
-   ```bash
-   npm run build
-   ```
+```bash
+mage -v
+```
 
-4. Run the tests (using Jest)
+Platform image (from the **repository root**):
 
-   ```bash
-   # Runs the tests and watches for changes, requires git init first
-   npm run test
+```bash
+task grafana:build:docker    # lhjnilsson/fb-grafana:local
+```
 
-   # Exits after running all the tests
-   npm run test:ci
-   ```
+Equivalent from `grafana/`: `task build:docker`. Then load it with `uv run fbenv update` (or `task build`, then `uv run fbenv create` and `uv run fbenv start`). Signing is not required for local Kind.
 
-5. Spin up a Grafana instance and run the plugin inside it (using Docker)
+Do not commit `node_modules`. Commit updated `dist/` only when the image build needs a frontend/backend you actually built and the Dockerfile copies it (the image build runs `npm run build` and `mage` itself).
 
-   ```bash
-   npm run server
-   ```
+## Dashboards
 
-6. Run the E2E tests (using Cypress)
+Provisioned under `provisioning/dashboards/`. Datasource name and uid: `foreverbull`.
 
-   ```bash
-   # Spins up a Grafana instance first that we tests against
-   npm run server
+| UID | File | Role |
+| --- | --- | --- |
+| `ee9ep4jxtwkcgf` | `executions.json` | Inspect one run. CLI and `GetExperiment` deep-link this |
+| `fb-strategy-compare` | `strategy-compare.json` | Overlay two executions (strategy → version → left/right) |
+| `fb-backtest-overview` | `backtest-overview.json` | Leaderboard of runs that overlap the time picker (`now-2y` to `now`). Rows link back with `var-execution` |
 
-   # Starts the tests
-   npm run e2e
-   ```
+Do not change `ee9ep4jxtwkcgf`. If it ever moves, ship a redirect and update CLI `GRAFANA_DASHBOARD_UID` plus `GrafanaExecutionURL` in the same change.
 
-7. Run the linter
+Deep links: `{GRAFANA_URL}/d/ee9ep4jxtwkcgf?var-execution={id}`.
 
-   ```bash
-   npm run lint
+- `GRAFANA_URL` is the Grafana **origin**. Default `http://localhost:3000` (Kind host port).
+- Helm `grafana.url` sets broker env `GRAFANA_URL` for `GetExperiment.grafana_path`.
+- CLI `execution_link` reads `GRAFANA_URL` the same way.
+- Remote clusters set `grafana.url` / `GRAFANA_URL` to the public origin. Do not change the UID or `var-execution`.
+- Plugin-dev compose is host port **3001**. Do not point CLI or broker links there.
 
-   # or
+## Queries
 
-   npm run lint:fix
-   ```
+Query type `GetExecutionMetric` loads one backtest execution by ID. Canonical JSON:
 
-# Distributing your plugin
+```json
+{
+  "queryType": "GetExecutionMetric",
+  "execution": { "id": "<uuid>" },
+  "metrics": [{ "name": "portfolio_value" }]
+}
+```
 
-When distributing a Grafana plugin either within the community or privately the plugin must be signed so the Grafana application can verify its authenticity. This can be done with the `@grafana/sign-plugin` package.
+Do not write `executionId`. Template variable `$execution` interpolates onto `execution.id`.
 
-_Note: It's not necessary to sign a plugin during development. The docker development environment that is scaffolded with `@grafana/create-plugin` caters for running the plugin without a signature._
+Metrics include `portfolio_value`, `max_drawdown`, `alpha`, `beta`, `sharpe`, `sortino`, `capital_used`, `long_count`, `short_count`, `long_value`, `short_value`.
 
-## Initial steps
+Execution picker **values** are UUIDs. **Labels** are `{backtest} {start}–{end} {short id}`. Variable queries can list `executions`, `strategies`, `versions`, or `experiments` (experiment values are still execution UUIDs).
 
-Before signing a plugin please read the Grafana [plugin publishing and signing criteria](https://grafana.com/legal/plugins/#plugin-publishing-and-signing-criteria) documentation carefully.
+`CheckHealth` dials the broker (`ListBacktests`). Save & test is not the Path / API Key scaffold.
 
-`@grafana/create-plugin` has added the necessary commands and workflows to make signing and distributing a plugin via the grafana plugins catalog as straightforward as possible.
+## Plugin-only Grafana (compose)
 
-Before signing a plugin for the first time please consult the Grafana [plugin signature levels](https://grafana.com/legal/plugins/#what-are-the-different-classifications-of-plugins) documentation to understand the differences between the types of signature level.
+`docker-compose.yaml` runs Grafana 11 on host port `3001` with this unsigned plugin mounted from `dist/`. It is **not** the Kind/`fbenv` stack and does **not** use a Kind Docker network.
 
-1. Create a [Grafana Cloud account](https://grafana.com/signup).
-2. Make sure that the first part of the plugin ID matches the slug of your Grafana Cloud account.
-   - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
-3. Create a Grafana Cloud API key with the `PluginPublisher` role.
-4. Keep a record of this API key as it will be required for signing a plugin
+Kind’s cluster is named `foreverbull`. That is a Kind cluster, not a Docker network. Compose still declares an **external** Docker network also named `foreverbull` (`networks.foreverbull.external: true`). `fbenv` does not create that network. `npm run server` fails unless you already created a Docker network named `foreverbull` and have a broker reachable as `foreverbull:50055` on it.
 
-## Signing a plugin
+Product Grafana: Helm chart (`lhjnilsson/fb-grafana`) at `http://localhost:3000`.
 
-### Using Github actions release workflow
+```bash
+npm run server    # docker compose up --build  — plugin UI only
+```
 
-If the plugin is using the github actions supplied with `@grafana/create-plugin` signing a plugin is included out of the box. The [release workflow](./.github/workflows/release.yml) can prepare everything to make submitting your plugin to Grafana as easy as possible. Before being able to sign the plugin however a secret needs adding to the Github repository.
+Unsigned loading: `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource`. Compose’s default image is Grafana Enterprise leftover; the product image is OSS 11.3.2.
 
-1. Please navigate to "settings > secrets > actions" within your repo to create secrets.
-2. Click "New repository secret"
-3. Name the secret "GRAFANA_API_KEY"
-4. Paste your Grafana Cloud API key in the Secret field
-5. Click "Add secret"
+## Tests
 
-#### Push a version tag
+```bash
+npm run test:ci      # Jest
+npm run lint
+npm run typecheck
+go test ./pkg/...    # backend unit tests (fakes/bufconn, not a live broker)
+```
 
-To trigger the workflow we need to push a version tag to github. This can be achieved with the following steps:
+Playwright (`npm run e2e`) expects `npm run server` and a reachable broker. Config-editor Playwright still asserts Path / API Key and is not a product test.
 
-1. Run `npm version <major|minor|patch>`
-2. Run `git push origin main --follow-tags`
-
-## Learn more
-
-Below you can find source code for existing app plugins and other related documentation.
-
-- [Basic data source plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/datasource-basic#readme)
-- [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-json)
-- [How to sign a plugin?](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)
+Live trading is out. Do not enable it from Grafana.

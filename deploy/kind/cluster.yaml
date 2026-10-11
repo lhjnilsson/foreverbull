@@ -1,0 +1,80 @@
+# Kind cluster for local Foreverbull. Name must match kind.name in cluster config.
+# extraPortMappings are 1:1 with today's fbenv host ports. Helm must publish the
+# same ports on the control-plane node (pod hostPort) so localhost still works.
+# Node image is not pinned; Kind uses its default Kubernetes version.
+# extraPortMappings are fixed at create time — delete and recreate to change them.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: foreverbull
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Postgres
+      - containerPort: 5432
+        hostPort: 5432
+        protocol: TCP
+      # NATS JetStream
+      - containerPort: 4222
+        hostPort: 4222
+        protocol: TCP
+      # Minio S3
+      - containerPort: 9000
+        hostPort: 9000
+        protocol: TCP
+      # Foreverbull gRPC (Python stubs: localhost:50055)
+      - containerPort: 50055
+        hostPort: 50055
+        protocol: TCP
+      # Grafana
+      - containerPort: 3000
+        hostPort: 3000
+        protocol: TCP
+      # Backtest NNG (BACKTEST_PORT_RANGE_START/END)
+      - containerPort: 27000
+        hostPort: 27000
+        protocol: TCP
+      - containerPort: 27001
+        hostPort: 27001
+        protocol: TCP
+      - containerPort: 27002
+        hostPort: 27002
+        protocol: TCP
+      - containerPort: 27003
+        hostPort: 27003
+        protocol: TCP
+      - containerPort: 27004
+        hostPort: 27004
+        protocol: TCP
+      - containerPort: 27005
+        hostPort: 27005
+        protocol: TCP
+      - containerPort: 27006
+        hostPort: 27006
+        protocol: TCP
+      - containerPort: 27007
+        hostPort: 27007
+        protocol: TCP
+      - containerPort: 27008
+        hostPort: 27008
+        protocol: TCP
+      - containerPort: 27009
+        hostPort: 27009
+        protocol: TCP
+      - containerPort: 27010
+        hostPort: 27010
+        protocol: TCP
+      - containerPort: 27011
+        hostPort: 27011
+        protocol: TCP
+      - containerPort: 27012
+        hostPort: 27012
+        protocol: TCP
+      - containerPort: 27013
+        hostPort: 27013
+        protocol: TCP
+      - containerPort: 27014
+        hostPort: 27014
+        protocol: TCP
+      - containerPort: 27015
+        hostPort: 27015
+        protocol: TCP

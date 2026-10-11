@@ -2,81 +2,93 @@ version: "3"
 
 tasks:
   venv:
+    desc: Sync the Python workspace with uv
     cmds:
-      - rye sync
-      - . .venv/bin/activate
-      - defer deactivate
+      - uv sync
 
   lint:
+    desc: Lint Python with ruff
     cmds:
-      - rye lint
+      - uvx ruff@0.17.0 check
 
   format:
+    desc: Format Python with ruff
     cmds:
-      - rye format
+      - uvx ruff@0.17.0 format
 
   test:
+    desc: Run Python unit tests
     cmds:
-      - rye test -- {{.CLI_ARGS}}
+      - uv run pytest {{.CLI_ARGS}}
 
   build:foreverbull:
-    dir: foreverbull
+    desc: Build the foreverbull Python package
     sources:
       - src/foreverbull/**/*.py
     generates:
-      - ../dist/foreverbull-0.0.1.tar.gz
+      - dist/foreverbull-0.0.0-py3-none-any.whl
     cmds:
-      - rye build
+      - uv build
 
   docker:zipline:
+    desc: Build the local Zipline image
     deps:
     - build:foreverbull
     sources:
-      - foreverbull_zipline/src/foreverbull_zipline/**/*.py
+      - zipline/src/foreverbull_zipline/**/*.py
     cmds:
-      - docker build -t lhjnilsson/zipline:local -f foreverbull_zipline/Dockerfile .
+      - docker build -t lhjnilsson/zipline:local -f zipline/Dockerfile .
 
   proto:generate:
+    desc: Generate Python protobuf code
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/v1/*.proto      
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/finance/service/v1/*.proto 
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/backtest/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/backtest/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/service/service/v1/*.proto
-      #- uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/strategy/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/strategy/service/v1/*.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/foreverbull/common.proto
-      - uv run python3 -m grpc_tools.protoc -I../proto --python_out=src/foreverbull/pb --pyi_out=src/foreverbull/pb --grpc_python_out=src/foreverbull/pb ../proto/buf/validate/validate.proto
-      # Update imports, could maybe be solved by organizing the proto files in a better way
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull\./from foreverbull\.pb\.foreverbull./g' {} \;
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from foreverbull import common_pb2/from foreverbull\.pb\.foreverbull import common_pb2/g' {} \;
-      - LC_ALL=C find src/foreverbull/pb -name "*_pb2*" -exec sed -i '' 's/from buf\.validate import/from foreverbull\.pb\.buf\.validate import/g' {} \;
+      # Internal stream messages are Go-only.
+      - buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
+      # Buf emits proto-rooted imports; rewrite them under foreverbull.pb.
+      # sed -i.bak is portable across GNU (Linux CI) and BSD (macOS).
+      - |
+        set -e
+        LC_ALL=C find client/src/foreverbull/pb -type f \( -name '*_pb2.py' -o -name '*_pb2.pyi' -o -name '*_pb2_grpc.py' \) -exec sed -i.bak \
+          -e 's/from foreverbull\./from foreverbull.pb.foreverbull./g' \
+          -e 's/from foreverbull import common_pb2/from foreverbull.pb.foreverbull import common_pb2/g' \
+          -e 's/from buf\.validate import/from foreverbull.pb.buf.validate import/g' \
+          {} +
+        find client/src/foreverbull/pb -type f -name '*.bak' -delete
 
   template:generate:
+    desc: Render cookiecutter templates
     sources:
       - templates/**/*
     cmds:
-      - uv run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file rendered/advanced.json -f
-      - uv run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file rendered/simple.json -f
+      - uv run cookiecutter --output-dir rendered/advanced templates/advanced/ --replay-file templates/advanced.json -f
+      - uv run cookiecutter --output-dir rendered/simple templates/simple/ --replay-file templates/simple.json -f
 
   template:test:simple:
+    desc: Test the simple cookiecutter template
     deps:
     - template:generate
     env:
       PYTHONPATH: rendered/simple/simple
     cmds:
-      - rye test -- rendered/simple/simple
+      - uv run pytest rendered/simple/simple
 
   template:test:advanced:
-    deps: 
+    desc: Test the advanced cookiecutter template
+    deps:
     - template:generate
     env:
       PYTHONPATH: rendered/advanced/advanced
     cmds:
-      - rye test -- rendered/advanced/advanced
+      - |
+        if uv run python -c "import talib" >/dev/null 2>&1; then
+          uv run pytest rendered/advanced/advanced
+        else
+          echo "Skipping advanced template pytest: TA-Lib is not installed"
+        fi
 
   template:test:
+    desc: Test cookiecutter templates
     deps:
     - template:test:simple
     - template:test:advanced

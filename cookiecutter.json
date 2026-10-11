@@ -2,12 +2,13 @@
     "templates": {
       "simple": {
         "path": "./client/templates/simple",
-        "title": "Simple Setup without TALib",
-        "description": "Intended for PoC and demo purposes"
+        "title": "Simple SMA crossover (no TA-Lib)",
+        "description": "Pandas moving-average crossover that equal-weights deployable capital, leaves a cash reserve, caps names, and rebalances each bar. No TA-Lib."
         },
       "advanced": {
         "path": "./client/templates/advanced",
-        "title": "More Advanced Setup with TALib and mix of parallelism"
+        "title": "Advanced MACD and RSI (TA-Lib)",
+        "description": "TA-Lib MACD and RSI strategies that equal-weight deployable capital, leave a cash reserve, cap names, and rebalance each bar."
       }
     }
   }

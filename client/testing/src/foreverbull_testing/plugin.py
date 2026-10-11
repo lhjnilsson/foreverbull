@@ -1,19 +1,25 @@
 import os
+import socket
 
 from datetime import date
 from datetime import datetime
+from threading import Thread
+from typing import cast
 
+import pynng
 import pytest
 
-from docker.models.containers import Container
-from sqlalchemy import create_engine
-from testcontainers.core.config import testcontainers_config
-from testcontainers.postgres import PostgresContainer
-
+from foreverbull import broker
+from foreverbull.foreverbull import Foreverbull
+from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import AssetManager
+from foreverbull_testing.models import Backtest
 from foreverbull_testing.models import PortfolioManager
+from foreverbull_testing.session import Session
 
 from . import database
 
@@ -23,25 +29,108 @@ def pytest_addoption(parser):
         "--backtest",
         action="store",
         default=None,
-        help="Environment to run tests against (e.g. dev, staging, prod)",
+        help="Name of a broker backtest to run live algorithm tests against",
     )
+
+
+def _named_postgres_container(client, name: str):
+    for container in client.client.api.containers(all=True, filters={"name": name}):
+        names = container.get("Names") or []
+        if any(n.rstrip("/").split("/")[-1] == name for n in names):
+            return container
+    return None
+
+
+@pytest.fixture
+def fb_env():
+    """Process env defaults. Does not start Docker or require a daemon."""
+    setup_env()
+    yield
+
+
+@pytest.fixture
+def namespace_server():
+    """In-process pynng namespace fake. Does not start Docker or query SQL."""
+    namespace = {}
+
+    s = pynng.Rep0(listen="tcp://0.0.0.0:0")
+    s.recv_timeout = 500
+    s.send_timeout = 500
+    previous_port = os.environ.get("NAMESPACE_PORT")
+    # pynng InAddr.port is network byte order. ntohs is the port clients dial.
+    os.environ["NAMESPACE_PORT"] = str(socket.ntohs(s.listeners[0].local_address.port))
+
+    def runner(s, namespace):
+        while True:
+            request = worker_service_pb2.NamespaceRequest()
+            try:
+                request.ParseFromString(s.recv())
+            except pynng.exceptions.Timeout:
+                continue
+            except pynng.exceptions.Closed:
+                break
+            if request.type == worker_service_pb2.NamespaceRequestType.GET:
+                response = worker_service_pb2.NamespaceResponse()
+                response.value.update(namespace.get(request.key, {}))
+            elif request.type == worker_service_pb2.NamespaceRequestType.SET:
+                namespace[request.key] = {k: v for k, v in request.value.items()}
+                response = worker_service_pb2.NamespaceResponse()
+                response.value.update(namespace[request.key])
+            else:
+                response = worker_service_pb2.NamespaceResponse(error="Invalid task")
+            s.send(response.SerializeToString())
+
+    thread = Thread(target=runner, args=(s, namespace))
+    thread.start()
+
+    try:
+        yield namespace
+    finally:
+        s.close()
+        thread.join()
+        if previous_port is None:
+            os.environ.pop("NAMESPACE_PORT", None)
+        else:
+            os.environ["NAMESPACE_PORT"] = previous_port
 
 
 @pytest.fixture(scope="session")
 def fb_database():
-    postgres = PostgresContainer("postgres:alpine")
+    """Postgres Testcontainer plus verify_or_populate for OHLC data.
+
+    Not autouse. Request this only from tests that execute SQL. Reuses a named
+    container (`fbull_client_testing_pg`) when one is already running.
+    """
+    from docker.models.containers import Container
+    from sqlalchemy import create_engine
+    from sqlalchemy import text
+    from testcontainers.core.config import testcontainers_config
+    from testcontainers.postgres import PostgresContainer
+
+    # postgres:alpine moved to 18, whose images exit on startup when a volume is
+    # mounted at /var/lib/postgresql/data. 17 keeps that path.
+    postgres = PostgresContainer("postgres:17-alpine")
     postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     postgres = postgres.with_name("fbull_client_testing_pg")
     client = postgres.get_docker_client()
-    containers = client.client.api.containers(filters={"name": "fbull_client_testing_pg"})
-    if containers:
-        postgres._container = Container(attrs=containers[0])
-        engine = create_engine(postgres.get_connection_url())
-    else:
+    existing = _named_postgres_container(client, "fbull_client_testing_pg")
+    engine = None
+    if existing and existing.get("State") == "running":
+        postgres._container = Container(attrs=client.client.api.inspect_container(existing["Id"]))
+        try:
+            engine = create_engine(postgres.get_connection_url())
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:  # noqa: BLE001
+            engine = None
+    if engine is None:
+        if existing:
+            client.client.api.remove_container(existing["Id"], force=True)
+        postgres._container = None
         testcontainers_config.ryuk_disabled = True
         postgres.start()
         engine = create_engine(postgres.get_connection_url())
-        database.Base.metadata.create_all(engine)
+    database.prepare(engine)
 
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
 
@@ -92,3 +181,92 @@ def portfolio_manager(fb_database):
     engine, _ = fb_database
     with engine.connect() as conn:
         yield PortfolioManager(conn)
+
+
+@pytest.fixture
+def session(fb_database):
+    """Synthetic OHLC bars and production Algorithm.process. Not autouse. No price download.
+
+    The yielded Session builds weekday bars with constant, trend, and cross_up.
+    replay fills each pending order.amount as a delta at that day's close. The
+    result is an order trace for tests, not a broker or Zipline result.
+    """
+    engine, _ = fb_database
+    with engine.connect() as conn:
+        yield Session(conn)
+
+
+class _UnsetAlgorithm:
+    """Stand-in until Backtest.run_execution installs the algorithm."""
+
+
+def _broker_skip_reason(exc: Exception) -> str:
+    details = getattr(exc, "details", None)
+    message = details() if callable(details) else None
+    if not message:
+        message = str(exc).strip()
+    return str(message) if message else exc.__class__.__name__
+
+
+def _close_stream(stream) -> None:
+    # The session server is already up once a port arrives. Swallow close errors
+    # so a stream cancel cannot mask the lookup failure or fail the test.
+    closer = getattr(stream, "close", None)
+    if not callable(closer):
+        return
+    try:
+        closer()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _started_session(name: str):
+    stream = broker.backtest.create_session(name)
+    try:
+        for msg in stream:
+            if msg.session.port:
+                return msg
+    finally:
+        _close_stream(stream)
+    return None
+
+
+def _backtest(request):
+    """Open the optional broker backtest described by request's --backtest option."""
+    name = request.config.getoption("--backtest")
+    if not name:
+        pytest.skip("pass --backtest <name> to run live backtest tests against a broker")
+
+    try:
+        entity = broker.backtest.get(name)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(_broker_skip_reason(exc))
+
+    if entity is None or not entity.name:
+        pytest.skip(f"backtest {name!r} was not found")
+
+    try:
+        started = _started_session(name)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(_broker_skip_reason(exc))
+
+    if started is None:
+        pytest.skip(f"backtest {name!r} session did not start")
+
+    # Foreverbull requires a model. The test algorithm replaces it inside run_execution.
+    with Foreverbull(cast(Algorithm, _UnsetAlgorithm())).backtest_session(entity, started.session) as live:
+        yield Backtest(live)
+
+
+@pytest.fixture
+def backtest(request):
+    """Optional broker backtest. Skips unless --backtest <name> is passed.
+
+    Looks the name up with foreverbull.broker.backtest.get. An unreachable
+    broker or a missing name skips with that reason and does not error. A found
+    backtest is yielded as models.Backtest, connected with
+    broker.backtest.create_session and Foreverbull.backtest_session.
+    Backtest.run_execution is the only runner. Does not call trading_session
+    or PlaceOrder, and does not set TRADING_ENABLED.
+    """
+    yield from _backtest(request)

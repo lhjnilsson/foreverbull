@@ -1,3 +1,6 @@
+from typing import Annotated
+from typing import Self
+
 import typer
 
 from grpc._channel import _InactiveRpcError
@@ -5,8 +8,8 @@ from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.table import Table
 
+from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import Config
-from foreverbull_cli.env.environment import ContainerManager
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.output import FBSpinnerColumn
 from foreverbull_cli.output import console
@@ -18,8 +21,9 @@ class FBProgress(Progress):
         text = TextColumn("[progress.description]{task.description}")
         super().__init__(spinner, text)
 
-    def __enter__(self) -> "FBProgress":
-        return super().__enter__()
+    def __enter__(self) -> Self:
+        super().__enter__()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if isinstance(exc_val, _InactiveRpcError):
@@ -37,65 +41,103 @@ class FBProgress(Progress):
 
 cli = typer.Typer()
 
+ClusterFlag = Annotated[str | None, typer.Option("--cluster", help="local (Kind) or remote kube context")]
+KubeconfigFlag = Annotated[str | None, typer.Option("--kubeconfig", help="Kubeconfig path (remote)")]
+ContextFlag = Annotated[str | None, typer.Option("--context", help="Kube context (remote)")]
+NamespaceFlag = Annotated[str | None, typer.Option("--namespace", help="Helm namespace")]
+BrokerAddressFlag = Annotated[str | None, typer.Option("--broker-address", help="Broker host:port")]
 
-def print_status(cm: ContainerManager):
-    table = Table(title="Environment Status")
+
+def _manager(
+    ctx: typer.Context,
+    *,
+    cluster: str | None = None,
+    kubeconfig: str | None = None,
+    context: str | None = None,
+    namespace: str | None = None,
+    broker_address: str | None = None,
+) -> ClusterManager:
+    cm: ClusterManager = ctx.obj
+    cm.config.apply_cli_overrides(
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
+    return cm
+
+
+def print_status(cm: ClusterManager):
+    cfg = cm.config
+    broker = cfg.broker_address or "unset"
+    title = (
+        f"Environment Status ({cfg.cluster}, ns={cfg.namespace}, "
+        f"context={cfg.kube_context or 'default'}, broker={broker})"
+    )
+    table = Table(title=title)
     table.add_column("Service")
     table.add_column("Name")
     table.add_column("Status")
     table.add_column("Version")
     table.add_column("Container ID")
-    table.add_row(
-        "Postgres",
-        cm.postgres.name,
-        cm.postgres.status(),
-        cm.postgres.image_version(),
-        cm.postgres.container_id(),
-    )
-    table.add_row(
-        "NATS",
-        cm.nats.name,
-        cm.nats.status(),
-        cm.nats.image_version(),
-        cm.nats.container_id(),
-    )
-    table.add_row(
-        "Minio",
-        cm.minio.name,
-        cm.minio.status(),
-        cm.minio.image_version(),
-        cm.minio.container_id(),
-    )
-    table.add_row(
-        "Foreverbull",
-        cm.foreverbull.name,
-        cm.foreverbull.status(),
-        cm.foreverbull.image_version(),
-        cm.foreverbull.container_id(),
-    )
-    table.add_row(
-        "Grafana",
-        cm.grafana.name,
-        cm.grafana.status(),
-        cm.grafana.image_version(),
-        cm.grafana.container_id(),
-    )
+    for row in cm.status_rows():
+        table.add_row(row.service, row.name, row.status, row.image, row.container_id)
     console.print(table)
 
 
-@cli.command(help="Status of the environment")
-def status(ctx: typer.Context):
-    cm: ContainerManager = ctx.obj
+def print_cluster(config: Config, *, path_note: str | None = None):
+    if path_note:
+        console.print(path_note)
+    console.print(f"cluster: {config.cluster}")
+    console.print(f"namespace: {config.namespace}")
+    console.print(f"context: {config.kube_context or '(default)'}")
+    console.print(f"kubeconfig: {config.kubeconfig or '(default)'}")
+    console.print(f"broker: {config.broker_address or '(unset)'}")
+
+
+@cli.command(help="Show the selected cluster")
+def status(
+    ctx: typer.Context,
+    cluster: ClusterFlag = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm = _manager(
+        ctx,
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
     print_status(cm)
 
 
-@cli.command(help="create new environment")
-def create(ctx: typer.Context, start: bool = True):
-    cm: ContainerManager = ctx.obj
+@cli.command(help="Install the Kind cluster and Helm release. Workloads stay stopped.")
+def create(
+    ctx: typer.Context,
+    start: Annotated[bool, typer.Option("--start", help="Start workloads after install")] = False,
+    cluster: ClusterFlag = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm = _manager(
+        ctx,
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
 
     with FBProgress() as progress:
         verify_images = progress.add_task("Verifying images", total=2)
-        create = progress.add_task("Creating environment", total=2)
+        create_task = progress.add_task("Creating environment", total=2)
         if start:
             start_task = progress.add_task("Starting environment", total=2)
         else:
@@ -105,45 +147,85 @@ def create(ctx: typer.Context, start: bool = True):
         cm.verify_images()
         progress.update(verify_images, completed=2)
 
-        progress.update(create, completed=1)
+        progress.update(create_task, completed=1)
         cm.create()
 
-        progress.update(create, completed=2)
+        progress.update(create_task, completed=2)
         if start_task:
             progress.update(start_task, completed=1)
             cm.start()
             progress.update(start_task, completed=2)
 
     print_status(cm)
+    if not start:
+        console.print("Workloads are stopped. Start them with `fbenv start`.")
 
 
-@cli.command(help="start environment")
-def start(ctx: typer.Context):
-    cm: ContainerManager = ctx.obj
+@cli.command(help="Scale workloads to 1 and wait until they are ready.")
+def start(
+    ctx: typer.Context,
+    cluster: ClusterFlag = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm = _manager(
+        ctx,
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
 
-    with FBProgress() as progress:
-        start = progress.add_task("Starting environment", total=2)
-        progress.update(start, completed=1)
-        cm.start()
-        progress.update(start, completed=2)
+    try:
+        with FBProgress() as progress:
+            start_task = progress.add_task("Starting environment", total=2)
+            progress.update(start_task, completed=1)
+            cm.start()
+            progress.update(start_task, completed=2)
+    except TimeoutError as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from exc
 
     print_status(cm)
 
 
-@cli.command(help="stop environment")
-def stop(ctx: typer.Context, remove: bool = False, purge: bool = False):
-    cm: ContainerManager = ctx.obj
+@cli.command(help="Scale workloads to 0.")
+def stop(
+    ctx: typer.Context,
+    remove: bool = typer.Option(False, "--remove", help="Uninstall the Helm release"),
+    purge: bool = typer.Option(
+        False,
+        "--purge",
+        help="With --remove, delete the Kind cluster (local) and .foreverbull data",
+    ),
+    cluster: ClusterFlag = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm = _manager(
+        ctx,
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
 
     with FBProgress() as progress:
-        stop = progress.add_task("Stopping environment", total=2)
+        stop_task = progress.add_task("Stopping environment", total=2)
         if remove:
             remove_task = progress.add_task("Removing environment", total=2)
         else:
             remove_task = None
 
-        progress.update(stop, completed=1)
+        progress.update(stop_task, completed=1)
         cm.stop()
-        progress.update(stop, completed=2)
+        progress.update(stop_task, completed=2)
 
         if remove_task:
             progress.update(remove_task, completed=1)
@@ -153,20 +235,61 @@ def stop(ctx: typer.Context, remove: bool = False, purge: bool = False):
 
 
 @cli.command(help="update environment images")
-def update(ctx: typer.Context):
-    cm: ContainerManager = ctx.obj
+def update(
+    ctx: typer.Context,
+    cluster: ClusterFlag = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm = _manager(
+        ctx,
+        cluster=cluster,
+        kubeconfig=kubeconfig,
+        context=context,
+        namespace=namespace,
+        broker_address=broker_address,
+    )
 
     with FBProgress() as progress:
-        update = progress.add_task("Updating environment", total=2)
-        progress.update(update, completed=1)
-
-        progress.update(update, completed=2)
+        update_task = progress.add_task("Updating environment", total=2)
+        progress.update(update_task, completed=1)
+        cm.update()
+        progress.update(update_task, completed=2)
 
     print_status(cm)
+
+
+@cli.command(help="Select cluster: local (Kind) or remote. Writes .foreverbull/config.yaml")
+def use(
+    ctx: typer.Context,
+    cluster: Annotated[str | None, typer.Argument(help="local or remote")] = None,
+    kubeconfig: KubeconfigFlag = None,
+    context: ContextFlag = None,
+    namespace: NamespaceFlag = None,
+    broker_address: BrokerAddressFlag = None,
+):
+    cm: ClusterManager = ctx.obj
+    config: Config = cm.config
+    if cluster is None:
+        print_cluster(config)
+        return
+    try:
+        path = config.persist_selection(
+            cluster,
+            kubeconfig=kubeconfig,
+            context=context,
+            namespace=namespace,
+            broker_address=broker_address,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    print_cluster(config, path_note=f"Wrote {path}")
 
 
 @cli.callback()
 def initialize(ctx: typer.Context):
     config = Config()
     environment = Environment()
-    ctx.obj = ContainerManager(environment, config)
+    ctx.obj = ClusterManager(environment, config)

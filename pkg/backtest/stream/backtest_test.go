@@ -21,18 +21,9 @@ import (
 	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 )
-
-func TestCreateBacktest(t *testing.T) {
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
-	assert.NoError(t, err)
-	assert.Equal(t, int32(1), o.Steps[0].Num)
-	assert.Equal(t, int32(2), o.Steps[1].Num)
-	assert.Equal(t, int32(3), o.Steps[2].Num)
-}
 
 type BacktestTest struct {
 	suite.Suite
@@ -120,7 +111,7 @@ func (test *BacktestTest) TestCreateBacktestFromBacktest() {
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETF() {
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "iShares S&P 100", "2022-01-01", "2023-01-01", "", "")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 
@@ -137,7 +128,7 @@ func (test *BacktestTest) TestCreateBacktestFromETF() {
 }
 
 func (test *BacktestTest) TestCreateBacktestFromETFBadETF() {
-	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01")
+	o, err := stream.CreateBacktestFromETF("sp100_backtest", "bad", "2022-01-01", "2023-01-01", "", "")
 	test.Require().NoError(err)
 	test.Require().NotNil(o)
 

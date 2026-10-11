@@ -10,7 +10,8 @@ RUN pip install grpcio-health-checking==1.71.0
 RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
 WORKDIR /app
 
-RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.34/grpc_health_probe-linux-amd64
+ARG TARGETARCH=amd64
+RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.34/grpc_health_probe-linux-${TARGETARCH}
 RUN chmod +x /bin/grpc_health_probe
 HEALTHCHECK --interval=5s --timeout=3s CMD grpc_health_probe -addr=:50055
 

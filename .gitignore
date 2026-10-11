@@ -176,11 +176,18 @@ yarn-error.log*
 # SQL files
 *.sql
 
-# Loki metric folder
+# Loki test container data (WAL, chunks, indexes). Do not commit fixtures.
 internal/test_helper/metrics/
+internal/test_helper/metrics/loki/
 client/baseline_performance.pickle
 
 .foreverbull
+
+# Local Grok Build session/workflows (not part of the product tree)
+.grok/
+
+# Cookiecutter output from `task template:generate` / template:test
+client/rendered/
 
 client/result.json
 client/baseline.json

@@ -1,50 +1,33 @@
-<!-- This README file is going to be the one displayed on the Grafana.com website for your plugin. Uncomment and replace the content here before publishing.
+# Foreverbull datasource
 
-Remove any remaining comments before publishing as these may be displayed on Grafana.com -->
+Grafana backend datasource for Foreverbull backtest executions and strategy experiments.
 
-# Foreverbull
+Plugin ID: `lhjnilsson-foreverbull-datasource`. Requires Grafana 10.4 or later.
 
-<!-- To help maximize the impact of your README and improve usability for users, we propose the following loose structure:
+The backend talks to the Foreverbull gRPC broker (`BROKER_URL`, in-cluster default `foreverbull:50055`). Query type `GetExecutionMetric` loads one execution by ID (`execution.id`) and returns selected metrics over time:
 
-**BEFORE YOU BEGIN**
-- Ensure all links are absolute URLs so that they will work when the README is displayed within Grafana and Grafana.com
-- Be inspired ✨
-  - [grafana-polystat-panel](https://github.com/grafana/grafana-polystat-panel)
-  - [volkovlabs-variable-panel](https://github.com/volkovlabs/volkovlabs-variable-panel)
+- `portfolio_value`
+- `max_drawdown`
+- `alpha`
+- `beta`
+- `sharpe`
+- `sortino`
+- `capital_used`
+- `long_count`
+- `short_count`
+- `long_value`
+- `short_value`
 
-**ADD SOME BADGES**
+Execution picker values are UUIDs. Labels are `{backtest} {start}–{end}` plus a short id. Overlay another run as a second query. Strategy / version / experiment variables cascade on the compare dashboard; experiment values are still execution UUIDs.
 
-Badges convey useful information at a glance for users whether in the Catalog or viewing the source code. You can use the generator on [Shields.io](https://shields.io/badges/dynamic-json-badge) together with the Grafana.com API
-to create dynamic badges that update automatically when you publish a new version to the marketplace.
+## Dashboards
 
-- For the URL parameter use `https://grafana.com/api/plugins/your-plugin-id`.
-- Example queries:
-  - Downloads: `$.downloads`
-  - Catalog Version: `$.version`
-  - Grafana Dependency: `$.grafanaDependency`
-  - Signature Type: `$.versionSignatureType`
-- Optionally, for the logo parameter use `grafana`.
+| UID | Title | Deep link |
+| --- | --- | --- |
+| `ee9ep4jxtwkcgf` | Backtest execution | `{GRAFANA_URL}/d/ee9ep4jxtwkcgf?var-execution={id}` |
+| `fb-strategy-compare` | Strategy compare | `{GRAFANA_URL}/d/fb-strategy-compare` |
+| `fb-backtest-overview` | Backtest overview | `{GRAFANA_URL}/d/fb-backtest-overview` |
 
-Full example: ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?logo=grafana&query=$.version&url=https://grafana.com/api/plugins/grafana-polystat-panel&label=Marketplace&prefix=v&color=F47A20)
+`GRAFANA_URL` is the Grafana origin (default `http://localhost:3000` on local Kind). CLI `fbull backtest run` / `fbull strategy experiments` and `GetExperiment.grafana_path` print the first URL. Helm `grafana.url` sets broker `GRAFANA_URL` for remote origins. Do not change UID `ee9ep4jxtwkcgf` or the `var-execution` query key.
 
-Consider other [badges](https://shields.io/badges) as you feel appropriate for your project.
-
-## Overview / Introduction
-Provide one or more paragraphs as an introduction to your plugin to help users understand why they should use it.
-
-Consider including screenshots:
-- in [plugin.json](https://grafana.com/developers/plugin-tools/reference/plugin-json#info) include them as relative links.
-- in the README ensure they are absolute URLs.
-
-## Requirements
-List any requirements or dependencies they may need to run the plugin.
-
-## Getting Started
-Provide a quick start on how to configure and use the plugin.
-
-## Documentation
-If your project has dedicated documentation available for users, provide links here. For help in following Grafana's style recommendations for technical documentation, refer to our [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/).
-
-## Contributing
-Do you want folks to contribute to the plugin or provide feedback through specific means? If so, tell them how!
--->
+This plugin is built into the `lhjnilsson/fb-grafana` image (`task grafana:build:docker`). Product Grafana is Kind/Helm, not plugin-dev compose. Do not enable live trading from Grafana.

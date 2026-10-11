@@ -8,8 +8,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -30,7 +32,7 @@ type SessionTest struct {
 }
 
 func (test *SessionTest) SetupSuite() {
-	test_helper.SetupEnvironment(test.T(), &test_helper.Containers{})
+	test_helper.SetupEnv(test.T())
 }
 
 func (test *SessionTest) SetupTest() {
@@ -69,4 +71,41 @@ func (test *SessionTest) TearDownTest() {
 
 func TestSession(t *testing.T) {
 	suite.Run(t, new(SessionTest))
+}
+
+func (test *SessionTest) TestPlaceOrdersReturnsPlacedOrder() {
+	test.mockTrading.On("PlaceOrder", mock.Anything, mock.MatchedBy(func(order *pb.Order) bool {
+		return order.GetSymbol() == "AAPL" && order.GetBrokerOrderId() == ""
+	})).Return(&pb.Order{
+		Symbol:        "AAPL",
+		Amount:        10,
+		Status:        pb.OrderStatus_ORDER_STATUS_ACCEPTED,
+		BrokerOrderId: "brk-aapl",
+	}, nil).Once()
+	test.mockTrading.On("PlaceOrder", mock.Anything, mock.MatchedBy(func(order *pb.Order) bool {
+		return order.GetSymbol() == "MSFT" && order.GetBrokerOrderId() == ""
+	})).Return(&pb.Order{
+		Symbol:        "MSFT",
+		Amount:        -4,
+		Status:        pb.OrderStatus_ORDER_STATUS_FILLED,
+		BrokerOrderId: "brk-msft",
+	}, nil).Once()
+
+	rsp, err := test.client.PlaceOrders(context.Background(), &servicePb.PlaceOrderRequest{
+		Orders: []*pb.Order{
+			{Symbol: "AAPL", Amount: 10},
+			{Symbol: "MSFT", Amount: -4},
+		},
+	})
+	test.Require().NoError(err)
+	test.Require().Len(rsp.GetOrders(), 2)
+	test.Equal(pb.OrderStatus_ORDER_STATUS_ACCEPTED, rsp.GetOrders()[0].GetStatus())
+	test.Equal("brk-aapl", rsp.GetOrders()[0].GetBrokerOrderId())
+	test.Equal("AAPL", rsp.GetOrders()[0].GetSymbol())
+	test.Equal(int32(10), rsp.GetOrders()[0].GetAmount())
+	test.Equal(pb.OrderStatus_ORDER_STATUS_FILLED, rsp.GetOrders()[1].GetStatus())
+	test.Equal("brk-msft", rsp.GetOrders()[1].GetBrokerOrderId())
+	test.Equal("MSFT", rsp.GetOrders()[1].GetSymbol())
+	test.Equal(int32(-4), rsp.GetOrders()[1].GetAmount())
+	test.mockTrading.AssertExpectations(test.T())
 }

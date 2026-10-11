@@ -12,7 +12,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	backtestsvc "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	strategysvc "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -31,7 +33,7 @@ var (
 func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	foreverbull, exists := os.LookupEnv("BROKER_URL")
 	if !exists {
-		foreverbull = "localhost:50555"
+		foreverbull = "localhost:50055"
 	}
 
 	log := log.DefaultLogger.With("datasource", "foreverbull")
@@ -42,16 +44,17 @@ func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (ins
 		return nil, fmt.Errorf("could not connect: %w", err)
 	}
 
-	client := pb.NewBacktestServicerClient(conn)
-
 	mux := datasource.NewQueryTypeMux()
 	ds := &Datasource{
 		queryMux: mux,
-		backend:  client,
+		backend:  backtestsvc.NewBacktestServicerClient(conn),
+		strategy: strategysvc.NewStrategyServicerClient(conn),
+		conn:     conn,
 		log:      log,
 	}
 	ds.registerResources()
 	mux.HandleFunc(GetExecutionMetric, ds.HandleGetExecutionMetric)
+	mux.HandleFunc(ListExecutionOverview, ds.HandleListExecutionOverview)
 
 	return ds, nil
 }
@@ -74,29 +77,57 @@ func processQueries(ctx context.Context, req *grafana.QueryDataRequest, handler 
 	}
 }
 
+// backtestAPI is the BacktestServicer methods this plugin calls.
+type backtestAPI interface {
+	ListBacktests(ctx context.Context, in *backtestsvc.ListBacktestsRequest, opts ...grpc.CallOption) (*backtestsvc.ListBacktestsResponse, error)
+	GetBacktest(ctx context.Context, in *backtestsvc.GetBacktestRequest, opts ...grpc.CallOption) (*backtestsvc.GetBacktestResponse, error)
+	ListExecutions(ctx context.Context, in *backtestsvc.ListExecutionsRequest, opts ...grpc.CallOption) (*backtestsvc.ListExecutionsResponse, error)
+	GetExecution(ctx context.Context, in *backtestsvc.GetExecutionRequest, opts ...grpc.CallOption) (*backtestsvc.GetExecutionResponse, error)
+}
+
+// strategyAPI is the StrategyServicer methods this plugin calls.
+// Unimplemented (strategy.Module not registered) is treated as an empty list.
+type strategyAPI interface {
+	ListStrategies(ctx context.Context, in *strategysvc.ListStrategiesRequest, opts ...grpc.CallOption) (*strategysvc.ListStrategiesResponse, error)
+	ListExperiments(ctx context.Context, in *strategysvc.ListExperimentsRequest, opts ...grpc.CallOption) (*strategysvc.ListExperimentsResponse, error)
+}
+
 type Datasource struct {
 	queryMux *datasource.QueryTypeMux
-	backend  pb.BacktestServicerClient
+	backend  backtestAPI
+	strategy strategyAPI
+	conn     *grpc.ClientConn
 	grafana.CallResourceHandler
 	log log.Logger
 }
 
 func (d *Datasource) Dispose() {
-	// Clean up datasource instance resources.
+	if d == nil || d.conn == nil {
+		return
+	}
+	if err := d.conn.Close(); err != nil {
+		d.log.Error("fail to close broker connection", err)
+	}
+	d.conn = nil
 }
 
 func (d *Datasource) QueryData(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
 	return d.queryMux.QueryData(ctx, req)
 }
 
-func (d *Datasource) CheckHealth(_ context.Context, req *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {
-	res := &grafana.CheckHealthResult{}
-	_, err := LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
+func (d *Datasource) CheckHealth(ctx context.Context, _ *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {
+	if d == nil || d.backend == nil {
+		return &grafana.CheckHealthResult{
+			Status:  grafana.HealthStatusError,
+			Message: "broker client is not configured",
+		}, nil
+	}
 
-	if err != nil {
-		res.Status = grafana.HealthStatusError
-		res.Message = "Unable to load settings"
-		return res, nil
+	if _, err := d.backend.ListBacktests(ctx, &backtestsvc.ListBacktestsRequest{}); err != nil {
+		return &grafana.CheckHealthResult{
+			Status:  grafana.HealthStatusError,
+			Message: fmt.Sprintf("broker unreachable: %v", err),
+		}, nil
 	}
 
 	return &grafana.CheckHealthResult{
@@ -112,18 +143,61 @@ func (d *Datasource) HandleGetExecutionMetric(ctx context.Context, req *grafana.
 type QueryMetric string
 
 const (
-	PortfolioValue QueryMetric = "portfolio_value"
-	Alpha          QueryMetric = "alpha"
-	Beta           QueryMetric = "beta"
-	Sharpe         QueryMetric = "sharpe"
-	Sortino        QueryMetric = "sortino"
-	CapitalUsed    QueryMetric = "capital_used"
-	LongCount      QueryMetric = "long_count"
-	ShortCount     QueryMetric = "short_count"
-	LongValue      QueryMetric = "long_value"
-	ShortValue     QueryMetric = "short_value"
+	PortfolioValue   QueryMetric = "portfolio_value"
+	Returns          QueryMetric = "returns"
+	PnL              QueryMetric = "pnl"
+	Cash             QueryMetric = "cash"
+	MaxDrawdown      QueryMetric = "max_drawdown"
+	Benchmark        QueryMetric = "benchmark"
+	Alpha            QueryMetric = "alpha"
+	Beta             QueryMetric = "beta"
+	Sharpe           QueryMetric = "sharpe"
+	Sortino          QueryMetric = "sortino"
+	CapitalUsed      QueryMetric = "capital_used"
+	LongCount        QueryMetric = "long_count"
+	ShortCount       QueryMetric = "short_count"
+	LongValue        QueryMetric = "long_value"
+	ShortValue       QueryMetric = "short_value"
+	GrossLeverage    QueryMetric = "gross_leverage"
+	NetLeverage      QueryMetric = "net_leverage"
+	MaxLeverage      QueryMetric = "max_leverage"
+	LongExposure     QueryMetric = "long_exposure"
+	ShortExposure    QueryMetric = "short_exposure"
+	EndingExposure   QueryMetric = "ending_exposure"
+	StartingExposure QueryMetric = "starting_exposure"
 )
 
+var listedMetrics = []QueryMetric{
+	PortfolioValue,
+	Returns,
+	PnL,
+	Cash,
+	MaxDrawdown,
+	Benchmark,
+	Alpha,
+	Beta,
+	Sharpe,
+	Sortino,
+	CapitalUsed,
+	LongCount,
+	ShortCount,
+	LongValue,
+	ShortValue,
+	GrossLeverage,
+	NetLeverage,
+	MaxLeverage,
+	LongExposure,
+	ShortExposure,
+	EndingExposure,
+	StartingExposure,
+}
+
+// Execution is the canonical query-JSON object for an execution id.
+// Canonical body (ANALYSIS.md §6):
+//
+//	{"queryType":"GetExecutionMetric","execution":{"id":"<uuid>"},"metrics":[{"name":"portfolio_value"}]}
+//
+// Legacy dashboards may send "executionId" as a string; that is still accepted.
 type Execution struct {
 	ID string `json:"id"`
 }
@@ -133,23 +207,83 @@ type Metric struct {
 }
 
 type queryModel struct {
-	ExecutionId *Execution `json:"execution"`
-	Metrics     []Metric   `json:"metrics"`
+	ExecutionID string
+	Metrics     []Metric
 }
 
-func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
+func parseExecutionRef(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var id string
+	if err := json.Unmarshal(raw, &id); err == nil {
+		return id
+	}
+	var obj Execution
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
+}
+
+func parseMetrics(raw json.RawMessage) ([]Metric, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err == nil {
+		metrics := make([]Metric, 0, len(names))
+		for _, name := range names {
+			metrics = append(metrics, Metric{Name: QueryMetric(name)})
+		}
+		return metrics, nil
+	}
+	var metrics []Metric
+	if err := json.Unmarshal(raw, &metrics); err != nil {
+		return nil, err
+	}
+	return metrics, nil
+}
+
+func (q *queryModel) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Execution   json.RawMessage `json:"execution"`
+		ExecutionID json.RawMessage `json:"executionId"`
+		Metrics     json.RawMessage `json:"metrics"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	q.ExecutionID = parseExecutionRef(raw.Execution)
+	if q.ExecutionID == "" {
+		q.ExecutionID = parseExecutionRef(raw.ExecutionID)
+	}
+	metrics, err := parseMetrics(raw.Metrics)
+	if err != nil {
+		return err
+	}
+	q.Metrics = metrics
+	return nil
+}
+
+func periodTime(period *backtestpb.Period) time.Time {
+	if period == nil || period.Date == nil {
+		return time.Time{}
+	}
+	return time.Date(int(period.Date.Year), time.Month(int(period.Date.Month)), int(period.Date.Day), 0, 0, 0, 0, time.UTC)
+}
+
+func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.QueryDataRequest, q grafana.DataQuery) grafana.DataResponse {
 	log := d.log.With("GetExecutionMetric")
 
-	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
-
 	err := json.Unmarshal(q.JSON, &qm)
 	if err != nil {
 		log.Error("fail to parse json", err)
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	if qm.ExecutionId == nil || qm.ExecutionId.ID == "" {
+	if qm.ExecutionID == "" {
 		log.Error("executionId is missing")
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, "executionId is missing")
 	}
@@ -159,67 +293,153 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, req grafana.Q
 		return grafana.ErrDataResponse(grafana.StatusBadRequest, "metrics is missing")
 	}
 
-	execution, err := d.backend.GetExecution(ctx, &pb.GetExecutionRequest{ExecutionId: qm.ExecutionId.ID})
+	execution, err := d.backend.GetExecution(ctx, &backtestsvc.GetExecutionRequest{ExecutionId: qm.ExecutionID})
 	if err != nil {
-		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+		return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("get execution: %v", err.Error()))
 	}
 
-	times := make([]time.Time, len(execution.Periods))
-	portfolio_value := make([]float64, len(execution.Periods))
-	alpha := make([]*float64, len(execution.Periods))
-	beta := make([]*float64, len(execution.Periods))
-	sharpe := make([]*float64, len(execution.Periods))
-	sortio := make([]*float64, len(execution.Periods))
-	capital_used := make([]float64, len(execution.Periods))
-	long_count := make([]int32, len(execution.Periods))
-	short_count := make([]int32, len(execution.Periods))
-	long_value := make([]float64, len(execution.Periods))
-	short_value := make([]float64, len(execution.Periods))
+	// Overlay is repeated GetExecutionMetric targets (refId A/B), not a second query type.
+	seriesLabel := executionLabel(execution.GetExecution())
+	if seriesLabel == "" {
+		seriesLabel = qm.ExecutionID
+	}
+	seriesLabels := data.Labels{
+		"execution":    seriesLabel,
+		"execution_id": qm.ExecutionID,
+	}
 
-	for i, period := range execution.Periods {
-		times[i] = time.Date(int(period.Date.Year), time.Month(int(period.Date.Month)), int(period.Date.Day), 0, 0, 0, 0, time.UTC)
-		portfolio_value[i] = period.PortfolioValue
+	periods := execution.GetPeriods()
+	times := make([]time.Time, len(periods))
+	portfolioValue := make([]float64, len(periods))
+	returns := make([]float64, len(periods))
+	pnl := make([]float64, len(periods))
+	cash := make([]float64, len(periods))
+	maxDrawdown := make([]float64, len(periods))
+	benchmark := make([]*float64, len(periods))
+	alpha := make([]*float64, len(periods))
+	beta := make([]*float64, len(periods))
+	sharpe := make([]*float64, len(periods))
+	sortino := make([]*float64, len(periods))
+	capitalUsed := make([]float64, len(periods))
+	longCount := make([]int32, len(periods))
+	shortCount := make([]int32, len(periods))
+	longValue := make([]float64, len(periods))
+	shortValue := make([]float64, len(periods))
+	grossLeverage := make([]float64, len(periods))
+	netLeverage := make([]float64, len(periods))
+	maxLeverage := make([]float64, len(periods))
+	longExposure := make([]float64, len(periods))
+	shortExposure := make([]float64, len(periods))
+	endingExposure := make([]float64, len(periods))
+	startingExposure := make([]float64, len(periods))
+
+	for i, period := range periods {
+		times[i] = periodTime(period)
+		portfolioValue[i] = period.PortfolioValue
+		returns[i] = period.Returns
+		pnl[i] = period.PNL
+		cash[i] = period.EndingCash
+		maxDrawdown[i] = period.MaxDrawdown
+		benchmark[i] = period.BenchmarkPeriodReturn
 		alpha[i] = period.Alpha
 		beta[i] = period.Beta
 		sharpe[i] = period.Sharpe
-		sortio[i] = period.Sortino
-		capital_used[i] = period.CapitalUsed
-		long_count[i] = period.LongsCount
-		short_count[i] = period.ShortsCount
-		long_value[i] = period.LongValue
-		short_value[i] = period.ShortValue
-
+		sortino[i] = period.Sortino
+		capitalUsed[i] = period.CapitalUsed
+		longCount[i] = period.LongsCount
+		shortCount[i] = period.ShortsCount
+		longValue[i] = period.LongValue
+		shortValue[i] = period.ShortValue
+		grossLeverage[i] = period.GrossLeverage
+		netLeverage[i] = period.NetLeverage
+		maxLeverage[i] = period.MaxLeverage
+		longExposure[i] = period.LongExposure
+		shortExposure[i] = period.ShortExposure
+		endingExposure[i] = period.EndingExposure
+		startingExposure[i] = period.StartingExposure
 	}
 
-	frame := data.NewFrame("response")
+	frame := data.NewFrame(seriesLabel)
 	frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
 	for _, metric := range qm.Metrics {
 		switch metric.Name {
 		case PortfolioValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(PortfolioValue), nil, portfolio_value))
+			appendMetricField(frame, string(PortfolioValue), seriesLabels, portfolioValue)
+		case Returns:
+			appendMetricField(frame, string(Returns), seriesLabels, returns)
+		case PnL:
+			appendMetricField(frame, string(PnL), seriesLabels, pnl)
+		case Cash:
+			appendMetricField(frame, string(Cash), seriesLabels, cash)
+		case MaxDrawdown:
+			appendMetricField(frame, string(MaxDrawdown), seriesLabels, maxDrawdown)
+		case Benchmark:
+			appendMetricField(frame, string(Benchmark), seriesLabels, benchmark)
 		case Alpha:
-			frame.Fields = append(frame.Fields, data.NewField(string(Alpha), nil, alpha))
+			appendMetricField(frame, string(Alpha), seriesLabels, alpha)
 		case Beta:
-			frame.Fields = append(frame.Fields, data.NewField(string(Beta), nil, beta))
+			appendMetricField(frame, string(Beta), seriesLabels, beta)
 		case Sharpe:
-			frame.Fields = append(frame.Fields, data.NewField(string(Sharpe), nil, sharpe))
+			appendMetricField(frame, string(Sharpe), seriesLabels, sharpe)
 		case Sortino:
-			frame.Fields = append(frame.Fields, data.NewField(string(Sortino), nil, sortio))
+			appendMetricField(frame, string(Sortino), seriesLabels, sortino)
 		case CapitalUsed:
-			frame.Fields = append(frame.Fields, data.NewField(string(CapitalUsed), nil, capital_used))
+			appendMetricField(frame, string(CapitalUsed), seriesLabels, capitalUsed)
 		case LongCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongCount), nil, long_count))
+			appendMetricField(frame, string(LongCount), seriesLabels, longCount)
 		case ShortCount:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortCount), nil, short_count))
+			appendMetricField(frame, string(ShortCount), seriesLabels, shortCount)
 		case LongValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(LongValue), nil, long_value))
+			appendMetricField(frame, string(LongValue), seriesLabels, longValue)
 		case ShortValue:
-			frame.Fields = append(frame.Fields, data.NewField(string(ShortValue), nil, short_value))
+			appendMetricField(frame, string(ShortValue), seriesLabels, shortValue)
+		case GrossLeverage:
+			appendMetricField(frame, string(GrossLeverage), seriesLabels, grossLeverage)
+		case NetLeverage:
+			appendMetricField(frame, string(NetLeverage), seriesLabels, netLeverage)
+		case MaxLeverage:
+			appendMetricField(frame, string(MaxLeverage), seriesLabels, maxLeverage)
+		case LongExposure:
+			appendMetricField(frame, string(LongExposure), seriesLabels, longExposure)
+		case ShortExposure:
+			appendMetricField(frame, string(ShortExposure), seriesLabels, shortExposure)
+		case EndingExposure:
+			appendMetricField(frame, string(EndingExposure), seriesLabels, endingExposure)
+		case StartingExposure:
+			appendMetricField(frame, string(StartingExposure), seriesLabels, startingExposure)
 		}
 	}
 
 	return grafana.DataResponse{
 		Frames: []*data.Frame{frame},
 		Status: grafana.StatusOK,
+	}
+}
+
+func appendMetricField(frame *data.Frame, name string, labels data.Labels, values interface{}) {
+	field := data.NewField(name, labels, values)
+	// Display unit only. Stored numbers are not rescaled.
+	cfg := &data.FieldConfig{Unit: metricUnit(name)}
+	if label := labels["execution"]; label != "" {
+		cfg.DisplayNameFromDS = label + " " + name
+	}
+	field.SetConfig(cfg)
+	frame.Fields = append(frame.Fields, field)
+}
+
+// metricUnit matches the zipline period writer (engine.py copies the columns unchanged).
+// returns, max_drawdown, benchmark_period_return, and annualized alpha are fractions (0.01 is 1 percent).
+// Sharpe, Sortino, and beta are ratios. gross/net/max leverage are exposure/portfolio_value (1 is 1x).
+// portfolio_value, pnl, cash, capital_used, long_value, short_value, and exposure fields are currency.
+func metricUnit(name string) string {
+	switch QueryMetric(name) {
+	case PortfolioValue, PnL, Cash, CapitalUsed, LongValue, ShortValue, LongExposure, ShortExposure, EndingExposure, StartingExposure:
+		return "currencyUSD"
+	case Returns, MaxDrawdown, Benchmark, Alpha:
+		return "percentunit"
+	case Sharpe, Sortino, Beta, GrossLeverage, NetLeverage, MaxLeverage:
+		return "none"
+	default:
+		return ""
 	}
 }

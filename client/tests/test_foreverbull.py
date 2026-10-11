@@ -1,6 +1,7 @@
 import time
 
 from concurrent import futures
+from contextlib import suppress
 from datetime import date
 from unittest.mock import MagicMock
 
@@ -41,9 +42,13 @@ class TestBacktestSession:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
-    def test_run_execution(self, parallel_algo_file, namespace_server, start_grpc_server):
+    def test_run_execution(
+        self, fb_env, fb_database, parallel_algo_file, namespace_server, start_grpc_server, monkeypatch
+    ):
+        monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
         backtest = backtest_pb2.Backtest()
         session = session_pb2.Session()
@@ -86,9 +91,13 @@ class TestTradingSession:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
-    def test_run_trading(self, parallel_algo_file, namespace_server, start_grpc_server):
+    def test_run_trading(
+        self, fb_env, fb_database, parallel_algo_file, namespace_server, start_grpc_server, monkeypatch
+    ):
+        monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
         mocked_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
         mocked_session_servicer.Configure.return_value = trading_service_pb2.ConfigureResponse(
@@ -123,7 +132,8 @@ class TestForeverbull:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     @pytest.fixture
     def trading_grpc_server(self):
@@ -141,32 +151,52 @@ class TestForeverbull:
         try:
             yield _add_servicer
         finally:
-            grpc_server.stop(None)
+            with suppress(Exception):
+                grpc_server.stop(None)
 
     def test_backtest_session(self, parallel_algo_file, backtest_grpc_server):
         mock_backtest_session_servicer = MagicMock(spec=backtest_session_service_pb2_grpc.SessionServicerServicer)
         mock_backtest_session_servicer.StopServer.return_value = backtest_session_service_pb2.StopServerResponse()
-        mock_server = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
+        mock_backtest_servicer = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-        port = backtest_grpc_server(mock_server, mock_backtest_session_servicer)
+        port = backtest_grpc_server(mock_backtest_servicer, mock_backtest_session_servicer)
         backtest = backtest_pb2.Backtest()
         backtest_session = session_pb2.Session(
             port=port,
         )
 
         with algorithm.backtest_session(backtest, backtest_session) as algo:
-            assert type(algo) is BacktestSession
+            assert type(algo) is BacktestSession, "algo is not of type BacktestSession"
 
     def test_trading_session(self, parallel_algo_file, trading_grpc_server):
         mock_trading_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
         mock_trading_session_servicer.StopServer.return_value = trading_service_pb2.StopServerResponse()
-        mock_server = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
+        mock_trading_servicer = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
-        port = trading_grpc_server(mock_server, mock_trading_session_servicer)
+        port = trading_grpc_server(mock_trading_servicer, mock_trading_session_servicer)
         trading_session = trading_pb2.Session(
             port=port,
         )
         with algorithm.trading_session(trading_session) as algo:
-            assert type(algo) is TradingSession
+            assert type(algo) is TradingSession, "algo is not of type TradingSession"
+
+    def test_get_execution_uses_resolved_broker_address(self, monkeypatch):
+        seen: list[str] = []
+        stub = MagicMock()
+        stub.GetExecution.return_value = MagicMock(execution=MagicMock(), periods=[])
+        monkeypatch.setenv("FOREVERBULL_BROKER_ADDRESS", "remote.example:1234")
+        monkeypatch.setattr(
+            "foreverbull.foreverbull.grpc.insecure_channel",
+            lambda addr: seen.append(addr) or MagicMock(),
+        )
+        monkeypatch.setattr(
+            "foreverbull.foreverbull.backtest_service_pb2_grpc.BacktestServicerStub",
+            lambda channel: stub,
+        )
+        algorithm = Foreverbull(None)
+        execution, frame = algorithm.get_execution("exec-1")
+        assert execution is stub.GetExecution.return_value.execution
+        assert frame.empty
+        assert seen == ["remote.example:1234"]

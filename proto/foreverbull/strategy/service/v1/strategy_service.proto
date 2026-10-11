@@ -1,49 +1,198 @@
 syntax = "proto3";
 
-package foreverbull.strategy;
+package foreverbull.strategy.service.v1;
 
 import "buf/validate/validate.proto";
+import "foreverbull/backtest/v1/execution.proto";
 import "foreverbull/common.proto";
-import "foreverbull/service/v1/worker.proto";
+import "foreverbull/strategy/v1/strategy.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service";
 
-message RunStrategyRequest {
-  repeated string symbols = 1 [(buf.validate.field).repeated = {min_items: 1}];
-  foreverbull.common.Date start_date = 2 [(buf.validate.field) = {
+message CreateStrategyRequest {
+  string name = 1 [(buf.validate.field) = {
     required: true
     cel: {
       id: "required"
-      expression: "this != null"
+      expression: "this != ''"
     }
   }];
-  foreverbull.service.v1.Algorithm algorithm = 3 [(buf.validate.field) = {
+  optional string description = 2;
+}
+
+message CreateStrategyResponse {
+  foreverbull.strategy.v1.Strategy strategy = 1;
+}
+
+message GetStrategyRequest {
+  string name = 1 [(buf.validate.field) = {
     required: true
     cel: {
       id: "required"
-      expression: "this != null"
+      expression: "this != ''"
     }
   }];
 }
 
-message RunStrategyResponse {
-  message Status {
-    enum Status {
-      UPDATING_MARKETDATA = 0;
-      CREATING_WORKER_POOL = 1;
-      READY = 2;
-      RUNNING = 3;
-      COMPLETED = 4;
-      FAILED = 5;
-    }
-    Status status = 1;
-    optional string error = 2;
-  }
+message GetStrategyResponse {
+  foreverbull.strategy.v1.Strategy strategy = 1;
+}
 
-  Status status = 1;
-  foreverbull.service.v1.ExecutionConfiguration configuration = 2;
+message ListStrategiesRequest {}
+
+message ListStrategiesResponse {
+  repeated foreverbull.strategy.v1.Strategy strategies = 1;
+}
+
+message DeleteStrategyRequest {
+  string name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+}
+
+message DeleteStrategyResponse {}
+
+message CreateVersionRequest {
+  string strategy_name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  string service_image = 2 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  google.protobuf.Struct parameters = 3;
+}
+
+message CreateVersionResponse {
+  foreverbull.strategy.v1.Version version = 1;
+}
+
+// CreateExperimentRequest binds one strategy version to one backtest universe.
+// The same version can be experimented on many backtests (SPY vs EU vs commodities).
+message CreateExperimentRequest {
+  string strategy_name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  string version_id = 2;
+  int32 version_rev = 3;
+  string backtest_name = 4 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+}
+
+message CreateExperimentResponse {
+  foreverbull.common.Step QUEUED = 1;
+  foreverbull.common.Step RUNNING = 2;
+  foreverbull.common.Step COMPLETED = 3;
+
+  foreverbull.strategy.v1.Experiment experiment = 4;
+}
+
+message GetExperimentRequest {
+  string experiment_id = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+}
+
+message GetExperimentResponse {
+  foreverbull.strategy.v1.Experiment experiment = 1;
+  optional string grafana_path = 2;
+  foreverbull.backtest.v1.Period last_period = 3;
+}
+
+message ListExperimentsRequest {
+  string strategy_name = 1;
+  string version_id = 2;
+  string backtest_name = 3;
+}
+
+message ListExperimentsResponse {
+  repeated foreverbull.strategy.v1.Experiment experiments = 1;
+}
+
+message DeployRequest {
+  string strategy_name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  string version_id = 2;
+  int32 version_rev = 3;
+  foreverbull.strategy.v1.Deployment.Mode mode = 4;
+  string backend = 5;
+  string calendar_code = 6;
+  repeated string symbols = 7;
+  foreverbull.strategy.v1.Deployment.ScheduleKind schedule_kind = 8;
+  // Unset means true (paper dry-run is the default).
+  optional bool dry_run = 9;
+  // Required when mode is LIVE.
+  bool confirm = 10;
+}
+
+message DeployResponse {
+  foreverbull.strategy.v1.Deployment deployment = 1;
+}
+
+message StopDeploymentRequest {
+  string strategy_name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  string deployment_id = 2;
+}
+
+message StopDeploymentResponse {
+  foreverbull.strategy.v1.Deployment deployment = 1;
+}
+
+message ListDeploymentRunsRequest {
+  string strategy_name = 1;
+  string deployment_id = 2;
+}
+
+message ListDeploymentRunsResponse {
+  repeated foreverbull.strategy.v1.DeploymentRun runs = 1;
 }
 
 service StrategyServicer {
-  rpc RunStrategy(RunStrategyRequest) returns (stream RunStrategyResponse);
+  rpc CreateStrategy(CreateStrategyRequest) returns (CreateStrategyResponse) {}
+  rpc GetStrategy(GetStrategyRequest) returns (GetStrategyResponse) {}
+  rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesResponse) {}
+  rpc DeleteStrategy(DeleteStrategyRequest) returns (DeleteStrategyResponse) {}
+  rpc CreateVersion(CreateVersionRequest) returns (CreateVersionResponse) {}
+  rpc CreateExperiment(CreateExperimentRequest) returns (stream CreateExperimentResponse) {}
+  rpc GetExperiment(GetExperimentRequest) returns (GetExperimentResponse) {}
+  rpc ListExperiments(ListExperimentsRequest) returns (ListExperimentsResponse) {}
+  rpc Deploy(DeployRequest) returns (DeployResponse) {}
+  rpc StopDeployment(StopDeploymentRequest) returns (StopDeploymentResponse) {}
+  rpc ListDeploymentRuns(ListDeploymentRunsRequest) returns (ListDeploymentRunsResponse) {}
 }

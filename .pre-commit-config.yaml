@@ -14,25 +14,27 @@ repos:
       - id: go-mod-tidy
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Pin matches CI (`uvx ruff@0.17.0`) and client/taskfile.yaml.
+    # Whole client tree, same commands CI runs.
+    rev: v0.17.0
     hooks:
       - id: ruff
-        name: lint with ruff
-        args: [--fix]
-        exclude: '^client/templates/.*'
-      - id: ruff
-        name: sort imports with ruff
-        args: [--select, I, --fix]
-        exclude: '^client/templates/.*'
+        name: lint client with ruff
+        args: ["client"]
+        pass_filenames: false
+        files: ^client/
       - id: ruff-format
-        exclude: '^client/templates/.*'
+        name: check client formatting with ruff
+        args: ["--check", "client"]
+        pass_filenames: false
+        files: ^client/
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.4.20
+    rev: 0.8.4
     hooks:
-      # Run the pip compile
-      - id: pip-compile
-        args: [requirements.in, -o, requirements.txt]
+      - id: uv-lock
+        args: ["--directory", "client"]
+        files: ^client/(uv\.lock|pyproject\.toml|cli/pyproject\.toml|testing/pyproject\.toml|zipline/pyproject\.toml)$
 
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.384

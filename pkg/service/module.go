@@ -17,10 +17,10 @@ type Subscriber stream.Subscriber
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func(_stream stream.Stream, conn *pgxpool.Pool) (Subscriber, error) {
+		func(eventStream stream.Stream, conn *pgxpool.Pool) (Subscriber, error) {
 			dc := stream.NewDependencyContainer()
 			dc.AddSingleton(stream.DBDep, conn)
-			sub, err := _stream.NewSubscriber(StreamName, dc)
+			sub, err := eventStream.NewSubscriber(StreamName, dc)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create subscriber: %w", err)
 			}
@@ -34,7 +34,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(lc fx.Lifecycle, sub Subscriber) error {
 			lc.Append(
 				fx.Hook{
-					OnStart: func(ctx context.Context) error {
+					OnStart: func(_ context.Context) error {
 						err := sub.Subscribe("service", "start", command.ServiceStart)
 						if err != nil {
 							return fmt.Errorf("error subscribing to service.start: %w", err)
@@ -57,7 +57,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 						}
 						return nil
 					},
-					OnStop: func(ctx context.Context) error {
+					OnStop: func(_ context.Context) error {
 						err := sub.Unsubscribe()
 						if err != nil {
 							return fmt.Errorf("error unsubscribing: %w", err)

@@ -1,13 +1,18 @@
 [project]
 name = "foreverbull-testing"
 version = "0.0.0"
-description = "Add your description here"
+description = "Pytest plugin and fixtures for Foreverbull algorithm tests"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "foreverbull",
+    "pytest",
+    "testcontainers",
+    "yfinance",
+]
 
 [project.entry-points.pytest11]
 foreverbull = "foreverbull_testing.plugin"
@@ -16,3 +21,5 @@ foreverbull = "foreverbull_testing.plugin"
 requires = ["uv_build>=0.8.4,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv.sources]
+foreverbull = { workspace = true }

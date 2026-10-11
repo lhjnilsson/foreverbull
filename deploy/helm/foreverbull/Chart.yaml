@@ -1,0 +1,13 @@
+apiVersion: v2
+name: foreverbull
+description: Foreverbull platform — Postgres, NATS JetStream, Minio, Zipline, broker, Grafana
+type: application
+version: 0.1.0
+appVersion: "latest"
+kubeVersion: ">=1.21.0-0"
+keywords:
+  - foreverbull
+  - backtest
+  - trading
+sources:
+  - https://github.com/lhjnilsson/foreverbull

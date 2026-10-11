@@ -1,7 +1,7 @@
 [project]
 name = "foreverbull"
 version = "0.0.0"
-description = "Add your description here"
+description = "Python client library: algorithm models, gRPC stubs, and NNG workers"
 readme = "README.md"
 authors = [
     { name = "Henrik Nilsson", email = "henrik@lhjnilsson.com" }
@@ -23,6 +23,7 @@ dependencies = [
   "protobuf==5.29.0",
   "types-protobuf",
   "grpcio",
+  "pyyaml",
 ]
 
 [build-system]
@@ -37,10 +38,13 @@ members = [
 ]
 
 [tool.uv.sources]
+foreverbull-cli = { workspace = true }
 foreverbull-zipline = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "cookiecutter>=2.6.0",
+    "foreverbull-cli",
     "grpcio-testing>=1.71.2",
     "grpcio-tools>=1.71.2",
     "pytest>=8.4.1",
@@ -52,19 +56,21 @@ dev = [
 addopts = [
 "--ignore=tests/end_to_end",
 "--ignore=tests/integration",
+"--ignore=templates",
+"--ignore=rendered",
 ]
 
 
 [tool.ruff]
 fix = true
-target-version = "py313"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-exclude = ["src/foreverbull/pb/*", "templates/*"]
+exclude = ["src/foreverbull/pb/*", "templates/*", "simple_foreverbull/*", "advanced_foreverbull/*"]
 
 [tool.ruff.format]
-exclude = ["src/foreverbull/pb/*", "templates/*"]
+exclude = ["src/foreverbull/pb/*", "templates/*", "simple_foreverbull/*", "advanced_foreverbull/*"]
 
 [tool.ruff.lint.isort]
 force-single-line = true

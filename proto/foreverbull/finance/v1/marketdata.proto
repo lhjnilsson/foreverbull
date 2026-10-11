@@ -28,6 +28,7 @@ message Position {
   double cost_basis = 3;
   double last_sale_price = 4;
   google.protobuf.Timestamp last_sale_date = 5;
+  string isin = 6;
 }
 
 message Portfolio {
@@ -63,10 +64,25 @@ enum PositionIntent {
   POSITION_INTENT_SELL_TO_OPEN = 4;
 }
 
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_ACCEPTED = 1;
+  ORDER_STATUS_REJECTED = 2;
+  ORDER_STATUS_FILLED = 3;
+  ORDER_STATUS_PARTIALLY_FILLED = 4;
+}
+
 message Order {
   string symbol = 1;
   int32 amount = 2;
   OrderType type = 3;
   TimeInForce time_in_force = 4;
   PositionIntent intent = 5;
+  string isin = 6;
+  double limit_price = 7;
+  OrderStatus status = 8;
+  int32 filled_amount = 9;
+  double average_price = 10;
+  string reject_reason = 11;
+  string broker_order_id = 12;
 }

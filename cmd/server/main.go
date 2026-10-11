@@ -23,41 +23,46 @@ import (
 	"go.uber.org/fx"
 )
 
-const (
-	PostgresRetryInterval = 3
-)
+const postgresRetryInterval = 3 * time.Second
 
-var CoreModules = fx.Options( //nolint: gochecknoglobals
+func newPostgresPool() (*pgxpool.Pool, error) {
+	ctx := context.Background()
+
+	pool, err := pgxpool.New(ctx, environment.GetPostgresURL())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create postgres pool: %w", err)
+	}
+
+	for {
+		if err := pool.Ping(ctx); err == nil {
+			return pool, nil
+		}
+
+		log.Printf("failed to ping postgres, retrying in %s", postgresRetryInterval)
+		time.Sleep(postgresRetryInterval)
+	}
+}
+
+func newObjectStorage() (storage.Storage, error) {
+	client, err := storage.NewMinioStorage(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create minio client: %w", err)
+	}
+
+	return client, nil
+}
+
+var coreModules = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() (*pgxpool.Pool, error) {
-			pool, err := pgxpool.New(context.TODO(), environment.GetPostgresURL())
-			if err != nil {
-				return nil, fmt.Errorf("failed to create postgres pool: %w", err)
-			}
-			for {
-				err = pool.Ping(context.TODO())
-				if err == nil {
-					return pool, nil
-				}
-				log.Printf("failed to ping postgres, retrying in %d seconds", PostgresRetryInterval)
-				time.Sleep(time.Second * time.Duration(PostgresRetryInterval))
-			}
-		},
+		newPostgresPool,
 		container.NewEngine,
-		func() (storage.Storage, error) {
-			client, err := storage.NewMinioStorage(context.TODO())
-			if err != nil {
-				return nil, fmt.Errorf("failed to create minio client: %w", err)
-			}
-			return client, nil
-		},
-		//stream.New,
+		newObjectStorage,
 	),
 )
 
 func app() *fx.App {
 	return fx.New(
-		CoreModules,
+		coreModules,
 		grpc.Module,
 		backtest.Module,
 		finance.Module,
@@ -68,7 +73,7 @@ func app() *fx.App {
 }
 
 func main() {
-	cli := &cli.App{
+	cliApp := &cli.App{
 		Name: "foreverbull",
 		Action: func(_ *cli.Context) error {
 			if err := environment.Setup(); err != nil {
@@ -78,7 +83,7 @@ func main() {
 			return nil
 		},
 	}
-	if err := cli.Run(os.Args); err != nil {
+	if err := cliApp.Run(os.Args); err != nil {
 		panic(err)
 	}
 }

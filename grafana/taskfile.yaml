@@ -2,10 +2,17 @@ version: "3"
 
 tasks:
   build:docker:
+    desc: Build the local Grafana image
     sources:
       - lhjnilsson-foreverbull-datasource/pkg/**/*.go
       - lhjnilsson-foreverbull-datasource/src/**/*.tsx
       - lhjnilsson-foreverbull-datasource/src/*.ts
+      - lhjnilsson-foreverbull-datasource/go.mod
+      - lhjnilsson-foreverbull-datasource/go.sum
+      - lhjnilsson-foreverbull-datasource/provisioning/**/*
       - Dockerfile
+      - ../go.mod
+      - ../go.sum
+      - ../pkg/**/*.go
     cmds:
-      - docker build -t lhjnilsson/fb-grafana:local -f Dockerfile .
+      - docker build -t lhjnilsson/fb-grafana:local -f Dockerfile --build-context foreverbull=.. .

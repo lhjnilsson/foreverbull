@@ -1,241 +1,732 @@
-from pathlib import Path
-from unittest.mock import MagicMock
-from unittest.mock import patch
+import json
+import subprocess
 
-import docker.client
-import docker.errors
+from collections.abc import Mapping
+from collections.abc import Sequence
+from pathlib import Path
+
 import pytest
 
-from docker.models.containers import Container
-from docker.models.images import Image
-from foreverbull_cli.env.environment import BaseContainer
+from foreverbull_cli.env.environment import ClusterManager
+from foreverbull_cli.env.environment import CommandError
+from foreverbull_cli.env.environment import CommandRunner
 from foreverbull_cli.env.environment import Config
-from foreverbull_cli.env.environment import ContainerStatus
 from foreverbull_cli.env.environment import Environment
-from foreverbull_cli.env.environment import ForeverbullContainer
-from foreverbull_cli.env.environment import GrafanaContainer
-from foreverbull_cli.env.environment import MinioContainer
-from foreverbull_cli.env.environment import NatsContainer
-from foreverbull_cli.env.environment import PostgresContainer
-from foreverbull_cli.env.environment import ZiplineContainer
+from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import WorkloadStatus
+from foreverbull_cli.env.environment import load_cluster_config
+
+
+pytestmark = pytest.mark.usefixtures("fb_env")
+
+
+def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+class FakeRunner(CommandRunner):
+    def __init__(self, tools: set[str] | None = None):
+        self.tools = tools if tools is not None else {"kind", "helm", "kubectl", "docker"}
+        self.calls: list[list[str]] = []
+        self.stdins: list[str | None] = []
+        self.handlers: list[tuple] = []
+        self.default = _completed()
+
+    def which(self, name: str) -> str | None:
+        return f"/usr/bin/{name}" if name in self.tools else None
+
+    def on(
+        self,
+        prefix: list[str],
+        result: subprocess.CompletedProcess[str] | Exception,
+        *,
+        contains: str | None = None,
+    ) -> None:
+        self.handlers.append((prefix, contains, result))
+
+    def run(
+        self,
+        args: Sequence[str],
+        *,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        stdin: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        command = [str(a) for a in args]
+        self.calls.append(command)
+        self.stdins.append(stdin)
+        result: subprocess.CompletedProcess[str] | Exception = self.default
+        for prefix, contains, handler in reversed(self.handlers):
+            if command[: len(prefix)] == prefix and (contains is None or contains in command):
+                result = handler
+                break
+        if isinstance(result, Exception):
+            raise result
+        if check and result.returncode != 0:
+            raise CommandError(command, result)
+        return result
+
+    def calls_starting_with(self, *prefix: str) -> list[list[str]]:
+        wanted = list(prefix)
+        return [call for call in self.calls if call[: len(wanted)] == wanted]
+
+
+def _write_repo(tmp_path: Path) -> Path:
+    chart = tmp_path / "deploy" / "helm" / "foreverbull"
+    chart.mkdir(parents=True)
+    (chart / "Chart.yaml").write_text("name: foreverbull\n")
+    kind = tmp_path / "deploy" / "kind"
+    kind.mkdir(parents=True)
+    (kind / "cluster.yaml").write_text("kind: Cluster\n")
+    return tmp_path
+
+
+def _manager(
+    tmp_path: Path,
+    runner: FakeRunner,
+    config: Config | None = None,
+    environ: dict[str, str] | None = None,
+    ready_timeout_seconds: int = 5,
+) -> ClusterManager:
+    repo = _write_repo(tmp_path)
+    if config is None:
+        config = Config(load_files=False, environ=environ or {})
+    environment = Environment(path=str(tmp_path / "project"))
+    return ClusterManager(
+        environment,
+        config,
+        runner=runner,
+        repo_root=repo,
+        ready_timeout_seconds=ready_timeout_seconds,
+    )
+
+
+def _trading_secret_calls(runner: FakeRunner) -> list[list[str]]:
+    return [call for call in runner.calls if "foreverbull-trading" in call]
+
+
+def _trading_secret_index(runner: FakeRunner) -> int:
+    return next(i for i, call in enumerate(runner.calls) if "foreverbull-trading" in call)
+
+
+def _assert_secret_not_shown(runner: FakeRunner, secret: str, capsys: pytest.CaptureFixture[str]) -> None:
+    blob = "\n".join(" ".join(call) for call in runner.calls)
+    assert secret not in blob
+    assert all(secret not in (stdin or "") for stdin in runner.stdins)
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
+
+
+def _pod(
+    name: str,
+    app: str,
+    image: str,
+    phase: str = "Running",
+    ready: bool = True,
+    container_id: str = "containerd://abcdef1234567890",
+) -> dict:
+    return {
+        "kind": "Pod",
+        "metadata": {"name": f"{app}-abc", "labels": {"app.kubernetes.io/name": app}},
+        "spec": {"containers": [{"image": image}]},
+        "status": {
+            "phase": phase,
+            "containerStatuses": [
+                {"ready": ready, "image": image, "containerID": container_id},
+            ],
+        },
+    }
+
+
+def _deploy(name: str, image: str, replicas: int = 1) -> dict:
+    return {
+        "kind": "Deployment",
+        "metadata": {"name": name},
+        "spec": {
+            "replicas": replicas,
+            "template": {"spec": {"containers": [{"image": image}]}},
+        },
+    }
 
 
 class TestConfig:
-    @pytest.fixture
-    def uut(self):
-        return Config()
+    def test_version_default(self):
+        assert Config(load_files=False, environ={}).version == "latest"
 
-    def test_version(self, uut: Config):
-        assert uut.version == "latest"
+    def test_version_from_env(self):
+        assert Config(load_files=False, environ={"VERSION": "local"}).version == "local"
 
-    def test_network_name(self, uut: Config):
-        assert uut.network_name == "foreverbull"
+    def test_default_cluster_is_local(self):
+        uut = Config(load_files=False, environ={})
+        assert uut.cluster == "local"
+        assert uut.is_local is True
+        assert uut.namespace == "foreverbull"
+        assert uut.kind_name == "foreverbull"
+        assert uut.kind_config == "deploy/kind/cluster.yaml"
+        assert uut.kube_context == "kind-foreverbull"
+        assert uut.broker_address == "localhost:50055"
 
-    def test_postgres_image(self, uut: Config):
-        assert uut.postgres_image == "postgres:13.3-alpine"
+    def test_foreverbull_image(self):
+        assert Config(load_files=False, environ={}).foreverbull_image == "lhjnilsson/foreverbull:latest"
 
-    def test_minio_image(self, uut: Config):
-        assert uut.minio_image == "minio/minio:latest"
+    def test_backtest_image(self):
+        assert Config(load_files=False, environ={}).zipline_image == "lhjnilsson/zipline:latest"
 
-    def test_nats_image(self, uut: Config):
-        assert uut.nats_image == "nats:2.10-alpine"
+    def test_grafana_image(self):
+        assert Config(load_files=False, environ={}).grafana_image == "lhjnilsson/fb-grafana:latest"
 
-    def test_foreverbull_image(self, uut: Config):
-        assert uut.foreverbull_image == "lhjnilsson/foreverbull:latest"
+    def test_remote_namespace_and_kube_flags(self):
+        uut = Config(
+            {
+                "cluster": "remote",
+                "namespace": "foreverbull",
+                "remote": {
+                    "kubeconfig": "/tmp/kube",
+                    "context": "prod",
+                    "namespace": "fb",
+                    "broker_address": "broker.example:50055",
+                },
+            },
+            load_files=False,
+            environ={},
+        )
+        assert uut.is_local is False
+        assert uut.namespace == "fb"
+        assert uut.kubeconfig == "/tmp/kube"
+        assert uut.kube_context == "prod"
+        assert uut.broker_address == "broker.example:50055"
 
-    def test_backtest_image(self, uut: Config):
-        assert uut.zipline_image == "lhjnilsson/zipline:latest"
+    def test_rejects_unknown_cluster(self):
+        with pytest.raises(ValueError, match="local"):
+            Config({"cluster": "kind"}, load_files=False, environ={})
 
-    def test_grafana_image(self, uut: Config):
-        assert uut.grafana_image == "lhjnilsson/fb-grafana:latest"
+    def test_broker_address_env_overrides_local_and_remote(self):
+        local = Config(load_files=False, environ={"FOREVERBULL_BROKER_ADDRESS": "from-env:9"})
+        assert local.broker_address == "from-env:9"
+        remote = Config(
+            {
+                "cluster": "remote",
+                "remote": {"broker_address": "from-file:1"},
+            },
+            load_files=False,
+            environ={"FOREVERBULL_BROKER_ADDRESS": "from-env:9"},
+        )
+        assert remote.broker_address == "from-env:9"
+
+    def test_cli_overrides_switch_to_remote(self):
+        uut = Config(load_files=False, environ={})
+        uut.apply_cli_overrides(
+            cluster="remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
+            broker_address="broker.example:50055",
+        )
+        assert uut.cluster == "remote"
+        assert uut.is_local is False
+        assert uut.kubeconfig == "/tmp/kube"
+        assert uut.kube_context == "prod"
+        assert uut.namespace == "fb"
+        assert uut.broker_address == "broker.example:50055"
+
+    def test_cli_namespace_override_local(self):
+        uut = Config(load_files=False, environ={})
+        uut.apply_cli_overrides(namespace="custom")
+        assert uut.is_local is True
+        assert uut.namespace == "custom"
+
+    def test_persist_selection_writes_project_config(self, tmp_path: Path):
+        cwd = tmp_path / "proj"
+        cwd.mkdir()
+        home = tmp_path / "home"
+        home.mkdir()
+        uut = Config(load_files=True, cwd=cwd, home=home, environ={})
+        path = uut.persist_selection(
+            "remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
+            broker_address="broker.example:50055",
+        )
+        assert path == cwd / ".foreverbull" / "config.yaml"
+        assert uut.cluster == "remote"
+        assert uut.kube_context == "prod"
+        assert uut.namespace == "fb"
+        assert uut.broker_address == "broker.example:50055"
+        written = path.read_text()
+        assert "cluster: remote" in written
+        assert "broker_address: broker.example:50055" in written
+
+    def test_persist_remote_requires_broker_address(self, tmp_path: Path):
+        uut = Config(load_files=False, cwd=tmp_path, home=tmp_path, environ={})
+        with pytest.raises(ValueError, match="remote.broker_address"):
+            uut.persist_selection("remote", context="prod")
+
+
+class TestLoadClusterConfig:
+    def test_merge_order_later_wins(self, tmp_path: Path):
+        home = tmp_path / "home"
+        cwd = tmp_path / "cwd"
+        (home / ".foreverbull").mkdir(parents=True)
+        (cwd / ".foreverbull").mkdir(parents=True)
+        (home / ".foreverbull" / "config.yaml").write_text("cluster: remote\nnamespace: from-user\n")
+        (cwd / ".foreverbull" / "config.yaml").write_text("namespace: from-project\nkind:\n  name: custom\n")
+        explicit = tmp_path / "explicit.yaml"
+        explicit.write_text("kind:\n  name: explicit\n")
+        merged = load_cluster_config(
+            cwd=cwd,
+            home=home,
+            environ={"FOREVERBULL_CONFIG": str(explicit)},
+        )
+        assert merged["cluster"] == "remote"
+        assert merged["namespace"] == "from-project"
+        assert merged["kind"]["name"] == "explicit"
+        assert merged["kind"]["config"] == "deploy/kind/cluster.yaml"
+
+    def test_missing_explicit_config(self, tmp_path: Path):
+        with pytest.raises(FileNotFoundError, match="FOREVERBULL_CONFIG"):
+            load_cluster_config(
+                cwd=tmp_path, home=tmp_path, environ={"FOREVERBULL_CONFIG": str(tmp_path / "nope.yaml")}
+            )
 
 
 class TestEnvironment:
-    @pytest.fixture
-    def uut(self):
-        return Environment()
+    def test_path(self, tmp_path: Path):
+        uut = Environment(path=str(tmp_path))
+        assert uut.path == tmp_path / ".foreverbull"
 
-    def test_postgres_location(self, uut: Environment):
-        assert uut.postgres_location == Path(".foreverbull/postgres")
-
-    def test_minio_location(self, uut: Environment):
-        assert uut.minio_location == Path(".foreverbull/minio")
-
-    def test_nats_location(self, uut: Environment):
-        assert uut.nats_location == Path(".foreverbull/nats")
-
-
-class DockerMocks:
-    @pytest.fixture
-    def mocked_container(self):
-        with patch("docker.client.DockerClient.containers", new_callable=MagicMock) as mock:
-            yield mock
-
-    @pytest.fixture
-    def mocked_images(self):
-        with patch("docker.client.DockerClient.images", new_callable=MagicMock) as mock:
-            yield mock
+    def test_purge_keeps_config_yaml(self, tmp_path: Path):
+        uut = Environment(path=str(tmp_path))
+        (uut.path / "config.yaml").write_text("cluster: local\n")
+        (uut.path / "postgres").mkdir()
+        (uut.path / "other.txt").write_text("x")
+        uut.purge()
+        assert (uut.path / "config.yaml").is_file()
+        assert not (uut.path / "postgres").exists()
+        assert not (uut.path / "other.txt").exists()
 
 
-class TestBaseContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return BaseContainer(config, env)
+class TestClusterManager:
+    def test_missing_tools(self, tmp_path: Path):
+        runner = FakeRunner(tools=set())
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(MissingToolError, match="kind is not installed"):
+            uut.create()
 
-    @pytest.mark.parametrize(
-        "status, expected_status",
-        [
-            ("running", ContainerStatus.RUNNING),
-            ("exited", ContainerStatus.STOPPED),
-            ("created", ContainerStatus.STOPPED),
-            ("undefined", ContainerStatus.NOT_FOUND),
-        ],
-    )
-    def test_status(self, uut: BaseContainer, mocked_container: MagicMock, status, expected_status):
-        uut.name = "test_container"
-
-        mocked_container.get.return_value = Container(attrs={"State": {"Status": status}})
-        assert uut.status() == expected_status
-        mocked_container.get.assert_called_with("test_container")
-
-    def test_container_id(self, uut: BaseContainer, mocked_container: MagicMock):
-        uut.name = "test_container"
-        mocked_container.get.return_value = Container(attrs={"Id": "test_id"})
-        assert uut.container_id() == "test_id"
-        mocked_container.get.assert_called_with("test_container")
-
-    def test_image_version(self, uut: BaseContainer, mocked_container: MagicMock, mocked_images: MagicMock):
-        uut.name = "test_container"
-        client = MagicMock()
-        client.images = mocked_images
-        mocked_container.get.return_value = Container(attrs={"Image": "test_image:latest"}, client=client)
-        mocked_images.get.return_value = Image(attrs={"RepoTags": ["test_image:latest"]})
-        assert uut.image_version() == "test_image:latest"
-        mocked_container.get.assert_called_with("test_container")
-        mocked_images.get.assert_called_with("latest")
-
-    def test_get_or_download_image_found(self, uut: BaseContainer, mocked_images: MagicMock):
-        uut.image = "test_image:latest"
-        client = MagicMock()
-        client.images = mocked_images
-        mocked_images.get.return_value = Image(attrs={"RepoTags": ["test_image:latest"]})
-        uut.get_or_download_image()
-        mocked_images.get.assert_called_with("test_image:latest")
-        assert not mocked_images.pull.called
-
-    def test_get_or_download_image_not_found(self, uut: BaseContainer, mocked_images: MagicMock):
-        uut.image = "test_image:latest"
-        client = MagicMock()
-        client.images = mocked_images
-        mocked_images.get.side_effect = docker.errors.ImageNotFound("test_image:latest")
-        uut.get_or_download_image()
-        mocked_images.get.assert_called_with("test_image:latest")
-        mocked_images.pull.assert_called_with("test_image:latest")
-
-    def test_create(self, uut: BaseContainer, mocked_container: MagicMock):
-        uut.image = "test_image:latest"
-        uut.name = "test_container"
+    def test_create_local_kind_helm_and_load(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout=""))
+        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
         uut.create()
-        mocked_container.create.assert_called_with(
-            image="test_image:latest",
-            name="test_container",
-            detach=True,
-            network="foreverbull",
-            hostname="",
+        assert runner.calls_starting_with("kind", "create", "cluster")
+        create_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["kind", "create", "cluster"])
+        load_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["kind", "load", "docker-image"])
+        assert create_at < load_at
+        kind_create = runner.calls_starting_with("kind", "create", "cluster")[0]
+        assert "--name" in kind_create
+        assert kind_create[kind_create.index("--name") + 1] == "foreverbull"
+        assert runner.calls_starting_with("kind", "load", "docker-image")
+        helm = runner.calls_starting_with("helm", "upgrade", "--install")
+        assert len(helm) == 1
+        assert "--set" in helm[0]
+        assert "global.imageTag=latest" in helm[0]
+        assert "expose.hostPort=true" in helm[0]
+        assert "broker.logLevel=debug" in helm[0]
+        assert "--kube-context" in helm[0]
+        assert helm[0][helm[0].index("--kube-context") + 1] == "kind-foreverbull"
+        assert "--namespace" in helm[0]
+        assert helm[0][helm[0].index("--namespace") + 1] == "foreverbull"
+        assert "replicaCount=0" in helm[0]
+
+    def test_create_skips_kind_create_when_cluster_exists(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        uut.create()
+        assert runner.calls_starting_with("kind", "create", "cluster") == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
+
+    def test_create_uses_cli_overrides_for_remote(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
+        uut.config.apply_cli_overrides(
+            cluster="remote",
+            kubeconfig="/tmp/kube",
+            context="prod",
+            namespace="fb",
         )
+        uut.create()
+        assert runner.calls_starting_with("kind") == []
+        helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert helm[helm.index("--kubeconfig") + 1] == "/tmp/kube"
+        assert helm[helm.index("--kube-context") + 1] == "prod"
+        assert helm[helm.index("--namespace") + 1] == "fb"
+        assert "expose.hostPort=false" in helm
 
-    def test_start(self, uut: BaseContainer, mocked_container: MagicMock):
-        uut.name = "test_container"
+    def test_create_remote_skips_kind(self, tmp_path: Path):
+        runner = FakeRunner()
+        config = Config(
+            {
+                "cluster": "remote",
+                "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"},
+            },
+            load_files=False,
+            environ={"VERSION": "latest"},
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        uut.create()
+        assert runner.calls_starting_with("kind") == []
+        helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert helm[helm.index("--kubeconfig") + 1] == "/tmp/kube"
+        assert helm[helm.index("--kube-context") + 1] == "prod"
+        assert helm[helm.index("--namespace") + 1] == "fb"
+        assert "expose.hostPort=false" in helm
+        assert "broker.logLevel=debug" not in helm
+
+    def test_load_images_errors_when_local_tag_missing(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["docker", "image", "inspect"], _completed(returncode=1, stderr="not found"))
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        with pytest.raises(RuntimeError, match="Missing local images"):
+            uut.load_images()
+
+    def test_load_images_pulls_missing_non_local_tags(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["docker", "image", "inspect"], _completed(returncode=1, stderr="not found"))
+        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
+        uut.load_images()
+        assert runner.calls_starting_with("docker", "pull")
+        assert runner.calls_starting_with("kind", "load", "docker-image")
+
+    def test_start_scales_and_waits(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
         uut.start()
-        mocked_container.get.assert_called_with("test_container")
-        mocked_container.get.return_value.start.assert_called()
+        helm = runner.calls_starting_with("helm", "upgrade")[0]
+        assert "--install" not in helm
+        assert "--reuse-values" in helm
+        assert "replicaCount=1" in helm
+        assert helm[helm.index("--kube-context") + 1] == "kind-foreverbull"
+        wait = runner.calls_starting_with("kubectl")[0]
+        assert wait[:2] == ["kubectl", "--context"]
+        assert wait[2] == "kind-foreverbull"
+        assert "wait" in wait
+        assert "--for=condition=available" in wait
+        assert "deployment/foreverbull" in wait
 
-    def test_stop(self, uut: BaseContainer, mocked_container: MagicMock):
-        uut.name = "test_container"
+    def test_start_times_out_if_unhealthy(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["kubectl"],
+            _completed(returncode=1, stderr="timed out waiting for the condition"),
+            contains="wait",
+        )
+        uut = _manager(tmp_path, runner, ready_timeout_seconds=1)
+        with pytest.raises(TimeoutError, match="Timed out waiting for healthy"):
+            uut.start()
+
+    def test_stop_scales_to_zero(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
         uut.stop()
-        mocked_container.get.assert_called_with("test_container")
-        mocked_container.get.return_value.stop.assert_called()
+        helm = runner.calls_starting_with("helm", "upgrade")[0]
+        assert "--reuse-values" in helm
+        assert "replicaCount=0" in helm
+        assert runner.calls_starting_with("kubectl") == []
 
-    def test_remove(self, uut: BaseContainer, mocked_container: MagicMock):
-        uut.name = "test_container"
+    def test_stop_missing_release_is_ok(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["helm", "upgrade"], _completed(returncode=1, stderr="Error: release: not found"))
+        uut = _manager(tmp_path, runner)
+        uut.stop()
+
+    def test_remove_uninstalls_helm(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
         uut.remove()
-        mocked_container.get.assert_called_with("test_container")
-        mocked_container.get.return_value.remove.assert_called()
+        uninstall = runner.calls_starting_with("helm", "uninstall")[0]
+        assert "foreverbull" in uninstall
+        assert runner.calls_starting_with("kind", "delete") == []
 
-    def test_update(self, uut: BaseContainer):
-        # TODO
-        pass
+    def test_remove_purge_deletes_kind_and_data(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        data_dir = uut.environment.path / "postgres"
+        data_dir.mkdir()
+        (data_dir / "x").write_text("data")
+        (uut.environment.path / "config.yaml").write_text("cluster: local\n")
+        uut.remove(purge=True)
+        assert runner.calls_starting_with("helm", "uninstall")
+        assert runner.calls_starting_with("kind", "delete", "cluster")
+        assert not data_dir.exists()
+        assert (uut.environment.path / "config.yaml").is_file()
 
+    def test_remove_purge_remote_skips_kind_delete(self, tmp_path: Path):
+        runner = FakeRunner()
+        config = Config({"cluster": "remote"}, load_files=False, environ={})
+        uut = _manager(tmp_path, runner, config=config)
+        uut.remove(purge=True)
+        assert runner.calls_starting_with("kind") == []
 
-class TestPostgresContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return PostgresContainer(config, env)
-
-    def test_create(self, uut: PostgresContainer, mocked_container: MagicMock):
+    def test_create_applies_trading_profiles_before_helm(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        secret = "apiSecret: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
         uut.create()
-        assert mocked_container.create.called
+        secret_at = _trading_secret_index(runner)
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert secret_at < helm_at
+        create_cmd = runner.calls[secret_at]
+        assert create_cmd[create_cmd.index("create") + 1 : create_cmd.index("create") + 4] == [
+            "secret",
+            "generic",
+            "foreverbull-trading",
+        ]
+        assert f"--from-file=profiles.yaml={path}" in create_cmd
+        assert "--dry-run=client" in create_cmd
+        apply_at = next(i for i, call in enumerate(runner.calls) if call[-3:] == ["apply", "-f", "-"])
+        assert secret_at < apply_at < helm_at
+        assert runner.stdins[apply_at] == ""
+        _assert_secret_not_shown(runner, secret, capsys)
 
-
-class TestMinioContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return MinioContainer(config, env)
-
-    def test_create(self, uut: MinioContainer, mocked_container: MagicMock):
+    def test_create_skips_trading_profiles_when_file_absent(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        assert not (uut.environment.path / "trading-profiles.yaml").exists()
         uut.create()
-        assert mocked_container.create.called
+        assert _trading_secret_calls(runner) == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
 
-
-class TestNatsContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return NatsContainer(config, env)
-
-    def test_create(self, uut: NatsContainer, mocked_container: MagicMock):
+    def test_create_trading_profiles_remote_flags(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        config = Config(
+            {
+                "cluster": "remote",
+                "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"},
+            },
+            load_files=False,
+            environ={},
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        secret = "password: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
+        runner.on(
+            ["kubectl"],
+            _completed(returncode=1, stderr='Error from server (NotFound): namespaces "fb" not found'),
+            contains="get",
+        )
         uut.create()
-        assert mocked_container.create.called
+        create_ns = runner.calls_starting_with("kubectl")
+        assert any(
+            call[call.index("create") + 1 :][:2] == ["namespace", "fb"] for call in create_ns if "create" in call
+        )
+        secret_cmd = runner.calls[_trading_secret_index(runner)]
+        assert secret_cmd[secret_cmd.index("--kubeconfig") + 1] == "/tmp/kube"
+        assert secret_cmd[secret_cmd.index("--context") + 1] == "prod"
+        assert secret_cmd[secret_cmd.index("--namespace") + 1] == "fb"
+        assert f"--from-file=profiles.yaml={path}" in secret_cmd
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert _trading_secret_index(runner) < helm_at
+        _assert_secret_not_shown(runner, secret, capsys)
 
+    def test_create_trading_profiles_kubectl_failure_skips_helm(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        runner = FakeRunner()
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        runner.on(
+            ["kubectl"],
+            _completed(returncode=1, stderr="secret failed"),
+            contains="foreverbull-trading",
+        )
+        uut = _manager(tmp_path, runner)
+        secret = "accessToken: do-not-print-this"
+        (uut.environment.path / "trading-profiles.yaml").write_text(secret + "\n")
+        with pytest.raises(CommandError, match="foreverbull-trading"):
+            uut.create()
+        assert runner.calls_starting_with("helm", "upgrade") == []
+        _assert_secret_not_shown(runner, secret, capsys)
 
-class TestZiplineContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return ZiplineContainer(config, env)
+    def test_update_applies_trading_profiles_before_helm(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        secret = "apiKey: do-not-print-this"
+        path = uut.environment.path / "trading-profiles.yaml"
+        path.write_text(secret + "\n")
+        uut.update()
+        secret_at = _trading_secret_index(runner)
+        helm_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["helm", "upgrade", "--install"])
+        assert secret_at < helm_at
+        assert f"--from-file=profiles.yaml={path}" in runner.calls[secret_at]
+        assert "--reuse-values" in runner.calls[helm_at]
+        _assert_secret_not_shown(runner, secret, capsys)
 
-    def test_create(self, uut: ZiplineContainer, mocked_container: MagicMock):
-        uut.create()
-        assert mocked_container.create.called
+    def test_update_skips_trading_profiles_when_file_absent(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        uut.update()
+        assert _trading_secret_calls(runner) == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
 
+    def test_update_loads_and_helm_upgrades(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        uut.update()
+        assert runner.calls_starting_with("kind", "load", "docker-image")
+        helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert "--reuse-values" in helm
+        assert "global.imageTag=local" in helm
+        assert "replicaCount=" not in " ".join(helm)
 
-class TestForeverbullContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return ForeverbullContainer(config, env)
+    def test_status_from_kubectl_json(self, tmp_path: Path):
+        items = [
+            _deploy("postgres", "postgres:13.3-alpine"),
+            _pod("postgres-abc", "postgres", "postgres:13.3-alpine"),
+            _deploy("nats", "nats:2.10-alpine", replicas=0),
+            _deploy("minio", "minio/minio:latest"),
+            _pod("minio-abc", "minio", "minio/minio:latest", phase="Pending", ready=False),
+            _deploy("zipline", "lhjnilsson/zipline:latest"),
+            _pod("zipline-abc", "zipline", "lhjnilsson/zipline:latest"),
+            _deploy("foreverbull", "lhjnilsson/foreverbull:latest"),
+            _pod("foreverbull-abc", "foreverbull", "lhjnilsson/foreverbull:latest"),
+            _deploy("grafana", "lhjnilsson/fb-grafana:latest"),
+            _pod(
+                "grafana-abc",
+                "grafana",
+                "lhjnilsson/fb-grafana:latest",
+                phase="Failed",
+                ready=False,
+            ),
+        ]
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": items})))
+        uut = _manager(tmp_path, runner)
+        rows = {row.name: row for row in uut.status_rows()}
+        assert rows["postgres"].status == WorkloadStatus.RUNNING
+        assert rows["postgres"].image == "postgres:13.3-alpine"
+        assert rows["postgres"].container_id == "abcdef123456"
+        assert rows["nats"].status == WorkloadStatus.STOPPED
+        assert rows["nats"].image == "nats:2.10-alpine"
+        assert rows["minio"].status == WorkloadStatus.PENDING
+        assert rows["grafana"].status == WorkloadStatus.FAILED
+        assert [row.service for row in uut.status_rows()] == [
+            "Postgres",
+            "NATS",
+            "Minio",
+            "Zipline",
+            "Foreverbull",
+            "Grafana",
+        ]
 
-    def test_create(self, uut: ForeverbullContainer, mocked_container: MagicMock):
-        uut.create()
-        assert mocked_container.create.called
+    def test_status_cluster_unreachable_is_not_found(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(returncode=1, stderr="The connection to the server was refused"))
+        uut = _manager(tmp_path, runner)
+        rows = uut.status_rows()
+        assert all(row.status == WorkloadStatus.NOT_FOUND for row in rows)
+        assert len(rows) == 6
 
+    def test_workload_accessors_use_status_cache(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["kubectl"],
+            _completed(
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            _deploy("postgres", "postgres:13.3-alpine"),
+                            _pod("postgres-abc", "postgres", "postgres:13.3-alpine"),
+                        ]
+                    }
+                )
+            ),
+        )
+        uut = _manager(tmp_path, runner)
+        assert uut.postgres.status() == WorkloadStatus.RUNNING
+        assert uut.postgres.image_version() == "postgres:13.3-alpine"
+        assert uut.postgres.container_id() == "abcdef123456"
+        assert uut.postgres.name == "postgres"
 
-class TestGrafanaContainer(DockerMocks):
-    @pytest.fixture
-    def uut(self):
-        config = Config()
-        env = Environment()
-        return GrafanaContainer(config, env)
+    def test_verify_images_checks_docker_without_kind_load(self, tmp_path: Path):
+        runner = FakeRunner()
+        uut = _manager(tmp_path, runner)
+        uut.verify_images()
+        assert runner.calls_starting_with("docker", "image", "inspect")
+        assert runner.calls_starting_with("kind", "load", "docker-image") == []
 
-    def create(self, uut: GrafanaContainer, mocked_container: MagicMock):
-        uut.create()
-        assert mocked_container.create.called
+    def test_verify_images_requires_tools(self, tmp_path: Path):
+        runner = FakeRunner(tools=set())
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(MissingToolError, match="kind is not installed"):
+            uut.verify_images()
+
+    def test_missing_kind_config(self, tmp_path: Path):
+        runner = FakeRunner()
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        (repo / "deploy" / "helm" / "foreverbull").mkdir(parents=True)
+        (repo / "deploy" / "helm" / "foreverbull" / "Chart.yaml").write_text("name: foreverbull\n")
+        uut = ClusterManager(
+            Environment(path=str(tmp_path / "project")),
+            Config(load_files=False, environ={}),
+            runner=runner,
+            repo_root=repo,
+        )
+        with pytest.raises(FileNotFoundError, match="Kind config not found"):
+            uut.ensure_kind_cluster()
+
+    def test_create_stop_status_local_vs_remote(self, tmp_path: Path):
+        local_runner = FakeRunner()
+        local_runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        local_runner.on(["kubectl"], _completed(stdout=json.dumps({"items": []})))
+        local = _manager(tmp_path, local_runner)
+        local.create()
+        local.stop()
+        rows = local.status_rows()
+        assert local_runner.calls_starting_with("kind", "load")
+        assert local_runner.calls_starting_with("helm", "upgrade", "--install")
+        assert any(
+            "--reuse-values" in call and "replicaCount=0" in call
+            for call in local_runner.calls_starting_with("helm", "upgrade")
+        )
+        assert len(rows) == 6
+        assert all(row.status == WorkloadStatus.NOT_FOUND for row in rows)
+
+        remote_runner = FakeRunner()
+        remote_runner.on(["kubectl"], _completed(stdout=json.dumps({"items": []})))
+        remote = ClusterManager(
+            local.environment,
+            Config(
+                {
+                    "cluster": "remote",
+                    "remote": {
+                        "kubeconfig": "/tmp/kube",
+                        "context": "prod",
+                        "namespace": "fb",
+                        "broker_address": "broker.example:50055",
+                    },
+                },
+                load_files=False,
+                environ={},
+            ),
+            runner=remote_runner,
+            repo_root=local.repo_root,
+            ready_timeout_seconds=5,
+        )
+        remote.create()
+        remote.stop()
+        remote.status_rows()
+        assert remote_runner.calls_starting_with("kind") == []
+        helm = remote_runner.calls_starting_with("helm", "upgrade", "--install")[0]
+        assert helm[helm.index("--kube-context") + 1] == "prod"
+        assert helm[helm.index("--namespace") + 1] == "fb"
+        kubectl = remote_runner.calls_starting_with("kubectl")
+        assert kubectl[0][kubectl[0].index("--context") + 1] == "prod"

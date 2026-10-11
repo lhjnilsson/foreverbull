@@ -1,0 +1,47 @@
+name: Kind/Helm e2e
+
+# Not on on_commit.yaml (every feature-branch push).
+#
+# GH-hosted runners cannot load :local / :on_commit images from this checkout.
+# The chart pulls published lhjnilsson/{foreverbull,zipline,fb-grafana} tags
+# (default: latest) plus stock postgres, nats, and minio. This is a cluster
+# smoke of the Helm install, not a build of this commit's images.
+# Trading stays off; no Alpaca secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Published Docker Hub tag for lhjnilsson images (chart global.imageTag)"
+        required: false
+        default: "latest"
+        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  kind-helm-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ github.event.inputs.image_tag || 'latest' }}
+      HELM_NAMESPACE: foreverbull
+      HELM_RELEASE: foreverbull
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: foreverbull
+          version: v0.31.0
+          kubectl_version: v1.35.0
+          wait: 120s
+      - name: Install chart and wait for workloads
+        run: bash deploy/kind/e2e.sh

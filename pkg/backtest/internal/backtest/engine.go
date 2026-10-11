@@ -13,10 +13,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-/*
-NewZiplineEngine
-Returns a Zipline backtest engine.
-*/
 func NewZiplineEngine(ctx context.Context, container container.Container, ingestionURL *string) (engine.Engine, error) {
 	connStr, err := container.GetConnectionString()
 	if err != nil {

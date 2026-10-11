@@ -2,12 +2,11 @@ import datetime
 import os
 import tempfile
 
+from collections.abc import Iterator
 from datetime import timedelta
 from functools import partial
 from multiprocessing import get_start_method
 from multiprocessing import set_start_method
-from threading import Thread
-from typing import Iterator
 
 import pynng
 import pytest
@@ -21,6 +20,27 @@ from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
 from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+
+
+# Worker configure/run tests that execute SQL must also request fb_database.
+_PLACEHOLDER_DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused"
+
+
+def _execution_database_url(request: pytest.FixtureRequest) -> str:
+    if "fb_database" in request.fixturenames:
+        request.getfixturevalue("fb_database")
+        return os.environ["DATABASE_URL"]
+    return _PLACEHOLDER_DATABASE_URL
+
+
+def _namespace_port(namespace_server: dict) -> int:
+    """Port the in-process namespace fake bound. Configurations dial this, not 7878.
+
+    The yielded dict starts empty; the port is published on NAMESPACE_PORT.
+    """
+    if namespace_server is None or "NAMESPACE_PORT" not in os.environ:
+        raise RuntimeError("namespace server did not publish NAMESPACE_PORT")
+    return int(os.environ["NAMESPACE_PORT"])
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -146,51 +166,12 @@ def backtest_entity():
 
 
 @pytest.fixture(scope="function")
-def execution(fb_database):
+def execution():
     return execution_pb2.Execution(
         id="test",
         start_date=common_pb2.Date(year=2022, month=1, day=3),
         end_date=common_pb2.Date(year=2023, month=12, day=29),
     )
-
-
-@pytest.fixture(scope="function")
-def namespace_server():
-    namespace = dict()
-
-    s = pynng.Rep0(listen="tcp://0.0.0.0:7878")
-    s.recv_timeout = 500
-    s.send_timeout = 500
-    os.environ["NAMESPACE_PORT"] = "7878"
-
-    def runner(s, namespace):
-        while True:
-            request = worker_service_pb2.NamespaceRequest()
-            try:
-                request.ParseFromString(s.recv())
-            except pynng.exceptions.Timeout:
-                continue
-            except pynng.exceptions.Closed:
-                break
-            if request.type == worker_service_pb2.NamespaceRequestType.GET:
-                response = worker_service_pb2.NamespaceResponse()
-                response.value.update(namespace.get(request.key, {}))
-            elif request.type == worker_service_pb2.NamespaceRequestType.SET:
-                namespace[request.key] = {k: v for k, v in request.value.items()}
-                response = worker_service_pb2.NamespaceResponse()
-                response.value.update(namespace[request.key])
-            else:
-                response = worker_service_pb2.NamespaceResponse(error="Invalid task")
-            s.send(response.SerializeToString())
-
-    thread = Thread(target=runner, args=(s, namespace))
-    thread.start()
-
-    try:
-        yield namespace
-    finally:
-        s.close()
-        thread.join()
 
 
 def get_algo(file_path: str) -> Algorithm:
@@ -210,7 +191,7 @@ def backtest_date_range(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
+def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -241,10 +222,10 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
                     )
         return orders
 
-    request = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5656,
-        namespacePort=7878,
-        databaseURL=os.environ["DATABASE_URL"],
+        namespacePort=_namespace_port(namespace_server),
+        databaseURL=_execution_database_url(request),
         functions=[],
     )
 
@@ -274,13 +255,15 @@ algo = Algorithm(
         )
         f.flush()
         try:
-            yield get_algo(f.name), request, _process_symbols
+            yield get_algo(f.name), configuration, _process_symbols
         finally:
             process_socket.close()
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
+def non_parallel_algo_file(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -310,10 +293,10 @@ def non_parallel_algo_file(backtest_entity: backtest_pb2.Backtest, fb_database):
                 )
         return orders
 
-    request = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5657,
-        namespacePort=7878,
-        databaseURL=os.environ["DATABASE_URL"],
+        namespacePort=_namespace_port(namespace_server),
+        databaseURL=_execution_database_url(request),
         functions=[],
     )
 
@@ -344,13 +327,15 @@ algo = Algorithm(
         )
         f.flush()
         try:
-            yield get_algo(f.name), request, _process_symbols
+            yield get_algo(f.name), configuration, _process_symbols
         finally:
             process_socket.close()
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, fb_database):
+def parallel_algo_file_with_parameters(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -381,10 +366,10 @@ def parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, f
 
         return orders
 
-    request = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5658,
-        namespacePort=7878,
-        databaseURL=os.environ["DATABASE_URL"],
+        namespacePort=_namespace_port(namespace_server),
+        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
@@ -422,13 +407,15 @@ algo = Algorithm(
         )
         f.flush()
         try:
-            yield get_algo(f.name), request, _process_symbols
+            yield get_algo(f.name), configuration, _process_symbols
         finally:
             process_socket.close()
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, fb_database):
+def non_parallel_algo_file_with_parameters(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -458,10 +445,10 @@ def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtes
                 )
         return orders
 
-    request = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5659,
-        namespacePort=7878,
-        databaseURL=os.environ["DATABASE_URL"],
+        namespacePort=_namespace_port(namespace_server),
+        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
@@ -500,13 +487,15 @@ algo = Algorithm(
         )
         f.flush()
         try:
-            yield get_algo(f.name), request, _process_symbols
+            yield get_algo(f.name), configuration, _process_symbols
         finally:
             process_socket.close()
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(backtest_entity: backtest_pb2.Backtest, fb_database, namespace_server):
+def multistep_algo_with_namespace(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server
+):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -553,10 +542,10 @@ def multistep_algo_with_namespace(backtest_entity: backtest_pb2.Backtest, fb_dat
             assert response.HasField("error") is False
         return orders
 
-    request = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5660,
-        namespacePort=7878,
-        databaseURL=os.environ["DATABASE_URL"],
+        namespacePort=_namespace_port(namespace_server),
+        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(
                 name="measure_assets",
@@ -608,6 +597,6 @@ algo = Algorithm(
         )
         f.flush()
         try:
-            yield get_algo(f.name), request, _process_symbols
+            yield get_algo(f.name), configuration, _process_symbols
         finally:
             process_socket.close()

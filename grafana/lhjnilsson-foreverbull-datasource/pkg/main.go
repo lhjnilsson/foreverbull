@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	GetExecutionMetric = "GetExecutionMetric"
+	GetExecutionMetric    = "GetExecutionMetric"
+	ListExecutionOverview = "ListExecutionOverview"
 )
 
 type PluginSettings struct {

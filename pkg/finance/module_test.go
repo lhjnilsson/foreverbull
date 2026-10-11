@@ -12,6 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
@@ -41,6 +42,8 @@ func (test *FinanceModuleTest) SetupTest() {
 	test.Require().NoError(err)
 	err = repository.Recreate(context.Background(), test.pool)
 	test.Require().NoError(err)
+
+	var marketdata supplier.Marketdata = supplier.NewMockMarketdata(test.T())
 	test.app = fx.New(
 		fx.Provide(
 			func() *pgxpool.Pool {
@@ -50,6 +53,7 @@ func (test *FinanceModuleTest) SetupTest() {
 				return grpc.NewServer()
 			},
 		),
+		fx.Replace(fx.Annotate(marketdata, fx.As(new(supplier.Marketdata)))),
 		fx.Invoke(
 			func(lc fx.Lifecycle, gServer *grpc.Server) error {
 				lc.Append(fx.Hook{

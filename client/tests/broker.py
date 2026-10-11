@@ -1,6 +1,6 @@
 import os
 
-from typing import Generator
+from collections.abc import Generator
 
 import pynng
 
@@ -95,7 +95,7 @@ class Broker:
         self, request: session_service_pb2.RunExecutionRequest, context
     ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
         if self._worker_socket is None or self._execution is None:
-            raise Exception("Session not created")
+            raise RuntimeError("Session not created")
 
         rsp = self.engine.RunBacktest(engine_service_pb2.RunBacktestRequest())
         while True:
@@ -106,7 +106,7 @@ class Broker:
                 break
             orders = []
             if self._backtest is None:
-                raise Exception("Backtest not set")
+                raise RuntimeError("Backtest not set")
             symbols = [a.symbol for period in self._backtest.periods for a in period.assets if a.enabled]
             for symbol in symbols:
                 worker_request = worker_service_pb2.WorkerRequest(

@@ -1,0 +1,13 @@
+[project]
+name = "{{ cookiecutter.project_slug }}"
+version = "0.1.0"
+description = "Foreverbull algorithm project (TA-Lib)"
+requires-python = ">=3.12"
+dependencies = [
+    "foreverbull @ git+https://github.com/lhjnilsson/foreverbull.git@main#subdirectory=client",
+    "foreverbull-testing @ git+https://github.com/lhjnilsson/foreverbull.git@main#subdirectory=client/testing",
+    "foreverbull-cli @ git+https://github.com/lhjnilsson/foreverbull.git@main#subdirectory=client/cli",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
