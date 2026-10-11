@@ -107,7 +107,9 @@ def fb_database():
     from testcontainers.core.config import testcontainers_config
     from testcontainers.postgres import PostgresContainer
 
-    postgres = PostgresContainer("postgres:alpine")
+    # postgres:alpine moved to 18, whose images exit on startup when a volume is
+    # mounted at /var/lib/postgresql/data. 17 keeps that path.
+    postgres = PostgresContainer("postgres:17-alpine")
     postgres = postgres.with_volume_mapping("postgres_data", "/var/lib/postgresql/data", mode="rw")
     postgres = postgres.with_name("fbull_client_testing_pg")
     client = postgres.get_docker_client()

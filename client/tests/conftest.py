@@ -33,6 +33,16 @@ def _execution_database_url(request: pytest.FixtureRequest) -> str:
     return _PLACEHOLDER_DATABASE_URL
 
 
+def _namespace_port(namespace_server: dict) -> int:
+    """Port the in-process namespace fake bound. Configurations dial this, not 7878.
+
+    The yielded dict starts empty; the port is published on NAMESPACE_PORT.
+    """
+    if namespace_server is None or "NAMESPACE_PORT" not in os.environ:
+        raise RuntimeError("namespace server did not publish NAMESPACE_PORT")
+    return int(os.environ["NAMESPACE_PORT"])
+
+
 @pytest.fixture(autouse=True, scope="session")
 def spawn_process():
     method = get_start_method()
@@ -181,7 +191,7 @@ def backtest_date_range(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest):
+def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -214,7 +224,7 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.F
 
     configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5656,
-        namespacePort=7878,
+        namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[],
     )
@@ -251,7 +261,9 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest):
+def non_parallel_algo_file(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -283,7 +295,7 @@ def non_parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pyte
 
     configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5657,
-        namespacePort=7878,
+        namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[],
     )
@@ -321,7 +333,9 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest):
+def parallel_algo_file_with_parameters(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -354,7 +368,7 @@ def parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, r
 
     configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5658,
-        namespacePort=7878,
+        namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(
@@ -399,7 +413,9 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest):
+def non_parallel_algo_file_with_parameters(
+    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb2.Portfolio(
             cash=0,
@@ -431,7 +447,7 @@ def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb2.Backtes
 
     configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5659,
-        namespacePort=7878,
+        namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(
@@ -528,7 +544,7 @@ def multistep_algo_with_namespace(
 
     configuration = worker_pb2.ExecutionConfiguration(
         brokerPort=5660,
-        namespacePort=7878,
+        namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
             worker_pb2.ExecutionConfiguration.Function(

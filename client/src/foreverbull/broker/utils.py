@@ -9,6 +9,7 @@ import pynng
 from sqlalchemy import create_engine
 from sqlalchemy import engine
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import ArgumentError
 
 from foreverbull.broker.config import load_cluster_config
 from foreverbull.exceptions import ConfigurationError
@@ -45,7 +46,10 @@ def database_url_for_host(url: str) -> str:
         return url
     if load_cluster_config().get("cluster") != "local":
         return url
-    parsed = make_url(_postgres_url(url))
+    try:
+        parsed = make_url(_postgres_url(url))
+    except ArgumentError:
+        return url
     if parsed.host != "postgres":
         return url
     return parsed.set(host="127.0.0.1").render_as_string(hide_password=False)
