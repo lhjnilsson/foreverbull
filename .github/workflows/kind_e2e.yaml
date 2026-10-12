@@ -1,37 +1,150 @@
 name: Kind/Helm e2e
 
-# Not on on_commit.yaml (every feature-branch push).
+# Push to main, and workflow_dispatch. Not on every feature-branch push.
 #
-# GH-hosted runners cannot load :local / :on_commit images from this checkout.
-# The chart pulls published lhjnilsson/{foreverbull,zipline,fb-grafana} tags
-# (default: latest) plus stock postgres, nats, and minio. This is a cluster
-# smoke of the Helm install, not a build of this commit's images.
+# Builds lhjnilsson/{foreverbull,zipline,fb-grafana}:on_commit from this
+# checkout, loads them into Kind, then installs the chart with that tag.
+# Docker Hub has no :latest for these images, and the release workflow that
+# would publish it is separate. imagePullPolicy is IfNotPresent, so the
+# loaded images are used. Postgres, NATS, and Minio stay on their chart tags.
 # Trading stays off; no Alpaca secrets.
 on:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Published Docker Hub tag for lhjnilsson images (chart global.imageTag)"
-        required: false
-        default: "latest"
-        type: string
   push:
     branches:
       - main
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
-  kind-helm-e2e:
+  build-docker-foreverbull:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Foreverbull
+        uses: docker/build-push-action@v6
+        with:
+          file: ./docker/Dockerfile
+          tags: lhjnilsson/foreverbull:on_commit
+          outputs: type=docker,dest=/tmp/foreverbull.tar
+      - name: Upload foreverbull
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-foreverbull
+          path: /tmp/foreverbull.tar
+          retention-days: 1
+
+  build-docker-grafana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Grafana
+        uses: docker/build-push-action@v6
+        with:
+          context: grafana
+          file: ./grafana/Dockerfile
+          # COPY --from=foreverbull is the repo root (go.mod and pkg/), not an image.
+          build-contexts: |
+            foreverbull=${{ github.workspace }}
+          tags: lhjnilsson/fb-grafana:on_commit
+          outputs: type=docker,dest=/tmp/fb_grafana.tar
+      - name: Upload Grafana
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-fb-grafana
+          path: /tmp/fb_grafana.tar
+          retention-days: 1
+
+  build-python-packages:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Build
+        run: uv build --all-packages
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-dist
+          path: client/dist
+          retention-days: 1
+
+  build-docker-zipline:
+    needs: [build-python-packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Python packages
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-dist
+          path: /tmp/pypi
+      - name: Stage foreverbull wheel
+        run: |
+          set -euo pipefail
+          wheel="$(find /tmp/pypi -name 'foreverbull-0.0.0-py3-none-any.whl' -print -quit)"
+          test -s "${wheel}"
+          cp "${wheel}" client/foreverbull-0.0.0-py3-none-any.whl
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Zipline
+        uses: docker/build-push-action@v6
+        with:
+          context: client
+          file: ./client/zipline/Dockerfile
+          tags: lhjnilsson/zipline:on_commit
+          build-args: |
+            FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
+          outputs: type=docker,dest=/tmp/zipline.tar
+      - name: Upload zipline
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-zipline
+          path: /tmp/zipline.tar
+          retention-days: 1
+
+  kind-helm-e2e:
+    needs: [build-docker-foreverbull, build-docker-grafana, build-docker-zipline]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
-      VERSION: ${{ github.event.inputs.image_tag || 'latest' }}
+      VERSION: on_commit
       HELM_NAMESPACE: foreverbull
       HELM_RELEASE: foreverbull
     steps:
       - uses: actions/checkout@v4
+      - name: Download Foreverbull image
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-foreverbull
+          path: /tmp/images
+      - name: Download Zipline image
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-zipline
+          path: /tmp/images
+      - name: Download Grafana image
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-fb-grafana
+          path: /tmp/images
       - name: Set up Helm
         uses: azure/setup-helm@v4
         with:
@@ -43,5 +156,16 @@ jobs:
           version: v0.31.0
           kubectl_version: v1.35.0
           wait: 120s
+      - name: Load images into Kind
+        run: |
+          set -euo pipefail
+          docker load -i /tmp/images/foreverbull.tar
+          docker load -i /tmp/images/zipline.tar
+          docker load -i /tmp/images/fb_grafana.tar
+          kind load docker-image \
+            lhjnilsson/foreverbull:on_commit \
+            lhjnilsson/zipline:on_commit \
+            lhjnilsson/fb-grafana:on_commit \
+            --name foreverbull
       - name: Install chart and wait for workloads
         run: bash deploy/kind/e2e.sh
