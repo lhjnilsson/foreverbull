@@ -375,6 +375,9 @@ func (c *AlpacaClient) mapOrder(raw alpacaOrder, listing Listing, place bool) (*
 	if err != nil {
 		return nil, fmt.Errorf("alpaca qty: %w", supplier.ErrUnavailable)
 	}
+	if qty == 0 {
+		return nil, fmt.Errorf("alpaca qty is zero: %w", supplier.ErrUnavailable)
+	}
 	if qty < 0 {
 		qty = -qty
 	}
