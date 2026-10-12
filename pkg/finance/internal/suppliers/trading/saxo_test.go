@@ -515,6 +515,60 @@ func TestSaxoFilledOrderMissingAveragePrice(t *testing.T) {
 	require.Nil(t, got)
 }
 
+func TestSaxoOpenOrderZeroAmountOrLimit(t *testing.T) {
+	b := &saxoBroker{}
+	client, book := newSaxo(t, b)
+	row := aaplSaxo(t, book)
+	// Amount 0 is not a size. A limit Price of 0 or below is not a trigger.
+	// https://www.developer.saxo/openapi/referencedocs/port/v1/orders/get__port/schema-orderresponse
+	bodies := []string{
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 0,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Market",
+			"OrderId": "49318458",
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Price": 0,
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Price": -1,
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+	}
+	for _, body := range bodies {
+		b.ordersBody = body
+		got, err := client.GetOrders(context.Background())
+		require.ErrorIs(t, err, supplier.ErrUnavailable)
+		require.Nil(t, got)
+	}
+}
+
 func TestSaxoBrokerHTTP401(t *testing.T) {
 	b := &saxoBroker{placeStatus: http.StatusUnauthorized}
 	client, _ := newSaxo(t, b)
