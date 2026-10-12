@@ -503,6 +503,12 @@ func mapIBKROrder(raw ibkrLiveOrder, listing Listing) (*pb.Order, error) {
 		FilledAmount:  sign * filled,
 		BrokerOrderId: string(raw.OrderID),
 	}
+	if orderType == pb.OrderType_ORDER_TYPE_LIMIT {
+		if raw.Price == nil || !moneyOK(*raw.Price) || *raw.Price <= 0 {
+			return nil, fmt.Errorf("ibkr limit price: %w", supplier.ErrUnavailable)
+		}
+		out.LimitPrice = *raw.Price
+	}
 	if filled != 0 {
 		px, err := parseMoney(raw.AvgPrice)
 		if err != nil {
@@ -785,6 +791,7 @@ type ibkrLiveOrder struct {
 	TimeInForce       string    `json:"timeInForce"`
 	Side              string    `json:"side"`
 	AvgPrice          string    `json:"avgPrice"`
+	Price             *float64  `json:"price"`
 }
 
 type ibkrResultItem struct {
