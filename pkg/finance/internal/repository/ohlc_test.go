@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -9,8 +10,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -51,6 +54,26 @@ func (test *OHLCTests) TearDownTest() {
 
 func TestOHLC(t *testing.T) {
 	suite.Run(t, new(OHLCTests))
+}
+
+func TestStoreRejectsNaNOrNegativeClose(t *testing.T) {
+	db := repository.OHLC{}
+	day := time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		closePx float64
+	}{
+		{name: "nan", closePx: math.NaN()},
+		{name: "negative", closePx: -1},
+		{name: "negative infinity", closePx: math.Inf(-1)},
+		{name: "positive infinity", closePx: math.Inf(1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := db.Store(context.Background(), "yahoo", "ABC", day, 1.2, 1.3, 1.1, tc.closePx, 1000)
+			require.ErrorIs(t, err, supplier.ErrRejected)
+		})
+	}
 }
 
 func (test *OHLCTests) SampleOHLC() (string, *internal_pb.Date, *internal_pb.Date) {

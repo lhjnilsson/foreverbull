@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 )
 
@@ -91,6 +93,10 @@ type OHLC struct {
 }
 
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
+	if c < 0 || math.IsNaN(c) || math.IsInf(c, 0) {
+		return fmt.Errorf("close: %w", supplier.ErrRejected)
+	}
+
 	_, err := db.Conn.Exec(
 		ctx,
 		`INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)
