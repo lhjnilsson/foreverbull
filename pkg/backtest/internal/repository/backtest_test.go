@@ -316,6 +316,42 @@ func (test *BacktestTest) TestList() {
 	}
 }
 
+func (test *BacktestTest) TestProviderCheckRejectsNasdaq() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateBacktestProvider(ctx, test.conn))
+	test.Require().NoError(repository.MigrateBacktestProvider(ctx, test.conn))
+
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('yahoo-bt', 'QQQ', 'yahoo')`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('stooq-bt', 'QQQ', 'stooq')`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('alpaca-bt', 'QQQ', 'alpaca')`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('nasdaq-bt', 'QQQ', 'nasdaq')`)
+	test.Require().ErrorContains(err, "backtest_provider_check")
+}
+
+func (test *BacktestTest) TestMigrateBacktestProviderLeavesInvalidRows() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `ALTER TABLE backtest DROP CONSTRAINT backtest_provider_check`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('nasdaq-bt', 'QQQ', 'nasdaq')`)
+	test.Require().NoError(err)
+
+	err = repository.MigrateBacktestProvider(ctx, test.conn)
+	test.Require().ErrorContains(err, "backtest")
+
+	var provider string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest WHERE name='nasdaq-bt'`).Scan(&provider)
+	test.Require().NoError(err)
+	test.Equal("nasdaq", provider)
+}
+
 func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 

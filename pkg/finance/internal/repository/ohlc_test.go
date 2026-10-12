@@ -207,6 +207,115 @@ func (test *OHLCTests) TestMigrateDropsSymbolTimeUC() {
 	test.InDelta(7, got, 0.0001)
 }
 
+func (test *OHLCTests) TestBarsRejectInvalidRows() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateOHLCBars(ctx, test.conn))
+	test.Require().NoError(repository.MigrateOHLCBars(ctx, test.conn))
+
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('yahoo', 'ABC', '2020-01-02', 1, 1, 1, 1, 0)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('stooq', 'ABC', '2020-01-03', 1, 2, 2, 2, 1)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('alpaca', 'ABC', '2020-01-04', 1, 2, 1, 2, 1)`)
+	test.Require().NoError(err)
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('yahoo', 'ABC', '2020-01-05', 1, 1, 1, NULL, 1)`)
+	test.Require().ErrorContains(err, "ohlc")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('yahoo', 'ABC', '2020-01-06', 1, 1, 2, 1, 1)`)
+	test.Require().ErrorContains(err, "ohlc_bar_check")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('yahoo', 'ABC', '2020-01-07', 1, 1, 1, 1, -1)`)
+	test.Require().ErrorContains(err, "ohlc_bar_check")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('nasdaq', 'ABC', '2020-01-08', 1, 1, 1, 1, 1)`)
+	test.Require().ErrorContains(err, "ohlc_provider_check")
+}
+
+func (test *OHLCTests) TestMigrateOHLCBarsUpgradesOldTable() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE ohlc (
+			symbol TEXT REFERENCES asset(symbol),
+			open numeric,
+			high numeric,
+			low numeric,
+			close numeric,
+			volume bigint,
+			time timestamp,
+			provider text NOT NULL DEFAULT 'yahoo',
+			UNIQUE (provider, symbol, time)
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+		VALUES ('ABC', '2020-01-02', 1, 1, 1, 4, 1)`)
+	test.Require().NoError(err)
+
+	test.Require().NoError(repository.MigrateOHLCBars(ctx, test.conn))
+	test.Require().NoError(repository.MigrateOHLCBars(ctx, test.conn))
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('yahoo', 'ABC', '2020-01-03', 1, 1, 1, NULL, 1)`)
+	test.Require().ErrorContains(err, "ohlc")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+		VALUES ('nasdaq', 'ABC', '2020-01-04', 1, 1, 2, 1, 1)`)
+	test.Require().ErrorContains(err, "ohlc")
+}
+
+func (test *OHLCTests) TestMigrateOHLCBarsLeavesViolatingRows() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE ohlc (
+			symbol TEXT REFERENCES asset(symbol),
+			open numeric,
+			high numeric,
+			low numeric,
+			close numeric,
+			volume bigint,
+			time timestamp,
+			provider text NOT NULL DEFAULT 'yahoo',
+			UNIQUE (provider, symbol, time)
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume, provider)
+		VALUES ('ABC', '2020-01-02', 1, 1, 2, 1, -1, 'nasdaq')`)
+	test.Require().NoError(err)
+
+	err = repository.MigrateOHLCBars(ctx, test.conn)
+	test.Require().ErrorContains(err, "ohlc")
+
+	var n int64
+	var low float64
+	var volume int64
+	var provider string
+	err = test.conn.QueryRow(ctx, `
+		SELECT COUNT(*), MIN(low)::float8, MIN(volume), MIN(provider) FROM ohlc`).Scan(&n, &low, &volume, &provider)
+	test.Require().NoError(err)
+	test.Equal(int64(1), n)
+	test.InDelta(2, low, 0.0001)
+	test.Equal(int64(-1), volume)
+	test.Equal("nasdaq", provider)
+}
+
 func (test *OHLCTests) TestMinMax() {
 	_, start, end := test.SampleOHLC()
 	storedMin, storedMax, err := test.ohlcStorage.MinMax(context.Background())

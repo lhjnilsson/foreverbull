@@ -93,6 +93,60 @@ func (test *InstrumentTest) TestSymbolAtFollowsTickerChange() {
 	}, aliases)
 }
 
+func (test *InstrumentTest) TestAssetSymbolRejectsOverlapAndAcceptsAdjacent() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateAssetSymbol(ctx, test.conn))
+	test.Require().NoError(repository.MigrateAssetSymbol(ctx, test.conn))
+
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2021-06-30', '2021-10-31')`, metaISIN)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'META', '2021-08-01', NULL)`, metaISIN)
+	test.Require().ErrorContains(err, "asset_symbol_no_overlap")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'META', '2021-10-31', NULL)`, metaISIN)
+	test.Require().NoError(err)
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date)
+		VALUES ('US0000000000', 'ZZZ', '2020-01-01')`)
+	test.Require().ErrorContains(err, "asset_symbol_isin_fkey")
+}
+
+func (test *InstrumentTest) TestMigrateAssetSymbolLeavesOverlappingRows() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE asset_symbol`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE asset_symbol (
+			isin text NOT NULL,
+			symbol text NOT NULL,
+			from_date date NOT NULL,
+			to_date date,
+			PRIMARY KEY (isin, from_date)
+		)`)
+	test.Require().NoError(err)
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		($1, 'FB', '2021-01-01', '2021-06-01'),
+		($1, 'META', '2021-03-01', NULL)`, metaISIN)
+	test.Require().NoError(err)
+
+	err = repository.MigrateAssetSymbol(ctx, test.conn)
+	test.Require().ErrorContains(err, "asset_symbol")
+
+	var n int64
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM asset_symbol WHERE isin=$1`, metaISIN).Scan(&n)
+	test.Require().NoError(err)
+	test.Equal(int64(2), n)
+}
+
 func (test *InstrumentTest) TestSymbolAtRejectsMissingISIN() {
 	_, err := test.instruments.SymbolAt(context.Background(), "  ", test.date("2021-06-30"))
 	test.Require().ErrorContains(err, "missing ISIN")

@@ -15,9 +15,103 @@ CREATE TABLE IF NOT EXISTS universe_member (
 	isin text NOT NULL,
 	from_date date NOT NULL,
 	to_date date,
-	PRIMARY KEY (backtest_name, isin, from_date)
+	PRIMARY KEY (backtest_name, isin, from_date),
+	CONSTRAINT universe_member_isin_fkey FOREIGN KEY (isin) REFERENCES instrument (isin),
+	CONSTRAINT universe_member_no_overlap EXCLUDE USING gist (
+		backtest_name WITH =,
+		isin WITH =,
+		daterange(from_date, to_date, '[)') WITH &&
+	)
 );
 `
+
+// MigrateUniverseMember adds the instrument foreign key and the per-backtest
+// half-open exclusion. Rows that would violate the new constraint stay.
+// Calling it twice is safe.
+func MigrateUniverseMember(ctx context.Context, conn postgres.Query) error {
+	if _, err := conn.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS btree_gist`); err != nil {
+		return fmt.Errorf("failed to create extension btree_gist: %w", err)
+	}
+	if err := migrateUniverseMemberForeignKey(ctx, conn); err != nil {
+		return err
+	}
+	return migrateUniverseMemberExclusion(ctx, conn)
+}
+
+func migrateUniverseMemberForeignKey(ctx context.Context, conn postgres.Query) error {
+	exists, err := tableConstraintExists(ctx, conn, "universe_member", "universe_member_isin_fkey")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM universe_member m
+			LEFT JOIN instrument i ON i.isin = m.isin
+			WHERE i.isin IS NULL
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("universe_member: scan foreign key: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("universe_member: rows violate foreign key isin references instrument(isin)")
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE universe_member
+			ADD CONSTRAINT universe_member_isin_fkey
+			FOREIGN KEY (isin) REFERENCES instrument (isin)`)
+	if err != nil {
+		return fmt.Errorf("universe_member: foreign key: %w", err)
+	}
+	return nil
+}
+
+func migrateUniverseMemberExclusion(ctx context.Context, conn postgres.Query) error {
+	exists, err := tableConstraintExists(ctx, conn, "universe_member", "universe_member_no_overlap")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM universe_member a
+			JOIN universe_member b
+			  ON a.backtest_name = b.backtest_name
+			 AND a.isin = b.isin
+			 AND a.from_date < b.from_date
+			 AND daterange(a.from_date, a.to_date, '[)') && daterange(b.from_date, b.to_date, '[)')
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("universe_member: scan overlap: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("universe_member: rows violate exclusion on backtest_name, isin, and daterange(from_date, to_date, '[)')")
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE universe_member
+			ADD CONSTRAINT universe_member_no_overlap
+			EXCLUDE USING gist (
+				backtest_name WITH =,
+				isin WITH =,
+				daterange(from_date, to_date, '[)') WITH &&
+			)`)
+	if err != nil {
+		return fmt.Errorf("universe_member: exclusion: %w", err)
+	}
+	return nil
+}
 
 // MemberInterval is a half-open [FromDate, ToDate) row in universe_member.
 // Nil ToDate means still a member at the backtest end.

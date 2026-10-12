@@ -36,6 +36,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
 	}
 
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS btree_gist`); err != nil {
+		return fmt.Errorf("failed to create extension btree_gist: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
 	}
@@ -52,7 +56,7 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
 	}
 
-	if err := MigrateOHLC(ctx, conn); err != nil {
+	if err := migrateFinanceSchema(ctx, conn); err != nil {
 		return err
 	}
 
@@ -72,6 +76,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
 	}
 
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS btree_gist`); err != nil {
+		return fmt.Errorf("failed to create extension btree_gist: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, AssetTable); err != nil {
 		return fmt.Errorf("failed to create asset table: %w", err)
 	}
@@ -88,7 +96,7 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create ohlc table: %w", err)
 	}
 
-	if err := MigrateOHLC(ctx, conn); err != nil {
+	if err := migrateFinanceSchema(ctx, conn); err != nil {
 		return err
 	}
 
@@ -101,4 +109,14 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	}
 
 	return nil
+}
+
+func migrateFinanceSchema(ctx context.Context, conn *pgxpool.Pool) error {
+	if err := MigrateOHLC(ctx, conn); err != nil {
+		return err
+	}
+	if err := MigrateOHLCBars(ctx, conn); err != nil {
+		return err
+	}
+	return MigrateAssetSymbol(ctx, conn)
 }

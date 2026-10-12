@@ -44,6 +44,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
 	}
 
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS btree_gist`); err != nil {
+		return fmt.Errorf("failed to create extension btree_gist: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
 		return fmt.Errorf("failed to create table backtest: %w", err)
 	}
@@ -52,16 +56,12 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return err
 	}
 
-	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
-		return fmt.Errorf("failed to create table universe_member: %w", err)
+	if err := MigrateBacktestProvider(ctx, conn); err != nil {
+		return err
 	}
 
-	if _, err := conn.Exec(ctx, InstrumentTable); err != nil {
-		return fmt.Errorf("failed to create table instrument: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, AssetSymbolTable); err != nil {
-		return fmt.Errorf("failed to create table asset_symbol: %w", err)
+	if err := createIdentityTables(ctx, conn); err != nil {
+		return err
 	}
 
 	if _, err := conn.Exec(ctx, SessionTable); err != nil {
@@ -85,9 +85,29 @@ func migrateBacktestPriceSource(ctx context.Context, conn *pgxpool.Pool) error {
 	return nil
 }
 
+func createIdentityTables(ctx context.Context, conn *pgxpool.Pool) error {
+	if _, err := conn.Exec(ctx, InstrumentTable); err != nil {
+		return fmt.Errorf("failed to create table instrument: %w", err)
+	}
+	if _, err := conn.Exec(ctx, AssetSymbolTable); err != nil {
+		return fmt.Errorf("failed to create table asset_symbol: %w", err)
+	}
+	if err := MigrateAssetSymbol(ctx, conn); err != nil {
+		return err
+	}
+	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
+		return fmt.Errorf("failed to create table universe_member: %w", err)
+	}
+	return MigrateUniverseMember(ctx, conn)
+}
+
 func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`); err != nil {
 		return fmt.Errorf("failed to create extension uuid-ossp: %w", err)
+	}
+
+	if _, err := conn.Exec(context.Background(), `CREATE EXTENSION IF NOT EXISTS btree_gist`); err != nil {
+		return fmt.Errorf("failed to create extension btree_gist: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, BacktestTable); err != nil {
@@ -98,16 +118,12 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return err
 	}
 
-	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {
-		return fmt.Errorf("failed to create table universe_member: %w", err)
+	if err := MigrateBacktestProvider(ctx, conn); err != nil {
+		return err
 	}
 
-	if _, err := conn.Exec(ctx, InstrumentTable); err != nil {
-		return fmt.Errorf("failed to create table instrument: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, AssetSymbolTable); err != nil {
-		return fmt.Errorf("failed to create table asset_symbol: %w", err)
+	if err := createIdentityTables(ctx, conn); err != nil {
+		return err
 	}
 
 	if _, err := conn.Exec(ctx, SessionTable); err != nil {
