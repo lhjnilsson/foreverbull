@@ -139,3 +139,85 @@ func (test *InstanceTest) TestListByImage() {
 	test.Require().NoError(err)
 	test.Len(storedInstances, 1)
 }
+
+func (test *InstanceTest) TestInstanceStatusPrimaryKey() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateInstanceStatus(ctx, test.conn))
+	test.Require().NoError(repository.MigrateInstanceStatus(ctx, test.conn))
+	requireIdentityPrimaryKey(&test.Suite, test.conn, "service_instance_status")
+
+	instances := &repository.Instance{Conn: test.conn}
+	_, err := instances.Create(ctx, "instance", nil)
+	test.Require().NoError(err)
+
+	var n int
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM service_instance_status WHERE instance = 'instance'`).Scan(&n)
+	test.Require().NoError(err)
+	test.Equal(1, n)
+
+	test.Require().NoError(repository.MigrateInstanceStatus(ctx, test.conn))
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM service_instance_status WHERE instance = 'instance'`).Scan(&n)
+	test.Require().NoError(err)
+	test.Equal(1, n)
+}
+
+func (test *InstanceTest) TestMigrateInstanceStatusAssignsIDsWithoutNewRow() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE service_instance_status`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE service_instance_status (
+			id text REFERENCES service_instance(id) ON DELETE CASCADE,
+			status int NOT NULL,
+			error text,
+			occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE OR REPLACE FUNCTION notify_service_instance_status() RETURNS TRIGGER AS $$
+		BEGIN
+			IF (TG_OP = 'UPDATE' AND OLD.status <> NEW.status) OR TG_OP = 'INSERT' THEN
+				INSERT INTO service_instance_status (id, status, error)
+				VALUES (NEW.id, NEW.status, NEW.error);
+				PERFORM pg_notify('service_instance_status', NEW.id);
+			END IF;
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql`)
+	test.Require().NoError(err)
+
+	_, err = test.conn.Exec(ctx, `INSERT INTO service_instance (id) VALUES ('old-instance')`)
+	test.Require().NoError(err)
+
+	var before int
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM service_instance_status`).Scan(&before)
+	test.Require().NoError(err)
+	test.Equal(1, before)
+
+	test.Require().NoError(repository.MigrateInstanceStatus(ctx, test.conn))
+	test.Require().NoError(repository.MigrateInstanceStatus(ctx, test.conn))
+	requireIdentityPrimaryKey(&test.Suite, test.conn, "service_instance_status")
+
+	var after int
+	var id int64
+	var instance string
+	err = test.conn.QueryRow(ctx, `
+		SELECT COUNT(*), MIN(id), MIN(instance) FROM service_instance_status`).Scan(&after, &id, &instance)
+	test.Require().NoError(err)
+	test.Equal(before, after)
+	test.NotZero(id)
+	test.Equal("old-instance", instance)
+
+	var definition string
+	err = test.conn.QueryRow(ctx, `SELECT pg_get_functiondef('notify_service_instance_status()'::regprocedure)`).Scan(&definition)
+	test.Require().NoError(err)
+	test.Contains(definition, "INSERT INTO service_instance_status (instance, status, error)")
+	test.NotContains(definition, "INSERT INTO service_instance_status (id")
+
+	instances := &repository.Instance{Conn: test.conn}
+	_, err = instances.Create(ctx, "new-instance", nil)
+	test.Require().NoError(err)
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM service_instance_status WHERE instance = 'new-instance'`).Scan(&after)
+	test.Require().NoError(err)
+	test.Equal(1, after)
+}
