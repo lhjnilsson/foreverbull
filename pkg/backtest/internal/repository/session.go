@@ -12,9 +12,31 @@ import (
 const SessionTable = `
 CREATE TABLE IF NOT EXISTS session (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
-	backtest text REFERENCES backtest(name) ON DELETE CASCADE,
+	backtest text NOT NULL REFERENCES backtest(name) ON DELETE CASCADE,
 	port integer);
 `
+
+// MigrateSessionBacktest sets session.backtest NOT NULL.
+// A null backtest stays. Calling it twice is safe.
+func MigrateSessionBacktest(ctx context.Context, conn postgres.Query) error {
+	var bad bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM session WHERE backtest IS NULL
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("session: scan backtest: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("session: rows violate backtest NOT NULL")
+	}
+
+	_, err = conn.Exec(ctx, `ALTER TABLE session ALTER COLUMN backtest SET NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("session: backtest not null: %w", err)
+	}
+	return nil
+}
 
 type Session struct {
 	Conn postgres.Query

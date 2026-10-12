@@ -46,9 +46,21 @@ func floatPtr(v float64) *float64 {
 	return &v
 }
 
+func insertBacktest(ctx context.Context, conn *pgxpool.Pool, names ...string) error {
+	for _, name := range names {
+		_, err := conn.Exec(ctx,
+			`INSERT INTO backtest (name, benchmark) VALUES ($1, 'SPY') ON CONFLICT (name) DO NOTHING`,
+			name)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func insertExecution(ctx context.Context, conn *pgxpool.Pool, backtestName string) (string, error) {
 	_, err := conn.Exec(ctx,
-		`INSERT INTO backtest (name, benchmark) VALUES ($1, $2)`,
+		`INSERT INTO backtest (name, benchmark) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
 		backtestName, "SPY")
 	if err != nil {
 		return "", err

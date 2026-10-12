@@ -227,3 +227,167 @@ func (test *ExecutionTest) TestGetFunctionsEmptyWhenUnset() {
 	test.NotNil(got)
 	test.Empty(got)
 }
+
+func (test *ExecutionTest) TestCreateCopiesBacktestProvider() {
+	ctx := context.Background()
+	backtests := &repository.Backtest{Conn: test.conn}
+	sessions := repository.Session{Conn: test.conn}
+	executions := repository.Execution{Conn: test.conn}
+
+	for _, provider := range []string{"stooq", "alpaca"} {
+		name := provider + "-bt"
+		_, err := backtests.Create(ctx, &backtest.Backtest{Name: name, Provider: provider})
+		test.Require().NoError(err)
+		session, err := sessions.Create(ctx, name)
+		test.Require().NoError(err)
+
+		created, err := executions.Create(ctx, &backtest.Execution{
+			Session:   session.Id,
+			StartDate: test.execution.StartDate,
+			EndDate:   test.execution.EndDate,
+		}, nil)
+		test.Require().NoError(err)
+
+		var stored string
+		err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, created.Id).Scan(&stored)
+		test.Require().NoError(err)
+		test.Equal(provider, stored)
+	}
+
+	created, err := executions.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+	var stored string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, created.Id).Scan(&stored)
+	test.Require().NoError(err)
+	test.Equal("yahoo", stored)
+}
+
+func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution_period`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE backtest_execution (
+			id text PRIMARY KEY DEFAULT uuid_generate_v4(),
+			session text REFERENCES session(id) ON DELETE CASCADE,
+			start_date date NOT NULL,
+			end_date date NOT NULL
+		)`)
+	test.Require().NoError(err)
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark, provider) VALUES ('stooq-bt', 'SPY', 'stooq')`)
+	test.Require().NoError(err)
+	var sessionID string
+	err = test.conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ('stooq-bt') RETURNING id`).Scan(&sessionID)
+	test.Require().NoError(err)
+
+	var copiedID, unmatchedID string
+	err = test.conn.QueryRow(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES ($1, '2024-01-01', '2024-12-31') RETURNING id`, sessionID).Scan(&copiedID)
+	test.Require().NoError(err)
+	err = test.conn.QueryRow(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES (NULL, '2024-01-01', '2024-12-31') RETURNING id`).Scan(&unmatchedID)
+	test.Require().NoError(err)
+
+	test.Require().NoError(repository.MigrateExecutionProvider(ctx, test.conn))
+	test.Require().NoError(repository.MigrateExecutionProvider(ctx, test.conn))
+
+	var copied, unmatched string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, copiedID).Scan(&copied)
+	test.Require().NoError(err)
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, unmatchedID).Scan(&unmatched)
+	test.Require().NoError(err)
+	test.Equal("stooq", copied)
+	test.Equal("yahoo", unmatched)
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date, provider)
+		VALUES ($1, '2024-01-01', '2024-12-31', 'nasdaq')`, sessionID)
+	test.Require().ErrorContains(err, "backtest_execution")
+}
+
+func (test *ExecutionTest) TestMigrateExecutionProviderLeavesInvalidProvider() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `ALTER TABLE backtest_execution DROP CONSTRAINT backtest_execution_provider_check`)
+	test.Require().NoError(err)
+	var id string
+	err = test.conn.QueryRow(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date, provider)
+		VALUES ($1, '2024-01-01', '2024-12-31', 'nasdaq') RETURNING id`, test.storedSession.Id).Scan(&id)
+	test.Require().NoError(err)
+
+	err = repository.MigrateExecutionProvider(ctx, test.conn)
+	test.Require().ErrorContains(err, "backtest_execution")
+
+	var provider string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, id).Scan(&provider)
+	test.Require().NoError(err)
+	test.Equal("nasdaq", provider)
+}
+
+func (test *ExecutionTest) TestPeriodCascadeAndUnique() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateExecutionPeriod(ctx, test.conn))
+	test.Require().NoError(repository.MigrateExecutionPeriod(ctx, test.conn))
+
+	executions := repository.Execution{Conn: test.conn}
+	created, err := executions.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+	period := &backtest.Period{Date: &pb.Date{Year: 2024, Month: 1, Day: 2}}
+	test.Require().NoError(executions.StorePeriods(ctx, created.Id, []*backtest.Period{period}))
+	err = executions.StorePeriods(ctx, created.Id, []*backtest.Period{period})
+	test.Require().ErrorContains(err, "unique_backtest_execution_period")
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest_execution_period (
+			backtest_execution, date, pnl, returns, portfolio_value,
+			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+			capital_used, gross_leverage, net_leverage,
+			starting_value, ending_value, starting_cash, ending_cash,
+			max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return
+		) VALUES (
+			'missing-execution', '2024-01-03', 0, 0, 0,
+			0, 0, 0, 0, 0, 0,
+			0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0, 0
+		)`)
+	test.Require().ErrorContains(err, "backtest_execution_period")
+
+	_, err = test.conn.Exec(ctx, `DELETE FROM backtest_execution WHERE id=$1`, created.Id)
+	test.Require().NoError(err)
+	var n int
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM backtest_execution_period WHERE backtest_execution=$1`, created.Id).Scan(&n)
+	test.Require().NoError(err)
+	test.Zero(n)
+}
+
+func (test *ExecutionTest) TestMigrateExecutionPeriodLeavesOrphans() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `DROP TABLE backtest_execution_period`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE backtest_execution_period (
+			id serial PRIMARY KEY,
+			backtest_execution text NOT NULL,
+			date date NOT NULL
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest_execution_period (backtest_execution, date)
+		VALUES ('missing-execution', '2024-01-02')`)
+	test.Require().NoError(err)
+
+	err = repository.MigrateExecutionPeriod(ctx, test.conn)
+	test.Require().ErrorContains(err, "backtest_execution_period")
+
+	var execution string
+	err = test.conn.QueryRow(ctx, `SELECT backtest_execution FROM backtest_execution_period`).Scan(&execution)
+	test.Require().NoError(err)
+	test.Equal("missing-execution", execution)
+}

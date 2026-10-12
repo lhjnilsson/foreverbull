@@ -20,6 +20,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to drop table instrument: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution_period;`); err != nil {
+		return fmt.Errorf("failed to drop table backtest_execution_period: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS backtest_execution;`); err != nil {
 		return fmt.Errorf("failed to drop table execution: %w", err)
 	}
@@ -64,15 +68,7 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return err
 	}
 
-	if _, err := conn.Exec(ctx, SessionTable); err != nil {
-		return fmt.Errorf("failed to create table session: %w", err)
-	}
-
-	if _, err := conn.Exec(ctx, ExecutionTable); err != nil {
-		return fmt.Errorf("failed to create table execution: %w", err)
-	}
-
-	return nil
+	return createRunTables(ctx, conn)
 }
 
 func migrateBacktestPriceSource(ctx context.Context, conn *pgxpool.Pool) error {
@@ -126,13 +122,21 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return err
 	}
 
+	return createRunTables(ctx, conn)
+}
+
+func createRunTables(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, SessionTable); err != nil {
 		return fmt.Errorf("failed to create table session: %w", err)
 	}
-
+	if err := MigrateSessionBacktest(ctx, conn); err != nil {
+		return err
+	}
 	if _, err := conn.Exec(ctx, ExecutionTable); err != nil {
 		return fmt.Errorf("failed to create table execution: %w", err)
 	}
-
-	return nil
+	if err := MigrateExecutionProvider(ctx, conn); err != nil {
+		return err
+	}
+	return MigrateExecutionPeriod(ctx, conn)
 }

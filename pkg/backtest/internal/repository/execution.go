@@ -19,7 +19,9 @@ id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 session text REFERENCES session(id) ON DELETE CASCADE,
 start_date date NOT NULL,
 end_date date NOT NULL,
-function_arguments jsonb);
+function_arguments jsonb,
+provider text NOT NULL DEFAULT 'yahoo',
+CONSTRAINT backtest_execution_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')));
 
 ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS function_arguments jsonb;
 
@@ -64,7 +66,9 @@ CREATE TABLE IF NOT EXISTS backtest_execution_period (
 	benchmark_period_return numeric,
 	benchmark_volatility numeric,
 	alpha numeric,
-	beta numeric
+	beta numeric,
+	CONSTRAINT backtest_execution_period_backtest_execution_fkey
+		FOREIGN KEY (backtest_execution) REFERENCES backtest_execution (id) ON DELETE CASCADE
 );
 
 DO $$
@@ -79,6 +83,118 @@ BEGIN
     END IF;
 END $$;
 `
+
+const executionProviderCheck = "backtest_execution_provider_check"
+
+const executionPeriodForeignKey = "backtest_execution_period_backtest_execution_fkey"
+
+// MigrateExecutionProvider backfills provider from the backtest, then yahoo
+// for any row the join cannot fill, then sets NOT NULL and the provider check.
+// A row that would still fail the check stays. Calling it twice is safe.
+// The column is added nullable so an existing row is not stamped yahoo
+// before the backfill runs.
+func MigrateExecutionProvider(ctx context.Context, conn postgres.Query) error {
+	_, err := conn.Exec(ctx, `ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS provider text`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: provider column: %w", err)
+	}
+
+	_, err = conn.Exec(ctx, `
+		UPDATE backtest_execution e
+		SET provider = b.provider
+		FROM session s
+		JOIN backtest b ON b.name = s.backtest
+		WHERE e.session = s.id AND e.provider IS NULL`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: backfill provider: %w", err)
+	}
+
+	_, err = conn.Exec(ctx, `
+		UPDATE backtest_execution
+		SET provider = 'yahoo'
+		WHERE provider IS NULL`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: default provider: %w", err)
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM backtest_execution
+			WHERE provider IS NULL
+			   OR provider NOT IN ('yahoo', 'stooq', 'alpaca')
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: scan provider: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("backtest_execution: rows violate provider IN ('yahoo', 'stooq', 'alpaca')")
+	}
+
+	_, err = conn.Exec(ctx, `ALTER TABLE backtest_execution ALTER COLUMN provider SET DEFAULT 'yahoo'`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: provider default: %w", err)
+	}
+	_, err = conn.Exec(ctx, `ALTER TABLE backtest_execution ALTER COLUMN provider SET NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: provider not null: %w", err)
+	}
+
+	exists, err := tableConstraintExists(ctx, conn, "backtest_execution", executionProviderCheck)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE backtest_execution
+			ADD CONSTRAINT backtest_execution_provider_check
+			CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution: provider check: %w", err)
+	}
+	return nil
+}
+
+// MigrateExecutionPeriod references backtest_execution_period.backtest_execution
+// to backtest_execution(id) ON DELETE CASCADE.
+// The unique key on (backtest_execution, date) stays. An orphan row stays.
+// Calling it twice is safe.
+func MigrateExecutionPeriod(ctx context.Context, conn postgres.Query) error {
+	exists, err := tableConstraintExists(ctx, conn, "backtest_execution_period", executionPeriodForeignKey)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM backtest_execution_period p
+			LEFT JOIN backtest_execution e ON e.id = p.backtest_execution
+			WHERE e.id IS NULL
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("backtest_execution_period: scan foreign key: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("backtest_execution_period: rows violate foreign key backtest_execution references backtest_execution(id)")
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE backtest_execution_period
+			ADD CONSTRAINT backtest_execution_period_backtest_execution_fkey
+			FOREIGN KEY (backtest_execution) REFERENCES backtest_execution (id) ON DELETE CASCADE`)
+	if err != nil {
+		return fmt.Errorf("backtest_execution_period: foreign key: %w", err)
+	}
+	return nil
+}
 
 type Execution struct {
 	Conn postgres.Query
@@ -98,10 +214,20 @@ func (db *Execution) Create(ctx context.Context, execution *backtest.Execution, 
 		}
 	}
 
+	// provider is copied from the backtest. The column default must not turn a stooq run into yahoo.
 	err := db.Conn.QueryRow(ctx,
-		`INSERT INTO backtest_execution (session, start_date, end_date, function_arguments)
-		VALUES($1,$2,$3,$4) RETURNING id`, execution.Session, internal_pb.DateToDateString(execution.StartDate), internal_pb.DateToDateString(execution.EndDate), arguments).
-		Scan(&executionID)
+		`INSERT INTO backtest_execution (session, start_date, end_date, function_arguments, provider)
+		VALUES ($1, $2, $3, $4, (
+			SELECT b.provider
+			FROM session s
+			JOIN backtest b ON b.name = s.backtest
+			WHERE s.id = $1
+		)) RETURNING id`,
+		execution.Session,
+		internal_pb.DateToDateString(execution.StartDate),
+		internal_pb.DateToDateString(execution.EndDate),
+		arguments,
+	).Scan(&executionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}

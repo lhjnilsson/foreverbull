@@ -128,6 +128,7 @@ func (test *StrategyTest) TestDeleteCascadesChildren() {
 
 	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
 	test.Require().NoError(err)
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy"))
 
 	experiments := repository.Experiment{Conn: test.conn}
 	_, err = experiments.Create(ctx, version.Id, "spy")

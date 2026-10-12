@@ -9,6 +9,8 @@ import (
 
 // Parent tables match pkg/service and pkg/backtest column types so FKs in
 // Recreate tests (and CreateTables against a full broker DB) resolve.
+// provider, profile, and function_arguments keep the real defaults, so an
+// insert that omits them still lands.
 const parentTables = `
 CREATE TABLE IF NOT EXISTS service (
 	image text PRIMARY KEY,
@@ -19,12 +21,15 @@ CREATE TABLE IF NOT EXISTS service (
 
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
-	benchmark text NOT NULL
+	benchmark text NOT NULL,
+	provider text NOT NULL DEFAULT 'yahoo',
+	profile text NOT NULL DEFAULT '',
+	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 
 CREATE TABLE IF NOT EXISTS session (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
-	backtest text REFERENCES backtest(name) ON DELETE CASCADE,
+	backtest text NOT NULL REFERENCES backtest(name) ON DELETE CASCADE,
 	port integer
 );
 
@@ -32,7 +37,10 @@ CREATE TABLE IF NOT EXISTS backtest_execution (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4 (),
 	session text REFERENCES session(id) ON DELETE CASCADE,
 	start_date date NOT NULL,
-	end_date date NOT NULL
+	end_date date NOT NULL,
+	function_arguments jsonb,
+	provider text NOT NULL DEFAULT 'yahoo',
+	CONSTRAINT backtest_execution_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 
 CREATE TABLE IF NOT EXISTS backtest_execution_period (
@@ -75,7 +83,9 @@ CREATE TABLE IF NOT EXISTS backtest_execution_period (
 	benchmark_period_return numeric,
 	benchmark_volatility numeric,
 	alpha numeric,
-	beta numeric
+	beta numeric,
+	CONSTRAINT backtest_execution_period_backtest_execution_fkey
+		FOREIGN KEY (backtest_execution) REFERENCES backtest_execution (id) ON DELETE CASCADE
 );
 
 DO $$
@@ -142,5 +152,5 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		}
 	}
 
-	return nil
+	return MigrateExperimentBacktest(ctx, conn)
 }

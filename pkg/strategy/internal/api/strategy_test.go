@@ -455,6 +455,7 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 		test.insertPeriod(spyExec, "2020-01-02", 1000, -0.1, 0.01, floatPtr(0.5), nil)
 		test.insertPeriod(spyExec, "2020-06-01", 1100, -0.2, 0.05, floatPtr(1.25), floatPtr(0.03))
 		test.insertPeriod(euExec, "2020-06-01", 900, -0.15, 0.02, nil, floatPtr(0.01))
+		test.insertBacktest("commodities")
 
 		experiments := repository.Experiment{Conn: test.pgx}
 		spy, err := experiments.Create(context.Background(), version.Id, "spy")
@@ -523,6 +524,7 @@ func (test *StrategyServerTest) TestGetAndListExperiments() {
 func (test *StrategyServerTest) seedDeployableVersion(name, image string) *pb.Version {
 	test.T().Helper()
 	version := test.seedVersion(name, image, service.Service_Status_READY)
+	test.insertBacktest("spy")
 	experiments := repository.Experiment{Conn: test.pgx}
 	created, err := experiments.Create(context.Background(), version.Id, "spy")
 	test.Require().NoError(err)
