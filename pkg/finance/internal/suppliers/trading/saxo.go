@@ -493,6 +493,14 @@ func mapSaxoOrder(raw saxoOpenOrder, listing Listing) (*pb.Order, error) {
 		}
 		out.LimitPrice = *raw.Price
 	}
+	// Price is the order trigger. A fill needs AveragePrice, the average of FilledAmount.
+	// https://www.developer.saxo/openapi/learn/order-events
+	if filled != 0 {
+		if raw.AveragePrice == nil || !moneyOK(*raw.AveragePrice) || *raw.AveragePrice <= 0 {
+			return nil, fmt.Errorf("saxo filled order missing average price: %w", supplier.ErrUnavailable)
+		}
+		out.AveragePrice = *raw.AveragePrice
+	}
 	return out, nil
 }
 
@@ -667,6 +675,7 @@ type saxoOpenOrder struct {
 	BuySell       string            `json:"BuySell"`
 	Duration      saxoOrderDuration `json:"Duration"`
 	FilledAmount  float64           `json:"FilledAmount"`
+	AveragePrice  *float64          `json:"AveragePrice"`
 	OpenOrderType string            `json:"OpenOrderType"`
 	OrderID       saxoID            `json:"OrderId"`
 	Price         *float64          `json:"Price"`
