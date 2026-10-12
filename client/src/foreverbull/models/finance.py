@@ -1,3 +1,4 @@
+import math
 import os
 
 from datetime import datetime
@@ -13,6 +14,7 @@ from sqlalchemy import engine
 from sqlalchemy import text
 
 from foreverbull.broker.utils import namespace_socket
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.exceptions import RuntimeError
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -203,6 +205,9 @@ def deployable_value(portfolio_value: float, cash_reserve: float) -> float:
 
 
 def equal_weight_percent(n_selected: int, cash_reserve: float, max_positions: int) -> float:
+    # [0, 1) only. NaN fails a plain comparison, and 1 is not a held reserve.
+    if math.isnan(cash_reserve) or math.isinf(cash_reserve) or cash_reserve < 0.0 or cash_reserve >= 1.0:
+        raise ConfigurationError("cash reserve outside [0, 1)")
     n = min(max_positions, n_selected)
     if n < 1:
         return 0.0

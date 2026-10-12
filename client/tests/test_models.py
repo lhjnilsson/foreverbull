@@ -15,6 +15,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from foreverbull.broker.utils import database_url_for_host
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.exceptions import ConnectionError
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
@@ -447,7 +448,6 @@ class TestAllocation:
             (1, 0.0, 10, 1.0),
             (10, 0.0, 10, 0.1),
             (0, 0.05, 10, 0.0),
-            (5, 1.0, 10, 0.0),
         ],
     )
     def test_equal_weight_percent(self, n_selected, cash_reserve, max_positions, expected):
@@ -457,6 +457,14 @@ class TestAllocation:
         if n >= 1:
             assert n * weight == pytest.approx(1.0 - cash_reserve)
             assert n * weight <= 1.0 - cash_reserve + 1e-12
+
+    @pytest.mark.parametrize("cash_reserve", [-0.1, 1.0, 1.5, float("nan"), float("inf"), float("-inf")])
+    def test_equal_weight_percent_rejects_cash_reserve_outside_unit_interval(self, cash_reserve):
+        with pytest.raises(ConfigurationError, match="cash reserve outside"):
+            equal_weight_percent(1, cash_reserve, 1)
+        portfolio = Portfolio(marketdata_pb2.Portfolio(portfolio_value=100_000), cast(Connection, None))
+        with pytest.raises(ConfigurationError, match="cash reserve outside"):
+            portfolio.equal_weight_percent(1, cash_reserve, 1)
 
     def test_deployable_value(self):
         assert deployable_value(100_000, 0.05) == 95_000
