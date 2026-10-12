@@ -441,6 +441,42 @@ func TestAlpacaGetOrders(t *testing.T) {
 	require.Empty(t, none)
 }
 
+func TestAlpacaLimitOrderZeroOrMissingPrice(t *testing.T) {
+	b := &broker{}
+	client, book := newAlpaca(t, b)
+	row := aaplRow(t, book)
+	// limit_price is a string. Zero, negative, and omitted are not a price.
+	// https://docs.alpaca.markets/us/reference/getallorders-1
+	order := func(limit string) string {
+		return `[{
+			"id": "7b08df51-c1ac-453c-99f9-323a5f075f0d",
+			"symbol": "` + row.AlpacaSymbol + `",
+			"qty": "2",
+			"filled_qty": "0",
+			"filled_avg_price": null,
+			"side": "buy",
+			"type": "limit",
+			"time_in_force": "day",
+			` + limit + `
+			"status": "accepted"
+		}]`
+	}
+	bodies := []string{
+		order(`"limit_price": "0",`),
+		order(`"limit_price": "-1",`),
+		order(`"limit_price": "",`),
+		order(`"limit_price": " ",`),
+		order(`"limit_price": null,`),
+		order(""),
+	}
+	for _, body := range bodies {
+		b.ordersBody = body
+		got, err := client.GetOrders(context.Background())
+		require.ErrorIs(t, err, supplier.ErrUnavailable)
+		require.Nil(t, got)
+	}
+}
+
 func TestAlpacaEmptyISIN(t *testing.T) {
 	b := &broker{}
 	client, _ := newAlpaca(t, b)
