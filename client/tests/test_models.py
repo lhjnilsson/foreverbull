@@ -308,6 +308,30 @@ class TestPortfolio:
         assert close
         assert close == 518
 
+    def test_calculate_order_value_amount_refuses_negative_value_and_negative_close(self, uut: Portfolio):
+        uut._db.execute(
+            text("UPDATE ohlc SET close=:close WHERE symbol=:symbol"),
+            {"close": 100, "symbol": "ptest"},
+        )
+        with pytest.raises(ConfigurationError, match="order value is negative"):
+            uut._calculate_order_value_amount("ptest", -190)
+        with pytest.raises(ConfigurationError, match="order value is negative"):
+            uut.order_value("ptest", -190)
+        with pytest.raises(ConfigurationError, match="order value is negative"):
+            uut.order_target_value("ptest", -190)
+        assert uut.pending_orders == []
+
+        uut._close_by_symbol_day.clear()
+        uut._db.execute(
+            text("UPDATE ohlc SET close=:close WHERE symbol=:symbol"),
+            {"close": -50, "symbol": "ptest"},
+        )
+        with pytest.raises(ConfigurationError, match="close is negative"):
+            uut.order_value("ptest", 190)
+        with pytest.raises(ConfigurationError, match="close is negative"):
+            uut.order_target_value("ptest", 10000)
+        assert uut.pending_orders == []
+
     def test_order(self, uut: Portfolio):
         order = uut.order("ptest", 100)
         assert order
