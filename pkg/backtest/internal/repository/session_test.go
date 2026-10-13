@@ -137,3 +137,29 @@ func (test *SessionTest) TestListByBacktest() {
 	test.Equal(session1.Id, allSessions[0].Id)
 	test.Equal(session2.Id, allSessions[1].Id)
 }
+
+func (test *SessionTest) TestBacktestNotNull() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateSessionBacktest(ctx, test.conn))
+	test.Require().NoError(repository.MigrateSessionBacktest(ctx, test.conn))
+
+	_, err := test.conn.Exec(ctx, `INSERT INTO session (backtest) VALUES (NULL)`)
+	test.Require().ErrorContains(err, "session")
+}
+
+func (test *SessionTest) TestMigrateSessionBacktestLeavesNull() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `ALTER TABLE session ALTER COLUMN backtest DROP NOT NULL`)
+	test.Require().NoError(err)
+	var id string
+	err = test.conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES (NULL) RETURNING id`).Scan(&id)
+	test.Require().NoError(err)
+
+	err = repository.MigrateSessionBacktest(ctx, test.conn)
+	test.Require().ErrorContains(err, "session")
+
+	var backtest *string
+	err = test.conn.QueryRow(ctx, `SELECT backtest FROM session WHERE id=$1`, id).Scan(&backtest)
+	test.Require().NoError(err)
+	test.Nil(backtest)
+}

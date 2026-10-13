@@ -417,8 +417,9 @@ func TestIBKRGetOrders(t *testing.T) {
 	client, book := newIBKR(t, b)
 	row := aaplIBKR(t, book)
 	// GET /iserver/account/orders. orderId is the broker id. side and orderType
-	// are the working order. filledQuantity 0 is unfilled. There is no price field.
+	// are the working order. filledQuantity 0 is unfilled. price is the limit.
 	// https://www.interactivebrokers.com/docs/web-api/v1/endpoints/order-monitoring/live-orders
+	// https://www.interactivebrokers.com/docs/web-api/v1/ws/order-position-operations/request-live-order-updates
 	b.ordersBody = fmt.Sprintf(`{"orders":[{
 		"conid": %d,
 		"orderId": 1234568790,
@@ -429,7 +430,8 @@ func TestIBKRGetOrders(t *testing.T) {
 		"orderType": "Limit",
 		"origOrderType": "LIMIT",
 		"timeInForce": "DAY",
-		"side": "BUY"
+		"side": "BUY",
+		"price": 150
 	}], "snapshot": true}`, row.IBKRConID)
 
 	got, err := client.GetOrders(context.Background())
@@ -443,6 +445,7 @@ func TestIBKRGetOrders(t *testing.T) {
 	require.Equal(t, pb.OrderType_ORDER_TYPE_LIMIT, got[0].GetType())
 	require.Equal(t, pb.TimeInForce_TIME_IN_FORCE_DAY, got[0].GetTimeInForce())
 	require.Equal(t, int32(0), got[0].GetFilledAmount())
+	require.InDelta(t, 150, got[0].GetLimitPrice(), 1e-9)
 
 	require.NotEmpty(t, b.calls)
 	var sawOpen bool
@@ -463,6 +466,39 @@ func TestIBKRGetOrders(t *testing.T) {
 	none, err := emptyClient.GetOrders(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, none)
+}
+
+func TestIBKRLimitOrderZeroOrMissingPrice(t *testing.T) {
+	b := &ibkrBroker{}
+	client, book := newIBKR(t, b)
+	row := aaplIBKR(t, book)
+	// price is the limit on a live LMT order. Zero, negative, and omitted are not a price.
+	// https://www.interactivebrokers.com/docs/web-api/v1/ws/order-position-operations/request-live-order-updates
+	order := func(price string) string {
+		return fmt.Sprintf(`{"orders":[{
+			"conid": %d,
+			"orderId": 1234568790,
+			"remainingQuantity": 2.0,
+			"filledQuantity": 0.0,
+			"totalSize": 2.0,
+			"status": "Submitted",
+			"orderType": "LMT",
+			"timeInForce": "DAY",
+			"side": "BUY"%s
+		}]}`, row.IBKRConID, price)
+	}
+	bodies := []string{
+		order(`, "price": 0`),
+		order(`, "price": -1`),
+		order(`, "price": null`),
+		order(""),
+	}
+	for _, body := range bodies {
+		b.ordersBody = body
+		got, err := client.GetOrders(context.Background())
+		require.ErrorIs(t, err, supplier.ErrUnavailable)
+		require.Nil(t, got)
+	}
 }
 
 func TestIBKRConfirmOnce(t *testing.T) {

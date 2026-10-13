@@ -42,6 +42,7 @@ func (test *ExperimentTest) TestCreateQueued() {
 	ctx := context.Background()
 	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
 	test.Require().NoError(err)
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy"))
 
 	experiments := repository.Experiment{Conn: test.conn}
 	experiment, err := experiments.Create(ctx, version.Id, "spy")
@@ -61,6 +62,7 @@ func (test *ExperimentTest) TestSameVersionManyBacktests() {
 	ctx := context.Background()
 	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
 	test.Require().NoError(err)
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy", "eu", "commodities"))
 
 	experiments := repository.Experiment{Conn: test.conn}
 	spy, err := experiments.Create(ctx, version.Id, "spy")
@@ -97,6 +99,7 @@ func (test *ExperimentTest) TestListFilters() {
 	test.Require().NoError(err)
 	crossover, err := versions.Create(ctx, "crossover", "algo:local", nil)
 	test.Require().NoError(err)
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy", "eu"))
 
 	experiments := repository.Experiment{Conn: test.conn}
 	_, err = experiments.Create(ctx, meanRev.Id, "spy")
@@ -159,6 +162,7 @@ func (test *ExperimentTest) TestUpdateStatusFailedStoresError() {
 	test.Require().NoError(err)
 
 	experiments := repository.Experiment{Conn: test.conn}
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy"))
 	experiment, err := experiments.Create(ctx, version.Id, "spy")
 	test.Require().NoError(err)
 
@@ -197,6 +201,7 @@ func (test *ExperimentTest) TestListJoinsLastPeriodStats() {
 	test.Require().NoError(experiments.SetExecutionID(ctx, eu.Id, euExec))
 	test.Require().NoError(experiments.UpdateStatus(ctx, eu.Id, pb.Experiment_COMPLETED, nil))
 
+	test.Require().NoError(insertBacktest(ctx, test.conn, "commodities"))
 	queued, err := experiments.Create(ctx, version.Id, "commodities")
 	test.Require().NoError(err)
 
@@ -288,9 +293,89 @@ func (test *ExperimentTest) TestSetExecutionIDRequiresExistingExecution() {
 	test.Require().NoError(err)
 
 	experiments := repository.Experiment{Conn: test.conn}
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy"))
 	experiment, err := experiments.Create(ctx, version.Id, "spy")
 	test.Require().NoError(err)
 
 	err = experiments.SetExecutionID(ctx, experiment.Id, "missing-execution")
 	test.Require().Error(err)
+}
+
+func (test *ExperimentTest) TestCreateRequiresBacktest() {
+	ctx := context.Background()
+	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
+	test.Require().NoError(err)
+
+	experiments := repository.Experiment{Conn: test.conn}
+	_, err = experiments.Create(ctx, version.Id, "missing-backtest")
+	test.Require().ErrorContains(err, "strategy_experiment")
+}
+
+func (test *ExperimentTest) TestMigrateExperimentBacktestLeavesMissingBacktest() {
+	ctx := context.Background()
+	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
+	test.Require().NoError(err)
+
+	_, err = test.conn.Exec(ctx, `DROP TABLE strategy_experiment`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE strategy_experiment (
+			id text PRIMARY KEY DEFAULT uuid_generate_v4(),
+			strategy_id text NOT NULL REFERENCES strategy(id) ON DELETE CASCADE,
+			version_id text NOT NULL REFERENCES strategy_version(id) ON DELETE CASCADE,
+			backtest_name text NOT NULL,
+			execution_id text REFERENCES backtest_execution(id),
+			status int NOT NULL DEFAULT 0,
+			error text,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO strategy_experiment (strategy_id, version_id, backtest_name)
+		VALUES ($1, $2, 'missing-backtest')`, version.StrategyId, version.Id)
+	test.Require().NoError(err)
+
+	err = repository.MigrateExperimentBacktest(ctx, test.conn)
+	test.Require().ErrorContains(err, "strategy_experiment")
+
+	var name string
+	err = test.conn.QueryRow(ctx, `SELECT backtest_name FROM strategy_experiment`).Scan(&name)
+	test.Require().NoError(err)
+	test.Equal("missing-backtest", name)
+}
+
+func (test *ExperimentTest) TestMigrateExperimentBacktestAddsForeignKey() {
+	ctx := context.Background()
+	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
+	test.Require().NoError(err)
+	test.Require().NoError(insertBacktest(ctx, test.conn, "spy"))
+
+	_, err = test.conn.Exec(ctx, `DROP TABLE strategy_experiment`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE strategy_experiment (
+			id text PRIMARY KEY DEFAULT uuid_generate_v4(),
+			strategy_id text NOT NULL REFERENCES strategy(id) ON DELETE CASCADE,
+			version_id text NOT NULL REFERENCES strategy_version(id) ON DELETE CASCADE,
+			backtest_name text NOT NULL,
+			execution_id text REFERENCES backtest_execution(id),
+			status int NOT NULL DEFAULT 0,
+			error text,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO strategy_experiment (strategy_id, version_id, backtest_name)
+		VALUES ($1, $2, 'spy')`, version.StrategyId, version.Id)
+	test.Require().NoError(err)
+
+	test.Require().NoError(repository.MigrateExperimentBacktest(ctx, test.conn))
+	test.Require().NoError(repository.MigrateExperimentBacktest(ctx, test.conn))
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO strategy_experiment (strategy_id, version_id, backtest_name)
+		VALUES ($1, $2, 'missing-backtest')`, version.StrategyId, version.Id)
+	test.Require().ErrorContains(err, "strategy_experiment")
 }

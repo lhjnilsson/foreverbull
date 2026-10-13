@@ -375,6 +375,9 @@ func (c *AlpacaClient) mapOrder(raw alpacaOrder, listing Listing, place bool) (*
 	if err != nil {
 		return nil, fmt.Errorf("alpaca qty: %w", supplier.ErrUnavailable)
 	}
+	if qty == 0 {
+		return nil, fmt.Errorf("alpaca qty is zero: %w", supplier.ErrUnavailable)
+	}
 	if qty < 0 {
 		qty = -qty
 	}
@@ -402,13 +405,15 @@ func (c *AlpacaClient) mapOrder(raw alpacaOrder, listing Listing, place bool) (*
 		BrokerOrderId: raw.ID,
 	}
 	if orderType == pb.OrderType_ORDER_TYPE_LIMIT {
-		if raw.LimitPrice != nil && strings.TrimSpace(*raw.LimitPrice) != "" {
-			px, err := parseMoney(*raw.LimitPrice)
-			if err != nil {
-				return nil, fmt.Errorf("alpaca limit price: %w", supplier.ErrUnavailable)
-			}
-			out.LimitPrice = px
+		rawPrice := ""
+		if raw.LimitPrice != nil {
+			rawPrice = *raw.LimitPrice
 		}
+		px, err := parseMoney(rawPrice)
+		if err != nil || px <= 0 {
+			return nil, fmt.Errorf("alpaca limit price: %w", supplier.ErrUnavailable)
+		}
+		out.LimitPrice = px
 	}
 	if filled != 0 {
 		if raw.FilledAvgPrice == nil || strings.TrimSpace(*raw.FilledAvgPrice) == "" {

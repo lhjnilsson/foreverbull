@@ -3,23 +3,27 @@ package repository
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 )
 
 const OHLCTable = `CREATE TABLE IF NOT EXISTS ohlc (
 symbol TEXT references asset(symbol),
-open numeric,
-high numeric,
-low numeric,
-close numeric,
-volume bigint,
+open numeric NOT NULL,
+high numeric NOT NULL,
+low numeric NOT NULL,
+close numeric NOT NULL,
+volume bigint NOT NULL,
 time timestamp,
 provider text NOT NULL DEFAULT 'yahoo',
-UNIQUE (provider, symbol, time));
+UNIQUE (provider, symbol, time),
+CONSTRAINT ohlc_bar_check CHECK (high >= low AND volume >= 0),
+CONSTRAINT ohlc_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')));
 `
 
 // migrateOHLCProvider adds provider and replaces UNIQUE (symbol, time).
@@ -78,6 +82,70 @@ func MigrateOHLC(ctx context.Context, conn postgres.Query) error {
 	return nil
 }
 
+// MigrateOHLCBars sets open, high, low, close, and volume NOT NULL and adds
+// high >= low, volume >= 0, and the yahoo/stooq/alpaca provider check.
+// Call it after MigrateOHLC. Violating rows stay. Calling it twice is safe.
+func MigrateOHLCBars(ctx context.Context, conn postgres.Query) error {
+	var bad bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM ohlc
+			WHERE open IS NULL
+			   OR high IS NULL
+			   OR low IS NULL
+			   OR close IS NULL
+			   OR volume IS NULL
+			   OR high < low
+			   OR volume < 0
+			   OR provider IS NULL
+			   OR provider NOT IN ('yahoo', 'stooq', 'alpaca')
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("ohlc: scan bars: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("ohlc: rows violate NOT NULL, high >= low, volume >= 0, or provider")
+	}
+
+	statements := []string{
+		`ALTER TABLE ohlc ALTER COLUMN open SET NOT NULL`,
+		`ALTER TABLE ohlc ALTER COLUMN high SET NOT NULL`,
+		`ALTER TABLE ohlc ALTER COLUMN low SET NOT NULL`,
+		`ALTER TABLE ohlc ALTER COLUMN close SET NOT NULL`,
+		`ALTER TABLE ohlc ALTER COLUMN volume SET NOT NULL`,
+	}
+	for _, statement := range statements {
+		if _, err = conn.Exec(ctx, statement); err != nil {
+			return fmt.Errorf("ohlc: not null: %w", err)
+		}
+	}
+
+	if err = addOHLCCheck(ctx, conn, "ohlc_bar_check", `
+		ALTER TABLE ohlc
+			ADD CONSTRAINT ohlc_bar_check
+			CHECK (high >= low AND volume >= 0)`); err != nil {
+		return err
+	}
+	return addOHLCCheck(ctx, conn, "ohlc_provider_check", `
+		ALTER TABLE ohlc
+			ADD CONSTRAINT ohlc_provider_check
+			CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))`)
+}
+
+func addOHLCCheck(ctx context.Context, conn postgres.Query, name, statement string) error {
+	exists, err := tableConstraintExists(ctx, conn, "ohlc", name)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err = conn.Exec(ctx, statement); err != nil {
+		return fmt.Errorf("ohlc: %s: %w", name, err)
+	}
+	return nil
+}
+
 func priceProvider(provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {
@@ -91,6 +159,10 @@ type OHLC struct {
 }
 
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
+	if c < 0 || math.IsNaN(c) || math.IsInf(c, 0) {
+		return fmt.Errorf("close: %w", supplier.ErrRejected)
+	}
+
 	_, err := db.Conn.Exec(
 		ctx,
 		`INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)

@@ -471,11 +471,13 @@ func TestSaxoPartialFill(t *testing.T) {
 	b := &saxoBroker{}
 	client, book := newSaxo(t, b)
 	row := aaplSaxo(t, book)
-	// FilledAmount is the amount already filled.
+	// FilledAmount is the amount already filled. AveragePrice is that fill.
 	// https://www.developer.saxo/openapi/referencedocs/port/v1/orders/get__port/schema-orderresponse
+	// https://www.developer.saxo/openapi/learn/order-events
 	b.ordersBody = fmt.Sprintf(`{"Data":[{
 		"Amount": 10,
 		"AssetType": %q,
+		"AveragePrice": 99.9,
 		"BuySell": "Sell",
 		"FilledAmount": 4,
 		"OpenOrderType": "Market",
@@ -489,6 +491,82 @@ func TestSaxoPartialFill(t *testing.T) {
 	require.Equal(t, pb.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED, got[0].GetStatus())
 	require.Equal(t, int32(-10), got[0].GetAmount())
 	require.Equal(t, int32(-4), got[0].GetFilledAmount())
+	require.InDelta(t, 99.9, got[0].GetAveragePrice(), 1e-9)
+}
+
+func TestSaxoFilledOrderMissingAveragePrice(t *testing.T) {
+	b := &saxoBroker{}
+	client, book := newSaxo(t, b)
+	row := aaplSaxo(t, book)
+	// A fill with no AveragePrice is not stored as price 0.
+	// https://www.developer.saxo/openapi/learn/order-events
+	b.ordersBody = fmt.Sprintf(`{"Data":[{
+		"Amount": 10,
+		"AssetType": %q,
+		"BuySell": "Sell",
+		"FilledAmount": 4,
+		"OpenOrderType": "Market",
+		"OrderId": "49318458",
+		"Uic": %d
+	}]}`, row.SaxoAssetType, row.SaxoUIC)
+
+	got, err := client.GetOrders(context.Background())
+	require.ErrorIs(t, err, supplier.ErrUnavailable)
+	require.Nil(t, got)
+}
+
+func TestSaxoOpenOrderZeroAmountOrLimit(t *testing.T) {
+	b := &saxoBroker{}
+	client, book := newSaxo(t, b)
+	row := aaplSaxo(t, book)
+	// Amount 0 is not a size. A limit Price of 0 or below is not a trigger.
+	// https://www.developer.saxo/openapi/referencedocs/port/v1/orders/get__port/schema-orderresponse
+	bodies := []string{
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 0,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Market",
+			"OrderId": "49318458",
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Price": 0,
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Price": -1,
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+		fmt.Sprintf(`{"Data":[{
+			"Amount": 2,
+			"AssetType": %q,
+			"BuySell": "Buy",
+			"FilledAmount": 0,
+			"OpenOrderType": "Limit",
+			"OrderId": "49318458",
+			"Uic": %d
+		}]}`, row.SaxoAssetType, row.SaxoUIC),
+	}
+	for _, body := range bodies {
+		b.ordersBody = body
+		got, err := client.GetOrders(context.Background())
+		require.ErrorIs(t, err, supplier.ErrUnavailable)
+		require.Nil(t, got)
+	}
 }
 
 func TestSaxoBrokerHTTP401(t *testing.T) {

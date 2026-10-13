@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 	benchmark text NOT NULL,
 	provider text NOT NULL DEFAULT 'yahoo',
-	profile text NOT NULL DEFAULT ''
+	profile text NOT NULL DEFAULT '',
+	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 
 CREATE TABLE IF NOT EXISTS backtest_period (
@@ -53,6 +54,41 @@ func normalizeBacktestProvider(provider string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown price provider %q", provider)
 	}
+}
+
+// MigrateBacktestProvider adds the yahoo/stooq/alpaca check.
+// Rows that would violate it stay. Calling it twice is safe.
+func MigrateBacktestProvider(ctx context.Context, conn postgres.Query) error {
+	exists, err := tableConstraintExists(ctx, conn, "backtest", "backtest_provider_check")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM backtest
+			WHERE provider IS NULL
+			   OR provider NOT IN ('yahoo', 'stooq', 'alpaca')
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("backtest: scan provider: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("backtest: rows violate provider IN ('yahoo', 'stooq', 'alpaca')")
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE backtest
+			ADD CONSTRAINT backtest_provider_check
+			CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))`)
+	if err != nil {
+		return fmt.Errorf("backtest: provider check: %w", err)
+	}
+	return nil
 }
 
 func (db *Backtest) Create(ctx context.Context, backtest *backtest.Backtest) (*backtest.Backtest, error) {

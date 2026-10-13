@@ -58,3 +58,33 @@ func (test *StorageTest) TestRecreateResetsRows() {
 	test.Require().NoError(err)
 	test.Empty(listed)
 }
+
+func (test *StorageTest) TestParentInsertsOmitNewColumns() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `INSERT INTO backtest (name, benchmark) VALUES ('spy', 'SPY')`)
+	test.Require().NoError(err)
+
+	var provider, profile string
+	err = test.conn.QueryRow(ctx, `SELECT provider, profile FROM backtest WHERE name='spy'`).Scan(&provider, &profile)
+	test.Require().NoError(err)
+	test.Equal("yahoo", provider)
+	test.Empty(profile)
+
+	var sessionID string
+	err = test.conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ('spy') RETURNING id`).Scan(&sessionID)
+	test.Require().NoError(err)
+
+	var executionID, executionProvider string
+	var arguments []byte
+	err = test.conn.QueryRow(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES ($1, '2020-01-01', '2020-12-31')
+		RETURNING id, provider, function_arguments`, sessionID).Scan(&executionID, &executionProvider, &arguments)
+	test.Require().NoError(err)
+	test.NotEmpty(executionID)
+	test.Equal("yahoo", executionProvider)
+	test.Empty(arguments)
+
+	_, err = test.conn.Exec(ctx, `INSERT INTO backtest (name, benchmark, provider) VALUES ('nasdaq-bt', 'QQQ', 'nasdaq')`)
+	test.Require().ErrorContains(err, "backtest")
+}

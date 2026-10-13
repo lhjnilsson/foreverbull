@@ -23,9 +23,67 @@ CREATE TABLE IF NOT EXISTS strategy_experiment (
 	status int NOT NULL DEFAULT 0,
 	error text,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	completed_at TIMESTAMPTZ
+	completed_at TIMESTAMPTZ,
+	CONSTRAINT strategy_experiment_backtest_name_fkey
+		FOREIGN KEY (backtest_name) REFERENCES backtest (name)
 );
 `
+
+const experimentBacktestForeignKey = "strategy_experiment_backtest_name_fkey"
+
+// MigrateExperimentBacktest references strategy_experiment.backtest_name to backtest(name).
+// A row whose backtest is missing stays. Calling it twice is safe.
+func MigrateExperimentBacktest(ctx context.Context, conn postgres.Query) error {
+	exists, err := strategyConstraintExists(ctx, conn, "strategy_experiment", experimentBacktestForeignKey)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	var bad bool
+	err = conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM strategy_experiment e
+			LEFT JOIN backtest b ON b.name = e.backtest_name
+			WHERE b.name IS NULL
+		)`).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("strategy_experiment: scan foreign key: %w", err)
+	}
+	if bad {
+		return fmt.Errorf("strategy_experiment: rows violate foreign key backtest_name references backtest(name)")
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE strategy_experiment
+			ADD CONSTRAINT strategy_experiment_backtest_name_fkey
+			FOREIGN KEY (backtest_name) REFERENCES backtest (name)`)
+	if err != nil {
+		return fmt.Errorf("strategy_experiment: foreign key: %w", err)
+	}
+	return nil
+}
+
+func strategyConstraintExists(ctx context.Context, conn postgres.Query, table, name string) (bool, error) {
+	var exists bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_constraint c
+			JOIN pg_class t ON t.oid = c.conrelid
+			JOIN pg_namespace n ON n.oid = t.relnamespace
+			WHERE n.nspname = current_schema()
+			  AND t.relname = $1
+			  AND c.conname = $2
+		)`, table, name).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("%s: read constraint %s: %w", table, name, err)
+	}
+	return exists, nil
+}
 
 type Experiment struct {
 	Conn postgres.Query

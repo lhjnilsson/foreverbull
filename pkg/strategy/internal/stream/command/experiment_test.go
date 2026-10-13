@@ -55,6 +55,11 @@ func (test *ExperimentCommandTest) seedExperiment(backtestName string) *pb.Exper
 	version, err := versions.Create(ctx, "mean-rev", "algo:local", nil)
 	test.Require().NoError(err)
 
+	_, err = test.conn.Exec(ctx,
+		`INSERT INTO backtest (name, benchmark) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
+		backtestName, "SPY")
+	test.Require().NoError(err)
+
 	experiments := repository.Experiment{Conn: test.conn}
 	experiment, err := experiments.Create(ctx, version.Id, backtestName)
 	test.Require().NoError(err)
@@ -64,7 +69,7 @@ func (test *ExperimentCommandTest) seedExperiment(backtestName string) *pb.Exper
 func (test *ExperimentCommandTest) insertExecution(backtestName string) string {
 	test.T().Helper()
 	ctx := context.Background()
-	_, err := test.conn.Exec(ctx, `INSERT INTO backtest (name, benchmark) VALUES ($1, $2)`, backtestName, "SPY")
+	_, err := test.conn.Exec(ctx, `INSERT INTO backtest (name, benchmark) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, backtestName, "SPY")
 	test.Require().NoError(err)
 
 	var sessionID string

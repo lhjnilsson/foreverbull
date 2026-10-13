@@ -42,6 +42,10 @@ func (test *UniverseMemberTest) SetupTest() {
 	test.Require().NoError(err)
 	test.backtests = repository.Backtest{Conn: test.conn}
 	test.members = repository.UniverseMember{Conn: test.conn}
+	instruments := repository.Instrument{Conn: test.conn}
+	for _, isin := range []string{aaplISIN, metaISIN, msftISIN} {
+		test.Require().NoError(instruments.Upsert(context.Background(), isin, isin))
+	}
 }
 
 func (test *UniverseMemberTest) TearDownTest() {
@@ -198,6 +202,64 @@ func (test *UniverseMemberTest) TestSymbolsAtMapsTickerAtT() {
 	symbols, err = test.members.SymbolsAt(ctx, "sp100", test.date("2022-12-30"))
 	test.Require().NoError(err)
 	test.Empty(symbols)
+}
+
+func (test *UniverseMemberTest) TestOverlapRejectedInsideOneBacktest() {
+	ctx := context.Background()
+	test.createBacktest("sp100")
+	test.createBacktest("sp500")
+	test.Require().NoError(repository.MigrateUniverseMember(ctx, test.conn))
+	test.Require().NoError(repository.MigrateUniverseMember(ctx, test.conn))
+
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date)
+		VALUES ('sp100', $1, '2022-01-01', '2022-06-01')`, aaplISIN)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date)
+		VALUES ('sp100', $1, '2022-03-01', NULL)`, aaplISIN)
+	test.Require().ErrorContains(err, "universe_member_no_overlap")
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date)
+		VALUES ('sp100', $1, '2022-06-01', NULL)`, aaplISIN)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date)
+		VALUES ('sp500', $1, '2022-01-01', '2022-06-01')`, aaplISIN)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date)
+		VALUES ('sp500', $1, '2022-06-01', NULL)`, aaplISIN)
+	test.Require().NoError(err)
+}
+
+func (test *UniverseMemberTest) TestMigrateUniverseMemberLeavesOverlappingRows() {
+	ctx := context.Background()
+	test.createBacktest("sp100")
+	_, err := test.conn.Exec(ctx, `DROP TABLE universe_member`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		CREATE TABLE universe_member (
+			backtest_name text REFERENCES backtest (name) ON DELETE CASCADE,
+			isin text NOT NULL,
+			from_date date NOT NULL,
+			to_date date,
+			PRIMARY KEY (backtest_name, isin, from_date)
+		)`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO universe_member (backtest_name, isin, from_date, to_date) VALUES
+		('sp100', $1, '2022-01-01', '2022-06-01'),
+		('sp100', $1, '2022-03-01', NULL)`, aaplISIN)
+	test.Require().NoError(err)
+
+	err = repository.MigrateUniverseMember(ctx, test.conn)
+	test.Require().ErrorContains(err, "universe_member")
+
+	var n int64
+	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM universe_member`).Scan(&n)
+	test.Require().NoError(err)
+	test.Equal(int64(2), n)
 }
 
 func (test *UniverseMemberTest) TestReplaceClearsPreviousIntervals() {
