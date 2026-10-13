@@ -4,6 +4,16 @@ Foreverbull is a Go trading platform with a Python client workspace. Work from t
 
 Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml` (it includes `client/taskfile.yaml` and `grafana/taskfile.yaml`).
 
+## Style
+
+Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+
+## Commits
+
+Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you create a commit. **The subject starts with one gitmoji**, then `type(scope): outcome` in the imperative. The emoji is the intent (✨ `feat`, 🐛 `fix`, ⚡️ `perf`, 📝 `docs`, ✅ `test`; a narrower match such as 💚 `fix(ci)` or 🚨 for a linter beats the generic one). The body says why. One logical change per commit. Leave generated cookiecutter project trees out.
+
+📝 Documentation uses that same emoji, once per page, on the heading or callout a reader would be wrong to skip. The rest of the page stays plain. See [In documentation](style.md#in-documentation).
+
 ## Layout
 
 | Path | What it is |
