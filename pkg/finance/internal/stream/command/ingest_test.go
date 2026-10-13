@@ -61,11 +61,11 @@ func (test *IngestCommandTest) SetupTest() {
 
 	test.storedOHLCStart = &internal_pb.Date{Year: 2020, Month: 1, Day: 1}
 	test.Require().NoError(test.ohlc.Store(context.Background(), "",
-		"Stored123", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
+		"Stored123", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), 1.0, 4.0, 2.0, 3.0, 5))
 	test.Require().NoError(test.ohlc.Store(context.Background(), "",
-		"Stored123", time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
+		"Stored123", time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), 1.0, 4.0, 2.0, 3.0, 5))
 	test.Require().NoError(test.ohlc.Store(context.Background(), "",
-		"Stored123", time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC), 1.0, 2.0, 3.0, 4.0, 5))
+		"Stored123", time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC), 1.0, 4.0, 2.0, 3.0, 5))
 
 	test.storedOHLCEnd = &internal_pb.Date{Year: 2020, Month: 1, Day: 3}
 
