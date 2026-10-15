@@ -24,6 +24,64 @@ Give Docker at least 2 CPUs, 4 GB of memory and 30 GB of disk. On macOS and Wind
 - Disk: the chart's volumes request 17Gi (Postgres `8Gi`, Minio `8Gi`, NATS `1Gi`). Leave that free in Docker's storage, plus room for the images that `task build` creates and Kind loads into the node.
 - Ports: `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` must be free on the host before `fbenv create`. See [Troubleshooting](#troubleshooting) when one is taken.
 
+## First backtest in 15 minutes
+
+One copy-paste path from a fresh clone to a Grafana result. Commands after `task build` run from `client/`. Accept the cookiecutter defaults so the strategy lands at `simple_foreverbull/crossover.py`. Deeper options (Stooq, remote clusters, strategy lifecycle) stay in [Quickstart](#quickstart) below.
+
+```bash
+# repository root
+task build
+
+cd client
+VERSION=local uv run fbenv create
+uv run fbenv start
+
+# ingest Nasdaq-100 sample (Yahoo default; a few minutes for ~101 symbols)
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+
+# generate the simple crossover strategy (defaults → simple_foreverbull/)
+uv run cookiecutter templates/simple
+
+uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+```
+
+Open the Grafana `Link:` the run prints (local Kind: port `3000`), or visit [http://localhost:3000](http://localhost:3000).
+
+### Example: `backtest create` output
+
+Progress lines use a spinner, then a checkmark when each step finishes. Symbols is the comma-separated enabled list (truncated here):
+
+```text
+✔ Creating
+✔ Downloading
+✔ Ingesting
+✔ Storing
+                             Created Backtest
+┏━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Name      ┃ Start      ┃ End        ┃ Symbols            ┃ Benchmark ┃ Provider ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ nasdaq100 │ 2023-01-01 │ 2023-03-31 │ AAPL,NVDA,MSFT,…   │ QQQ       │ yahoo    │
+└───────────┴────────────┴────────────┴────────────────────┴───────────┴──────────┘
+```
+
+Creating the same name twice fails. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle.
+
+### Example: `backtest run` output
+
+After the session and execution progress bars, the CLI prints an Execution table and a Grafana link. IDs are illustrative:
+
+```text
+                          Execution
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ ID                                   ┃ Backtest  ┃ Start      ┃ End        ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 01234567-89ab-cdef-0123-456789abcdef │ nasdaq100 │ 2023-01-01 │ 2023-03-31 │
+└──────────────────────────────────────┴───────────┴────────────┴────────────┘
+Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
+```
+
+The run command does not print return, Sharpe, or max drawdown in the terminal; those charts and period stats are in Grafana (and on `fbull backtest execution <id>`).
+
 ## Quickstart
 
 From a clone of this repository, build the `:local` images and sync the Python workspace (this installs the Kind/Helm `fbenv` in that workspace):
