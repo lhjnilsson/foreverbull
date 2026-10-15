@@ -51,7 +51,7 @@ uv run cookiecutter templates/simple
 uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
 
 # print the Execution summary and periods table for the run's id
-uv run fbull backtest execution 01234567-89ab-cdef-0123-456789abcdef
+uv run fbull backtest execution <execution-id>  # the ID from the run output above
 ```
 
 For charts, open the Grafana `Link:` the run and `execution` commands print (local Kind: port `3000`), or visit [http://localhost:3000](http://localhost:3000). Anonymous access is enabled (no login).
@@ -72,7 +72,6 @@ Progress lines use a spinner, then a checkmark when each step finishes. Symbols 
 │ nasdaq100 │ 2023-01-01 │ 2023-03-31 │ AAPL,NVDA,MSFT,…   │ QQQ       │ yahoo    │
 └───────────┴────────────┴────────────┴────────────────────┴───────────┴──────────┘
 ```
-
 
 ### Example: `backtest run` output
 
