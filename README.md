@@ -16,6 +16,14 @@ The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote clust
 
 This is not a Docker Compose / Docker-network stack. Tests still use Testcontainers on Docker; they do not run on Kind.
 
+### Host resources
+
+The whole platform runs inside one Kind node, which is a Docker container, so these numbers are what Docker must be able to give it. On macOS and Windows that is the Docker Desktop VM allocation, not the machine's total.
+
+- CPU and memory: the chart requests 275m CPU and 544Mi memory in total across the six workloads (`resources.*` in `deploy/helm/foreverbull/values.yaml`). Those are requests with no limits, so they are the floor for the pods to schedule. A backtest uses more, and Zipline and the strategy workers grow with the universe size and the date range.
+- Disk: the chart's volumes request 17Gi (Postgres `8Gi`, Minio `8Gi`, NATS `1Gi`). Leave that free in Docker's storage, plus room for the images that `task build` creates and Kind loads into the node.
+- Ports: `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` must be free on the host before `fbenv create`. See [Troubleshooting](#troubleshooting) when one is taken.
+
 ## Quickstart
 
 From a clone of this repository, build the `:local` images and sync the Python workspace (this installs the Kind/Helm `fbenv` in that workspace):
@@ -154,6 +162,66 @@ Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may om
 Paper orders use a profile name. The broker reads `TRADING_PROFILES_FILE`. In the cluster that path is `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading`, key `profiles.yaml`. The Secret is optional. When the file is absent and `TRADING_ENABLED` is false, the process starts with an empty registry. When `TRADING_ENABLED` is true, a missing or invalid file is a startup error.
 
 On local Kind, if `.foreverbull/trading-profiles.yaml` exists, `fbenv` applies it as that Secret before `helm upgrade` and does not print the file. `.foreverbull` is gitignored. The committed example is [deploy/trading-profiles.example.yaml](deploy/trading-profiles.example.yaml). Its credential fields are empty. Do not commit keys. The file has no `baseUrl` field and no live URL switch. Two deployments that name the same profile share that account. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
+
+## Troubleshooting
+
+Commands below are from `client/` after `uv sync`. The local Kind context is `kind-foreverbull` and the namespace is `foreverbull`.
+
+### A host port is already in use
+
+The Kind node publishes `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` on the host. When another process holds one of them, `fbenv create` fails while Kind creates the cluster, and the Docker error names the port (for example `Bind for 0.0.0.0:5432 failed: port is already allocated`). A local Postgres on `5432` or a local Grafana on `3000` is the usual cause.
+
+Find the process that holds the port and stop it:
+
+```bash
+lsof -nP -iTCP:5432 -sTCP:LISTEN     # macOS and Linux
+docker ps --filter publish=5432      # another container
+```
+
+The ports are fixed when the cluster is created (`extraPortMappings` in `deploy/kind/cluster.yaml`). If `kind get clusters` still lists `foreverbull`, delete it, then create again:
+
+```bash
+kind delete cluster --name foreverbull
+VERSION=local uv run fbenv create
+```
+
+### Pods do not start
+
+`fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Look at the pod that is not ready:
+
+```bash
+uv run fbenv status
+kubectl --context kind-foreverbull -n foreverbull get pods
+kubectl --context kind-foreverbull -n foreverbull describe pod <pod-name>
+kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
+```
+
+`<workload>` is one of `postgres`, `nats`, `minio`, `zipline`, `foreverbull`, or `grafana`.
+
+- `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
+- `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events: Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
+- `CrashLoopBackOff`: the container starts and exits. Its `logs` output says why. Add `--previous` to see the run before the restart.
+
+### Yahoo downloads fail
+
+`fbull backtest create` downloads bars from inside the broker pod, so the pod needs outbound HTTPS to the price host. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle. The create itself still finishes, so check the printed backtest for disabled symbols.
+
+- Read the reason in the broker log: `kubectl --context kind-foreverbull -n foreverbull logs deploy/foreverbull`.
+- When many symbols fail at once, Yahoo is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
+- Or load the daily bars from Stooq with `--provider stooq`, as described in [Stooq](#stooq). Asset lookup still uses Yahoo, so that lookup must succeed for a symbol to be enabled.
+
+### Recreate the Kind cluster
+
+Recreate the cluster when it is in a state that `fbenv update` does not fix, or to change the published ports. Purging deletes the Kind cluster and its volumes, so every stored backtest, bar, and result is gone. It also deletes the `.foreverbull` directory except `config.yaml`.
+
+```bash
+uv run fbenv stop --remove --purge
+VERSION=local uv run fbenv create
+uv run fbenv start
+uv run fbenv status
+```
+
+Then create your backtests again with `fbull backtest create`.
 
 ## Architecture
 
