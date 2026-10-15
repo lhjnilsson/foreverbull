@@ -18,7 +18,7 @@ This is not a Docker Compose / Docker-network stack. Tests still use Testcontain
 
 ### Host resources
 
-The whole platform runs inside one Kind node, which is a Docker container, so these numbers are what Docker must be able to give it. On macOS and Windows that is the Docker Desktop VM allocation, not the machine's total.
+Give Docker at least 2 CPUs, 4 GB of memory and 20 GB of disk. On macOS and Windows that is the Docker Desktop VM allocation, not the machine's total.
 
 - CPU and memory: the chart requests 275m CPU and 544Mi memory in total across the six workloads (`resources.*` in `deploy/helm/foreverbull/values.yaml`). Those are requests with no limits, so they are the floor for the pods to schedule. A backtest uses more, and Zipline and the strategy workers grow with the universe size and the date range.
 - Disk: the chart's volumes request 17Gi (Postgres `8Gi`, Minio `8Gi`, NATS `1Gi`). Leave that free in Docker's storage, plus room for the images that `task build` creates and Kind loads into the node.
@@ -187,10 +187,15 @@ VERSION=local uv run fbenv create
 
 ### Pods do not start
 
-`fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Look at the pod that is not ready:
+`fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:
+
+- `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
+- `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events: Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
+- `CrashLoopBackOff`: the container starts and exits. Its log says why. Add `--previous` to see the run before the restart.
+
+More detail:
 
 ```bash
-uv run fbenv status
 kubectl --context kind-foreverbull -n foreverbull get pods
 kubectl --context kind-foreverbull -n foreverbull describe pod <pod-name>
 kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
@@ -198,21 +203,18 @@ kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
 
 `<workload>` is one of `postgres`, `nats`, `minio`, `zipline`, `foreverbull`, or `grafana`.
 
-- `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
-- `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events: Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
-- `CrashLoopBackOff`: the container starts and exits. Its `logs` output says why. Add `--previous` to see the run before the restart.
-
-### Yahoo downloads fail
+### Price downloads fail
 
 `fbull backtest create` downloads bars from inside the broker pod, so the pod needs outbound HTTPS to the price host. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle. The create itself still finishes, so check the printed backtest for disabled symbols.
 
 - Read the reason in the broker log: `kubectl --context kind-foreverbull -n foreverbull logs deploy/foreverbull`.
-- When many symbols fail at once, Yahoo is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
-- Or load the daily bars from Stooq with `--provider stooq`, as described in [Stooq](#stooq). Asset lookup still uses Yahoo, so that lookup must succeed for a symbol to be enabled.
+- When many symbols fail at once, the price host is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
 
 ### Recreate the Kind cluster
 
-Recreate the cluster when it is in a state that `fbenv update` does not fix, or to change the published ports. Purging deletes the Kind cluster and its volumes, so every stored backtest, bar, and result is gone. It also deletes the `.foreverbull` directory except `config.yaml`.
+Recreate the cluster when it is in a state that `fbenv update` does not fix, or to change the published ports. It also deletes the `.foreverbull` directory except `config.yaml`.
+
+> **Warning:** Purging deletes the Kind cluster and its volumes, so every stored backtest, bar, and result is gone.
 
 ```bash
 uv run fbenv stop --remove --purge
