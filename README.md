@@ -102,11 +102,7 @@ Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` rem
 
 Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. A month-end with no holdings file keeps the latest published listing on or before that date, or the earliest published listing after it when nothing earlier exists. You do not have to pick a range that includes a published date; the create fails only when the whole range has no holdings file. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 
-After create, run a strategy file against the ingested backtest:
-
-```bash
-uv run fbull backtest run nasdaq100 path/to/strategy.py
-```
+The next step generates a strategy file to run against this backtest.
 
 ### Strategy projects
 
@@ -122,6 +118,14 @@ uv run cookiecutter templates/advanced    # requires TA-Lib
 ```
 
 The generated directory is the project slug. From `client/`, the strategy file is `simple_foreverbull/crossover.py` (or `advanced_foreverbull/macd.py`).
+
+Run the generated strategy against the `nasdaq100` backtest from the ingest step, still from `client/`:
+
+```bash
+uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+# or, from the advanced template
+uv run fbull backtest run nasdaq100 advanced_foreverbull/macd.py
+```
 
 From GitHub (picks the same two templates via the root `cookiecutter.json`):
 
