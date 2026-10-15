@@ -18,7 +18,7 @@ This is not a Docker Compose / Docker-network stack. Tests still use Testcontain
 
 ### Host resources
 
-Give Docker at least 2 CPUs, 4 GB of memory and 20 GB of disk. On macOS and Windows that is the Docker Desktop VM allocation, not the machine's total.
+Give Docker at least 2 CPUs, 4 GB of memory and 30 GB of disk. On macOS and Windows that is the Docker Desktop VM allocation, not the machine's total.
 
 - CPU and memory: the chart requests 275m CPU and 544Mi memory in total across the six workloads (`resources.*` in `deploy/helm/foreverbull/values.yaml`). Those are requests with no limits, so they are the floor for the pods to schedule. A backtest uses more, and Zipline and the strategy workers grow with the universe size and the date range.
 - Disk: the chart's volumes request 17Gi (Postgres `8Gi`, Minio `8Gi`, NATS `1Gi`). Leave that free in Docker's storage, plus room for the images that `task build` creates and Kind loads into the node.
@@ -190,7 +190,7 @@ VERSION=local uv run fbenv create
 `fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:
 
 - `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
-- `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events: Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
+- `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events (see More detail below): Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
 - `CrashLoopBackOff`: the container starts and exits. Its log says why. Add `--previous` to see the run before the restart.
 
 More detail:
