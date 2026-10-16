@@ -8,7 +8,11 @@ import typer
 from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import ClusterManager
+from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadRow
+from foreverbull_cli.env.preflight import CheckState
+from foreverbull_cli.env.preflight import HostCheck
+from foreverbull_cli.env.preflight import PreflightError
 from typer.testing import CliRunner
 
 
@@ -23,6 +27,20 @@ STATUS_ROWS = [
     WorkloadRow("Foreverbull", "foreverbull", "running", "lhjnilsson/foreverbull:latest", "mno"),
     WorkloadRow("Grafana", "grafana", "running", "lhjnilsson/fb-grafana:latest", "pqr"),
 ]
+
+HOST_CHECKS = [
+    HostCheck("kind", CheckState.PASS, "kind v0.24.0 go1.22.6 linux/amd64"),
+    HostCheck("docker", CheckState.PASS, "27.3.1"),
+    HostCheck("Docker daemon", CheckState.PASS, "running (server 27.3.1)"),
+    HostCheck("Docker memory", CheckState.PASS, "7.7 GiB available to Docker"),
+    HostCheck(
+        "Host ports",
+        CheckState.FAIL,
+        "Port 5432 (Postgres) is already in use.",
+        "Stop the process that holds it.",
+    ),
+]
+PORT_FAILURE = PreflightError(HOST_CHECKS[-1])
 
 
 @pytest.fixture
@@ -44,6 +62,7 @@ def runner(fb_env):
 def mocked_container_manager():
     container_manager = MagicMock(spec=ClusterManager)
     container_manager.status_rows.return_value = STATUS_ROWS
+    container_manager.host_checks.return_value = HOST_CHECKS
     container_manager.config = MagicMock()
     container_manager.config.cluster = "local"
     container_manager.config.namespace = "foreverbull"
@@ -69,13 +88,53 @@ def test_status(runner, mocked_container_manager: MagicMock):
     assert "Grafana" in result.stdout
 
 
+def test_status_lists_host_checks_above_workloads(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 0
+    mocked_container_manager.preflight.assert_not_called()
+    assert "Host checks" in result.stdout
+    assert "Docker memory" in result.stdout
+    assert "Port 5432 (Postgres) is already in use." in result.stdout
+    assert "Stop the process that holds it." in result.stdout
+    assert result.stdout.index("Host checks") < result.stdout.index("Environment Status")
+
+
+def test_status_without_kubectl_still_shows_host_checks(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.status_rows.side_effect = MissingToolError("kubectl")
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 0
+    assert "Host checks" in result.stdout
+    assert "Workload status needs kubectl. kubectl is not installed." in result.stdout
+
+
+def test_create_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.preflight.side_effect = PORT_FAILURE
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    assert "Host check failed: Host ports. Port 5432 (Postgres) is already in use." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.verify_images.assert_not_called()
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_start_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.preflight.side_effect = PORT_FAILURE
+    result = runner(cli.cli, "start")
+    assert result.exit_code == 1
+    assert "Host check failed: Host ports." in result.stdout
+    mocked_container_manager.start.assert_not_called()
+
+
 def test_create(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "create")
     assert result.exit_code == 0
     mocked_container_manager.verify_images.assert_called_once()
+    mocked_container_manager.preflight.assert_called_once_with()
     mocked_container_manager.create.assert_called_once_with()
     mocked_container_manager.start.assert_not_called()
     assert "fbenv start" in result.stdout
+    assert "Host checks" not in result.stdout
 
 
 def test_create_start(runner, mocked_container_manager: MagicMock):

@@ -15,6 +15,8 @@ from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import load_cluster_config
+from foreverbull_cli.env.preflight import CheckState
+from foreverbull_cli.env.preflight import PreflightError
 
 
 pytestmark = pytest.mark.usefixtures("fb_env")
@@ -730,3 +732,130 @@ class TestClusterManager:
         assert helm[helm.index("--namespace") + 1] == "fb"
         kubectl = remote_runner.calls_starting_with("kubectl")
         assert kubectl[0][kubectl[0].index("--context") + 1] == "prod"
+
+
+def _write_kind_ports(repo: Path, ports: list[int]) -> None:
+    mappings = "".join(f"      - containerPort: {port}\n        hostPort: {port}\n" for port in ports)
+    (repo / "deploy" / "kind" / "cluster.yaml").write_text(
+        f"kind: Cluster\nnodes:\n  - role: control-plane\n    extraPortMappings:\n{mappings}"
+    )
+
+
+def _healthy_docker(runner: FakeRunner) -> None:
+    runner.on(["docker", "info"], _completed(stdout="27.3.1 8589934592\n"))
+
+
+class TestHostChecks:
+    def test_local_checks_all_pass(self, tmp_path: Path):
+        runner = FakeRunner()
+        _healthy_docker(runner)
+        uut = _manager(tmp_path, runner)
+        _write_kind_ports(tmp_path, [5432, 3000])
+        uut.port_probe = lambda port: True
+        checks = uut.host_checks()
+        assert [check.name for check in checks] == [
+            "kind",
+            "helm",
+            "kubectl",
+            "docker",
+            "Docker daemon",
+            "Docker memory",
+            "Host ports",
+        ]
+        assert all(check.state == CheckState.PASS for check in checks)
+        uut.preflight()
+
+    def test_missing_tool_is_the_first_failure(self, tmp_path: Path):
+        runner = FakeRunner(tools={"helm", "kubectl", "docker"})
+        _healthy_docker(runner)
+        uut = _manager(tmp_path, runner)
+        uut.port_probe = lambda port: True
+        with pytest.raises(PreflightError, match="Host check failed: kind. kind is not installed.") as exc:
+            uut.preflight()
+        assert "https://kind.sigs.k8s.io" in str(exc.value)
+
+    def test_stopped_docker_aborts_before_any_cluster_change(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["docker", "info"], _completed(returncode=1, stderr="Cannot connect to the Docker daemon"))
+        uut = _manager(tmp_path, runner)
+        uut.port_probe = lambda port: True
+        with pytest.raises(PreflightError, match="Docker daemon. Docker is not running."):
+            uut.preflight()
+        assert runner.calls_starting_with("kind", "create") == []
+        assert runner.calls_starting_with("kind", "get") == []
+        assert runner.calls_starting_with("helm", "upgrade") == []
+        memory = next(check for check in uut.host_checks() if check.name == "Docker memory")
+        assert memory.state == CheckState.SKIP
+
+    def test_docker_info_timeout_is_a_failed_check(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["docker", "info"], subprocess.TimeoutExpired(["docker", "info"], 15))
+        uut = _manager(tmp_path, runner)
+        uut.port_probe = lambda port: True
+        daemon = next(check for check in uut.host_checks() if check.name == "Docker daemon")
+        assert daemon.state == CheckState.FAIL
+        assert "did not answer in 15 s" in daemon.detail
+
+    def test_busy_port_aborts_with_the_port_and_service(self, tmp_path: Path):
+        runner = FakeRunner()
+        _healthy_docker(runner)
+        uut = _manager(tmp_path, runner)
+        _write_kind_ports(tmp_path, [5432, 4222])
+        uut.port_probe = lambda port: port != 5432
+        with pytest.raises(PreflightError, match=r"Port 5432 \(Postgres\) is already in use."):
+            uut.preflight()
+
+    def test_ports_held_by_existing_cluster_pass_without_probing(self, tmp_path: Path):
+        runner = FakeRunner()
+        _healthy_docker(runner)
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        _write_kind_ports(tmp_path, [5432])
+
+        def never(port: int) -> bool:
+            raise AssertionError(f"probed {port}")
+
+        uut.port_probe = never
+        ports = next(check for check in uut.host_checks() if check.name == "Host ports")
+        assert ports.state == CheckState.PASS
+        assert "held by the foreverbull Kind cluster" in ports.detail
+
+    def test_missing_kind_config_fails_the_ports_check(self, tmp_path: Path):
+        runner = FakeRunner()
+        _healthy_docker(runner)
+        uut = _manager(tmp_path, runner)
+        (tmp_path / "deploy" / "kind" / "cluster.yaml").unlink()
+        ports = next(check for check in uut.host_checks() if check.name == "Host ports")
+        assert ports.state == CheckState.FAIL
+        assert "Kind config not found" in ports.detail
+
+    def test_missing_docker_skips_the_daemon_checks(self, tmp_path: Path):
+        runner = FakeRunner(tools={"kind", "helm", "kubectl"})
+        uut = _manager(tmp_path, runner)
+        uut.port_probe = lambda port: True
+        checks = {check.name: check for check in uut.host_checks()}
+        assert checks["docker"].state == CheckState.FAIL
+        assert checks["Docker daemon"].state == CheckState.SKIP
+        assert checks["Docker memory"].state == CheckState.SKIP
+        assert runner.calls_starting_with("docker") == []
+        with pytest.raises(PreflightError, match="docker is not installed."):
+            uut.preflight()
+
+    def test_remote_checks_only_helm_and_kubectl(self, tmp_path: Path):
+        runner = FakeRunner(tools={"helm", "kubectl"})
+        config = Config(
+            {"cluster": "remote", "remote": {"broker_address": "fb.example:50055"}},
+            load_files=False,
+            environ={},
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        checks = {check.name: check.state for check in uut.host_checks()}
+        assert checks == {
+            "helm": CheckState.PASS,
+            "kubectl": CheckState.PASS,
+            "Docker daemon": CheckState.SKIP,
+            "Docker memory": CheckState.SKIP,
+            "Host ports": CheckState.SKIP,
+        }
+        assert runner.calls_starting_with("docker") == []
+        uut.preflight()

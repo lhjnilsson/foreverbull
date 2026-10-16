@@ -4,12 +4,15 @@ import os
 import shutil
 import subprocess
 
+from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from foreverbull.broker.config import BROKER_ADDRESS_ENV
 from foreverbull.broker.config import DEFAULT_BROKER_ADDRESS
@@ -21,6 +24,21 @@ from foreverbull.broker.config import deep_merge
 from foreverbull.broker.config import load_cluster_config
 from foreverbull.broker.config import project_config_path
 from foreverbull.broker.config import save_cluster_config
+from foreverbull_cli.env.preflight import DOCKER_INFO_TIMEOUT_SECONDS
+from foreverbull_cli.env.preflight import TOOL_VERSION_COMMANDS
+from foreverbull_cli.env.preflight import TOOL_VERSION_TIMEOUT_SECONDS
+from foreverbull_cli.env.preflight import CheckState
+from foreverbull_cli.env.preflight import DockerInfo
+from foreverbull_cli.env.preflight import HostCheck
+from foreverbull_cli.env.preflight import PreflightError
+from foreverbull_cli.env.preflight import check_docker_daemon
+from foreverbull_cli.env.preflight import check_docker_memory
+from foreverbull_cli.env.preflight import check_host_ports
+from foreverbull_cli.env.preflight import check_tool
+from foreverbull_cli.env.preflight import first_failure
+from foreverbull_cli.env.preflight import kind_host_ports
+from foreverbull_cli.env.preflight import parse_docker_info
+from foreverbull_cli.env.preflight import port_is_free
 
 
 RELEASE_NAME = "foreverbull"
@@ -372,12 +390,14 @@ class ClusterManager:
         runner: CommandRunner | None = None,
         repo_root: Path | None = None,
         ready_timeout_seconds: int = 120,
+        port_probe: Callable[[int], bool] = port_is_free,
     ):
         self.config = config
         self.environment = environment
         self.runner = runner or CommandRunner()
         self._repo_root = repo_root
         self.ready_timeout_seconds = ready_timeout_seconds
+        self.port_probe = port_probe
         self._status_cache: dict[str, WorkloadRow] | None = None
         self.postgres = Workload("Postgres", "postgres", self)
         self.nats = Workload("NATS", "nats", self)
@@ -415,6 +435,87 @@ class ClusterManager:
         missing = [name for name in names if not self.runner.which(name)]
         if missing:
             raise MissingToolError(missing)
+
+    def _tools_for_host(self) -> tuple[str, ...]:
+        if self.config.is_local:
+            return ("kind", "helm", "kubectl", "docker")
+        return ("helm", "kubectl")
+
+    def host_checks(self) -> list[HostCheck]:
+        """Run every host check. A remote cluster needs only helm and kubectl here."""
+        checks = [self._check_tool(name) for name in self._tools_for_host()]
+        if not self.config.is_local:
+            remote = "Remote cluster; nothing runs on this host."
+            checks.append(HostCheck("Docker daemon", CheckState.SKIP, remote))
+            checks.append(HostCheck("Docker memory", CheckState.SKIP, remote))
+            checks.append(HostCheck("Host ports", CheckState.SKIP, remote))
+            return checks
+        if not self.runner.which("docker"):
+            missing = "docker is not installed."
+            checks.append(HostCheck("Docker daemon", CheckState.SKIP, missing))
+            checks.append(HostCheck("Docker memory", CheckState.SKIP, missing))
+            checks.append(self._check_host_ports(docker_running=False))
+            return checks
+        info = self._docker_info()
+        checks.append(check_docker_daemon(info))
+        checks.append(check_docker_memory(info))
+        checks.append(self._check_host_ports(docker_running=info.running))
+        return checks
+
+    def preflight(self) -> None:
+        """Raise PreflightError for the first failed host check. Print nothing when all pass."""
+        failed = first_failure(self.host_checks())
+        if failed is not None:
+            raise PreflightError(failed)
+
+    def _check_tool(self, name: str) -> HostCheck:
+        path = self.runner.which(name)
+        version_output = ""
+        if path is not None:
+            version_output = self._quiet_stdout(TOOL_VERSION_COMMANDS[name], timeout=TOOL_VERSION_TIMEOUT_SECONDS)
+        return check_tool(name, path, version_output, install_url=TOOL_HINTS.get(name, ""))
+
+    def _quiet_stdout(self, args: Sequence[str], *, timeout: float) -> str:
+        """stdout of a command whose failure only means less detail in a check."""
+        try:
+            result = self.runner.run(args, check=False, timeout=timeout)
+        except (MissingToolError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout or ""
+
+    def _docker_info(self) -> DockerInfo:
+        try:
+            result = self.runner.run(
+                ["docker", "info", "--format", "{{.ServerVersion}} {{.MemTotal}}"],
+                check=False,
+                timeout=DOCKER_INFO_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            return DockerInfo(running=False, error=f"docker info did not answer in {DOCKER_INFO_TIMEOUT_SECONDS} s.")
+        return parse_docker_info(result.returncode, result.stdout or "", result.stderr or "")
+
+    def _check_host_ports(self, *, docker_running: bool) -> HostCheck:
+        try:
+            config_path = self.kind_config_path
+        except FileNotFoundError as exc:
+            return HostCheck("Host ports", CheckState.FAIL, str(exc), "Run fbenv from a Foreverbull checkout.")
+        if not config_path.is_file():
+            hint = "Run fbenv from a Foreverbull checkout, or fix kind.config in .foreverbull/config.yaml."
+            return HostCheck("Host ports", CheckState.FAIL, f"Kind config not found: {config_path}.", hint)
+        try:
+            ports = kind_host_ports(config_path)
+        except yaml.YAMLError as exc:
+            return HostCheck("Host ports", CheckState.FAIL, f"Could not read {config_path}: {exc}.")
+        cluster_exists = docker_running and self._kind_cluster_listed()
+        return check_host_ports(ports, cluster_exists=cluster_exists, is_free=self.port_probe)
+
+    def _kind_cluster_listed(self) -> bool:
+        if not self.runner.which("kind"):
+            return False
+        try:
+            return self._kind_cluster_exists()
+        except CommandError:
+            return False
 
     def _kube_flags(self, *, helm: bool = False) -> list[str]:
         flags: list[str] = []

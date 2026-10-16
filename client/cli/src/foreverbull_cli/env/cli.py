@@ -11,6 +11,9 @@ from rich.table import Table
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
+from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.preflight import CheckState
+from foreverbull_cli.env.preflight import PreflightError
 from foreverbull_cli.output import FBSpinnerColumn
 from foreverbull_cli.output import console
 
@@ -81,9 +84,43 @@ def print_status(cm: ClusterManager):
     table.add_column("Status")
     table.add_column("Version")
     table.add_column("Container ID")
-    for row in cm.status_rows():
+    try:
+        rows = cm.status_rows()
+    except MissingToolError as exc:
+        console.print(f"Workload status needs kubectl. {exc}")
+        return
+    for row in rows:
         table.add_row(row.service, row.name, row.status, row.image, row.container_id)
     console.print(table)
+
+
+CHECK_STYLES = {
+    CheckState.PASS: "[green]pass[/green]",
+    CheckState.FAIL: "[red]fail[/red]",
+    CheckState.SKIP: "[dim]skip[/dim]",
+}
+
+
+def print_host_checks(cm: ClusterManager):
+    table = Table(title="Host checks")
+    table.add_column("Check")
+    table.add_column("Result")
+    table.add_column("Detail")
+    for check in cm.host_checks():
+        detail = check.detail
+        if check.hint:
+            detail = f"{detail}\n{check.hint}"
+        table.add_row(check.name, CHECK_STYLES[check.state], detail)
+    console.print(table)
+
+
+def run_preflight(cm: ClusterManager):
+    """Stop with the failed check and its fix hint before anything changes."""
+    try:
+        cm.preflight()
+    except PreflightError as exc:
+        console.print(str(exc), markup=False, highlight=False)
+        raise typer.Exit(1) from exc
 
 
 def print_cluster(config: Config, *, path_note: str | None = None):
@@ -96,7 +133,7 @@ def print_cluster(config: Config, *, path_note: str | None = None):
     console.print(f"broker: {config.broker_address or '(unset)'}")
 
 
-@cli.command(help="Show the selected cluster")
+@cli.command(help="Show host checks and the selected cluster")
 def status(
     ctx: typer.Context,
     cluster: ClusterFlag = None,
@@ -113,6 +150,7 @@ def status(
         namespace=namespace,
         broker_address=broker_address,
     )
+    print_host_checks(cm)
     print_status(cm)
 
 
@@ -134,6 +172,7 @@ def create(
         namespace=namespace,
         broker_address=broker_address,
     )
+    run_preflight(cm)
 
     with FBProgress() as progress:
         verify_images = progress.add_task("Verifying images", total=2)
@@ -178,6 +217,7 @@ def start(
         namespace=namespace,
         broker_address=broker_address,
     )
+    run_preflight(cm)
 
     try:
         with FBProgress() as progress:
