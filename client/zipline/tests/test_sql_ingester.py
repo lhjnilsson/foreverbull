@@ -8,6 +8,7 @@ from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 
+from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
@@ -64,11 +65,12 @@ def test_ohlc_provider_unset_defaults_to_stooq(monkeypatch):
 
 
 def test_bundle_provider_uses_backtest_before_env(monkeypatch):
-    monkeypatch.setenv("OHLC_PROVIDER", "stooq")
+    # The env value differs from DEFAULT_PROVIDER so each fallback step is visible.
+    monkeypatch.setenv("OHLC_PROVIDER", "yahoo")
     assert bundle_provider(backtest_pb2.Backtest(provider="alpaca")) == "alpaca"
-    assert bundle_provider(backtest_pb2.Backtest()) == "stooq"
-    monkeypatch.delenv("OHLC_PROVIDER", raising=False)
     assert bundle_provider(backtest_pb2.Backtest()) == "yahoo"
+    monkeypatch.delenv("OHLC_PROVIDER", raising=False)
+    assert bundle_provider(backtest_pb2.Backtest()) == DEFAULT_PROVIDER
 
 
 class _ProviderEngine:
