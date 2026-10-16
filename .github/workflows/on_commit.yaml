@@ -19,6 +19,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# GitHub-hosted runners get HTML bot-check pages from Stooq instead of CSV,
+# so jobs here read and store bars as yahoo. Users still default to stooq
+# (DEFAULT_PROVIDER / supplier.DefaultProvider). Delete this block to switch
+# CI back, e.g. on a self-hosted runner outside GitHub's network.
+env:
+  OHLC_PROVIDER: yahoo
+
 jobs:
   lint-unit-tests:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository

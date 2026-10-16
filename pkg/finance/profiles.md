@@ -88,6 +88,10 @@ Every read that decides which bars a backtest or a worker sees filters on that p
 
 The worker pod gets `OHLC_PROVIDER` from the backtest when the pod is created. Python and Zipline read that variable and default it to `stooq` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when it is unset or blank, which covers tests that insert bars and leave the column at its default. Two providers may store two closes for the same symbol and day. A run reads only its own.
 
+GitHub Actions sets `OHLC_PROVIDER=yahoo` once in the top-level `env` of
+`.github/workflows/on_commit.yaml`, because Stooq answers GitHub runners
+with an HTML bot check. The user default stays `stooq`.
+
 Changing `provider` on an existing backtest does not relabel old rows. The next ingest writes the new provider's rows. The run reads the provider stored on the backtest.
 
 ## CLI
