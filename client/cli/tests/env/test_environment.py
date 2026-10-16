@@ -807,10 +807,10 @@ class TestHostChecks:
         with pytest.raises(PreflightError, match=r"Port 5432 \(Postgres\) is already in use."):
             uut.preflight()
 
-    def test_ports_held_by_existing_cluster_pass_without_probing(self, tmp_path: Path):
+    def test_ports_held_by_running_cluster_pass_without_probing(self, tmp_path: Path):
         runner = FakeRunner()
         _healthy_docker(runner)
-        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        runner.on(["docker", "inspect"], _completed(stdout="true\n"), contains="foreverbull-control-plane")
         uut = _manager(tmp_path, runner)
         _write_kind_ports(tmp_path, [5432])
 
@@ -821,6 +821,18 @@ class TestHostChecks:
         ports = next(check for check in uut.host_checks() if check.name == "Host ports")
         assert ports.state == CheckState.PASS
         assert "held by the foreverbull Kind cluster" in ports.detail
+
+    def test_stopped_cluster_still_probes_ports(self, tmp_path: Path):
+        runner = FakeRunner()
+        _healthy_docker(runner)
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        runner.on(["docker", "inspect"], _completed(stdout="false\n"), contains="foreverbull-control-plane")
+        uut = _manager(tmp_path, runner)
+        _write_kind_ports(tmp_path, [5432])
+        uut.port_probe = lambda port: port != 5432
+        ports = next(check for check in uut.host_checks() if check.name == "Host ports")
+        assert ports.state == CheckState.FAIL
+        assert "Port 5432 (Postgres) is already in use." in ports.detail
 
     def test_missing_kind_config_fails_the_ports_check(self, tmp_path: Path):
         runner = FakeRunner()

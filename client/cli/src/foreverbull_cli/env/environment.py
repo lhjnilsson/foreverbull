@@ -546,16 +546,21 @@ class ClusterManager:
             ports = kind_host_ports(config_path)
         except yaml.YAMLError as exc:
             return HostCheck("Host ports", CheckState.FAIL, f"Could not read {config_path}: {exc}.")
-        cluster_exists = docker_running and self._kind_cluster_listed()
-        return check_host_ports(ports, cluster_exists=cluster_exists, is_free=self.port_probe)
+        cluster_running = docker_running and self._kind_node_running()
+        return check_host_ports(ports, cluster_running=cluster_running, is_free=self.port_probe)
 
-    def _kind_cluster_listed(self) -> bool:
-        if not self.runner.which("kind"):
-            return False
+    def _kind_node_running(self) -> bool:
+        """True only while the Kind control-plane container runs and so holds the ports."""
+        node = f"{self.config.kind_name}-control-plane"
         try:
-            return self._kind_cluster_exists()
-        except CommandError:
+            result = self.runner.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", node],
+                check=False,
+                timeout=DOCKER_INFO_TIMEOUT_SECONDS,
+            )
+        except (MissingToolError, subprocess.TimeoutExpired):
             return False
+        return result.returncode == 0 and (result.stdout or "").strip() == "true"
 
     def broker_diagnosis(self) -> BrokerDiagnosis | None:
         """Explain why the broker is not ready, or return None when it is ready or still starting."""

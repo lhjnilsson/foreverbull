@@ -105,24 +105,24 @@ class TestHostPorts:
         def never(port: int) -> bool:
             raise AssertionError(f"probed {port}")
 
-        check = check_host_ports([5432, 3000], cluster_exists=True, is_free=never)
+        check = check_host_ports([5432, 3000], cluster_running=True, is_free=never)
         assert check.state == CheckState.PASS
         assert check.detail == "2 ports held by the foreverbull Kind cluster"
 
     def test_free_ports_pass(self):
-        check = check_host_ports([5432, 3000], cluster_exists=False, is_free=lambda port: True)
+        check = check_host_ports([5432, 3000], cluster_running=False, is_free=lambda port: True)
         assert check.state == CheckState.PASS
         assert check.detail == "2 ports free"
 
     def test_busy_port_names_the_service_and_how_to_find_the_holder(self):
-        check = check_host_ports([5432, 4222, 3000], cluster_exists=False, is_free=lambda port: port != 5432)
+        check = check_host_ports([5432, 4222, 3000], cluster_running=False, is_free=lambda port: port != 5432)
         assert check.state == CheckState.FAIL
         assert check.detail == "Port 5432 (Postgres) is already in use."
         assert "lsof -nP -iTCP:5432 -sTCP:LISTEN" in check.hint
         assert "docker ps --filter publish=5432" in check.hint
 
     def test_several_busy_ports_are_all_listed(self):
-        check = check_host_ports([3000, 27003, 5432], cluster_exists=False, is_free=lambda port: port == 5432)
+        check = check_host_ports([3000, 27003, 5432], cluster_running=False, is_free=lambda port: port == 5432)
         assert check.state == CheckState.FAIL
         assert check.detail == "Ports 3000 (Grafana), 27003 (backtest socket) are already in use."
 
@@ -130,7 +130,7 @@ class TestHostPorts:
         def broken(port: int) -> bool:
             raise PermissionError(13, "Permission denied")
 
-        check = check_host_ports([5432], cluster_exists=False, is_free=broken)
+        check = check_host_ports([5432], cluster_running=False, is_free=broken)
         assert check.state == CheckState.FAIL
         assert "Could not probe port 5432" in check.detail
 

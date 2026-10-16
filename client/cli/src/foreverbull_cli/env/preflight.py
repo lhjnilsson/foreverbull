@@ -158,10 +158,10 @@ def port_is_free(port: int) -> bool:
 def check_host_ports(
     ports: Sequence[int],
     *,
-    cluster_exists: bool,
+    cluster_running: bool,
     is_free: Callable[[int], bool] = port_is_free,
 ) -> HostCheck:
-    if cluster_exists:
+    if cluster_running:
         return HostCheck("Host ports", CheckState.PASS, f"{len(ports)} ports held by the foreverbull Kind cluster")
     busy: list[int] = []
     for port in ports:
