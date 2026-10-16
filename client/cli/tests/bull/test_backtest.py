@@ -1,3 +1,4 @@
+import os
 import tempfile
 import time
 import traceback
@@ -109,6 +110,83 @@ def test_backtest_create(runner):
         assert "AAPL" in result.stdout
         assert "MSFT" in result.stdout
         assert "SPY" in result.stdout
+
+
+_STOOQ_BLOCKED = (
+    "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
+)
+_STOOQ_REFUSED = "Stooq blocked the download for AAPL (it refused the request instead of returning data). Retry with --provider yahoo."
+_YAHOO_BLOCKED = (
+    "Yahoo blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider stooq."
+)
+
+
+def _blocked_stream(message: str):
+    def stream(**_kwargs):
+        yield backtest_service_pb2.CreateBacktestResponse(
+            CREATING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
+            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
+            INGESTING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
+            STORING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
+        )
+        yield backtest_service_pb2.CreateBacktestResponse(
+            CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+        )
+        # The orchestrator copies the download command's error into the step.
+        yield backtest_service_pb2.CreateBacktestResponse(
+            CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_FAILED, message=message),
+        )
+
+    return stream
+
+
+@pytest.mark.parametrize(
+    ("provider", "message"),
+    [("stooq", _STOOQ_BLOCKED), ("stooq", _STOOQ_REFUSED), ("yahoo", _YAHOO_BLOCKED)],
+)
+def test_backtest_create_blocked_provider_prints_one_error_line(provider, message, monkeypatch):
+    # A pipe, not a terminal: FORCE_COLOR in some shells would make Rich treat
+    # the captured output as a dumb terminal and add a blank line.
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_blocked_stream(message)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", provider])
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    if os.environ.get("ECHO"):
+        print(result.output, end="")
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: {provider} (from --provider)\n✖ {message}\n"
+
+
+def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+
+    class BlockedRpc(grpc.RpcError):
+        def details(self):
+            return _STOOQ_BLOCKED
+
+    def stream(**_kwargs):
+        raise BlockedRpc()
+        yield  # pragma: no cover
+
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=stream),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", "stooq"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: stooq (from --provider)\n✖ {_STOOQ_BLOCKED}\n"
 
 
 def test_backtest_create_reprompts_invalid_dates(runner):
