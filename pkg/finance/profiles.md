@@ -68,7 +68,7 @@ Remove these environment variables and the Helm values that set them: `TRADING_P
 
 ## Price source on a backtest
 
-`Backtest.provider` is `yahoo`, `stooq`, or `alpaca`. Create stores `yahoo` when the caller omits it. The column is `NOT NULL`. Existing rows migrate to `yahoo`.
+`Backtest.provider` is `yahoo`, `stooq`, or `alpaca`. Create stores `stooq` when the caller omits it. The column is `NOT NULL`. Existing rows that predate the column migrate to `yahoo`.
 
 `MARKET_DATA_PROVIDER` is removed. Asset search, `GetAsset`, and `GetIndex` stay on Yahoo. Stooq remains daily `GetOHLC` only, with Yahoo for metadata, chosen because this backtest says `stooq`. Alpaca `GetOHLC` uses the key of a profile:
 
@@ -92,7 +92,7 @@ Changing `provider` on an existing backtest does not relabel old rows. The next 
 
 ## CLI
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. The printed backtest shows the provider.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is stored as `stooq`. Create prints `Using provider: …`. The printed backtest shows the provider. An unknown name fails with the valid list.
 
 `fbull strategy deploy --no-dry-run` requires `--backend <profile>`. Dry-run may omit it. The help text still says live mode is refused.
 

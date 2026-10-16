@@ -33,7 +33,7 @@ Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you cr
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
-ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `yahoo` (default when omitted), `stooq` (daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `stooq` (default when omitted; daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), `yahoo`, or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
 
 ## Prerequisites
 
@@ -318,7 +318,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `yahoo`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `stooq`. Create prints `Using provider: …`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
 
 Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--no-dry-run`, `--backend <profile>`, and `--yes` or `--confirm`, plus `TRADING_ENABLED=true`. The profile is a name in the profiles file. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
 

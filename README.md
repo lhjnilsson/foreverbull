@@ -1,6 +1,6 @@
 # Foreverbull
 
-Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. A backtest's `provider` chooses its bars: `yahoo` (stored when the field is omitted), `stooq` (daily GetOHLC only; Yahoo stays for asset, search, and index metadata), or `alpaca`. Bars are stored per provider. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Paper trading is off unless `TRADING_ENABLED` is true. That flag is a kill switch, not a broker. A deployment's backend is a trading profile name. 🔒️ Credentials live only in the profiles file, which the cluster mounts from Kubernetes Secret `foreverbull-trading`. Live trading is not supported.
+Foreverbull is a Go broker with a Python client for developing and backtesting trading algorithms. A backtest's `provider` chooses its bars: `stooq` (default when omitted; daily GetOHLC only; Yahoo stays for asset, search, and index metadata), `yahoo`, or `alpaca`. Bars are stored per provider. ETF universes are point-in-time membership from iShares as-of holdings (ISIN identity, not a static ticker list). Paper trading is off unless `TRADING_ENABLED` is true. That flag is a kill switch, not a broker. A deployment's backend is a trading profile name. 🔒️ Credentials live only in the profiles file, which the cluster mounts from Kubernetes Secret `foreverbull-trading`. Live trading is not supported.
 
 The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote cluster. One chart deploys Postgres, NATS JetStream, Minio, Zipline, the broker, and Grafana.
 
@@ -167,15 +167,15 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 `fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle.
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. The printed backtest includes the provider. `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `stooq`, which is what the server stores. Create prints `Using provider: stooq` (or the chosen name). The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
 
 Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. Both recipes below use the same Nasdaq-100 file, [examples/nasdaq100.yaml](examples/nasdaq100.yaml): name `nasdaq100`, benchmark `QQQ`, and a fixed list of 101 constituents (both `GOOG` and `GOOGL`). The sample window is 2023-01-01 through 2023-03-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host. Downloading the full list takes a few minutes.
 
 Commands below are from `client/` after `uv sync`, with the platform already running.
 
-#### Yahoo
+#### Stooq (default)
 
-Yahoo is the default. Leave `provider` out of the file, or pass `--provider yahoo`.
+Stooq is the default. Leave `provider` out of the file, or pass `--provider stooq`. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled.
 
 ```bash
 cd client
@@ -183,13 +183,13 @@ uv run fbull backtest create --file ../examples/nasdaq100.yaml
 uv run fbull backtest get nasdaq100
 ```
 
-#### Stooq
+#### Yahoo
 
-`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `nasdaq100` is already stored; the Yahoo rows stay.
+`--provider yahoo`, or `provider: yahoo` in the file, loads daily bars from Yahoo. Give the backtest another name when `nasdaq100` is already stored; the Stooq rows stay.
 
 ```bash
 cd client
-uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
+uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider yahoo
 uv run fbull backtest get nasdaq100
 ```
 
