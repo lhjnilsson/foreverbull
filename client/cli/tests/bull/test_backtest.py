@@ -617,3 +617,13 @@ def test_verbosity_flags(runner):
         result = runner(cli, ["-v", "-v", "backtest", "list"])
         assert result.exit_code == 0
         assert basic_config.call_args.kwargs["level"] == "INFO"
+
+
+def test_cli_default_provider_matches_zipline_fallback(monkeypatch):
+    # The CLI default and the OHLC_PROVIDER fallback Zipline reads bars with must name the same source.
+    from foreverbull_cli.bull.backtest import _DEFAULT_PROVIDER
+
+    from foreverbull.models.finance import ohlc_provider
+
+    monkeypatch.delenv("OHLC_PROVIDER", raising=False)
+    assert ohlc_provider() == _DEFAULT_PROVIDER

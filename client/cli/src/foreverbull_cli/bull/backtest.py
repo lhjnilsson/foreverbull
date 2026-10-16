@@ -16,6 +16,7 @@ from rich.table import Table
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb2
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
@@ -36,7 +37,7 @@ from foreverbull_cli.output import format_proto_date
 backtest = typer.Typer(help="Create and inspect backtests. `etfs` lists known iShares funds.")
 log = logging.getLogger().getChild(__name__)
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_DEFAULT_PROVIDER = "stooq"
+_DEFAULT_PROVIDER = DEFAULT_PROVIDER
 _PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
 _PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
 

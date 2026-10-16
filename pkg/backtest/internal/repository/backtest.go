@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
@@ -48,7 +49,7 @@ func normalizeBacktestProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
 	case "":
-		return "stooq", nil
+		return supplier.DefaultProvider, nil
 	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:

@@ -56,11 +56,11 @@ def _backtest() -> backtest_pb2.Backtest:
     )
 
 
-def test_ohlc_provider_unset_defaults_to_yahoo(monkeypatch):
+def test_ohlc_provider_unset_defaults_to_stooq(monkeypatch):
     monkeypatch.delenv("OHLC_PROVIDER", raising=False)
-    assert ohlc_provider() == "yahoo"
+    assert ohlc_provider() == "stooq"
     monkeypatch.setenv("OHLC_PROVIDER", "  ")
-    assert ohlc_provider() == "yahoo"
+    assert ohlc_provider() == "stooq"
 
 
 def test_bundle_provider_uses_backtest_before_env(monkeypatch):

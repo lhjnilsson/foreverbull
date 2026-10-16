@@ -8,12 +8,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
 
-// NormalizeProvider accepts yahoo, stooq, and alpaca. Empty is stooq.
+// NormalizeProvider accepts yahoo, stooq, and alpaca. Empty is supplier.DefaultProvider.
 func NormalizeProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
 	case "":
-		return "stooq", nil
+		return supplier.DefaultProvider, nil
 	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:
