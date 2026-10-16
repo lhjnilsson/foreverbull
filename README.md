@@ -185,7 +185,7 @@ uv run fbull backtest get nasdaq100
 
 #### Stooq
 
-`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `nasdaq100` is already stored; the Yahoo rows stay.
+`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `nasdaq100` is already stored; the Yahoo rows stay. Stooq may block automated downloads with a bot-check page; if create fails, use Yahoo.
 
 ```bash
 cd client
