@@ -293,6 +293,8 @@ Nothing was changed.
 Run `fbenv create --verbose` to see Docker's error.
 ```
 
+When the image has no build for your machine's architecture, the hint names it and asks you to set `VERSION` to a release that supports it, or to report it at https://github.com/lhjnilsson/foreverbull/issues.
+
 ### Pods do not start
 
 `fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:

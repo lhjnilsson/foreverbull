@@ -1051,7 +1051,16 @@ class TestImagePullError:
         exc = ImagePullError(
             "lhjnilsson/zipline:latest", "no matching manifest for linux/arm64/v8 in the manifest list entries"
         )
-        assert exc.hint("fbenv create") == "This image has no build for your machine (arm64)."
+        assert exc.hint("fbenv create") == (
+            "This image has no build for your machine (arm64). "
+            "Set the VERSION environment variable to a release that supports arm64, "
+            "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+        )
+
+    def test_platform_hint_uses_the_detected_architecture(self):
+        exc = ImagePullError("lhjnilsson/zipline:latest", "no matching manifest for linux/riscv64 in the manifest list")
+        assert exc.hint("fbenv create").startswith("This image has no build for your machine (riscv64). ")
+        assert "a release that supports riscv64," in exc.hint("fbenv create")
 
     def test_daemon_hint_says_start_docker(self):
         exc = ImagePullError("lhjnilsson/zipline:latest", "Cannot connect to the Docker daemon at unix:///x")

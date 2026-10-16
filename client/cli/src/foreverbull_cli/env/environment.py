@@ -191,7 +191,12 @@ class ImagePullError(RuntimeError):
     def hint(self, command: str) -> str:
         if self.cause == "platform":
             arch = self.platform.split("/")[1] if "/" in self.platform else self.platform
-            return f"This image has no build for your machine ({arch or 'unknown architecture'})."
+            arch = arch or "unknown architecture"
+            return (
+                f"This image has no build for your machine ({arch}). "
+                f"Set the VERSION environment variable to a release that supports {arch}, "
+                "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+            )
         if self.cause == "daemon":
             return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
         if self.cause == "missing tag":
