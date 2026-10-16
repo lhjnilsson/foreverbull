@@ -48,6 +48,13 @@ node (`hostPort` == `containerPort`). The chart sets matching container
 `hostPort` when `expose.hostPort=true`. NodePort is not used: these ports are
 outside `30000`–`32767`.
 
+Every one of those ports must be free on the host when the Kind cluster is
+created. A taken port makes `kind create cluster` fail. See
+[Troubleshooting](../README.md#troubleshooting) in the root README for how to
+find the process and recreate the cluster, and
+[Host resources](../README.md#host-resources) for the CPU, memory, and disk the
+six workloads need.
+
 Remote installs leave `expose.hostPort=false` (ClusterIP only). Point the CLI
 and Python stubs at `remote.broker_address` or `FOREVERBULL_BROKER_ADDRESS`.
 
