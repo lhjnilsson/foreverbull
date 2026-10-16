@@ -49,26 +49,28 @@ uv run fbull backtest delete demo
 
 `create` stores the universe, downloads daily bars, and ingests them into Zipline (progress: Creating, Downloading, Ingesting, Storing). A symbol whose download fails is stored with `enabled: false`.
 
-`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `stooq`. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: stooq (default)` or `Using provider: yahoo (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
+`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `yahoo`. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
 
 | Provider | How to select it | What it prices |
 | --- | --- | --- |
-| Stooq (default) | omit `provider`, or `stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
-| Yahoo | `provider: yahoo` or `--provider yahoo` | Asset lookup and daily bars |
+| Yahoo (default) | omit `provider`, or `yahoo` | Asset lookup and daily bars |
+| Stooq | `provider: stooq` or `--provider stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
 | Alpaca | `provider: alpaca` and optional `profile` | Daily bars with that profile's key. Asset lookup stays on Yahoo |
 
 Bars are stored per provider, so Yahoo and Stooq can both keep a close for the same symbol and day. A run reads only its backtest's provider. The Nasdaq-100 file is [examples/nasdaq100.yaml](../../examples/nasdaq100.yaml) (name `nasdaq100`, benchmark `QQQ`, 101 constituents, 2023-01-01 through 2023-03-31). From `client/`:
 
 ```bash
-# Stooq (provider omitted)
+# Yahoo (provider omitted)
 uv run fbull backtest create --file ../examples/nasdaq100.yaml
 uv run fbull backtest get nasdaq100
 
-# Yahoo. Use another backtest name when nasdaq100 already exists.
-uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider yahoo
+# Stooq. Use another backtest name when nasdaq100 already exists.
+uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
 ```
 
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `stooq` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
+Stooq may block automated downloads with a bot-check page; if create fails, use Yahoo.
+
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
 
 `run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 

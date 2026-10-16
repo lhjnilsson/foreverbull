@@ -73,7 +73,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 		test.Require().NoError(err)
 		test.Equal(no_periods.Name, stored.Name)
 		test.Equal(no_periods.Benchmark, stored.Benchmark)
-		test.Equal("stooq", stored.Provider)
+		test.Equal("yahoo", stored.Provider)
 		test.Empty(stored.Periods)
 	})
 	test.Run("with periods", func() {
@@ -351,6 +351,22 @@ func (test *BacktestTest) TestMigrateBacktestProviderLeavesInvalidRows() {
 	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest WHERE name='nasdaq-bt'`).Scan(&provider)
 	test.Require().NoError(err)
 	test.Equal("nasdaq", provider)
+}
+
+// A row that omits provider must fail loudly rather than be stored as yahoo.
+func (test *BacktestTest) TestInsertWithoutProviderFails() {
+	ctx := context.Background()
+	test.Require().NoError(repository.MigrateBacktestProvider(ctx, test.conn))
+	test.Require().NoError(repository.MigrateBacktestProvider(ctx, test.conn))
+
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO backtest (name, benchmark) VALUES ('no-provider-bt', 'QQQ')`)
+	test.Require().ErrorContains(err, "provider")
+
+	var count int
+	err = test.conn.QueryRow(ctx, `SELECT count(*) FROM backtest WHERE name='no-provider-bt'`).Scan(&count)
+	test.Require().NoError(err)
+	test.Equal(0, count)
 }
 
 func (test *BacktestTest) TestDelete() {

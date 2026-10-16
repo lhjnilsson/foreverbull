@@ -49,7 +49,7 @@ def membership_auto_close_date(end_date, membership_to: date | None):
 
 
 def bundle_provider(backtest: backtest_pb2.Backtest) -> str:
-    """Bar provider for a bundle. The backtest field wins. Otherwise OHLC_PROVIDER, else DEFAULT_PROVIDER (stooq)."""
+    """Bar provider for a bundle. The backtest field wins. Otherwise OHLC_PROVIDER, else DEFAULT_PROVIDER (yahoo)."""
     named = (getattr(backtest, "provider", "") or "").strip().lower()
     if named:
         return named

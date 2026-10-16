@@ -254,7 +254,7 @@ def create(
         typer.Option(
             "--provider",
             show_default=False,
-            help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: stooq.",
+            help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: yahoo.",
         ),
     ] = None,
 ):
@@ -263,7 +263,7 @@ def create(
     Without --file, ETF prompt choices come from `fbull backtest etfs`.
     A bad name, fund, or date is re-asked before any download.
     Optional YAML fields `provider` and `profile` are sent on the create request.
-    `--provider` overrides the file. An omitted provider is sent as stooq.
+    `--provider` overrides the file. An omitted provider is sent as yahoo.
     """
     flag_provider: str | None = None
     if provider is not None:

@@ -10,7 +10,7 @@ import (
 // It is the one Go place to change that default. The Python client keeps its
 // own DEFAULT_PROVIDER in client/src/foreverbull/models/finance.py, and both
 // must name the same provider.
-const DefaultProvider = "stooq"
+const DefaultProvider = "yahoo"
 
 type Marketdata interface {
 	GetAsset(symbol string) (*pb.Asset, error)
