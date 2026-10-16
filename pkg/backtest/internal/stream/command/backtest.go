@@ -25,6 +25,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -524,6 +526,10 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+			if blocked := blockedDownload(err); blocked != nil {
+				discardBlockedBacktest(ctx, backtests, command.BacktestName)
+				return blocked
+			}
 			return fmt.Errorf("error receiving response: %w", err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
@@ -535,6 +541,29 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		}
 	}
 	return nil
+}
+
+// blockedDownload returns the finance service's sentence when the price
+// provider blocked the download, or nil. The service uses FailedPrecondition
+// only for that, and the sentence is the whole error, not wrapped in gRPC
+// detail.
+func blockedDownload(err error) error {
+	if st, ok := status.FromError(err); ok && st.Code() == codes.FailedPrecondition {
+		return errors.New(st.Message())
+	}
+	return nil
+}
+
+// discardBlockedBacktest deletes the backtest that the CREATING step stored,
+// so retrying the same create with the other provider is not refused as a
+// duplicate name. A block leaves nothing that belongs to the backtest: bars
+// are stored per provider and symbol, not per backtest. Other download
+// failures keep the record, because their symbols are disabled one by one
+// and the backtest can still be used or inspected.
+func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name string) {
+	if err := backtests.Delete(ctx, name); err != nil {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
+	}
 }
 
 func Ingest(ctx context.Context, msg stream.Message) error {

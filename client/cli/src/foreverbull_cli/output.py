@@ -80,6 +80,9 @@ class FBSpinnerColumn(SpinnerColumn):
 class LiveProgress(Live):
     def __init__(self):
         self._orchestration_tasks = {}
+        # failure is the first failed step's message, so a caller can show it
+        # as the one error line instead of the progress rows.
+        self.failure: str | None = None
         spinner = FBSpinnerColumn()
         text = TextColumn("[progress.description]{task.description}")
         self.progress = Progress(spinner, text)
@@ -121,6 +124,8 @@ class LiveProgress(Live):
                             self.progress.start_task(task_id)
                         self.progress.update(task_id, completed=1)
                     case common_pb2.State.STATE_FAILED:
+                        if self.failure is None:
+                            self.failure = step.message
                         description = f"{self.progress.tasks[task_id].description}: {step.message}"
                         self.progress.update(task_id, completed=-1, description=description)
 

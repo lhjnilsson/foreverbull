@@ -6,6 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
+import grpc
 import typer
 import yaml
 
@@ -59,6 +60,14 @@ def _choose_provider(flag_provider: str | None, raw: object, file_name: str) -> 
     if raw is None or str(raw).strip() == "":
         return _DEFAULT_PROVIDER, "default"
     return _normalize_provider(raw), f"from {file_name or 'backtest.yaml'}"
+
+
+def _fail(message: str) -> None:
+    """Print one ✖ line and exit 1, like the fbenv host checks."""
+    console.print(
+        f"✖ {message.strip() or 'Creating the backtest failed.'}", markup=False, highlight=False, soft_wrap=True
+    )
+    raise typer.Exit(code=1)
 
 
 def _optional_profile(raw: object) -> str:
@@ -328,14 +337,23 @@ def create(
     console.print(f"Using provider: {chosen} ({source})", markup=False)
 
     created: backtest_pb2.Backtest | None = None
+    failure: str | None = None
     with LiveProgress() as progress:
-        rsp = broker.backtest.create(
-            entity=entity,
-        )
-        for backtest_rsp in rsp:
-            progress.update_from_message(backtest_rsp)
-            if backtest_rsp.STORING.state == common_pb2.State.STATE_COMPLETED:
-                created = backtest_rsp.backtest
+        try:
+            for backtest_rsp in broker.backtest.create(entity=entity):
+                progress.update_from_message(backtest_rsp)
+                if backtest_rsp.STORING.state == common_pb2.State.STATE_COMPLETED:
+                    created = backtest_rsp.backtest
+        except grpc.RpcError as exc:
+            failure = exc.details() if callable(getattr(exc, "details", None)) else str(exc)
+        failure = failure or progress.failure
+        if failure is not None:
+            # The failed step's message is the whole error, so the progress
+            # rows are cleared rather than left beside it.
+            progress.transient = True
+
+    if failure is not None:
+        _fail(failure)
 
     if created is None:
         return

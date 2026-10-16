@@ -169,6 +169,57 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 	}
 }
 
+func TestGetOHLCBotCheckIsBlockedError(t *testing.T) {
+	t.Parallel()
+
+	const botCheck = "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
+	const refused = "Stooq blocked the download for AAPL (it refused the request instead of returning data). Retry with --provider yahoo."
+	cases := []struct {
+		name        string
+		status      int
+		contentType string
+		body        string
+		want        string
+	}{
+		{name: "html bot check", status: http.StatusOK, contentType: "text/html; charset=utf-8", body: "<!DOCTYPE html><html><body>Checking your browser</body></html>", want: botCheck},
+		{name: "html sent as csv", status: http.StatusOK, contentType: "text/csv", body: "\n  <html><body>captcha</body></html>", want: botCheck},
+		{name: "html 403", status: http.StatusForbidden, contentType: "text/html", body: "<html>Forbidden</html>", want: botCheck},
+		{name: "plain access denied", status: http.StatusOK, contentType: "text/plain", body: "Access denied", want: refused},
+		{name: "plain access denied with newline", status: http.StatusOK, contentType: "text/plain; charset=utf-8", body: "Access denied\n", want: refused},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := serveStooqAs(t, []byte(tc.body), tc.status, tc.contentType)
+
+			client := newStooqClient(t, srv.URL)
+			start := date(t, "2021-01-04")
+			end := date(t, "2021-01-06")
+			bars, err := client.GetOHLC("AAPL", start, &end)
+			require.ErrorIs(t, err, marketdata.ErrProviderBlocked)
+			var blocked *marketdata.BlockedError
+			require.ErrorAs(t, err, &blocked)
+			require.Equal(t, "stooq", blocked.Provider)
+			require.Equal(t, "AAPL", blocked.Symbol)
+			require.EqualError(t, err, tc.want)
+			require.Nil(t, bars)
+		})
+	}
+}
+
+func TestGetOHLCMissingFileIsNotBlocked(t *testing.T) {
+	t.Parallel()
+	srv := serveStooq(t, readFixture(t, "no_data.txt"), http.StatusOK, nil)
+
+	client := newStooqClient(t, srv.URL)
+	start := date(t, "2021-01-04")
+	end := date(t, "2021-01-06")
+	_, err := client.GetOHLC("AAPL", start, &end)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, marketdata.ErrProviderBlocked)
+}
+
 func TestGetOHLCEmptySymbol(t *testing.T) {
 	t.Parallel()
 	called := false
@@ -258,6 +309,17 @@ func newStooqClient(t *testing.T, baseURL string) *marketdata.StooqClient {
 	client, err := marketdata.NewStooqClient(marketdata.WithStooqBaseURL(baseURL))
 	require.NoError(t, err)
 	return client
+}
+
+func serveStooqAs(t *testing.T, body []byte, status int, contentType string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func serveStooq(t *testing.T, body []byte, status int, rec *stooqReq) *httptest.Server {

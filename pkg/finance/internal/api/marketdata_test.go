@@ -14,6 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -21,8 +22,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -185,4 +188,43 @@ func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	}
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, result["AAPL"])
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, result["NOCORP"])
+}
+
+func (suite *MarketdataTest) TestDownloadHistoricalDataStopsOnBlockedProvider() {
+	symbols := []string{"AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA", "AVGO", "COST", "NFLX", "AMD", "PEP"}
+	for _, symbol := range symbols {
+		suite.marketdata.On("GetAsset", symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil).Maybe()
+		suite.marketdata.On("GetOHLC", symbol, mock.Anything, mock.Anything).
+			Return(nil, &marketdata.BlockedError{Provider: "yahoo", Symbol: symbol}).Maybe()
+	}
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   symbols,
+		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
+		// yahoo routes GetOHLC to the injected mock.
+		Provider: "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	var streamErr error
+	responses := 0
+	for {
+		msg, err := rsp.Recv()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				streamErr = err
+			}
+			break
+		}
+		responses++
+		suite.NotEqual(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus(),
+			"%s was reported as failed, which disables it", msg.GetSymbol())
+	}
+	suite.Zero(responses, "a blocked symbol must not be reported per symbol")
+
+	st, ok := status.FromError(streamErr)
+	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
+	suite.Equal(codes.FailedPrecondition, st.Code())
+	suite.Regexp(`^Yahoo blocked the download for [A-Z]+ \(it returned a bot-check page instead of data\)\. Retry with --provider stooq\.$`, st.Message())
 }

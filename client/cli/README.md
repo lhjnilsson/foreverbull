@@ -68,7 +68,7 @@ uv run fbull backtest get nasdaq100
 uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
 ```
 
-Stooq may block automated downloads with a bot-check page; if create fails, use Yahoo.
+Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
 
 `--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
 
