@@ -15,29 +15,33 @@ func TestBlockedErrorNamesProviderAndSuggestsTheOther(t *testing.T) {
 		"Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo.")
 	require.EqualError(t, &BlockedError{Provider: "yahoo", Symbol: "MSFT"},
 		"Yahoo blocked the download for MSFT (it returned a bot-check page instead of data). Retry with --provider stooq.")
+	require.EqualError(t, &BlockedError{Provider: "stooq", Symbol: "AAPL", Refused: true},
+		"Stooq blocked the download for AAPL (it refused the request instead of returning data). Retry with --provider yahoo.")
+	require.EqualError(t, &BlockedError{Provider: "yahoo", Symbol: "MSFT", Refused: true},
+		"Yahoo blocked the download for MSFT (it refused the request instead of returning data). Retry with --provider stooq.")
 }
 
-func TestIsBlockedPage(t *testing.T) {
+func TestClassifyBlock(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name        string
 		contentType string
 		body        string
-		want        bool
+		want        blockKind
 	}{
-		{name: "html content type", contentType: "text/html; charset=utf-8", body: "anything", want: true},
-		{name: "markup without content type", body: "  <html></html>", want: true},
-		{name: "access denied", contentType: "text/plain", body: "Access denied", want: true},
-		{name: "access denied lowercase", contentType: "text/plain", body: "access denied.\n", want: true},
-		{name: "stooq csv", contentType: "text/csv", body: "Date,Open,High,Low,Close,Volume\n", want: false},
-		{name: "stooq no data", contentType: "text/plain", body: "No data", want: false},
-		{name: "yahoo json", contentType: "application/json", body: `{"chart":{}}`, want: false},
-		{name: "empty", contentType: "text/plain", body: "", want: false},
+		{name: "html content type", contentType: "text/html; charset=utf-8", body: "anything", want: blockedByBotCheck},
+		{name: "markup without content type", body: "  <html></html>", want: blockedByBotCheck},
+		{name: "access denied", contentType: "text/plain", body: "Access denied", want: blockedByRefusal},
+		{name: "access denied lowercase", contentType: "text/plain", body: "access denied.\n", want: blockedByRefusal},
+		{name: "stooq csv", contentType: "text/csv", body: "Date,Open,High,Low,Close,Volume\n", want: notBlocked},
+		{name: "stooq no data", contentType: "text/plain", body: "No data", want: notBlocked},
+		{name: "yahoo json", contentType: "application/json", body: `{"chart":{}}`, want: notBlocked},
+		{name: "empty", contentType: "text/plain", body: "", want: notBlocked},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, isBlockedPage(tc.contentType, []byte(tc.body)))
+			require.Equal(t, tc.want, classifyBlock(tc.contentType, []byte(tc.body)))
 		})
 	}
 }

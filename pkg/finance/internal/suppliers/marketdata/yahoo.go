@@ -344,8 +344,8 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if err != nil {
 		return nil, fmt.Errorf("error reading response: %w", err)
 	}
-	if isBlockedPage(resp.Header.Get("Content-Type"), body) {
-		return nil, &BlockedError{Provider: "yahoo", Symbol: strings.ToUpper(symbol)}
+	if err := blockedError("yahoo", strings.ToUpper(symbol), resp.Header.Get("Content-Type"), body); err != nil {
+		return nil, err
 	}
 
 	data := OHLCResponse{}

@@ -172,18 +172,20 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 func TestGetOHLCBotCheckIsBlockedError(t *testing.T) {
 	t.Parallel()
 
-	const want = "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
+	const botCheck = "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
+	const refused = "Stooq blocked the download for AAPL (it refused the request instead of returning data). Retry with --provider yahoo."
 	cases := []struct {
 		name        string
 		status      int
 		contentType string
 		body        string
+		want        string
 	}{
-		{name: "html bot check", status: http.StatusOK, contentType: "text/html; charset=utf-8", body: "<!DOCTYPE html><html><body>Checking your browser</body></html>"},
-		{name: "html sent as csv", status: http.StatusOK, contentType: "text/csv", body: "\n  <html><body>captcha</body></html>"},
-		{name: "html 403", status: http.StatusForbidden, contentType: "text/html", body: "<html>Forbidden</html>"},
-		{name: "plain access denied", status: http.StatusOK, contentType: "text/plain", body: "Access denied"},
-		{name: "plain access denied with newline", status: http.StatusOK, contentType: "text/plain; charset=utf-8", body: "Access denied\n"},
+		{name: "html bot check", status: http.StatusOK, contentType: "text/html; charset=utf-8", body: "<!DOCTYPE html><html><body>Checking your browser</body></html>", want: botCheck},
+		{name: "html sent as csv", status: http.StatusOK, contentType: "text/csv", body: "\n  <html><body>captcha</body></html>", want: botCheck},
+		{name: "html 403", status: http.StatusForbidden, contentType: "text/html", body: "<html>Forbidden</html>", want: botCheck},
+		{name: "plain access denied", status: http.StatusOK, contentType: "text/plain", body: "Access denied", want: refused},
+		{name: "plain access denied with newline", status: http.StatusOK, contentType: "text/plain; charset=utf-8", body: "Access denied\n", want: refused},
 	}
 
 	for _, tc := range cases {
@@ -200,7 +202,7 @@ func TestGetOHLCBotCheckIsBlockedError(t *testing.T) {
 			require.ErrorAs(t, err, &blocked)
 			require.Equal(t, "stooq", blocked.Provider)
 			require.Equal(t, "AAPL", blocked.Symbol)
-			require.EqualError(t, err, want)
+			require.EqualError(t, err, tc.want)
 			require.Nil(t, bars)
 		})
 	}

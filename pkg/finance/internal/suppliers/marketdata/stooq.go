@@ -246,8 +246,8 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("stooq GetOHLC %s: read body: %w", canonical, err)
 	}
 
-	if isBlockedPage(resp.Header.Get("Content-Type"), body) {
-		return nil, &BlockedError{Provider: "stooq", Symbol: canonical}
+	if err := blockedError("stooq", canonical, resp.Header.Get("Content-Type"), body); err != nil {
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
