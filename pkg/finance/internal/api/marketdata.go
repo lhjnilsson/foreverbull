@@ -97,6 +97,19 @@ func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Error = err.Error()
 }
 
+// failSymbol reports a symbol as failed, which disables it. After a block
+// cancels the download, an in-flight symbol fails only because of that
+// cancel, so it is not reported and stays enabled for the retry.
+func failSymbol(ctx context.Context, serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
+	rsp *servicePb.DownloadHistoricalDataResponse, err error,
+) {
+	if ctx.Err() != nil {
+		return
+	}
+	failDownload(rsp, err)
+	sendDownloadResponse(serverStream, rsp)
+}
+
 func (fs *MarketdataServer) downloadSymbol(
 	ctx context.Context,
 	serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
@@ -115,14 +128,12 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	asset, err := fs.marketdata.GetAsset(symbol)
 	if err != nil {
-		failDownload(rsp, err)
-		sendDownloadResponse(serverStream, rsp)
+		failSymbol(ctx, serverStream, rsp, err)
 		return nil
 	}
 
 	if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
-		failDownload(rsp, err)
-		sendDownloadResponse(serverStream, rsp)
+		failSymbol(ctx, serverStream, rsp, err)
 		return nil
 	}
 
@@ -134,16 +145,14 @@ func (fs *MarketdataServer) downloadSymbol(
 		if errors.As(err, &blocked) {
 			return blocked
 		}
-		failDownload(rsp, err)
-		sendDownloadResponse(serverStream, rsp)
+		failSymbol(ctx, serverStream, rsp, err)
 		return nil
 	}
 
 	for _, ohlc := range ohlcs {
 		if err := ohlcRepo.Store(ctx, provider, asset.Symbol, ohlc.Timestamp.AsTime(),
 			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
-			failDownload(rsp, err)
-			sendDownloadResponse(serverStream, rsp)
+			failSymbol(ctx, serverStream, rsp, err)
 			continue
 		}
 	}
