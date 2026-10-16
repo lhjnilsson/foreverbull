@@ -141,6 +141,21 @@ class TestHostPorts:
             port = holder.getsockname()[1]
             assert not port_is_free(port)
 
+    def test_port_in_time_wait_is_free(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            # docker-proxy and Kind are Go, which sets SO_REUSEADDR on listeners;
+            # Linux lets the probe reuse TIME_WAIT only when both sides set it.
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(("127.0.0.1", 0))
+            server.listen()
+            port = server.getsockname()[1]
+            client = socket.create_connection(("127.0.0.1", port))
+            conn, _ = server.accept()
+        # The side that closes first keeps the port in TIME_WAIT.
+        conn.close()
+        client.close()
+        assert port_is_free(port)
+
 
 class TestPreflightError:
     def test_message_names_check_detail_hint_and_no_change(self):

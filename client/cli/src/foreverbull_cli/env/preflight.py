@@ -146,6 +146,9 @@ def port_service(port: int) -> str:
 def port_is_free(port: int) -> bool:
     for host in PORT_PROBE_HOSTS:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            # Without this a port in TIME_WAIT after `fbenv stop` reads as busy.
+            # A live listener still makes the bind fail with EADDRINUSE.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 probe.bind((host, port))
             except OSError as exc:
