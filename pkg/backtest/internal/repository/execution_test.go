@@ -259,7 +259,7 @@ func (test *ExecutionTest) TestCreateCopiesBacktestProvider() {
 	var stored string
 	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, created.Id).Scan(&stored)
 	test.Require().NoError(err)
-	test.Equal("yahoo", stored)
+	test.Equal("stooq", stored)
 }
 
 func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {

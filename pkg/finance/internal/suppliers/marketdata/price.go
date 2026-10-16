@@ -8,16 +8,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
 
-// NormalizeProvider accepts yahoo, stooq, and alpaca. Empty is yahoo.
+// NormalizeProvider accepts yahoo, stooq, and alpaca. Empty is stooq.
 func NormalizeProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
-	case "", "yahoo":
-		return "yahoo", nil
-	case "stooq", "alpaca":
+	case "":
+		return "stooq", nil
+	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:
-		return "", fmt.Errorf("unknown price provider %q", provider)
+		return "", fmt.Errorf("unknown price provider %q; valid providers: yahoo, stooq, alpaca", provider)
 	}
 }
 
