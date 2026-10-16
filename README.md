@@ -262,21 +262,27 @@ Commands below are from `client/` after `uv sync`. The local Kind context is `ki
 
 ### A host port is already in use
 
-The Kind node publishes `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` on the host. When another process holds one of them, `fbenv create` fails while Kind creates the cluster, and the Docker error names the port (for example `Bind for 0.0.0.0:5432 failed: port is already allocated`). A local Postgres on `5432` or a local Grafana on `3000` is the usual cause.
+The Kind node publishes `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` on the host. `fbenv create` and `fbenv start` check those ports before they change anything. When another process holds one, they stop, name the port and the service it is for, and leave the cluster untouched:
 
-Find the process that holds the port and stop it:
-
-```bash
-lsof -nP -iTCP:5432 -sTCP:LISTEN     # macOS and Linux
-docker ps --filter publish=5432      # another container
+```
+✖ Port 5432 (Postgres) is already in use.
+A local Postgres is probably running. Stop it (for example `brew services stop postgresql`) and run this again.
+Nothing was changed.
 ```
 
-The ports are fixed when the cluster is created (`extraPortMappings` in `deploy/kind/cluster.yaml`). If `kind get clusters` still lists `foreverbull`, delete it, then create again:
+Find the process that holds the port and stop it, then run the same command again:
 
 ```bash
-kind delete cluster --name foreverbull
+lsof -i :5432                        # macOS and Linux
+docker ps --filter publish=5432      # another container
 VERSION=local uv run fbenv create
 ```
+
+`fbenv` does not move a busy port. The ports are fixed when the cluster is created (`extraPortMappings` in `deploy/kind/cluster.yaml`), and the Python client dials `localhost:50055`. Once the `foreverbull` cluster exists, `uv run fbenv status` reports the ports as held by the cluster rather than as a conflict. To change the published ports, see [Recreate the Kind cluster](#recreate-the-kind-cluster).
+
+### Another host check fails
+
+Before they change anything, `fbenv create` and `fbenv start` also check that `kind`, `helm`, `kubectl`, and `docker` are installed, that Docker is running, and that Docker has at least the 4 GB of memory listed under [Host resources](#host-resources). A remote cluster needs only `helm` and `kubectl`. The first failed check stops the command with a fix hint. `uv run fbenv status` lists every check with pass or fail, with or without a cluster.
 
 ### Pods do not start
 
@@ -284,7 +290,7 @@ VERSION=local uv run fbenv create
 
 - `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
 - `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events (see More detail below): Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.
-- `CrashLoopBackOff`: the container starts and exits. Its log says why. Add `--previous` to see the run before the restart.
+- `CrashLoopBackOff`: the container starts and exits. Its log says why. Add `--previous` to see the run before the restart. When the broker is the one restarting, `fbenv start` and `uv run fbenv status` start with a sentence that says what to do (for example `The broker can't reach its database.`), then print the broker's log line.
 
 More detail:
 

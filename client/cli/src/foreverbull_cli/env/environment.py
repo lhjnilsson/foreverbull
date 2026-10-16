@@ -4,12 +4,15 @@ import os
 import shutil
 import subprocess
 
+from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from foreverbull.broker.config import BROKER_ADDRESS_ENV
 from foreverbull.broker.config import DEFAULT_BROKER_ADDRESS
@@ -21,6 +24,21 @@ from foreverbull.broker.config import deep_merge
 from foreverbull.broker.config import load_cluster_config
 from foreverbull.broker.config import project_config_path
 from foreverbull.broker.config import save_cluster_config
+from foreverbull_cli.env.preflight import DOCKER_INFO_TIMEOUT_SECONDS
+from foreverbull_cli.env.preflight import TOOL_VERSION_COMMANDS
+from foreverbull_cli.env.preflight import TOOL_VERSION_TIMEOUT_SECONDS
+from foreverbull_cli.env.preflight import CheckState
+from foreverbull_cli.env.preflight import DockerInfo
+from foreverbull_cli.env.preflight import HostCheck
+from foreverbull_cli.env.preflight import PreflightError
+from foreverbull_cli.env.preflight import check_docker_daemon
+from foreverbull_cli.env.preflight import check_docker_memory
+from foreverbull_cli.env.preflight import check_host_ports
+from foreverbull_cli.env.preflight import check_tool
+from foreverbull_cli.env.preflight import first_failure
+from foreverbull_cli.env.preflight import kind_host_ports
+from foreverbull_cli.env.preflight import parse_docker_info
+from foreverbull_cli.env.preflight import port_is_free
 
 
 RELEASE_NAME = "foreverbull"
@@ -42,6 +60,30 @@ WORKLOADS: tuple[tuple[str, str], ...] = (
     ("Grafana", "grafana"),
 )
 DEPLOYMENTS: tuple[str, ...] = tuple(name for _, name in WORKLOADS)
+
+# kubectl returns at most this many broker log lines, so a crash loop cannot
+# flood the terminal.
+BROKER_LOG_TAIL_LINES = 20
+# Python-only users never set POSTGRES_URL or the port range; Helm does. Each
+# known broker error maps to a sentence they can act on, shown before the raw
+# log line.
+BROKER_ERROR_ADVICE: tuple[tuple[str, str], ...] = (
+    (
+        "could not reach postgres",
+        "The broker can't reach its database. Run `uv run fbenv stop && uv run fbenv start`.",
+    ),
+    (
+        "no free port in the backtest port range",
+        (
+            "The broker has no free backtest port. Wait for running backtests to finish, "
+            "or run `uv run fbenv stop && uv run fbenv start` to free them."
+        ),
+    ),
+)
+BROKER_RESTARTED_ADVICE = (
+    "The broker stopped with an error. Run `uv run fbenv stop && uv run fbenv start`; "
+    "if it stops again, the log lines below say why."
+)
 
 
 class MissingToolError(RuntimeError):
@@ -117,6 +159,22 @@ class WorkloadRow:
     status: str
     image: str
     container_id: str
+
+
+@dataclass(frozen=True)
+class BrokerDiagnosis:
+    advice: str
+    detail: str
+
+
+def match_broker_error(logs: str) -> BrokerDiagnosis | None:
+    """Return the advice for the last known broker error in logs, with its log line."""
+    for line in reversed(logs.splitlines()):
+        lowered = line.lower()
+        for needle, advice in BROKER_ERROR_ADVICE:
+            if needle in lowered:
+                return BrokerDiagnosis(advice, line.strip())
+    return None
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -372,12 +430,14 @@ class ClusterManager:
         runner: CommandRunner | None = None,
         repo_root: Path | None = None,
         ready_timeout_seconds: int = 120,
+        port_probe: Callable[[int], bool] = port_is_free,
     ):
         self.config = config
         self.environment = environment
         self.runner = runner or CommandRunner()
         self._repo_root = repo_root
         self.ready_timeout_seconds = ready_timeout_seconds
+        self.port_probe = port_probe
         self._status_cache: dict[str, WorkloadRow] | None = None
         self.postgres = Workload("Postgres", "postgres", self)
         self.nats = Workload("NATS", "nats", self)
@@ -415,6 +475,121 @@ class ClusterManager:
         missing = [name for name in names if not self.runner.which(name)]
         if missing:
             raise MissingToolError(missing)
+
+    def _tools_for_host(self) -> tuple[str, ...]:
+        if self.config.is_local:
+            return ("kind", "helm", "kubectl", "docker")
+        return ("helm", "kubectl")
+
+    def host_checks(self) -> list[HostCheck]:
+        """Run every host check. A remote cluster needs only helm and kubectl here."""
+        checks = [self._check_tool(name) for name in self._tools_for_host()]
+        if not self.config.is_local:
+            remote = "Remote cluster; nothing runs on this host."
+            checks.append(HostCheck("Docker daemon", CheckState.SKIP, remote))
+            checks.append(HostCheck("Docker memory", CheckState.SKIP, remote))
+            checks.append(HostCheck("Host ports", CheckState.SKIP, remote))
+            return checks
+        if not self.runner.which("docker"):
+            missing = "docker is not installed."
+            checks.append(HostCheck("Docker daemon", CheckState.SKIP, missing))
+            checks.append(HostCheck("Docker memory", CheckState.SKIP, missing))
+            checks.append(self._check_host_ports(docker_running=False))
+            return checks
+        info = self._docker_info()
+        checks.append(check_docker_daemon(info))
+        checks.append(check_docker_memory(info))
+        checks.append(self._check_host_ports(docker_running=info.running))
+        return checks
+
+    def preflight(self) -> None:
+        """Raise PreflightError for the first failed host check. Print nothing when all pass."""
+        failed = first_failure(self.host_checks())
+        if failed is not None:
+            raise PreflightError(failed)
+
+    def _check_tool(self, name: str) -> HostCheck:
+        path = self.runner.which(name)
+        version_output = ""
+        if path is not None:
+            version_output = self._quiet_stdout(TOOL_VERSION_COMMANDS[name], timeout=TOOL_VERSION_TIMEOUT_SECONDS)
+        return check_tool(name, path, version_output, install_url=TOOL_HINTS.get(name, ""))
+
+    def _quiet_stdout(self, args: Sequence[str], *, timeout: float) -> str:
+        """stdout of a command whose failure only means less detail in a check."""
+        try:
+            result = self.runner.run(args, check=False, timeout=timeout)
+        except (MissingToolError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout or ""
+
+    def _docker_info(self) -> DockerInfo:
+        try:
+            result = self.runner.run(
+                ["docker", "info", "--format", "{{.ServerVersion}} {{.MemTotal}}"],
+                check=False,
+                timeout=DOCKER_INFO_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            return DockerInfo(running=False, error=f"docker info did not answer in {DOCKER_INFO_TIMEOUT_SECONDS} s.")
+        return parse_docker_info(result.returncode, result.stdout or "", result.stderr or "")
+
+    def _check_host_ports(self, *, docker_running: bool) -> HostCheck:
+        try:
+            config_path = self.kind_config_path
+        except FileNotFoundError as exc:
+            return HostCheck("Host ports", CheckState.FAIL, str(exc), "Run fbenv from a Foreverbull checkout.")
+        if not config_path.is_file():
+            hint = "Run fbenv from a Foreverbull checkout, or fix kind.config in .foreverbull/config.yaml."
+            return HostCheck("Host ports", CheckState.FAIL, f"Kind config not found: {config_path}.", hint)
+        try:
+            ports = kind_host_ports(config_path)
+        except yaml.YAMLError as exc:
+            return HostCheck("Host ports", CheckState.FAIL, f"Could not read {config_path}: {exc}.")
+        cluster_running = docker_running and self._kind_node_running()
+        return check_host_ports(ports, cluster_running=cluster_running, is_free=self.port_probe)
+
+    def _kind_node_running(self) -> bool:
+        """True only while the Kind control-plane container runs and so holds the ports."""
+        node = f"{self.config.kind_name}-control-plane"
+        try:
+            result = self.runner.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", node],
+                check=False,
+                timeout=DOCKER_INFO_TIMEOUT_SECONDS,
+            )
+        except (MissingToolError, subprocess.TimeoutExpired):
+            return False
+        return result.returncode == 0 and (result.stdout or "").strip() == "true"
+
+    def broker_diagnosis(self) -> BrokerDiagnosis | None:
+        """Explain why the broker is not ready, or return None when it is ready or still starting."""
+        status = self._row("foreverbull").status
+        if status not in {WorkloadStatus.FAILED, WorkloadStatus.PENDING}:
+            return None
+        previous_logs = ""
+        for previous in (False, True):
+            logs = self._broker_logs(previous=previous)
+            diagnosis = match_broker_error(logs)
+            if diagnosis is not None:
+                return diagnosis
+            if previous:
+                previous_logs = logs
+        if previous_logs:
+            return BrokerDiagnosis(BROKER_RESTARTED_ADVICE, previous_logs)
+        return None
+
+    def _broker_logs(self, *, previous: bool) -> str:
+        cmd = ["kubectl", *self._kube_flags(), "logs", "deployment/foreverbull", f"--tail={BROKER_LOG_TAIL_LINES}"]
+        if previous:
+            cmd.append("--previous")
+        try:
+            result = self.runner.run(cmd, check=False)
+        except MissingToolError:
+            return ""
+        if result.returncode != 0:
+            return ""
+        return (result.stdout or "").strip()
 
     def _kube_flags(self, *, helm: bool = False) -> list[str]:
         flags: list[str] = []
@@ -665,7 +840,11 @@ class ClusterManager:
         except CommandError as exc:
             detail = (exc.completed.stderr or exc.completed.stdout or "").strip()
             status = self._deployment_status()
+            self._status_cache = None
+            diagnosis = self.broker_diagnosis()
             message = f"Timed out waiting for healthy: {', '.join(DEPLOYMENTS)}"
+            if diagnosis is not None:
+                message = f"{diagnosis.advice}\n{diagnosis.detail}\n{message}"
             if detail:
                 message = f"{message}\n{detail}"
             if status:
