@@ -24,6 +24,95 @@ Give Docker at least 2 CPUs, 4 GB of memory and 30 GB of disk. On macOS and Wind
 - Disk: the chart's volumes request 17Gi (Postgres `8Gi`, Minio `8Gi`, NATS `1Gi`). Leave that free in Docker's storage, plus room for the images that `task build` creates and Kind loads into the node.
 - Ports: `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` must be free on the host before `fbenv create`. See [Troubleshooting](#troubleshooting) when one is taken.
 
+## Your first backtest
+
+One copy-paste path from a fresh clone to printed execution results. Prerequisites are listed under [Requirements](#requirements) (Docker, Kind, Helm, uv, Task). Check [Host resources](#host-resources) before `task build` so Docker has enough CPU, memory, and disk. Commands after `task build` run from `client/`. Accept the cookiecutter defaults so the strategy lands at `simple_foreverbull/crossover.py`. Deeper options (Stooq, remote clusters, strategy lifecycle) stay in [Quickstart](#quickstart) below. If a step fails, see [Troubleshooting](#troubleshooting).
+
+```bash
+# build :local images (and sync the Python workspace from the repo root)
+task build
+
+cd client
+# sync the client workspace so fbull and fbenv are available
+uv sync
+
+# create the Kind cluster and Helm release with workloads stopped
+VERSION=local uv run fbenv create
+# start the six workloads
+uv run fbenv start
+
+# ingest the Nasdaq-100 sample (Yahoo default)
+uv run fbull backtest create --file ../examples/nasdaq100.yaml
+
+# generate the simple crossover strategy (defaults → simple_foreverbull/)
+uv run cookiecutter templates/simple
+
+# run the strategy against the backtest
+uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+
+# print the Execution summary and periods table for the run's id
+uv run fbull backtest execution <execution-id>  # the ID from the run output above
+```
+
+For charts, open the Grafana `Link:` the run and `execution` commands print (local Kind: port `3000`), or visit [http://localhost:3000](http://localhost:3000). Anonymous access is enabled (no login).
+
+### Example: `backtest create` output
+
+Progress lines use a spinner, then a checkmark when each step finishes. Symbols is the comma-separated enabled list (truncated here):
+
+```text
+✔ Creating
+✔ Downloading
+✔ Ingesting
+✔ Storing
+                             Created Backtest
+┏━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Name      ┃ Start      ┃ End        ┃ Symbols            ┃ Benchmark ┃ Provider ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ nasdaq100 │ 2023-01-01 │ 2023-03-31 │ AAPL,NVDA,MSFT,…   │ QQQ       │ yahoo    │
+└───────────┴────────────┴────────────┴────────────────────┴───────────┴──────────┘
+```
+
+### Example: `backtest run` output
+
+After the session and execution progress bars, the CLI prints an Execution table and a Grafana link. IDs are illustrative:
+
+```text
+                          Execution
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ ID                                   ┃ Backtest  ┃ Start      ┃ End        ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 01234567-89ab-cdef-0123-456789abcdef │ nasdaq100 │ 2023-01-01 │ 2023-03-31 │
+└──────────────────────────────────────┴───────────┴────────────┴────────────┘
+Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
+```
+
+The run command does not print period stats in the terminal. Use `fbull backtest execution <id>` below for those; open the Grafana link for charts.
+
+### Example: `backtest execution` output
+
+`fbull backtest execution <id>` prints an Execution summary (with Session), the Grafana link, then a `periods` table with Date, Portfolio, Alpha, Beta, Sharpe, and Sortino. Optional floats that are unset print as `-`. IDs and period rows are illustrative; a real run prints one row per period (truncated here):
+
+```text
+                                                      Execution
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ ID                                   ┃ Backtest  ┃ Session                              ┃ Start      ┃ End        ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 01234567-89ab-cdef-0123-456789abcdef │ nasdaq100 │ fedcba98-7654-3210-fedc-ba9876543210 │ 2023-01-01 │ 2023-03-31 │
+└──────────────────────────────────────┴───────────┴──────────────────────────────────────┴────────────┴────────────┘
+Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
+                               periods
+┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┓
+┃ Date       ┃ Portfolio    ┃ Alpha   ┃ Beta    ┃ Sharpe  ┃ Sortino ┃
+┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━┩
+│ 2023-01-03 │ 100000.00000 │ -       │ -       │ -       │ -       │
+│ 2023-01-04 │ 100125.50000 │ 0.00120 │ 0.98000 │ 1.50000 │ 1.20000 │
+│ 2023-03-31 │ 102450.25000 │ 0.04500 │ 0.95000 │ 1.25000 │ 1.10000 │
+└────────────┴──────────────┴─────────┴─────────┴─────────┴─────────┘
+```
+
+Next: edit your strategy. Open `simple_foreverbull/crossover.py`, change a parameter (for example the short or long window lengths `10` and `30`), and run the same `fbull backtest run` command again.
+
 ## Quickstart
 
 From a clone of this repository, build the `:local` images and sync the Python workspace (this installs the Kind/Helm `fbenv` in that workspace):
