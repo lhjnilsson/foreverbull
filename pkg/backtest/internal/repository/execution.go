@@ -20,7 +20,7 @@ session text REFERENCES session(id) ON DELETE CASCADE,
 start_date date NOT NULL,
 end_date date NOT NULL,
 function_arguments jsonb,
-provider text NOT NULL DEFAULT 'yahoo',
+provider text NOT NULL,
 CONSTRAINT backtest_execution_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')));
 
 ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS function_arguments jsonb;
@@ -90,6 +90,7 @@ const executionPeriodForeignKey = "backtest_execution_period_backtest_execution_
 
 // MigrateExecutionProvider backfills provider from the backtest, then yahoo
 // for any row the join cannot fill, then sets NOT NULL and the provider check.
+// The column has no default afterwards, so a new row must name its provider.
 // A row that would still fail the check stays. Calling it twice is safe.
 // The column is added nullable so an existing row is not stamped yahoo
 // before the backfill runs.
@@ -131,7 +132,7 @@ func MigrateExecutionProvider(ctx context.Context, conn postgres.Query) error {
 		return fmt.Errorf("backtest_execution: rows violate provider IN ('yahoo', 'stooq', 'alpaca')")
 	}
 
-	_, err = conn.Exec(ctx, `ALTER TABLE backtest_execution ALTER COLUMN provider SET DEFAULT 'yahoo'`)
+	_, err = conn.Exec(ctx, `ALTER TABLE backtest_execution ALTER COLUMN provider DROP DEFAULT`)
 	if err != nil {
 		return fmt.Errorf("backtest_execution: provider default: %w", err)
 	}
@@ -214,7 +215,7 @@ func (db *Execution) Create(ctx context.Context, execution *backtest.Execution, 
 		}
 	}
 
-	// provider is copied from the backtest. The column default must not turn a stooq run into yahoo.
+	// provider is copied from the backtest. The column has no default, so a missing backtest fails here.
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO backtest_execution (session, start_date, end_date, function_arguments, provider)
 		VALUES ($1, $2, $3, $4, (

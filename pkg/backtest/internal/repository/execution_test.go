@@ -212,7 +212,7 @@ func (test *ExecutionTest) TestGetFunctionsEmptyWhenUnset() {
 	ctx := context.Background()
 	var id string
 	err := test.conn.QueryRow(ctx,
-		`INSERT INTO backtest_execution (session, start_date, end_date) VALUES ($1, $2, $3) RETURNING id`,
+		`INSERT INTO backtest_execution (session, start_date, end_date, provider) VALUES ($1, $2, $3, 'stooq') RETURNING id`,
 		test.storedSession.Id, "2024-01-01", "2024-12-31").Scan(&id)
 	test.Require().NoError(err)
 
@@ -306,6 +306,12 @@ func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
 	test.Equal("stooq", copied)
 	test.Equal("yahoo", unmatched)
 
+	// The yahoo backfill is for old rows only. A new row without a provider fails.
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES ($1, '2024-01-01', '2024-12-31')`, sessionID)
+	test.Require().ErrorContains(err, "provider")
+
 	_, err = test.conn.Exec(ctx, `
 		INSERT INTO backtest_execution (session, start_date, end_date, provider)
 		VALUES ($1, '2024-01-01', '2024-12-31', 'nasdaq')`, sessionID)
@@ -327,6 +333,20 @@ func (test *ExecutionTest) TestCreateWithEmptyBacktestProviderStoresDefaultProvi
 	test.Equal("stooq", backtestProvider)
 	test.Equal("stooq", executionProvider)
 	test.Equal(supplier.DefaultProvider, executionProvider)
+}
+
+// A row that omits provider must fail loudly rather than be stored as yahoo.
+func (test *ExecutionTest) TestInsertWithoutProviderFails() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO backtest_execution (session, start_date, end_date)
+		VALUES ($1, '2024-01-01', '2024-12-31')`, test.storedSession.Id)
+	test.Require().ErrorContains(err, "provider")
+
+	var count int
+	err = test.conn.QueryRow(ctx, `SELECT count(*) FROM backtest_execution`).Scan(&count)
+	test.Require().NoError(err)
+	test.Equal(0, count)
 }
 
 func (test *ExecutionTest) TestMigrateExecutionProviderLeavesInvalidProvider() {
