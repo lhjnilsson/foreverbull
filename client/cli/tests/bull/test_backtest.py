@@ -11,12 +11,13 @@ from unittest.mock import patch
 
 import grpc
 import pytest
+import typer
 import yaml
 
 from foreverbull_cli.bull.backtest import backtest
-from typer.testing import CliRunner
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.output import execution_link
+from typer.testing import CliRunner
 
 from foreverbull.foreverbull import BacktestSession
 from foreverbull.pb.foreverbull import common_pb2
@@ -318,8 +319,7 @@ def test_backtest_create_from_file(runner):
     assert "2021-01-01" in result.stdout
     assert "QQQ" in result.stdout
     assert "AAPL" in result.stdout
-    assert "Using provider: stooq" in result.stdout
-    assert "stooq" in result.stdout
+    assert "Using provider: stooq (default)" in result.stdout
 
 
 def _file_payload(**extra: object) -> dict:
@@ -363,7 +363,7 @@ def test_backtest_create_from_file_reads_provider_and_profile(runner):
     request = mock_create.call_args.kwargs["entity"]
     assert request.backtest.provider == "alpaca"
     assert request.backtest.profile == "alpaca-paper"
-    assert "alpaca" in result.stdout
+    assert f"Using provider: alpaca (from {Path(cfg_file.name).name})" in result.stdout
 
 
 def test_backtest_create_provider_flag_overrides_file(runner):
@@ -388,8 +388,7 @@ def test_backtest_create_provider_flag_overrides_file(runner):
     request = mock_create.call_args.kwargs["entity"]
     assert request.backtest.provider == "stooq"
     assert request.backtest.profile == "alpaca-paper"
-    assert "Using provider: stooq" in result.stdout
-    assert "stooq" in result.stdout
+    assert "Using provider: stooq (from --provider)" in result.stdout
 
 
 def test_backtest_create_unknown_provider_does_not_call_broker():
@@ -416,7 +415,30 @@ def test_backtest_create_etf_sends_provider_flag(runner):
     request = mock_create.call_args.kwargs["entity"]
     assert request.provider == "stooq"
     assert request.name == "demo"
-    assert "Using provider: stooq" in result.stdout
+    assert "Using provider: stooq (from --provider)" in result.stdout
+
+
+def test_backtest_create_etf_without_flag_uses_default_provider(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create"],
+            input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.provider == "stooq"
+    assert "Using provider: stooq (default)" in result.stdout
+
+
+def test_backtest_create_help_shows_provider_text():
+    # Rich wraps rendered help at the terminal width, so compare the option text itself.
+    command = typer.main.get_command(backtest).commands["create"]
+    option = next(param for param in command.params if param.name == "provider")
+
+    assert option.help == "Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: stooq."
 
 
 def test_backtest_get(runner):

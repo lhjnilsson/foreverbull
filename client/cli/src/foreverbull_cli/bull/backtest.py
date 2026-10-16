@@ -46,12 +46,18 @@ def _normalize_provider(raw: object) -> str | None:
     if provider == "":
         provider = _DEFAULT_PROVIDER
     if provider not in _PRICE_PROVIDER_SET:
-        console.print(
-            f"[red]Unknown price provider {provider!r}. "
-            f"Valid providers: {', '.join(_PRICE_PROVIDERS)}."
-        )
+        console.print(f"[red]Unknown price provider {provider!r}. Valid providers: {', '.join(_PRICE_PROVIDERS)}.")
         return None
     return provider
+
+
+def _choose_provider(flag_provider: str | None, raw: object, file_name: str) -> tuple[str | None, str]:
+    """Return the provider and where it came from: the flag, then the YAML file, then the default."""
+    if flag_provider is not None:
+        return flag_provider, "from --provider"
+    if raw is None or str(raw).strip() == "":
+        return _DEFAULT_PROVIDER, "default"
+    return _normalize_provider(raw), f"from {file_name or 'backtest.yaml'}"
 
 
 def _optional_profile(raw: object) -> str:
@@ -246,7 +252,8 @@ def create(
         str | None,
         typer.Option(
             "--provider",
-            help="price source yahoo, stooq, or alpaca. Overrides provider in the YAML. Omitted sends stooq",
+            show_default=False,
+            help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: stooq.",
         ),
     ] = None,
 ):
@@ -272,7 +279,7 @@ def create(
             raise FileNotFoundError(f"File {file} not found")
         with open(file, "r") as f:
             data = yaml.safe_load(f)
-        chosen = flag_provider if flag_provider is not None else _normalize_provider(data.get("provider"))
+        chosen, source = _choose_provider(flag_provider, data.get("provider"), file.name)
         if chosen is None:
             raise typer.Exit(code=1)
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest(
@@ -308,7 +315,7 @@ def create(
         if dates is None:
             return
         start, end = dates
-        chosen = flag_provider if flag_provider is not None else _DEFAULT_PROVIDER
+        chosen, source = _choose_provider(flag_provider, None, "")
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
             name=name,
             base_etf=base_etf,
@@ -317,7 +324,7 @@ def create(
             provider=chosen,
         )
 
-    console.print(f"Using provider: {chosen}")
+    console.print(f"Using provider: {chosen} ({source})", markup=False)
 
     created: backtest_pb2.Backtest | None = None
     with LiveProgress() as progress:

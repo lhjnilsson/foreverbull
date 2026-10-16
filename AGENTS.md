@@ -318,7 +318,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `stooq`. Create prints `Using provider: …`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `stooq`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
 
 Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--no-dry-run`, `--backend <profile>`, and `--yes` or `--confirm`, plus `TRADING_ENABLED=true`. The profile is a name in the profiles file. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
 

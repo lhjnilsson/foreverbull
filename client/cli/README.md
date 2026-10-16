@@ -49,7 +49,7 @@ uv run fbull backtest delete demo
 
 `create` stores the universe, downloads daily bars, and ingests them into Zipline (progress: Creating, Downloading, Ingesting, Storing). A symbol whose download fails is stored with `enabled: false`.
 
-`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `stooq`. Create prints `Using provider: stooq` (or the chosen name). The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
+`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `stooq`. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: stooq (default)` or `Using provider: yahoo (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
 
 | Provider | How to select it | What it prices |
 | --- | --- | --- |

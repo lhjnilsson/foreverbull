@@ -92,7 +92,7 @@ Changing `provider` on an existing backtest does not relabel old rows. The next 
 
 ## CLI
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is stored as `stooq`. Create prints `Using provider: …`. The printed backtest shows the provider. An unknown name fails with the valid list.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is stored as `stooq`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest shows the provider. An unknown name fails with the valid list.
 
 `fbull strategy deploy --no-dry-run` requires `--backend <profile>`. Dry-run may omit it. The help text still says live mode is refused.
 
