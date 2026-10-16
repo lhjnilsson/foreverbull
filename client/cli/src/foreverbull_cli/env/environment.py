@@ -113,6 +113,73 @@ class CommandError(RuntimeError):
         self.completed = completed
 
 
+# Docker's pull errors, matched in order. The first match names the likely cause.
+PULL_ERROR_CAUSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("missing tag", ("manifest unknown", "manifest for")),
+    (
+        "registry",
+        (
+            "pull access denied",
+            "unauthorized",
+            "denied",
+            "toomanyrequests",
+            "rate limit",
+            "service unavailable",
+            "bad gateway",
+            "internal server error",
+        ),
+    ),
+    (
+        "network",
+        (
+            "dial tcp",
+            "no such host",
+            "timeout",
+            "connection refused",
+            "connection reset",
+            "network is unreachable",
+            "tls handshake",
+            "name resolution",
+            "unexpected eof",
+        ),
+    ),
+)
+PULL_CAUSE_TEXT = {
+    "network": "Docker could not reach the registry.",
+    "registry": "the registry refused the download.",
+    "missing tag": "that tag does not exist on the registry.",
+    "unknown": "Docker could not download it.",
+}
+
+
+def classify_pull_error(output: str) -> str:
+    """Return the likely cause of a failed `docker pull`: network, registry, missing tag, or unknown."""
+    lowered = output.lower()
+    for cause, needles in PULL_ERROR_CAUSES:
+        if any(needle in lowered for needle in needles):
+            return cause
+    return "unknown"
+
+
+class ImagePullError(RuntimeError):
+    """A `docker pull` failed. The message names the image and the likely cause; `detail` is Docker's output."""
+
+    def __init__(self, image: str, detail: str):
+        self.image = image
+        self.detail = detail.strip()
+        self.cause = classify_pull_error(self.detail)
+        super().__init__(f"Couldn't download the Foreverbull image {image}: {PULL_CAUSE_TEXT[self.cause]}")
+
+    def hint(self, command: str) -> str:
+        if self.cause == "missing tag":
+            return (
+                f"Check that VERSION names a published tag, or unset VERSION to use latest, then run `{command}` again."
+            )
+        if self.cause == "registry":
+            return f"Wait a few minutes and run `{command}` again. If the image is private, run `docker login` first."
+        return f"Check your internet connection and run `{command}` again."
+
+
 class CommandRunner:
     def which(self, name: str) -> str | None:
         return shutil.which(name)
@@ -704,7 +771,11 @@ class ClusterManager:
 
         if missing and docker and self.config.version != "local":
             for image in missing:
-                self.runner.run(["docker", "pull", image])
+                try:
+                    self.runner.run(["docker", "pull", image])
+                except CommandError as exc:
+                    completed = exc.completed
+                    raise ImagePullError(image, completed.stderr or completed.stdout or str(exc)) from exc
                 present.append(image)
 
         return present

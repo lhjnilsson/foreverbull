@@ -284,6 +284,15 @@ VERSION=local uv run fbenv create
 
 Before they change anything, `fbenv create` and `fbenv start` also check that `kind`, `helm`, `kubectl`, and `docker` are installed, that Docker is running, and that Docker has at least the 4 GB of memory listed under [Host resources](#host-resources). A remote cluster needs only `helm` and `kubectl`. The first failed check stops the command with a fix hint. `uv run fbenv status` lists every check with pass or fail, with or without a cluster.
 
+When an image download fails, `fbenv create` and `fbenv update` stop with one line that names the image and the likely cause (no network, the registry refused, or the tag does not exist), then a fix hint. Add `--verbose` to see Docker's own error:
+
+```
+✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:latest: Docker could not reach the registry.
+Check your internet connection and run `fbenv create` again.
+Nothing was changed.
+Run it with --verbose to see Docker's error.
+```
+
 ### Pods do not start
 
 `fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:

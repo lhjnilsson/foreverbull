@@ -98,6 +98,7 @@ uv run fbenv use local                   # writes .foreverbull/config.yaml
 uv run fbenv use remote --kubeconfig PATH --context NAME --namespace NS --broker-address host:50055
 VERSION=local uv run fbenv create        # Kind + helm upgrade --install, workloads stopped
 uv run fbenv create --start              # same install, then start
+uv run fbenv create --verbose            # on a failed image pull, also print Docker's error
 uv run fbenv start                       # scale deployments to 1 and wait until ready
 uv run fbenv stop                        # scale to 0
 uv run fbenv stop --remove               # helm uninstall

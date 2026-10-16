@@ -13,8 +13,10 @@ from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import CommandRunner
 from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
+from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadStatus
+from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
 from foreverbull_cli.env.environment import match_broker_error
 from foreverbull_cli.env.preflight import CheckState
@@ -403,6 +405,29 @@ class TestClusterManager:
         uut.load_images()
         assert runner.calls_starting_with("docker", "pull")
         assert runner.calls_starting_with("kind", "load", "docker-image")
+
+    def test_verify_images_raises_image_pull_error_on_failed_pull(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["docker", "image", "inspect"], _completed(returncode=1, stderr="No such image"))
+        runner.on(
+            ["docker", "pull"],
+            _completed(
+                returncode=1,
+                stderr='Error response from daemon: Get "https://registry-1.docker.io/v2/": '
+                "dial tcp: lookup registry-1.docker.io: no such host",
+            ),
+        )
+        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
+        with pytest.raises(ImagePullError) as raised:
+            uut.verify_images()
+        assert raised.value.image == "lhjnilsson/foreverbull:latest"
+        assert raised.value.cause == "network"
+        assert "no such host" in raised.value.detail
+        assert "lhjnilsson/foreverbull:latest" in str(raised.value)
+        assert "no such host" not in str(raised.value)
+        assert len(runner.calls_starting_with("docker", "pull")) == 1
+        assert runner.calls_starting_with("kind", "create") == []
+        assert runner.calls_starting_with("kind", "load", "docker-image") == []
 
     def test_start_scales_and_waits(self, tmp_path: Path):
         runner = FakeRunner()
@@ -969,3 +994,36 @@ class TestBrokerErrors:
     def test_retry_lines_alone_are_not_an_error(self):
         logs = "postgres at postgres:5432 is not reachable (attempt 1 of 20), retrying in 3s"
         assert match_broker_error(logs) is None
+
+
+class TestImagePullError:
+    @pytest.mark.parametrize(
+        "output,cause",
+        [
+            (
+                "Error response from daemon: manifest for lhjnilsson/foreverbull:v9 not found: manifest unknown",
+                "missing tag",
+            ),
+            (
+                (
+                    "Error response from daemon: pull access denied for lhjnilsson/foreverbul, "
+                    "repository does not exist or may require 'docker login'"
+                ),
+                "registry",
+            ),
+            ("toomanyrequests: You have reached your pull rate limit.", "registry"),
+            ("Get https://registry-1.docker.io/v2/: net/http: TLS handshake timeout", "network"),
+            ("dial tcp 54.1.2.3:443: connect: connection refused", "network"),
+            ("something odd happened", "unknown"),
+        ],
+    )
+    def test_classify(self, output: str, cause: str):
+        assert classify_pull_error(output) == cause
+
+    def test_hint_names_the_command(self):
+        exc = ImagePullError("lhjnilsson/zipline:latest", "dial tcp: i/o timeout")
+        assert exc.hint("fbenv create") == "Check your internet connection and run `fbenv create` again."
+
+    def test_missing_tag_hint_points_at_version(self):
+        exc = ImagePullError("lhjnilsson/zipline:v9", "manifest unknown")
+        assert "VERSION" in exc.hint("fbenv create")

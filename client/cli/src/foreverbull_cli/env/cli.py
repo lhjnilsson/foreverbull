@@ -11,6 +11,7 @@ from rich.table import Table
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
+from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
@@ -36,7 +37,11 @@ class FBProgress(Progress):
 
         for task in self.tasks:
             if task.total == 2 and task.completed == 1:
-                self.update(task.id, description=f"{task.description} FAILED: {details}")
+                if isinstance(exc_val, ImagePullError):
+                    # The ✖ line printed after the progress says what failed.
+                    self.update(task.id, description=f"{task.description} FAILED")
+                else:
+                    self.update(task.id, description=f"{task.description} FAILED: {details}")
                 self.update(task.id, completed=-1)
 
         super().__exit__(exc_type, exc_val, exc_tb)
@@ -49,6 +54,7 @@ KubeconfigFlag = Annotated[str | None, typer.Option("--kubeconfig", help="Kubeco
 ContextFlag = Annotated[str | None, typer.Option("--context", help="Kube context (remote)")]
 NamespaceFlag = Annotated[str | None, typer.Option("--namespace", help="Helm namespace")]
 BrokerAddressFlag = Annotated[str | None, typer.Option("--broker-address", help="Broker host:port")]
+VerboseFlag = Annotated[bool, typer.Option("--verbose", "-v", help="Show Docker's own error when an image pull fails")]
 
 
 def _manager(
@@ -127,6 +133,19 @@ def run_preflight(cm: ClusterManager):
         raise typer.Exit(1) from exc
 
 
+def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing_changed: bool):
+    """Stop with one ✖ line that names the image and the cause. Docker's output only with --verbose."""
+    lines = [f"✖ {exc}", exc.hint(command)]
+    if nothing_changed:
+        lines.append("Nothing was changed.")
+    if verbose and exc.detail:
+        lines.append(f"Docker said: {exc.detail}")
+    elif exc.detail:
+        lines.append("Run it with --verbose to see Docker's error.")
+    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(1) from exc
+
+
 def print_cluster(config: Config, *, path_note: str | None = None):
     if path_note:
         console.print(path_note)
@@ -167,6 +186,7 @@ def create(
     context: ContextFlag = None,
     namespace: NamespaceFlag = None,
     broker_address: BrokerAddressFlag = None,
+    verbose: VerboseFlag = False,
 ):
     cm = _manager(
         ctx,
@@ -178,26 +198,31 @@ def create(
     )
     run_preflight(cm)
 
-    with FBProgress() as progress:
-        verify_images = progress.add_task("Verifying images", total=2)
-        create_task = progress.add_task("Creating environment", total=2)
-        if start:
-            start_task = progress.add_task("Starting environment", total=2)
-        else:
-            start_task = None
+    changing = False
+    try:
+        with FBProgress() as progress:
+            verify_images = progress.add_task("Verifying images", total=2)
+            create_task = progress.add_task("Creating environment", total=2)
+            if start:
+                start_task = progress.add_task("Starting environment", total=2)
+            else:
+                start_task = None
 
-        progress.update(verify_images, completed=1)
-        cm.verify_images()
-        progress.update(verify_images, completed=2)
+            progress.update(verify_images, completed=1)
+            cm.verify_images()
+            progress.update(verify_images, completed=2)
 
-        progress.update(create_task, completed=1)
-        cm.create()
+            changing = True
+            progress.update(create_task, completed=1)
+            cm.create()
 
-        progress.update(create_task, completed=2)
-        if start_task:
-            progress.update(start_task, completed=1)
-            cm.start()
-            progress.update(start_task, completed=2)
+            progress.update(create_task, completed=2)
+            if start_task:
+                progress.update(start_task, completed=1)
+                cm.start()
+                progress.update(start_task, completed=2)
+    except ImagePullError as exc:
+        fail_image_pull(exc, "fbenv create", verbose=verbose, nothing_changed=not changing)
 
     print_status(cm)
     if not start:
@@ -286,6 +311,7 @@ def update(
     context: ContextFlag = None,
     namespace: NamespaceFlag = None,
     broker_address: BrokerAddressFlag = None,
+    verbose: VerboseFlag = False,
 ):
     cm = _manager(
         ctx,
@@ -296,11 +322,15 @@ def update(
         broker_address=broker_address,
     )
 
-    with FBProgress() as progress:
-        update_task = progress.add_task("Updating environment", total=2)
-        progress.update(update_task, completed=1)
-        cm.update()
-        progress.update(update_task, completed=2)
+    try:
+        with FBProgress() as progress:
+            update_task = progress.add_task("Updating environment", total=2)
+            progress.update(update_task, completed=1)
+            cm.update()
+            progress.update(update_task, completed=2)
+    except ImagePullError as exc:
+        # update pulls before it loads images into Kind or upgrades the release.
+        fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=True)
 
     print_status(cm)
 
