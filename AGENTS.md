@@ -256,9 +256,9 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `GRPC_PORT` | `50055` (broker API; no HTTP listener) |
 | `SERVER_ADDRESS` | `foreverbull` (in-cluster Service DNS other pods use) |
 | `ZIPLINE_CONTAINER_NAME` | Go default `foreverbull_zipline`. **Helm** sets `zipline` (Service DNS). `internal/container` looks up that name as a Pod or `app.kubernetes.io/name` |
-| `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
+| `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015`, both inclusive. Session, trading, and socket listeners all scan this range. A value that is not a port, or a start above the end, stops the broker at startup |
 | `LOG_LEVEL` | `warning` (`debug`/`info`/`warning`/`error`); local `fbenv` sets `debug` on the broker (`--set broker.logLevel=debug`) |
-| `POSTGRES_URL` | Go default: `postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable`. **Helm** Postgres is user/password/db `foreverbull`, and the broker pod gets `postgres://foreverbull:foreverbull@postgres:5432/foreverbull`. Host-side against local Kind: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable` |
+| `POSTGRES_URL` | Go default: `postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable`. **Helm** Postgres is user/password/db `foreverbull`, and the broker pod gets `postgres://foreverbull:foreverbull@postgres:5432/foreverbull`. Host-side against local Kind: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable`. The broker pings about a minute (20 tries, 3 s apart), then exits non-zero with an error naming the host and port |
 | `NATS_URL` | `nats://localhost:4222` (in-cluster: `nats://nats:4222`) |
 | `NATS_DURABLE` | `foreverbull` |
 | `NATS_DELIVERY_POLICY` | `all` |
@@ -273,7 +273,6 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
-| `DOCKER_NETWORK` | Legacy default `foreverbull`. Used by Testcontainers helpers, **not** by `fbenv` or the broker |
 | `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |
 | `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`; in-cluster workers get `SERVER_ADDRESS`) |
 | `BROKER_PORT` | Worker broker gRPC port; in-cluster workers get `GRPC_PORT` (`50055`) |

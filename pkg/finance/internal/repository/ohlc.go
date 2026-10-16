@@ -20,7 +20,7 @@ low numeric NOT NULL,
 close numeric NOT NULL,
 volume bigint NOT NULL,
 time timestamp,
-provider text NOT NULL DEFAULT 'yahoo',
+provider text NOT NULL,
 UNIQUE (provider, symbol, time),
 CONSTRAINT ohlc_bar_check CHECK (high >= low AND volume >= 0),
 CONSTRAINT ohlc_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')));
@@ -30,6 +30,12 @@ CONSTRAINT ohlc_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')))
 // Each statement is its own Exec. A DO block is one statement.
 const migrateOHLCProviderColumn = `
 ALTER TABLE ohlc ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'yahoo'`
+
+// migrateOHLCProviderDefault drops the 'yahoo' default once existing rows are
+// filled, so an insert that forgets the provider fails instead of storing
+// stooq or alpaca bars as yahoo.
+const migrateOHLCProviderDefault = `
+ALTER TABLE ohlc ALTER COLUMN provider DROP DEFAULT`
 
 const migrateOHLCProviderKey = `
 DO $$
@@ -71,10 +77,14 @@ END $$`
 
 // MigrateOHLC adds provider to an existing ohlc table and replaces
 // UNIQUE (symbol, time) with UNIQUE (provider, symbol, time).
-// Rows stay. Existing rows become provider yahoo. Calling it twice is safe.
+// Rows stay. Existing rows become provider yahoo. New rows must name their
+// provider. Calling it twice is safe.
 func MigrateOHLC(ctx context.Context, conn postgres.Query) error {
 	if _, err := conn.Exec(ctx, migrateOHLCProviderColumn); err != nil {
 		return fmt.Errorf("ohlc provider column: %w", err)
+	}
+	if _, err := conn.Exec(ctx, migrateOHLCProviderDefault); err != nil {
+		return fmt.Errorf("ohlc provider default: %w", err)
 	}
 	if _, err := conn.Exec(ctx, migrateOHLCProviderKey); err != nil {
 		return fmt.Errorf("ohlc provider key: %w", err)

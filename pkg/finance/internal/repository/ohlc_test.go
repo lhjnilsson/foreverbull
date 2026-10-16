@@ -153,6 +153,12 @@ func (test *OHLCTests) TestYahooReadReturnsOnlyYahooClose() {
 	test.Equal("yahoo", storedProvider)
 	test.InDelta(11, storedClose, 0.0001)
 
+	// Old rows were filled with yahoo. A new row must name its provider.
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+		VALUES ($1, $2, 1, 1, 1, 12, 1)`, "ABC", day.Add(24*time.Hour))
+	test.Require().ErrorContains(err, "provider")
+
 	err = test.ohlcStorage.Store(ctx, "stooq", "ABC", day, 1, 2, 0.5, 22, 3)
 	test.Require().NoError(err)
 
@@ -168,6 +174,20 @@ func (test *OHLCTests) TestYahooReadReturnsOnlyYahooClose() {
 	err = test.conn.QueryRow(ctx, `SELECT count(*) FROM ohlc WHERE symbol = $1`, "ABC").Scan(&n)
 	test.Require().NoError(err)
 	test.Equal(2, n)
+}
+
+// A bar that omits provider must fail loudly rather than be stored as yahoo.
+func (test *OHLCTests) TestInsertWithoutProviderFails() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
+		VALUES ('ABC', '2020-01-02', 1, 1, 1, 1, 1)`)
+	test.Require().ErrorContains(err, "provider")
+
+	var count int
+	err = test.conn.QueryRow(ctx, `SELECT count(*) FROM ohlc`).Scan(&count)
+	test.Require().NoError(err)
+	test.Equal(0, count)
 }
 
 func (test *OHLCTests) TestMigrateDropsSymbolTimeUC() {
