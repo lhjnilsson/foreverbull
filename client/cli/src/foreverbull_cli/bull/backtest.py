@@ -36,15 +36,20 @@ from foreverbull_cli.output import format_proto_date
 backtest = typer.Typer(help="Create and inspect backtests. `etfs` lists known iShares funds.")
 log = logging.getLogger().getChild(__name__)
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_PRICE_PROVIDERS = frozenset({"yahoo", "stooq", "alpaca"})
+_DEFAULT_PROVIDER = "stooq"
+_PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
+_PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
 
 
 def _normalize_provider(raw: object) -> str | None:
     provider = "" if raw is None else str(raw).strip().lower()
     if provider == "":
-        provider = "yahoo"
-    if provider not in _PRICE_PROVIDERS:
-        console.print(f"[red]Unknown price provider {provider!r}. Use yahoo, stooq, or alpaca.")
+        provider = _DEFAULT_PROVIDER
+    if provider not in _PRICE_PROVIDER_SET:
+        console.print(
+            f"[red]Unknown price provider {provider!r}. "
+            f"Valid providers: {', '.join(_PRICE_PROVIDERS)}."
+        )
         return None
     return provider
 
@@ -57,7 +62,7 @@ def _optional_profile(raw: object) -> str:
 
 def _shown_provider(entity: backtest_pb2.Backtest) -> str:
     provider = entity.provider.strip().lower()
-    return provider or "yahoo"
+    return provider or _DEFAULT_PROVIDER
 
 
 def _read_line(prompt: Prompt, default: str | None = None) -> str | None:
@@ -241,7 +246,7 @@ def create(
         str | None,
         typer.Option(
             "--provider",
-            help="price source yahoo, stooq, or alpaca. Overrides provider in the YAML. Omitted sends yahoo",
+            help="price source yahoo, stooq, or alpaca. Overrides provider in the YAML. Omitted sends stooq",
         ),
     ] = None,
 ):
@@ -250,13 +255,13 @@ def create(
     Without --file, ETF prompt choices come from `fbull backtest etfs`.
     A bad name, fund, or date is re-asked before any download.
     Optional YAML fields `provider` and `profile` are sent on the create request.
-    `--provider` overrides the file. An omitted provider is sent as yahoo.
+    `--provider` overrides the file. An omitted provider is sent as stooq.
     """
     flag_provider: str | None = None
     if provider is not None:
         flag_provider = _normalize_provider(provider)
         if flag_provider is None:
-            return
+            raise typer.Exit(code=1)
 
     entity: (
         backtest_service_pb2.CreateBacktestRequest.CreateFromETF
@@ -269,7 +274,7 @@ def create(
             data = yaml.safe_load(f)
         chosen = flag_provider if flag_provider is not None else _normalize_provider(data.get("provider"))
         if chosen is None:
-            return
+            raise typer.Exit(code=1)
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest(
             backtest=backtest_pb2.Backtest(
                 name=data["name"],
@@ -303,13 +308,16 @@ def create(
         if dates is None:
             return
         start, end = dates
+        chosen = flag_provider if flag_provider is not None else _DEFAULT_PROVIDER
         entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
             name=name,
             base_etf=base_etf,
             start_date=from_pydate_to_proto_date(start),
             end_date=from_pydate_to_proto_date(end),
-            provider=flag_provider or "yahoo",
+            provider=chosen,
         )
+
+    console.print(f"Using provider: {chosen}")
 
     created: backtest_pb2.Backtest | None = None
     with LiveProgress() as progress:
