@@ -41,14 +41,14 @@ VERSION=local uv run fbenv create
 # start the six workloads
 uv run fbenv start
 
-# ingest the Nasdaq-100 sample (Yahoo default)
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
+# ingest the demo universe (Yahoo default)
+uv run fbull backtest create --file ../examples/demo.yaml
 
 # generate the simple crossover strategy (defaults → simple_foreverbull/)
 uv run cookiecutter templates/simple
 
 # run the strategy against the backtest
-uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+uv run fbull backtest run demo simple_foreverbull/crossover.py
 
 # print the Execution summary and periods table for the run's id
 uv run fbull backtest execution <execution-id>  # the ID from the run output above
@@ -58,7 +58,9 @@ For charts, open the Grafana `Link:` the run and `execution` commands print (loc
 
 ### Example: `backtest create` output
 
-Progress lines use a spinner, then a checkmark when each step finishes. Symbols is the comma-separated enabled list (truncated here):
+Progress lines use a spinner, then a checkmark when each step finishes. Symbols is the comma-separated enabled list (truncated here).
+
+Example output:
 
 ```text
 ✔ Creating
@@ -66,11 +68,11 @@ Progress lines use a spinner, then a checkmark when each step finishes. Symbols 
 ✔ Ingesting
 ✔ Storing
                              Created Backtest
-┏━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
-┃ Name      ┃ Start      ┃ End        ┃ Symbols            ┃ Benchmark ┃ Provider ┃
-┡━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
-│ nasdaq100 │ 2023-01-01 │ 2023-03-31 │ AAPL,NVDA,MSFT,…   │ QQQ       │ yahoo    │
-└───────────┴────────────┴────────────┴────────────────────┴───────────┴──────────┘
+┏━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Name   ┃ Start      ┃ End        ┃ Symbols            ┃ Benchmark ┃ Provider ┃
+┡━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ demo   │ 2023-01-01 │ 2023-12-31 │ AAPL,MSFT,AMZN,…   │ SPY       │ yahoo    │
+└────────┴────────────┴────────────┴────────────────────┴───────────┴──────────┘
 ```
 
 ### Example: `backtest run` output
@@ -82,7 +84,7 @@ After the session and execution progress bars, the CLI prints an Execution table
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
 ┃ ID                                   ┃ Backtest  ┃ Start      ┃ End        ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
-│ 01234567-89ab-cdef-0123-456789abcdef │ nasdaq100 │ 2023-01-01 │ 2023-03-31 │
+│ 01234567-89ab-cdef-0123-456789abcdef │ demo      │ 2023-01-01 │ 2023-12-31 │
 └──────────────────────────────────────┴───────────┴────────────┴────────────┘
 Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
 ```
@@ -98,7 +100,7 @@ The run command does not print period stats in the terminal. Use `fbull backtest
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
 ┃ ID                                   ┃ Backtest  ┃ Session                              ┃ Start      ┃ End        ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
-│ 01234567-89ab-cdef-0123-456789abcdef │ nasdaq100 │ fedcba98-7654-3210-fedc-ba9876543210 │ 2023-01-01 │ 2023-03-31 │
+│ 01234567-89ab-cdef-0123-456789abcdef │ demo      │ fedcba98-7654-3210-fedc-ba9876543210 │ 2023-01-01 │ 2023-12-31 │
 └──────────────────────────────────────┴───────────┴──────────────────────────────────────┴────────────┴────────────┘
 Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
                                periods
@@ -107,11 +109,13 @@ Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-01
 ┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━┩
 │ 2023-01-03 │ 100000.00000 │ -       │ -       │ -       │ -       │
 │ 2023-01-04 │ 100125.50000 │ 0.00120 │ 0.98000 │ 1.50000 │ 1.20000 │
-│ 2023-03-31 │ 102450.25000 │ 0.04500 │ 0.95000 │ 1.25000 │ 1.10000 │
+│ 2023-12-29 │ 102450.25000 │ 0.04500 │ 0.95000 │ 1.25000 │ 1.10000 │
 └────────────┴──────────────┴─────────┴─────────┴─────────┴─────────┘
 ```
 
 Next: edit your strategy. Open `simple_foreverbull/crossover.py`, change a parameter (for example the short or long window lengths `10` and `30`), and run the same `fbull backtest run` command again.
+
+For a real index universe, run `fbull backtest create` without `--file` and pick an iShares ETF; membership is point-in-time from historical holdings, not today's list.
 
 ## Quickstart
 
@@ -169,7 +173,7 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 `fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
 
-Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. Both recipes below use the same Nasdaq-100 file, [examples/nasdaq100.yaml](examples/nasdaq100.yaml): name `nasdaq100`, benchmark `QQQ`, and a fixed list of 101 constituents (both `GOOG` and `GOOGL`). The sample window is 2023-01-01 through 2023-03-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host. Downloading the full list takes a few minutes.
+Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. Both recipes below use the same demo file, [examples/demo.yaml](examples/demo.yaml): name `demo`, benchmark `SPY`, and ten liquid US symbols (AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, XOM, PG, KO, WMT). The sample window is 2023-01-01 through 2023-12-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host.
 
 Commands below are from `client/` after `uv sync`, with the platform already running.
 
@@ -179,23 +183,23 @@ Yahoo is the default. Leave `provider` out of the file, or pass `--provider yaho
 
 ```bash
 cd client
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
-uv run fbull backtest get nasdaq100
+uv run fbull backtest create --file ../examples/demo.yaml
+uv run fbull backtest get demo
 ```
 
 #### Stooq
 
-`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `nasdaq100` is already stored; the Yahoo rows stay. Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
+`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `demo` is already stored; the Yahoo rows stay. Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
 
 ```bash
 cd client
-uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
-uv run fbull backtest get nasdaq100
+uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
+uv run fbull backtest get demo
 ```
 
 Alpaca bars use `provider: alpaca`. Set `profile` to an Alpaca profile name when more than one Alpaca profile is configured. The key is read from the profiles file, not from this YAML.
 
-Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` removes the backtest record. Stored bars stay in Postgres under the provider they were downloaded with.
+Creating the same name twice fails. `uv run fbull backtest delete demo` removes the backtest record. Stored bars stay in Postgres under the provider they were downloaded with.
 
 Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. A month-end with no holdings file keeps the latest published listing on or before that date, or the earliest published listing after it when nothing earlier exists. You do not have to pick a range that includes a published date; the create fails only when the whole range has no holdings file. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 
@@ -222,10 +226,10 @@ cookiecutter https://github.com/lhjnilsson/foreverbull.git
 
 Cookiecutter writes the project into the current directory. The generated directory is the project slug. From `client/`, if you kept the default project name, the simple strategy file is `simple_foreverbull/crossover.py`.
 
-Run that strategy against the `nasdaq100` backtest from the ingest step, still from `client/` (path assumes the default project name):
+Run that strategy against the `demo` backtest from the ingest step, still from `client/` (path assumes the default project name):
 
 ```bash
-uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+uv run fbull backtest run demo simple_foreverbull/crossover.py
 ```
 
 On success it prints an Execution table (ID, Backtest, Start, End) and a Grafana `Link:` for that execution. For the advanced template (needs TA-Lib), use `advanced_foreverbull/macd.py` the same way if you kept its default project name.
@@ -234,7 +238,7 @@ The generated project README shows `fbull backtest create` and `fbull backtest r
 
 ### Strategy lifecycle
 
-A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper deploy. The `--backtest` value is the name from `fbull backtest create` (the Nasdaq-100 quickstart above stores `nasdaq100`). The same version is runnable against different universes via separate `--backtest` experiments. Live is off. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
+A strategy is a lifecycle: register it, pin a READY service image as a version, experiment that version on any number of existing backtests, then paper deploy. The `--backtest` value is the name from `fbull backtest create` (the demo quickstart above stores `demo`). The same version is runnable against different universes via separate `--backtest` experiments. Live is off. Contracts: [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md).
 
 ```bash
 uv run fbull strategy create mean-rev

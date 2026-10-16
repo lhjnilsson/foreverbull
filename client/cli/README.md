@@ -57,20 +57,20 @@ uv run fbull backtest delete demo
 | Stooq | `provider: stooq` or `--provider stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
 | Alpaca | `provider: alpaca` and optional `profile` | Daily bars with that profile's key. Asset lookup stays on Yahoo |
 
-Bars are stored per provider, so Yahoo and Stooq can both keep a close for the same symbol and day. A run reads only its backtest's provider. The Nasdaq-100 file is [examples/nasdaq100.yaml](../../examples/nasdaq100.yaml) (name `nasdaq100`, benchmark `QQQ`, 101 constituents, 2023-01-01 through 2023-03-31). From `client/`:
+Bars are stored per provider, so Yahoo and Stooq can both keep a close for the same symbol and day. A run reads only its backtest's provider. The demo file is [examples/demo.yaml](../../examples/demo.yaml) (name `demo`, benchmark `SPY`, ten liquid US symbols, 2023-01-01 through 2023-12-31). From `client/`:
 
 ```bash
 # Yahoo (provider omitted)
-uv run fbull backtest create --file ../examples/nasdaq100.yaml
-uv run fbull backtest get nasdaq100
+uv run fbull backtest create --file ../examples/demo.yaml
+uv run fbull backtest get demo
 
-# Stooq. Use another backtest name when nasdaq100 already exists.
-uv run fbull backtest create --file ../examples/nasdaq100.yaml --provider stooq
+# Stooq. Use another backtest name when demo already exists.
+uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
 ```
 
 Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
 
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. The backtest is point-in-time iShares holdings.
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. That path builds a point-in-time universe from iShares historical holdings for the backtest dates (not today's list).
 
 `run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 
