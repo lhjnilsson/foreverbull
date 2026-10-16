@@ -17,7 +17,7 @@ const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 	benchmark text NOT NULL,
-	provider text NOT NULL DEFAULT 'yahoo',
+	provider text NOT NULL,
 	profile text NOT NULL DEFAULT '',
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
@@ -57,9 +57,16 @@ func normalizeBacktestProvider(provider string) (string, error) {
 	}
 }
 
-// MigrateBacktestProvider adds the yahoo/stooq/alpaca check.
-// Rows that would violate it stay. Calling it twice is safe.
+// MigrateBacktestProvider drops the provider column default and adds the
+// yahoo/stooq/alpaca check. The column has no default afterwards, so a new
+// row must name its provider. Rows that would violate the check stay.
+// Calling it twice is safe.
 func MigrateBacktestProvider(ctx context.Context, conn postgres.Query) error {
+	_, err := conn.Exec(ctx, `ALTER TABLE backtest ALTER COLUMN provider DROP DEFAULT`)
+	if err != nil {
+		return fmt.Errorf("backtest: provider default: %w", err)
+	}
+
 	exists, err := tableConstraintExists(ctx, conn, "backtest", "backtest_provider_check")
 	if err != nil {
 		return err
