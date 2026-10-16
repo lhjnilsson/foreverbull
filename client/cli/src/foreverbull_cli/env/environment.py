@@ -61,6 +61,30 @@ WORKLOADS: tuple[tuple[str, str], ...] = (
 )
 DEPLOYMENTS: tuple[str, ...] = tuple(name for _, name in WORKLOADS)
 
+# kubectl returns at most this many broker log lines, so a crash loop cannot
+# flood the terminal.
+BROKER_LOG_TAIL_LINES = 20
+# Python-only users never set POSTGRES_URL or the port range; Helm does. Each
+# known broker error maps to a sentence they can act on, shown before the raw
+# log line.
+BROKER_ERROR_ADVICE: tuple[tuple[str, str], ...] = (
+    (
+        "could not reach postgres",
+        "The broker can't reach its database. Run `uv run fbenv stop && uv run fbenv start`.",
+    ),
+    (
+        "no free port in the backtest port range",
+        (
+            "The broker has no free backtest port. Wait for running backtests to finish, "
+            "or run `uv run fbenv stop && uv run fbenv start` to free them."
+        ),
+    ),
+)
+BROKER_RESTARTED_ADVICE = (
+    "The broker stopped with an error. Run `uv run fbenv stop && uv run fbenv start`; "
+    "if it stops again, the log lines below say why."
+)
+
 
 class MissingToolError(RuntimeError):
     def __init__(self, names: str | Sequence[str]):
@@ -135,6 +159,22 @@ class WorkloadRow:
     status: str
     image: str
     container_id: str
+
+
+@dataclass(frozen=True)
+class BrokerDiagnosis:
+    advice: str
+    detail: str
+
+
+def match_broker_error(logs: str) -> BrokerDiagnosis | None:
+    """Return the advice for the last known broker error in logs, with its log line."""
+    for line in reversed(logs.splitlines()):
+        lowered = line.lower()
+        for needle, advice in BROKER_ERROR_ADVICE:
+            if needle in lowered:
+                return BrokerDiagnosis(advice, line.strip())
+    return None
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -517,6 +557,35 @@ class ClusterManager:
         except CommandError:
             return False
 
+    def broker_diagnosis(self) -> BrokerDiagnosis | None:
+        """Explain why the broker is not ready, or return None when it is ready or still starting."""
+        status = self._row("foreverbull").status
+        if status not in {WorkloadStatus.FAILED, WorkloadStatus.PENDING}:
+            return None
+        previous_logs = ""
+        for previous in (False, True):
+            logs = self._broker_logs(previous=previous)
+            diagnosis = match_broker_error(logs)
+            if diagnosis is not None:
+                return diagnosis
+            if previous:
+                previous_logs = logs
+        if previous_logs:
+            return BrokerDiagnosis(BROKER_RESTARTED_ADVICE, previous_logs)
+        return None
+
+    def _broker_logs(self, *, previous: bool) -> str:
+        cmd = ["kubectl", *self._kube_flags(), "logs", "deployment/foreverbull", f"--tail={BROKER_LOG_TAIL_LINES}"]
+        if previous:
+            cmd.append("--previous")
+        try:
+            result = self.runner.run(cmd, check=False)
+        except MissingToolError:
+            return ""
+        if result.returncode != 0:
+            return ""
+        return (result.stdout or "").strip()
+
     def _kube_flags(self, *, helm: bool = False) -> list[str]:
         flags: list[str] = []
         if self.config.kubeconfig:
@@ -766,7 +835,11 @@ class ClusterManager:
         except CommandError as exc:
             detail = (exc.completed.stderr or exc.completed.stdout or "").strip()
             status = self._deployment_status()
+            self._status_cache = None
+            diagnosis = self.broker_diagnosis()
             message = f"Timed out waiting for healthy: {', '.join(DEPLOYMENTS)}"
+            if diagnosis is not None:
+                message = f"{diagnosis.advice}\n{diagnosis.detail}\n{message}"
             if detail:
                 message = f"{message}\n{detail}"
             if status:

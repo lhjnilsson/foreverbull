@@ -7,6 +7,7 @@ import typer
 
 from click.testing import Result
 from foreverbull_cli.env import cli
+from foreverbull_cli.env.environment import BrokerDiagnosis
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadRow
@@ -63,6 +64,7 @@ def mocked_container_manager():
     container_manager = MagicMock(spec=ClusterManager)
     container_manager.status_rows.return_value = STATUS_ROWS
     container_manager.host_checks.return_value = HOST_CHECKS
+    container_manager.broker_diagnosis.return_value = None
     container_manager.config = MagicMock()
     container_manager.config.cluster = "local"
     container_manager.config.namespace = "foreverbull"
@@ -105,6 +107,18 @@ def test_status_without_kubectl_still_shows_host_checks(runner, mocked_container
     assert result.exit_code == 0
     assert "Host checks" in result.stdout
     assert "Workload status needs kubectl. kubectl is not installed." in result.stdout
+
+
+def test_status_leads_broker_error_with_advice(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.broker_diagnosis.return_value = BrokerDiagnosis(
+        "The broker can't reach its database. Run `uv run fbenv stop && uv run fbenv start`.",
+        "could not reach postgres at postgres:5432 after 20 attempts",
+    )
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 0
+    advice = result.stdout.index("The broker can't reach its database.")
+    detail = result.stdout.index("could not reach postgres at postgres:5432")
+    assert advice < detail
 
 
 def test_create_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):

@@ -92,6 +92,10 @@ def print_status(cm: ClusterManager):
     for row in rows:
         table.add_row(row.service, row.name, row.status, row.image, row.container_id)
     console.print(table)
+    diagnosis = cm.broker_diagnosis()
+    if diagnosis is not None:
+        console.print(diagnosis.advice)
+        console.print(diagnosis.detail, markup=False, highlight=False)
 
 
 CHECK_STYLES = {

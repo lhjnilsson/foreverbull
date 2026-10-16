@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import CommandRunner
@@ -15,6 +16,7 @@ from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import load_cluster_config
+from foreverbull_cli.env.environment import match_broker_error
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 
@@ -859,3 +861,99 @@ class TestHostChecks:
         }
         assert runner.calls_starting_with("docker") == []
         uut.preflight()
+
+
+def _broker_items(phase: str, ready: bool) -> list[dict]:
+    return [
+        _deploy("foreverbull", "lhjnilsson/foreverbull:latest"),
+        _pod("foreverbull-abc", "foreverbull", "lhjnilsson/foreverbull:latest", phase=phase, ready=ready),
+    ]
+
+
+class TestBrokerDiagnosis:
+    POSTGRES_ERROR = (
+        "failed to setup: could not reach postgres at postgres:5432 after 20 attempts; "
+        "check POSTGRES_URL and that Postgres is running"
+    )
+
+    def test_running_broker_has_no_diagnosis(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": _broker_items("Running", True)})))
+        uut = _manager(tmp_path, runner)
+        assert uut.broker_diagnosis() is None
+        assert [call for call in runner.calls if "logs" in call] == []
+
+    def test_crashing_broker_explains_unreachable_database(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": _broker_items("Running", False)})))
+        runner.on(
+            ["kubectl"], _completed(returncode=1, stderr="previous terminated container not found"), contains="logs"
+        )
+        runner.on(["kubectl"], _completed(stdout=f"{self.POSTGRES_ERROR}\n"), contains="--previous")
+        uut = _manager(tmp_path, runner)
+        diagnosis = uut.broker_diagnosis()
+        assert diagnosis is not None
+        assert diagnosis.advice.startswith("The broker can't reach its database.")
+        assert diagnosis.detail == self.POSTGRES_ERROR
+        logs = [call for call in runner.calls if "logs" in call]
+        assert all("--tail=20" in call for call in logs)
+
+    def test_restarted_broker_with_unknown_error_shows_its_last_lines(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": _broker_items("Running", False)})))
+        runner.on(["kubectl"], _completed(stdout="starting\n"), contains="logs")
+        runner.on(["kubectl"], _completed(stdout="boom: something new\n"), contains="--previous")
+        uut = _manager(tmp_path, runner)
+        diagnosis = uut.broker_diagnosis()
+        assert diagnosis is not None
+        assert diagnosis.advice.startswith("The broker stopped with an error.")
+        assert diagnosis.detail == "boom: something new"
+
+    def test_starting_broker_without_errors_has_no_diagnosis(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": _broker_items("Pending", False)})))
+        runner.on(
+            ["kubectl"],
+            _completed(stdout="postgres at postgres:5432 is not reachable (attempt 1 of 20)\n"),
+            contains="logs",
+        )
+        runner.on(["kubectl"], _completed(returncode=1, stderr="not found"), contains="--previous")
+        uut = _manager(tmp_path, runner)
+        assert uut.broker_diagnosis() is None
+
+    def test_start_timeout_leads_with_the_broker_advice(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": _broker_items("Running", False)})))
+        runner.on(["kubectl"], _completed(stdout=f"{self.POSTGRES_ERROR}\n"), contains="logs")
+        runner.on(["kubectl"], _completed(returncode=1, stderr="timed out waiting for the condition"), contains="wait")
+        uut = _manager(tmp_path, runner, ready_timeout_seconds=1)
+        with pytest.raises(TimeoutError) as exc:
+            uut.start()
+        lines = str(exc.value).splitlines()
+        assert lines[0].startswith("The broker can't reach its database.")
+        assert lines[1] == self.POSTGRES_ERROR
+        assert lines[2].startswith("Timed out waiting for healthy")
+
+
+class TestBrokerErrors:
+    def test_unreachable_postgres_gets_a_plain_sentence_and_the_log_line(self):
+        logs = (
+            "postgres at postgres:5432 is not reachable (attempt 19 of 20), retrying in 3s\n"
+            "failed to setup: could not reach postgres at postgres:5432 after 20 attempts; "
+            "check POSTGRES_URL and that Postgres is running: dial tcp: connection refused\n"
+        )
+        diagnosis = match_broker_error(logs)
+        assert diagnosis is not None
+        assert diagnosis.advice == BROKER_ERROR_ADVICE[0][1]
+        assert diagnosis.advice.startswith("The broker can't reach its database.")
+        assert diagnosis.detail.startswith("failed to setup: could not reach postgres at postgres:5432")
+
+    def test_no_free_port_gets_a_plain_sentence(self):
+        logs = "error: no free port in the backtest port range (27000-27015): stop other sessions"
+        diagnosis = match_broker_error(logs)
+        assert diagnosis is not None
+        assert diagnosis.advice.startswith("The broker has no free backtest port.")
+
+    def test_retry_lines_alone_are_not_an_error(self):
+        logs = "postgres at postgres:5432 is not reachable (attempt 1 of 20), retrying in 3s"
+        assert match_broker_error(logs) is None

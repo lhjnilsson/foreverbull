@@ -90,7 +90,7 @@ Installs the six workloads (Postgres, NATS JetStream, Minio, Zipline, broker, Gr
 - `remote`: `helm upgrade --install` against `--kubeconfig` / `--context` / `--namespace`. Requires `--broker-address` (or `remote.broker_address` / `FOREVERBULL_BROKER_ADDRESS`).
 
 ```bash
-uv run fbenv status
+uv run fbenv status                      # host checks, then workloads
 uv run fbenv use                         # print selected cluster
 uv run fbenv use local                   # writes .foreverbull/config.yaml
 uv run fbenv use remote --kubeconfig PATH --context NAME --namespace NS --broker-address host:50055
@@ -102,6 +102,8 @@ uv run fbenv stop --remove               # helm uninstall
 uv run fbenv stop --remove --purge       # uninstall; local also deletes the Kind cluster
 uv run fbenv update                      # reload images (local) and helm upgrade --reuse-values
 ```
+
+`create` and `start` run the host checks first and print nothing when they pass: tools installed, Docker running, at least 4 GB of memory for Docker, and the Kind host ports free (or already held by the `foreverbull` cluster). The first failed check stops the command before it changes anything, with a fix hint. A remote cluster checks only `helm` and `kubectl`.
 
 `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-address` override the selected cluster for one command.
 
