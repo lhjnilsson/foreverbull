@@ -260,7 +260,7 @@ func (test *ExecutionTest) TestCreateCopiesBacktestProvider() {
 	var stored string
 	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id=$1`, created.Id).Scan(&stored)
 	test.Require().NoError(err)
-	test.Equal("stooq", stored)
+	test.Equal("yahoo", stored)
 }
 
 func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
@@ -319,7 +319,7 @@ func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
 }
 
 // SetupTest creates the backtest with an empty provider. The execution copies the stored provider,
-// so it is supplier.DefaultProvider and not the backtest_execution column's 'yahoo' default.
+// so it is supplier.DefaultProvider.
 func (test *ExecutionTest) TestCreateWithEmptyBacktestProviderStoresDefaultProvider() {
 	ctx := context.Background()
 	created, err := test.uut.Create(ctx, test.execution, nil)
@@ -330,8 +330,8 @@ func (test *ExecutionTest) TestCreateWithEmptyBacktestProviderStoresDefaultProvi
 	test.Require().NoError(err)
 	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id = $1`, created.Id).Scan(&executionProvider)
 	test.Require().NoError(err)
-	test.Equal("stooq", backtestProvider)
-	test.Equal("stooq", executionProvider)
+	test.Equal("yahoo", backtestProvider)
+	test.Equal("yahoo", executionProvider)
 	test.Equal(supplier.DefaultProvider, executionProvider)
 }
 
