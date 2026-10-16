@@ -17,7 +17,7 @@ const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 	benchmark text NOT NULL,
-	provider text NOT NULL DEFAULT 'stooq',
+	provider text NOT NULL DEFAULT 'yahoo',
 	profile text NOT NULL DEFAULT '',
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );

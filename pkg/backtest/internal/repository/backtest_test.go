@@ -73,7 +73,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 		test.Require().NoError(err)
 		test.Equal(no_periods.Name, stored.Name)
 		test.Equal(no_periods.Benchmark, stored.Benchmark)
-		test.Equal("stooq", stored.Provider)
+		test.Equal("yahoo", stored.Provider)
 		test.Empty(stored.Periods)
 	})
 	test.Run("with periods", func() {

@@ -11,7 +11,7 @@ func TestNormalizeProvider(t *testing.T) {
 
 	got, err := NormalizeProvider("")
 	require.NoError(t, err)
-	require.Equal(t, "stooq", got)
+	require.Equal(t, "yahoo", got)
 
 	got, err = NormalizeProvider("  Yahoo ")
 	require.NoError(t, err)

@@ -124,7 +124,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalData() {
 		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
 		EndDate:   &internal_pb.Date{Year: 2024, Month: 06, Day: 30},
-		// yahoo routes GetOHLC to the injected mock. The stooq default would call stooq.com.
+		// yahoo routes GetOHLC to the injected mock.
 		Provider: "yahoo",
 	}
 	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
@@ -164,7 +164,7 @@ func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	req := &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL", "NOCORP"},
 		StartDate: &internal_pb.Date{Year: 2020, Month: 1, Day: 1},
-		// yahoo routes GetOHLC to the injected mock. The stooq default would call stooq.com.
+		// yahoo routes GetOHLC to the injected mock.
 		Provider: "yahoo",
 	}
 	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)

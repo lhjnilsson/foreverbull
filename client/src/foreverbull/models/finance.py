@@ -24,14 +24,14 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_s
 # Price source when a backtest names none and OHLC_PROVIDER is unset or blank.
 # The CLI and Zipline both read this. Go keeps DefaultProvider in
 # pkg/finance/supplier/marketdata.go, and both must name the same provider.
-DEFAULT_PROVIDER = "stooq"
+DEFAULT_PROVIDER = "yahoo"
 
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
 
 
 def ohlc_provider() -> str:
-    """Price source for bar reads. Unset or blank OHLC_PROVIDER is DEFAULT_PROVIDER (stooq)."""
+    """Price source for bar reads. Unset or blank OHLC_PROVIDER is DEFAULT_PROVIDER (yahoo)."""
     raw = os.environ.get("OHLC_PROVIDER")
     if raw is None:
         return DEFAULT_PROVIDER

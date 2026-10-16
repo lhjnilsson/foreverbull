@@ -103,7 +103,7 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 
 	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*fs.IngestCommand)
-		// yahoo routes GetOHLC to the mock supplier. The stooq default would call stooq.com.
+		// yahoo routes GetOHLC to the mock supplier.
 		command.Provider = "yahoo"
 		command.Symbols = []string{"NEW123"}
 		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
@@ -133,7 +133,7 @@ func (test *IngestCommandTest) TestAlpacaFailsBeforeDownload() {
 	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*fs.IngestCommand)
-		// yahoo routes GetOHLC to the mock supplier. The stooq default would call stooq.com.
+		// yahoo routes GetOHLC to the mock supplier.
 		command.Provider = "yahoo"
 		command.Symbols = []string{"NEW123"}
 		command.Start = internal_pb.DateToDateString(test.storedOHLCStart)
