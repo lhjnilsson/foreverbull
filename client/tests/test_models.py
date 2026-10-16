@@ -27,6 +27,7 @@ from foreverbull.models import deployable_value
 from foreverbull.models import equal_weight_percent
 from foreverbull.models import get_engine
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
+from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
@@ -194,14 +195,14 @@ class TestAssets:
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
-            row = conn.execute(text("SELECT symbol, time FROM ohlc LIMIT 1")).one()
+            row = conn.execute(text("SELECT provider, symbol, time FROM ohlc LIMIT 1")).one()
             with pytest.raises(IntegrityError):
                 conn.execute(
                     text(
-                        """INSERT INTO ohlc (symbol, time, open, high, low, close, volume)
-                        VALUES (:symbol, :time, 1, 1, 1, 1, 1)"""
+                        """INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
+                        VALUES (:provider, :symbol, :time, 1, 1, 1, 1, 1)"""
                     ),
-                    {"symbol": row.symbol, "time": row.time},
+                    {"provider": row.provider, "symbol": row.symbol, "time": row.time},
                 )
             conn.rollback()
 
@@ -277,10 +278,11 @@ class TestPortfolio:
             )
             conn.execute(
                 text(
-                    """INSERT INTO ohlc (symbol, open, high, low, close, volume, time)
-                    VALUES (:symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
+                    """INSERT INTO ohlc (provider, symbol, open, high, low, close, volume, time)
+                    VALUES (:provider, :symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
                 ),
                 {
+                    "provider": ohlc_provider(),
                     "symbol": "ptest",
                     "open": 10,
                     "high": 20,

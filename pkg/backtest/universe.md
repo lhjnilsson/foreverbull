@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS asset (
 
 ### 1.3 `enabled` means GetAsset succeeded
 
-For each scraped Equity row, `CreateBacktestFromETF` calls `Marketdata.GetAsset` by symbol (Yahoo by default; Alpaca if `MARKET_DATA_PROVIDER=alpaca`). `backtest_period_asset.enabled` is true when that call succeeds and false when it fails. `DownloadFinancialData` later sets `enabled=false` if `DownloadHistoricalData` returns `STATUS_ERROR`.
+For each scraped Equity row, `CreateBacktestFromETF` calls `Marketdata.GetAsset` by symbol (Yahoo metadata for every backtest provider; `MARKET_DATA_PROVIDER` is not read). `backtest_period_asset.enabled` is true when that call succeeds and false when it fails. `DownloadFinancialData` later sets `enabled=false` if `DownloadHistoricalData` returns `STATUS_ERROR`.
 
 `enabled` is therefore “the vendor knows this ticker,” not “this ISIN is in the ETF on these dates.” Non-Equity rows (`AssetType != "Equity"`) are skipped; that filter stays.
 
@@ -306,7 +306,7 @@ Contract:
 
 Do not implement in the universe work:
 
-- Stooq, or any new `MARKET_DATA_PROVIDER`. Leave Yahoo (`yahoo`, default) and Alpaca (`alpaca`) as they are in `pkg/finance/module.go`.
+- Changing bar-provider defaults beyond what `Backtest.provider` already supports (`stooq` default when omitted, `yahoo`, `alpaca`). Leave Yahoo metadata and Alpaca wiring as they are in `pkg/finance/module.go`. `MARKET_DATA_PROVIDER` is not read.
 - Daily holdings dumps. Sample month-end or known rebalance as-of dates only.
 - Paid index files, vendor constituent feeds, or licensing iShares beyond the existing public ajax JSON.
 - Walk-forward, strategy domain, paper/live trading.
@@ -348,4 +348,4 @@ Reuse these as-is where the new tables touch them:
 
 Landed. ETF create samples month-end iShares as-of dates (filesystem JSON cache; Equity rows with ISIN). Identity is ISIN (`instrument` + `asset_symbol`); ticker is a dated alias (FB then META is one asset). Membership is half-open `universe_member` intervals from consecutive as-of diffs: adds/drops change membership, ticker changes do not. Ingest unions every alias plus the benchmark; the session maps members through `asset_symbol` at `t` into `Process` (empty universe stays `[]`). SQLIngester writes `auto_close_date` on a drop and keeps one sid across a rename. `GetAsset` failure is not a membership drop. Yearly `backtest_period` / `backtest_period_asset` rows remain for ingest windows; they are not membership.
 
-Not in this work: Stooq or any new `MARKET_DATA_PROVIDER` (Yahoo/Alpaca unchanged); daily holdings dumps; the `etf_holdings_snapshot` table (raw JSON cache is enough); hysteresis; rewriting `ohlc` off `symbol`.
+Not in this work: reintroducing `MARKET_DATA_PROVIDER`; daily holdings dumps; the `etf_holdings_snapshot` table (raw JSON cache is enough); hysteresis; rewriting `ohlc` off `symbol`.

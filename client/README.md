@@ -45,7 +45,7 @@ uv run fbenv status
 
 `uv run fbenv` is the Kind/Helm installer. A `fbenv` already on `PATH` can be an older program that starts Docker containers directly.
 
-`fbull backtest create` downloads daily bars and ingests them. Yahoo is the default price source. `MARKET_DATA_PROVIDER=stooq` uses Stooq for those bars. The [root quickstart](../README.md#ingest-data-and-create-a-backtest) creates a Nasdaq-100 backtest with either source.
+`fbull backtest create` downloads daily bars and ingests them. Stooq is the default price source (no API key). `--provider` overrides an optional YAML `provider` field. The [root quickstart](../README.md#ingest-data-and-create-a-backtest) creates a Nasdaq-100 backtest with Stooq by default, or Yahoo / Alpaca when selected.
 
 Details: [cli/README.md](cli/README.md), [deploy/README.md](../deploy/README.md).
 

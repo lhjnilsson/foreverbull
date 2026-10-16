@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
@@ -16,7 +17,7 @@ const BacktestTable = `
 CREATE TABLE IF NOT EXISTS backtest (
 	name text PRIMARY KEY CONSTRAINT backtestnamecheck CHECK (char_length(name) > 0),
 	benchmark text NOT NULL,
-	provider text NOT NULL DEFAULT 'yahoo',
+	provider text NOT NULL DEFAULT 'stooq',
 	profile text NOT NULL DEFAULT '',
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
@@ -47,12 +48,12 @@ type Backtest struct {
 func normalizeBacktestProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
-	case "", "yahoo":
-		return "yahoo", nil
-	case "stooq", "alpaca":
+	case "":
+		return supplier.DefaultProvider, nil
+	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:
-		return "", fmt.Errorf("unknown price provider %q", provider)
+		return "", fmt.Errorf("unknown price provider %q; valid providers: yahoo, stooq, alpaca", provider)
 	}
 }
 

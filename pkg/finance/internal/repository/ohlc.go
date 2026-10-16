@@ -146,10 +146,13 @@ func addOHLCCheck(ctx context.Context, conn postgres.Query, name, statement stri
 	return nil
 }
 
+// priceProvider resolves a blank provider to supplier.DefaultProvider for both
+// writes and reads, so a bar stored without a name is found by a read without
+// one, and no write falls through to the column's legacy 'yahoo' default.
 func priceProvider(provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {
-		return "yahoo"
+		return supplier.DefaultProvider
 	}
 	return provider
 }

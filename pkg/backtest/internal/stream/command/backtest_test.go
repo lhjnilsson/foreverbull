@@ -16,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	bs "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -296,7 +297,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 		Symbols:   []string{"OEF", "AAPL", "FB", "META", "MSFT"},
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-		Provider:  "yahoo",
+		Provider:  supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(ctx, download)
@@ -332,7 +333,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 		Symbols:   []string{"SPY", "AAPL"},
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-		Provider:  "yahoo",
+		Provider:  supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(context.TODO(), msg)

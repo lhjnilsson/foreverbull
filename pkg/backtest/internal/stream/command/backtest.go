@@ -20,6 +20,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -501,7 +502,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 
 	provider := strings.TrimSpace(b.GetProvider())
 	if provider == "" {
-		provider = "yahoo"
+		provider = supplier.DefaultProvider
 	}
 	if err := finance.ValidatePriceSource(provider, b.GetProfile()); err != nil {
 		return fmt.Errorf("price source: %w", err)
