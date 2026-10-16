@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
+from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import CommandRunner
@@ -130,10 +131,14 @@ def _pod(
     phase: str = "Running",
     ready: bool = True,
     container_id: str = "containerd://abcdef1234567890",
+    terminating: bool = False,
 ) -> dict:
+    metadata: dict = {"name": f"{app}-abc", "labels": {"app.kubernetes.io/name": app}}
+    if terminating:
+        metadata["deletionTimestamp"] = "2026-10-16T21:00:00Z"
     return {
         "kind": "Pod",
-        "metadata": {"name": f"{app}-abc", "labels": {"app.kubernetes.io/name": app}},
+        "metadata": metadata,
         "spec": {"containers": [{"image": image}]},
         "status": {
             "phase": phase,
@@ -637,6 +642,69 @@ class TestClusterManager:
         rows = uut.status_rows()
         assert all(row.status == WorkloadStatus.NOT_FOUND for row in rows)
         assert len(rows) == 6
+
+    def test_status_right_after_stop_is_never_running(self, tmp_path: Path):
+        # Right after `fbenv stop` the Deployments want 0 replicas, but their pods
+        # still report Running and ready while Kubernetes terminates them.
+        names = [name for _, name in WORKLOADS]
+        after_stop = []
+        for name in names:
+            after_stop.append(_deploy(name, f"{name}:latest", replicas=0))
+            after_stop.append(_pod(f"{name}-abc", name, f"{name}:latest", terminating=name != "nats"))
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": after_stop})))
+        uut = _manager(tmp_path, runner)
+        uut.stop()
+        rows = uut.status_rows()
+        assert len(rows) == len(names)
+        assert {row.status for row in rows} == {WorkloadStatus.STOPPING}
+        assert all(row.image == f"{row.name}:latest" for row in rows)
+
+        runner.on(
+            ["kubectl"],
+            _completed(stdout=json.dumps({"items": [_deploy(name, f"{name}:latest", replicas=0) for name in names]})),
+        )
+        rows = uut.status_rows()
+        assert {row.status for row in rows} == {WorkloadStatus.STOPPED}
+
+    def test_status_ignores_terminating_pod_while_starting(self, tmp_path: Path):
+        items = [
+            _deploy("postgres", "postgres:13.3-alpine"),
+            _pod("postgres-old", "postgres", "postgres:13.3-alpine", terminating=True),
+            _pod("postgres-new", "postgres", "postgres:13.3-alpine", phase="Pending", ready=False),
+            _deploy("nats", "nats:2.10-alpine"),
+            _pod("nats-old", "nats", "nats:2.10-alpine", terminating=True),
+        ]
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": items})))
+        uut = _manager(tmp_path, runner)
+        rows = {row.name: row for row in uut.status_rows()}
+        assert rows["postgres"].status == WorkloadStatus.PENDING
+        assert rows["nats"].status == WorkloadStatus.PENDING
+
+    def test_status_queries_cluster_after_stop(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["kubectl"],
+            _completed(
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            _deploy("postgres", "postgres:13.3-alpine"),
+                            _pod("postgres-abc", "postgres", "postgres:13.3-alpine"),
+                        ]
+                    }
+                )
+            ),
+        )
+        uut = _manager(tmp_path, runner)
+        assert uut.postgres.status() == WorkloadStatus.RUNNING
+        runner.on(
+            ["kubectl"],
+            _completed(stdout=json.dumps({"items": [_deploy("postgres", "postgres:13.3-alpine", replicas=0)]})),
+        )
+        uut.stop()
+        assert uut.postgres.status() == WorkloadStatus.STOPPED
 
     def test_workload_accessors_use_status_cache(self, tmp_path: Path):
         runner = FakeRunner()
