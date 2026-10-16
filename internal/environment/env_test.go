@@ -29,8 +29,51 @@ func TestSetupForTestFillsDefaultsWithoutDocker(t *testing.T) {
 	require.Equal(t, MinioURLDefault, GetMinioURL())
 	require.Equal(t, DockerNetworkDefault, GetDockerNetworkName())
 	require.Equal(t, ServerAddressDefault, GetServerAddress())
-	require.Equal(t, 27000, GetBacktestPortRangeStart())
-	require.Equal(t, 27015, GetBacktestPortRangeEnd())
+	portRange, err := GetBacktestPortRange()
+	require.NoError(t, err)
+	require.Equal(t, PortRange{Start: 27000, End: 27015}, portRange)
+}
+
+func TestGetBacktestPortRangeRejectsBadValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		start string
+		end   string
+		want  string
+	}{
+		{name: "start not a number", start: "abc", end: "27015", want: "BACKTEST_PORT_RANGE_START=\"abc\" is not a port number"},
+		{name: "end empty", start: "27000", end: "", want: "BACKTEST_PORT_RANGE_END=\"\" is not a port number"},
+		{name: "start zero", start: "0", end: "27015", want: "BACKTEST_PORT_RANGE_START=0 is outside 1-65535"},
+		{name: "end above 65535", start: "27000", end: "70000", want: "BACKTEST_PORT_RANGE_END=70000 is outside 1-65535"},
+		{name: "start above end", start: "27016", end: "27015", want: "BACKTEST_PORT_RANGE_START (27016) is above BACKTEST_PORT_RANGE_END (27015)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(BacktestPortRangeStart, tc.start)
+			t.Setenv(BacktestPortRangeEnd, tc.end)
+
+			_, err := GetBacktestPortRange()
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
+func TestGetBacktestPortRangeSinglePortIsInclusive(t *testing.T) {
+	t.Setenv(BacktestPortRangeStart, "27000")
+	t.Setenv(BacktestPortRangeEnd, "27000")
+
+	portRange, err := GetBacktestPortRange()
+	require.NoError(t, err)
+	require.True(t, portRange.Contains(27000))
+	require.False(t, portRange.Contains(27001))
+}
+
+func TestSetupFailsOnBadPortRange(t *testing.T) {
+	t.Setenv(BacktestPortRangeStart, "not-a-port")
+
+	err := Setup()
+	require.ErrorContains(t, err, "BACKTEST_PORT_RANGE_START")
 }
 
 func TestSetupForTestDoesNotOverrideSetValues(t *testing.T) {

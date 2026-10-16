@@ -3,7 +3,9 @@ package socket
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"net"
+	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -343,17 +345,21 @@ func (s *subscriber) Receive(msg proto.Message, _ ...func(OptionSetter) error) e
 	return nil
 }
 
-func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
-	var err error
+// ErrNoFreePort means every port in the backtest port range is already in use.
+var ErrNoFreePort = errors.New("no free port in the backtest port range")
 
-	for port := environment.GetBacktestPortRangeStart(); port <= environment.GetBacktestPortRangeEnd(); port++ {
-		err = socket.Listen(fmt.Sprintf("tcp://%v:%v", host, port))
-
+// ListenInRange calls listen for each port from portRange.Start to portRange.End,
+// both inclusive, and returns the first port listen accepts. A port that is
+// already in use is skipped. Any other error stops the scan, because trying
+// the next port would hide a bad host or a permission problem.
+func ListenInRange(portRange environment.PortRange, listen func(port int) error) (int, error) {
+	for port := portRange.Start; port <= portRange.End; port++ {
+		err := listen(port)
 		if err == nil {
 			return port, nil
 		}
 
-		if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
+		if errors.Is(err, syscall.EADDRINUSE) {
 			log.Debug().Msgf("Port %v already in use, trying next port", port)
 			continue
 		}
@@ -361,5 +367,44 @@ func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
 		return 0, fmt.Errorf("error listening to port %v: %w", port, err)
 	}
 
-	return 0, errors.New("no free ports in range")
+	return 0, fmt.Errorf(
+		"%w (%d-%d): stop other sessions or widen %s and %s",
+		ErrNoFreePort, portRange.Start, portRange.End,
+		environment.BacktestPortRangeStart, environment.BacktestPortRangeEnd,
+	)
+}
+
+// ListenToFreePort binds socket to the first free port in the backtest port range.
+func ListenToFreePort(socket mangos.Socket, host string) (int, error) {
+	portRange, err := environment.GetBacktestPortRange()
+	if err != nil {
+		return 0, err
+	}
+
+	return ListenInRange(portRange, func(port int) error {
+		return socket.Listen(fmt.Sprintf("tcp://%v:%v", host, port))
+	})
+}
+
+// ListenTCP opens a TCP listener on host at the first free port in the backtest
+// port range. An empty host listens on every interface. The kernel refuses a
+// second bind on a held port, so concurrent callers get distinct ports.
+func ListenTCP(host string) (net.Listener, int, error) {
+	portRange, err := environment.GetBacktestPortRange()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var listener net.Listener
+
+	port, err := ListenInRange(portRange, func(port int) error {
+		var listenErr error
+		listener, listenErr = net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+		return listenErr
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return listener, port, nil
 }

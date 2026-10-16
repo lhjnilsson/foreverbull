@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -44,7 +44,7 @@ func NewServiceInstance(t *testing.T) *ServiceInstance {
 		if err != nil {
 			socket = nil
 
-			if strings.Compare(errors.Unwrap(err).Error(), "bind: address already in use") == 0 {
+			if errors.Is(err, syscall.EADDRINUSE) {
 				continue
 			}
 

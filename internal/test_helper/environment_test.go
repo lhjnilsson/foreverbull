@@ -49,8 +49,9 @@ func TestSetupEnvironmentEnvOnlyDoesNotTouchDocker(t *testing.T) {
 			require.Equal(t, environment.DockerNetworkDefault, environment.GetDockerNetworkName())
 			require.Equal(t, environment.ServerAddressDefault, environment.GetServerAddress())
 			require.Equal(t, "60066", environment.GetGRPCPort())
-			require.Equal(t, 37000, environment.GetBacktestPortRangeStart())
-			require.Equal(t, 37100, environment.GetBacktestPortRangeEnd())
+			portRange, err := environment.GetBacktestPortRange()
+			require.NoError(t, err)
+			require.Equal(t, environment.PortRange{Start: 37000, End: 37100}, portRange)
 			require.Equal(t, environment.PostgresURLDefault, environment.GetPostgresURL())
 		})
 	}
@@ -64,8 +65,9 @@ func TestSetupEnvFillsDefaultsWithoutContainers(t *testing.T) {
 	SetupEnv(t)
 
 	require.Equal(t, "60066", environment.GetGRPCPort())
-	require.Equal(t, 37000, environment.GetBacktestPortRangeStart())
-	require.Equal(t, 37100, environment.GetBacktestPortRangeEnd())
+	portRange, err := environment.GetBacktestPortRange()
+	require.NoError(t, err)
+	require.Equal(t, environment.PortRange{Start: 37000, End: 37100}, portRange)
 }
 
 func TestSetupEnvironmentPostgresUniqueDatabasesAndReuse(t *testing.T) {

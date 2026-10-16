@@ -121,6 +121,10 @@ func applyEnvDefaults(setenv func(name, value string) error) error {
 
 	configureLogging()
 
+	if _, err := GetBacktestPortRange(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -194,26 +198,55 @@ func GetZiplineContainerName() string {
 	return os.Getenv(ZiplineContainerName)
 }
 
-func GetBacktestPortRangeStart() int {
-	portStr := os.Getenv(BacktestPortRangeStart)
-
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		panic(fmt.Errorf("failed to convert BACKTEST_PORT_RANGE_START to int: %w", err))
-	}
-
-	return port
+// PortRange is an inclusive range of TCP ports: Start and End can both be used.
+type PortRange struct {
+	Start int
+	End   int
 }
 
-func GetBacktestPortRangeEnd() int {
-	portStr := os.Getenv(BacktestPortRangeEnd)
+// Contains reports whether port is inside the inclusive range.
+func (r PortRange) Contains(port int) bool {
+	return port >= r.Start && port <= r.End
+}
 
-	port, err := strconv.Atoi(portStr)
+// GetBacktestPortRange reads BACKTEST_PORT_RANGE_START and BACKTEST_PORT_RANGE_END.
+// Both ends are inclusive. A value that is not a port, or a start above the end,
+// is an error that names the variable, so a bad setting fails at startup
+// instead of on the first session.
+func GetBacktestPortRange() (PortRange, error) {
+	start, err := parsePort(BacktestPortRangeStart)
 	if err != nil {
-		panic(fmt.Errorf("failed to convert BACKTEST_PORT_RANGE_END to int: %w", err))
+		return PortRange{}, err
 	}
 
-	return port
+	end, err := parsePort(BacktestPortRangeEnd)
+	if err != nil {
+		return PortRange{}, err
+	}
+
+	if start > end {
+		return PortRange{}, fmt.Errorf(
+			"%s (%d) is above %s (%d); set the start to the lower port",
+			BacktestPortRangeStart, start, BacktestPortRangeEnd, end,
+		)
+	}
+
+	return PortRange{Start: start, End: end}, nil
+}
+
+func parsePort(name string) (int, error) {
+	value := os.Getenv(name)
+
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q is not a port number; set it to a value from 1 to 65535", name, value)
+	}
+
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s=%d is outside 1-65535; set it to a valid TCP port", name, port)
+	}
+
+	return port, nil
 }
 
 func GetLogLevel() string {
