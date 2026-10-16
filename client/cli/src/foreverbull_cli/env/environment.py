@@ -144,6 +144,10 @@ class CommandRunner:
         return completed
 
 
+NO_WORKLOAD = "\u2014"
+"""Image and container placeholder for a stopping or stopped service."""
+
+
 class WorkloadStatus(StrEnum):
     NOT_FOUND = "not_found"
     RUNNING = "running"
@@ -923,6 +927,10 @@ class ClusterManager:
             status = WorkloadStatus.STOPPING
         else:
             status = WorkloadStatus.NOT_FOUND
+        if status in (WorkloadStatus.STOPPING, WorkloadStatus.STOPPED):
+            # Nothing should be running, so a missing image or container is
+            # expected rather than broken. Keep "not found" for the latter.
+            image, container_id = NO_WORKLOAD, NO_WORKLOAD
         return WorkloadRow(service, name, status, image, container_id)
 
     def _kubectl_json(self, resource_args: Sequence[str]) -> dict[str, Any]:

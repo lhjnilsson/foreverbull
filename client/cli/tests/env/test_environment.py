@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
+from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
@@ -623,7 +624,7 @@ class TestClusterManager:
         assert rows["postgres"].image == "postgres:13.3-alpine"
         assert rows["postgres"].container_id == "abcdef123456"
         assert rows["nats"].status == WorkloadStatus.STOPPED
-        assert rows["nats"].image == "nats:2.10-alpine"
+        assert (rows["nats"].image, rows["nats"].container_id) == (NO_WORKLOAD, NO_WORKLOAD)
         assert rows["minio"].status == WorkloadStatus.PENDING
         assert rows["grafana"].status == WorkloadStatus.FAILED
         assert [row.service for row in uut.status_rows()] == [
@@ -658,7 +659,7 @@ class TestClusterManager:
         rows = uut.status_rows()
         assert len(rows) == len(names)
         assert {row.status for row in rows} == {WorkloadStatus.STOPPING}
-        assert all(row.image == f"{row.name}:latest" for row in rows)
+        assert all(row.image == NO_WORKLOAD and row.container_id == NO_WORKLOAD for row in rows)
 
         runner.on(
             ["kubectl"],
@@ -666,6 +667,16 @@ class TestClusterManager:
         )
         rows = uut.status_rows()
         assert {row.status for row in rows} == {WorkloadStatus.STOPPED}
+        assert all(row.image == NO_WORKLOAD and row.container_id == NO_WORKLOAD for row in rows)
+
+    def test_status_keeps_not_found_for_missing_service(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=json.dumps({"items": [_deploy("postgres", "postgres:13.3-alpine")]})))
+        rows = {row.name: row for row in _manager(tmp_path, runner).status_rows()}
+        assert rows["postgres"].status == WorkloadStatus.PENDING
+        assert rows["postgres"].container_id == "not found"
+        assert rows["nats"].status == WorkloadStatus.NOT_FOUND
+        assert (rows["nats"].image, rows["nats"].container_id) == ("not found", "not found")
 
     def test_status_ignores_terminating_pod_while_starting(self, tmp_path: Path):
         items = [
