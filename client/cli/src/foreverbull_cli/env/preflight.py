@@ -99,7 +99,10 @@ def parse_docker_info(returncode: int, stdout: str, stderr: str) -> DockerInfo:
     parts = stdout.split()
     if len(parts) == 2 and parts[1].isdigit():
         return DockerInfo(running=True, server_version=parts[0], memory_bytes=int(parts[1]))
-    return DockerInfo(running=False, error=f"unexpected docker info output: {_first_line(stdout)!r}")
+    # With the daemon down, docker 28 can exit 0, print only " 0" on stdout,
+    # and put the real reason on stderr.
+    reason = _first_line(stderr) or f"unexpected docker info output: {_first_line(stdout)!r}"
+    return DockerInfo(running=False, error=reason)
 
 
 def check_docker_daemon(info: DockerInfo) -> HostCheck:

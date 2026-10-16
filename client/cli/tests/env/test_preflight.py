@@ -165,6 +165,14 @@ class TestHostPorts:
         assert port_is_free(port)
 
 
+class TestDockerInfoWithDaemonDown:
+    def test_exit_zero_with_empty_fields_uses_stderr(self):
+        stderr = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n"
+        info = parse_docker_info(0, " 0\n", stderr)
+        assert not info.running
+        assert info.error == stderr.strip()
+
+
 class TestPreflightError:
     def test_message_names_check_detail_hint_and_no_change(self):
         check = HostCheck("Docker daemon", CheckState.FAIL, "Docker is not running.", "Start Docker.")
