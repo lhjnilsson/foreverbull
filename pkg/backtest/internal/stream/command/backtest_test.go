@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -372,14 +373,24 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStopsOnBlockedProvider
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().EqualError(err, blocked)
 
-	// A block is the provider's fault, so AAPL stays enabled for the retry.
+	// The CREATING step stored the backtest; a block deletes it again so the
+	// retry with the other provider is not refused as a duplicate name.
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+
+	retry := new(stream.MockMessage)
+	retry.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+		bytes, err := proto.Marshal(test.backtest)
+		test.Require().NoError(err)
+		payload.Backtest = bytes
+	})
+	retry.On("MustGet", stream.DBDep).Return(test.db)
+	test.Require().NoError(command.CreateBacktestFromBacktest(context.TODO(), retry))
+
 	b, err := backtests.Get(context.TODO(), "test-backtest")
 	test.Require().NoError(err)
-	for _, period := range b.Periods {
-		for _, asset := range period.Assets {
-			test.True(asset.Enabled, "%s was disabled", asset.Symbol)
-		}
-	}
+	test.Equal("test-backtest", b.Name)
 }
 
 func (test *BacktestCommandTest) TestDownloadFinancialDataWrapsOtherStreamErrors() {
@@ -398,6 +409,11 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataWrapsOtherStreamErrors
 	err := command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().ErrorContains(err, "error receiving response")
 	test.Require().ErrorContains(err, "connection refused")
+
+	// Any other failure keeps the backtest.
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
 }
 
 func civilToday() string {
