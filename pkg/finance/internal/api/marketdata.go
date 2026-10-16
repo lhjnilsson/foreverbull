@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type MarketdataServer struct {
@@ -104,7 +107,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	assetRepo repository.Asset,
 	ohlcRepo repository.OHLC,
 	bars supplier.Marketdata,
-) {
+) *marketdata.BlockedError {
 	rsp := &servicePb.DownloadHistoricalDataResponse{
 		Symbol: symbol,
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
@@ -114,20 +117,26 @@ func (fs *MarketdataServer) downloadSymbol(
 	if err != nil {
 		failDownload(rsp, err)
 		sendDownloadResponse(serverStream, rsp)
-		return
+		return nil
 	}
 
 	if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
 		failDownload(rsp, err)
 		sendDownloadResponse(serverStream, rsp)
-		return
+		return nil
 	}
 
 	ohlcs, err := bars.GetOHLC(asset.Symbol, start, end)
 	if err != nil {
+		// A blocked provider is not this symbol's fault, so the symbol is not
+		// reported as failed (which disables it). The whole download stops.
+		var blocked *marketdata.BlockedError
+		if errors.As(err, &blocked) {
+			return blocked
+		}
 		failDownload(rsp, err)
 		sendDownloadResponse(serverStream, rsp)
-		return
+		return nil
 	}
 
 	for _, ohlc := range ohlcs {
@@ -140,6 +149,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	sendDownloadResponse(serverStream, rsp)
+	return nil
 }
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
@@ -168,6 +178,13 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	assetRepo := repository.Asset{Conn: fs.pgx}
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
+	// The first blocked symbol cancels the rest. Workers that already started
+	// finish their symbol, so the error is still returned once.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var blockedOnce sync.Once
+	var blocked *marketdata.BlockedError
+
 	var wg sync.WaitGroup
 	assetCh := make(chan string, downloadWorkers)
 	for range downloadWorkers {
@@ -175,15 +192,32 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		go func() {
 			defer wg.Done()
 			for symbol := range assetCh {
-				fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars)
+				if ctx.Err() != nil {
+					continue
+				}
+				if err := fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
+					blockedOnce.Do(func() {
+						blocked = err
+						cancel()
+					})
+				}
 			}
 		}()
 	}
 
+feed:
 	for _, symbol := range req.GetSymbols() {
-		assetCh <- symbol
+		select {
+		case assetCh <- symbol:
+		case <-ctx.Done():
+			break feed
+		}
 	}
 	close(assetCh)
 	wg.Wait()
-	return nil
+
+	if blocked != nil {
+		return status.Error(codes.FailedPrecondition, blocked.Error())
+	}
+	return ctx.Err()
 }

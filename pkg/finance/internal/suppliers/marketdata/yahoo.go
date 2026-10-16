@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -19,9 +20,14 @@ const (
 	bufferSize = 128
 )
 
+// defaultYahooChartURL is the chart endpoint; the symbol is appended to it.
+const defaultYahooChartURL = "https://query2.finance.yahoo.com/v8/finance/chart/"
+
 type YahooClient struct {
 	cookie string
 	crumb  string
+	// chartURL replaces defaultYahooChartURL so unit tests stay off the network.
+	chartURL string
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
@@ -311,7 +317,11 @@ type OHLCResponse struct {
 }
 
 func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	url := "https://query2.finance.yahoo.com/v8/finance/chart/" + strings.ToUpper(symbol)
+	chartURL := y.chartURL
+	if chartURL == "" {
+		chartURL = defaultYahooChartURL
+	}
+	url := chartURL + strings.ToUpper(symbol)
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
@@ -329,9 +339,17 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	}
 
 	defer resp.Body.Close()
-	data := OHLCResponse{}
 
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response: %w", err)
+	}
+	if isBlockedPage(resp.Header.Get("Content-Type"), body) {
+		return nil, &BlockedError{Provider: "yahoo", Symbol: strings.ToUpper(symbol)}
+	}
+
+	data := OHLCResponse{}
+	err = json.Unmarshal(body, &data)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}

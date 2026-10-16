@@ -246,6 +246,10 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("stooq GetOHLC %s: read body: %w", canonical, err)
 	}
 
+	if isBlockedPage(resp.Header.Get("Content-Type"), body) {
+		return nil, &BlockedError{Provider: "stooq", Symbol: canonical}
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("stooq GetOHLC %s: missing file: HTTP %s", canonical, resp.Status)
 	}
@@ -284,10 +288,6 @@ func parseStooqCSV(canonical string, body []byte, start, end time.Time) ([]*pb.O
 	if bytes.Contains(lower, []byte("exceeded the daily hits limit")) {
 		return nil, errors.New("daily hits limit exceeded")
 	}
-	if trimmed[0] == '<' {
-		return nil, errors.New("unparsable CSV: HTML response")
-	}
-
 	reader := csv.NewReader(bytes.NewReader(trimmed))
 	reader.FieldsPerRecord = -1
 	reader.TrimLeadingSpace = true

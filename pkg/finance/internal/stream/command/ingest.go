@@ -87,6 +87,10 @@ func Ingest(ctx context.Context, message stream.Message) error {
 
 		ohlcs, err := bars.GetOHLC(symbol, start, end)
 		if err != nil {
+			// The blocked sentence already names the provider, symbol, and retry.
+			if errors.Is(err, marketdata.ErrProviderBlocked) {
+				return err
+			}
 			return fmt.Errorf("error getting OHLC: %w", err)
 		}
 
