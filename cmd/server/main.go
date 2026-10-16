@@ -70,7 +70,14 @@ func pingPostgres(ctx context.Context, pool *pgxpool.Pool, attempts int, interva
 		}
 
 		if attempt < attempts {
-			log.Printf("postgres at %s is not reachable (attempt %d of %d), retrying in %s", address, attempt, attempts, interval)
+			if attempt == 1 {
+				log.Printf(
+					"postgres at %s is not reachable (attempt %d of %d), retrying in %s; if this persists, check %s and that Postgres is running",
+					address, attempt, attempts, interval, environment.PostgresURL,
+				)
+			} else {
+				log.Printf("postgres at %s is not reachable (attempt %d of %d), retrying in %s", address, attempt, attempts, interval)
+			}
 			time.Sleep(interval)
 		}
 	}

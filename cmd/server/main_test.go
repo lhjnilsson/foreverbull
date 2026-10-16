@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +27,11 @@ func TestPingPostgresGivesUpAndNamesHost(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
 	started := time.Now()
 	err = pingPostgres(context.Background(), pool, 3, 10*time.Millisecond)
 
@@ -32,4 +40,12 @@ func TestPingPostgresGivesUpAndNamesHost(t *testing.T) {
 	require.ErrorContains(t, err, "after 3 attempts")
 	require.ErrorContains(t, err, "POSTGRES_URL")
 	require.NotContains(t, err.Error(), "secret-password")
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2)
+	require.Contains(t, lines[0], "attempt 1 of 3")
+	require.Contains(t, lines[0], "if this persists, check POSTGRES_URL and that Postgres is running")
+	require.Contains(t, lines[1], "attempt 2 of 3")
+	require.NotContains(t, lines[1], "if this persists")
+	require.NotContains(t, buf.String(), "secret-password")
 }
