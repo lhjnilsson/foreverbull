@@ -8,6 +8,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
@@ -309,6 +310,23 @@ func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
 		INSERT INTO backtest_execution (session, start_date, end_date, provider)
 		VALUES ($1, '2024-01-01', '2024-12-31', 'nasdaq')`, sessionID)
 	test.Require().ErrorContains(err, "backtest_execution")
+}
+
+// SetupTest creates the backtest with an empty provider. The execution copies the stored provider,
+// so it is supplier.DefaultProvider and not the backtest_execution column's 'yahoo' default.
+func (test *ExecutionTest) TestCreateWithEmptyBacktestProviderStoresDefaultProvider() {
+	ctx := context.Background()
+	created, err := test.uut.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+
+	var backtestProvider, executionProvider string
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest WHERE name = $1`, test.storedBacktest.Name).Scan(&backtestProvider)
+	test.Require().NoError(err)
+	err = test.conn.QueryRow(ctx, `SELECT provider FROM backtest_execution WHERE id = $1`, created.Id).Scan(&executionProvider)
+	test.Require().NoError(err)
+	test.Equal("stooq", backtestProvider)
+	test.Equal("stooq", executionProvider)
+	test.Equal(supplier.DefaultProvider, executionProvider)
 }
 
 func (test *ExecutionTest) TestMigrateExecutionProviderLeavesInvalidProvider() {

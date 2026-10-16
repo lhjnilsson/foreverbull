@@ -323,3 +323,16 @@ func (test *OHLCTests) TestMinMax() {
 	test.Equal(start, storedMin)
 	test.Equal(end, storedMax)
 }
+
+// A bar stored without a provider is written as supplier.DefaultProvider, never the column's 'yahoo' default.
+func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
+	ctx := context.Background()
+	day := time.Date(2021, 6, 3, 0, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "", "ABC", day, 1, 1, 1, 9, 1))
+
+	var provider string
+	err := test.conn.QueryRow(ctx, `SELECT provider FROM ohlc WHERE symbol = $1 AND time = $2`, "ABC", day).Scan(&provider)
+	test.Require().NoError(err)
+	test.Equal("stooq", provider)
+	test.Equal(supplier.DefaultProvider, provider)
+}
