@@ -25,6 +25,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -524,7 +526,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return fmt.Errorf("error receiving response: %w", err)
+			return downloadStreamError(err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
 			err := backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
@@ -535,6 +537,16 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		}
 	}
 	return nil
+}
+
+// downloadStreamError keeps a FailedPrecondition message as the whole error.
+// The finance service uses that code for a sentence the user acts on, such as
+// a provider that blocked the download, so it is not wrapped in gRPC detail.
+func downloadStreamError(err error) error {
+	if st, ok := status.FromError(err); ok && st.Code() == codes.FailedPrecondition {
+		return errors.New(st.Message())
+	}
+	return fmt.Errorf("error receiving response: %w", err)
 }
 
 func Ingest(ctx context.Context, msg stream.Message) error {

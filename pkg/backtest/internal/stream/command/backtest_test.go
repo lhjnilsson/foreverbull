@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -339,6 +341,63 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().NoError(err)
 	test.mdclient.AssertExpectations(test.T())
+}
+
+func (test *BacktestCommandTest) TestDownloadFinancialDataStopsOnBlockedProvider() {
+	const blocked = "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{
+				Symbol:  "AAPL",
+				Enabled: true,
+			},
+		},
+	})
+	test.Require().NoError(err)
+	msg := new(stream.MockMessage)
+	msg.On("MustGet", stream.DBDep).Return(test.db)
+	msg.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
+	msg.On("ParsePayload", &bs.DownloadFinancialDataCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
+		payload.BacktestName = "test-backtest"
+	})
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, status.Error(codes.FailedPrecondition, blocked))
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), msg)
+	test.Require().EqualError(err, blocked)
+
+	// A block is the provider's fault, so AAPL stays enabled for the retry.
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	for _, period := range b.Periods {
+		for _, asset := range period.Assets {
+			test.True(asset.Enabled, "%s was disabled", asset.Symbol)
+		}
+	}
+}
+
+func (test *BacktestCommandTest) TestDownloadFinancialDataWrapsOtherStreamErrors() {
+	msg := new(stream.MockMessage)
+	msg.On("MustGet", stream.DBDep).Return(test.db)
+	msg.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
+	msg.On("ParsePayload", &bs.DownloadFinancialDataCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
+		payload.BacktestName = "test-backtest"
+	})
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, status.Error(codes.Unavailable, "connection refused"))
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), msg)
+	test.Require().ErrorContains(err, "error receiving response")
+	test.Require().ErrorContains(err, "connection refused")
 }
 
 func civilToday() string {
