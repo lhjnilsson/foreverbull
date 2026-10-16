@@ -149,7 +149,7 @@ def test_create_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     ]
     assert "Check your internet connection and run `fbenv create` again." in result.stdout
     assert "Nothing was changed." in result.stdout
-    assert "Run it with --verbose to see Docker's error." in result.stdout
+    assert "Run `fbenv create --verbose` to see Docker's error." in result.stdout
     assert "i/o timeout" not in result.stdout
     assert "Traceback" not in result.stdout
     assert result.exception is None or isinstance(result.exception, SystemExit)
@@ -171,6 +171,8 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert result.exit_code == 1
     assert "✖ Couldn't download the Foreverbull image" in result.stdout
     assert "run `fbenv update` again." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Run `fbenv update --verbose` to see Docker's error." in result.stdout
     assert "Traceback" not in result.stdout
 
 

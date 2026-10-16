@@ -141,7 +141,7 @@ def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing
     if verbose and exc.detail:
         lines.append(f"Docker said: {exc.detail}")
     elif exc.detail:
-        lines.append("Run it with --verbose to see Docker's error.")
+        lines.append(f"Run `{command} --verbose` to see Docker's error.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
     raise typer.Exit(1) from exc
 
@@ -329,7 +329,7 @@ def update(
             cm.update()
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
-        # update pulls before it loads images into Kind or upgrades the release.
+        # update pulls every missing image before kind load and helm upgrade, so nothing changed yet.
         fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=True)
 
     print_status(cm)
