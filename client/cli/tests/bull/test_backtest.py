@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import click
 import grpc
 import pytest
 import typer
@@ -435,8 +436,11 @@ def test_backtest_create_etf_without_flag_uses_default_provider(runner):
 
 def test_backtest_create_help_shows_provider_text():
     # Rich wraps rendered help at the terminal width, so compare the option text itself.
-    command = typer.main.get_command(backtest).commands["create"]
+    group = typer.main.get_command(backtest)
+    assert isinstance(group, click.Group)
+    command = group.commands["create"]
     option = next(param for param in command.params if param.name == "provider")
+    assert isinstance(option, click.Option)
 
     assert option.help == "Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: stooq."
 
