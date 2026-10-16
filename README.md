@@ -102,11 +102,7 @@ Creating the same name twice fails. `uv run fbull backtest delete nasdaq100` rem
 
 Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. A month-end with no holdings file keeps the latest published listing on or before that date, or the earliest published listing after it when nothing earlier exists. You do not have to pick a range that includes a published date; the create fails only when the whole range has no holdings file. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 
-After create, run a strategy file against the ingested backtest:
-
-```bash
-uv run fbull backtest run nasdaq100 path/to/strategy.py
-```
+The next step generates a strategy file to run against this backtest.
 
 ### Strategy projects
 
@@ -121,13 +117,21 @@ uv run cookiecutter templates/simple      # no TA-Lib
 uv run cookiecutter templates/advanced    # requires TA-Lib
 ```
 
-The generated directory is the project slug. From `client/`, the strategy file is `simple_foreverbull/crossover.py` (or `advanced_foreverbull/macd.py`).
-
 From GitHub (picks the same two templates via the root `cookiecutter.json`):
 
 ```bash
 cookiecutter https://github.com/lhjnilsson/foreverbull.git
 ```
+
+Cookiecutter writes the project into the current directory. The generated directory is the project slug. From `client/`, if you kept the default project name, the simple strategy file is `simple_foreverbull/crossover.py`.
+
+Run that strategy against the `nasdaq100` backtest from the ingest step, still from `client/` (path assumes the default project name):
+
+```bash
+uv run fbull backtest run nasdaq100 simple_foreverbull/crossover.py
+```
+
+On success it prints an Execution table (ID, Backtest, Start, End) and a Grafana `Link:` for that execution. For the advanced template (needs TA-Lib), use `advanced_foreverbull/macd.py` the same way if you kept its default project name.
 
 The generated project README shows `fbull backtest create` and `fbull backtest run` for local-file hacking. When the algorithm is a READY service image, use `fbull strategy` instead of a one-shot live run.
 
