@@ -26,7 +26,7 @@ Give Docker at least 2 CPUs, 4 GB of memory and 30 GB of disk. On macOS and Wind
 
 ## Your first backtest
 
-One copy-paste path from a fresh clone to printed execution results. Prerequisites are listed under [Requirements](#requirements) (Docker, Kind, Helm, uv, Task). Check [Host resources](#host-resources) before `task build` so Docker has enough CPU, memory, and disk. Commands after `task build` run from `client/`. Accept the cookiecutter defaults so the strategy lands at `simple_foreverbull/crossover.py`. Deeper options (Stooq and Alpaca bars, remote clusters, strategy lifecycle) stay in [Quickstart](#quickstart) below. If a step fails, see [Troubleshooting](#troubleshooting).
+One copy-paste path from a fresh clone to printed execution results. Prerequisites are listed under [Requirements](#requirements) (Docker, Kind, Helm, uv, Task). Check [Host resources](#host-resources) before `task build` so Docker has enough CPU, memory, and disk. Commands after `task build` run from `client/`. Accept the cookiecutter defaults so the strategy lands at `simple_foreverbull/crossover.py`. Deeper options (remote clusters, strategy lifecycle) stay in [Quickstart](#quickstart) below. Stooq and Alpaca bars are opt-in via `--provider`; see [client/cli/README.md](client/cli/README.md). If a step fails, see [Troubleshooting](#troubleshooting).
 
 ```bash
 # build :local images (and sync the Python workspace from the repo root)
@@ -173,9 +173,9 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 `fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
 
-Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. Both recipes below use the same demo file, [examples/demo.yaml](examples/demo.yaml): name `demo`, benchmark `SPY`, and ten liquid US symbols (AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, XOM, PG, KO, WMT). The sample window is 2023-01-01 through 2023-12-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host.
+Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. The demo file is [examples/demo.yaml](examples/demo.yaml): name `demo`, benchmark `SPY`, and ten liquid US symbols (AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, XOM, PG, KO, WMT). The sample window is 2023-01-01 through 2023-12-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host.
 
-Commands below are from `client/` after `uv sync`, with the platform already running.
+Commands below are from `client/` after `uv sync`, with the platform already running. Yahoo is the default path here. Stooq and Alpaca bars are opt-in with `--provider` (or `provider` in the YAML); see [client/cli/README.md](client/cli/README.md) for those recipes and for Stooq's bot-check note.
 
 #### Yahoo (default)
 
@@ -186,18 +186,6 @@ cd client
 uv run fbull backtest create --file ../examples/demo.yaml
 uv run fbull backtest get demo
 ```
-
-#### Stooq
-
-`--provider stooq`, or `provider: stooq` in the file, loads daily bars from Stooq. No API key is required. Asset lookup still uses Yahoo, and that lookup is what marks a symbol enabled. Give the backtest another name when `demo` is already stored; the Yahoo rows stay. Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
-
-```bash
-cd client
-uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
-uv run fbull backtest get demo
-```
-
-Alpaca bars use `provider: alpaca`. Set `profile` to an Alpaca profile name when more than one Alpaca profile is configured. The key is read from the profiles file, not from this YAML.
 
 Creating the same name twice fails. `uv run fbull backtest delete demo` removes the backtest record. Stored bars stay in Postgres under the provider they were downloaded with.
 

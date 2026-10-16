@@ -64,7 +64,8 @@ Bars are stored per provider, so Yahoo and Stooq can both keep a close for the s
 uv run fbull backtest create --file ../examples/demo.yaml
 uv run fbull backtest get demo
 
-# Stooq. Use another backtest name when demo already exists.
+# Stooq (delete first when demo already exists)
+uv run fbull backtest delete demo
 uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
 ```
 
