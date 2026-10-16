@@ -772,7 +772,7 @@ class TestHostChecks:
         _healthy_docker(runner)
         uut = _manager(tmp_path, runner)
         uut.port_probe = lambda port: True
-        with pytest.raises(PreflightError, match="Host check failed: kind. kind is not installed.") as exc:
+        with pytest.raises(PreflightError, match="✖ kind is not installed.") as exc:
             uut.preflight()
         assert "https://kind.sigs.k8s.io" in str(exc.value)
 
@@ -781,7 +781,7 @@ class TestHostChecks:
         runner.on(["docker", "info"], _completed(returncode=1, stderr="Cannot connect to the Docker daemon"))
         uut = _manager(tmp_path, runner)
         uut.port_probe = lambda port: True
-        with pytest.raises(PreflightError, match="Docker daemon. Docker is not running."):
+        with pytest.raises(PreflightError, match="✖ Docker is not running."):
             uut.preflight()
         assert runner.calls_starting_with("kind", "create") == []
         assert runner.calls_starting_with("kind", "get") == []

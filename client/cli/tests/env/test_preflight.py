@@ -82,7 +82,7 @@ class TestDocker:
 
     def test_memory_failure_names_the_amount_and_the_fix(self):
         check = check_docker_memory(DockerInfo(running=True, server_version="27", memory_bytes=2 * 2**30))
-        assert check.detail == "Docker has 2.0 GiB of memory; Foreverbull needs at least 4 GB."
+        assert check.detail == "Docker has 2 GB of memory; Foreverbull needs at least 4 GB."
         assert "at least 4 GB" in check.hint
 
     def test_memory_is_skipped_when_docker_is_down(self):
@@ -118,13 +118,21 @@ class TestHostPorts:
         check = check_host_ports([5432, 4222, 3000], cluster_running=False, is_free=lambda port: port != 5432)
         assert check.state == CheckState.FAIL
         assert check.detail == "Port 5432 (Postgres) is already in use."
-        assert "lsof -nP -iTCP:5432 -sTCP:LISTEN" in check.hint
-        assert "docker ps --filter publish=5432" in check.hint
+        assert check.hint == (
+            "A local Postgres is probably running. Stop it (for example `brew services stop postgresql`) "
+            "and run this again."
+        )
+
+    def test_other_busy_port_hint_names_the_port_and_lsof(self):
+        check = check_host_ports([5432, 50055], cluster_running=False, is_free=lambda port: port != 50055)
+        assert check.detail == "Port 50055 (Foreverbull gRPC) is already in use."
+        assert check.hint == "Find what is using port 50055 with `lsof -i :50055`, stop it, and run this again."
 
     def test_several_busy_ports_are_all_listed(self):
         check = check_host_ports([3000, 27003, 5432], cluster_running=False, is_free=lambda port: port == 5432)
         assert check.state == CheckState.FAIL
         assert check.detail == "Ports 3000 (Grafana), 27003 (backtest socket) are already in use."
+        assert "`lsof -i :3000`" in check.hint
 
     def test_probe_error_fails_the_check(self):
         def broken(port: int) -> bool:
@@ -162,7 +170,7 @@ class TestPreflightError:
         check = HostCheck("Docker daemon", CheckState.FAIL, "Docker is not running.", "Start Docker.")
         message = str(PreflightError(check))
         assert message.splitlines() == [
-            "Host check failed: Docker daemon. Docker is not running.",
+            "✖ Docker is not running.",
             "Start Docker.",
             "Nothing was changed.",
         ]

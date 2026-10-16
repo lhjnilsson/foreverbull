@@ -35,8 +35,9 @@ TOOL_VERSION_COMMANDS: dict[str, tuple[str, ...]] = {
 
 BACKTEST_PORT_FIRST = 27000
 BACKTEST_PORT_LAST = 27015
+POSTGRES_PORT = 5432
 PORT_SERVICES = {
-    5432: "Postgres",
+    POSTGRES_PORT: "Postgres",
     4222: "NATS",
     9000: "Minio",
     50055: "Foreverbull gRPC",
@@ -60,7 +61,7 @@ class HostCheck:
 
 class PreflightError(RuntimeError):
     def __init__(self, check: HostCheck):
-        lines = [f"Host check failed: {check.name}. {check.detail}"]
+        lines = [f"✖ {check.detail}"]
         if check.hint:
             lines.append(check.hint)
         lines.append("Nothing was changed.")
@@ -114,10 +115,10 @@ def check_docker_daemon(info: DockerInfo) -> HostCheck:
 def check_docker_memory(info: DockerInfo) -> HostCheck:
     if not info.running:
         return HostCheck("Docker memory", CheckState.SKIP, "Docker is not running.")
-    memory_gib = info.memory_bytes / 2**30
+    memory_gb = _gb(info.memory_bytes)
     if info.memory_bytes >= DOCKER_MIN_MEMORY_BYTES:
-        return HostCheck("Docker memory", CheckState.PASS, f"{memory_gib:.1f} GiB available to Docker")
-    detail = f"Docker has {memory_gib:.1f} GiB of memory; Foreverbull needs at least {DOCKER_MEMORY_ADVICE_GB} GB."
+        return HostCheck("Docker memory", CheckState.PASS, f"{memory_gb} GB available to Docker")
+    detail = f"Docker has {memory_gb} GB of memory; Foreverbull needs at least {DOCKER_MEMORY_ADVICE_GB} GB."
     hint = (
         f"Give Docker at least {DOCKER_MEMORY_ADVICE_GB} GB in Docker Desktop's resource settings "
         "(on Linux, free memory on the host), then run this again."
@@ -180,12 +181,19 @@ def check_host_ports(
     noun = "Port" if len(busy) == 1 else "Ports"
     verb = "is" if len(busy) == 1 else "are"
     first = busy[0]
-    hint = (
-        f"Stop the process that holds it: `lsof -nP -iTCP:{first} -sTCP:LISTEN` shows a local process and "
-        f"`docker ps --filter publish={first}` shows a container. A local Postgres on 5432 or Grafana on 3000 "
-        "is the usual cause. Then run this again."
-    )
+    if first == POSTGRES_PORT:
+        hint = (
+            "A local Postgres is probably running. Stop it (for example `brew services stop postgresql`) "
+            "and run this again."
+        )
+    else:
+        hint = f"Find what is using port {first} with `lsof -i :{first}`, stop it, and run this again."
     return HostCheck("Host ports", CheckState.FAIL, f"{noun} {named} {verb} already in use.", hint)
+
+
+def _gb(memory_bytes: int) -> str:
+    """Memory as Docker Desktop's settings show it: 2 GB, 3.8 GB."""
+    return f"{memory_bytes / 2**30:.1f}".removesuffix(".0")
 
 
 def _first_line(text: str) -> str:

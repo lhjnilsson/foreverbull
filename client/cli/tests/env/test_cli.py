@@ -33,7 +33,7 @@ HOST_CHECKS = [
     HostCheck("kind", CheckState.PASS, "kind v0.24.0 go1.22.6 linux/amd64"),
     HostCheck("docker", CheckState.PASS, "27.3.1"),
     HostCheck("Docker daemon", CheckState.PASS, "running (server 27.3.1)"),
-    HostCheck("Docker memory", CheckState.PASS, "7.7 GiB available to Docker"),
+    HostCheck("Docker memory", CheckState.PASS, "7.7 GB available to Docker"),
     HostCheck(
         "Host ports",
         CheckState.FAIL,
@@ -125,7 +125,7 @@ def test_create_stops_on_failed_host_check(runner, mocked_container_manager: Mag
     mocked_container_manager.preflight.side_effect = PORT_FAILURE
     result = runner(cli.cli, "create")
     assert result.exit_code == 1
-    assert "Host check failed: Host ports. Port 5432 (Postgres) is already in use." in result.stdout
+    assert "✖ Port 5432 (Postgres) is already in use." in result.stdout
     assert "Nothing was changed." in result.stdout
     assert "Traceback" not in result.stdout
     mocked_container_manager.verify_images.assert_not_called()
@@ -136,7 +136,7 @@ def test_start_stops_on_failed_host_check(runner, mocked_container_manager: Magi
     mocked_container_manager.preflight.side_effect = PORT_FAILURE
     result = runner(cli.cli, "start")
     assert result.exit_code == 1
-    assert "Host check failed: Host ports." in result.stdout
+    assert "✖ Port" in result.stdout
     mocked_container_manager.start.assert_not_called()
 
 

@@ -265,15 +265,15 @@ Commands below are from `client/` after `uv sync`. The local Kind context is `ki
 The Kind node publishes `5432`, `4222`, `9000`, `50055`, `3000`, and `27000`–`27015` on the host. `fbenv create` and `fbenv start` check those ports before they change anything. When another process holds one, they stop, name the port and the service it is for, and leave the cluster untouched:
 
 ```
-Host check failed: Host ports. Port 5432 (Postgres) is already in use.
-Stop the process that holds it: `lsof -nP -iTCP:5432 -sTCP:LISTEN` shows a local process and `docker ps --filter publish=5432` shows a container. A local Postgres on 5432 or Grafana on 3000 is the usual cause. Then run this again.
+✖ Port 5432 (Postgres) is already in use.
+A local Postgres is probably running. Stop it (for example `brew services stop postgresql`) and run this again.
 Nothing was changed.
 ```
 
 Find the process that holds the port and stop it, then run the same command again:
 
 ```bash
-lsof -nP -iTCP:5432 -sTCP:LISTEN     # macOS and Linux
+lsof -i :5432                        # macOS and Linux
 docker ps --filter publish=5432      # another container
 VERSION=local uv run fbenv create
 ```
