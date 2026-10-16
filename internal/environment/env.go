@@ -24,11 +24,6 @@ const (
 	GrafanaURL        = "GRAFANA_URL"
 	GrafanaURLDefault = "http://localhost:3000"
 
-	// DockerNetwork is the Testcontainers network name. The Kubernetes broker
-	// runtime does not use it.
-	DockerNetwork        = "DOCKER_NETWORK"
-	DockerNetworkDefault = "foreverbull"
-
 	BacktestIngestionDefaultName        = "BACKTEST_INGESTION_DEFAULT_NAME"
 	BacktestIngestionDefaultNameDefault = "default_ingestion"
 
@@ -86,7 +81,6 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
 	{BacktestPortRangeEnd, func() (string, error) { return BacktestPortRangeEndDefault, nil }},
 	{LogLevel, func() (string, error) { return LogLevelDefault, nil }},
-	{DockerNetwork, func() (string, error) { return DockerNetworkDefault, nil }},
 	{PostgresURL, func() (string, error) { return PostgresURLDefault, nil }},
 	{NatsURL, func() (string, error) { return NatsURLDefault, nil }},
 	{NatsDurable, func() (string, error) { return NatsDurableDefault, nil }},
@@ -184,10 +178,6 @@ func GetGrafanaURL() string {
 
 func GetServerGRPCURL() string {
 	return fmt.Sprintf("localhost:%s", GetGRPCPort())
-}
-
-func GetDockerNetworkName() string {
-	return os.Getenv(DockerNetwork)
 }
 
 func GetBacktestIngestionDefaultName() string {

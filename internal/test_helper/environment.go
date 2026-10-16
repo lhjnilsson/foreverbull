@@ -94,7 +94,6 @@ func startContainers(t *testing.T, containers *Containers) {
 	err := getOrCreateNetwork()
 	require.NoError(t, err, "fail to create network")
 
-	t.Setenv(environment.DockerNetwork, NetworkID)
 	t.Setenv(environment.ServerAddress, "host.docker.internal")
 
 	ctx := context.TODO()
@@ -126,7 +125,7 @@ func startContainers(t *testing.T, containers *Containers) {
 	_, disableLoki := os.LookupEnv("DISABLE_LOKI_LOGGING")
 	if containers.Loki && !disableLoki {
 		group.Go(func() error {
-			LokiContainerAndLogging(t, environment.GetDockerNetworkName())
+			LokiContainerAndLogging(t, NetworkID)
 			return nil
 		})
 	}

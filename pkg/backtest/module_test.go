@@ -88,7 +88,7 @@ func (test *BacktestModuleTest) TearDownTest() {
 }
 
 func (test *BacktestModuleTest) TearDownSuite() {
-	test_helper.WaitTillContainersAreRemoved(test.T(), environment.GetDockerNetworkName(), time.Second*20)
+	test_helper.WaitTillContainersAreRemoved(test.T(), test_helper.NetworkID, time.Second*20)
 	test.NoError(test.app.Stop(context.Background()), "failed to stop app")
 }
 
