@@ -33,7 +33,7 @@ Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you cr
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
-ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `stooq` (default when omitted; daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), `yahoo`, or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `yahoo` (default when omitted), `stooq` (daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
 
 ## Prerequisites
 
@@ -268,7 +268,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `TRADING_ENABLED` | `false`. Kill switch for paper `PlaceOrder` (`deploy --no-dry-run`). Not a provider. Deploy mode LIVE is refused. Never put API keys, tokens, or passwords in the chart, Postgres, or `.foreverbull/config.yaml`. |
 | `TRADING_PROFILES_FILE` | Profiles YAML. In-cluster path `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading` key `profiles.yaml`. The Secret is optional. Absent file plus `TRADING_ENABLED=false` starts with an empty registry; `TRADING_ENABLED=true` and a missing or invalid file is a startup error. Local Kind: if `.foreverbull/trading-profiles.yaml` exists, `fbenv` applies it as that Secret and does not print the file. Example: `deploy/trading-profiles.example.yaml` (empty credentials, no `baseUrl`). A profile names an adapter (`alpaca`, `saxo`, `ibkr`, or `ig`), currency (default `USD`), and credentials. Two deployments on one profile share that account. `GetPortfolio` still returns `ErrCurrency` when the account currency differs. |
 | `TRADING_LISTINGS_FILE` | Optional replacement for the embedded ISIN listing sample when a profile does not set its own listings path. |
-| `OHLC_PROVIDER` | Set on a worker pod from the backtest `provider` when the pod is created. Python and Zipline default it to `stooq` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when unset or blank. Not a broker-wide price switch. |
+| `OHLC_PROVIDER` | Set on a worker pod from the backtest `provider` when the pod is created. Python and Zipline default it to `yahoo` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when unset or blank. Not a broker-wide price switch. |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
@@ -317,7 +317,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `stooq`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
+`fbull backtest create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. An omitted provider is sent as `yahoo`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest includes the provider. `profile` is used only when `provider` is `alpaca`.
 
 Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--no-dry-run`, `--backend <profile>`, and `--yes` or `--confirm`, plus `TRADING_ENABLED=true`. The profile is a name in the profiles file. `--mode live` is refused. Local-file hacking still uses `fbull backtest run`.
 

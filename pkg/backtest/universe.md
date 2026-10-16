@@ -306,7 +306,7 @@ Contract:
 
 Do not implement in the universe work:
 
-- Changing bar-provider defaults beyond what `Backtest.provider` already supports (`stooq` default when omitted, `yahoo`, `alpaca`). Leave Yahoo metadata and Alpaca wiring as they are in `pkg/finance/module.go`. `MARKET_DATA_PROVIDER` is not read.
+- Changing bar-provider defaults beyond what `Backtest.provider` already supports (`yahoo` default when omitted, `stooq`, `alpaca`). Leave Yahoo metadata and Alpaca wiring as they are in `pkg/finance/module.go`. `MARKET_DATA_PROVIDER` is not read.
 - Daily holdings dumps. Sample month-end or known rebalance as-of dates only.
 - Paid index files, vendor constituent feeds, or licensing iShares beyond the existing public ajax JSON.
 - Walk-forward, strategy domain, paper/live trading.
