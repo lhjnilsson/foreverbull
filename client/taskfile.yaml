@@ -43,18 +43,9 @@ tasks:
     desc: Generate Python protobuf code
     dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      # Internal stream messages are Go-only.
-      - buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
-      # Buf emits proto-rooted imports; rewrite them under foreverbull.pb.
-      # sed -i.bak is portable across GNU (Linux CI) and BSD (macOS).
-      - |
-        set -e
-        LC_ALL=C find client/src/foreverbull/pb -type f \( -name '*_pb2.py' -o -name '*_pb2.pyi' -o -name '*_pb2_grpc.py' \) -exec sed -i.bak \
-          -e 's/from foreverbull\./from foreverbull.pb.foreverbull./g' \
-          -e 's/from foreverbull import common_pb2/from foreverbull.pb.foreverbull import common_pb2/g' \
-          -e 's/from buf\.validate import/from foreverbull.pb.buf.validate import/g' \
-          {} +
-        find client/src/foreverbull/pb -type f -name '*.bak' -delete
+      # Internal stream messages are Go-only. uv run keeps the pinned buf and plugins on PATH.
+      # protobuf-py emits relative imports, so there is no import rewrite.
+      - uv run --project client buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
 
   template:generate:
     desc: Render cookiecutter templates

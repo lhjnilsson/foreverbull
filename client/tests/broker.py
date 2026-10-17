@@ -4,70 +4,73 @@ from collections.abc import Generator
 
 import pynng
 
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as session_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from protobuf import merge_from_binary
+
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb as session_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 class Broker:
-    def __init__(self, engine: engine_service_pb2_grpc.EngineSessionStub):
+    def __init__(self, engine: engine_service_pb_grpc.EngineSessionClientSync):
         self.engine = engine
         self._broker_port = 7878
         self._namespace_port = 7879
         self._worker_socket: pynng.Socket | None = None
         self._namespace_socket: pynng.Socket | None = None
-        self._backtest: backtest_pb2.Backtest | None = None
+        self._backtest: backtest_pb.Backtest | None = None
 
-    def ListBacktests(
-        self, request: backtest_service_pb2.ListBacktestsRequest, context
-    ) -> backtest_service_pb2.ListBacktestsResponse:
-        return backtest_service_pb2.ListBacktestsResponse()
+    def list_backtests(
+        self, request: backtest_service_pb.ListBacktestsRequest, context
+    ) -> backtest_service_pb.ListBacktestsResponse:
+        return backtest_service_pb.ListBacktestsResponse()
 
-    def CreateBacktest(
-        self, request: backtest_service_pb2.CreateBacktestRequest, context
-    ) -> backtest_service_pb2.CreateBacktestResponse:
-        return backtest_service_pb2.CreateBacktestResponse()
+    def create_backtest(
+        self, request: backtest_service_pb.CreateBacktestRequest, context
+    ) -> backtest_service_pb.CreateBacktestResponse:
+        return backtest_service_pb.CreateBacktestResponse()
 
-    def GetBacktest(
-        self, request: backtest_service_pb2.GetBacktestRequest, context
-    ) -> backtest_service_pb2.GetBacktestResponse:
-        return backtest_service_pb2.GetBacktestResponse()
+    def get_backtest(
+        self, request: backtest_service_pb.GetBacktestRequest, context
+    ) -> backtest_service_pb.GetBacktestResponse:
+        return backtest_service_pb.GetBacktestResponse()
 
-    def CreateSession(
-        self, request: backtest_service_pb2.CreateSessionRequest, context
-    ) -> backtest_service_pb2.CreateSessionResponse:
-        return backtest_service_pb2.CreateSessionResponse(
-            session=session_pb2.Session(
+    def create_session(
+        self, request: backtest_service_pb.CreateSessionRequest, context
+    ) -> backtest_service_pb.CreateSessionResponse:
+        return backtest_service_pb.CreateSessionResponse(
+            session=session_pb.Session(
                 id="abc123",
                 port=6067,
             )
         )
 
-    def GetSession(
-        self, request: backtest_service_pb2.GetSessionRequest, context
-    ) -> backtest_service_pb2.GetSessionResponse:
-        return backtest_service_pb2.GetSessionResponse(
-            session=session_pb2.Session(
+    def get_session(
+        self, request: backtest_service_pb.GetSessionRequest, context
+    ) -> backtest_service_pb.GetSessionResponse:
+        return backtest_service_pb.GetSessionResponse(
+            session=session_pb.Session(
                 id="abc123",
                 port=6067,
             )
         )
 
-    def ListExecutions(
-        self, request: backtest_service_pb2.ListExecutionsRequest, context
-    ) -> backtest_service_pb2.ListExecutionsResponse:
-        return backtest_service_pb2.ListExecutionsResponse()
+    def list_executions(
+        self, request: backtest_service_pb.ListExecutionsRequest, context
+    ) -> backtest_service_pb.ListExecutionsResponse:
+        return backtest_service_pb.ListExecutionsResponse()
 
-    def GetExecution(
-        self, request: backtest_service_pb2.GetExecutionRequest, context
-    ) -> backtest_service_pb2.GetExecutionResponse:
-        rsp: engine_service_pb2.GetResultResponse = self.engine.GetResult(engine_service_pb2.GetResultRequest())
-        return backtest_service_pb2.GetExecutionResponse(
+    def get_execution(
+        self, request: backtest_service_pb.GetExecutionRequest, context
+    ) -> backtest_service_pb.GetExecutionResponse:
+        rsp: engine_service_pb.GetResultResponse = self.engine.get_result(engine_service_pb.GetResultRequest())
+        return backtest_service_pb.GetExecutionResponse(
             periods=rsp.periods,
         )
 
@@ -75,33 +78,32 @@ class Broker:
     def namespace_server(port: int):
         pass
 
-    def CreateExecution(
-        self, request: session_service_pb2.CreateExecutionRequest, context
-    ) -> session_service_pb2.CreateExecutionResponse:
+    def create_execution(
+        self, request: session_service_pb.CreateExecutionRequest, context
+    ) -> session_service_pb.CreateExecutionResponse:
         self._worker_socket = pynng.Req0(listen="tcp://0.0.0.0:7878")
         self._namespace_socket = pynng.Req0(listen="tcp://0.0.0.0:7879")
         self._execution = request
 
-        return session_service_pb2.CreateExecutionResponse(
-            configuration=worker_pb2.ExecutionConfiguration(
+        return session_service_pb.CreateExecutionResponse(
+            execution=execution_pb.Execution(),
+            configuration=worker_pb.ExecutionConfiguration(
                 brokerPort=self._broker_port,
                 namespacePort=self._namespace_port,
-                databaseURL=os.getenv("DATABASE_URL"),
+                databaseURL=os.getenv("DATABASE_URL") or "",
                 functions=[],
-            )
+            ),
         )
 
-    def RunExecution(
-        self, request: session_service_pb2.RunExecutionRequest, context
-    ) -> Generator[session_service_pb2.RunExecutionResponse, None, None]:
+    def run_execution(
+        self, request: session_service_pb.RunExecutionRequest, context
+    ) -> Generator[session_service_pb.RunExecutionResponse, None, None]:
         if self._worker_socket is None or self._execution is None:
             raise RuntimeError("Session not created")
 
-        rsp = self.engine.RunBacktest(engine_service_pb2.RunBacktestRequest())
+        self.engine.run_backtest(engine_service_pb.RunBacktestRequest())
         while True:
-            rsp: engine_service_pb2.GetCurrentPeriodResponse = self.engine.GetCurrentPeriod(
-                engine_service_pb2.GetCurrentPeriodRequest()
-            )
+            rsp = self.engine.get_current_period(engine_service_pb.GetCurrentPeriodRequest())
             if rsp.is_running is False:
                 break
             orders = []
@@ -109,26 +111,26 @@ class Broker:
                 raise RuntimeError("Backtest not set")
             symbols = [a.symbol for period in self._backtest.periods for a in period.assets if a.enabled]
             for symbol in symbols:
-                worker_request = worker_service_pb2.WorkerRequest(
+                worker_request = worker_service_pb.WorkerRequest(
                     task="handle_data",
                     symbols=[symbol],
                     portfolio=rsp.portfolio,
                 )
-                self._worker_socket.send(worker_request.SerializeToString())
-                worker_response = worker_service_pb2.WorkerResponse()
-                worker_response.ParseFromString(self._worker_socket.recv())
+                self._worker_socket.send(worker_request.to_binary())
+                worker_response = worker_service_pb.WorkerResponse()
+                merge_from_binary(worker_response, self._worker_socket.recv())
                 orders.extend(worker_response.orders)
-            self.engine.PlaceOrdersAndContinue(engine_service_pb2.PlaceOrdersAndContinueRequest(orders=orders))
-            yield session_service_pb2.RunExecutionResponse(
+            self.engine.place_orders_and_continue(engine_service_pb.PlaceOrdersAndContinueRequest(orders=orders))
+            yield session_service_pb.RunExecutionResponse(
                 portfolio=rsp.portfolio,
             )
 
-    def StoreResult(
-        self, request: session_service_pb2.StoreExecutionResultRequest, context
-    ) -> session_service_pb2.StoreExecutionResultResponse:
-        return session_service_pb2.StoreExecutionResultResponse()
+    def store_result(
+        self, request: session_service_pb.StoreExecutionResultRequest, context
+    ) -> session_service_pb.StoreExecutionResultResponse:
+        return session_service_pb.StoreExecutionResultResponse()
 
-    def StopServer(
-        self, request: session_service_pb2.StopServerRequest, context
-    ) -> session_service_pb2.StopServerResponse:
-        return session_service_pb2.StopServerResponse()
+    def stop_server(
+        self, request: session_service_pb.StopServerRequest, context
+    ) -> session_service_pb.StopServerResponse:
+        return session_service_pb.StopServerResponse()

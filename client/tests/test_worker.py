@@ -5,14 +5,14 @@ import pytest
 
 from foreverbull import exceptions
 from foreverbull import worker
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 class TestWorkerInstance:
     def test_configure_bad_file(self):
         w = worker.WorkerInstance("bad_file")
         with pytest.raises(exceptions.ConfigurationError):
-            w.configure_execution(worker_pb2.ExecutionConfiguration())
+            w.configure_execution(worker_pb.ExecutionConfiguration())
 
     def test_configure_execution(self, fb_env, fb_database, parallel_algo_file, namespace_server):
         algorithm, request, _ = parallel_algo_file
@@ -61,7 +61,7 @@ class TestWorkerPool:
         algorithm, _, _ = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pytest.raises(RuntimeError):
-            pool.configure_execution(worker_pb2.ExecutionConfiguration())
+            pool.configure_execution(worker_pb.ExecutionConfiguration())
 
     def test_configure(self, fb_env, fb_database, namespace_server, parallel_algo_file):
         algorithm, request, _ = parallel_algo_file

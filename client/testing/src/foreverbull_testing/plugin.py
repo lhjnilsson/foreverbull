@@ -9,12 +9,15 @@ from typing import cast
 import pynng
 import pytest
 
+from protobuf import merge_from_binary
+from protobuf.wkt import Struct
+
 from foreverbull import broker
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
 from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import AssetManager
 from foreverbull_testing.models import Backtest
@@ -62,23 +65,24 @@ def namespace_server():
 
     def runner(s, namespace):
         while True:
-            request = worker_service_pb2.NamespaceRequest()
+            request = worker_service_pb.NamespaceRequest()
             try:
-                request.ParseFromString(s.recv())
+                merge_from_binary(request, s.recv())
             except pynng.exceptions.Timeout:
                 continue
             except pynng.exceptions.Closed:
                 break
-            if request.type == worker_service_pb2.NamespaceRequestType.GET:
-                response = worker_service_pb2.NamespaceResponse()
-                response.value.update(namespace.get(request.key, {}))
-            elif request.type == worker_service_pb2.NamespaceRequestType.SET:
-                namespace[request.key] = {k: v for k, v in request.value.items()}
-                response = worker_service_pb2.NamespaceResponse()
-                response.value.update(namespace[request.key])
+            if request.type == worker_service_pb.NamespaceRequestType.GET:
+                response = worker_service_pb.NamespaceResponse()
+                response.value = Struct.from_python(namespace.get(request.key, {}))
+            elif request.type == worker_service_pb.NamespaceRequestType.SET:
+                incoming = request.value
+                namespace[request.key] = {} if incoming is None else pb_utils.protobuf_struct_to_dict(incoming)
+                response = worker_service_pb.NamespaceResponse()
+                response.value = Struct.from_python(namespace[request.key])
             else:
-                response = worker_service_pb2.NamespaceResponse(error="Invalid task")
-            s.send(response.SerializeToString())
+                response = worker_service_pb.NamespaceResponse(error="Invalid task")
+            s.send(response.to_binary())
 
     thread = Thread(target=runner, args=(s, namespace))
     thread.start()
@@ -135,7 +139,7 @@ def fb_database():
     os.environ["DATABASE_URL"] = postgres.get_connection_url()
 
     def verify_or_populate(
-        entity: backtest_pb2.Backtest | None = None,
+        entity: backtest_pb.Backtest | None = None,
         start: date | None = None,
         end: datetime | None = None,
         symbols: list[str] | None = None,
@@ -148,13 +152,13 @@ def fb_database():
             if type(end) is str:
                 end = datetime.strptime(end, "%Y-%m-%d").date()
             assert start and end and symbols
-            entity = backtest_pb2.Backtest(
+            entity = backtest_pb.Backtest(
                 periods=[
-                    backtest_pb2.Backtest.Period(
+                    backtest_pb.Backtest.Period(
                         start_date=pb_utils.from_pydate_to_proto_date(start),
                         end_date=pb_utils.from_pydate_to_proto_date(end),
                         assets=[
-                            backtest_pb2.Backtest.Period.Asset(
+                            backtest_pb.Backtest.Period.Asset(
                                 symbol=symbol,
                                 enabled=True,
                             )
@@ -224,7 +228,9 @@ def _started_session(name: str):
     stream = broker.backtest.create_session(name)
     try:
         for msg in stream:
-            if msg.session.port:
+            # Unset optional messages stay None. An empty session has no port yet.
+            session = msg.session
+            if session is not None and session.port:
                 return msg
     finally:
         _close_stream(stream)
@@ -250,7 +256,7 @@ def _backtest(request):
     except Exception as exc:  # noqa: BLE001
         pytest.skip(_broker_skip_reason(exc))
 
-    if started is None:
+    if started is None or started.session is None:
         pytest.skip(f"backtest {name!r} session did not start")
 
     # Foreverbull requires a model. The test algorithm replaces it inside run_execution.

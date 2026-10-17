@@ -1,19 +1,19 @@
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
 from foreverbull_zipline.engine import Engine
 
 
-class SessionServiceServicer(engine_service_pb2_grpc.EngineSessionServicer):
+class SessionServiceServicer(engine_service_pb_grpc.EngineSessionServiceSync):
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def RunBacktest(self, request, context):
+    def run_backtest(self, request, context):
         return self.engine.run_backtest(request)
 
-    def GetCurrentPeriod(self, request, context):
+    def get_current_period(self, request, context):
         return self.engine.get_current_period(request)
 
-    def PlaceOrdersAndContinue(self, request, context):
+    def place_orders_and_continue(self, request, context):
         return self.engine.place_orders_and_continue(request)
 
-    def GetResult(self, request, context):
+    def get_result(self, request, context):
         return self.engine.get_backtest_result(request)

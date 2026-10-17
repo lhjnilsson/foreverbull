@@ -2,20 +2,32 @@ from datetime import date
 from datetime import datetime
 from datetime import timezone
 from typing import Any
+from typing import TypeVar
 
 import pandas
 
-from google.protobuf.struct_pb2 import Struct
-from google.protobuf.timestamp_pb2 import Timestamp
+from protobuf.wkt import Struct
+from protobuf.wkt import Timestamp
+from protobuf.wkt import Value
 
-from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull import common_pb
+
+_T = TypeVar("_T")
 
 
-def from_proto_date_to_pydate(d: common_pb2.Date) -> date:
+def required(value: _T | None, what: str) -> _T:
+    if value is None:
+        raise ValueError(f"missing {what}")
+    return value
+
+
+def from_proto_date_to_pydate(d: common_pb.Date | None) -> date:
+    if d is None:
+        raise ValueError("missing date")
     return date(year=d.year, month=d.month, day=d.day)
 
 
-def from_proto_date_to_pandas_timestamp(d: common_pb2.Date, normalize=True, tz_localize: bool | None = False) -> Any:
+def from_proto_date_to_pandas_timestamp(d: common_pb.Date, normalize=True, tz_localize: bool | None = False) -> Any:
     timestamp = pandas.Timestamp(year=d.year, month=d.month, day=d.day)
     assert type(timestamp) is pandas.Timestamp, f"Expected pandas.Timestamp, got {type(timestamp)}"
     if normalize:
@@ -25,11 +37,13 @@ def from_proto_date_to_pandas_timestamp(d: common_pb2.Date, normalize=True, tz_l
     return timestamp
 
 
-def from_pydate_to_proto_date(d: date | datetime) -> common_pb2.Date:
-    return common_pb2.Date(year=d.year, month=d.month, day=d.day)
+def from_pydate_to_proto_date(d: date | datetime) -> common_pb.Date:
+    return common_pb.Date(year=d.year, month=d.month, day=d.day)
 
 
-def from_proto_timestamp(timestamp: Timestamp, tz=timezone.utc) -> datetime:
+def from_proto_timestamp(timestamp: Timestamp | None, tz=timezone.utc) -> datetime:
+    if timestamp is None:
+        raise ValueError("missing timestamp")
     return datetime.fromtimestamp(timestamp.seconds + timestamp.nanos / 1e9, tz=tz)
 
 
@@ -37,19 +51,20 @@ def to_proto_timestamp(dt: datetime) -> Timestamp:
     return Timestamp(seconds=int(dt.timestamp()), nanos=int(dt.microsecond * 1e3))
 
 
-def _struct_value_to_native(v):
-    if v.HasField("null_value"):
-        return None
-    elif v.HasField("number_value"):
-        return v.number_value
-    elif v.HasField("string_value"):
-        return v.string_value
-    elif v.HasField("bool_value"):
-        return v.bool_value
-    elif v.HasField("struct_value"):
-        return protobuf_struct_to_dict(v.struct_value)
-    else:
+def _struct_value_to_native(v: Value):
+    # NullValue is 0, so presence is the oneof field name, not the numeric value.
+    kind = v.kind
+    if kind is None:
         raise ValueError("Unknown value type")
+    match kind.field:
+        case "null_value":
+            return None
+        case "number_value" | "string_value" | "bool_value":
+            return kind.value
+        case "struct_value":
+            return protobuf_struct_to_dict(kind.value)
+        case _:
+            raise ValueError("Unknown value type")
 
 
 def protobuf_struct_to_dict(struct: Struct) -> dict[str, Any]:

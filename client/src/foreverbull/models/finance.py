@@ -5,10 +5,10 @@ from datetime import datetime
 
 import pandas
 
-from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
-from google.protobuf.struct_pb2 import Struct
 from pandas import DataFrame
 from pandas import read_sql_query
+from protobuf import merge_from_binary
+from protobuf.wkt import Struct
 from sqlalchemy import bindparam
 from sqlalchemy import engine
 from sqlalchemy import text
@@ -17,8 +17,8 @@ from foreverbull.broker.utils import namespace_socket
 from foreverbull.exceptions import ConfigurationError
 from foreverbull.exceptions import RuntimeError
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
 
 
 # Price source when a backtest names none and OHLC_PROVIDER is unset or blank.
@@ -41,12 +41,12 @@ def ohlc_provider() -> str:
     return provider
 
 
-def _exchange_namespace(request: worker_service_pb2.NamespaceRequest) -> worker_service_pb2.NamespaceResponse:
+def _exchange_namespace(request: worker_service_pb.NamespaceRequest) -> worker_service_pb.NamespaceResponse:
     with namespace_socket() as s:
-        s.send(request.SerializeToString())
-        response = worker_service_pb2.NamespaceResponse()
-        response.ParseFromString(s.recv())
-        if response.HasField("error"):
+        s.send(request.to_binary())
+        response = worker_service_pb.NamespaceResponse()
+        merge_from_binary(response, s.recv())
+        if response.has_field("error"):
             raise RuntimeError(response.error)
         return response
 
@@ -60,21 +60,22 @@ class Asset:
         self._stock_data_loader = _stock_data_loader
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
-        request = worker_service_pb2.NamespaceRequest(
+        request = worker_service_pb.NamespaceRequest(
             key=key,
-            type=worker_service_pb2.NamespaceRequestType.GET,
+            type=worker_service_pb.NamespaceRequestType.GET,
         )
-        value = pb_utils.protobuf_struct_to_dict(_exchange_namespace(request).value)
+        raw = _exchange_namespace(request).value
+        value = {} if raw is None else pb_utils.protobuf_struct_to_dict(raw)
         if self._symbol not in value:
             return None  # type: ignore
         return value[self._symbol]
 
     def set_metric[T: (int, float, bool, str)](self, key: str, value: T) -> None:
-        request = worker_service_pb2.NamespaceRequest(
+        request = worker_service_pb.NamespaceRequest(
             key=key,
-            type=worker_service_pb2.NamespaceRequestType.SET,
+            type=worker_service_pb.NamespaceRequestType.SET,
         )
-        request.value.update({self._symbol: value})
+        request.value = Struct.from_python({self._symbol: value})
         _exchange_namespace(request)
 
     @property
@@ -109,20 +110,18 @@ class Assets:
         self._asset_frames: dict[str, DataFrame] | None = None
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
-        request = worker_service_pb2.NamespaceRequest(
+        request = worker_service_pb.NamespaceRequest(
             key=key,
-            type=worker_service_pb2.NamespaceRequestType.GET,
+            type=worker_service_pb.NamespaceRequestType.GET,
         )
-        return pandas.Series(pb_utils.protobuf_struct_to_dict(_exchange_namespace(request).value))
+        raw = _exchange_namespace(request).value
+        return pandas.Series({} if raw is None else pb_utils.protobuf_struct_to_dict(raw))
 
     def set_metrics[T: (int, float, bool, str)](self, key: str, value: dict[str, T]) -> None:
-        struct = Struct()
-        for k, v in value.items():
-            struct.update({k: v})
-        request = worker_service_pb2.NamespaceRequest(
+        request = worker_service_pb.NamespaceRequest(
             key=key,
-            type=worker_service_pb2.NamespaceRequestType.SET,
-            value=struct,
+            type=worker_service_pb.NamespaceRequestType.SET,
+            value=Struct.from_python(dict(value)),
         )
         _exchange_namespace(request)
 
@@ -181,21 +180,21 @@ class Assets:
 
 
 class Positions:
-    def __init__(self, positions: RepeatedCompositeFieldContainer[marketdata_pb2.Position]):
+    def __init__(self, positions: list[marketdata_pb.Position]):
         self._positions = positions
         self._positions_index = 0
 
     def __iter__(self):
         return self
 
-    def __next__(self) -> marketdata_pb2.Position:
+    def __next__(self) -> marketdata_pb.Position:
         if self._positions_index >= len(self._positions):
             raise StopIteration
         value = self._positions[self._positions_index]
         self._positions_index += 1
         return value
 
-    def __getitem__(self, symbol: str) -> marketdata_pb2.Position | None:
+    def __getitem__(self, symbol: str) -> marketdata_pb.Position | None:
         for p in self._positions:
             if p.symbol == symbol:
                 return p
@@ -220,10 +219,10 @@ def equal_weight_percent(n_selected: int, cash_reserve: float, max_positions: in
 
 
 class Portfolio:
-    def __init__(self, pb: marketdata_pb2.Portfolio, db: engine.Connection):
+    def __init__(self, pb: marketdata_pb.Portfolio, db: engine.Connection):
         self._pb = pb
         self._db = db
-        self.pending_orders: list[marketdata_pb2.Order] = []
+        self.pending_orders: list[marketdata_pb.Order] = []
         self._close_by_symbol_day: dict[tuple[str, str, str], float] = {}
 
     @property
@@ -237,7 +236,10 @@ class Portfolio:
         return equal_weight_percent(n_selected, cash_reserve, max_positions)
 
     def _close_on_bar(self, symbol: str):
-        day = self._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
+        timestamp = self._pb.timestamp
+        if timestamp is None:
+            raise ValueError("portfolio has no timestamp")
+        day = timestamp.to_datetime().strftime("%Y-%m-%d")
         provider = ohlc_provider()
         key = (provider, symbol, day)
         if key not in self._close_by_symbol_day:
@@ -268,27 +270,27 @@ class Portfolio:
                 return amount - pos.amount
         return amount
 
-    def _enqueue(self, symbol: str, amount: int) -> marketdata_pb2.Order:
-        order = marketdata_pb2.Order(symbol=symbol, amount=amount)
+    def _enqueue(self, symbol: str, amount: int) -> marketdata_pb.Order:
+        order = marketdata_pb.Order(symbol=symbol, amount=amount)
         self.pending_orders.append(order)
         return order
 
-    def order(self, symbol: str, amount: int) -> marketdata_pb2.Order:
+    def order(self, symbol: str, amount: int) -> marketdata_pb.Order:
         return self._enqueue(symbol, amount)
 
-    def order_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
+    def order_percent(self, symbol: str, percent: float) -> marketdata_pb.Order:
         return self._enqueue(symbol, self._calculate_order_percent_amount(symbol, percent))
 
-    def order_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
+    def order_value(self, symbol: str, value: float) -> marketdata_pb.Order:
         return self._enqueue(symbol, self._calculate_order_value_amount(symbol, value))
 
-    def order_target(self, symbol: str, amount: int) -> marketdata_pb2.Order:
+    def order_target(self, symbol: str, amount: int) -> marketdata_pb.Order:
         return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))
 
-    def order_target_percent(self, symbol: str, percent: float) -> marketdata_pb2.Order:
+    def order_target_percent(self, symbol: str, percent: float) -> marketdata_pb.Order:
         amount = self._calculate_order_percent_amount(symbol, percent)
         return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))
 
-    def order_target_value(self, symbol: str, value: float) -> marketdata_pb2.Order:
+    def order_target_value(self, symbol: str, value: float) -> marketdata_pb.Order:
         amount = self._calculate_order_value_amount(symbol, value)
         return self._enqueue(symbol, self._calculate_order_target_amount(symbol, amount))

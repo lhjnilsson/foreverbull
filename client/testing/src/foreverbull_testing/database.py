@@ -16,8 +16,8 @@ from sqlalchemy.types import Numeric
 
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 
 
 Base = declarative_base()
@@ -96,14 +96,14 @@ def prepare(database: engine.Engine) -> None:
         conn.execute(_OHLC_PROVIDER_KEY)
 
 
-def _bars_provider(backtest: backtest_pb2.Backtest) -> str:
+def _bars_provider(backtest: backtest_pb.Backtest) -> str:
     named = (getattr(backtest, "provider", "") or "").strip().lower()
     if named:
         return named
     return ohlc_provider()
 
 
-def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
+def verify(database: engine.Engine, backtest: backtest_pb.Backtest):
     # TODO: Refactor using exchange calendar
     with database.connect() as conn:
         provider = _bars_provider(backtest)
@@ -143,7 +143,7 @@ def verify(database: engine.Engine, backtest: backtest_pb2.Backtest):
         return end.date() == end_date
 
 
-def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
+def populate(database: engine.Engine, backtest: backtest_pb.Backtest):
     # Latest yfinance claims to have fixed the too-many-request issue, keep until verified
     # yfinance.data.YfData.user_agent_headers["User-Agent"] = (
     #    "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
@@ -170,7 +170,7 @@ def populate(database: engine.Engine, backtest: backtest_pb2.Backtest):
         for start, end, symbol in what_to_populate():
             feed = yfinance.Ticker(symbol)
             info = feed.info
-            asset = marketdata_pb2.Asset(
+            asset = marketdata_pb.Asset(
                 symbol=info["symbol"],
                 name="",
             )

@@ -9,6 +9,7 @@ from unittest import mock
 import pandas
 import pytest
 
+from protobuf import merge_from_binary
 from sqlalchemy import event
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -29,9 +30,9 @@ from foreverbull.models import get_engine
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 @pytest.mark.parametrize(
@@ -113,7 +114,7 @@ class TestAsset:
         namespace_server["pe"] = {"AAPL": 12.3}
         assert asset.get_metric("pe") == 12.3
 
-    def test_assets(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_assets(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
@@ -133,7 +134,7 @@ class TestAsset:
                 assert "volume" in stock_data.columns
                 assert len(stock_data) <= _STOCK_DATA_LOOKBACK
 
-    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
@@ -158,7 +159,7 @@ class TestAssets:
         namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
         assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
 
-    def test_stock_data(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_stock_data(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
@@ -177,7 +178,7 @@ class TestAssets:
             counts = stock_data.groupby(level="symbol").size()
             assert (counts <= _STOCK_DATA_LOOKBACK).all()
 
-    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
@@ -191,7 +192,7 @@ class TestAssets:
                 stock_data.index.get_level_values("symbol") if not stock_data.empty else []
             )
 
-    def test_ohlc_rejects_a_second_bar_at_the_same_time(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_ohlc_rejects_a_second_bar_at_the_same_time(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         with database.connect() as conn:
@@ -206,7 +207,7 @@ class TestAssets:
                 )
             conn.rollback()
 
-    def test_iterated_stock_data_matches_direct_asset(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_iterated_stock_data_matches_direct_asset(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         as_of = datetime.now()
@@ -218,9 +219,7 @@ class TestAssets:
                 direct = Asset(as_of, conn, asset.symbol).stock_data
                 pandas.testing.assert_frame_equal(asset.stock_data, direct, check_dtype=True)
 
-    def test_assets_stock_data_one_symbol_matches_asset_query(
-        self, fb_database, backtest_entity: backtest_pb2.Backtest
-    ):
+    def test_assets_stock_data_one_symbol_matches_asset_query(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         as_of = datetime.now()
@@ -233,7 +232,7 @@ class TestAssets:
             one = batched.loc[[symbol]].reset_index()
             pandas.testing.assert_frame_equal(one, direct, check_dtype=True)
 
-    def test_iterated_stock_data_is_one_statement(self, fb_database, backtest_entity: backtest_pb2.Backtest):
+    def test_iterated_stock_data_is_one_statement(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
         as_of = datetime.now()
@@ -298,7 +297,7 @@ class TestPortfolio:
     @pytest.fixture(scope="function")
     def uut(self, db):
         with db.connect() as conn:
-            pb = marketdata_pb2.Portfolio(
+            pb = marketdata_pb.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=UTC)),
                 portfolio_value=1000000,
             )
@@ -366,7 +365,7 @@ class TestPortfolio:
         expected_order_amount,
     ):
         if position_amount:
-            position = marketdata_pb2.Position(
+            position = marketdata_pb.Position(
                 symbol="ptest",
                 amount=position_amount,
             )
@@ -388,7 +387,7 @@ class TestPortfolio:
         expected_order_amount,
     ):
         if position_amount:
-            position = marketdata_pb2.Position(
+            position = marketdata_pb.Position(
                 symbol="ptest",
                 amount=position_amount,
             )
@@ -410,7 +409,7 @@ class TestPortfolio:
         expected_order_amount,
     ):
         if position_amount:
-            position = marketdata_pb2.Position(
+            position = marketdata_pb.Position(
                 symbol="ptest",
                 amount=position_amount,
             )
@@ -422,9 +421,11 @@ class TestPortfolio:
 
     @pytest.mark.parametrize("percent", [0.10, 0.5, 1.0])
     def test_order_share_counts_follow_portfolio_value_percent_over_close(self, uut: Portfolio, percent: float):
+        timestamp = uut._pb.timestamp
+        assert timestamp is not None
         close = uut._db.execute(
             text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
-            {"symbol": "ptest", "dt": uut._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")},
+            {"symbol": "ptest", "dt": timestamp.to_datetime().strftime("%Y-%m-%d")},
         ).scalar()
         assert close is not None
         expected = int(uut._pb.portfolio_value * percent / float(close))
@@ -440,7 +441,9 @@ class TestPortfolio:
         assert by_target_again.amount == expected
 
     def test_repeated_order_value_reuses_close(self, uut: Portfolio):
-        day = uut._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
+        timestamp = uut._pb.timestamp
+        assert timestamp is not None
+        day = timestamp.to_datetime().strftime("%Y-%m-%d")
         close = uut._db.execute(
             text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
             {"symbol": "ptest", "dt": day},
@@ -488,7 +491,7 @@ class TestAllocation:
     def test_equal_weight_percent_rejects_cash_reserve_outside_unit_interval(self, cash_reserve):
         with pytest.raises(ConfigurationError, match="cash reserve outside"):
             equal_weight_percent(1, cash_reserve, 1)
-        portfolio = Portfolio(marketdata_pb2.Portfolio(portfolio_value=100_000), cast(Connection, None))
+        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=100_000), cast(Connection, None))
         with pytest.raises(ConfigurationError, match="cash reserve outside"):
             portfolio.equal_weight_percent(1, cash_reserve, 1)
 
@@ -498,7 +501,7 @@ class TestAllocation:
         assert deployable_value(100_000, 1.0) == 0.0
 
     def test_portfolio_helpers_match_module(self):
-        portfolio = Portfolio(marketdata_pb2.Portfolio(portfolio_value=200_000), cast(Connection, None))
+        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=200_000), cast(Connection, None))
         assert portfolio.deployable_value(0.10) == deployable_value(200_000, 0.10)
         assert portfolio.equal_weight_percent(10, 0.10, 10) == equal_weight_percent(10, 0.10, 10)
         assert portfolio.equal_weight_percent(0, 0.05, 10) == 0.0
@@ -553,8 +556,8 @@ def test_algorithm_definition_wire_contract():
         namespaces=["rsi"],
     )
     definition = algo.get_definition()
-    parsed = worker_pb2.Algorithm()
-    parsed.ParseFromString(definition.SerializeToString())
+    parsed = worker_pb.Algorithm()
+    merge_from_binary(parsed, definition.to_binary())
     assert list(parsed.namespaces) == ["rsi"]
     flags = [(fn.name, fn.parallelExecution, fn.runFirst, fn.runLast) for fn in parsed.functions]
     assert flags == [
@@ -577,7 +580,7 @@ def test_algorithm_process_maps_worker_request_to_orders():
 
     sequential = Algorithm(functions=[Function(callable=handle_data)])
     parallel = Algorithm(functions=[Function(callable=measure_assets)])
-    portfolio = marketdata_pb2.Portfolio(
+    portfolio = marketdata_pb.Portfolio(
         timestamp=pb_utils.to_proto_timestamp(datetime(2024, 3, 9, tzinfo=UTC)),
         cash=1000,
     )
@@ -618,14 +621,14 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "assets",
             "portfolio_key": "portfolio",
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="handle_data",
                 parameters=[
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="low",
                         valueType="int",
                     ),
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="high",
                         valueType="int",
                     ),
@@ -667,15 +670,15 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "asset",
             "portfolio_key": "portfolio",
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="handle_data",
                 parameters=[
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="low",
                         defaultValue="5",
                         valueType="int",
                     ),
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="high",
                         defaultValue="10",
                         valueType="int",
@@ -720,15 +723,15 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "asset",
             "portfolio_key": "portfolio",
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="handle_data",
                 parameters=[
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="low",
                         defaultValue="5",
                         valueType="int",
                     ),
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="high",
                         defaultValue="10",
                         valueType="int",
@@ -784,15 +787,15 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "asset",
             "portfolio_key": None,
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="measure_assets",
                 parameters=[
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="low",
                         defaultValue="5",
                         valueType="int",
                     ),
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key="high",
                         defaultValue="10",
                         valueType="int",
@@ -808,7 +811,7 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "assets",
             "portfolio_key": "portfolio",
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="create_orders",
                 parameters=[],
                 parallelExecution=False,
@@ -821,7 +824,7 @@ algo = Algorithm(
             "callable": mock.ANY,
             "asset_key": "assets",
             "portfolio_key": None,
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name="filter_assets",
                 parameters=[],
                 parallelExecution=False,

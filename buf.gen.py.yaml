@@ -1,8 +1,6 @@
-version: v1
+version: v2
 plugins:
-  - plugin: python
+  - local: protoc-gen-py
     out: client/src/foreverbull/pb
-  - plugin: pyi
-    out: client/src/foreverbull/pb
-  - plugin: buf.build/grpc/python:v1.71.0
+  - local: protoc-gen-grpc-py
     out: client/src/foreverbull/pb

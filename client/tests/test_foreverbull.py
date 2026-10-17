@@ -12,14 +12,15 @@ from foreverbull.foreverbull import BacktestSession
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.foreverbull import TradingSession
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as backtest_session_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as backtest_session_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2_grpc as trading_service_pb2_grpc
-from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb as backtest_session_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb_grpc as backtest_session_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb_grpc as trading_service_pb_grpc
+from foreverbull.pb.foreverbull.finance.v1 import trading_pb
 
 
 class TestBacktestSession:
@@ -28,13 +29,13 @@ class TestBacktestSession:
         grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
         def _add_servicer(backtest_session_servicer):
-            backtest_session_service_pb2_grpc.add_SessionServicerServicer_to_server(
+            backtest_session_service_pb_grpc.SessionServicerServiceSync.add_to_server(
                 backtest_session_servicer, grpc_server
             )
             server_port = grpc_server.add_insecure_port("[::]:7877")
             grpc_server.start()
             time.sleep(0.5)
-            stub = backtest_session_service_pb2_grpc.SessionServicerStub(
+            stub = backtest_session_service_pb_grpc.SessionServicerClientSync(
                 grpc.insecure_channel(f"localhost:{server_port}")
             )
             return stub
@@ -50,20 +51,21 @@ class TestBacktestSession:
     ):
         monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
-        backtest = backtest_pb2.Backtest()
-        session = session_pb2.Session()
-        mocked_session_servicer = MagicMock(spec=backtest_session_service_pb2_grpc.SessionServicerServicer)
-        mocked_session_servicer.CreateExecution.return_value = backtest_session_service_pb2.CreateExecutionResponse(
+        backtest = backtest_pb.Backtest()
+        session = session_pb.Session()
+        mocked_session_servicer = MagicMock(spec=backtest_session_service_pb_grpc.SessionServicerServiceSync)
+        mocked_session_servicer.create_execution.return_value = backtest_session_service_pb.CreateExecutionResponse(
+            execution=execution_pb.Execution(),
             configuration=configuration,
         )
-        mocked_session_servicer.StoreResult.return_value = backtest_session_service_pb2.StoreExecutionResultResponse()
-        mocked_session_servicer.StopServer.return_value = backtest_session_service_pb2.StopServerResponse()
+        mocked_session_servicer.store_result.return_value = backtest_session_service_pb.StoreExecutionResultResponse()
+        mocked_session_servicer.stop_server.return_value = backtest_session_service_pb.StopServerResponse()
 
         def runner(req, ctx):
             for _ in range(10):
-                yield backtest_session_service_pb2.RunExecutionResponse()
+                yield backtest_session_service_pb.RunExecutionResponse()
 
-        mocked_session_servicer.RunExecution = runner
+        mocked_session_servicer.run_execution = runner
 
         stub = start_grpc_server(mocked_session_servicer)
         uut = BacktestSession(model, backtest, session, stub)
@@ -81,11 +83,11 @@ class TestTradingSession:
         grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
         def _add_servicer(trading_session_servicer):
-            trading_service_pb2_grpc.add_SessionServicerServicer_to_server(trading_session_servicer, grpc_server)
+            trading_service_pb_grpc.SessionServicerServiceSync.add_to_server(trading_session_servicer, grpc_server)
             server_port = grpc_server.add_insecure_port("[::]:7877")
             grpc_server.start()
             time.sleep(0.5)
-            stub = trading_service_pb2_grpc.SessionServicerStub(grpc.insecure_channel(f"localhost:{server_port}"))
+            stub = trading_service_pb_grpc.SessionServicerClientSync(grpc.insecure_channel(f"localhost:{server_port}"))
             return stub
 
         try:
@@ -99,11 +101,11 @@ class TestTradingSession:
     ):
         monkeypatch.setenv("THREADED_EXECUTION", "1")
         model, configuration, _ = parallel_algo_file
-        mocked_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
-        mocked_session_servicer.Configure.return_value = trading_service_pb2.ConfigureResponse(
+        mocked_session_servicer = MagicMock(spec=trading_service_pb_grpc.SessionServicerServiceSync)
+        mocked_session_servicer.configure.return_value = trading_service_pb.ConfigureResponse(
             configuration=configuration,
         )
-        mocked_session_servicer.Run.return_value = trading_service_pb2.RunResponse(
+        mocked_session_servicer.run.return_value = trading_service_pb.RunResponse(
             orders=[],
         )
 
@@ -119,9 +121,9 @@ class TestForeverbull:
         grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
         def _add_servicer(backtest_servicer, backtest_session_servicer):
-            backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(backtest_servicer, grpc_server)
+            backtest_service_pb_grpc.BacktestServicerServiceSync.add_to_server(backtest_servicer, grpc_server)
             if backtest_session_servicer:
-                backtest_session_service_pb2_grpc.add_SessionServicerServicer_to_server(
+                backtest_session_service_pb_grpc.SessionServicerServiceSync.add_to_server(
                     backtest_session_servicer, grpc_server
                 )
             server_port = grpc_server.add_insecure_port("[::]:7877")
@@ -140,9 +142,9 @@ class TestForeverbull:
         grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
         def _add_servicer(trading_servicer, trading_session_servicer):
-            trading_service_pb2_grpc.add_TradingServicerServicer_to_server(trading_servicer, grpc_server)
+            trading_service_pb_grpc.TradingServicerServiceSync.add_to_server(trading_servicer, grpc_server)
             if trading_session_servicer:
-                trading_service_pb2_grpc.add_SessionServicerServicer_to_server(trading_session_servicer, grpc_server)
+                trading_service_pb_grpc.SessionServicerServiceSync.add_to_server(trading_session_servicer, grpc_server)
             server_port = grpc_server.add_insecure_port("[::]:7877")
             grpc_server.start()
             time.sleep(1)
@@ -155,14 +157,14 @@ class TestForeverbull:
                 grpc_server.stop(None)
 
     def test_backtest_session(self, parallel_algo_file, backtest_grpc_server):
-        mock_backtest_session_servicer = MagicMock(spec=backtest_session_service_pb2_grpc.SessionServicerServicer)
-        mock_backtest_session_servicer.StopServer.return_value = backtest_session_service_pb2.StopServerResponse()
-        mock_backtest_servicer = MagicMock(spec=backtest_service_pb2_grpc.BacktestServicer)
+        mock_backtest_session_servicer = MagicMock(spec=backtest_session_service_pb_grpc.SessionServicerServiceSync)
+        mock_backtest_session_servicer.stop_server.return_value = backtest_session_service_pb.StopServerResponse()
+        mock_backtest_servicer = MagicMock(spec=backtest_service_pb_grpc.BacktestServicerServiceSync)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
         port = backtest_grpc_server(mock_backtest_servicer, mock_backtest_session_servicer)
-        backtest = backtest_pb2.Backtest()
-        backtest_session = session_pb2.Session(
+        backtest = backtest_pb.Backtest()
+        backtest_session = session_pb.Session(
             port=port,
         )
 
@@ -170,13 +172,13 @@ class TestForeverbull:
             assert type(algo) is BacktestSession, "algo is not of type BacktestSession"
 
     def test_trading_session(self, parallel_algo_file, trading_grpc_server):
-        mock_trading_session_servicer = MagicMock(spec=trading_service_pb2_grpc.SessionServicerServicer)
-        mock_trading_session_servicer.StopServer.return_value = trading_service_pb2.StopServerResponse()
-        mock_trading_servicer = MagicMock(spec=trading_service_pb2_grpc.TradingServicer)
+        mock_trading_session_servicer = MagicMock(spec=trading_service_pb_grpc.SessionServicerServiceSync)
+        mock_trading_session_servicer.stop_server.return_value = trading_service_pb.StopServerResponse()
+        mock_trading_servicer = MagicMock(spec=trading_service_pb_grpc.TradingServicerServiceSync)
         model, _, _ = parallel_algo_file
         algorithm = Foreverbull(model)
         port = trading_grpc_server(mock_trading_servicer, mock_trading_session_servicer)
-        trading_session = trading_pb2.Session(
+        trading_session = trading_pb.Session(
             port=port,
         )
         with algorithm.trading_session(trading_session) as algo:
@@ -185,18 +187,18 @@ class TestForeverbull:
     def test_get_execution_uses_resolved_broker_address(self, monkeypatch):
         seen: list[str] = []
         stub = MagicMock()
-        stub.GetExecution.return_value = MagicMock(execution=MagicMock(), periods=[])
+        stub.get_execution.return_value = MagicMock(execution=MagicMock(), periods=[])
         monkeypatch.setenv("FOREVERBULL_BROKER_ADDRESS", "remote.example:1234")
         monkeypatch.setattr(
             "foreverbull.foreverbull.grpc.insecure_channel",
             lambda addr: seen.append(addr) or MagicMock(),
         )
         monkeypatch.setattr(
-            "foreverbull.foreverbull.backtest_service_pb2_grpc.BacktestServicerStub",
+            "foreverbull.foreverbull.backtest_service_pb_grpc.BacktestServicerClientSync",
             lambda channel: stub,
         )
         algorithm = Foreverbull(None)
         execution, frame = algorithm.get_execution("exec-1")
-        assert execution is stub.GetExecution.return_value.execution
+        assert execution is stub.get_execution.return_value.execution
         assert frame.empty
         assert seen == ["remote.example:1234"]

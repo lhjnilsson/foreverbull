@@ -9,7 +9,7 @@ Four packages, one [uv](https://docs.astral.sh/uv/) workspace. Python 3.12+.
 | `foreverbull-testing` | `testing/` | Pytest plugin for algorithm unit tests |
 | `foreverbull-zipline` | `zipline/` | Zipline gRPC engine (also the `lhjnilsson/zipline` image) |
 
-`client/src/foreverbull/pb/` is generated protobuf. Do not edit it. Change `proto/` at the repo root and run `task proto` (or `task client:proto:generate`).
+📝 `client/src/foreverbull/pb/` is generated protobuf (`*_pb.py` and `*_pb_grpc.py`). Do not edit it. Change `proto/` at the repo root and run `task proto` (or `task client:proto:generate`). The wheel ships those modules, so `uv sync` does not run buf.
 
 ## Setup
 
@@ -19,7 +19,7 @@ From this directory:
 uv sync
 ```
 
-That installs the client library, dev tools (pytest, cookiecutter, grpcio-tools), and `foreverbull-cli` (`fbull` and `fbenv`).
+That installs the client library, dev tools (pytest, cookiecutter, buf), and `foreverbull-cli` (`fbull` and `fbenv`).
 
 ## fbull vs fbenv
 

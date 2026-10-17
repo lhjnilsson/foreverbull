@@ -16,20 +16,22 @@ from multiprocessing.synchronize import Event
 import pynng
 import sqlalchemy
 
+from protobuf import merge_from_binary
+
 from foreverbull import exceptions
 from foreverbull import models
 from foreverbull.broker.utils import database_url_for_host
 from foreverbull.broker.utils import get_engine
 from foreverbull.broker.utils import nng_hostname
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 class Worker(ABC):
     @abstractmethod
-    def configure_execution(self, req: worker_pb2.ExecutionConfiguration) -> None:
+    def configure_execution(self, req: worker_pb.ExecutionConfiguration) -> None:
         pass
 
     @abstractmethod
@@ -56,7 +58,7 @@ class WorkerInstance(Worker):
             send_timeout=500,
         )
 
-    def configure_execution(self, req: worker_pb2.ExecutionConfiguration) -> None:
+    def configure_execution(self, req: worker_pb.ExecutionConfiguration) -> None:
         self.logger.debug("configuring worker")
         try:
             self._algo = models.Algorithm.from_file_path(self._file_path)
@@ -114,29 +116,32 @@ class WorkerInstance(Worker):
             self.logger.debug("Getting context socket")
             context_socket = self._broker_socket.new_context()
             try:
-                request = worker_service_pb2.WorkerRequest()
-                request.ParseFromString(context_socket.recv())
-                response = worker_service_pb2.WorkerResponse(task=request.task, error=None)
-                self.logger.debug(f"Processing {request.portfolio.timestamp} symbols: {request.symbols}")
+                request = worker_service_pb.WorkerRequest()
+                merge_from_binary(request, context_socket.recv())
+                response = worker_service_pb.WorkerResponse(task=request.task, error=None)
+                portfolio = request.portfolio
+                if portfolio is None:
+                    raise exceptions.ConfigurationError("worker request has no portfolio")
+                self.logger.debug(f"Processing {portfolio.timestamp} symbols: {request.symbols}")
                 with self._database_engine.connect() as db:
                     orders = self._algo.process(
                         request.task,
                         db,
-                        request.portfolio,
+                        portfolio,
                         [symbol for symbol in request.symbols],
                     )
                 self.logger.debug("Sending orders to broker: %s", orders)
                 for order in orders:
-                    response.orders.append(marketdata_pb2.Order(symbol=order.symbol, amount=order.amount))
-                context_socket.send(response.SerializeToString())
+                    response.orders.append(marketdata_pb.Order(symbol=order.symbol, amount=order.amount))
+                context_socket.send(response.to_binary())
             except pynng.exceptions.Timeout:
                 pass
             except Exception as e:
                 self.logger.exception("Worker request failed")
                 if request:
-                    response = worker_service_pb2.WorkerResponse()
+                    response = worker_service_pb.WorkerResponse()
                     response.error = repr(e)
-                    context_socket.send(response.SerializeToString())
+                    context_socket.send(response.to_binary())
             finally:
                 context_socket.close()
         self._broker_socket.close()
@@ -181,28 +186,28 @@ class WorkerDaemon(WorkerInstance):
         self._running_event.set()
         self.logger.info("starting worker")
         while not self._stop_event.is_set():
-            request = common_pb2.Request()
+            request = common_pb.Request()
             try:
-                request.ParseFromString(responder.recv())
+                merge_from_binary(request, responder.recv())
                 self.logger.debug(f"Received request: {request.task}")
                 if request.task == "configure":
-                    req = worker_pb2.ExecutionConfiguration()
-                    req.ParseFromString(request.data)
+                    req = worker_pb.ExecutionConfiguration()
+                    merge_from_binary(req, request.data)
                     self.configure_execution(req)
-                    response = common_pb2.Response(task=request.task, error=None)
-                    responder.send(response.SerializeToString())
+                    response = common_pb.Response(task=request.task, error=None)
+                    responder.send(response.to_binary())
                 elif request.task == "run":
                     if not self.is_configured:
                         raise exceptions.ConfigurationError("Worker not configured")
-                    response = common_pb2.Response(task=request.task, error=None)
-                    responder.send(response.SerializeToString())
+                    response = common_pb.Response(task=request.task, error=None)
+                    responder.send(response.to_binary())
                     self.run_execution(self._stop_event)
             except pynng.exceptions.Timeout:
                 continue
             except Exception as e:
                 self.logger.exception("Error processing request")
-                response = common_pb2.Response(task=request.task, error=repr(e))
-                responder.send(response.SerializeToString())
+                response = common_pb.Response(task=request.task, error=repr(e))
+                responder.send(response.to_binary())
             self.logger.debug(f"Request processed: {request.task}")
         responder.close()
         return
@@ -287,15 +292,15 @@ class WorkerPool(Worker):
 
         return wrapper
 
-    def _broadcast(self, request: common_pb2.Request, incomplete: Exception) -> None:
-        self._worker_surveyor_socket.send(request.SerializeToString())
+    def _broadcast(self, request: common_pb.Request, incomplete: Exception) -> None:
+        self._worker_surveyor_socket.send(request.to_binary())
         responders = 0
         while True:
             try:
                 msg = self._worker_surveyor_socket.recv()
-                response = common_pb2.Response()
-                response.ParseFromString(msg)
-                if response.HasField("error"):
+                response = common_pb.Response()
+                merge_from_binary(response, msg)
+                if response.has_field("error"):
                     raise exceptions.ConfigurationError(f"Worker error: {response.error}")
                 responders += 1
                 if responders == len(self._workers):
@@ -306,15 +311,15 @@ class WorkerPool(Worker):
             raise incomplete
 
     @_is_running
-    def configure_execution(self, req: worker_pb2.ExecutionConfiguration):
+    def configure_execution(self, req: worker_pb.ExecutionConfiguration):
         self._broadcast(
-            common_pb2.Request(task="configure", data=req.SerializeToString()),
+            common_pb.Request(task="configure", data=req.to_binary()),
             RuntimeError("Not all workers responded to configure request"),
         )
 
     @_is_running
     def run_execution(self, stop_event: Event | threading.Event):
         self._broadcast(
-            common_pb2.Request(task="run"),
+            common_pb.Request(task="run"),
             Exception("Not all workers responded to run request"),
         )

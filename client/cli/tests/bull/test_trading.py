@@ -8,48 +8,48 @@ from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.trading import PositionAndOrder
 
 from foreverbull.foreverbull import TradingSession
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.finance.v1 import trading_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.finance.v1 import trading_pb
 
 
 pytestmark = pytest.mark.usefixtures("fb_env")
 
 
-def _sample_backtest(name="test_name") -> backtest_pb2.Backtest:
-    return backtest_pb2.Backtest(
+def _sample_backtest(name="test_name") -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
         name=name,
         periods=[
-            backtest_pb2.Backtest.Period(
+            backtest_pb.Backtest.Period(
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(symbol="A", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="B", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="C", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="D", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="E", enabled=False),
+                    backtest_pb.Backtest.Period.Asset(symbol="A", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="B", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="C", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="D", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="E", enabled=False),
                 ]
             )
         ],
     )
 
 
-def _sample_orders() -> list[marketdata_pb2.Order]:
+def _sample_orders() -> list[marketdata_pb.Order]:
     return [
-        marketdata_pb2.Order(symbol="A", amount=10),
-        marketdata_pb2.Order(symbol="B", amount=-10),
-        marketdata_pb2.Order(symbol="E", amount=10),
-        marketdata_pb2.Order(symbol="F", amount=10),
+        marketdata_pb.Order(symbol="A", amount=10),
+        marketdata_pb.Order(symbol="B", amount=-10),
+        marketdata_pb.Order(symbol="E", amount=10),
+        marketdata_pb.Order(symbol="F", amount=10),
     ]
 
 
-def _sample_portfolio() -> marketdata_pb2.Portfolio:
-    return marketdata_pb2.Portfolio(
+def _sample_portfolio() -> marketdata_pb.Portfolio:
+    return marketdata_pb.Portfolio(
         positions=[
-            marketdata_pb2.Position(symbol="A", amount=10),
-            marketdata_pb2.Position(symbol="B", amount=10),
-            marketdata_pb2.Position(symbol="C", amount=10),
-            marketdata_pb2.Position(symbol="D", amount=10),
+            marketdata_pb.Position(symbol="A", amount=10),
+            marketdata_pb.Position(symbol="B", amount=10),
+            marketdata_pb.Position(symbol="C", amount=10),
+            marketdata_pb.Position(symbol="D", amount=10),
         ]
     )
 
@@ -61,14 +61,14 @@ class TestPositionAndOrder:
             ([], [], 0),
             (
                 [
-                    marketdata_pb2.Position(symbol="A", amount=10),
-                    marketdata_pb2.Position(symbol="B", amount=10),
-                    marketdata_pb2.Position(symbol="C", amount=10),
-                    marketdata_pb2.Position(symbol="D", amount=10),
+                    marketdata_pb.Position(symbol="A", amount=10),
+                    marketdata_pb.Position(symbol="B", amount=10),
+                    marketdata_pb.Position(symbol="C", amount=10),
+                    marketdata_pb.Position(symbol="D", amount=10),
                 ],
                 [
-                    marketdata_pb2.Order(symbol="C", amount=10),
-                    marketdata_pb2.Order(symbol="E", amount=10),
+                    marketdata_pb.Order(symbol="C", amount=10),
+                    marketdata_pb.Order(symbol="E", amount=10),
                 ],
                 5,
             ),
@@ -83,23 +83,23 @@ class TestPositionAndOrder:
         [
             (
                 None,
-                marketdata_pb2.Order(symbol="A", amount=10),
-                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_OPEN,
+                marketdata_pb.Order(symbol="A", amount=10),
+                marketdata_pb.PositionIntent.BUY_TO_OPEN,
             ),
             (
                 None,
-                marketdata_pb2.Order(symbol="A", amount=-10),
-                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_OPEN,
+                marketdata_pb.Order(symbol="A", amount=-10),
+                marketdata_pb.PositionIntent.SELL_TO_OPEN,
             ),
             (
-                marketdata_pb2.Position(symbol="A", amount=10),
-                marketdata_pb2.Order(symbol="A", amount=-10),
-                marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_CLOSE,
+                marketdata_pb.Position(symbol="A", amount=10),
+                marketdata_pb.Order(symbol="A", amount=-10),
+                marketdata_pb.PositionIntent.SELL_TO_CLOSE,
             ),
             (
-                marketdata_pb2.Position(symbol="A", amount=-10),
-                marketdata_pb2.Order(symbol="A", amount=10),
-                marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_CLOSE,
+                marketdata_pb.Position(symbol="A", amount=-10),
+                marketdata_pb.Order(symbol="A", amount=10),
+                marketdata_pb.PositionIntent.BUY_TO_CLOSE,
             ),
         ],
     )
@@ -107,14 +107,14 @@ class TestPositionAndOrder:
         item = PositionAndOrder.with_defaults(position, order)
         assert item.order is not None
         assert item.order.intent == expected_intent
-        assert item.order.type == marketdata_pb2.OrderType.ORDER_TYPE_MARKET
-        assert item.order.time_in_force == marketdata_pb2.TimeInForce.TIME_IN_FORCE_DAY
+        assert item.order.type == marketdata_pb.OrderType.MARKET
+        assert item.order.time_in_force == marketdata_pb.TimeInForce.DAY
 
     def test_display_and_rejects_both_none(self):
         with pytest.raises(ValueError, match="Both position and order are None"):
             PositionAndOrder(None, None)
 
-        held = PositionAndOrder(marketdata_pb2.Position(symbol="A", amount=10, cost_basis=12.5), None)
+        held = PositionAndOrder(marketdata_pb.Position(symbol="A", amount=10, cost_basis=12.5), None)
         assert held.symbol == "A"
         assert held.amount == "10"
         assert held.cost_basis == "12.5"
@@ -122,11 +122,11 @@ class TestPositionAndOrder:
         assert held.time_in_force == "-"
         assert held.position_intent == "-"
 
-        opening = PositionAndOrder.with_defaults(None, marketdata_pb2.Order(symbol="B", amount=5))
+        opening = PositionAndOrder.with_defaults(None, marketdata_pb.Order(symbol="B", amount=5))
         assert opening.symbol == "B"
         assert opening.amount == "0 -> 5"
         assert opening.cost_basis == "-"
-        assert opening.order_type == str(marketdata_pb2.OrderType.ORDER_TYPE_MARKET)
+        assert opening.order_type == str(marketdata_pb.OrderType.MARKET)
 
 
 @contextmanager
@@ -144,9 +144,9 @@ def _mock_live_trading():
         from_file_path.return_value = True
         get_backtest.return_value = _sample_backtest()
         create_session.return_value = iter(
-            [trading_service_pb2.CreateSessionResponse(session=trading_pb2.Session(port=7878))]
+            [trading_service_pb.CreateSessionResponse(session=trading_pb.Session(port=7878))]
         )
-        get_portfolio.return_value = trading_service_pb2.GetPortfolioResponse(portfolio=_sample_portfolio())
+        get_portfolio.return_value = trading_service_pb.GetPortfolioResponse(portfolio=_sample_portfolio())
         mock_foreverbull.return_value.trading_session.return_value.__enter__.return_value = mock_session
         yield {
             "place_orders": place_orders,
@@ -216,7 +216,7 @@ def test_trading_run_no_periods(runner):
         patch("foreverbull.broker.finance.create_session") as create_session,
         patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
     ):
-        get_backtest.return_value = backtest_pb2.Backtest(name="empty")
+        get_backtest.return_value = backtest_pb.Backtest(name="empty")
         result = runner(cli, ["trading", "run", "empty", "demo.py", "--yes"])
         assert result.exit_code == 0
         assert "has no periods" in result.stdout

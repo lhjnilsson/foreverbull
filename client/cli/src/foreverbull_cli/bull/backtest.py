@@ -19,10 +19,10 @@ from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.etf_catalog import etf_by_name
 from foreverbull_cli.bull.etf_catalog import etf_catalog
@@ -76,11 +76,12 @@ def _rpc_details(exc: grpc.RpcError) -> str:
 
 
 def _entity_name(
-    entity: backtest_service_pb2.CreateBacktestRequest.CreateFromETF
-    | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest,
+    entity: backtest_service_pb.CreateBacktestRequest.CreateFromETF
+    | backtest_service_pb.CreateBacktestRequest.CreateFromBacktest,
 ) -> str:
-    if isinstance(entity, backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest):
-        return entity.backtest.name
+    if isinstance(entity, backtest_service_pb.CreateBacktestRequest.CreateFromBacktest):
+        backtest = entity.backtest
+        return "" if backtest is None else backtest.name
     return entity.name
 
 
@@ -113,7 +114,7 @@ def _optional_profile(raw: object) -> str:
     return str(raw).strip()
 
 
-def _shown_provider(entity: backtest_pb2.Backtest) -> str:
+def _shown_provider(entity: backtest_pb.Backtest) -> str:
     provider = entity.provider.strip().lower()
     return provider or _DEFAULT_PROVIDER
 
@@ -212,7 +213,7 @@ def _ask_backtest_dates(etf: str) -> tuple[date, date] | None:
             return start, end
 
 
-def _enabled_symbols(entity: backtest_pb2.Backtest) -> str:
+def _enabled_symbols(entity: backtest_pb.Backtest) -> str:
     symbols: list[str] = []
     seen: set[str] = set()
     for current in entity.periods:
@@ -223,7 +224,7 @@ def _enabled_symbols(entity: backtest_pb2.Backtest) -> str:
     return ",".join(symbols)
 
 
-def _backtest_range(entity: backtest_pb2.Backtest) -> tuple[str, str]:
+def _backtest_range(entity: backtest_pb.Backtest) -> tuple[str, str]:
     if not entity.periods:
         return "", ""
     start = format_date_field(entity.periods[0], "start_date")
@@ -236,7 +237,7 @@ def _print_execution_link(execution_id: str) -> None:
         console.print(f"Link: {execution_link(execution_id)}")
 
 
-def _print_executions(executions: list[execution_pb2.Execution], include_backtest: bool = False) -> None:
+def _print_executions(executions: list[execution_pb.Execution], include_backtest: bool = False) -> None:
     table = Table(title="executions")
     table.add_column("ID")
     if include_backtest:
@@ -318,8 +319,8 @@ def create(
             raise typer.Exit(code=1)
 
     entity: (
-        backtest_service_pb2.CreateBacktestRequest.CreateFromETF
-        | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest
+        backtest_service_pb.CreateBacktestRequest.CreateFromETF
+        | backtest_service_pb.CreateBacktestRequest.CreateFromBacktest
     )
     if file:
         if not file.exists():
@@ -329,18 +330,18 @@ def create(
         chosen, source = _choose_provider(flag_provider, data.get("provider"), file.name)
         if chosen is None:
             raise typer.Exit(code=1)
-        entity = backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest(
-            backtest=backtest_pb2.Backtest(
+        entity = backtest_service_pb.CreateBacktestRequest.CreateFromBacktest(
+            backtest=backtest_pb.Backtest(
                 name=data["name"],
                 benchmark=data["benchmark"],
                 provider=chosen,
                 profile=_optional_profile(data.get("profile")),
                 periods=[
-                    backtest_pb2.Backtest.Period(
+                    backtest_pb.Backtest.Period(
                         start_date=from_pydate_to_proto_date(date.fromisoformat(period["start_date"])),
                         end_date=from_pydate_to_proto_date(date.fromisoformat(period["end_date"])),
                         assets=[
-                            backtest_pb2.Backtest.Period.Asset(
+                            backtest_pb.Backtest.Period.Asset(
                                 symbol=asset["symbol"],
                                 enabled=asset["enabled"],
                             )
@@ -363,7 +364,9 @@ def create(
             return
         start, end = dates
         chosen, source = _choose_provider(flag_provider, None, "")
-        entity = backtest_service_pb2.CreateBacktestRequest.CreateFromETF(
+        if chosen is None:
+            raise typer.Exit(code=1)
+        entity = backtest_service_pb.CreateBacktestRequest.CreateFromETF(
             name=name,
             base_etf=base_etf,
             start_date=from_pydate_to_proto_date(start),
@@ -373,21 +376,24 @@ def create(
 
     console.print(f"Using provider: {chosen} ({source})", markup=False)
 
-    created: backtest_pb2.Backtest | None = None
+    created: backtest_pb.Backtest | None = None
     stored = False
     failure: str | None = None
     with LiveProgress() as progress:
         try:
             for backtest_rsp in broker.backtest.create(entity=entity):
                 progress.update_from_message(backtest_rsp)
-                if backtest_rsp.CREATING.state == common_pb2.State.STATE_COMPLETED:
+                creating = backtest_rsp.CREATING
+                if creating is not None and creating.state == common_pb.State.COMPLETED:
                     stored = True
-                if backtest_rsp.STORING.state == common_pb2.State.STATE_COMPLETED:
+                storing = backtest_rsp.STORING
+                if storing is not None and storing.state == common_pb.State.COMPLETED:
                     created = backtest_rsp.backtest
         except grpc.RpcError as exc:
             failure = _rpc_details(exc)
-            if stored and created is None:
-                failure = _discard_partial_backtest(_entity_name(entity), failure)
+            name = _entity_name(entity)
+            if stored and created is None and name != "":
+                failure = _discard_partial_backtest(name, failure)
         failure = failure or progress.failure
         if failure is not None:
             # The failed step's message is the whole error, so the progress
@@ -508,15 +514,19 @@ def delete(
 
 
 def _parse_run_dates(
-    entity: backtest_pb2.Backtest,
+    entity: backtest_pb.Backtest,
     start: str | None,
     end: str | None,
-) -> tuple[common_pb2.Date, common_pb2.Date] | None:
+) -> tuple[common_pb.Date, common_pb.Date] | None:
     if not entity.periods:
         console.print(f"[red]Backtest {entity.name} has no periods")
         return None
 
     start_date = entity.periods[0].start_date
+    end_date = entity.periods[-1].end_date
+    if start_date is None or end_date is None:
+        console.print(f"[red]Backtest {entity.name} is missing a period date")
+        return None
     if start:
         try:
             start_date = from_pydate_to_proto_date(date.fromisoformat(start))
@@ -524,7 +534,6 @@ def _parse_run_dates(
             console.print(f"[red]Invalid start date: [yellow]{start}")
             return None
 
-    end_date = entity.periods[-1].end_date
     if end:
         try:
             end_date = from_pydate_to_proto_date(date.fromisoformat(end))
@@ -566,10 +575,11 @@ def run(
         has_run = False
         for msg in broker.backtest.create_session(name):
             progress.update_from_message(msg)
-            if msg.session.port and not has_run:
+            backtest_session = msg.session
+            if backtest_session is not None and backtest_session.port and not has_run:
                 has_run = True
                 with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
-                    entity, msg.session
+                    entity, backtest_session
                 ) as session:
                     with progress.bar_progress("execution") as bar_progress:
                         for execution_id, message in session.run_execution(

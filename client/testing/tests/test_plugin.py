@@ -13,9 +13,9 @@ from foreverbull_testing.plugin import _backtest
 from sqlalchemy import Connection
 
 from foreverbull.models.finance import Assets
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb
 
 
 def test_setup_env_does_not_start_docker(monkeypatch):
@@ -105,7 +105,7 @@ def test_backtest_fixture_skips_when_backtest_missing(monkeypatch):
 def test_backtest_fixture_skips_when_session_does_not_start(monkeypatch):
     monkeypatch.setattr(
         "foreverbull.broker.backtest.get",
-        lambda name: backtest_pb2.Backtest(name=name),
+        lambda name: backtest_pb.Backtest(name=name),
     )
     monkeypatch.setattr("foreverbull.broker.backtest.create_session", lambda name: iter(()))
     with pytest.raises(pytest.skip.Exception, match="session did not start"):
@@ -118,7 +118,7 @@ def test_backtest_fixture_skips_when_create_session_fails(monkeypatch):
 
     monkeypatch.setattr(
         "foreverbull.broker.backtest.get",
-        lambda name: backtest_pb2.Backtest(name=name),
+        lambda name: backtest_pb.Backtest(name=name),
     )
     monkeypatch.setattr("foreverbull.broker.backtest.create_session", fail)
     with pytest.raises(pytest.skip.Exception, match="session failed"):
@@ -126,7 +126,7 @@ def test_backtest_fixture_skips_when_create_session_fails(monkeypatch):
 
 
 def test_backtest_fixture_skips_when_backtest_name_empty(monkeypatch):
-    monkeypatch.setattr("foreverbull.broker.backtest.get", lambda name: backtest_pb2.Backtest())
+    monkeypatch.setattr("foreverbull.broker.backtest.get", lambda name: backtest_pb.Backtest())
     monkeypatch.setattr(
         "foreverbull.broker.backtest.create_session",
         lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
@@ -136,11 +136,11 @@ def test_backtest_fixture_skips_when_backtest_name_empty(monkeypatch):
 
 
 def test_backtest_fixture_yields_broker_backtest(monkeypatch):
-    entity = backtest_pb2.Backtest(name="demo")
-    ready = session_pb2.Session(id="sess-1", backtest="demo", port=27001)
+    entity = backtest_pb.Backtest(name="demo")
+    ready = session_pb.Session(id="sess-1", backtest="demo", port=27001)
     messages = [
-        backtest_service_pb2.CreateSessionResponse(),
-        backtest_service_pb2.CreateSessionResponse(session=ready),
+        backtest_service_pb.CreateSessionResponse(),
+        backtest_service_pb.CreateSessionResponse(session=ready),
     ]
     calls = {"get": [], "create_session": [], "backtest_session": [], "trading_session": []}
     trading_before = os.environ.get("TRADING_ENABLED")

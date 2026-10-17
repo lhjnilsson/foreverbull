@@ -5,18 +5,21 @@ from typing import Concatenate
 
 import grpc
 
+from protobuf.wkt import Struct
+
 from foreverbull.broker.config import resolve_broker_address
-from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb2
-from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb2_grpc
-from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb2
+from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb
+from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb_grpc
+from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
+from foreverbull.pb.pb_utils import required
 
 
 def strategy_servicer[R, **P](
-    f: Callable[Concatenate[strategy_service_pb2_grpc.StrategyServicerStub, P], R],
+    f: Callable[Concatenate[strategy_service_pb_grpc.StrategyServicerClientSync, P], R],
 ) -> Callable[P, R]:
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
-        servicer = strategy_service_pb2_grpc.StrategyServicerStub(grpc.insecure_channel(resolve_broker_address()))
+        servicer = strategy_service_pb_grpc.StrategyServicerClientSync(grpc.insecure_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper
@@ -24,50 +27,50 @@ def strategy_servicer[R, **P](
 
 @strategy_servicer
 def create_strategy(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     name: str,
     description: str | None = None,
-) -> strategy_pb2.Strategy:
-    req = strategy_service_pb2.CreateStrategyRequest(name=name)
+) -> strategy_pb.Strategy:
+    req = strategy_service_pb.CreateStrategyRequest(name=name)
     if description:
         req.description = description
-    return servicer.CreateStrategy(req).strategy
+    return required(servicer.create_strategy(req).strategy, "strategy")
 
 
 @strategy_servicer
 def get_strategy(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     name: str,
-) -> strategy_pb2.Strategy:
-    req = strategy_service_pb2.GetStrategyRequest(name=name)
-    return servicer.GetStrategy(req).strategy
+) -> strategy_pb.Strategy:
+    req = strategy_service_pb.GetStrategyRequest(name=name)
+    return required(servicer.get_strategy(req).strategy, "strategy")
 
 
 @strategy_servicer
 def create_version(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     service_image: str,
     parameters: dict | None = None,
-) -> strategy_pb2.Version:
-    req = strategy_service_pb2.CreateVersionRequest(
+) -> strategy_pb.Version:
+    req = strategy_service_pb.CreateVersionRequest(
         strategy_name=strategy_name,
         service_image=service_image,
     )
     if parameters:
-        req.parameters.update(parameters)
-    return servicer.CreateVersion(req).version
+        req.parameters = Struct.from_python(parameters)
+    return required(servicer.create_version(req).version, "version")
 
 
 @strategy_servicer
 def create_experiment(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     backtest_name: str,
     version_id: str | None = None,
     version_rev: int | None = None,
-) -> Generator[strategy_service_pb2.CreateExperimentResponse, None, None]:
-    req = strategy_service_pb2.CreateExperimentRequest(
+) -> Generator[strategy_service_pb.CreateExperimentResponse, None, None]:
+    req = strategy_service_pb.CreateExperimentRequest(
         strategy_name=strategy_name,
         backtest_name=backtest_name,
     )
@@ -75,27 +78,27 @@ def create_experiment(
         req.version_id = version_id
     if version_rev:
         req.version_rev = version_rev
-    return servicer.CreateExperiment(req)
+    return servicer.create_experiment(req)
 
 
 @strategy_servicer
 def list_experiments(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     version_id: str | None = None,
     backtest_name: str | None = None,
-) -> list[strategy_pb2.Experiment]:
-    req = strategy_service_pb2.ListExperimentsRequest(strategy_name=strategy_name)
+) -> list[strategy_pb.Experiment]:
+    req = strategy_service_pb.ListExperimentsRequest(strategy_name=strategy_name)
     if version_id:
         req.version_id = version_id
     if backtest_name:
         req.backtest_name = backtest_name
-    return servicer.ListExperiments(req).experiments
+    return servicer.list_experiments(req).experiments
 
 
 @strategy_servicer
 def deploy(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     version_id: str | None = None,
     version_rev: int | None = None,
@@ -104,10 +107,10 @@ def deploy(
     backend: str | None = None,
     calendar_code: str | None = None,
     symbols: list[str] | None = None,
-) -> strategy_pb2.Deployment:
-    req = strategy_service_pb2.DeployRequest(
+) -> strategy_pb.Deployment:
+    req = strategy_service_pb.DeployRequest(
         strategy_name=strategy_name,
-        mode=strategy_pb2.Deployment.PAPER,
+        mode=strategy_pb.Deployment.Mode.PAPER,
         dry_run=dry_run,
         confirm=confirm,
         symbols=symbols or [],
@@ -120,28 +123,28 @@ def deploy(
         req.backend = backend
     if calendar_code:
         req.calendar_code = calendar_code
-    return servicer.Deploy(req).deployment
+    return required(servicer.deploy(req).deployment, "deployment")
 
 
 @strategy_servicer
 def stop_deployment(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     deployment_id: str | None = None,
-) -> strategy_pb2.Deployment:
-    req = strategy_service_pb2.StopDeploymentRequest(strategy_name=strategy_name)
+) -> strategy_pb.Deployment:
+    req = strategy_service_pb.StopDeploymentRequest(strategy_name=strategy_name)
     if deployment_id:
         req.deployment_id = deployment_id
-    return servicer.StopDeployment(req).deployment
+    return required(servicer.stop_deployment(req).deployment, "deployment")
 
 
 @strategy_servicer
 def list_deployment_runs(
-    servicer: strategy_service_pb2_grpc.StrategyServicerStub,
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
     strategy_name: str,
     deployment_id: str | None = None,
-) -> list[strategy_pb2.DeploymentRun]:
-    req = strategy_service_pb2.ListDeploymentRunsRequest(strategy_name=strategy_name)
+) -> list[strategy_pb.DeploymentRun]:
+    req = strategy_service_pb.ListDeploymentRunsRequest(strategy_name=strategy_name)
     if deployment_id:
         req.deployment_id = deployment_id
-    return servicer.ListDeploymentRuns(req).runs
+    return servicer.list_deployment_runs(req).runs

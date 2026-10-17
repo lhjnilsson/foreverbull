@@ -18,8 +18,8 @@ from foreverbull import models
 from foreverbull.broker.storage import Storage
 from foreverbull.foreverbull import BacktestSession
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 
 
 @dataclass
@@ -145,7 +145,7 @@ class PortfolioManager:
         proto_positions = []
         for position in positions:
             proto_positions.append(
-                marketdata_pb2.Position(
+                marketdata_pb.Position(
                     symbol=position.symbol,
                     amount=position.amount,
                 )
@@ -154,7 +154,7 @@ class PortfolioManager:
         if dt is not None:
             dt = dt.replace(tzinfo=UTC)  # Make sure its UTC, TODO: Replace datetime with date
         return Portfolio(
-            marketdata_pb2.Portfolio(
+            marketdata_pb.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(dt) if dt else None,
                 positions=proto_positions,
                 portfolio_value=portfolio_value,
@@ -164,7 +164,7 @@ class PortfolioManager:
 
 
 class BacktestResult:
-    def __init__(self, backtest: backtest_pb2.Backtest, execution_id: str):
+    def __init__(self, backtest: backtest_pb.Backtest, execution_id: str):
         self._backtest = backtest
         self._execution_id = execution_id
         self.__df = None
@@ -186,17 +186,18 @@ class Backtest:
     def __init__(self, backtest_session: BacktestSession):
         self._backtest_session = backtest_session
 
-    def get_default(self) -> backtest_pb2.Backtest:
+    def get_default(self) -> backtest_pb.Backtest:
         return self._backtest_session.backtest
 
-    def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb2.Backtest) -> BacktestResult:
+    def run_execution(self, algorithm: models.Algorithm, backtest: backtest_pb.Backtest) -> BacktestResult:
         self._backtest_session._algorithm = algorithm
         periods = []
         exc_id: str | None = None
-        for exc_id, period in self._backtest_session.run_execution(
-            backtest.periods[0].start_date,
-            backtest.periods[-1].end_date,
-        ):
+        start = backtest.periods[0].start_date
+        end = backtest.periods[-1].end_date
+        if start is None or end is None:
+            raise ValueError("backtest period is missing a date")
+        for exc_id, period in self._backtest_session.run_execution(start, end):
             periods.append(period)
         assert exc_id is not None, "no execution id"
         return BacktestResult(backtest, exc_id)

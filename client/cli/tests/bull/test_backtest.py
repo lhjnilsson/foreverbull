@@ -22,14 +22,14 @@ from foreverbull_cli.output import execution_link
 from typer.testing import CliRunner
 
 from foreverbull.foreverbull import BacktestSession
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2 as backtest_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2 as session_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb as session_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb_grpc as session_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 
 
@@ -39,27 +39,27 @@ START = date(2020, 1, 1)
 END = date(2020, 1, 31)
 
 
-def _sample_backtest(name="test_name", benchmark="SPY", provider="") -> backtest_pb2.Backtest:
-    return backtest_pb2.Backtest(
+def _sample_backtest(name="test_name", benchmark="SPY", provider="") -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
         name=name,
         benchmark=benchmark,
         provider=provider,
         periods=[
-            backtest_pb2.Backtest.Period(
+            backtest_pb.Backtest.Period(
                 start_date=from_pydate_to_proto_date(START),
                 end_date=from_pydate_to_proto_date(END),
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(symbol="AAPL", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="MSFT", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="IBM", enabled=False),
+                    backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="MSFT", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="IBM", enabled=False),
                 ],
             )
         ],
     )
 
 
-def _sample_execution(execution_id="exec-1") -> execution_pb2.Execution:
-    return execution_pb2.Execution(
+def _sample_execution(execution_id="exec-1") -> execution_pb.Execution:
+    return execution_pb.Execution(
         id=execution_id,
         backtest="test_name",
         session="sess-1",
@@ -85,11 +85,11 @@ def test_backtest_create(runner):
     with patch("foreverbull.broker.backtest.create") as mock_create:
         mock_create.return_value = iter(
             [
-                backtest_service_pb2.CreateBacktestResponse(
-                    CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest_service_pb.CreateBacktestResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                     backtest=_sample_backtest(),
                 )
             ]
@@ -123,20 +123,20 @@ _YAHOO_BLOCKED = (
 
 def _blocked_stream(message: str):
     def stream(**_kwargs):
-        yield backtest_service_pb2.CreateBacktestResponse(
-            CREATING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
-            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
-            INGESTING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
-            STORING=common_pb2.Step(state=common_pb2.State.STATE_UNSPECIFIED),
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            INGESTING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            STORING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
         )
-        yield backtest_service_pb2.CreateBacktestResponse(
-            CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
         )
         # The orchestrator copies the download command's error into the step.
-        yield backtest_service_pb2.CreateBacktestResponse(
-            CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-            DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_FAILED, message=message),
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=message),
         )
 
     return stream
@@ -202,9 +202,9 @@ class _BrokenStream(grpc.RpcError):
 
 
 def _stream_breaking_after_creating(**_kwargs):
-    yield backtest_service_pb2.CreateBacktestResponse(
-        CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-        DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+    yield backtest_service_pb.CreateBacktestResponse(
+        CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+        DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
     )
     raise _BrokenStream("Socket closed")
 
@@ -271,8 +271,8 @@ def test_backtest_create_broken_stream_before_creating_keeps_existing(monkeypatc
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
 
     def stream(**_kwargs):
-        yield backtest_service_pb2.CreateBacktestResponse(
-            CREATING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.RUNNING),
         )
         raise _BrokenStream("Socket closed")
 
@@ -291,11 +291,11 @@ def test_backtest_create_reprompts_invalid_dates(runner):
     with patch("foreverbull.broker.backtest.create") as mock_create:
         mock_create.return_value = iter(
             [
-                backtest_service_pb2.CreateBacktestResponse(
-                    CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest_service_pb.CreateBacktestResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                     backtest=_sample_backtest(),
                 )
             ]
@@ -329,11 +329,11 @@ def test_backtest_etfs(runner):
 def _created_backtest_response():
     return iter(
         [
-            backtest_service_pb2.CreateBacktestResponse(
-                CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                INGESTING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+            backtest_service_pb.CreateBacktestResponse(
+                CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+                INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+                STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                 backtest=_sample_backtest(),
             )
         ]
@@ -457,16 +457,16 @@ def test_backtest_create_from_file(runner):
             }
         ],
     }
-    created = backtest_pb2.Backtest(
+    created = backtest_pb.Backtest(
         name="from_file",
         benchmark="QQQ",
         periods=[
-            backtest_pb2.Backtest.Period(
+            backtest_pb.Backtest.Period(
                 start_date=from_pydate_to_proto_date(date(2021, 1, 1)),
                 end_date=from_pydate_to_proto_date(date(2021, 1, 31)),
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(symbol="AAPL", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="MSFT", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="MSFT", enabled=True),
                 ],
             )
         ],
@@ -479,8 +479,8 @@ def test_backtest_create_from_file(runner):
         cfg_file.flush()
         mock_create.return_value = iter(
             [
-                backtest_service_pb2.CreateBacktestResponse(
-                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest_service_pb.CreateBacktestResponse(
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                     backtest=created,
                 )
             ]
@@ -527,8 +527,8 @@ def test_backtest_create_from_file_reads_provider_and_profile(runner):
         cfg_file.flush()
         mock_create.return_value = iter(
             [
-                backtest_service_pb2.CreateBacktestResponse(
-                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest_service_pb.CreateBacktestResponse(
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                     backtest=created,
                 )
             ]
@@ -552,8 +552,8 @@ def test_backtest_create_provider_flag_overrides_file(runner):
         cfg_file.flush()
         mock_create.return_value = iter(
             [
-                backtest_service_pb2.CreateBacktestResponse(
-                    STORING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+                backtest_service_pb.CreateBacktestResponse(
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                     backtest=_sample_backtest(name="from_file", benchmark="QQQ", provider="stooq"),
                 )
             ]
@@ -667,8 +667,8 @@ def start_grpc_server():
     grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))
 
     def _add_servicer(broker_servicer, broker_session_servicer):
-        backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(broker_servicer, grpc_server)
-        session_service_pb2_grpc.add_SessionServicerServicer_to_server(broker_session_servicer, grpc_server)
+        backtest_service_pb_grpc.BacktestServicerServiceSync.add_to_server(broker_servicer, grpc_server)
+        session_service_pb_grpc.SessionServicerServiceSync.add_to_server(broker_session_servicer, grpc_server)
         server_port = grpc_server.add_insecure_port("[::]:7877")
         grpc_server.start()
         time.sleep(1)
@@ -685,7 +685,7 @@ def _run_session_mocks():
         [
             (
                 "exec-1",
-                session_service_pb2.RunExecutionResponse(num_current_period=1, num_total_periods=2),
+                session_service_pb.RunExecutionResponse(num_current_period=1, num_total_periods=2),
             )
         ]
     )
@@ -703,7 +703,7 @@ def test_backtest_run(runner):
         from_file_path.return_value = True
         get.return_value = _sample_backtest()
         create_session.return_value = iter(
-            [backtest_service_pb2.CreateSessionResponse(session=session_pb2.Session(port=7878))]
+            [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py"])
@@ -751,7 +751,7 @@ def test_backtest_executions(runner):
 
 
 def test_backtest_execution(runner):
-    period = execution_pb2.Period(
+    period = execution_pb.Period(
         date=from_pydate_to_proto_date(date(2020, 1, 2)),
         portfolio_value=1000.5,
         alpha=0.12,

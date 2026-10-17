@@ -20,7 +20,7 @@ from zipline.utils.cli import maybe_show_progress
 from foreverbull.models import get_engine
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 
 
 warnings.filterwarnings("ignore")
@@ -48,7 +48,7 @@ def membership_auto_close_date(end_date, membership_to: date | None):
     return pd.Timestamp(end_date) + pd.Timedelta(days=1)
 
 
-def bundle_provider(backtest: backtest_pb2.Backtest) -> str:
+def bundle_provider(backtest: backtest_pb.Backtest) -> str:
     """Bar provider for a bundle. The backtest field wins. Otherwise OHLC_PROVIDER, else DEFAULT_PROVIDER (yahoo)."""
     named = (getattr(backtest, "provider", "") or "").strip().lower()
     if named:
@@ -56,7 +56,7 @@ def bundle_provider(backtest: backtest_pb2.Backtest) -> str:
     return ohlc_provider()
 
 
-def ingest_symbols(backtest: backtest_pb2.Backtest) -> list[str]:
+def ingest_symbols(backtest: backtest_pb.Backtest) -> list[str]:
     symbols = {asset.symbol for period in backtest.periods for asset in period.assets if asset.enabled and asset.symbol}
     if backtest.benchmark:
         symbols.add(backtest.benchmark)
@@ -154,7 +154,7 @@ class SQLIngester:
 
     def __init__(
         self,
-        backtest: backtest_pb2.Backtest,
+        backtest: backtest_pb.Backtest,
         engine=None,
         aliases: pd.DataFrame | None = None,
     ):

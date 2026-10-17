@@ -11,15 +11,18 @@ from multiprocessing import set_start_method
 import pynng
 import pytest
 
+from protobuf import merge_from_binary
+from protobuf.wkt import Timestamp
+
 from foreverbull import Algorithm
 from foreverbull import Order
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.service.service.v1 import worker_pb2 as worker_service_pb2
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 # Worker configure/run tests that execute SQL must also request fb_database.
@@ -52,110 +55,110 @@ def spawn_process():
 
 @pytest.fixture(scope="session")
 def backtest_entity():
-    return backtest_pb2.Backtest(
+    return backtest_pb.Backtest(
         name="testing_backtest",
         periods=[
-            backtest_pb2.Backtest.Period(
-                start_date=common_pb2.Date(year=2022, month=1, day=3),
-                end_date=common_pb2.Date(year=2023, month=12, day=29),
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2022, month=1, day=3),
+                end_date=common_pb.Date(year=2023, month=12, day=29),
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="AAPL",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="AMZN",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="BAC",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="BRK-B",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="CMCSA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="CSCO",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="DIS",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="GOOG",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="GOOGL",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="HD",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="INTC",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="JNJ",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="JPM",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="KO",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="META",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MRK",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MSFT",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="PEP",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="PG",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="TSLA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="UNH",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="V",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="VZ",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="WMT",
                         enabled=True,
                     ),
@@ -167,10 +170,10 @@ def backtest_entity():
 
 @pytest.fixture(scope="function")
 def execution():
-    return execution_pb2.Execution(
+    return execution_pb.Execution(
         id="test",
-        start_date=common_pb2.Date(year=2022, month=1, day=3),
-        end_date=common_pb2.Date(year=2023, month=12, day=29),
+        start_date=common_pb.Date(year=2022, month=1, day=3),
+        end_date=common_pb.Date(year=2023, month=12, day=29),
     )
 
 
@@ -179,7 +182,7 @@ def get_algo(file_path: str) -> Algorithm:
 
 
 def backtest_date_range(
-    backtest: backtest_pb2.Backtest,
+    backtest: backtest_pb.Backtest,
 ) -> Iterator[tuple[datetime.datetime, list[str]]]:
     for period in backtest.periods:
         start = pb_utils.from_proto_date_to_pydate(period.start_date)
@@ -191,9 +194,9 @@ def backtest_date_range(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict):
+def parallel_algo_file(backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        portfolio = marketdata_pb2.Portfolio(
+        portfolio = marketdata_pb.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
@@ -201,18 +204,18 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.F
         orders: list[Order] = []
 
         for dt, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp.FromDatetime(dt)
+            portfolio.timestamp = Timestamp.from_datetime(dt.replace(tzinfo=datetime.UTC))
             for symbol in symbols:
-                request = worker_service_pb2.WorkerRequest(
+                request = worker_service_pb.WorkerRequest(
                     task="parallel_algo",
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-                server_socket.send(request.SerializeToString())
-                response = worker_service_pb2.WorkerResponse()
-                response.ParseFromString(server_socket.recv())
+                server_socket.send(request.to_binary())
+                response = worker_service_pb.WorkerResponse()
+                merge_from_binary(response, server_socket.recv())
                 assert response.task == "parallel_algo"
-                assert response.HasField("error") is False
+                assert response.has_field("error") is False
                 for order in response.orders:
                     orders.append(
                         Order(
@@ -222,7 +225,7 @@ def parallel_algo_file(backtest_entity: backtest_pb2.Backtest, request: pytest.F
                     )
         return orders
 
-    configuration = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5656,
         namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
@@ -262,28 +265,28 @@ algo = Algorithm(
 
 @pytest.fixture(scope="function")
 def non_parallel_algo_file(
-    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
 ):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
-        portfolio = marketdata_pb2.Portfolio(
+        portfolio = marketdata_pb.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
         for dt, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp.FromDatetime(dt)
-            request = worker_service_pb2.WorkerRequest(
+            portfolio.timestamp = Timestamp.from_datetime(dt.replace(tzinfo=datetime.UTC))
+            request = worker_service_pb.WorkerRequest(
                 task="non_parallel_algo",
                 symbols=symbols,
                 portfolio=portfolio,
             )
 
-            server_socket.send(request.SerializeToString())
-            response = worker_service_pb2.WorkerResponse()
-            response.ParseFromString(server_socket.recv())
+            server_socket.send(request.to_binary())
+            response = worker_service_pb.WorkerResponse()
+            merge_from_binary(response, server_socket.recv())
             assert response.task == "non_parallel_algo"
-            assert response.HasField("error") is False
+            assert response.has_field("error") is False
             for order in response.orders:
                 orders.append(
                     Order(
@@ -293,7 +296,7 @@ def non_parallel_algo_file(
                 )
         return orders
 
-    configuration = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5657,
         namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
@@ -334,28 +337,28 @@ algo = Algorithm(
 
 @pytest.fixture(scope="function")
 def parallel_algo_file_with_parameters(
-    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
 ):
     def _process_symbols(server_socket) -> list[Order]:
-        portfolio = marketdata_pb2.Portfolio(
+        portfolio = marketdata_pb.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
         for dt, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp.FromDatetime(dt)
+            portfolio.timestamp = Timestamp.from_datetime(dt.replace(tzinfo=datetime.UTC))
             for symbol in symbols:
-                request = worker_service_pb2.WorkerRequest(
+                request = worker_service_pb.WorkerRequest(
                     task="parallel_algo_with_parameters",
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-                server_socket.send(request.SerializeToString())
-                response = worker_service_pb2.WorkerResponse()
-                response.ParseFromString(server_socket.recv())
+                server_socket.send(request.to_binary())
+                response = worker_service_pb.WorkerResponse()
+                merge_from_binary(response, server_socket.recv())
                 assert response.task == "parallel_algo_with_parameters"
-                assert response.HasField("error") is False
+                assert response.has_field("error") is False
                 for order in response.orders:
                     orders.append(
                         Order(
@@ -366,16 +369,16 @@ def parallel_algo_file_with_parameters(
 
         return orders
 
-    configuration = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5658,
         namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
-            worker_pb2.ExecutionConfiguration.Function(
+            worker_pb.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -414,28 +417,28 @@ algo = Algorithm(
 
 @pytest.fixture(scope="function")
 def non_parallel_algo_file_with_parameters(
-    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server: dict
+    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
 ):
     def _process_symbols(server_socket) -> list[Order]:
-        portfolio = marketdata_pb2.Portfolio(
+        portfolio = marketdata_pb.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
         for dt, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp.FromDatetime(dt)
-            request = worker_service_pb2.WorkerRequest(
+            portfolio.timestamp = Timestamp.from_datetime(dt.replace(tzinfo=datetime.UTC))
+            request = worker_service_pb.WorkerRequest(
                 task="non_parallel_algo_with_parameters",
                 symbols=symbols,
                 portfolio=portfolio,
             )
 
-            server_socket.send(request.SerializeToString())
-            response = worker_service_pb2.WorkerResponse()
-            response.ParseFromString(server_socket.recv())
+            server_socket.send(request.to_binary())
+            response = worker_service_pb.WorkerResponse()
+            merge_from_binary(response, server_socket.recv())
             assert response.task == "non_parallel_algo_with_parameters"
-            assert response.HasField("error") is False
+            assert response.has_field("error") is False
             for order in response.orders:
                 orders.append(
                     Order(
@@ -445,16 +448,16 @@ def non_parallel_algo_file_with_parameters(
                 )
         return orders
 
-    configuration = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5659,
         namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
-            worker_pb2.ExecutionConfiguration.Function(
+            worker_pb.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             )
         ],
@@ -494,71 +497,71 @@ algo = Algorithm(
 
 @pytest.fixture(scope="function")
 def multistep_algo_with_namespace(
-    backtest_entity: backtest_pb2.Backtest, request: pytest.FixtureRequest, namespace_server
+    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server
 ):
     def _process_symbols(server_socket) -> list[Order]:
-        portfolio = marketdata_pb2.Portfolio(
+        portfolio = marketdata_pb.Portfolio(
             cash=0,
             portfolio_value=0,
             positions=[],
         )
         orders: list[Order] = []
         for dt, symbols in backtest_date_range(backtest_entity):
-            portfolio.timestamp.FromDatetime(dt)
-            req = worker_service_pb2.WorkerRequest(
+            portfolio.timestamp = Timestamp.from_datetime(dt.replace(tzinfo=datetime.UTC))
+            req = worker_service_pb.WorkerRequest(
                 task="filter_assets",
                 symbols=symbols,
                 portfolio=portfolio,
             )
-            server_socket.send(req.SerializeToString())
-            response = worker_service_pb2.WorkerResponse()
-            response.ParseFromString(server_socket.recv())
+            server_socket.send(req.to_binary())
+            response = worker_service_pb.WorkerResponse()
+            merge_from_binary(response, server_socket.recv())
             assert response.task == "filter_assets"
-            assert response.HasField("error") is False
+            assert response.has_field("error") is False
 
             # measure assets
             for symbol in symbols:
-                req = worker_service_pb2.WorkerRequest(
+                req = worker_service_pb.WorkerRequest(
                     task="measure_assets",
                     symbols=[symbol],
                     portfolio=portfolio,
                 )
-                server_socket.send(req.SerializeToString())
-                response = worker_service_pb2.WorkerResponse()
-                response.ParseFromString(server_socket.recv())
+                server_socket.send(req.to_binary())
+                response = worker_service_pb.WorkerResponse()
+                merge_from_binary(response, server_socket.recv())
                 assert response.task == "measure_assets"
-                assert response.HasField("error") is False
+                assert response.has_field("error") is False
 
             # create orders
-            req = worker_service_pb2.WorkerRequest(
+            req = worker_service_pb.WorkerRequest(
                 task="create_orders",
                 symbols=symbols,
                 portfolio=portfolio,
             )
-            server_socket.send(req.SerializeToString())
-            response = worker_service_pb2.WorkerResponse()
-            response.ParseFromString(server_socket.recv())
+            server_socket.send(req.to_binary())
+            response = worker_service_pb.WorkerResponse()
+            merge_from_binary(response, server_socket.recv())
             assert response.task == "create_orders"
-            assert response.HasField("error") is False
+            assert response.has_field("error") is False
         return orders
 
-    configuration = worker_pb2.ExecutionConfiguration(
+    configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5660,
         namespacePort=_namespace_port(namespace_server),
         databaseURL=_execution_database_url(request),
         functions=[
-            worker_pb2.ExecutionConfiguration.Function(
+            worker_pb.ExecutionConfiguration.Function(
                 name="measure_assets",
                 parameters=[
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
-                    worker_pb2.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="low", value="5"),
+                    worker_pb.ExecutionConfiguration.FunctionParameter(key="high", value="10"),
                 ],
             ),
-            worker_pb2.ExecutionConfiguration.Function(
+            worker_pb.ExecutionConfiguration.Function(
                 name="create_orders",
                 parameters=[],
             ),
-            worker_pb2.ExecutionConfiguration.Function(
+            worker_pb.ExecutionConfiguration.Function(
                 name="filter_assets",
                 parameters=[],
             ),

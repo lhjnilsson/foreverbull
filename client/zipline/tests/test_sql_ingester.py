@@ -10,8 +10,8 @@ from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_d
 
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.models.finance import ohlc_provider
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 
 
 META_ISIN = "US30303M1027"
@@ -39,18 +39,18 @@ class FakeEngine:
         return self.frames[symbol].copy()
 
 
-def _backtest() -> backtest_pb2.Backtest:
-    return backtest_pb2.Backtest(
+def _backtest() -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
         name="sp100",
         benchmark="OEF",
         periods=[
-            backtest_pb2.Backtest.Period(
-                start_date=common_pb2.Date(year=2022, month=12, day=1),
-                end_date=common_pb2.Date(year=2023, month=2, day=28),
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2022, month=12, day=1),
+                end_date=common_pb.Date(year=2023, month=2, day=28),
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(symbol="FB", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="AAPL", enabled=True),
-                    backtest_pb2.Backtest.Period.Asset(symbol="META", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="FB", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="META", enabled=True),
                 ],
             )
         ],
@@ -67,10 +67,10 @@ def test_ohlc_provider_unset_defaults_to_yahoo(monkeypatch):
 def test_bundle_provider_uses_backtest_before_env(monkeypatch):
     # The env value differs from DEFAULT_PROVIDER so each fallback step is visible.
     monkeypatch.setenv("OHLC_PROVIDER", "stooq")
-    assert bundle_provider(backtest_pb2.Backtest(provider="alpaca")) == "alpaca"
-    assert bundle_provider(backtest_pb2.Backtest()) == "stooq"
+    assert bundle_provider(backtest_pb.Backtest(provider="alpaca")) == "alpaca"
+    assert bundle_provider(backtest_pb.Backtest()) == "stooq"
     monkeypatch.delenv("OHLC_PROVIDER", raising=False)
-    assert bundle_provider(backtest_pb2.Backtest()) == DEFAULT_PROVIDER
+    assert bundle_provider(backtest_pb.Backtest()) == DEFAULT_PROVIDER
 
 
 class _ProviderEngine:
@@ -84,7 +84,7 @@ class _ProviderEngine:
 def test_sql_ingester_threads_backtest_provider(monkeypatch):
     monkeypatch.setenv("OHLC_PROVIDER", "stooq")
     engine = _ProviderEngine()
-    SQLIngester(backtest_pb2.Backtest(name="sp100", provider="yahoo"), engine=engine)
+    SQLIngester(backtest_pb.Backtest(name="sp100", provider="yahoo"), engine=engine)
     assert engine.provider == "yahoo"
 
 
