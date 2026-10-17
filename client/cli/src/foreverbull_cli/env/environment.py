@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -111,6 +112,101 @@ class CommandError(RuntimeError):
         super().__init__(message)
         self.cmd = list(args)
         self.completed = completed
+
+
+# Docker's pull errors, matched in order. The first match names the likely cause.
+PULL_ERROR_CAUSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # "no matching manifest for linux/arm64" also contains "manifest for", so platform goes first.
+    ("platform", ("no matching manifest for",)),
+    (
+        "daemon",
+        (
+            "permission denied while trying to connect to the docker daemon socket",
+            "cannot connect to the docker daemon",
+        ),
+    ),
+    ("missing tag", ("manifest unknown", "manifest for")),
+    (
+        "registry",
+        (
+            "pull access denied",
+            "unauthorized",
+            "toomanyrequests",
+            "rate limit",
+            "service unavailable",
+            "bad gateway",
+            "internal server error",
+        ),
+    ),
+    (
+        "network",
+        (
+            "dial tcp",
+            "no such host",
+            "timeout",
+            "connection refused",
+            "connection reset",
+            "network is unreachable",
+            "tls handshake",
+            "name resolution",
+            "unexpected eof",
+        ),
+    ),
+)
+PULL_CAUSE_TEXT = {
+    "platform": "the image has no build for this machine.",
+    "daemon": "fbenv could not talk to Docker.",
+    "network": "Docker could not reach the registry.",
+    "registry": "the registry refused the download.",
+    "missing tag": "that tag does not exist on the registry.",
+    "unknown": "Docker could not download it.",
+}
+
+
+def classify_pull_error(output: str) -> str:
+    """Return the likely cause of a failed `docker pull`: platform, daemon, missing tag, registry, network, or unknown."""
+    lowered = output.lower()
+    for cause, needles in PULL_ERROR_CAUSES:
+        if any(needle in lowered for needle in needles):
+            return cause
+    return "unknown"
+
+
+def pull_error_platform(output: str) -> str:
+    """Return the platform Docker named in "no matching manifest for <platform>", or an empty string."""
+    match = re.search(r"no matching manifest for (\S+)", output, re.IGNORECASE)
+    return match.group(1).rstrip(".,") if match else ""
+
+
+class ImagePullError(RuntimeError):
+    """A `docker pull` failed. The message names the image and the likely cause; `detail` is Docker's output."""
+
+    def __init__(self, image: str, detail: str):
+        self.image = image
+        self.detail = detail.strip()
+        self.cause = classify_pull_error(self.detail)
+        self.platform = pull_error_platform(self.detail)
+        super().__init__(f"Couldn't download the Foreverbull image {image}: {PULL_CAUSE_TEXT[self.cause]}")
+
+    def hint(self, command: str) -> str:
+        if self.cause == "platform":
+            arch = self.platform.split("/")[1] if "/" in self.platform else self.platform
+            arch = arch or "unknown architecture"
+            return (
+                f"This image has no build for your machine ({arch}). "
+                f"Set the VERSION environment variable to a release that supports {arch}, "
+                "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+            )
+        if self.cause == "daemon":
+            return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
+        if self.cause == "missing tag":
+            return (
+                "Check that the VERSION environment variable names a published tag, "
+                f"or unset it to use latest, then run `{command}` again."
+            )
+        if self.cause == "registry":
+            return f"Wait a few minutes and run `{command}` again."
+        return f"Check your internet connection and run `{command}` again."
 
 
 class CommandRunner:
@@ -704,7 +800,11 @@ class ClusterManager:
 
         if missing and docker and self.config.version != "local":
             for image in missing:
-                self.runner.run(["docker", "pull", image])
+                try:
+                    self.runner.run(["docker", "pull", image])
+                except CommandError as exc:
+                    completed = exc.completed
+                    raise ImagePullError(image, completed.stderr or completed.stdout or str(exc)) from exc
                 present.append(image)
 
         return present

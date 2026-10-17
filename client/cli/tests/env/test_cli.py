@@ -9,6 +9,7 @@ from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import BrokerDiagnosis
 from foreverbull_cli.env.environment import ClusterManager
+from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.preflight import CheckState
@@ -130,6 +131,49 @@ def test_create_stops_on_failed_host_check(runner, mocked_container_manager: Mag
     assert "Traceback" not in result.stdout
     mocked_container_manager.verify_images.assert_not_called()
     mocked_container_manager.create.assert_not_called()
+
+
+PULL_FAILURE = ImagePullError(
+    "lhjnilsson/foreverbull:latest",
+    'Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: i/o timeout',
+)
+
+
+def test_create_stops_on_failed_image_pull(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = PULL_FAILURE
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == [
+        "✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:latest: Docker could not reach the registry."
+    ]
+    assert "Check your internet connection and run `fbenv create` again." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Run `fbenv create --verbose` to see Docker's error." in result.stdout
+    assert "i/o timeout" not in result.stdout
+    assert "Traceback" not in result.stdout
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_create_verbose_shows_docker_error(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = PULL_FAILURE
+    result = runner(cli.cli, ["create", "--verbose"])
+    assert result.exit_code == 1
+    assert "Docker said: Error response from daemon" in result.stdout
+    assert "i/o timeout" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.update.side_effect = PULL_FAILURE
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ Couldn't download the Foreverbull image" in result.stdout
+    assert "run `fbenv update` again." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Run `fbenv update --verbose` to see Docker's error." in result.stdout
+    assert "Traceback" not in result.stdout
 
 
 def test_start_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):
