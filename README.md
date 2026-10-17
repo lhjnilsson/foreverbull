@@ -47,14 +47,11 @@ uv run fbull backtest create --file ../examples/demo.yaml
 # generate the simple crossover strategy (defaults → simple_foreverbull/)
 uv run cookiecutter templates/simple
 
-# run the strategy against the backtest
+# run the strategy against the backtest; it ends with a results summary
 uv run fbull backtest run demo simple_foreverbull/crossover.py
-
-# print the Execution summary and periods table for the run's id
-uv run fbull backtest execution <execution-id>  # the ID from the run output above
 ```
 
-For charts, open the Grafana `Link:` the run and `execution` commands print (local Kind: port `3000`), or visit [http://localhost:3000](http://localhost:3000). Anonymous access is enabled (no login).
+For charts, open the Grafana `Charts:` link the run prints (local Kind: port `3000`), or visit [http://localhost:3000](http://localhost:3000). Anonymous access is enabled (no login).
 
 ### Example: `backtest create` output
 
@@ -77,23 +74,22 @@ Example output:
 
 ### Example: `backtest run` output
 
-After the session and execution progress bars, the CLI prints an Execution table and a Grafana link. IDs are illustrative:
+After the session and execution progress bars, the CLI prints a results summary for the whole run: total return next to the benchmark's return, Sharpe, Sortino, and max drawdown. When the backtest has no benchmark, or the run has no benchmark return, the Benchmark row says `not set` or `not available`. A ratio that is not defined yet (for example on a run of one day) prints as `-`. The `Details:` line is a paste-ready command with a short execution ID; the `Charts:` line is the Grafana dashboard. Numbers and IDs are example data:
 
 ```text
-                          Execution
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┓
-┃ ID                                   ┃ Backtest  ┃ Start      ┃ End        ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
-│ 01234567-89ab-cdef-0123-456789abcdef │ demo      │ 2023-01-01 │ 2023-12-31 │
-└──────────────────────────────────────┴───────────┴────────────┴────────────┘
-Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
-```
+✔ Backtest finished: demo · 2023-01-01 → 2023-12-31 · provider: yahoo
 
-The run command does not print period stats in the terminal. Use `fbull backtest execution <id>` below for those; open the Grafana link for charts.
+  Return        +4.2%  Benchmark (SPY)  +3.1%
+  Sharpe         1.35  Sortino           1.10
+  Max drawdown  -6.8%
+
+  Details: uv run fbull backtest execution 01234567
+  Charts:  http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-0123-456789abcdef
+```
 
 ### Example: `backtest execution` output
 
-`fbull backtest execution <id>` prints an Execution summary (with Session), the Grafana link, then a `periods` table with Date, Portfolio, Alpha, Beta, Sharpe, and Sortino. Optional floats that are unset print as `-`. IDs and period rows are illustrative; a real run prints one row per period (truncated here):
+`fbull backtest execution <id>` takes the full execution ID or a unique prefix of it, such as the short ID from `Details:`. It prints an Execution summary (with Session), the Grafana link, then a `periods` table with Date, Portfolio, Alpha, Beta, Sharpe, and Sortino. Optional floats that are unset print as `-`. IDs and period rows are illustrative; a real run prints one row per period (truncated here):
 
 ```text
                                                       Execution
@@ -220,7 +216,7 @@ Run that strategy against the `demo` backtest from the ingest step, still from `
 uv run fbull backtest run demo simple_foreverbull/crossover.py
 ```
 
-On success it prints an Execution table (ID, Backtest, Start, End) and a Grafana `Link:` for that execution. For the advanced template (needs TA-Lib), use `advanced_foreverbull/macd.py` the same way if you kept its default project name.
+On success it prints a results summary (return, benchmark return, Sharpe, Sortino, max drawdown), a `Details:` command with a short execution ID, and a Grafana `Charts:` link for that execution. For the advanced template (needs TA-Lib), use `advanced_foreverbull/macd.py` the same way if you kept its default project name.
 
 The generated project README shows `fbull backtest create` and `fbull backtest run` for local-file hacking. When the algorithm is a READY service image, use `fbull strategy` instead of a one-shot live run.
 
