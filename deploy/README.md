@@ -149,6 +149,8 @@ VERSION=local uv run fbenv create   # workloads stay stopped
 uv run fbenv start
 ```
 
+From the repository root, `task kind:redeploy` does the local rebuild in one step. It builds the `:local` images, deletes the Kind cluster `foreverbull` when it exists, installs the chart, and starts the workloads. The purge also removes `client/.foreverbull` data other than `config.yaml`.
+
 Equivalent by hand:
 
 ```bash

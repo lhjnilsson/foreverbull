@@ -133,15 +133,30 @@ tasks:
       - client:venv
 
   env:
-    desc: Removed. Run task build, then uv run fbenv create
+    desc: Removed. Run task kind:redeploy, or task build then fbenv create
     cmds:
       - |
         echo "task env no longer installs the platform." >&2
-        echo "Build local images and sync the client:" >&2
+        echo "Rebuild the local Kind cluster, images, and deploy:" >&2
+        echo "  task kind:redeploy" >&2
+        echo "Or build, then install and start:" >&2
         echo "  task build" >&2
-        echo "Install into Kind, then start the workloads:" >&2
         echo "  cd client && VERSION=local uv run fbenv create && uv run fbenv start" >&2
         exit 1
+
+  kind:redeploy:
+    desc: Delete the local Kind cluster, rebuild :local images, and deploy
+    deps:
+      - build
+    dir: client
+    env:
+      VERSION: local
+    cmds:
+      - |
+        if kind get clusters 2>/dev/null | grep -qx foreverbull; then
+          uv run fbenv stop --cluster local --remove --purge
+        fi
+      - uv run fbenv create --cluster local --start
 
   kind:create:
     desc: Create the local Kind cluster (idempotent)
