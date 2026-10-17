@@ -51,8 +51,6 @@ class CalendarService(calendar_service_pb_grpc.CalendarServiceSync):
             rsp.dates.append(
                 calendar_pb.CalendarDate(
                     date=pb_utils.from_pydate_to_proto_date(date),
-                    # open=timestamp_pb2.Timestamp(seconds=calendar.open(date).timestamp()),
-                    # close=timestamp_pb2.Timestamp(seconds=calendar.close(date).timestamp()),
                 )
             )
         return rsp
