@@ -74,4 +74,22 @@ do
   fi
 done
 
+# Credentials come from Secret foreverbull-credentials, never a plain env value.
+for env_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
+  if grep -A1 -E "^ +- name: ${env_name}$" "${rendered}" | grep -qE '^ +value:'; then
+    echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
+    exit 1
+  fi
+done
+
+# Without hostPort, the public default credentials must stop the install.
+for default_value in postgres.password=foreverbull minio.secretKey=minioadmin; do
+  if helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set "${default_value}" >/dev/null 2>&1; then
+    echo "chart must refuse ${default_value} without expose.hostPort" >&2
+    exit 1
+  fi
+done
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
+  --set postgres.password=foreverbull --set minio.secretKey=minioadmin --set credentials.allowDefaults=true >/dev/null
+
 echo "helm chart checks passed"

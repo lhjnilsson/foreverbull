@@ -65,10 +65,10 @@ Matches `internal/environment/env.go` plus chart overrides:
 
 | Variable | Value |
 | --- | --- |
-| `POSTGRES_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
+| `POSTGRES_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
 | `NATS_URL` | `nats://nats:4222` |
 | `MINIO_URL` | `minio:9000` |
-| `MINIO_ACCESS_KEY` / `MINIO_SECRET` | `minioadmin` / `minioadmin` |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
 | `SERVER_ADDRESS` | `foreverbull` |
 | `ZIPLINE_CONTAINER_NAME` | `zipline` |
 | `POD_NAMESPACE` | pod namespace (fieldRef) |
@@ -86,7 +86,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `IBKR_BASE_URL` | `https://localhost:5000/v1/api` |
 | `IBKR_ACCOUNT_MODE` | `paper` |
 | Grafana `BROKER_URL` | `foreverbull:50055` |
-| Zipline `DATABASE_URL` | `postgres://foreverbull:foreverbull@postgres:5432/foreverbull` |
+| Zipline `DATABASE_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
 
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
@@ -96,6 +96,29 @@ Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
+
+### Credentials
+
+Postgres and MinIO credentials live in Secret `foreverbull-credentials` (keys
+`postgres-password`, `minio-accessKey`, `minio-secretKey`). Pods read them with
+`secretKeyRef`; `POSTGRES_PASSWORD` is expanded into `POSTGRES_URL` and
+`DATABASE_URL`. Leave `postgres.password`, `minio.accessKey`, and
+`minio.secretKey` empty and the chart picks them:
+
+- `expose.hostPort=true` (local Kind, `fbenv`): `foreverbull` and
+  `minioadmin` / `minioadmin`, so host tools on `localhost` keep working.
+- Otherwise: a random password and MinIO secret key (access key
+  `foreverbull`), generated on the first install and read back from the Secret
+  on every upgrade.
+
+A value you set wins. It must be URL-safe, since it goes into `POSTGRES_URL`.
+
+🔒️ Without `expose.hostPort`, `postgres.password=foreverbull` or
+`minio.secretKey=minioadmin` stops the install with an error. A remote release
+installed before this change carries those values, and its Postgres data was
+created with that password, so an upgrade fails the same way. Either set
+`credentials.allowDefaults=true` to keep the old credentials, or change the
+password inside Postgres first and then set `postgres.password` to the new one.
 
 ## Cluster config
 
@@ -276,9 +299,12 @@ persistence:
     size: 8Gi
     path: /data
 
+credentials:
+  allowDefaults: false      # true only for a throwaway cluster
+
 postgres:
   user: foreverbull
-  password: foreverbull
+  password: ""              # empty → see Credentials
   database: foreverbull
   port: 5432
 
@@ -290,8 +316,8 @@ nats:
 minio:
   port: 9000
   consolePort: 9001
-  accessKey: minioadmin
-  secretKey: minioadmin
+  accessKey: ""             # empty → see Credentials
+  secretKey: ""
   command: 'server --console-address ":9001" /data'
 
 broker:
