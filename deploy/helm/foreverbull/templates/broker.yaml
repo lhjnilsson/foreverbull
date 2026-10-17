@@ -1,6 +1,8 @@
 {{- $sel := dict "name" "foreverbull" "root" . }}
 {{- $start := int .Values.broker.backtestPortStart }}
 {{- $end := int .Values.broker.backtestPortEnd }}
+{{- /* Releases installed before httpPort omit the key. reuse-values would render port 0. */}}
+{{- $httpPort := .Values.broker.httpPort | default 8080 }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -16,6 +18,10 @@ spec:
     - name: grpc
       port: {{ .Values.broker.grpcPort }}
       targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: {{ $httpPort }}
+      targetPort: http
       protocol: TCP
     {{- range untilStep $start (int (add $end 1)) 1 }}
     - name: nng-{{ . }}
@@ -55,6 +61,12 @@ spec:
               {{- if .Values.expose.hostPort }}
               hostPort: {{ .Values.broker.grpcPort }}
               {{- end }}
+            - name: http
+              containerPort: {{ $httpPort }}
+              protocol: TCP
+              {{- if .Values.expose.hostPort }}
+              hostPort: {{ $httpPort }}
+              {{- end }}
             {{- range untilStep $start (int (add $end 1)) 1 }}
             - name: nng-{{ . }}
               containerPort: {{ . }}
@@ -86,6 +98,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: GRPC_PORT
               value: {{ .Values.broker.grpcPort | quote }}
+            - name: HTTP_PORT
+              value: {{ $httpPort | quote }}
             - name: BACKTEST_PORT_RANGE_START
               value: {{ .Values.broker.backtestPortStart | quote }}
             - name: BACKTEST_PORT_RANGE_END

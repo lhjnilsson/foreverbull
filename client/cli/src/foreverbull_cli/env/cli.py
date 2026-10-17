@@ -9,6 +9,7 @@ from rich.progress import TextColumn
 from rich.table import Table
 
 from foreverbull_cli.env.environment import ClusterManager
+from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
@@ -293,8 +294,14 @@ def stop(
             remove_task = None
 
         progress.update(stop_task, completed=1)
-        cm.stop()
-        progress.update(stop_task, completed=2)
+        try:
+            cm.stop()
+        except CommandError as exc:
+            if remove_task is None:
+                raise
+            console.print(f"Scale to 0 failed ({exc}). Removing the release anyway.")
+        else:
+            progress.update(stop_task, completed=2)
 
         if remove_task:
             progress.update(remove_task, completed=1)

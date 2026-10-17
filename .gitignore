@@ -188,6 +188,11 @@ client/baseline_performance.pickle
 
 # Cookiecutter output from `task template:generate` / template:test
 client/rendered/
+client/simple_foreverbull/
+client/advanced_foreverbull/
+
+# An npm install in client/ writes this. The web lockfile is web/package-lock.json.
+client/package-lock.json
 
 client/result.json
 client/baseline.json

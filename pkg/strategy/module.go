@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -68,6 +69,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(s *grpc.Server, srv *api.StrategyServer) {
 			servicePb.RegisterStrategyServicerServer(s, srv)
 		},
+		registerStrategyHTTP,
 		func(lc fx.Lifecycle, r *runner.InProcess) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
@@ -86,3 +88,19 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 )
+
+type strategyHTTPParams struct {
+	fx.In
+
+	Mux    *http.ServeMux `optional:"true"`
+	Server *api.StrategyServer
+}
+
+// registerStrategyHTTP mounts read routes when the HTTP mux is in the process.
+// Module tests that do not provide the mux keep gRPC and do not listen on HTTP_PORT.
+func registerStrategyHTTP(p strategyHTTPParams) {
+	if p.Mux == nil || p.Server == nil {
+		return
+	}
+	api.RegisterHTTP(p.Mux, p.Server)
+}

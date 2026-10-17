@@ -93,8 +93,8 @@ class TestDocker:
 class TestHostPorts:
     def test_kind_config_lists_every_published_port(self):
         ports = kind_host_ports(REPO_KIND_CONFIG)
-        assert ports[:5] == [5432, 4222, 9000, 50055, 3000]
-        assert ports[5:] == list(range(27000, 27016))
+        assert ports[:6] == [5432, 4222, 9000, 50055, 8080, 3000]
+        assert ports[6:] == list(range(27000, 27016))
 
     def test_kind_config_without_nodes_has_no_ports(self, tmp_path: Path):
         path = tmp_path / "cluster.yaml"
@@ -127,6 +127,11 @@ class TestHostPorts:
         check = check_host_ports([5432, 50055], cluster_running=False, is_free=lambda port: port != 50055)
         assert check.detail == "Port 50055 (Foreverbull gRPC) is already in use."
         assert check.hint == "Find what is using port 50055 with `lsof -i :50055`, stop it, and run this again."
+
+    def test_busy_http_port_names_the_page(self):
+        check = check_host_ports([8080], cluster_running=False, is_free=lambda port: False)
+        assert check.detail == "Port 8080 (Foreverbull HTTP) is already in use."
+        assert check.hint == "Find what is using port 8080 with `lsof -i :8080`, stop it, and run this again."
 
     def test_several_busy_ports_are_all_listed(self):
         check = check_host_ports([3000, 27003, 5432], cluster_running=False, is_free=lambda port: port == 5432)

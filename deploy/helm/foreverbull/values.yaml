@@ -66,6 +66,7 @@ minio:
 
 broker:
   grpcPort: 50055
+  httpPort: 8080
   backtestPortStart: 27000
   backtestPortEnd: 27015
   logLevel: warning
