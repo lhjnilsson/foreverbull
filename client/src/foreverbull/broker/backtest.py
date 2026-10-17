@@ -47,7 +47,7 @@ def create(
             req = backtest_service_pb.CreateBacktestRequest(create=Oneof(field="backtest", value=entity))
         case _:
             raise ValueError("Invalid entity")
-    return servicer.create_backtest(req)
+    yield from servicer.create_backtest(req)
 
 
 @backtest_servicer

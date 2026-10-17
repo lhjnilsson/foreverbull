@@ -78,7 +78,7 @@ def create_experiment(
         req.version_id = version_id
     if version_rev:
         req.version_rev = version_rev
-    return servicer.create_experiment(req)
+    yield from servicer.create_experiment(req)
 
 
 @strategy_servicer
