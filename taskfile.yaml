@@ -149,3 +149,9 @@ tasks:
     desc: helm upgrade --install Foreverbull into the local Kind cluster
     cmds:
       - bash deploy/kind/helm-install.sh {{.CLI_ARGS}}
+
+  web:dev:
+    desc: Run the web shell with Vite hot reload
+    dir: web
+    cmds:
+      - npm run dev
