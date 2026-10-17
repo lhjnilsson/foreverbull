@@ -14,12 +14,12 @@ from foreverbull_zipline.session_service import SessionServiceServicer
 
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
-from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb2_grpc as backtest_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb2_grpc as session_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import session_pb2
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb_grpc as session_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.backtest.v1 import session_pb
 from tests.broker import Broker
 
 
@@ -37,25 +37,25 @@ def engine_stub():
     assert engine.is_ready.wait(5.0), "engine never became ready"
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
     servicer = SessionServiceServicer(engine)
-    engine_service_pb2_grpc.add_EngineSessionServicer_to_server(servicer, server)
+    engine_service_pb_grpc.EngineSessionServiceSync.add_to_server(servicer, server)
     server.add_insecure_port("[::]:60066")
     server.start()
     time.sleep(1)
-    yield engine_service_pb2_grpc.EngineSessionStub(grpc.insecure_channel("localhost:60066"))
+    yield engine_service_pb_grpc.EngineSessionClientSync(grpc.insecure_channel("localhost:60066"))
     server.stop(None)
     engine.stop()
     engine.join()
 
 
 @pytest.fixture
-def broker_session_stub(engine_stub: engine_service_pb2_grpc.EngineSessionStub):
+def broker_session_stub(engine_stub: engine_service_pb_grpc.EngineSessionClientSync):
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
     bs = Broker(engine_stub)
-    backtest_service_pb2_grpc.add_BacktestServicerServicer_to_server(bs, server)
-    session_service_pb2_grpc.add_SessionServicerServicer_to_server(bs, server)
+    backtest_service_pb_grpc.BacktestServicerServiceSync.add_to_server(bs, server)
+    session_service_pb_grpc.SessionServicerServiceSync.add_to_server(bs, server)
     server.add_insecure_port("[::]:6067")
     server.start()
-    yield backtest_service_pb2_grpc.BacktestServicerStub(grpc.insecure_channel("localhost:6067"))
+    yield backtest_service_pb_grpc.BacktestServicerClientSync(grpc.insecure_channel("localhost:6067"))
     server.stop(None)
 
 
@@ -79,14 +79,14 @@ def simple_crossover_path(tmp_path_factory):
 
 def test_baseline_performance(
     spawn_process,
-    broker_session_stub: backtest_service_pb2_grpc.BacktestServicerStub,
+    broker_session_stub: backtest_service_pb_grpc.BacktestServicerClientSync,
     simple_crossover_path,
-    execution: execution_pb2.Execution,
+    execution: execution_pb.Execution,
     foreverbull_bundle,
     baseline_performance,
 ):
     foreverbull = Foreverbull(models.Algorithm.from_file_path(str(simple_crossover_path)))
-    with foreverbull.backtest_session(backtest_pb2.Backtest(), session_pb2.Session()) as backtest:
+    with foreverbull.backtest_session(backtest_pb.Backtest(), session_pb.Session()) as backtest:
         periods = [
             p
             for p in backtest.run_execution(

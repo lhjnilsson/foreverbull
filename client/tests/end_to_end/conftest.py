@@ -8,7 +8,7 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_container_is_ready
 from testcontainers.minio import MinioContainer
 
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
 
 
 @pytest.fixture(scope="function")
@@ -32,7 +32,9 @@ def zipline():
 
 @pytest.fixture(scope="function")
 def engine_stub(zipline):
-    return engine_service_pb2_grpc.EngineStub(grpc.insecure_channel(f"localhost:{zipline.get_exposed_port(50055)}"))
+    return engine_service_pb_grpc.EngineClientSync(
+        grpc.insecure_channel(f"localhost:{zipline.get_exposed_port(50055)}")
+    )
 
 
 @pytest.fixture(scope="function")

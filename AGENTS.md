@@ -42,7 +42,7 @@ ETF-built universes are point-in-time from iShares as-of snapshots. Identity is 
 - Go 1.24 (see `go.mod`)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - Task
-- For proto generation: [Buf](https://buf.build/docs/installation), `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (Python plugins / `grpcio-tools`)
+- For proto generation: [Buf](https://buf.build/docs/installation), `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (pinned `buf`, `protoc-gen-py`, and `protoc-gen-grpc-py`)
 
 ```bash
 cd client && uv sync
@@ -153,15 +153,15 @@ VERSION=local ECHO=true uv run pytest tests/end_to_end/test_demo.py -vs
 Sources live in `proto/`. Generated code:
 
 - Go: `pkg/pb/**` (`*.pb.go`, `*_grpc.pb.go`) and `internal/stream/pb/`
-- Python: `client/src/foreverbull/pb/` (`*_pb2.py`, `*_pb2.pyi`, `*_pb2_grpc.py`)
+- Python: `client/src/foreverbull/pb/` (`*_pb.py`, `*_pb_grpc.py`)
 
 **Do not hand-edit generated protobuf.** Change `.proto` files and regenerate with Buf (`buf.gen.yaml`, `buf.gen.py.yaml`):
 
 ```bash
 task proto                    # Go + Python (`buf generate`)
 task proto:generate           # Go only
-task client:proto:generate    # Python only (rewrites imports after buf)
-task proto:clean              # deletes generated *_pb2* and *.pb.go
+task client:proto:generate    # Python only
+task proto:clean              # deletes generated *_pb.py, *_pb_grpc.py, leftover *_pb2*, and *.pb.go
 ```
 
 Hand-written helpers next to generated code (safe to edit):

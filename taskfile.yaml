@@ -12,7 +12,7 @@ tasks:
   proto:clean:
     desc: Remove generated protobuf files
     cmds:
-      - find client/src/foreverbull/pb -type f \( -name '*_pb2.py' -o -name '*_pb2.pyi' -o -name '*_pb2_grpc.py' \) -delete
+      - find client/src/foreverbull/pb -type f \( -name '*_pb.py' -o -name '*_pb_grpc.py' -o -name '*_pb2.py' -o -name '*_pb2.pyi' -o -name '*_pb2_grpc.py' \) ! -name 'pb_utils.py' -delete
       - find pkg/pb -type f -name '*.pb.go' -delete
       - find internal/stream/pb -type f -name '*.pb.go' -delete
 

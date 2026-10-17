@@ -6,16 +6,16 @@ from typing import Concatenate
 import grpc
 
 from foreverbull.broker.config import resolve_broker_address
-from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2 as trading_service_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb2_grpc as trading_service_pb2_grpc
+from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb_grpc as trading_service_pb_grpc
 
 
 def trading_servicer[R, **P](
-    f: Callable[Concatenate[trading_service_pb2_grpc.TradingServicerStub, P], R],
+    f: Callable[Concatenate[trading_service_pb_grpc.TradingServicerClientSync, P], R],
 ):
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
-        servicer = trading_service_pb2_grpc.TradingServicerStub(grpc.insecure_channel(resolve_broker_address()))
+        servicer = trading_service_pb_grpc.TradingServicerClientSync(grpc.insecure_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper
@@ -23,21 +23,21 @@ def trading_servicer[R, **P](
 
 @trading_servicer
 def get_portfolio(
-    stub: trading_service_pb2_grpc.TradingServicerStub,
-) -> trading_service_pb2.GetPortfolioResponse:
-    return stub.GetPortfolio(trading_service_pb2.GetPortfolioRequest())
+    stub: trading_service_pb_grpc.TradingServicerClientSync,
+) -> trading_service_pb.GetPortfolioResponse:
+    return stub.get_portfolio(trading_service_pb.GetPortfolioRequest())
 
 
 @trading_servicer
 def get_orders(
-    stub: trading_service_pb2_grpc.TradingServicerStub,
-) -> trading_service_pb2.GetOrdersResponse:
-    return stub.GetOrders(trading_service_pb2.GetOrdersRequest())
+    stub: trading_service_pb_grpc.TradingServicerClientSync,
+) -> trading_service_pb.GetOrdersResponse:
+    return stub.get_orders(trading_service_pb.GetOrdersRequest())
 
 
 @trading_servicer
 def create_session(
-    stub: trading_service_pb2_grpc.TradingServicerStub, symbols: list[str]
-) -> Generator[trading_service_pb2.CreateSessionResponse, None, None]:
-    rsp = stub.CreateSession(trading_service_pb2.CreateSessionRequest(symbols=symbols))
+    stub: trading_service_pb_grpc.TradingServicerClientSync, symbols: list[str]
+) -> Generator[trading_service_pb.CreateSessionResponse, None, None]:
+    rsp = stub.create_session(trading_service_pb.CreateSessionRequest(symbols=symbols))
     yield from rsp

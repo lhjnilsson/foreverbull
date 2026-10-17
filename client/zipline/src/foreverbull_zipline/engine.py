@@ -9,6 +9,7 @@ import pandas as pd
 import pynng
 import six
 
+from protobuf import merge_from_binary
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -21,10 +22,10 @@ from zipline.utils.calendar_utils import get_calendar
 
 from foreverbull.broker.storage import Storage
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import execution_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from zipline import TradingAlgorithm
 
 
@@ -48,79 +49,79 @@ class Engine(multiprocessing.Process):
         self.is_ready = multiprocessing.Event()
         super().__init__()
 
-    def run_backtest(self, backtest: engine_service_pb2.RunBacktestRequest) -> engine_service_pb2.RunBacktestResponse:
+    def run_backtest(self, backtest: engine_service_pb.RunBacktestRequest) -> engine_service_pb.RunBacktestResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            data = backtest.SerializeToString()
-            request = common_pb2.Request(task="run", data=data)
-            socket.send(request.SerializeToString())
-            response = common_pb2.Response()
-            response.ParseFromString(socket.recv())
-            if response.HasField("error"):
+            data = backtest.to_binary()
+            request = common_pb.Request(task="run", data=data)
+            socket.send(request.to_binary())
+            response = common_pb.Response()
+            merge_from_binary(response, socket.recv())
+            if response.has_field("error"):
                 raise SystemError(response.error)
-            b = engine_service_pb2.RunBacktestResponse()
-            b.ParseFromString(response.data)
+            b = engine_service_pb.RunBacktestResponse()
+            merge_from_binary(b, response.data)
             return b
 
     def get_current_period(
-        self, req: engine_service_pb2.GetCurrentPeriodRequest
-    ) -> engine_service_pb2.GetCurrentPeriodResponse:
+        self, req: engine_service_pb.GetCurrentPeriodRequest
+    ) -> engine_service_pb.GetCurrentPeriodResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            data = req.SerializeToString()
-            request = common_pb2.Request(task="get_current_period", data=data)
-            socket.send(request.SerializeToString())
-            response = common_pb2.Response()
-            response.ParseFromString(socket.recv())
-            if response.HasField("error"):
+            data = req.to_binary()
+            request = common_pb.Request(task="get_current_period", data=data)
+            socket.send(request.to_binary())
+            response = common_pb.Response()
+            merge_from_binary(response, socket.recv())
+            if response.has_field("error"):
                 raise SystemError(response.error)
-            p = engine_service_pb2.GetCurrentPeriodResponse()
-            p.ParseFromString(response.data)
+            p = engine_service_pb.GetCurrentPeriodResponse()
+            merge_from_binary(p, response.data)
             return p
 
     def place_orders_and_continue(
-        self, req: engine_service_pb2.PlaceOrdersAndContinueRequest
-    ) -> engine_service_pb2.PlaceOrdersAndContinueResponse:
+        self, req: engine_service_pb.PlaceOrdersAndContinueRequest
+    ) -> engine_service_pb.PlaceOrdersAndContinueResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            data = req.SerializeToString()
-            request = common_pb2.Request(task="place_orders_and_continue", data=data)
-            socket.send(request.SerializeToString())
-            response = common_pb2.Response()
-            response.ParseFromString(socket.recv())
-            if response.HasField("error"):
+            data = req.to_binary()
+            request = common_pb.Request(task="place_orders_and_continue", data=data)
+            socket.send(request.to_binary())
+            response = common_pb.Response()
+            merge_from_binary(response, socket.recv())
+            if response.has_field("error"):
                 raise SystemError(response.error)
-            p = engine_service_pb2.PlaceOrdersAndContinueResponse()
-            p.ParseFromString(response.data)
+            p = engine_service_pb.PlaceOrdersAndContinueResponse()
+            merge_from_binary(p, response.data)
             return p
 
-    def get_backtest_result(self, req: engine_service_pb2.GetResultRequest) -> engine_service_pb2.GetResultResponse:
+    def get_backtest_result(self, req: engine_service_pb.GetResultRequest) -> engine_service_pb.GetResultResponse:
         with pynng.Req0(
             dial=f"ipc://{self._socket_file_path}",
             block_on_dial=False,
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            request = common_pb2.Request(task="get_result", data=req.SerializeToString())
-            socket.send(request.SerializeToString())
-            response = common_pb2.Response()
-            response.ParseFromString(socket.recv())
-            if response.HasField("error"):
+            request = common_pb.Request(task="get_result", data=req.to_binary())
+            socket.send(request.to_binary())
+            response = common_pb.Response()
+            merge_from_binary(response, socket.recv())
+            if response.has_field("error"):
                 raise SystemError(response.error)
-            result = engine_service_pb2.GetResultResponse()
-            result.ParseFromString(response.data)
+            result = engine_service_pb.GetResultResponse()
+            merge_from_binary(result, response.data)
             return result
 
     def stop(self):
@@ -130,8 +131,8 @@ class Engine(multiprocessing.Process):
             recv_timeout=10_000,
             send_timeout=10_000,
         ) as socket:
-            request = common_pb2.Request(task="stop")
-            socket.send(request.SerializeToString())
+            request = common_pb.Request(task="stop")
+            socket.send(request.to_binary())
 
     def run(self):
         if self._logging_queue is not None:
@@ -161,20 +162,27 @@ class Engine(multiprocessing.Process):
         self.result = result
 
     def _run(self, data: bytes, socket: pynng.Socket) -> tuple[TradingAlgorithm, bytes]:
-        req = engine_service_pb2.RunBacktestRequest()
-        req.ParseFromString(data)
-        bundles.register(req.execution.backtest, None, calendar_name="XNYS")
-        bundle = bundles.load(req.execution.backtest, os.environ, None)
+        req = engine_service_pb.RunBacktestRequest()
+        merge_from_binary(req, data)
+        execution = req.execution
+        if execution is None:
+            raise ValueError("missing execution")
+        start = execution.start_date
+        end = execution.end_date
+        if start is None or end is None:
+            raise ValueError("missing execution dates")
+        bundles.register(execution.backtest, None, calendar_name="XNYS")
+        bundle = bundles.load(execution.backtest, os.environ, None)
 
         start_date = pd.Timestamp(
-            req.execution.start_date.year,
-            req.execution.start_date.month,
-            req.execution.start_date.day,
+            start.year,
+            start.month,
+            start.day,
         )
         end_date = pd.Timestamp(
-            req.execution.end_date.year,
-            req.execution.end_date.month,
-            req.execution.end_date.day,
+            end.year,
+            end.month,
+            end.day,
         )
 
         if req.benchmark:
@@ -199,7 +207,7 @@ class Engine(multiprocessing.Process):
             trading_calendar=trading_calendar,
             data_frequency="daily",
         )
-        num_periods = trading_calendar.sessions_in_range(start_date, end_date).size  # type: ignore
+        num_periods = int(trading_calendar.sessions_in_range(start_date, end_date).size)  # type: ignore
         metrics_set = "default"
         blotter = "default"
         if isinstance(metrics_set, six.string_types):
@@ -231,30 +239,30 @@ class Engine(multiprocessing.Process):
         )
         return (
             trading_algorithm,
-            engine_service_pb2.RunBacktestResponse(
+            engine_service_pb.RunBacktestResponse(
                 execution=req.execution,
                 num_periods=num_periods,
-            ).SerializeToString(),
+            ).to_binary(),
         )
 
     def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = engine_service_pb2.PlaceOrdersAndContinueRequest()
-        req.ParseFromString(data)
+        req = engine_service_pb.PlaceOrdersAndContinueRequest()
+        merge_from_binary(req, data)
         for order in req.orders:
             self.log.info("Placing order: %s", order)
             asset = trading_algorithm.symbol(order.symbol)
             order_id = trading_algorithm.order(asset=asset, amount=order.amount)
             self.log.debug("Placed order: %s", order_id)
 
-        return engine_service_pb2.PlaceOrdersAndContinueResponse().SerializeToString()
+        return engine_service_pb.PlaceOrdersAndContinueResponse().to_binary()
 
     def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
-        req = engine_service_pb2.GetCurrentPeriodRequest()
-        req.ParseFromString(data)
+        req = engine_service_pb.GetCurrentPeriodRequest()
+        merge_from_binary(req, data)
         p: Portfolio = trading_algorithm.portfolio
-        return engine_service_pb2.GetCurrentPeriodResponse(
+        return engine_service_pb.GetCurrentPeriodResponse(
             is_running=True,
-            portfolio=marketdata_pb2.Portfolio(
+            portfolio=marketdata_pb.Portfolio(
                 timestamp=pb_utils.to_proto_timestamp(trading_algorithm.datetime),
                 cash_flow=p.cash_flow,  # type: ignore
                 starting_cash=p.starting_cash,  # type: ignore
@@ -265,9 +273,9 @@ class Engine(multiprocessing.Process):
                 positions_value=p.positions_value,  # type: ignore
                 positions_exposure=p.positions_exposure,  # type: ignore
                 positions=[
-                    marketdata_pb2.Position(
+                    marketdata_pb.Position(
                         symbol=p.sid.symbol,
-                        amount=p.amount,
+                        amount=int(p.amount),
                         cost_basis=p.cost_basis,
                         last_sale_price=p.last_sale_price,
                         last_sale_date=pb_utils.to_proto_timestamp(p.last_sale_date),
@@ -275,24 +283,24 @@ class Engine(multiprocessing.Process):
                     for _, p in p.positions.items()  # type: ignore
                 ],
             ),
-        ).SerializeToString()
+        ).to_binary()
 
     def _get_execution_result(self, data: bytes) -> bytes:
-        req = engine_service_pb2.GetResultRequest()
-        req.ParseFromString(data)
+        req = engine_service_pb.GetResultRequest()
+        merge_from_binary(req, data)
         assert self.result is not None, "no result"
         assert type(self.result) is pd.DataFrame, "result is not a dataframe"
-        rsp = engine_service_pb2.GetResultResponse()
+        rsp = engine_service_pb.GetResultResponse()
         for row in self.result.index:
             period = self.result.loc[row]
             rsp.periods.append(
-                execution_pb2.Period(
+                execution_pb.Period(
                     date=pb_utils.from_pydate_to_proto_date(period["period_close"].to_pydatetime().replace()),
                     PNL=period["pnl"],
                     returns=period["returns"],
                     portfolio_value=period["portfolio_value"],
-                    longs_count=period["longs_count"],
-                    shorts_count=period["shorts_count"],
+                    longs_count=int(period["longs_count"]),
+                    shorts_count=int(period["shorts_count"]),
                     long_value=period["long_value"],
                     short_value=period["short_value"],
                     starting_exposure=period["starting_exposure"],
@@ -324,11 +332,12 @@ class Engine(multiprocessing.Process):
                     beta=(None if period["beta"] is None or pd.isnull(period["beta"]) else period["beta"]),
                 )
             )
-        if req.HasField("upload"):
+        upload = req.upload
+        if upload is not None:
             storage = Storage.from_environment()
             self.result.to_pickle("/tmp/result.pkl")
-            storage.upload_object(req.upload.bucket, req.upload.object, "/tmp/result.pkl")
-        return rsp.SerializeToString()
+            storage.upload_object(upload.bucket, upload.object, "/tmp/result.pkl")
+        return rsp.to_binary()
 
     def _process_request(
         self,
@@ -338,49 +347,47 @@ class Engine(multiprocessing.Process):
     ):
         while True:
             with socket.new_context() as context_socket:
-                req = common_pb2.Request()
-                req.ParseFromString(context_socket.recv())
+                req = common_pb.Request()
+                merge_from_binary(req, context_socket.recv())
                 self.log.debug(f"Received request {req.task}, {id(trading_algorithm)}")
-                rsp = common_pb2.Response(task=req.task)
+                rsp = common_pb.Response(task=req.task)
                 data: bytes | None = None
                 try:
                     match req.task:
                         case "run":
                             if trading_algorithm is not None:
                                 rsp.error = "Execution already running"
-                                context_socket.send(rsp.SerializeToString())
+                                context_socket.send(rsp.to_binary())
                             else:
                                 ta, data = self._run(req.data, socket)
                                 rsp.data = data
-                                context_socket.send(rsp.SerializeToString())
+                                context_socket.send(rsp.to_binary())
                                 ta.run()
                                 return
                         case "get_current_period":
                             if trading_algorithm is None:
-                                rsp.data = engine_service_pb2.GetCurrentPeriodResponse(
-                                    is_running=False
-                                ).SerializeToString()
-                                context_socket.send(rsp.SerializeToString())
+                                rsp.data = engine_service_pb.GetCurrentPeriodResponse(is_running=False).to_binary()
+                                context_socket.send(rsp.to_binary())
                             else:
                                 rsp.data = self._get_current_period(req.data, trading_algorithm)
-                                context_socket.send(rsp.SerializeToString())
+                                context_socket.send(rsp.to_binary())
                         case "place_orders_and_continue":
                             if trading_algorithm is None:
                                 rsp.error = "Execution not running"
-                                context_socket.send(rsp.SerializeToString())
+                                context_socket.send(rsp.to_binary())
                             else:
                                 rsp.data = self._place_orders(req.data, trading_algorithm)
-                                context_socket.send(rsp.SerializeToString())
+                                context_socket.send(rsp.to_binary())
                                 return
                         case "stop":
-                            context_socket.send(rsp.SerializeToString())
+                            context_socket.send(rsp.to_binary())
                             raise StopExcecution()
                         case "get_result":
                             rsp.data = self._get_execution_result(req.data)
-                            context_socket.send(rsp.SerializeToString())
+                            context_socket.send(rsp.to_binary())
                 except StopExcecution:
                     raise
                 except Exception as e:
                     self.log.exception("Error processing request %s", req.task)
                     rsp.error = str(e)
-                    context_socket.send(rsp.SerializeToString())
+                    context_socket.send(rsp.to_binary())

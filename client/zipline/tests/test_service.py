@@ -9,11 +9,11 @@ import pytest
 from foreverbull_zipline import service
 
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2_grpc as engine_service_pb2_grpc
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2 as calendar_service_pb2
-from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb2_grpc as calendar_service_pb2_grpc
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb as calendar_service_pb
+from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb_grpc as calendar_service_pb_grpc
 
 
 class TestCalendarService:
@@ -21,7 +21,7 @@ class TestCalendarService:
     def servicer(self, fb_env):
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = service.CalendarService()
-        calendar_service_pb2_grpc.add_CalendarServicer_to_server(servicer, server)
+        calendar_service_pb_grpc.CalendarServiceSync.add_to_server(servicer, server)
         server.add_insecure_port("[::]:60066")
         server.start()
         time.sleep(1)
@@ -32,15 +32,15 @@ class TestCalendarService:
 
     @pytest.fixture
     def stub(self, servicer):
-        return calendar_service_pb2_grpc.CalendarStub(grpc.insecure_channel("localhost:60066"))
+        return calendar_service_pb_grpc.CalendarClientSync(grpc.insecure_channel("localhost:60066"))
 
-    def test_list_calendar_dates(self, stub: calendar_service_pb2_grpc.CalendarStub):
-        req = calendar_service_pb2.ListCalendarDatesRequest(
+    def test_list_calendar_dates(self, stub: calendar_service_pb_grpc.CalendarClientSync):
+        req = calendar_service_pb.ListCalendarDatesRequest(
             code="XNYS",
             start=pb_utils.from_pydate_to_proto_date(date(2020, 1, 1)),
             end=pb_utils.from_pydate_to_proto_date(date(2020, 12, 31)),
         )
-        response = stub.ListCalendarDates(req)
+        response = stub.list_calendar_dates(req)
         assert response
 
 
@@ -49,7 +49,7 @@ class TestBacktestService:
     def servicer(self):
         server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
         servicer = service.BacktestService()
-        engine_service_pb2_grpc.add_EngineServicer_to_server(servicer, server)
+        engine_service_pb_grpc.EngineServiceSync.add_to_server(servicer, server)
         server.add_insecure_port("[::]:60066")
         server.start()
         time.sleep(1)
@@ -61,18 +61,18 @@ class TestBacktestService:
 
     @pytest.fixture
     def stub(self, servicer):
-        return engine_service_pb2_grpc.EngineStub(grpc.insecure_channel("localhost:60066"))
+        return engine_service_pb_grpc.EngineClientSync(grpc.insecure_channel("localhost:60066"))
 
     def test_ingest(
         self,
-        stub: engine_service_pb2_grpc.EngineStub,
-        backtest_entity: backtest_pb2.Backtest,
+        stub: engine_service_pb_grpc.EngineClientSync,
+        backtest_entity: backtest_pb.Backtest,
         fb_database,
     ):
         _, verify = fb_database
         verify(backtest_entity)
-        response = stub.Ingest(
-            engine_service_pb2.IngestRequest(
+        response = stub.ingest(
+            engine_service_pb.IngestRequest(
                 backtest=backtest_entity,
             )
         )
@@ -80,8 +80,8 @@ class TestBacktestService:
 
     def test_new_session(
         self,
-        stub: engine_service_pb2_grpc.EngineStub,
+        stub: engine_service_pb_grpc.EngineClientSync,
         fb_env,
     ):
-        response = stub.NewSession(engine_service_pb2.NewSessionRequest(id="test123"))
+        response = stub.new_session(engine_service_pb.NewSessionRequest(id="test123"))
         assert response.port

@@ -9,7 +9,7 @@ from rich.table import Table
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 
@@ -21,8 +21,8 @@ log = logging.getLogger().getChild(__name__)
 class PositionAndOrder:
     def __init__(
         self,
-        position: marketdata_pb2.Position | None,
-        order: marketdata_pb2.Order | None,
+        position: marketdata_pb.Position | None,
+        order: marketdata_pb.Order | None,
     ):
         if position is None and order is None:
             raise ValueError("Both position and order are None")
@@ -32,31 +32,31 @@ class PositionAndOrder:
     @classmethod
     def with_defaults(
         cls,
-        position: marketdata_pb2.Position | None,
-        order: marketdata_pb2.Order | None,
+        position: marketdata_pb.Position | None,
+        order: marketdata_pb.Order | None,
     ) -> "PositionAndOrder":
         if order and position is None:
             if order.amount > 0:
-                order.intent = marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_OPEN
+                order.intent = marketdata_pb.PositionIntent.BUY_TO_OPEN
             else:
-                order.intent = marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_OPEN
+                order.intent = marketdata_pb.PositionIntent.SELL_TO_OPEN
 
         elif order and position:
             if position.amount > 0 and order.amount + position.amount == 0:
-                order.intent = marketdata_pb2.PositionIntent.POSITION_INTENT_SELL_TO_CLOSE
+                order.intent = marketdata_pb.PositionIntent.SELL_TO_CLOSE
             elif position.amount < 0 and order.amount + position.amount == 0:
-                order.intent = marketdata_pb2.PositionIntent.POSITION_INTENT_BUY_TO_CLOSE
+                order.intent = marketdata_pb.PositionIntent.BUY_TO_CLOSE
 
         if order:
-            order.type = marketdata_pb2.OrderType.ORDER_TYPE_MARKET
-            order.time_in_force = marketdata_pb2.TimeInForce.TIME_IN_FORCE_DAY
+            order.type = marketdata_pb.OrderType.MARKET
+            order.time_in_force = marketdata_pb.TimeInForce.DAY
         return PositionAndOrder(position, order)
 
     @classmethod
     def parse(
         cls,
-        positions: list[marketdata_pb2.Position],
-        orders: list[marketdata_pb2.Order],
+        positions: list[marketdata_pb.Position],
+        orders: list[marketdata_pb.Order],
     ) -> list["PositionAndOrder"]:
         items = []
         for position in positions:
@@ -101,8 +101,8 @@ class PositionAndOrder:
 
 
 def _print_orders_table(
-    positions: list[marketdata_pb2.Position],
-    orders: list[marketdata_pb2.Order],
+    positions: list[marketdata_pb.Position],
+    orders: list[marketdata_pb.Order],
 ) -> None:
     items = PositionAndOrder.parse(positions, orders)
     orders_table = Table(title="Positions and Orders")
@@ -147,16 +147,21 @@ def run(
         return
 
     portfolio = broker.finance.get_portfolio()
+    book = portfolio.portfolio
+    held = list(book.positions) if book is not None else []
 
     with LiveProgress() as progress:
         has_run = False
         for msg in broker.finance.create_session(symbols):
             progress.update_from_message(msg)
-            if msg.session.port and not has_run:
-                with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(msg.session) as session:
+            trading_session = msg.session
+            if trading_session is not None and trading_session.port and not has_run:
+                with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(
+                    trading_session
+                ) as session:
                     orders, place_orders = session.run_trading(symbols)
                     has_run = True
-                    _print_orders_table(list(portfolio.portfolio.positions), orders)
+                    _print_orders_table(held, orders)
                     if not yes and not progress.confirm("Place these orders?", default=False):
                         return
                     place_orders(orders)

@@ -98,6 +98,8 @@ func blockedError(provider, symbol, contentType string, body []byte) error {
 		return &BlockedError{Provider: provider, Symbol: symbol}
 	case blockedByRefusal:
 		return &BlockedError{Provider: provider, Symbol: symbol, Refused: true}
+	case notBlocked:
+		return nil
 	default:
 		return nil
 	}

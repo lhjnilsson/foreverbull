@@ -14,8 +14,8 @@ from foreverbull.models.finance import Asset
 from foreverbull.models.finance import Assets
 from foreverbull.models.finance import Portfolio
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.service.v1 import worker_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 class Function:
@@ -66,7 +66,7 @@ class Algorithm:
             else:
                 default = None if value.default == value.empty else str(value.default)
                 parameters.append(
-                    worker_pb2.Algorithm.FunctionParameter(
+                    worker_pb.Algorithm.FunctionParameter(
                         key=key,
                         defaultValue=default,
                         valueType=self.type_to_str(value.annotation),
@@ -78,7 +78,7 @@ class Algorithm:
             "callable": f.callable,
             "asset_key": asset_key,
             "portfolio_key": portfolio_key,
-            "definition": worker_pb2.Algorithm.Function(
+            "definition": worker_pb.Algorithm.Function(
                 name=f.callable.__name__,  # type: ignore
                 parameters=parameters,
                 parallelExecution=parallel_execution,
@@ -87,11 +87,11 @@ class Algorithm:
             ),
         }
 
-    def get_definition(self) -> worker_pb2.Algorithm:
-        functions: list[worker_pb2.Algorithm.Function] = []
+    def get_definition(self) -> worker_pb.Algorithm:
+        functions: list[worker_pb.Algorithm.Function] = []
         for function in self._functions.values():
             functions.append(function["definition"])
-        return worker_pb2.Algorithm(
+        return worker_pb.Algorithm(
             file_path=self._file_path,
             functions=functions,
             namespaces=self._namespaces,
@@ -156,9 +156,9 @@ class Algorithm:
         self,
         function_name: str,
         db: Connection,
-        portfolio: marketdata_pb2.Portfolio,
+        portfolio: marketdata_pb.Portfolio,
         symbols: list[str],
-    ) -> list[marketdata_pb2.Order]:
+    ) -> list[marketdata_pb.Order]:
         function = self._functions[function_name]
         p = Portfolio(portfolio, db)
         as_of = pb_utils.from_proto_timestamp(portfolio.timestamp)

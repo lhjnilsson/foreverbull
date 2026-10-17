@@ -17,117 +17,117 @@ from zipline.utils.run_algo import BenchmarkSpec
 from zipline.utils.run_algo import _run
 
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb2 as engine_service_pb2
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 
 
 @pytest.fixture(scope="session")
 def backtest_entity():
-    return backtest_pb2.Backtest(
+    return backtest_pb.Backtest(
         name="testing_backtest",
         periods=[
-            backtest_pb2.Backtest.Period(
-                start_date=common_pb2.Date(year=2022, month=1, day=3),
-                end_date=common_pb2.Date(year=2023, month=12, day=29),
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2022, month=1, day=3),
+                end_date=common_pb.Date(year=2023, month=12, day=29),
                 assets=[
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="AAPL",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="AMZN",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="BAC",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="BRK-B",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="CMCSA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="CSCO",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="DIS",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="GOOG",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="GOOGL",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="HD",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="INTC",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="JNJ",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="JPM",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="KO",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="META",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MRK",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="MSFT",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="PEP",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="PG",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="TSLA",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="UNH",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="V",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="VZ",
                         enabled=True,
                     ),
-                    backtest_pb2.Backtest.Period.Asset(
+                    backtest_pb.Backtest.Period.Asset(
                         symbol="WMT",
                         enabled=True,
                     ),
@@ -138,7 +138,7 @@ def backtest_entity():
 
 
 @pytest.fixture(scope="session")
-def foreverbull_bundle(backtest_entity: backtest_pb2.Backtest, fb_database):
+def foreverbull_bundle(backtest_entity: backtest_pb.Backtest, fb_database):
     _, verify_or_populate = fb_database
     verify_or_populate(backtest_entity)
 
@@ -163,10 +163,10 @@ def foreverbull_bundle(backtest_entity: backtest_pb2.Backtest, fb_database):
         sanity_check(bundles.load("foreverbull", os.environ, None))
     except (ValueError, LookupError):
         s = service.BacktestService()
-        req = engine_service_pb2.IngestRequest(
+        req = engine_service_pb.IngestRequest(
             backtest=backtest_entity,
         )
-        s.Ingest(req, None)
+        s.ingest(req, None)
 
 
 def baseline_performance_initialize(context):
@@ -174,7 +174,7 @@ def baseline_performance_initialize(context):
     context.held_positions = []
 
 
-def baseline_performance_handle_data(context, data, backtest: backtest_pb2.Backtest):
+def baseline_performance_handle_data(context, data, backtest: backtest_pb.Backtest):
     context.i += 1
     if context.i < 30:
         return
@@ -192,7 +192,7 @@ def baseline_performance_handle_data(context, data, backtest: backtest_pb2.Backt
 
 
 @pytest.fixture(scope="session")
-def baseline_performance(foreverbull_bundle, backtest_entity: backtest_pb2.Backtest):
+def baseline_performance(foreverbull_bundle, backtest_entity: backtest_pb.Backtest):
     register("foreverbull", SQLIngester(backtest_entity), calendar_name="XNYS")
     benchmark_spec = BenchmarkSpec.from_cli_params(
         no_benchmark=True,

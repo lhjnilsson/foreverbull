@@ -55,7 +55,7 @@ def order_close(portfolio: Any, symbol: str) -> float:
     if callable(closer):
         price: Any = closer(symbol)
         return float(price)
-    day = portfolio._pb.timestamp.ToDatetime().strftime("%Y-%m-%d")
+    day = portfolio._pb.timestamp.to_datetime().strftime("%Y-%m-%d")
     query = text("SELECT close FROM ohlc WHERE symbol=:symbol AND provider=:provider AND time::DATE=:dt").bindparams(
         symbol=symbol,
         provider=ohlc_provider(),

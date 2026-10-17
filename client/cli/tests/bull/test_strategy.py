@@ -1,5 +1,6 @@
 import re
 
+from datetime import UTC
 from datetime import date
 from datetime import datetime
 from unittest.mock import patch
@@ -9,12 +10,12 @@ import pytest
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.strategy import strategy
 from foreverbull_cli.output import execution_link
-from google.protobuf.timestamp_pb2 import Timestamp
+from protobuf.wkt import Timestamp
 
-from foreverbull.pb.foreverbull import common_pb2
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
-from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb2
-from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb2
+from foreverbull.pb.foreverbull import common_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb
+from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 
 
@@ -22,13 +23,14 @@ pytestmark = pytest.mark.usefixtures("fb_env")
 
 
 def _timestamp(when: datetime | None = None) -> Timestamp:
-    ts = Timestamp()
-    ts.FromDatetime(when or datetime(2024, 3, 4, 12, 0, 0))
-    return ts
+    dt = when or datetime(2024, 3, 4, 12, 0, 0)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return Timestamp.from_datetime(dt)
 
 
-def _sample_strategy(name="mean-rev") -> strategy_pb2.Strategy:
-    return strategy_pb2.Strategy(
+def _sample_strategy(name="mean-rev") -> strategy_pb.Strategy:
+    return strategy_pb.Strategy(
         id="strat-1",
         name=name,
         description="mean reversion",
@@ -36,8 +38,8 @@ def _sample_strategy(name="mean-rev") -> strategy_pb2.Strategy:
     )
 
 
-def _sample_version(name="mean-rev", rev=1) -> strategy_pb2.Version:
-    return strategy_pb2.Version(
+def _sample_version(name="mean-rev", rev=1) -> strategy_pb.Version:
+    return strategy_pb.Version(
         id="ver-1",
         strategy_id="strat-1",
         strategy_name=name,
@@ -53,8 +55,8 @@ def _sample_stats(
     sharpe: float | None = 1.25,
     algorithm_period_return=0.05,
     benchmark_period_return: float | None = 0.03,
-) -> strategy_pb2.ExperimentStats:
-    stats = strategy_pb2.ExperimentStats(
+) -> strategy_pb.ExperimentStats:
+    stats = strategy_pb.ExperimentStats(
         portfolio_value=portfolio_value,
         max_drawdown=max_drawdown,
         algorithm_period_return=algorithm_period_return,
@@ -70,15 +72,15 @@ def _sample_experiment(
     experiment_id="exp-1",
     backtest_name="spy",
     execution_id="exec-1",
-    status=strategy_pb2.Experiment.COMPLETED,
-    stats: strategy_pb2.ExperimentStats | None = None,
-) -> strategy_pb2.Experiment:
+    status=strategy_pb.Experiment.Status.COMPLETED,
+    stats: strategy_pb.ExperimentStats | None = None,
+) -> strategy_pb.Experiment:
     kwargs = {}
     if execution_id:
         kwargs["execution_id"] = execution_id
     if stats is not None:
         kwargs["stats"] = stats
-    return strategy_pb2.Experiment(
+    return strategy_pb.Experiment(
         id=experiment_id,
         strategy_id="strat-1",
         strategy_name="mean-rev",
@@ -91,42 +93,42 @@ def _sample_experiment(
     )
 
 
-def _sample_deployment(status=strategy_pb2.Deployment.RUNNING) -> strategy_pb2.Deployment:
-    return strategy_pb2.Deployment(
+def _sample_deployment(status=strategy_pb.Deployment.Status.RUNNING) -> strategy_pb.Deployment:
+    return strategy_pb.Deployment(
         id="dep-1",
         strategy_id="strat-1",
         strategy_name="mean-rev",
         version_id="ver-1",
         version_rev=1,
-        mode=strategy_pb2.Deployment.PAPER,
+        mode=strategy_pb.Deployment.Mode.PAPER,
         backend="default",
         calendar_code="XNYS",
         symbols=["SPY"],
-        schedule_kind=strategy_pb2.Deployment.SESSION_CLOSE,
+        schedule_kind=strategy_pb.Deployment.ScheduleKind.SESSION_CLOSE,
         dry_run=True,
         status=status,
         last_session_date=from_pydate_to_proto_date(date(2024, 3, 4)),
     )
 
 
-def _sample_run() -> strategy_pb2.DeploymentRun:
-    return strategy_pb2.DeploymentRun(
+def _sample_run() -> strategy_pb.DeploymentRun:
+    return strategy_pb.DeploymentRun(
         id="run-1",
         deployment_id="dep-1",
         session_date=from_pydate_to_proto_date(date(2024, 3, 4)),
         started_at=_timestamp(),
-        orders=[marketdata_pb2.Order(symbol="SPY", amount=1)],
+        orders=[marketdata_pb.Order(symbol="SPY", amount=1)],
         skipped=False,
     )
 
 
-def _experiment_stream(entity: strategy_pb2.Experiment):
+def _experiment_stream(entity: strategy_pb.Experiment):
     return iter(
         [
-            strategy_service_pb2.CreateExperimentResponse(
-                QUEUED=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                RUNNING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
-                COMPLETED=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+            strategy_service_pb.CreateExperimentResponse(
+                QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
+                RUNNING=common_pb.Step(state=common_pb.State.COMPLETED),
+                COMPLETED=common_pb.Step(state=common_pb.State.COMPLETED),
                 experiment=entity,
             )
         ]
@@ -370,7 +372,7 @@ def test_strategy_experiments_empty_stats_without_execution(runner):
                 experiment_id="exp-queued",
                 backtest_name="spy",
                 execution_id="",
-                status=strategy_pb2.Experiment.QUEUED,
+                status=strategy_pb.Experiment.Status.QUEUED,
             ),
         ]
         result = runner(strategy, ["experiments", "mean-rev"])
@@ -523,7 +525,7 @@ def test_strategy_deploy_help_refuses_live(runner):
 
 def test_strategy_stop(runner):
     with patch("foreverbull.broker.strategy.stop_deployment") as mock_stop:
-        mock_stop.return_value = _sample_deployment(status=strategy_pb2.Deployment.STOPPED)
+        mock_stop.return_value = _sample_deployment(status=strategy_pb.Deployment.Status.STOPPED)
         result = runner(strategy, ["stop", "mean-rev"])
 
     assert result.exit_code == 0

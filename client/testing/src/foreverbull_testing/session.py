@@ -19,7 +19,7 @@ from foreverbull.models.finance import Portfolio
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb2
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 
 
 _OHLC_COLUMNS = ("symbol", "time", "open", "high", "low", "close", "volume")
@@ -213,8 +213,8 @@ class Session:
         as_of: datetime,
         portfolio_value: float,
         positions: Sequence[Any] | None,
-    ) -> marketdata_pb2.Portfolio:
-        return marketdata_pb2.Portfolio(
+    ) -> marketdata_pb.Portfolio:
+        return marketdata_pb.Portfolio(
             timestamp=pb_utils.to_proto_timestamp(_as_utc(as_of)),
             positions=_proto_positions(positions),
             portfolio_value=portfolio_value,
@@ -308,14 +308,14 @@ def _position_parts(position: Any) -> tuple[str, int]:
     return str(position.symbol), int(position.amount)
 
 
-def _proto_positions(positions: Sequence[Any] | None) -> list[marketdata_pb2.Position]:
+def _proto_positions(positions: Sequence[Any] | None) -> list[marketdata_pb.Position]:
     if not positions:
         return []
-    proto: list[marketdata_pb2.Position] = []
+    proto: list[marketdata_pb.Position] = []
     for position in positions:
-        if isinstance(position, marketdata_pb2.Position):
+        if isinstance(position, marketdata_pb.Position):
             proto.append(position)
             continue
         symbol, amount = _position_parts(position)
-        proto.append(marketdata_pb2.Position(symbol=symbol, amount=amount))
+        proto.append(marketdata_pb.Position(symbol=symbol, amount=amount))
     return proto

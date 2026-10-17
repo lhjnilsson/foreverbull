@@ -8,6 +8,7 @@ from urllib.parse import urlunparse
 
 import typer
 
+from protobuf import DescFieldValueMessage
 from rich.console import Console
 from rich.console import Group
 from rich.live import Live
@@ -17,7 +18,7 @@ from rich.progress import SpinnerColumn
 from rich.progress import Task
 from rich.progress import TextColumn
 
-from foreverbull.pb.foreverbull import common_pb2
+from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 
 
@@ -28,7 +29,7 @@ GRAFANA_DASHBOARD_UID = "ee9ep4jxtwkcgf"
 GRAFANA_DASHBOARD_URL = f"{GRAFANA_URL_DEFAULT}/d/{GRAFANA_DASHBOARD_UID}"
 
 
-def format_proto_date(value: common_pb2.Date | None) -> str:
+def format_proto_date(value: common_pb.Date | None) -> str:
     if value is None:
         return ""
     try:
@@ -38,13 +39,13 @@ def format_proto_date(value: common_pb2.Date | None) -> str:
 
 
 def format_date_field(message, field: str) -> str:
-    if not message.HasField(field):
+    if not message.has_field(field):
         return ""
     return format_proto_date(getattr(message, field))
 
 
 def format_optional_float(message, field: str) -> str:
-    if not message.HasField(field):
+    if not message.has_field(field):
         return "-"
     return f"{getattr(message, field):.5f}"
 
@@ -100,30 +101,35 @@ class LiveProgress(Live):
         return self
 
     def update_from_message(self, msg):
+        step_type = common_pb.Step.desc().type_name
+
+        def is_step(field) -> bool:
+            return isinstance(field.value, DescFieldValueMessage) and field.value.message.type_name == step_type
+
         if not self.progress.tasks:
-            fields = [
-                f for f in msg.DESCRIPTOR.fields if f.message_type.full_name == common_pb2.Step.DESCRIPTOR.full_name
-            ]
-            for field in fields:
+            for field in msg.desc().fields:
+                if not is_step(field):
+                    continue
                 task_id = self.progress.add_task(
-                    " ".join([f.capitalize() for f in field.name.split("_")]),
+                    " ".join([part.capitalize() for part in field.name.split("_")]),
                     start=False,
                     total=1,
                 )
                 self._orchestration_tasks[field.name] = task_id
         else:
-            for desc, step in [
-                f for f in msg.ListFields() if f[0].message_type.full_name == common_pb2.Step.DESCRIPTOR.full_name
-            ]:
-                task_id = self._orchestration_tasks[desc.name]
+            for field in msg:
+                if not is_step(field):
+                    continue
+                step = msg[field]
+                task_id = self._orchestration_tasks[field.name]
                 match step.state:
-                    case common_pb2.State.STATE_RUNNING:
+                    case common_pb.State.RUNNING:
                         self.progress.start_task(task_id)
-                    case common_pb2.State.STATE_COMPLETED:
+                    case common_pb.State.COMPLETED:
                         if not self.progress.tasks[task_id].started:
                             self.progress.start_task(task_id)
                         self.progress.update(task_id, completed=1)
-                    case common_pb2.State.STATE_FAILED:
+                    case common_pb.State.FAILED:
                         if self.failure is None:
                             self.failure = step.message
                         description = f"{self.progress.tasks[task_id].description}: {step.message}"

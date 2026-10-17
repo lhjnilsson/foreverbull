@@ -53,10 +53,10 @@ def test_backtest_stub_uses_resolved_address(monkeypatch):
     monkeypatch.setenv("FOREVERBULL_BROKER_ADDRESS", "remote.example:1234")
     seen: list[str] = []
     stub = MagicMock()
-    stub.ListBacktests.return_value.backtests = []
+    stub.list_backtests.return_value.backtests = []
     monkeypatch.setattr("foreverbull.broker.backtest.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
-        "foreverbull.broker.backtest.backtest_service_pb2_grpc.BacktestServicerStub",
+        "foreverbull.broker.backtest.backtest_service_pb_grpc.BacktestServicerClientSync",
         lambda channel: stub,
     )
     assert backtest.list_backtests() == []
@@ -67,10 +67,10 @@ def test_finance_stub_uses_resolved_address(monkeypatch):
     monkeypatch.setenv("FOREVERBULL_BROKER_ADDRESS", "remote.example:1234")
     seen: list[str] = []
     stub = MagicMock()
-    stub.GetPortfolio.return_value = "portfolio"
+    stub.get_portfolio.return_value = "portfolio"
     monkeypatch.setattr("foreverbull.broker.finance.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
-        "foreverbull.broker.finance.trading_service_pb2_grpc.TradingServicerStub",
+        "foreverbull.broker.finance.trading_service_pb_grpc.TradingServicerClientSync",
         lambda channel: stub,
     )
     assert finance.get_portfolio() == "portfolio"
@@ -91,10 +91,10 @@ def test_backtest_stub_uses_config_broker_address(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("FOREVERBULL_CONFIG", raising=False)
     seen: list[str] = []
     stub = MagicMock()
-    stub.ListBacktests.return_value.backtests = []
+    stub.list_backtests.return_value.backtests = []
     monkeypatch.setattr("foreverbull.broker.backtest.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
-        "foreverbull.broker.backtest.backtest_service_pb2_grpc.BacktestServicerStub",
+        "foreverbull.broker.backtest.backtest_service_pb_grpc.BacktestServicerClientSync",
         lambda channel: stub,
     )
     assert backtest.list_backtests() == []

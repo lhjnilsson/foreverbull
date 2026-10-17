@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from foreverbull import broker
-from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb2
+from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -28,24 +28,24 @@ class DeployMode(str, Enum):
 
 
 def _optional_text(message, field: str) -> str:
-    if not message.HasField(field):
+    if not message.has_field(field):
         return ""
     return str(getattr(message, field))
 
 
 def _enum_name(enum_cls, value) -> str:
     try:
-        return enum_cls.Name(value)
+        return enum_cls(value).name
     except ValueError:
         return str(value)
 
 
 def _format_timestamp(message, field: str) -> str:
-    if not message.HasField(field):
+    if not message.has_field(field):
         return ""
     ts = getattr(message, field)
     try:
-        return ts.ToDatetime().isoformat()
+        return ts.to_datetime().isoformat()
     except (OverflowError, OSError, ValueError):
         return ""
 
@@ -70,7 +70,7 @@ def _parse_parameters(raw: str | None) -> dict | None:
     return loaded
 
 
-def _print_strategy(entity: strategy_pb2.Strategy, title: str = "Strategy") -> None:
+def _print_strategy(entity: strategy_pb.Strategy, title: str = "Strategy") -> None:
     table = Table(title=title)
     table.add_column("ID")
     table.add_column("Name")
@@ -85,7 +85,7 @@ def _print_strategy(entity: strategy_pb2.Strategy, title: str = "Strategy") -> N
     console.print(table)
 
 
-def _print_version(entity: strategy_pb2.Version) -> None:
+def _print_version(entity: strategy_pb.Version) -> None:
     table = Table(title="Version")
     table.add_column("ID")
     table.add_column("Strategy")
@@ -102,19 +102,19 @@ def _print_version(entity: strategy_pb2.Version) -> None:
     console.print(table)
 
 
-def _print_experiment_links(experiments: list[strategy_pb2.Experiment]) -> None:
+def _print_experiment_links(experiments: list[strategy_pb.Experiment]) -> None:
     for experiment in experiments:
         execution_id = _optional_text(experiment, "execution_id")
         if execution_id:
             console.print(f"Link: {execution_link(execution_id)}")
 
 
-def _format_version(experiment: strategy_pb2.Experiment) -> str:
+def _format_version(experiment: strategy_pb.Experiment) -> str:
     return f"{experiment.version_rev} ({experiment.version_id})"
 
 
-def _format_stat(experiment: strategy_pb2.Experiment, field: str, *, optional: bool = False) -> str:
-    if not experiment.HasField("stats"):
+def _format_stat(experiment: strategy_pb.Experiment, field: str, *, optional: bool = False) -> str:
+    if not experiment.has_field("stats"):
         return ""
     if optional:
         return format_optional_float(experiment.stats, field)
@@ -135,7 +135,7 @@ def _print_compare_table(table: Table) -> None:
     printer.print(table)
 
 
-def _print_experiments(experiments: list[strategy_pb2.Experiment], title: str = "Experiments") -> None:
+def _print_experiments(experiments: list[strategy_pb.Experiment], title: str = "Experiments") -> None:
     table = Table(title=title)
     table.add_column("ID")
     table.add_column("Strategy")
@@ -153,7 +153,7 @@ def _print_experiments(experiments: list[strategy_pb2.Experiment], title: str = 
             experiment.strategy_name,
             _format_version(experiment),
             experiment.backtest_name,
-            _enum_name(strategy_pb2.Experiment.Status, experiment.status),
+            _enum_name(strategy_pb.Experiment.Status, experiment.status),
             _optional_text(experiment, "execution_id"),
             _format_stat(experiment, "sharpe", optional=True),
             _format_stat(experiment, "max_drawdown"),
@@ -164,7 +164,7 @@ def _print_experiments(experiments: list[strategy_pb2.Experiment], title: str = 
     _print_experiment_links(experiments)
 
 
-def _print_deployment(entity: strategy_pb2.Deployment, title: str = "Deployment") -> None:
+def _print_deployment(entity: strategy_pb.Deployment, title: str = "Deployment") -> None:
     table = Table(title=title)
     table.add_column("ID")
     table.add_column("Strategy")
@@ -179,9 +179,9 @@ def _print_deployment(entity: strategy_pb2.Deployment, title: str = "Deployment"
         entity.id,
         entity.strategy_name,
         str(entity.version_rev),
-        _enum_name(strategy_pb2.Deployment.Mode, entity.mode),
+        _enum_name(strategy_pb.Deployment.Mode, entity.mode),
         str(entity.dry_run).lower(),
-        _enum_name(strategy_pb2.Deployment.Status, entity.status),
+        _enum_name(strategy_pb.Deployment.Status, entity.status),
         entity.calendar_code,
         ",".join(entity.symbols),
         format_date_field(entity, "last_session_date"),
@@ -189,7 +189,7 @@ def _print_deployment(entity: strategy_pb2.Deployment, title: str = "Deployment"
     console.print(table)
 
 
-def _print_deployment_runs(runs: list[strategy_pb2.DeploymentRun]) -> None:
+def _print_deployment_runs(runs: list[strategy_pb.DeploymentRun]) -> None:
     table = Table(title="Deployment Runs")
     table.add_column("ID")
     table.add_column("Deployment")
@@ -241,7 +241,7 @@ def experiment(
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
 ):
-    created: strategy_pb2.Experiment | None = None
+    created: strategy_pb.Experiment | None = None
     with LiveProgress() as progress:
         for rsp in broker.strategy.create_experiment(
             strategy_name=name,
@@ -250,7 +250,7 @@ def experiment(
             version_rev=rev,
         ):
             progress.update_from_message(rsp)
-            if rsp.HasField("experiment"):
+            if rsp.has_field("experiment"):
                 created = rsp.experiment
 
     if created is None:
