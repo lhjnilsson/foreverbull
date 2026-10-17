@@ -38,3 +38,10 @@ RUN pip install -U .
 
 RUN pip install zipline-reloaded --upgrade
 RUN pip install psycopg2-binary --upgrade
+
+# Build steps above stay root. The image user is the one a derived runtime inherits.
+RUN groupadd --gid 10001 foreverbull \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/foreverbull --shell /usr/sbin/nologin foreverbull \
+ && chmod 1777 /tmp
+USER foreverbull
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('zipline') else 1)"
