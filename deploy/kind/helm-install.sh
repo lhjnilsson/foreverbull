@@ -30,5 +30,6 @@ helm upgrade --install "${RELEASE}" "${CHART}" \
   --create-namespace \
   --kube-context "${KUBE_CONTEXT}" \
   --set "expose.hostPort=${HOST_PORT}" \
+  --set "credentials.allowDefaults=true" \
   --set "global.imageTag=${VERSION}" \
   "$@"

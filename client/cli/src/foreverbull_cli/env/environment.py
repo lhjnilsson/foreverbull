@@ -841,7 +841,10 @@ class ClusterManager:
             f"expose.hostPort={'true' if self.config.is_local else 'false'}",
         ]
         if self.config.is_local:
-            cmd.extend(["--set", "broker.logLevel=debug"])
+            # Local Kind keeps the documented default credentials, but
+            # the chart only accepts them with this explicit opt-in;
+            # expose.hostPort alone no longer selects them.
+            cmd.extend(["--set", "broker.logLevel=debug", "--set", "credentials.allowDefaults=true"])
         if replicas is not None:
             cmd.extend(["--set", f"replicaCount={replicas}"])
         if reuse_values:
@@ -901,6 +904,8 @@ class ClusterManager:
             "--set",
             f"replicaCount={replicas}",
         ]
+        if self.config.is_local:
+            cmd.extend(["--set", "credentials.allowDefaults=true"])
         result = self.runner.run(cmd, check=not missing_ok)
         if missing_ok and result.returncode != 0:
             combined = f"{result.stdout} {result.stderr}".lower()
