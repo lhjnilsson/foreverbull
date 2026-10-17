@@ -21,5 +21,15 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --set expose.hostPort=false
 ```
 
+Generated Postgres/MinIO credentials live in Secret
+`foreverbull-credentials` in the release namespace and are reused on
+upgrade via a live-cluster lookup. Read them back with:
+
+```bash
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.postgres-password}' | base64 -d; echo
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.minio-accessKey}' | base64 -d; echo
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.minio-secretKey}' | base64 -d; echo
+```
+
 Do not pass broker credentials as chart values. `broker.trading.enabled` stays false.
 Optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml`.

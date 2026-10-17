@@ -111,7 +111,28 @@ Postgres and MinIO credentials live in Secret `foreverbull-credentials` (keys
   `foreverbull`), generated on the first install and read back from the Secret
   on every upgrade.
 
-A value you set wins. It must be URL-safe, since it goes into `POSTGRES_URL`.
+A value you set wins. `postgres.password` and `minio.secretKey` must be
+URL-safe (letters, digits and `-._~` are safe): the Postgres password is
+expanded raw into `POSTGRES_URL`, and the chart now fails the install or
+upgrade on any other character instead of rendering a broken DSN.
+
+Generated credentials are not printed again, so read them back from the
+Secret. Replace `<namespace>` with the Helm release namespace
+(`foreverbull` on local Kind, your `--namespace` on a remote install):
+
+```bash
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.postgres-password}' | base64 -d; echo
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.minio-accessKey}' | base64 -d; echo
+kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.minio-secretKey}' | base64 -d; echo
+```
+
+Generated values stay stable across `helm upgrade`: the chart looks up
+the existing Secret `foreverbull-credentials` in the release namespace
+and reuses its values before generating new ones. That lookup only
+works against a live cluster, so an offline `helm template` render
+generates fresh values every time; do not apply such a render over a
+live release, or the Secret would rotate while Postgres keeps the
+password it was initialised with.
 
 🔒️ Without `expose.hostPort`, `postgres.password=foreverbull` or
 `minio.secretKey=minioadmin` stops the install with an error. A remote release
