@@ -23,6 +23,7 @@ dependencies = [
   "protobuf==5.29.0",
   "types-protobuf",
   "grpcio",
+  "protobuf-py==0.6.0",
   "pyyaml",
 ]
 
@@ -47,6 +48,9 @@ dev = [
     "foreverbull-cli",
     "grpcio-testing>=1.71.2",
     "grpcio-tools>=1.71.2",
+    "buf-bin==1.74.0",
+    "protoc-gen-py==0.6.0",
+    "protoc-gen-grpc-py==0.4.0",
     "pytest>=8.4.1",
     "testcontainers>=4.12.0",
     "yfinance>=0.2.65",
