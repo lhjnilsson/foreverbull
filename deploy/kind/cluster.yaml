@@ -25,6 +25,10 @@ nodes:
       - containerPort: 50055
         hostPort: 50055
         protocol: TCP
+      # Foreverbull HTTP (page and /api: localhost:8080)
+      - containerPort: 8080
+        hostPort: 8080
+        protocol: TCP
       # Grafana
       - containerPort: 3000
         hostPort: 3000

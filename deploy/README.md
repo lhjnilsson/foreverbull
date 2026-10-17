@@ -25,7 +25,7 @@ In-cluster DNS names match the Service object names.
 | NATS JetStream | `nats` | `nats:2.10-alpine` | `4222` |
 | Minio | `minio` | `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` | `9000` |
 | Zipline | `zipline` | `lhjnilsson/zipline:{tag}` | none (in-cluster gRPC `:50055`) |
-| Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `27000`–`27015` |
+| Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
 | Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
 
 `{tag}` is `images.*.tag` or `global.imageTag` (`VERSION` in fbenv: `latest` or `local`).
@@ -40,6 +40,7 @@ Published on the host when `expose.hostPort=true` (local CLI):
 | `4222` | NATS |
 | `9000` | Minio |
 | `50055` | Foreverbull gRPC (Python stubs: `localhost:50055`) |
+| `8080` | Foreverbull HTTP (page and `/api`: `localhost:8080`) |
 | `27000`–`27015` | Backtest NNG (`BACKTEST_PORT_RANGE_START` / `END`) |
 | `3000` | Grafana |
 
@@ -72,6 +73,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `ZIPLINE_CONTAINER_NAME` | `zipline` |
 | `POD_NAMESPACE` | pod namespace (fieldRef) |
 | `GRPC_PORT` | `50055` |
+| `HTTP_PORT` | `8080` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
@@ -175,7 +177,7 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
 NATS, and Minio are pulled by the node on first pod start (or use images already
 cached on the Docker host).
 
-Host checks after install: `localhost:5432`, `4222`, `9000`, `50055`, `3000`,
+Host checks after install: `localhost:5432`, `4222`, `9000`, `50055`, `8080`, `3000`,
 and `27000`–`27015`. Python `fbull` keeps using `localhost:50055` unless
 `FOREVERBULL_BROKER_ADDRESS` is set.
 

@@ -23,6 +23,8 @@ rendered="$(mktemp)"
 trap 'rm -f "${rendered}"' EXIT
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" > "${rendered}"
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.hostPort=true >> "${rendered}"
+# An installed release from before httpPort has no value. reuse-values must still render 8080.
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.hostPort=true --set broker.httpPort=null >> "${rendered}"
 
 if grep -F '/var/run/docker.sock' "${rendered}"; then
   echo "chart must not mount /var/run/docker.sock" >&2

@@ -207,7 +207,7 @@ uv run fbenv update                      # reload images (local) and helm upgrad
 
 CLI flags `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-address` override the selected cluster for one command.
 
-Published host ports (Kind `extraPortMappings` + chart `expose.hostPort=true`): Postgres `5432`, NATS `4222`, Minio `9000`, Foreverbull gRPC `50055`, backtest `27000–27015`, Grafana `3000`. Persistence is cluster PVCs (`persistence.*`), not host binds under `.foreverbull/{postgres,minio,nats}`.
+Published host ports (Kind `extraPortMappings` + chart `expose.hostPort=true`): Postgres `5432`, NATS `4222`, Minio `9000`, Foreverbull gRPC `50055`, Foreverbull HTTP `8080`, backtest `27000–27015`, Grafana `3000`. Persistence is cluster PVCs (`persistence.*`), not host binds under `.foreverbull/{postgres,minio,nats}`.
 
 Python broker stubs resolve the address in this order: `FOREVERBULL_BROKER_ADDRESS` → `remote.broker_address` when `cluster: remote` → `localhost:50055` when `cluster: local`. Grafana in-cluster uses `BROKER_URL=foreverbull:50055`. Host Grafana is `http://localhost:3000`.
 
