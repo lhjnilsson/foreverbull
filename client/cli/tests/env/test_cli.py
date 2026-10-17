@@ -9,6 +9,7 @@ from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import BrokerDiagnosis
 from foreverbull_cli.env.environment import ClusterManager
+from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import WorkloadRow
@@ -226,6 +227,22 @@ def test_stop_remove_purge(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "stop --remove --purge")
     assert result.exit_code == 0
     mocked_container_manager.remove.assert_called_once_with(True)
+
+
+def test_stop_remove_continues_when_scale_fails(runner, mocked_container_manager: MagicMock):
+    completed = MagicMock(returncode=1, stdout="", stderr="port 0")
+    mocked_container_manager.stop.side_effect = CommandError(["helm", "upgrade"], completed)
+    result = runner(cli.cli, "stop --remove --purge")
+    assert result.exit_code == 0
+    mocked_container_manager.remove.assert_called_once_with(True)
+
+
+def test_stop_scale_failure_is_an_error(runner, mocked_container_manager: MagicMock):
+    completed = MagicMock(returncode=1, stdout="", stderr="port 0")
+    mocked_container_manager.stop.side_effect = CommandError(["helm", "upgrade"], completed)
+    result = runner(cli.cli, "stop")
+    assert result.exit_code != 0
+    mocked_container_manager.remove.assert_not_called()
 
 
 def test_update(runner, mocked_container_manager: MagicMock):
