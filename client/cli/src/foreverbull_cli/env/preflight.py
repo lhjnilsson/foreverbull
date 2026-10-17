@@ -41,6 +41,7 @@ PORT_SERVICES = {
     4222: "NATS",
     9000: "Minio",
     50055: "Foreverbull gRPC",
+    8080: "Foreverbull HTTP",
     3000: "Grafana",
 }
 
