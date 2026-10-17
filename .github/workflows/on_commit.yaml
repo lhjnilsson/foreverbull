@@ -101,16 +101,22 @@ jobs:
   proto-check:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # Pin the same generators that produced the committed pb tree:
-      # buf 1.26.1, protoc 27.1 (python/pyi), protoc-gen-go v1.31.0,
-      # protoc-gen-go-grpc v1.5.1. Python gRPC is buf.build/grpc/python:v1.71.0.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      # Go generators: buf 1.26.1, protoc 27.1, protoc-gen-go v1.31.0,
+      # protoc-gen-go-grpc v1.5.1. Python generation uses the buf-bin,
+      # protoc-gen-py, and protoc-gen-grpc-py pins in client/taskfile.yaml.
       - name: Install protoc
         env:
           PROTOC_VERSION: "27.1"

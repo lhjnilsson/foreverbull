@@ -43,9 +43,10 @@ tasks:
     desc: Generate Python protobuf code
     dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      # Internal stream messages are Go-only. uv run keeps the pinned buf and plugins on PATH.
-      # protobuf-py emits relative imports, so there is no import rewrite.
-      - uv run --project client buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
+      # Internal stream messages are Go-only. protobuf-py emits relative imports.
+      # The pins match client/pyproject.toml. The isolated env supplies buf and the
+      # plugins without installing the client stack, which proto:check does not have.
+      - uv run --isolated --no-project --with buf-bin==1.74.0 --with protoc-gen-py==0.6.0 --with protoc-gen-grpc-py==0.4.0 buf generate proto --template buf.gen.py.yaml --exclude-path proto/foreverbull/internal
 
   template:generate:
     desc: Render cookiecutter templates
