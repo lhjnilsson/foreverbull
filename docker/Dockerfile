@@ -1,4 +1,4 @@
-FROM node:22-alpine AS web
+FROM node:25-alpine AS web
 
 WORKDIR /web
 
@@ -8,7 +8,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.24-alpine
+FROM golang:1.27-alpine
 
 WORKDIR /app
 
