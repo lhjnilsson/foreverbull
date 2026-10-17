@@ -111,7 +111,7 @@ uv run fbenv update                      # reload images (local) and helm upgrad
 
 `--cluster`, `--kubeconfig`, `--context`, `--namespace`, `--broker-address` override the selected cluster for one command.
 
-`VERSION` is the image tag (`lhjnilsson/foreverbull|zipline|fb-grafana:{VERSION}`). Use `local` with images built via `task build` / `task build:docker`. `task build` does not create the cluster.
+Without `VERSION`, `fbenv` uses `lhjnilsson/foreverbull|zipline|fb-grafana` tagged with the installed `foreverbull` client version, never `latest`, and `fbenv create` stops before installing anything when one of them can't be pulled. `VERSION=local` uses images built via `task build` / `task build:docker`; any other `VERSION` is refused. `task build` does not create the cluster.
 
 Cluster config files and Helm recipes: [deploy/README.md](../../deploy/README.md).
 

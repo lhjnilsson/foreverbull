@@ -1,6 +1,7 @@
 import os
 
 from unittest.mock import MagicMock
+from unittest.mock import PropertyMock
 
 import pytest
 import typer
@@ -12,6 +13,7 @@ from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import HostCheck
@@ -175,6 +177,33 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert "Nothing was changed." in result.stdout
     assert "Run `fbenv update --verbose` to see Docker's error." in result.stdout
     assert "Traceback" not in result.stdout
+
+
+def _reject_version(manager: MagicMock) -> None:
+    type(manager.config).version = PropertyMock(side_effect=VersionError("latest", "1.2.3"))
+
+
+def test_create_rejects_a_version_other_than_local(runner, mocked_container_manager: MagicMock):
+    _reject_version(mocked_container_manager)
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == ["✖ VERSION can only be `local`, got `latest`."]
+    assert "installed client version (1.2.3)" in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.preflight.assert_not_called()
+    mocked_container_manager.verify_images.assert_not_called()
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_update_rejects_a_version_other_than_local(runner, mocked_container_manager: MagicMock):
+    _reject_version(mocked_container_manager)
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ VERSION can only be `local`, got `latest`." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    mocked_container_manager.update.assert_not_called()
 
 
 def test_start_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):

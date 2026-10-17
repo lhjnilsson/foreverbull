@@ -5,7 +5,7 @@
 replicaCount: 1
 
 global:
-  imageTag: latest          # VERSION; local CLI uses local
+  imageTag: latest          # fbenv sets the client version, or local
   imagePullPolicy: IfNotPresent
 
 images:

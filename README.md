@@ -133,7 +133,9 @@ uv run fbenv start
 uv run fbenv status
 ```
 
-`fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
+`fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1.
+
+Without `VERSION`, `fbenv create` pulls `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` tagged with the version of the installed `foreverbull` Python client, never `latest`, so the client and the broker come from the same release. `VERSION=local` uses the `:local` images that `task build` made instead, and it is the only other value `fbenv` accepts. A checkout's client version is `0.0.0`, which has no published images, so the commands in this README use `VERSION=local`. When the images for your client version can't be pulled, `fbenv create` stops before it installs anything, names the image and tag, and tells you to build them locally. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
 
 `fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` at `replicaCount=0`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
 
@@ -275,13 +277,13 @@ Before they change anything, `fbenv create` and `fbenv start` also check that `k
 When an image download fails, `fbenv create` and `fbenv update` stop with one line that names the image and the likely cause (no network, Docker is not running, the registry refused, the tag does not exist, or the image has no build for this machine), then a fix hint. Add `--verbose` to see Docker's own error:
 
 ```
-✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:latest: Docker could not reach the registry.
+✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:0.1.0: Docker could not reach the registry.
 Check your internet connection and run `fbenv create` again.
 Nothing was changed.
 Run `fbenv create --verbose` to see Docker's error.
 ```
 
-When the image has no build for your machine's architecture, the hint names it and asks you to set `VERSION` to a release that supports it, or to report it at https://github.com/lhjnilsson/foreverbull/issues.
+When no images are published for your client version, the hint says so and tells you to build them with `task build` and run `VERSION=local uv run fbenv create`. When the image has no build for your machine's architecture, the hint names the architecture and gives the same local-build fix, or asks you to report it at https://github.com/lhjnilsson/foreverbull/issues. Any `VERSION` other than `local` stops `fbenv create` and `fbenv update` before they change anything.
 
 ### Pods do not start
 

@@ -1,4 +1,5 @@
 import copy
+import importlib.metadata
 import json
 import os
 import re
@@ -43,6 +44,11 @@ from foreverbull_cli.env.preflight import port_is_free
 
 
 RELEASE_NAME = "foreverbull"
+# fbenv runs the broker images that match this package's version, so the
+# Python client and the broker always come from the same release.
+CLIENT_PACKAGE = "foreverbull"
+LOCAL_VERSION = "local"
+LOCAL_BUILD_HINT = "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local {command}`."
 CHART_RELATIVE_PATH = Path("deploy") / "helm" / "foreverbull"
 
 TOOL_HINTS = {
@@ -183,6 +189,7 @@ class ImagePullError(RuntimeError):
 
     def __init__(self, image: str, detail: str):
         self.image = image
+        self.tag = image.rpartition(":")[2]
         self.detail = detail.strip()
         self.cause = classify_pull_error(self.detail)
         self.platform = pull_error_platform(self.detail)
@@ -194,19 +201,39 @@ class ImagePullError(RuntimeError):
             arch = arch or "unknown architecture"
             return (
                 f"This image has no build for your machine ({arch}). "
-                f"Set the VERSION environment variable to a release that supports {arch}, "
-                "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+                f"{LOCAL_BUILD_HINT.format(command=command)} "
+                "Or report it at https://github.com/lhjnilsson/foreverbull/issues."
             )
         if self.cause == "daemon":
             return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
         if self.cause == "missing tag":
             return (
-                "Check that the VERSION environment variable names a published tag, "
-                f"or unset it to use latest, then run `{command}` again."
+                f"fbenv uses the images for your installed client version ({self.tag}), "
+                f"and none are published for it. {LOCAL_BUILD_HINT.format(command=command)}"
             )
         if self.cause == "registry":
             return f"Wait a few minutes and run `{command}` again."
         return f"Check your internet connection and run `{command}` again."
+
+
+class VersionError(ValueError):
+    """VERSION names something fbenv will not run. Only `local` (images built from a checkout) is accepted."""
+
+    def __init__(self, value: str, client_version: str):
+        self.value = value
+        self.client_version = client_version
+        super().__init__(f"VERSION can only be `local`, got `{value}`.")
+
+    def hint(self) -> str:
+        return (
+            f"fbenv uses the images for your installed client version ({self.client_version}). "
+            "Unset VERSION to use them, or set VERSION=local to use images you built with `task build`."
+        )
+
+
+def installed_client_version() -> str:
+    """Version of the installed foreverbull Python client. Its images carry the same tag."""
+    return importlib.metadata.version(CLIENT_PACKAGE)
 
 
 class CommandRunner:
@@ -309,8 +336,10 @@ class Config:
         context: str | None = None,
         namespace: str | None = None,
         broker_address: str | None = None,
+        client_version: str | None = None,
     ):
         self._environ = os.environ if environ is None else environ
+        self._client_version = client_version
         self._cwd = Path.cwd() if cwd is None else cwd
         self._home = Path.home() if home is None else home
         self._load_files = load_files
@@ -412,8 +441,20 @@ class Config:
         return path
 
     @property
+    def client_version(self) -> str:
+        if self._client_version is None:
+            self._client_version = installed_client_version()
+        return self._client_version
+
+    @property
     def version(self) -> str:
-        return self._environ.get("VERSION", "latest")
+        """Image tag: the installed client version, or `local` with VERSION=local. Raises VersionError otherwise."""
+        requested = str(self._environ.get("VERSION") or "").strip()
+        if not requested:
+            return self.client_version
+        if requested == LOCAL_VERSION:
+            return LOCAL_VERSION
+        raise VersionError(requested, self.client_version)
 
     @property
     def cluster(self) -> str:
@@ -792,7 +833,7 @@ class ClusterManager:
         else:
             missing = list(images)
 
-        if missing and self.config.version == "local":
+        if missing and self.config.version == LOCAL_VERSION:
             lines = ["Missing local images:"]
             lines.extend(f"  {image}" for image in missing)
             lines.append("Build them first:")
@@ -803,7 +844,7 @@ class ClusterManager:
                 raise MissingToolError("docker")
             raise RuntimeError("\n".join(lines))
 
-        if missing and docker and self.config.version != "local":
+        if missing and docker and self.config.version != LOCAL_VERSION:
             for image in missing:
                 try:
                     self.runner.run(["docker", "pull", image])

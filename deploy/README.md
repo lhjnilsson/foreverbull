@@ -28,7 +28,7 @@ In-cluster DNS names match the Service object names.
 | Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
 | Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
 
-`{tag}` is `images.*.tag` or `global.imageTag` (`VERSION` in fbenv: `latest` or `local`).
+`{tag}` is `images.*.tag` or `global.imageTag`. `fbenv` sets `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
 
 ### Host ports (local Kind)
 
@@ -248,6 +248,8 @@ VERSION=local uv run fbenv create   # workloads stay stopped
 uv run fbenv start
 ```
 
+Without `VERSION`, `fbenv create` pulls the three app images tagged with the installed `foreverbull` client version and stops before installing anything when one is missing. `VERSION=local` uses the `:local` images built from this checkout; `fbenv` refuses any other `VERSION`.
+
 From the repository root, `task kind:redeploy` does the local rebuild in one step. It builds the `:local` images, deletes the Kind cluster `foreverbull` when it exists, installs the chart, and starts the workloads. The purge also removes `client/.foreverbull` data other than `config.yaml`.
 
 Equivalent by hand:
@@ -339,7 +341,7 @@ One chart, these keys. Match `values.yaml`.
 
 ```yaml
 global:
-  imageTag: latest          # VERSION; local CLI uses local
+  imageTag: latest          # fbenv sets the client version, or local
 
 images:
   postgres:

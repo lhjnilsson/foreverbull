@@ -14,6 +14,7 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 from foreverbull_cli.output import FBSpinnerColumn
@@ -134,6 +135,16 @@ def run_preflight(cm: ClusterManager):
         raise typer.Exit(1) from exc
 
 
+def check_version(cm: ClusterManager):
+    """Stop on a VERSION fbenv won't run, before host checks or any change."""
+    try:
+        _ = cm.config.version
+    except VersionError as exc:
+        lines = [f"✖ {exc}", exc.hint(), "Nothing was changed."]
+        console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(1) from exc
+
+
 def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing_changed: bool):
     """Stop with one ✖ line that names the image and the cause. Docker's output only with --verbose."""
     lines = [f"✖ {exc}", exc.hint(command)]
@@ -197,6 +208,7 @@ def create(
         namespace=namespace,
         broker_address=broker_address,
     )
+    check_version(cm)
     run_preflight(cm)
 
     changing = False
@@ -328,6 +340,7 @@ def update(
         namespace=namespace,
         broker_address=broker_address,
     )
+    check_version(cm)
 
     try:
         with FBProgress() as progress:
