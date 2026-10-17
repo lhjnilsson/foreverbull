@@ -1,0 +1,170 @@
+name: security scans
+
+# CodeQL (Go, Python), govulncheck, and Trivy. Results go to the repository's
+# code scanning alerts. Nothing here fails a build or gates a release yet:
+# the baseline findings are triaged first, and gating comes after that.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "17 4 * * 1"  # Monday 04:17 UTC, catches advisories on unchanged code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Analyze
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:${{ matrix.language }}
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      # Scan with the go.mod toolchain (the one docker/Dockerfile builds with),
+      # not a newer one that would hide standard library findings.
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      # v1.1.4 is the newest govulncheck that builds with Go 1.24.
+      # SARIF output reports findings without a failing exit code.
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format sarif ./... > govulncheck.sarif
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: govulncheck.sarif
+          category: govulncheck
+
+  trivy-repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Lockfiles, Dockerfiles, the Helm chart, and committed secrets.
+      - name: Scan repository
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          format: sarif
+          output: trivy-repo.sarif
+          exit-code: "0"
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: trivy-repo.sarif
+          category: trivy-repo
+
+  # Builds this commit's images and scans them. Nothing is pushed. Base images
+  # change without a commit, so this runs weekly too. Not on pull requests:
+  # three image builds are slow, and on_commit already builds them there.
+  trivy-images:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: foreverbull
+            context: .
+            file: ./docker/Dockerfile
+          - name: zipline
+            context: client
+            file: ./client/zipline/Dockerfile
+          - name: fb-grafana
+            context: grafana
+            file: ./grafana/Dockerfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install uv
+        if: matrix.name == 'zipline'
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: Stage foreverbull wheel
+        if: matrix.name == 'zipline'
+        working-directory: ./client
+        run: |
+          set -euo pipefail
+          uv build --package foreverbull --wheel --out-dir /tmp/pypi
+          wheel="$(find /tmp/pypi -name 'foreverbull-0.0.0-py3-none-any.whl' -print -quit)"
+          test -s "${wheel}"
+          cp "${wheel}" foreverbull-0.0.0-py3-none-any.whl
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          # Grafana: COPY --from=foreverbull is the repo root, not an image.
+          build-contexts: |
+            foreverbull=${{ github.workspace }}
+          build-args: |
+            FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
+          tags: lhjnilsson/${{ matrix.name }}:scan
+          load: true
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: lhjnilsson/${{ matrix.name }}:scan
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: "0"
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.name }}

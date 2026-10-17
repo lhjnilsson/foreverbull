@@ -1,0 +1,45 @@
+# Dependency updates. One weekly batch per ecosystem keeps the PR queue small.
+# Security updates are separate: they follow Dependabot alerts in repo Settings.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /
+      - /grafana/lhjnilsson-foreverbull-datasource
+    schedule:
+      interval: weekly
+    groups:
+      gomod:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /client
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories:
+      - /docker
+      - /client
+      - /client/zipline
+      - /grafana
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
