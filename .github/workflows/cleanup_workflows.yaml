@@ -41,6 +41,9 @@ on:
         description: "Logs simulated changes, no deletions are performed"
         required: false
 
+# Nothing by default; del_runs asks for actions: write itself.
+permissions: {}
+
 jobs:
   del_runs:
     runs-on: ubuntu-latest
@@ -48,7 +51,7 @@ jobs:
       actions: write
     steps:
       - name: Delete workflow runs
-        uses: Mattraks/delete-workflow-runs@v2
+        uses: Mattraks/delete-workflow-runs@0cf693bc9909e5e867ee8f27b813224ba862939c # v2
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
