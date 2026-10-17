@@ -240,10 +240,15 @@ class CommandRunner:
         return completed
 
 
+NO_WORKLOAD = "\u2014"
+"""Image and container placeholder for a stopping or stopped service."""
+
+
 class WorkloadStatus(StrEnum):
     NOT_FOUND = "not_found"
     RUNNING = "running"
     STOPPED = "stopped"
+    STOPPING = "stopping"
     PENDING = "pending"
     FAILED = "failed"
 
@@ -988,7 +993,7 @@ class ClusterManager:
                 service,
                 name,
                 deploy_by_name.get(name),
-                (pods_by_app.get(name) or [None])[0],
+                pods_by_app.get(name) or [],
             )
         return filled
 
@@ -997,35 +1002,35 @@ class ClusterManager:
         service: str,
         name: str,
         deploy: dict[str, Any] | None,
-        pod: dict[str, Any] | None,
+        pods: list[dict[str, Any]],
     ) -> WorkloadRow:
-        image = "not found"
-        container_id = "not found"
-        status = WorkloadStatus.NOT_FOUND
-        if pod:
-            metadata = pod.get("metadata") or {}
-            container_id = str(metadata.get("name") or "not found")
-            pod_status = pod.get("status") or {}
-            phase = str(pod_status.get("phase") or "")
-            ready = False
-            for cs in pod_status.get("containerStatuses") or []:
-                image = str(cs.get("image") or image)
-                ready = bool(cs.get("ready"))
-                raw_id = str(cs.get("containerID") or "")
-                if raw_id:
-                    container_id = raw_id.split("://", 1)[-1][:12]
-                    break
-            if image == "not found":
-                spec_containers = (pod.get("spec") or {}).get("containers") or []
-                if spec_containers:
-                    image = str(spec_containers[0].get("image") or "not found")
-            status = _status_from_phase(phase, ready)
-        elif deploy:
-            replicas = int((deploy.get("spec") or {}).get("replicas") or 0)
-            status = WorkloadStatus.STOPPED if replicas == 0 else WorkloadStatus.PENDING
-            containers = ((deploy.get("spec") or {}).get("template") or {}).get("spec", {}).get("containers") or []
-            if containers:
-                image = str(containers[0].get("image") or "not found")
+        """Build a row from the Deployment's desired replicas and its pods.
+
+        `fbenv stop` scales the Deployment to 0, but its pods keep reporting
+        Running and ready until Kubernetes has terminated them. A pod with a
+        deletionTimestamp is on its way out, so it never counts as running.
+        """
+        live = [pod for pod in pods if not (pod.get("metadata") or {}).get("deletionTimestamp")]
+        pod = (live or pods or [None])[0]
+        image, container_id = _pod_identity(pod) if pod else ("not found", "not found")
+        if deploy is not None and image == "not found":
+            image = _deploy_image(deploy)
+
+        if deploy is not None and _desired_replicas(deploy) == 0:
+            status = WorkloadStatus.STOPPING if pods else WorkloadStatus.STOPPED
+        elif live:
+            pod_status = live[0].get("status") or {}
+            status = _status_from_phase(str(pod_status.get("phase") or ""), _pod_ready(live[0]))
+        elif deploy is not None:
+            status = WorkloadStatus.PENDING
+        elif pods:
+            status = WorkloadStatus.STOPPING
+        else:
+            status = WorkloadStatus.NOT_FOUND
+        if status in (WorkloadStatus.STOPPING, WorkloadStatus.STOPPED):
+            # Nothing should be running, so a missing image or container is
+            # expected rather than broken. Keep "not found" for the latter.
+            image, container_id = NO_WORKLOAD, NO_WORKLOAD
         return WorkloadRow(service, name, status, image, container_id)
 
     def _kubectl_json(self, resource_args: Sequence[str]) -> dict[str, Any]:
@@ -1037,6 +1042,39 @@ class ClusterManager:
         if isinstance(loaded, dict):
             return loaded
         return {"items": []}
+
+
+def _desired_replicas(deploy: dict[str, Any]) -> int:
+    return int((deploy.get("spec") or {}).get("replicas") or 0)
+
+
+def _deploy_image(deploy: dict[str, Any]) -> str:
+    containers = ((deploy.get("spec") or {}).get("template") or {}).get("spec", {}).get("containers") or []
+    if containers:
+        return str(containers[0].get("image") or "not found")
+    return "not found"
+
+
+def _pod_ready(pod: dict[str, Any]) -> bool:
+    statuses = (pod.get("status") or {}).get("containerStatuses") or []
+    return bool(statuses) and all(bool(cs.get("ready")) for cs in statuses)
+
+
+def _pod_identity(pod: dict[str, Any]) -> tuple[str, str]:
+    """Return the pod's image and short container ID, falling back to its spec and name."""
+    image = "not found"
+    container_id = str((pod.get("metadata") or {}).get("name") or "not found")
+    for cs in (pod.get("status") or {}).get("containerStatuses") or []:
+        image = str(cs.get("image") or image)
+        raw_id = str(cs.get("containerID") or "")
+        if raw_id:
+            container_id = raw_id.split("://", 1)[-1][:12]
+            break
+    if image == "not found":
+        spec_containers = (pod.get("spec") or {}).get("containers") or []
+        if spec_containers:
+            image = str(spec_containers[0].get("image") or "not found")
+    return image, container_id
 
 
 def _status_from_phase(phase: str, ready: bool) -> WorkloadStatus:
