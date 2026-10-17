@@ -105,8 +105,11 @@ Postgres and MinIO credentials live in Secret `foreverbull-credentials` (keys
 `DATABASE_URL`. Leave `postgres.password`, `minio.accessKey`, and
 `minio.secretKey` empty and the chart picks them:
 
-- `expose.hostPort=true` (local Kind, `fbenv`): `foreverbull` and
-  `minioadmin` / `minioadmin`, so host tools on `localhost` keep working.
+- `credentials.allowDefaults=true` (local Kind; `fbenv` passes it
+  explicitly): `foreverbull` and `minioadmin` / `minioadmin`, so host
+  tools on `localhost` keep working. `expose.hostPort` is networking
+  only: it publishes ports, is for local Kind only, and never selects
+  these defaults on its own.
 - Otherwise: a random password and MinIO secret key (access key
   `foreverbull`), generated on the first install and read back from the Secret
   on every upgrade.
@@ -132,14 +135,66 @@ and reuses its values before generating new ones. That lookup only
 works against a live cluster, so an offline `helm template` render
 generates fresh values every time; do not apply such a render over a
 live release, or the Secret would rotate while Postgres keeps the
-password it was initialised with.
+password it was initialised with. Likewise, deleting Secret
+`foreverbull-credentials` while the PVCs survive breaks auth: the next
+upgrade generates fresh values that the already-initialised Postgres
+does not know.
 
-🔒️ Without `expose.hostPort`, `postgres.password=foreverbull` or
-`minio.secretKey=minioadmin` stops the install with an error. A remote release
-installed before this change carries those values, and its Postgres data was
-created with that password, so an upgrade fails the same way. Either set
-`credentials.allowDefaults=true` to keep the old credentials, or change the
-password inside Postgres first and then set `postgres.password` to the new one.
+🔒️ With or without `expose.hostPort`, a set `postgres.password=foreverbull`
+or `minio.secretKey=minioadmin` stops the install unless
+`credentials.allowDefaults=true` is set explicitly. A remote release
+installed before this change needs the migration below, not a plain
+upgrade.
+
+## Upgrading an existing remote install
+
+Read this before the first upgrade of a remote release that was
+installed before credentials moved into Secret `foreverbull-credentials`.
+That release has Postgres data initialised with the old password, and
+the Postgres image only applies `POSTGRES_PASSWORD` on first init, so
+a generated random password in a new Secret would silently lock every
+client out. The chart fails such an upgrade until the old credentials
+are migrated:
+
+1. On the first upgrade, store the old credentials in the Secret: set
+   `postgres.password`, `minio.accessKey`, and `minio.secretKey` to the
+   values the existing install actually uses (before this change, the
+   chart defaults `foreverbull` and `minioadmin` / `minioadmin`), and
+   add `credentials.allowDefaults=true` when those are the public
+   defaults. Upgrade with Helm directly, for example:
+
+   ```bash
+   helm upgrade --install foreverbull deploy/helm/foreverbull \
+     --namespace <namespace> \
+     --create-namespace \
+     --set expose.hostPort=false \
+     --set postgres.password='<old-postgres-password>' \
+     --set minio.accessKey='<old-minio-access-key>' \
+     --set minio.secretKey='<old-minio-secret-key>' \
+     --set credentials.allowDefaults=true
+   ```
+
+2. Confirm the workloads are healthy and that Secret
+   `foreverbull-credentials` in that namespace now holds those values
+   (read them back with the `kubectl get secret` commands above).
+3. Rotate the password inside Postgres afterwards, while the old
+   password still works, and choose a new URL-safe password:
+
+   ```bash
+   kubectl exec -n <namespace> deploy/postgres -- \
+     psql -U foreverbull -d foreverbull \
+     -c "ALTER USER foreverbull WITH PASSWORD '<new-url-safe-password>'"
+   ```
+
+4. Upgrade again with `postgres.password` set to that new password
+   (and a new URL-safe `minio.secretKey` if you rotate MinIO too), this
+   time without `credentials.allowDefaults=true`, so the Secret and
+   Postgres agree and no public default remains.
+
+Always install and upgrade with Helm directly. Never apply
+`helm template` output to a live release for credentials: offline
+renders cannot look up the existing Secret and generate a new random
+password on every render.
 
 ## Cluster config
 
@@ -214,6 +269,7 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --create-namespace \
   --kube-context kind-foreverbull \
   --set expose.hostPort=true \
+  --set credentials.allowDefaults=true \
   --set global.imageTag=local \
   --set broker.logLevel=debug
 ```
@@ -321,7 +377,7 @@ persistence:
     path: /data
 
 credentials:
-  allowDefaults: false      # true only for a throwaway cluster
+  allowDefaults: false      # fbenv sets true for local Kind; else throwaway only
 
 postgres:
   user: foreverbull
