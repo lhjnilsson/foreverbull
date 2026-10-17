@@ -74,7 +74,86 @@ jobs:
       # SARIF output reports findings without a failing exit code.
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format sarif ./... > govulncheck.sarif
+      # Keep the untouched output: the steps below rewrite
+      # govulncheck.sarif, and the findings must stay visible even
+      # when the code-scanning upload is rejected.
+      - name: Preserve raw govulncheck SARIF
+        if: always()
+        run: cp govulncheck.sarif govulncheck-raw.sarif
+      - name: Report govulncheck findings in job summary
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 - <<'PYEOF'
+          import json, pathlib
+          raw = pathlib.Path("govulncheck-raw.sarif")
+          lines = ["## govulncheck findings (non-gating, baseline triage)", ""]
+          try:
+              data = json.loads(raw.read_text())
+              rules = {}
+              results = []
+              for run in data.get("runs", []):
+                  driver = run.get("tool", {}).get("driver", {})
+                  for rule in driver.get("rules", []):
+                      rules[rule.get("id")] = (
+                          rule.get("shortDescription", {}).get("text")
+                          or rule.get("fullDescription", {}).get("text")
+                          or ""
+                      )
+                  results.extend(run.get("results", []))
+              lines.append(f"govulncheck SARIF: {len(results)} results, {len(rules)} rules.")
+              lines.append("")
+              for rule_id in sorted(rules):
+                  lines.append(f"- {rule_id}: {rules[rule_id]}")
+              if not rules:
+                  lines.append("- No rules in SARIF; see govulncheck-raw.sarif artifact and the Run step log.")
+          except Exception as exc:
+              lines.append(f"Could not parse govulncheck SARIF ({exc}); see the raw artifact and Run step log.")
+          text = "\n".join(lines) + "\n"
+          print(text)
+          summary = pathlib.Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a") as handle:
+              handle.write(text)
+          PYEOF
+      - name: Upload raw govulncheck SARIF artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: govulncheck-sarif
+          path: |
+            govulncheck-raw.sarif
+            govulncheck.sarif
+          if-no-files-found: warn
+      # v1.1.4 can emit the same call stack twice in one result, which
+      # the SARIF validator rejects (uniqueItems on results[].stacks).
+      # Drop exact duplicates so the findings still reach code scanning.
+      - name: Drop duplicate stacks from govulncheck SARIF
+        continue-on-error: true
+        run: |
+          python3 - <<'PYEOF'
+          import json, pathlib
+          path = pathlib.Path("govulncheck.sarif")
+          data = json.loads(path.read_text())
+          for run in data.get("runs", []):
+              for result in run.get("results", []):
+                  stacks = result.get("stacks")
+                  if not stacks:
+                      continue
+                  seen, unique = set(), []
+                  for stack in stacks:
+                      key = json.dumps(stack, sort_keys=True)
+                      if key not in seen:
+                          seen.add(key)
+                          unique.append(stack)
+                  result["stacks"] = unique
+          path.write_text(json.dumps(data))
+          PYEOF
+      # Non-gating while the baseline is triaged, like Trivy
+      # (exit-code "0") and CodeQL (findings do not fail the job):
+      # a rejected or unuploadable SARIF must not fail the PR.
       - name: Upload results
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: govulncheck.sarif
