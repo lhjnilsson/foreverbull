@@ -37,7 +37,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: zipline
-          image: {{ include "foreverbull.image" (list .Values.images.zipline.repository .Values.images.zipline.tag .Values.global.imageTag) }}
+          image: {{ include "foreverbull.appImage" (list .Values.images.zipline.repository .Values.images.zipline.tag .Values.global.imageTag .Values.global.imageRepository) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - name: grpc

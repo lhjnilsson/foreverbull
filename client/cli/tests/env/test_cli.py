@@ -1,6 +1,7 @@
 import os
 
 from unittest.mock import MagicMock
+from unittest.mock import PropertyMock
 
 import pytest
 import typer
@@ -12,6 +13,7 @@ from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import HostCheck
@@ -175,6 +177,100 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert "Nothing was changed." in result.stdout
     assert "Run `fbenv update --verbose` to see Docker's error." in result.stdout
     assert "Traceback" not in result.stdout
+
+
+REPO_MISSING = ImagePullError(
+    "lhjnilsson/fb-grafana:1.2.3",
+    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+    "repository does not exist or may require 'docker login'",
+)
+
+TAG_MISSING = ImagePullError(
+    "lhjnilsson/foreverbull:1.2.3",
+    "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+)
+
+
+def test_create_missing_repository_leads_with_not_published(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = REPO_MISSING
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == [
+        (
+            "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start. Nothing was changed."
+        )
+    ]
+    assert result.stdout.count("Nothing was changed.") == 1
+    # The checkout build is only the secondary, contributor alternative.
+    assert "If you're working from a Foreverbull checkout" in result.stdout
+    assert "VERSION=local" in result.stdout
+    assert "Wait a few minutes" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_create_missing_tag_keeps_the_download_message(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = TAG_MISSING
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == [
+        (
+            "✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:1.2.3: that tag does not exist on the registry."
+        )
+    ]
+    assert "isn't published yet" not in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_update_missing_repository_on_remote_omits_nothing_changed(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = REPO_MISSING
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
+        "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start."
+    ]
+    assert "Nothing was changed." not in result.stdout
+
+
+def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = PULL_FAILURE
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ Couldn't download the Foreverbull image" in result.stdout
+    assert "Nothing was changed." not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def _reject_version(manager: MagicMock) -> None:
+    type(manager.config).version = PropertyMock(side_effect=VersionError("latest", "1.2.3"))
+
+
+def test_create_rejects_a_version_other_than_local(runner, mocked_container_manager: MagicMock):
+    _reject_version(mocked_container_manager)
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == ["✖ VERSION can only be `local`, got `latest`."]
+    assert "installed client version (1.2.3)" in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.preflight.assert_not_called()
+    mocked_container_manager.verify_images.assert_not_called()
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_update_rejects_a_version_other_than_local(runner, mocked_container_manager: MagicMock):
+    _reject_version(mocked_container_manager)
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ VERSION can only be `local`, got `latest`." in result.stdout
+    assert "Nothing was changed." in result.stdout
+    mocked_container_manager.update.assert_not_called()
 
 
 def test_start_stops_on_failed_host_check(runner, mocked_container_manager: MagicMock):

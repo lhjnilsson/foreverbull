@@ -1,3 +1,4 @@
+import importlib.metadata
 import json
 import subprocess
 
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
+from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterManager
@@ -17,6 +19,7 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
@@ -26,6 +29,8 @@ from foreverbull_cli.env.preflight import PreflightError
 
 
 pytestmark = pytest.mark.usefixtures("fb_env")
+
+CLIENT_VERSION = "1.2.3"
 
 
 def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -99,7 +104,7 @@ def _manager(
 ) -> ClusterManager:
     repo = _write_repo(tmp_path)
     if config is None:
-        config = Config(load_files=False, environ=environ or {})
+        config = Config(load_files=False, environ=environ or {}, client_version=CLIENT_VERSION)
     environment = Environment(path=str(tmp_path / "project"))
     return ClusterManager(
         environment,
@@ -164,11 +169,33 @@ def _deploy(name: str, image: str, replicas: int = 1) -> dict:
 
 
 class TestConfig:
-    def test_version_default(self):
-        assert Config(load_files=False, environ={}).version == "latest"
+    def test_version_default_is_the_client_version(self):
+        assert Config(load_files=False, environ={}, client_version=CLIENT_VERSION).version == CLIENT_VERSION
 
-    def test_version_from_env(self):
+    def test_version_empty_env_is_the_client_version(self):
+        uut = Config(load_files=False, environ={"VERSION": " "}, client_version=CLIENT_VERSION)
+        assert uut.version == CLIENT_VERSION
+
+    def test_client_version_reads_the_installed_package(self):
+        assert Config(load_files=False, environ={}).client_version == importlib.metadata.version("foreverbull")
+
+    def test_version_local_from_env(self):
         assert Config(load_files=False, environ={"VERSION": "local"}).version == "local"
+
+    @pytest.mark.parametrize("value", ["latest", "0.0.2503031831", "on_commit"])
+    def test_version_rejects_other_tags(self, value: str):
+        uut = Config(load_files=False, environ={"VERSION": value}, client_version=CLIENT_VERSION)
+        with pytest.raises(VersionError) as raised:
+            _ = uut.version
+        assert str(raised.value) == f"VERSION can only be `local`, got `{value}`."
+        assert raised.value.hint() == (
+            "fbenv uses the images for your installed client version (1.2.3). "
+            "Unset VERSION to use them, or set VERSION=local to use images you built with `task build`."
+        )
+
+    def test_app_images_never_use_latest(self):
+        uut = Config(load_files=False, environ={}, client_version=CLIENT_VERSION)
+        assert all(not image.endswith(":latest") for image in uut.app_images)
 
     def test_default_cluster_is_local(self):
         uut = Config(load_files=False, environ={})
@@ -180,14 +207,32 @@ class TestConfig:
         assert uut.kube_context == "kind-foreverbull"
         assert uut.broker_address == "localhost:50055"
 
+    def test_image_repository_is_the_single_prefix(self):
+        uut = Config(load_files=False, environ={}, client_version=CLIENT_VERSION)
+        assert uut.image_repository == IMAGE_REPOSITORY == "lhjnilsson"
+        assert uut.app_images == (
+            "lhjnilsson/foreverbull:1.2.3",
+            "lhjnilsson/zipline:1.2.3",
+            "lhjnilsson/fb-grafana:1.2.3",
+        )
+
     def test_foreverbull_image(self):
-        assert Config(load_files=False, environ={}).foreverbull_image == "lhjnilsson/foreverbull:latest"
+        assert (
+            Config(load_files=False, environ={}, client_version=CLIENT_VERSION).foreverbull_image
+            == "lhjnilsson/foreverbull:1.2.3"
+        )
 
     def test_backtest_image(self):
-        assert Config(load_files=False, environ={}).zipline_image == "lhjnilsson/zipline:latest"
+        assert (
+            Config(load_files=False, environ={}, client_version=CLIENT_VERSION).zipline_image
+            == "lhjnilsson/zipline:1.2.3"
+        )
 
     def test_grafana_image(self):
-        assert Config(load_files=False, environ={}).grafana_image == "lhjnilsson/fb-grafana:latest"
+        assert (
+            Config(load_files=False, environ={}, client_version=CLIENT_VERSION).grafana_image
+            == "lhjnilsson/fb-grafana:1.2.3"
+        )
 
     def test_remote_namespace_and_kube_flags(self):
         uut = Config(
@@ -330,7 +375,7 @@ class TestClusterManager:
     def test_create_local_kind_helm_and_load(self, tmp_path: Path):
         runner = FakeRunner()
         runner.on(["kind", "get", "clusters"], _completed(stdout=""))
-        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
+        uut = _manager(tmp_path, runner)
         uut.create()
         assert runner.calls_starting_with("kind", "create", "cluster")
         create_at = next(i for i, call in enumerate(runner.calls) if call[:3] == ["kind", "create", "cluster"])
@@ -343,7 +388,8 @@ class TestClusterManager:
         helm = runner.calls_starting_with("helm", "upgrade", "--install")
         assert len(helm) == 1
         assert "--set" in helm[0]
-        assert "global.imageTag=latest" in helm[0]
+        assert "global.imageTag=1.2.3" in helm[0]
+        assert "global.imageRepository=lhjnilsson" in helm[0]
         assert "expose.hostPort=true" in helm[0]
         assert "credentials.allowDefaults=true" in helm[0]
         assert "broker.logLevel=debug" in helm[0]
@@ -387,7 +433,8 @@ class TestClusterManager:
                 "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"},
             },
             load_files=False,
-            environ={"VERSION": "latest"},
+            environ={},
+            client_version=CLIENT_VERSION,
         )
         uut = _manager(tmp_path, runner, config=config)
         uut.create()
@@ -399,6 +446,21 @@ class TestClusterManager:
         assert "expose.hostPort=false" in helm
         assert "credentials.allowDefaults=true" not in helm
         assert "broker.logLevel=debug" not in helm
+        assert "global.imageTag=1.2.3" in helm
+        assert "global.imageRepository=lhjnilsson" in helm
+
+    def test_verify_images_does_not_pull_for_remote(self, tmp_path: Path):
+        # Remote nodes pull the images; this host has no pull step to verify.
+        runner = FakeRunner()
+        config = Config(
+            {"cluster": "remote", "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"}},
+            load_files=False,
+            environ={},
+            client_version=CLIENT_VERSION,
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        uut.verify_images()
+        assert runner.calls_starting_with("docker") == []
 
     def test_load_images_errors_when_local_tag_missing(self, tmp_path: Path):
         runner = FakeRunner()
@@ -407,12 +469,17 @@ class TestClusterManager:
         with pytest.raises(RuntimeError, match="Missing local images"):
             uut.load_images()
 
-    def test_load_images_pulls_missing_non_local_tags(self, tmp_path: Path):
+    def test_load_images_pulls_missing_client_version_images(self, tmp_path: Path):
         runner = FakeRunner()
         runner.on(["docker", "image", "inspect"], _completed(returncode=1, stderr="not found"))
-        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
+        uut = _manager(tmp_path, runner)
         uut.load_images()
-        assert runner.calls_starting_with("docker", "pull")
+        pulled = [call[2] for call in runner.calls_starting_with("docker", "pull")]
+        assert pulled == [
+            "lhjnilsson/foreverbull:1.2.3",
+            "lhjnilsson/zipline:1.2.3",
+            "lhjnilsson/fb-grafana:1.2.3",
+        ]
         assert runner.calls_starting_with("kind", "load", "docker-image")
 
     def test_verify_images_raises_image_pull_error_on_failed_pull(self, tmp_path: Path):
@@ -426,13 +493,13 @@ class TestClusterManager:
                 "dial tcp: lookup registry-1.docker.io: no such host",
             ),
         )
-        uut = _manager(tmp_path, runner, environ={"VERSION": "latest"})
+        uut = _manager(tmp_path, runner)
         with pytest.raises(ImagePullError) as raised:
             uut.verify_images()
-        assert raised.value.image == "lhjnilsson/foreverbull:latest"
+        assert raised.value.image == "lhjnilsson/foreverbull:1.2.3"
         assert raised.value.cause == "network"
         assert "no such host" in raised.value.detail
-        assert "lhjnilsson/foreverbull:latest" in str(raised.value)
+        assert "lhjnilsson/foreverbull:1.2.3" in str(raised.value)
         assert "no such host" not in str(raised.value)
         assert len(runner.calls_starting_with("docker", "pull")) == 1
         assert runner.calls_starting_with("kind", "create") == []
@@ -1088,11 +1155,17 @@ class TestImagePullError:
             ),
             (
                 (
-                    "Error response from daemon: pull access denied for lhjnilsson/foreverbul, "
+                    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
                     "repository does not exist or may require 'docker login'"
                 ),
-                "registry",
+                "missing repository",
             ),
+            ("Error response from daemon: NAME_UNKNOWN: repository name not known to registry", "missing repository"),
+            (
+                ("Error response from daemon: pull access denied for lhjnilsson/foreverbull, you must be logged in"),
+                "auth",
+            ),
+            ("unauthorized: authentication required", "auth"),
             ("toomanyrequests: You have reached your pull rate limit.", "registry"),
             (
                 (
@@ -1125,9 +1198,13 @@ class TestImagePullError:
         exc = ImagePullError("lhjnilsson/zipline:latest", "dial tcp: i/o timeout")
         assert exc.hint("fbenv create") == "Check your internet connection and run `fbenv create` again."
 
-    def test_missing_tag_hint_points_at_version(self):
-        exc = ImagePullError("lhjnilsson/zipline:v9", "manifest unknown")
-        assert "VERSION" in exc.hint("fbenv create")
+    def test_missing_tag_hint_names_the_client_version_and_local_build(self):
+        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "manifest unknown")
+        assert exc.tag == "1.2.3"
+        assert exc.hint("fbenv create") == (
+            "fbenv uses the images for your installed client version (1.2.3), and none are published for it. "
+            "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local fbenv create`."
+        )
 
     def test_platform_hint_names_the_architecture(self):
         exc = ImagePullError(
@@ -1135,14 +1212,14 @@ class TestImagePullError:
         )
         assert exc.hint("fbenv create") == (
             "This image has no build for your machine (arm64). "
-            "Set the VERSION environment variable to a release that supports arm64, "
-            "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+            "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local fbenv create`. "
+            "Or report it at https://github.com/lhjnilsson/foreverbull/issues."
         )
 
     def test_platform_hint_uses_the_detected_architecture(self):
         exc = ImagePullError("lhjnilsson/zipline:latest", "no matching manifest for linux/riscv64 in the manifest list")
         assert exc.hint("fbenv create").startswith("This image has no build for your machine (riscv64). ")
-        assert "a release that supports riscv64," in exc.hint("fbenv create")
+        assert "`VERSION=local fbenv create`" in exc.hint("fbenv create")
 
     def test_daemon_hint_says_start_docker(self):
         exc = ImagePullError("lhjnilsson/zipline:latest", "Cannot connect to the Docker daemon at unix:///x")
@@ -1150,13 +1227,57 @@ class TestImagePullError:
             "Start Docker, or fix your permissions on its socket, then run `fbenv update` again."
         )
 
+    def test_missing_repository_is_not_a_wait_and_retry(self):
+        # Real Docker Hub wording for a repository that was never published.
+        exc = ImagePullError(
+            "lhjnilsson/fb-grafana:1.2.3",
+            "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+            "repository does not exist or may require 'docker login'",
+        )
+        assert exc.cause == "missing repository"
+        assert exc.repository == "lhjnilsson/fb-grafana"
+        assert str(exc) == (
+            "Couldn't download the Foreverbull image lhjnilsson/fb-grafana:1.2.3: "
+            "that image repository does not exist on the registry."
+        )
+        hint = exc.hint("fbenv create")
+        assert hint == (
+            "If you're working from a Foreverbull checkout, you can build the images with "
+            "`task build` and run `VERSION=local fbenv create` instead."
+        )
+        assert "Wait a few minutes" not in hint
+
+    def test_missing_tag_stays_a_missing_tag_not_a_missing_repository(self):
+        # Real Docker Hub wording when the repository exists but the tag does not.
+        exc = ImagePullError(
+            "lhjnilsson/foreverbull:1.2.3",
+            "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+        )
+        assert exc.cause == "missing tag"
+        assert "that tag does not exist" in str(exc)
+        assert "isn't published yet" not in str(exc)
+
+    @pytest.mark.parametrize("cause_detail", ["manifest unknown", "repository does not exist"])
+    def test_development_install_names_itself_and_points_at_version_local(self, cause_detail: str):
+        exc = ImagePullError("lhjnilsson/fb-grafana:0.0.0", cause_detail)
+        hint = exc.hint("fbenv create")
+        assert "development install (client version 0.0.0)" in hint
+        assert "`VERSION=local fbenv create`" in hint
+        assert "Wait a few minutes" not in hint
+
+    def test_auth_hint_says_check_access_or_login_not_wait(self):
+        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "unauthorized: authentication required")
+        assert exc.cause == "auth"
+        assert "docker login" in exc.hint("fbenv create")
+        assert "Wait a few minutes" not in exc.hint("fbenv create")
+
     def test_registry_hint_is_wait_and_retry(self):
         exc = ImagePullError("lhjnilsson/zipline:latest", "toomanyrequests")
         assert exc.hint("fbenv update") == "Wait a few minutes and run `fbenv update` again."
 
-    def test_missing_tag_hint_names_the_environment_variable(self):
-        exc = ImagePullError("lhjnilsson/zipline:v9", "manifest unknown")
-        assert "the VERSION environment variable" in exc.hint("fbenv create")
+    def test_missing_tag_hint_names_the_command(self):
+        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "manifest unknown")
+        assert "`VERSION=local fbenv update`" in exc.hint("fbenv update")
 
 
 def _second_pull_fails(tmp_path: Path) -> tuple[ClusterManager, FakeRunner, list[str]]:

@@ -133,7 +133,9 @@ uv run fbenv start
 uv run fbenv status
 ```
 
-`fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
+`fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1.
+
+Without `VERSION`, `fbenv create` pulls `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` tagged with the version of the installed `foreverbull` Python client, never `latest`, so the client and the broker come from the same release. `VERSION=local` uses the `:local` images that `task build` made instead, and it is the only other value `fbenv` accepts. A checkout's client version is `0.0.0`, which has no published images, so the commands in this README use `VERSION=local`. On a local Kind cluster, when the images for your client version can't be pulled, `fbenv create` stops before it installs anything, names the image and tag, and tells you to build them locally. On a remote cluster there is no such promise: this host does not pull the images, the cluster's nodes do, so Helm can create the release first and the pods can then sit in `ImagePullBackOff` if a node cannot pull. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
 
 `fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` at `replicaCount=0`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
 
@@ -272,16 +274,16 @@ VERSION=local uv run fbenv create
 
 Before they change anything, `fbenv create` and `fbenv start` also check that `kind`, `helm`, `kubectl`, and `docker` are installed, that Docker is running, and that Docker has at least the 4 GB of memory listed under [Host resources](#host-resources). A remote cluster needs only `helm` and `kubectl`. The first failed check stops the command with a fix hint. `uv run fbenv status` lists every check with pass or fail, with or without a cluster.
 
-When an image download fails, `fbenv create` and `fbenv update` stop with one line that names the image and the likely cause (no network, Docker is not running, the registry refused, the tag does not exist, or the image has no build for this machine), then a fix hint. Add `--verbose` to see Docker's own error:
+When an image download fails, `fbenv create` and `fbenv update` stop with one line that names the image and the likely cause (no network, Docker is not running, the registry refused, the repository does not exist, the tag does not exist, or the image has no build for this machine), then a fix hint. Add `--verbose` to see Docker's own error:
 
 ```
-✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:latest: Docker could not reach the registry.
+✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:0.1.0: Docker could not reach the registry.
 Check your internet connection and run `fbenv create` again.
 Nothing was changed.
 Run `fbenv create --verbose` to see Docker's error.
 ```
 
-When the image has no build for your machine's architecture, the hint names it and asks you to set `VERSION` to a release that supports it, or to report it at https://github.com/lhjnilsson/foreverbull/issues.
+When no images are published for your client version, the hint says so and tells you to build them with `task build` and run `VERSION=local uv run fbenv create`. When the repository itself does not exist on the registry (for example `lhjnilsson/fb-grafana` before it is first published), the line reads `The Foreverbull image lhjnilsson/fb-grafana:<version> isn't published yet, so this install can't start.` and the checkout build with `task build` / `VERSION=local` follows only as a contributor alternative; only a transient or rate-limited registry failure says to wait a few minutes and retry. A `0.0.0` client is named as a development install and pointed straight at `VERSION=local`. When the image has no build for your machine's architecture, the hint names the architecture and gives the same local-build fix, or asks you to report it at https://github.com/lhjnilsson/foreverbull/issues. Any `VERSION` other than `local` stops `fbenv create` and `fbenv update` before they change anything. The stops-before-anything-changes promise for image pulls is local-Kind only: on a remote cluster, Helm can create or update the release first and the pods can then fail to pull (`ImagePullBackOff`), because the remote nodes pull the images, not this host.
 
 ### Pods do not start
 

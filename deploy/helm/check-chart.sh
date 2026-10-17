@@ -26,6 +26,24 @@ helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.ho
 # An installed release from before httpPort has no value. reuse-values must still render 8080.
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.hostPort=true --set broker.httpPort=null >> "${rendered}"
 
+# The three app images share global.imageRepository; third-party images do not.
+for app_image in foreverbull zipline fb-grafana; do
+  if ! grep -q "image: lhjnilsson/${app_image}:" "${rendered}"; then
+    echo "rendered chart must default ${app_image} to the lhjnilsson repository" >&2
+    exit 1
+  fi
+done
+
+prefixed="$(mktemp)"
+trap 'rm -f "${rendered}" "${prefixed}"' EXIT
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set global.imageRepository=example.invalid/fb > "${prefixed}"
+for app_image in foreverbull zipline fb-grafana; do
+  if ! grep -q "image: example.invalid/fb/${app_image}:" "${prefixed}"; then
+    echo "rendered chart must put ${app_image} under global.imageRepository" >&2
+    exit 1
+  fi
+done
+
 if grep -F '/var/run/docker.sock' "${rendered}"; then
   echo "chart must not mount /var/run/docker.sock" >&2
   exit 1
@@ -44,7 +62,7 @@ if ! grep -q 'name: GRAFANA_URL' "${rendered}"; then
 fi
 
 broker_manifest="$(mktemp)"
-trap 'rm -f "${rendered}" "${broker_manifest}"' EXIT
+trap 'rm -f "${rendered}" "${prefixed}" "${broker_manifest}"' EXIT
 awk '
   function flush() {
     if (doc ~ /(^|\n)kind: Deployment(\n|$)/ && doc ~ /(^|\n)  name: foreverbull(\n|$)/) {

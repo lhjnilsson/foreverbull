@@ -270,7 +270,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `TRADING_LISTINGS_FILE` | Optional replacement for the embedded ISIN listing sample when a profile does not set its own listings path. |
 | `OHLC_PROVIDER` | Set on a worker pod from the backtest `provider` when the pod is created. Python and Zipline default it to `yahoo` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when unset or blank. Not a broker-wide price switch. |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
-| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`). Use `local` with `task build` / locally built images; default `latest` |
+| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`; prefix is CLI `IMAGE_REPOSITORY`, passed as chart `global.imageRepository`). Unset: the installed `foreverbull` client version (never `latest`). `local`: images from `task build`. `fbenv` refuses any other value. Image-pull fails-before-changes is local-Kind only; remote nodes pull after Helm runs |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
 | `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |

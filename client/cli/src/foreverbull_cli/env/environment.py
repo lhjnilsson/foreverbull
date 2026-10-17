@@ -1,4 +1,5 @@
 import copy
+import importlib.metadata
 import json
 import os
 import re
@@ -43,6 +44,18 @@ from foreverbull_cli.env.preflight import port_is_free
 
 
 RELEASE_NAME = "foreverbull"
+# fbenv runs the broker images that match this package's version, so the
+# Python client and the broker always come from the same release.
+CLIENT_PACKAGE = "foreverbull"
+# Single source for the app-image registry prefix. fbenv passes this to the
+# chart as global.imageRepository, so moving the three app images to another
+# registry (for example GHCR) is a change here and to the chart default.
+IMAGE_REPOSITORY = "lhjnilsson"
+# A checkout / editable install reports this version; no images are ever
+# published for it, so the pull hints name it as a development install.
+DEVELOPMENT_VERSION = "0.0.0"
+LOCAL_VERSION = "local"
+LOCAL_BUILD_HINT = "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local {command}`."
 CHART_RELATIVE_PATH = Path("deploy") / "helm" / "foreverbull"
 
 TOOL_HINTS = {
@@ -125,13 +138,25 @@ PULL_ERROR_CAUSES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "cannot connect to the docker daemon",
         ),
     ),
-    ("missing tag", ("manifest unknown", "manifest for")),
+    # A missing repository also arrives as "pull access denied ... repository
+    # does not exist", so it must match before the generic access-denied cause.
+    (
+        "missing repository",
+        (
+            "repository does not exist",
+            "repository name not known",
+            "repository not found",
+            "name unknown",
+            "name_unknown",
+        ),
+    ),
+    ("missing tag", ("manifest unknown", "manifest for", "manifest not found", "tag does not exist")),
+    ("auth", ("pull access denied", "unauthorized", "authentication required")),
     (
         "registry",
         (
-            "pull access denied",
-            "unauthorized",
             "toomanyrequests",
+            "too many requests",
             "rate limit",
             "service unavailable",
             "bad gateway",
@@ -158,13 +183,19 @@ PULL_CAUSE_TEXT = {
     "daemon": "fbenv could not talk to Docker.",
     "network": "Docker could not reach the registry.",
     "registry": "the registry refused the download.",
+    "missing repository": "that image repository does not exist on the registry.",
     "missing tag": "that tag does not exist on the registry.",
+    "auth": "the registry refused access to that image.",
     "unknown": "Docker could not download it.",
 }
 
 
 def classify_pull_error(output: str) -> str:
-    """Return the likely cause of a failed `docker pull`: platform, daemon, missing tag, registry, network, or unknown."""
+    """Return the likely cause of a failed `docker pull`.
+
+    One of platform, daemon, missing repository, missing tag, auth, registry
+    (transient or rate-limited), network, or unknown.
+    """
     lowered = output.lower()
     for cause, needles in PULL_ERROR_CAUSES:
         if any(needle in lowered for needle in needles):
@@ -183,6 +214,8 @@ class ImagePullError(RuntimeError):
 
     def __init__(self, image: str, detail: str):
         self.image = image
+        self.repository = image.rpartition(":")[0]
+        self.tag = image.rpartition(":")[2]
         self.detail = detail.strip()
         self.cause = classify_pull_error(self.detail)
         self.platform = pull_error_platform(self.detail)
@@ -194,19 +227,61 @@ class ImagePullError(RuntimeError):
             arch = arch or "unknown architecture"
             return (
                 f"This image has no build for your machine ({arch}). "
-                f"Set the VERSION environment variable to a release that supports {arch}, "
-                "or report it at https://github.com/lhjnilsson/foreverbull/issues."
+                f"{LOCAL_BUILD_HINT.format(command=command)} "
+                "Or report it at https://github.com/lhjnilsson/foreverbull/issues."
             )
         if self.cause == "daemon":
             return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
-        if self.cause == "missing tag":
+        if self.cause == "missing repository":
+            if self.tag == DEVELOPMENT_VERSION:
+                return (
+                    "This is a development install (client version 0.0.0), so no image is published for it. "
+                    f"{LOCAL_BUILD_HINT.format(command=command)}"
+                )
+            # The ✖ line already gives the PyPI fact (not published yet); this
+            # checkout build is only a secondary, contributor alternative.
             return (
-                "Check that the VERSION environment variable names a published tag, "
-                f"or unset it to use latest, then run `{command}` again."
+                "If you're working from a Foreverbull checkout, you can build the images with "
+                f"`task build` and run `VERSION=local {command}` instead."
+            )
+        if self.cause == "missing tag":
+            if self.tag == DEVELOPMENT_VERSION:
+                return (
+                    "This is a development install (client version 0.0.0), so no image is published for it. "
+                    f"{LOCAL_BUILD_HINT.format(command=command)}"
+                )
+            return (
+                f"fbenv uses the images for your installed client version ({self.tag}), "
+                f"and none are published for it. {LOCAL_BUILD_HINT.format(command=command)}"
+            )
+        if self.cause == "auth":
+            return (
+                f"Check that {self.repository} is public, or run `docker login` for its registry, "
+                f"then run `{command}` again."
             )
         if self.cause == "registry":
             return f"Wait a few minutes and run `{command}` again."
         return f"Check your internet connection and run `{command}` again."
+
+
+class VersionError(ValueError):
+    """VERSION names something fbenv will not run. Only `local` (images built from a checkout) is accepted."""
+
+    def __init__(self, value: str, client_version: str):
+        self.value = value
+        self.client_version = client_version
+        super().__init__(f"VERSION can only be `local`, got `{value}`.")
+
+    def hint(self) -> str:
+        return (
+            f"fbenv uses the images for your installed client version ({self.client_version}). "
+            "Unset VERSION to use them, or set VERSION=local to use images you built with `task build`."
+        )
+
+
+def installed_client_version() -> str:
+    """Version of the installed foreverbull Python client. Its images carry the same tag."""
+    return importlib.metadata.version(CLIENT_PACKAGE)
 
 
 class CommandRunner:
@@ -309,8 +384,10 @@ class Config:
         context: str | None = None,
         namespace: str | None = None,
         broker_address: str | None = None,
+        client_version: str | None = None,
     ):
         self._environ = os.environ if environ is None else environ
+        self._client_version = client_version
         self._cwd = Path.cwd() if cwd is None else cwd
         self._home = Path.home() if home is None else home
         self._load_files = load_files
@@ -412,8 +489,20 @@ class Config:
         return path
 
     @property
+    def client_version(self) -> str:
+        if self._client_version is None:
+            self._client_version = installed_client_version()
+        return self._client_version
+
+    @property
     def version(self) -> str:
-        return self._environ.get("VERSION", "latest")
+        """Image tag: the installed client version, or `local` with VERSION=local. Raises VersionError otherwise."""
+        requested = str(self._environ.get("VERSION") or "").strip()
+        if not requested:
+            return self.client_version
+        if requested == LOCAL_VERSION:
+            return LOCAL_VERSION
+        raise VersionError(requested, self.client_version)
 
     @property
     def cluster(self) -> str:
@@ -471,16 +560,24 @@ class Config:
         return project_config_path(self._cwd)
 
     @property
+    def image_repository(self) -> str:
+        """Registry prefix for the three app images, passed to the chart as global.imageRepository."""
+        return IMAGE_REPOSITORY
+
+    def _app_image(self, name: str) -> str:
+        return f"{self.image_repository}/{name}:{self.version}"
+
+    @property
     def foreverbull_image(self) -> str:
-        return f"lhjnilsson/foreverbull:{self.version}"
+        return self._app_image("foreverbull")
 
     @property
     def zipline_image(self) -> str:
-        return f"lhjnilsson/zipline:{self.version}"
+        return self._app_image("zipline")
 
     @property
     def grafana_image(self) -> str:
-        return f"lhjnilsson/fb-grafana:{self.version}"
+        return self._app_image("fb-grafana")
 
     @property
     def app_images(self) -> tuple[str, str, str]:
@@ -708,7 +805,13 @@ class ClusterManager:
         return ("helm", "kubectl")
 
     def verify_images(self) -> None:
-        """Confirm app images exist locally. Kind load waits until the cluster exists."""
+        """Confirm app images exist locally. Kind load waits until the cluster exists.
+
+        Local Kind only: a remote cluster's nodes pull the images themselves,
+        and whether this host can pull says nothing about whether a node can
+        (different network, credentials, and architecture), so a remote
+        create cannot promise to fail before anything changes.
+        """
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self._local_images()
@@ -792,7 +895,7 @@ class ClusterManager:
         else:
             missing = list(images)
 
-        if missing and self.config.version == "local":
+        if missing and self.config.version == LOCAL_VERSION:
             lines = ["Missing local images:"]
             lines.extend(f"  {image}" for image in missing)
             lines.append("Build them first:")
@@ -803,7 +906,7 @@ class ClusterManager:
                 raise MissingToolError("docker")
             raise RuntimeError("\n".join(lines))
 
-        if missing and docker and self.config.version != "local":
+        if missing and docker and self.config.version != LOCAL_VERSION:
             for image in missing:
                 try:
                     self.runner.run(["docker", "pull", image])
@@ -835,6 +938,8 @@ class ClusterManager:
             str(chart),
             *self._kube_flags(helm=True),
             "--create-namespace",
+            "--set",
+            f"global.imageRepository={self.config.image_repository}",
             "--set",
             f"global.imageTag={self.config.version}",
             "--set",
