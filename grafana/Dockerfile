@@ -2,7 +2,7 @@
 # Plugin go.mod requires Go 1.24. `replace => ../..` needs the repo module
 # two directories above the plugin. Grafana OSS stays 11.3.2.
 # Build with: docker build -f Dockerfile --build-context foreverbull=.. .
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -21,14 +21,14 @@ RUN go install github.com/magefile/mage@latest
 RUN mage
 
 # Build frontend
-FROM node:22 AS js-builder
+FROM node:25 AS js-builder
 WORKDIR /app
 COPY lhjnilsson-foreverbull-datasource/ .
 RUN npm install
 RUN npm run build
 
 # Second stage: Setup Grafana with the plugin
-FROM grafana/grafana-oss:11.3.2
+FROM grafana/grafana-oss:13.0.2
 
 # Create plugin directory
 RUN mkdir -p /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/

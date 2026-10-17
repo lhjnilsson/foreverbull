@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM python:3.14
 
 RUN apt update
 RUN apt install -y cmake build-essential python3-dev
