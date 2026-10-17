@@ -179,6 +179,63 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert "Traceback" not in result.stdout
 
 
+REPO_MISSING = ImagePullError(
+    "lhjnilsson/fb-grafana:1.2.3",
+    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+    "repository does not exist or may require 'docker login'",
+)
+
+TAG_MISSING = ImagePullError(
+    "lhjnilsson/foreverbull:1.2.3",
+    "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+)
+
+
+def test_create_missing_repository_leads_with_not_published(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = REPO_MISSING
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == [
+        (
+            "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start. Nothing was changed."
+        )
+    ]
+    assert result.stdout.count("Nothing was changed.") == 1
+    # The checkout build is only the secondary, contributor alternative.
+    assert "If you're working from a Foreverbull checkout" in result.stdout
+    assert "VERSION=local" in result.stdout
+    assert "Wait a few minutes" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.create.assert_not_called()
+
+
+def test_create_missing_tag_keeps_the_download_message(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.verify_images.side_effect = TAG_MISSING
+    result = runner(cli.cli, "create")
+    assert result.exit_code == 1
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("✖")] == [
+        (
+            "✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:1.2.3: that tag does not exist on the registry."
+        )
+    ]
+    assert "isn't published yet" not in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_update_missing_repository_on_remote_omits_nothing_changed(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = REPO_MISSING
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
+        "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start."
+    ]
+    assert "Nothing was changed." not in result.stdout
+
+
 def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
     mocked_container_manager.update.side_effect = PULL_FAILURE

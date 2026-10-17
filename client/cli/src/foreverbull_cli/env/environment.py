@@ -51,6 +51,9 @@ CLIENT_PACKAGE = "foreverbull"
 # chart as global.imageRepository, so moving the three app images to another
 # registry (for example GHCR) is a change here and to the chart default.
 IMAGE_REPOSITORY = "lhjnilsson"
+# A checkout / editable install reports this version; no images are ever
+# published for it, so the pull hints name it as a development install.
+DEVELOPMENT_VERSION = "0.0.0"
 LOCAL_VERSION = "local"
 LOCAL_BUILD_HINT = "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local {command}`."
 CHART_RELATIVE_PATH = Path("deploy") / "helm" / "foreverbull"
@@ -230,11 +233,23 @@ class ImagePullError(RuntimeError):
         if self.cause == "daemon":
             return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
         if self.cause == "missing repository":
+            if self.tag == DEVELOPMENT_VERSION:
+                return (
+                    "This is a development install (client version 0.0.0), so no image is published for it. "
+                    f"{LOCAL_BUILD_HINT.format(command=command)}"
+                )
+            # The ✖ line already gives the PyPI fact (not published yet); this
+            # checkout build is only a secondary, contributor alternative.
             return (
-                f"The registry has no repository {self.repository}, so waiting will not help. "
-                f"No image can be pulled from it until it is published. {LOCAL_BUILD_HINT.format(command=command)}"
+                "If you're working from a Foreverbull checkout, you can build the images with "
+                f"`task build` and run `VERSION=local {command}` instead."
             )
         if self.cause == "missing tag":
+            if self.tag == DEVELOPMENT_VERSION:
+                return (
+                    "This is a development install (client version 0.0.0), so no image is published for it. "
+                    f"{LOCAL_BUILD_HINT.format(command=command)}"
+                )
             return (
                 f"fbenv uses the images for your installed client version ({self.tag}), "
                 f"and none are published for it. {LOCAL_BUILD_HINT.format(command=command)}"

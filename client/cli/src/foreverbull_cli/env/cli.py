@@ -147,9 +147,18 @@ def check_version(cm: ClusterManager):
 
 def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing_changed: bool):
     """Stop with one ✖ line that names the image and the cause. Docker's output only with --verbose."""
-    lines = [f"✖ {exc}", exc.hint(command)]
-    if nothing_changed:
-        lines.append("Nothing was changed.")
+    if exc.cause == "missing repository":
+        # Lead with the PyPI fact; the checkout build in the hint is secondary.
+        # Nothing-changed is promised only where it is true (local pulls run
+        # before any change; a remote cluster can already have mutated).
+        first = f"✖ The Foreverbull image {exc.image} isn't published yet, so this install can't start."
+        if nothing_changed:
+            first = f"{first} Nothing was changed."
+        lines = [first, exc.hint(command)]
+    else:
+        lines = [f"✖ {exc}", exc.hint(command)]
+        if nothing_changed:
+            lines.append("Nothing was changed.")
     if verbose and exc.detail:
         lines.append(f"Docker said: {exc.detail}")
     elif exc.detail:

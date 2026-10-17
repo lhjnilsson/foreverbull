@@ -1228,9 +1228,11 @@ class TestImagePullError:
         )
 
     def test_missing_repository_is_not_a_wait_and_retry(self):
+        # Real Docker Hub wording for a repository that was never published.
         exc = ImagePullError(
             "lhjnilsson/fb-grafana:1.2.3",
-            "pull access denied for lhjnilsson/fb-grafana, repository does not exist or may require 'docker login'",
+            "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+            "repository does not exist or may require 'docker login'",
         )
         assert exc.cause == "missing repository"
         assert exc.repository == "lhjnilsson/fb-grafana"
@@ -1239,9 +1241,29 @@ class TestImagePullError:
             "that image repository does not exist on the registry."
         )
         hint = exc.hint("fbenv create")
-        assert "waiting will not help" in hint
+        assert hint == (
+            "If you're working from a Foreverbull checkout, you can build the images with "
+            "`task build` and run `VERSION=local fbenv create` instead."
+        )
         assert "Wait a few minutes" not in hint
+
+    def test_missing_tag_stays_a_missing_tag_not_a_missing_repository(self):
+        # Real Docker Hub wording when the repository exists but the tag does not.
+        exc = ImagePullError(
+            "lhjnilsson/foreverbull:1.2.3",
+            "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+        )
+        assert exc.cause == "missing tag"
+        assert "that tag does not exist" in str(exc)
+        assert "isn't published yet" not in str(exc)
+
+    @pytest.mark.parametrize("cause_detail", ["manifest unknown", "repository does not exist"])
+    def test_development_install_names_itself_and_points_at_version_local(self, cause_detail: str):
+        exc = ImagePullError("lhjnilsson/fb-grafana:0.0.0", cause_detail)
+        hint = exc.hint("fbenv create")
+        assert "development install (client version 0.0.0)" in hint
         assert "`VERSION=local fbenv create`" in hint
+        assert "Wait a few minutes" not in hint
 
     def test_auth_hint_says_check_access_or_login_not_wait(self):
         exc = ImagePullError("lhjnilsson/zipline:1.2.3", "unauthorized: authentication required")
