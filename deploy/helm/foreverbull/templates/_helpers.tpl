@@ -14,6 +14,33 @@ one URL-safe contract. */}}
 {{- if and .Values.minio.secretKey (not (regexMatch "^[-A-Za-z0-9._~]+$" (.Values.minio.secretKey | toString))) }}
 {{- fail "minio.secretKey must be URL-safe (letters, digits and -._~ are safe)" }}
 {{- end }}
+{{- /* Fail fast on a pre-Secret install: an existing Postgres (PVC or
+Deployment postgres in the release namespace) with no Secret
+foreverbull-credentials yet would otherwise get a fresh generated
+password, which Postgres ignores after first init, locking every
+client out. lookup is live-cluster only; under helm template all
+lookups are empty, so this stays a fresh-install render offline.
+Explicit migration is setting all three old values, or opting into
+the public defaults with credentials.allowDefaults=true. */}}
+{{- $credentialsSecret := lookup "v1" "Secret" .Release.Namespace (include "foreverbull.credentialsSecretName" .) }}
+{{- $postgresPVC := lookup "v1" "PersistentVolumeClaim" .Release.Namespace "postgres" }}
+{{- $postgresWorkload := lookup "apps/v1" "Deployment" .Release.Namespace "postgres" }}
+{{- $existingPostgres := or $postgresPVC $postgresWorkload }}
+{{- $allowDefaults := and .Values.credentials .Values.credentials.allowDefaults }}
+{{- $allMigrated := and .Values.postgres.password .Values.minio.accessKey .Values.minio.secretKey }}
+{{- $migrated := or $allMigrated $allowDefaults }}
+{{- include "foreverbull.requireCredentialMigration" (list (not (empty $existingPostgres)) (not (empty $credentialsSecret)) (not (empty $migrated))) }}
+{{- end }}
+
+{{- /* Arguments: existingPostgres hasSecret migrated. Split out so
+check-chart can call it with synthetic inputs on a copied chart. */}}
+{{- define "foreverbull.requireCredentialMigration" -}}
+{{- $existingPostgres := index . 0 }}
+{{- $hasSecret := index . 1 }}
+{{- $migrated := index . 2 }}
+{{- if and $existingPostgres (not $hasSecret) (not $migrated) }}
+{{- fail "existing Postgres found but Secret foreverbull-credentials does not exist yet, and the old credentials were not migrated: a generated password would not match the password Postgres was initialised with. Migration: (1) on the first upgrade, set postgres.password, minio.accessKey and minio.secretKey to the values the existing install uses, together with credentials.allowDefaults=true if those are the public defaults (foreverbull / minioadmin), and upgrade with Helm (never helm template output); (2) after that upgrade, rotate the password inside Postgres (ALTER USER) and set postgres.password to the new URL-safe value; (3) then remove credentials.allowDefaults=true. Fresh installs need none of this." }}
+{{- end }}
 {{- end }}
 
 {{- define "foreverbull.chart" -}}
@@ -61,9 +88,11 @@ foreverbull-credentials
 {{- /*
 One credential for Secret foreverbull-credentials. Arguments: list root key
 value localDefault generatedDefault secret. generatedDefault "" means random.
-A set value wins; for a secret, the public local default on a cluster without
-hostPort fails unless credentials.allowDefaults. An empty value is the local default
-with hostPort, else the value already in the Secret, else generated.
+expose.hostPort is networking only and never authorises a default:
+a set public default, and an empty value resolving to the public
+default, both require credentials.allowDefaults=true explicitly
+(fbenv passes it for local Kind). Otherwise an empty value is the
+value already in the Secret, else generated.
 */ -}}
 {{- define "foreverbull.credential" -}}
 {{- $root := index . 0 }}
@@ -72,14 +101,13 @@ with hostPort, else the value already in the Secret, else generated.
 {{- $localDefault := index . 3 }}
 {{- $generated := index . 4 }}
 {{- $secret := index . 5 }}
-{{- $local := $root.Values.expose.hostPort }}
 {{- $allowDefaults := and $root.Values.credentials $root.Values.credentials.allowDefaults }}
 {{- if $value }}
-{{- if and $secret (eq $value $localDefault) (not $local) (not $allowDefaults) }}
-{{- fail (printf "%s is the public default %q, and this cluster does not use expose.hostPort, so anyone who knows the chart could log in. Fix: remove %s from your values (or set it to \"\") to generate one, set your own value, or set credentials.allowDefaults=true for a throwaway cluster." $key $value $key) }}
+{{- if and $secret (eq $value $localDefault) (not $allowDefaults) }}
+{{- fail (printf "%s is the public default %q, so anyone who knows the chart could log in. Fix: remove %s from your values (or set it to \"\") to generate one, set your own URL-safe value, or set credentials.allowDefaults=true only for a local or throwaway cluster." $key $value $key) }}
 {{- end }}
 {{- $value }}
-{{- else if $local }}
+{{- else if $allowDefaults }}
 {{- $localDefault }}
 {{- else }}
 {{- $secretKey := $key | replace "." "-" }}

@@ -82,12 +82,19 @@ for env_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
   fi
 done
 
-# Without hostPort, the public default credentials must stop the install.
-for default_value in postgres.password=foreverbull minio.secretKey=minioadmin; do
-  if helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set "${default_value}" >/dev/null 2>&1; then
-    echo "chart must refuse ${default_value} without expose.hostPort" >&2
-    exit 1
-  fi
+# hostPort is networking only: the public defaults must stop the
+# install with or without it, unless allowDefaults is explicit.
+for hostport in false true; do
+  for default_value in postgres.password=foreverbull minio.secretKey=minioadmin; do
+    if output="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set "expose.hostPort=${hostport}" --set "${default_value}" 2>&1)"; then
+      echo "chart must refuse ${default_value} with expose.hostPort=${hostport}" >&2
+      exit 1
+    fi
+    if ! grep -Fq 'credentials.allowDefaults=true' <<< "${output}"; then
+      echo "refusal of ${default_value} must name credentials.allowDefaults=true" >&2
+      exit 1
+    fi
+  done
 done
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
   --set postgres.password=foreverbull --set minio.secretKey=minioadmin --set credentials.allowDefaults=true >/dev/null
@@ -109,6 +116,63 @@ done
 # URL-safe set values render.
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
   --set 'postgres.password=S3cure.pass_word-1~x' --set 'minio.secretKey=S3cure.pass_word-1~x' >/dev/null
+
+# Empty credentials with hostPort alone must generate, not fall back
+# to the public defaults; only allowDefaults selects the defaults.
+hostport_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.hostPort=true > "${hostport_render}"
+if grep -Fq 'postgres-password: "Zm9yZXZlcmJ1bGw="' "${hostport_render}" \
+  || grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${hostport_render}"; then
+  echo "expose.hostPort alone must not select the public default credentials" >&2
+  exit 1
+fi
+rm -f "${hostport_render}"
+defaults_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set credentials.allowDefaults=true > "${defaults_render}"
+if ! grep -Fq 'postgres-password: "Zm9yZXZlcmJ1bGw="' "${defaults_render}" \
+  || ! grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${defaults_render}"; then
+  echo "credentials.allowDefaults=true must select the public defaults" >&2
+  exit 1
+fi
+rm -f "${defaults_render}"
+
+# Fail-fast migration guard. lookup is empty under helm template, so
+# the shipped wiring is guarded statically below, and the factored
+# condition is exercised on a copied chart whose extra template calls
+# it with synthetic inputs (the copy is never installed).
+helpers_for_guard="${CHART}/templates/_helpers.tpl"
+for pattern in \
+  'lookup "v1" "Secret" .Release.Namespace' \
+  'lookup "v1" "PersistentVolumeClaim" .Release.Namespace "postgres"' \
+  'lookup "apps/v1" "Deployment" .Release.Namespace "postgres"' \
+  'foreverbull.requireCredentialMigration'; do
+  if ! grep -Fq "${pattern}" "${helpers_for_guard}"; then
+    echo "migration guard wiring is missing: ${pattern}" >&2
+    exit 1
+  fi
+done
+migration_chart="$(mktemp -d)"
+trap 'rm -rf "${migration_chart}"' EXIT
+cp -R "${CHART}/." "${migration_chart}/"
+cat > "${migration_chart}/templates/zz-migration-check.yaml" <<'EOF'
+{{- $mc := .Values.migrationCheck | default dict }}
+{{- include "foreverbull.requireCredentialMigration" (list ($mc.existingPostgres | default false) ($mc.hasSecret | default false) ($mc.migrated | default false)) }}
+EOF
+if migration_output="$(helm template "${RELEASE}" "${migration_chart}" --namespace "${NAMESPACE}" --set migrationCheck.existingPostgres=true 2>&1)"; then
+  echo "chart must fail a pre-Secret upgrade that was not migrated" >&2
+  exit 1
+fi
+for required in 'Secret foreverbull-credentials' 'credentials.allowDefaults=true' 'postgres.password' 'minio.accessKey' 'minio.secretKey' 'rotate the password inside Postgres'; do
+  if ! grep -Fq "${required}" <<< "${migration_output}"; then
+    echo "migration error must mention: ${required}" >&2
+    exit 1
+  fi
+done
+helm template "${RELEASE}" "${migration_chart}" --namespace "${NAMESPACE}" --set migrationCheck.existingPostgres=true --set migrationCheck.migrated=true >/dev/null
+helm template "${RELEASE}" "${migration_chart}" --namespace "${NAMESPACE}" --set migrationCheck.existingPostgres=true --set migrationCheck.hasSecret=true >/dev/null
+helm template "${RELEASE}" "${migration_chart}" --namespace "${NAMESPACE}" >/dev/null
+rm -rf "${migration_chart}"
+trap - EXIT
 
 # Generated credentials must stay stable across helm upgrade. The
 # credential helper looks up the existing Secret in the release

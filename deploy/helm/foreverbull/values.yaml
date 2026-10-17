@@ -48,16 +48,17 @@ persistence:
 
 # Postgres and MinIO credentials live in Secret foreverbull-credentials.
 # Leave password/accessKey/secretKey empty and the chart picks them:
-#   - expose.hostPort=true (local Kind via fbenv): the documented local
-#     credentials, foreverbull and minioadmin/minioadmin, so host tools work.
+#   - credentials.allowDefaults=true (fbenv passes it for local Kind):
+#     the documented local credentials, foreverbull and
+#     minioadmin/minioadmin, so host tools work. expose.hostPort is
+#     networking only and never selects these defaults on its own.
 #   - otherwise: generated once and kept in the Secret across upgrades.
 # Setting a value yourself wins. postgres.password and minio.secretKey
 # must be URL-safe (letters, digits and -._~): the Postgres password is
 # expanded raw into POSTGRES_URL, and a non-URL-safe set value fails the
-# install. On a cluster without hostPort, the public defaults above stop
-# the install unless credentials.allowDefaults is true.
+# install. A set public default also fails unless allowDefaults is true.
 credentials:
-  allowDefaults: false      # true only for a throwaway cluster
+  allowDefaults: false      # true only for local Kind or a throwaway cluster
 
 postgres:
   user: foreverbull
