@@ -1,0 +1,32 @@
+# Small demo universe for `fbull backtest create`.
+# Ten liquid US symbols that traded through 2023, plus SPY as benchmark.
+# Optional price source: yahoo (default), stooq, or alpaca.
+# `fbull backtest create --provider` overrides this field.
+# provider: yahoo
+# profile is an Alpaca profile name when provider is alpaca. It is not a credential.
+name: demo
+benchmark: SPY
+periods:
+  - start_date: "2023-01-01"
+    end_date: "2023-12-31"
+    assets:
+      - symbol: AAPL
+        enabled: true
+      - symbol: MSFT
+        enabled: true
+      - symbol: AMZN
+        enabled: true
+      - symbol: GOOGL
+        enabled: true
+      - symbol: JPM
+        enabled: true
+      - symbol: JNJ
+        enabled: true
+      - symbol: XOM
+        enabled: true
+      - symbol: PG
+        enabled: true
+      - symbol: KO
+        enabled: true
+      - symbol: WMT
+        enabled: true
