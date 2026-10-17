@@ -10,6 +10,12 @@ Workloads (ClusterIP DNS):
 
 Broker image: {{ include "foreverbull.image" (list .Values.images.broker.repository .Values.images.broker.tag .Values.global.imageTag) }}
 Trading enabled: {{ .Values.broker.trading.enabled }}
+
+Warning: if this release was installed before Secret foreverbull-credentials existed, migrate the old Postgres/MinIO credentials first (see deploy/README.md, Upgrading an existing remote install); a fresh generated password will not match an already-initialised Postgres. Never apply offline helm template output over a live release, and do not delete the Secret while its PVCs survive.
+Credentials (Secret foreverbull-credentials, namespace {{ .Release.Namespace }}); read generated values back with:
+  kubectl get secret foreverbull-credentials -n {{ .Release.Namespace }} -o jsonpath='{.data.postgres-password}' | base64 -d; echo
+  kubectl get secret foreverbull-credentials -n {{ .Release.Namespace }} -o jsonpath='{.data.minio-accessKey}' | base64 -d; echo
+  kubectl get secret foreverbull-credentials -n {{ .Release.Namespace }} -o jsonpath='{.data.minio-secretKey}' | base64 -d; echo
 Docker socket: not mounted. Worker pods use ServiceAccount {{ include "foreverbull.serviceAccountName" . }}.
 
 {{- if .Values.expose.hostPort }}

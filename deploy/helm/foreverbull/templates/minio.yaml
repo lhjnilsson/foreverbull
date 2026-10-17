@@ -78,9 +78,15 @@ spec:
               protocol: TCP
           env:
             - name: MINIO_ROOT_USER
-              value: {{ .Values.minio.accessKey | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-accessKey
             - name: MINIO_ROOT_PASSWORD
-              value: {{ .Values.minio.secretKey | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-secretKey
           volumeMounts:
             - name: data
               mountPath: {{ .Values.persistence.minio.path }}

@@ -44,6 +44,11 @@ spec:
               containerPort: {{ .Values.zipline.grpcPort }}
               protocol: TCP
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: postgres-password
             - name: DATABASE_URL
               value: {{ include "foreverbull.postgresURL" . | quote }}
           startupProbe:

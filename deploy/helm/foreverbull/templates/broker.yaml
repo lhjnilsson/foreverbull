@@ -76,6 +76,11 @@ spec:
               {{- end }}
             {{- end }}
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: postgres-password
             - name: POSTGRES_URL
               value: {{ include "foreverbull.postgresURL" . | quote }}
             - name: NATS_URL
@@ -83,9 +88,15 @@ spec:
             - name: MINIO_URL
               value: {{ printf "minio:%v" .Values.minio.port | quote }}
             - name: MINIO_ACCESS_KEY
-              value: {{ .Values.minio.accessKey | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-accessKey
             - name: MINIO_SECRET
-              value: {{ .Values.minio.secretKey | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-secretKey
             - name: ZIPLINE_CONTAINER_NAME
               value: {{ .Values.broker.ziplineServiceName | quote }}
             - name: LOG_LEVEL

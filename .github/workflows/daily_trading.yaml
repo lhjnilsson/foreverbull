@@ -5,6 +5,9 @@ name: "Weekday trading"
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   place-orders-to-alpaca:
     if: false

@@ -1,0 +1,49 @@
+name: pull request authorship
+
+# Flags a pull request whose author is not the author of its commits. A bot
+# must open its own pull requests: one opened under a person's account cannot
+# be edited by the bot that wrote the commits. Mixed authorship is a warning;
+# it fails only when a bot account is on one side of the mismatch.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  authorship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare pull request and commit authors
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BOT_LOGINS: lhjnilsson-bot
+        run: |
+          set -euo pipefail
+          # Commits with no linked GitHub account show their git author name.
+          authors="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+            --jq '.[] | (.author.login // ("git:" + .commit.author.name))' | sort -u)"
+          others="$(grep -vxF "${PR_AUTHOR}" <<<"${authors}" || true)"
+          if [[ -z "${others}" ]]; then
+            echo "All commits are authored by ${PR_AUTHOR}."
+            exit 0
+          fi
+          others_list="$(paste -sd ',' <<<"${others}" | sed 's/,/, /g')"
+          message="Pull request author ${PR_AUTHOR} differs from commit author(s): ${others_list}."
+          bot_involved=false
+          for bot in ${BOT_LOGINS}; do
+            if [[ "${PR_AUTHOR}" == "${bot}" ]] || grep -qxF "${bot}" <<<"${others}"; then
+              bot_involved=true
+            fi
+          done
+          if [[ "${bot_involved}" == true ]]; then
+            echo "::error title=Pull request authorship::${message} A bot must open the pull requests for its own commits, from its own account."
+            exit 1
+          fi
+          echo "::warning title=Pull request authorship::${message}"

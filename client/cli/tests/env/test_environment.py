@@ -345,6 +345,7 @@ class TestClusterManager:
         assert "--set" in helm[0]
         assert "global.imageTag=latest" in helm[0]
         assert "expose.hostPort=true" in helm[0]
+        assert "credentials.allowDefaults=true" in helm[0]
         assert "broker.logLevel=debug" in helm[0]
         assert "--kube-context" in helm[0]
         assert helm[0][helm[0].index("--kube-context") + 1] == "kind-foreverbull"
@@ -376,6 +377,7 @@ class TestClusterManager:
         assert helm[helm.index("--kube-context") + 1] == "prod"
         assert helm[helm.index("--namespace") + 1] == "fb"
         assert "expose.hostPort=false" in helm
+        assert "credentials.allowDefaults=true" not in helm
 
     def test_create_remote_skips_kind(self, tmp_path: Path):
         runner = FakeRunner()
@@ -395,6 +397,7 @@ class TestClusterManager:
         assert helm[helm.index("--kube-context") + 1] == "prod"
         assert helm[helm.index("--namespace") + 1] == "fb"
         assert "expose.hostPort=false" in helm
+        assert "credentials.allowDefaults=true" not in helm
         assert "broker.logLevel=debug" not in helm
 
     def test_load_images_errors_when_local_tag_missing(self, tmp_path: Path):
