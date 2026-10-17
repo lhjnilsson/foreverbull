@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/web"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service"
@@ -109,6 +110,7 @@ func app() *fx.App {
 	return fx.New(
 		coreModules,
 		grpc.Module,
+		web.Module,
 		backtest.Module,
 		finance.Module,
 		service.Module,

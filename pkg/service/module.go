@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -31,6 +32,7 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
+		registerServiceHTTP,
 		func(lc fx.Lifecycle, sub Subscriber) error {
 			lc.Append(
 				fx.Hook{
@@ -70,3 +72,19 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 )
+
+type serviceHTTPParams struct {
+	fx.In
+
+	Mux  *http.ServeMux `optional:"true"`
+	Conn *pgxpool.Pool
+}
+
+// registerServiceHTTP mounts service reads when the HTTP mux is in the process.
+// The image is not a path segment. Module tests without the mux do not listen.
+func registerServiceHTTP(p serviceHTTPParams) {
+	if p.Mux == nil || p.Conn == nil {
+		return
+	}
+	RegisterHTTP(p.Mux, &repository.Service{Conn: p.Conn})
+}

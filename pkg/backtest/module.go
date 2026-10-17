@@ -3,6 +3,7 @@ package backtest
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/container"
@@ -44,13 +45,16 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(ce container.Engine) engine.Engine {
 			return backtest.NewLazyEngine(ce)
 		},
+		func(pgx *pgxpool.Pool, eventStream stream.Stream) *api.BacktestServer {
+			return api.NewBacktestServer(pgx, eventStream)
+		},
 	),
 	fx.Invoke(
-		func(g *grpc.Server, pgx *pgxpool.Pool, eventStream stream.Stream) error {
-			backtestServer := api.NewBacktestServer(pgx, eventStream)
+		func(g *grpc.Server, backtestServer *api.BacktestServer) error {
 			servicePb.RegisterBacktestServicerServer(g, backtestServer)
 			return nil
 		},
+		registerBacktestHTTP,
 		func(conn *pgxpool.Pool) error {
 			return repository.CreateTables(context.Background(), conn)
 		},
@@ -103,3 +107,19 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		},
 	),
 )
+
+type backtestHTTPParams struct {
+	fx.In
+
+	Mux    *http.ServeMux `optional:"true"`
+	Server *api.BacktestServer
+}
+
+// registerBacktestHTTP mounts read routes when the HTTP mux is in the process.
+// Module tests that do not provide the mux keep gRPC and do not listen on HTTP_PORT.
+func registerBacktestHTTP(p backtestHTTPParams) {
+	if p.Mux == nil || p.Server == nil {
+		return
+	}
+	api.RegisterHTTP(p.Mux, p.Server)
+}
