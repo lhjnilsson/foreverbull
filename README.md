@@ -311,6 +311,7 @@ kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
 
 - Read the reason in the broker log: `kubectl --context kind-foreverbull -n foreverbull logs deploy/foreverbull`.
 - When many symbols fail at once, the price host is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
+- When the connection to the price service or the broker breaks during create, the command stops with one line that says nothing was changed and to run the same create again. The backtest is removed, so the same name works again. Bars that were already downloaded stay. If the backtest could not be removed, the line says so; delete it with `uv run fbull backtest delete <name>` before you retry.
 
 ### Recreate the Kind cluster
 

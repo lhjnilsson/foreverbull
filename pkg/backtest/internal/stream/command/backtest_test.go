@@ -393,27 +393,117 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStopsOnBlockedProvider
 	test.Equal("test-backtest", b.Name)
 }
 
-func (test *BacktestCommandTest) TestDownloadFinancialDataWrapsOtherStreamErrors() {
+func (test *BacktestCommandTest) downloadMessage(name string) *stream.MockMessage {
 	msg := new(stream.MockMessage)
 	msg.On("MustGet", stream.DBDep).Return(test.db)
 	msg.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
 	msg.On("ParsePayload", &bs.DownloadFinancialDataCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
-		payload.BacktestName = "test-backtest"
+		payload.BacktestName = name
 	})
+	return msg
+}
 
+func (test *BacktestCommandTest) createAgain() {
+	retry := new(stream.MockMessage)
+	retry.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+		bytes, err := proto.Marshal(test.backtest)
+		test.Require().NoError(err)
+		payload.Backtest = bytes
+	})
+	retry.On("MustGet", stream.DBDep).Return(test.db)
+	test.Require().NoError(command.CreateBacktestFromBacktest(context.TODO(), retry))
+}
+
+func (test *BacktestCommandTest) TestDownloadFinancialDataStreamErrorRemovesBacktest() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "MSFT", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	// MSFT fails on its own first, then the stream breaks. We can't tell
+	// which bars were stored, so the whole backtest goes.
 	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "MSFT",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+	}, nil).Once()
 	clientStreamMock.On("Recv", mock.Anything).Return(nil, status.Error(codes.Unavailable, "connection refused"))
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
 
-	err := command.DownloadFinancialData(context.TODO(), msg)
-	test.Require().ErrorContains(err, "error receiving response")
-	test.Require().ErrorContains(err, "connection refused")
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err, "Downloading prices failed: connection refused. Nothing was changed. Run the same create again.")
 
-	// Any other failure keeps the backtest.
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	var periods, assets int
+	test.Require().NoError(test.db.QueryRow(context.TODO(),
+		`SELECT count(*) FROM backtest_period WHERE backtest_name=$1`, "test-backtest").Scan(&periods))
+	test.Require().NoError(test.db.QueryRow(context.TODO(),
+		`SELECT count(*) FROM backtest_period_asset WHERE backtest_name=$1`, "test-backtest").Scan(&assets))
+	test.Zero(periods)
+	test.Zero(assets)
+
+	// Create again under the same name.
+	test.createAgain()
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	test.Equal("test-backtest", b.Name)
+}
+
+func (test *BacktestCommandTest) TestDownloadFinancialDataConnectionErrorRemovesBacktest() {
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).
+		Return(nil, status.Error(codes.Unavailable, "Finance service unreachable"))
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err, "Downloading prices failed: finance service unreachable. Nothing was changed. Run the same create again.")
+
 	backtests := repository.Backtest{Conn: test.db}
 	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+
+	test.createAgain()
+	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().NoError(err)
+}
+
+func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsBacktestWhenSomeSymbolsFail() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	test.Require().NoError(command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest")))
+
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	for _, period := range b.Periods {
+		for _, asset := range period.Assets {
+			if asset.Symbol == "AAPL" {
+				test.False(asset.Enabled)
+			}
+		}
+	}
 }
 
 func civilToday() string {

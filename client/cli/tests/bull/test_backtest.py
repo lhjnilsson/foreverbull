@@ -189,6 +189,104 @@ def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
     assert result.output == f"Using provider: stooq (from --provider)\n✖ {_STOOQ_BLOCKED}\n"
 
 
+class _BrokenStream(grpc.RpcError):
+    def __init__(self, details: str, code: grpc.StatusCode = grpc.StatusCode.UNAVAILABLE):
+        self._details = details
+        self._code = code
+
+    def details(self):
+        return self._details
+
+    def code(self):
+        return self._code
+
+
+def _stream_breaking_after_creating(**_kwargs):
+    yield backtest_service_pb2.CreateBacktestResponse(
+        CREATING=common_pb2.Step(state=common_pb2.State.STATE_COMPLETED),
+        DOWNLOADING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+    )
+    raise _BrokenStream("Socket closed")
+
+
+def _create_from_file(provider: str = "yahoo"):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file:
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", provider])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    return result
+
+
+def test_backtest_create_broken_stream_removes_the_backtest(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_stream_breaking_after_creating),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_called_once_with(_file_payload()["name"])
+    assert result.exit_code == 1
+    assert result.output == (
+        "Using provider: yahoo (from --provider)\n"
+        "✖ Creating the backtest failed: socket closed. Nothing was changed. Run the same create again.\n"
+    )
+
+
+def test_backtest_create_broken_stream_already_removed(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_stream_breaking_after_creating),
+        patch(
+            "foreverbull.broker.backtest.delete",
+            side_effect=_BrokenStream("backtest not found", grpc.StatusCode.NOT_FOUND),
+        ),
+    ):
+        result = _create_from_file()
+
+    assert result.exit_code == 1
+    assert result.output == (
+        "Using provider: yahoo (from --provider)\n"
+        "✖ Creating the backtest failed: socket closed. Nothing was changed. Run the same create again.\n"
+    )
+
+
+def test_backtest_create_broken_stream_delete_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    name = _file_payload()["name"]
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_stream_breaking_after_creating),
+        patch("foreverbull.broker.backtest.delete", side_effect=_BrokenStream("connection refused")),
+    ):
+        result = _create_from_file()
+
+    assert result.exit_code == 1
+    assert "Nothing was changed" not in result.output
+    assert f"delete it with `fbull backtest delete {name}` before you retry." in " ".join(result.output.split())
+
+
+def test_backtest_create_broken_stream_before_creating_keeps_existing(monkeypatch):
+    # The name may belong to an older backtest; this create never stored it.
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+
+    def stream(**_kwargs):
+        yield backtest_service_pb2.CreateBacktestResponse(
+            CREATING=common_pb2.Step(state=common_pb2.State.STATE_RUNNING),
+        )
+        raise _BrokenStream("Socket closed")
+
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=stream),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == "Using provider: yahoo (from --provider)\n✖ Socket closed\n"
+
+
 def test_backtest_create_reprompts_invalid_dates(runner):
     with patch("foreverbull.broker.backtest.create") as mock_create:
         mock_create.return_value = iter(

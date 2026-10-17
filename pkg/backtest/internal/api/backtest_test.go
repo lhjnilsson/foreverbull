@@ -22,8 +22,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 )
@@ -254,6 +256,7 @@ func (test *BacktestServerTest) TestDeleteBacktest() {
 		}
 		resp, err := test.client.DeleteBacktest(context.Background(), req)
 		test.Require().Error(err)
+		test.Equal(codes.NotFound, status.Code(err))
 		test.Nil(resp)
 	})
 	test.Run("found", func() {

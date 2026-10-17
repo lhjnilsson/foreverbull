@@ -70,6 +70,43 @@ def _fail(message: str) -> None:
     raise typer.Exit(code=1)
 
 
+def _rpc_details(exc: grpc.RpcError) -> str:
+    details = getattr(exc, "details", None)
+    return str(details()) if callable(details) else str(exc)
+
+
+def _entity_name(
+    entity: backtest_service_pb2.CreateBacktestRequest.CreateFromETF
+    | backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest,
+) -> str:
+    if isinstance(entity, backtest_service_pb2.CreateBacktestRequest.CreateFromBacktest):
+        return entity.backtest.name
+    return entity.name
+
+
+def _discard_partial_backtest(name: str, failure: str) -> str:
+    """Delete a backtest this create stored before its stream broke.
+
+    Only called after this stream reported CREATING as completed, so the
+    record is ours and not an older backtest with the same name. Bars are
+    stored per provider and symbol, so nothing else is removed.
+    """
+    reason = failure.strip().rstrip(".")
+    try:
+        broker.backtest.delete(name)
+    except grpc.RpcError as exc:
+        code = getattr(exc, "code", None)
+        if not callable(code) or code() != grpc.StatusCode.NOT_FOUND:
+            return (
+                f"{reason or 'Creating the backtest failed'}. The backtest {name} could not be removed; "
+                f"delete it with `fbull backtest delete {name}` before you retry."
+            )
+    if not reason:
+        return "Creating the backtest failed. Nothing was changed. Run the same create again."
+    detail = reason[0].lower() + reason[1:]
+    return f"Creating the backtest failed: {detail}. Nothing was changed. Run the same create again."
+
+
 def _optional_profile(raw: object) -> str:
     if raw is None:
         return ""
@@ -337,15 +374,20 @@ def create(
     console.print(f"Using provider: {chosen} ({source})", markup=False)
 
     created: backtest_pb2.Backtest | None = None
+    stored = False
     failure: str | None = None
     with LiveProgress() as progress:
         try:
             for backtest_rsp in broker.backtest.create(entity=entity):
                 progress.update_from_message(backtest_rsp)
+                if backtest_rsp.CREATING.state == common_pb2.State.STATE_COMPLETED:
+                    stored = True
                 if backtest_rsp.STORING.state == common_pb2.State.STATE_COMPLETED:
                     created = backtest_rsp.backtest
         except grpc.RpcError as exc:
-            failure = exc.details() if callable(getattr(exc, "details", None)) else str(exc)
+            failure = _rpc_details(exc)
+            if stored and created is None:
+                failure = _discard_partial_backtest(_entity_name(entity), failure)
         failure = failure or progress.failure
         if failure is not None:
             # The failed step's message is the whole error, so the progress

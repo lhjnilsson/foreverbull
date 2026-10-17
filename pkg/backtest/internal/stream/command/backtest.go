@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -518,7 +520,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		Profile:   b.GetProfile(),
 	})
 	if err != nil {
-		return fmt.Errorf("error downloading financial data: %w", err)
+		return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
 	}
 	for {
 		msg, err := rsp.Recv()
@@ -530,7 +532,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				discardBlockedBacktest(ctx, backtests, command.BacktestName)
 				return blocked
 			}
-			return fmt.Errorf("error receiving response: %w", err)
+			return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
 			err := backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
@@ -557,13 +559,36 @@ func blockedDownload(err error) error {
 // discardBlockedBacktest deletes the backtest that the CREATING step stored,
 // so retrying the same create with the other provider is not refused as a
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
-// are stored per provider and symbol, not per backtest. Other download
-// failures keep the record, because their symbols are disabled one by one
-// and the backtest can still be used or inspected.
+// are stored per provider and symbol, not per backtest. When only some
+// symbols fail, they are disabled one by one and the backtest is kept.
 func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name string) {
 	if err := backtests.Delete(ctx, name); err != nil {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
 	}
+}
+
+// discardFailedBacktest deletes the backtest after a stream or connection
+// error from the finance service. We can't tell which bars were stored, so
+// the backtest record, its periods and its assets are removed, and a retry
+// under the same name works. Bars are stored per provider and symbol, not per
+// backtest, so they are kept. The returned error is the step's whole message.
+func discardFailedBacktest(ctx context.Context, backtests repository.Backtest, name string, cause error) error {
+	reason := cause.Error()
+	if st, ok := status.FromError(cause); ok && st.Message() != "" {
+		reason = st.Message()
+	}
+	reason = strings.TrimRight(strings.TrimSpace(reason), ".")
+	if err := backtests.Delete(ctx, name); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed download")
+		return plainSentence(fmt.Sprintf("Downloading prices failed: %s. The backtest %s could not be removed; "+
+			"delete it with `fbull backtest delete %s` before you retry.", reason, name, name))
+	}
+	if reason != "" {
+		runes := []rune(reason)
+		runes[0] = unicode.ToLower(runes[0])
+		reason = string(runes)
+	}
+	return plainSentence(fmt.Sprintf("Downloading prices failed: %s. Nothing was changed. Run the same create again.", reason))
 }
 
 func Ingest(ctx context.Context, msg stream.Message) error {

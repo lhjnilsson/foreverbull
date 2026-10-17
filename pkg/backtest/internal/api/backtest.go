@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	internalPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
@@ -11,6 +13,8 @@ import (
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type BacktestServer struct {
@@ -119,6 +123,10 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 func (bs *BacktestServer) DeleteBacktest(ctx context.Context, req *servicePb.DeleteBacktestRequest) (*servicePb.DeleteBacktestResponse, error) {
 	backtests := repository.Backtest{Conn: bs.pgx}
 	err := backtests.Delete(ctx, req.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// NotFound lets a client tell "already gone" apart from a failed delete.
+		return nil, status.Errorf(codes.NotFound, "backtest %s not found", req.Name)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error deleting backtest: %w", err)
 	}
