@@ -91,17 +91,20 @@ def _discard_partial_backtest(name: str, failure: str) -> str:
     record is ours and not an older backtest with the same name. Bars are
     stored per provider and symbol, so nothing else is removed.
     """
-    reason = failure.strip().rstrip(".") or "Creating the backtest failed"
+    reason = failure.strip().rstrip(".")
     try:
         broker.backtest.delete(name)
     except grpc.RpcError as exc:
         code = getattr(exc, "code", None)
         if not callable(code) or code() != grpc.StatusCode.NOT_FOUND:
             return (
-                f"{reason}. The backtest {name} could not be removed; "
+                f"{reason or 'Creating the backtest failed'}. The backtest {name} could not be removed; "
                 f"delete it with `fbull backtest delete {name}` before you retry."
             )
-    return f"{reason}. Nothing was changed."
+    if not reason:
+        return "Creating the backtest failed. Nothing was changed. Run the same create again."
+    detail = reason[0].lower() + reason[1:]
+    return f"Creating the backtest failed: {detail}. Nothing was changed. Run the same create again."
 
 
 def _optional_profile(raw: object) -> str:

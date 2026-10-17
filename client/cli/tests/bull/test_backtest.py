@@ -228,7 +228,10 @@ def test_backtest_create_broken_stream_removes_the_backtest(monkeypatch):
 
     mock_delete.assert_called_once_with(_file_payload()["name"])
     assert result.exit_code == 1
-    assert result.output == "Using provider: yahoo (from --provider)\n✖ Socket closed. Nothing was changed.\n"
+    assert result.output == (
+        "Using provider: yahoo (from --provider)\n"
+        "✖ Creating the backtest failed: socket closed. Nothing was changed. Run the same create again.\n"
+    )
 
 
 def test_backtest_create_broken_stream_already_removed(monkeypatch):
@@ -243,7 +246,10 @@ def test_backtest_create_broken_stream_already_removed(monkeypatch):
         result = _create_from_file()
 
     assert result.exit_code == 1
-    assert result.output.endswith("✖ Socket closed. Nothing was changed.\n")
+    assert result.output == (
+        "Using provider: yahoo (from --provider)\n"
+        "✖ Creating the backtest failed: socket closed. Nothing was changed. Run the same create again.\n"
+    )
 
 
 def test_backtest_create_broken_stream_delete_fails(monkeypatch):
