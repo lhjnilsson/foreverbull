@@ -767,7 +767,8 @@ def test_backtest_run_says_when_backtest_has_no_benchmark(runner):
 def test_backtest_run_without_stored_periods_says_so(runner):
     result, _ = _invoke_run(runner, _run_session_mocks(), [])
     assert result.exit_code == 0
-    assert "No results were stored for this execution." in result.stdout
+    assert "✔ Backtest finished, but no results were stored for this execution." in result.stdout
+    assert "Backtest finished:" not in result.stdout
     assert "Details: uv run fbull backtest execution exec-1" in result.stdout
 
 
@@ -896,7 +897,23 @@ def test_backtest_execution_refuses_ambiguous_short_id(runner):
     ]
     result = _execution_failure(runner, "0123", executions)
     assert result.exit_code == 1
-    assert "'0123' matches 2 executions (01234567, 01234567)" in result.stdout
+    assert "'0123' matches 2 executions (01234567-89ab, 01234567-ffff)" in result.stdout
+
+
+def test_backtest_execution_resolves_distinguishing_prefix(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+    ):
+        mock_list_executions.return_value = [
+            _sample_execution(full_id),
+            _sample_execution("01234567-ffff-cdef-0123-456789abcdef"),
+        ]
+        mock_get_execution.return_value = (_sample_execution(full_id), [])
+        result = runner(backtest, ["execution", "01234567-89ab"])
+        assert result.exit_code == 0
+        mock_get_execution.assert_called_once_with(full_id)
 
 
 def test_verbosity_flags(runner):

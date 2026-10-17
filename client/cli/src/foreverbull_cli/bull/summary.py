@@ -18,6 +18,27 @@ def short_execution_id(execution_id: str) -> str:
     return execution_id[:SHORT_EXECUTION_ID_LENGTH]
 
 
+def distinguishing_execution_ids(execution_ids: list[str]) -> list[str]:
+    """Segment-aligned prefixes long enough to tell the given executions apart.
+
+    Extends past the eight-character short id until the prefix is unique
+    among `execution_ids`, then out to the end of that hyphen segment, so
+    `01234567-89ab` is shown instead of the indistinguishable `01234567`.
+    """
+    shown: list[str] = []
+    for execution_id in execution_ids:
+        length = SHORT_EXECUTION_ID_LENGTH
+        while length < len(execution_id) and any(
+            other != execution_id and other.startswith(execution_id[:length]) for other in execution_ids
+        ):
+            length += 1
+        segment_end = execution_id.find("-", length)
+        if segment_end != -1:
+            length = segment_end
+        shown.append(execution_id[:length])
+    return shown
+
+
 def format_percent(fraction: float) -> str:
     """Zipline reports returns and drawdown as fractions, so 0.042 prints as +4.2%."""
     return f"{fraction * 100:+.1f}%"
@@ -62,15 +83,16 @@ def print_run_summary(
     execution_id: str,
     periods: list[execution_pb.Period],
 ) -> None:
-    console.print(
-        f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"
-    )
-    console.print()
-    if periods:
-        console.print(Padding(metrics_table(benchmark, periods[-1]), (0, 0, 0, 2), expand=False))
+    if not periods:
+        console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
+        console.print()
     else:
-        console.print("  No results were stored for this execution.")
-    console.print()
+        console.print(
+            f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"
+        )
+        console.print()
+        console.print(Padding(metrics_table(benchmark, periods[-1]), (0, 0, 0, 2), expand=False))
+        console.print()
     # soft_wrap leaves wrapping to the terminal, so a pasted command or URL has no inserted newline.
     console.print(
         f"  Details: uv run fbull backtest execution {short_execution_id(execution_id)}",

@@ -28,8 +28,8 @@ from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.etf_catalog import etf_by_name
 from foreverbull_cli.bull.etf_catalog import etf_catalog
 from foreverbull_cli.bull.etf_catalog import known_etf_names
+from foreverbull_cli.bull.summary import distinguishing_execution_ids
 from foreverbull_cli.bull.summary import print_run_summary
-from foreverbull_cli.bull.summary import short_execution_id
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -619,7 +619,7 @@ def _resolve_execution_id(raw: str) -> str:
     if not matches:
         _fail(f"No execution ID starts with {prefix!r}. List them with `fbull backtest executions`.")
     if len(matches) > 1:
-        shown = ", ".join(short_execution_id(match) for match in matches[:_AMBIGUOUS_MATCHES_SHOWN])
+        shown = ", ".join(distinguishing_execution_ids(matches)[:_AMBIGUOUS_MATCHES_SHOWN])
         _fail(f"{prefix!r} matches {len(matches)} executions ({shown}). Use more characters of the ID.")
     return matches[0]
 
