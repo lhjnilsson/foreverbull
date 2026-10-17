@@ -7,15 +7,10 @@
 !docs/**/*
 !internal/**/*
 
-
-# UI files
-!external/ui/package.json
-!external/ui/src/**/*
-!external/ui/public/**/*
-!external/ui/index.html
-!external/ui/vite.config.js
-!external/ui/tsconfig.json
-!external/ui/jsconfig.js
-
-## Pre built UI files, mostly for dev- images
-!external/ui/dist/**/*
+# Web shell sources. node_modules and dist stay ignored.
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/vite.config.ts
+!web/tsconfig.json
+!web/src/**/*

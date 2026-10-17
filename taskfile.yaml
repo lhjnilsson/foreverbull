@@ -111,8 +111,16 @@ tasks:
     sources:
       - pkg/**/*.go
       - internal/**/*.go
+      - internal/web/page/**/*
       - cmd/**/*.go
       - docker/Dockerfile
+      - .dockerignore
+      - web/package.json
+      - web/package-lock.json
+      - web/index.html
+      - web/vite.config.ts
+      - web/tsconfig.json
+      - web/src/**/*
     cmds:
       - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
 
