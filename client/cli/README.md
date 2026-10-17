@@ -43,7 +43,7 @@ uv run fbull backtest get demo --output yaml
 uv run fbull backtest run demo path/to/strategy.py
 uv run fbull backtest run demo path/to/strategy.py --start 2021-01-01 --end 2021-03-31 --dry
 uv run fbull backtest executions --backtest demo
-uv run fbull backtest execution EXECUTION_ID
+uv run fbull backtest execution EXECUTION_ID   # full ID or a unique prefix, such as the short ID run prints
 uv run fbull backtest delete demo
 ```
 

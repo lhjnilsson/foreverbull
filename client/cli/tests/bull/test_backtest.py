@@ -692,28 +692,105 @@ def _run_session_mocks():
     return mock_backtest_session
 
 
-def test_backtest_run(runner):
-    mock_backtest_session = _run_session_mocks()
+def _final_period(**overrides) -> execution_pb.Period:
+    fields = {
+        "date": from_pydate_to_proto_date(END),
+        "portfolio_value": 104200.0,
+        "algorithm_period_return": 0.042,
+        "max_drawdown": -0.068,
+        "sharpe": 1.35,
+        "sortino": 1.1,
+        "benchmark_period_return": 0.031,
+    }
+    fields.update(overrides)
+    return execution_pb.Period(**fields)
+
+
+def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
         patch("foreverbull.broker.backtest.create_session") as create_session,
         patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.get_execution") as get_execution,
     ):
         from_file_path.return_value = True
-        get.return_value = _sample_backtest()
+        get.return_value = backtest_entity or _sample_backtest()
         create_session.return_value = iter(
             [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
+        get_execution.return_value = (_sample_execution(), periods)
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py"])
-        assert result.exit_code == 0
-        assert "exec-1" in result.stdout
-        assert "test_name" in result.stdout
-        assert "2020-01-01" in result.stdout
-        assert f"Link: {execution_link('exec-1')}" in result.stdout
-        mock_backtest_session.run_execution.assert_called_once()
         create_session.assert_called_once()
+        return result, get_execution
+
+
+def test_backtest_run_prints_results_summary(runner):
+    mock_backtest_session = _run_session_mocks()
+    result, get_execution = _invoke_run(
+        runner, mock_backtest_session, [_final_period(algorithm_period_return=0.01), _final_period()]
+    )
+    assert result.exit_code == 0
+    get_execution.assert_called_once_with("exec-1")
+    mock_backtest_session.run_execution.assert_called_once()
+    assert "Backtest finished: test_name · 2020-01-01 → 2020-01-31 · provider: yahoo" in result.stdout
+    # The last period holds the cumulative numbers for the whole run.
+    assert "+4.2%" in result.stdout
+    assert "+1.0%" not in result.stdout
+    assert "Benchmark (SPY)" in result.stdout
+    assert "+3.1%" in result.stdout
+    assert "1.35" in result.stdout
+    assert "1.10" in result.stdout
+    assert "-6.8%" in result.stdout
+    assert "Details: uv run fbull backtest execution exec-1" in result.stdout
+    assert f"Charts:  {execution_link('exec-1')}" in result.stdout
+
+
+def test_backtest_run_says_when_benchmark_return_is_missing(runner):
+    period = _final_period()
+    period.clear_field("benchmark_period_return")
+    period.clear_field("sharpe")
+    result, _ = _invoke_run(runner, _run_session_mocks(), [period])
+    assert result.exit_code == 0
+    assert "Benchmark (SPY)" in result.stdout
+    assert "not available" in result.stdout
+
+
+def test_backtest_run_says_when_backtest_has_no_benchmark(runner):
+    result, _ = _invoke_run(runner, _run_session_mocks(), [_final_period()], _sample_backtest(benchmark=""))
+    assert result.exit_code == 0
+    assert "Benchmark" in result.stdout
+    assert "not set" in result.stdout
+
+
+def test_backtest_run_without_stored_periods_says_so(runner):
+    result, _ = _invoke_run(runner, _run_session_mocks(), [])
+    assert result.exit_code == 0
+    assert "No results were stored for this execution." in result.stdout
+    assert "Details: uv run fbull backtest execution exec-1" in result.stdout
+
+
+def test_backtest_run_shows_short_execution_id(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
+    mock_backtest_session = _run_session_mocks()
+    mock_backtest_session.run_execution.return_value = iter(
+        [(full_id, session_service_pb.RunExecutionResponse(num_current_period=1, num_total_periods=1))]
+    )
+    result, get_execution = _invoke_run(runner, mock_backtest_session, [_final_period()])
+    assert result.exit_code == 0
+    get_execution.assert_called_once_with(full_id)
+    assert "Details: uv run fbull backtest execution 01234567\n" in result.stdout
+    assert f"Charts:  {execution_link(full_id)}" in result.stdout
+
+
+def test_backtest_run_fails_when_no_execution_started(runner):
+    mock_backtest_session = _run_session_mocks()
+    mock_backtest_session.run_execution.return_value = iter([])
+    result, get_execution = _invoke_run(lambda app, args: CliRunner().invoke(app, args), mock_backtest_session, [])
+    assert result.exit_code == 1
+    assert "✖ The backtest session ended before an execution started." in result.stdout
+    get_execution.assert_not_called()
 
 
 def test_backtest_run_dry(runner):
@@ -751,6 +828,7 @@ def test_backtest_executions(runner):
 
 
 def test_backtest_execution(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
     period = execution_pb.Period(
         date=from_pydate_to_proto_date(date(2020, 1, 2)),
         portfolio_value=1000.5,
@@ -761,16 +839,64 @@ def test_backtest_execution(runner):
         benchmark_period_return=0.01,
         benchmark_volatility=0.02,
     )
-    with patch("foreverbull.broker.backtest.get_execution") as mock_get_execution:
-        mock_get_execution.return_value = (_sample_execution(), [period])
-        result = runner(backtest, ["execution", "exec-1"])
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+    ):
+        mock_get_execution.return_value = (_sample_execution(full_id), [period])
+        result = runner(backtest, ["execution", full_id])
         assert result.exit_code == 0
-        assert "exec-1" in result.stdout
+        # A full UUID goes straight to the broker without listing executions.
+        mock_list_executions.assert_not_called()
+        mock_get_execution.assert_called_once_with(full_id)
         assert "1000.50000" in result.stdout
         assert "0.12000" in result.stdout
         assert "1.50000" in result.stdout
         assert "2020-01-02" in result.stdout
-        assert f"Link: {execution_link('exec-1')}" in result.stdout
+        assert f"Link: {execution_link(full_id)}" in result.stdout
+
+
+def test_backtest_execution_resolves_short_id(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+    ):
+        mock_list_executions.return_value = [
+            _sample_execution(full_id),
+            _sample_execution("fedcba98-0000-0000-0000-000000000000"),
+        ]
+        mock_get_execution.return_value = (_sample_execution(full_id), [])
+        result = runner(backtest, ["execution", "01234567"])
+        assert result.exit_code == 0
+        mock_get_execution.assert_called_once_with(full_id)
+
+
+def _execution_failure(runner, prefix, executions):
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+    ):
+        mock_list_executions.return_value = executions
+        result = CliRunner().invoke(backtest, ["execution", prefix])
+        mock_get_execution.assert_not_called()
+        return result
+
+
+def test_backtest_execution_refuses_unknown_short_id(runner):
+    result = _execution_failure(runner, "deadbeef", [_sample_execution("01234567-89ab-cdef-0123-456789abcdef")])
+    assert result.exit_code == 1
+    assert "No execution ID starts with 'deadbeef'" in result.stdout
+
+
+def test_backtest_execution_refuses_ambiguous_short_id(runner):
+    executions = [
+        _sample_execution("01234567-89ab-cdef-0123-456789abcdef"),
+        _sample_execution("01234567-ffff-cdef-0123-456789abcdef"),
+    ]
+    result = _execution_failure(runner, "0123", executions)
+    assert result.exit_code == 1
+    assert "'0123' matches 2 executions (01234567, 01234567)" in result.stdout
 
 
 def test_verbosity_flags(runner):
