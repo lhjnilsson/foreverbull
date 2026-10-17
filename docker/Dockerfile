@@ -1,4 +1,4 @@
-FROM node:22-alpine AS web
+FROM node:25-alpine AS web
 
 WORKDIR /web
 
@@ -8,7 +8,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.24-alpine
+FROM golang:1.27-alpine
 
 WORKDIR /app
 
@@ -27,5 +27,12 @@ ARG TARGETARCH
 RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.34/grpc_health_probe-linux-${TARGETARCH}
 RUN chmod +x /bin/grpc_health_probe
 HEALTHCHECK --interval=5s --timeout=3s CMD grpc_health_probe -addr=:50055
+
+# gRPC, HTTP, and the backtest range are all above 1024. /tmp holds ETF snapshots.
+RUN addgroup -S -g 10001 foreverbull \
+ && adduser -S -D -u 10001 -G foreverbull -h /home/foreverbull -s /sbin/nologin foreverbull \
+ && chown foreverbull:foreverbull /foreverbull /bin/grpc_health_probe \
+ && chmod 1777 /tmp
+USER foreverbull
 
 CMD [ "/foreverbull" ]
