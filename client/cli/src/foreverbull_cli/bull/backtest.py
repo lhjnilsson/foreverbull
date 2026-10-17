@@ -5,6 +5,7 @@ from datetime import date
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
+from typing import NoReturn
 
 import grpc
 import typer
@@ -27,6 +28,8 @@ from foreverbull.pb.pb_utils import from_pydate_to_proto_date
 from foreverbull_cli.bull.etf_catalog import etf_by_name
 from foreverbull_cli.bull.etf_catalog import etf_catalog
 from foreverbull_cli.bull.etf_catalog import known_etf_names
+from foreverbull_cli.bull.summary import distinguishing_execution_ids
+from foreverbull_cli.bull.summary import print_run_summary
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -41,6 +44,8 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_PROVIDER = DEFAULT_PROVIDER
 _PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
 _PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
+_FULL_EXECUTION_ID_LENGTH = 36  # a UUID with hyphens
+_AMBIGUOUS_MATCHES_SHOWN = 5
 
 
 def _normalize_provider(raw: object) -> str | None:
@@ -62,7 +67,7 @@ def _choose_provider(flag_provider: str | None, raw: object, file_name: str) -> 
     return _normalize_provider(raw), f"from {file_name or 'backtest.yaml'}"
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     """Print one ✖ line and exit 1, like the fbenv host checks."""
     console.print(
         f"✖ {message.strip() or 'Creating the backtest failed.'}", markup=False, highlight=False, soft_wrap=True
@@ -234,7 +239,7 @@ def _backtest_range(entity: backtest_pb.Backtest) -> tuple[str, str]:
 
 def _print_execution_link(execution_id: str) -> None:
     if execution_id:
-        console.print(f"Link: {execution_link(execution_id)}")
+        console.print(f"Link: {execution_link(execution_id)}", soft_wrap=True)
 
 
 def _print_executions(executions: list[execution_pb.Execution], include_backtest: bool = False) -> None:
@@ -589,19 +594,34 @@ def run(
                             bar_progress(message.num_current_period, message.num_total_periods)
                     log.info(f"Execution completed for {session.backtest.name}")
 
-    table = Table(title="Execution")
-    table.add_column("ID")
-    table.add_column("Backtest")
-    table.add_column("Start")
-    table.add_column("End")
-    table.add_row(
-        execution_id or "",
-        entity.name,
-        start_iso,
-        end_iso,
+    if execution_id is None:
+        _fail(progress.failure or "The backtest session ended before an execution started.")
+    _, periods = broker.backtest.get_execution(execution_id)
+    print_run_summary(
+        backtest_name=entity.name,
+        benchmark=entity.benchmark,
+        provider=_shown_provider(entity),
+        start_iso=start_iso,
+        end_iso=end_iso,
+        execution_id=execution_id,
+        periods=list(periods),
     )
-    console.print(table)
-    _print_execution_link(execution_id or "")
+
+
+def _resolve_execution_id(raw: str) -> str:
+    """Accept the full UUID or a prefix of it, such as the short id `backtest run` prints."""
+    prefix = raw.strip()
+    if not prefix:
+        _fail("Give an execution ID. List them with `fbull backtest executions`.")
+    if len(prefix) >= _FULL_EXECUTION_ID_LENGTH:
+        return prefix
+    matches = [current.id for current in broker.backtest.list_executions() if current.id.startswith(prefix)]
+    if not matches:
+        _fail(f"No execution ID starts with {prefix!r}. List them with `fbull backtest executions`.")
+    if len(matches) > 1:
+        shown = ", ".join(distinguishing_execution_ids(matches)[:_AMBIGUOUS_MATCHES_SHOWN])
+        _fail(f"{prefix!r} matches {len(matches)} executions ({shown}). Use more characters of the ID.")
+    return matches[0]
 
 
 @backtest.command()
@@ -615,9 +635,9 @@ def executions(
 
 @backtest.command()
 def execution(
-    id: Annotated[str, typer.Argument(help="id of the execution")],
+    id: Annotated[str, typer.Argument(help="id of the execution, or the short id `backtest run` prints")],
 ):
-    entity, periods = broker.backtest.get_execution(id)
+    entity, periods = broker.backtest.get_execution(_resolve_execution_id(id))
 
     summary = Table(title="Execution")
     summary.add_column("ID")
