@@ -15,13 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	mobycontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,7 @@ func WaitTillContainersAreRemoved(t *testing.T, networkID string, timeout time.D
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	require.NoError(t, err)
 
-	opts := container.ListOptions{
+	opts := dockercontainer.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("network", networkID)),
 	}
 	opts.Filters.Add("label", "platform=foreverbull")
@@ -295,7 +296,7 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 		Image:        "grafana/loki:latest",
 		ExposedPorts: []string{"3100/tcp"},
 		WaitingFor:   wait.ForLog("will now accept requests"),
-		HostConfigModifier: func(hostConfig *container.HostConfig) {
+		HostConfigModifier: func(hostConfig *mobycontainer.HostConfig) {
 			hostConfig.Binds = []string{dataFolder + ":/loki"}
 		},
 		Networks: []string{networkID},
@@ -323,7 +324,7 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 	port, err := cont.MappedPort(ctx, "3100/tcp")
 	require.NoError(t, err)
 
-	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Int())}
+	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Num())}
 
 	t.Cleanup(func() {
 		lokiLogger.Publish(t)
@@ -332,7 +333,7 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 
 	log.Logger = zerolog.New(zerolog.MultiLevelWriter(zerolog.NewConsoleWriter(), lokiLogger))
 
-	return fmt.Sprintf("http://%s:%d", host, port.Int())
+	return fmt.Sprintf("http://%s:%d", host, port.Num())
 }
 
 // ZiplineContainer starts or reuses the named Zipline container on network.
