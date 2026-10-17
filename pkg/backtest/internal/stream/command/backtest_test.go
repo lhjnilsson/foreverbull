@@ -439,7 +439,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStreamErrorRemovesBack
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
-	test.Require().EqualError(err, "Downloading prices failed: connection refused. Nothing was changed.")
+	test.Require().EqualError(err, "Downloading prices failed: connection refused. Nothing was changed. Run the same create again.")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -460,10 +460,10 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStreamErrorRemovesBack
 
 func (test *BacktestCommandTest) TestDownloadFinancialDataConnectionErrorRemovesBacktest() {
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).
-		Return(nil, status.Error(codes.Unavailable, "finance service unreachable"))
+		Return(nil, status.Error(codes.Unavailable, "Finance service unreachable"))
 
 	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
-	test.Require().EqualError(err, "Downloading prices failed: finance service unreachable. Nothing was changed.")
+	test.Require().EqualError(err, "Downloading prices failed: finance service unreachable. Nothing was changed. Run the same create again.")
 
 	backtests := repository.Backtest{Conn: test.db}
 	_, err = backtests.Get(context.TODO(), "test-backtest")

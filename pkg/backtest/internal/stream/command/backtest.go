@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -582,7 +583,12 @@ func discardFailedBacktest(ctx context.Context, backtests repository.Backtest, n
 		return plainSentence(fmt.Sprintf("Downloading prices failed: %s. The backtest %s could not be removed; "+
 			"delete it with `fbull backtest delete %s` before you retry.", reason, name, name))
 	}
-	return plainSentence(fmt.Sprintf("Downloading prices failed: %s. Nothing was changed.", reason))
+	if reason != "" {
+		runes := []rune(reason)
+		runes[0] = unicode.ToLower(runes[0])
+		reason = string(runes)
+	}
+	return plainSentence(fmt.Sprintf("Downloading prices failed: %s. Nothing was changed. Run the same create again.", reason))
 }
 
 func Ingest(ctx context.Context, msg stream.Message) error {
