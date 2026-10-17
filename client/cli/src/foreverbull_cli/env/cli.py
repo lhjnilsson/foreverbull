@@ -349,8 +349,10 @@ def update(
             cm.update()
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
-        # update pulls every missing image before kind load and helm upgrade, so nothing changed yet.
-        fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=True)
+        # Local update pulls every missing image before kind load and helm
+        # upgrade, so nothing changed yet. A remote update has no local pull
+        # step: its cluster pulls after Helm runs, so do not promise that.
+        fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=cm.config.is_local)
 
     print_status(cm)
 

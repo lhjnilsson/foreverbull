@@ -179,6 +179,16 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert "Traceback" not in result.stdout
 
 
+def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = PULL_FAILURE
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ Couldn't download the Foreverbull image" in result.stdout
+    assert "Nothing was changed." not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
 def _reject_version(manager: MagicMock) -> None:
     type(manager.config).version = PropertyMock(side_effect=VersionError("latest", "1.2.3"))
 

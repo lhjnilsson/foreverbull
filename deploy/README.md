@@ -28,7 +28,7 @@ In-cluster DNS names match the Service object names.
 | Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
 | Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
 
-`{tag}` is `images.*.tag` or `global.imageTag`. `fbenv` sets `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
+`{tag}` is `images.*.tag` or `global.imageTag`. The three app images are `global.imageRepository` plus their short `images.*.repository` name (`foreverbull`, `zipline`, `fb-grafana`); a repository name containing `/` is used as-is. `fbenv` sets `global.imageRepository` from its own `IMAGE_REPOSITORY` and `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
 
 ### Host ports (local Kind)
 
@@ -248,7 +248,7 @@ VERSION=local uv run fbenv create   # workloads stay stopped
 uv run fbenv start
 ```
 
-Without `VERSION`, `fbenv create` pulls the three app images tagged with the installed `foreverbull` client version and stops before installing anything when one is missing. `VERSION=local` uses the `:local` images built from this checkout; `fbenv` refuses any other `VERSION`.
+Without `VERSION`, a local `fbenv create` pulls the three app images tagged with the installed `foreverbull` client version and stops before installing anything when one is missing. That promise is local-Kind only: on a remote cluster this host does not pull the images, so Helm can create or update the release first and the remote nodes can then fail to pull, leaving pods in `ImagePullBackOff`. `VERSION=local` uses the `:local` images built from this checkout; `fbenv` refuses any other `VERSION`.
 
 From the repository root, `task kind:redeploy` does the local rebuild in one step. It builds the `:local` images, deletes the Kind cluster `foreverbull` when it exists, installs the chart, and starts the workloads. The purge also removes `client/.foreverbull` data other than `config.yaml`.
 
@@ -272,6 +272,7 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --kube-context kind-foreverbull \
   --set expose.hostPort=true \
   --set credentials.allowDefaults=true \
+  --set global.imageRepository=lhjnilsson \
   --set global.imageTag=local \
   --set broker.logLevel=debug
 ```
@@ -341,6 +342,7 @@ One chart, these keys. Match `values.yaml`.
 
 ```yaml
 global:
+  imageRepository: lhjnilsson  # fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
 
 images:
@@ -354,13 +356,13 @@ images:
     repository: pgsty/silo
     tag: RELEASE.2026-09-16T00-00-00Z
   broker:
-    repository: lhjnilsson/foreverbull
+    repository: foreverbull  # short name → global.imageRepository/foreverbull
     tag: ""                 # empty → global.imageTag
   zipline:
-    repository: lhjnilsson/zipline
+    repository: zipline
     tag: ""
   grafana:
-    repository: lhjnilsson/fb-grafana
+    repository: fb-grafana
     tag: ""
 
 expose:

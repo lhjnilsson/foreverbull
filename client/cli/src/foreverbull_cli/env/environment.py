@@ -47,6 +47,10 @@ RELEASE_NAME = "foreverbull"
 # fbenv runs the broker images that match this package's version, so the
 # Python client and the broker always come from the same release.
 CLIENT_PACKAGE = "foreverbull"
+# Single source for the app-image registry prefix. fbenv passes this to the
+# chart as global.imageRepository, so moving the three app images to another
+# registry (for example GHCR) is a change here and to the chart default.
+IMAGE_REPOSITORY = "lhjnilsson"
 LOCAL_VERSION = "local"
 LOCAL_BUILD_HINT = "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local {command}`."
 CHART_RELATIVE_PATH = Path("deploy") / "helm" / "foreverbull"
@@ -131,13 +135,25 @@ PULL_ERROR_CAUSES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "cannot connect to the docker daemon",
         ),
     ),
-    ("missing tag", ("manifest unknown", "manifest for")),
+    # A missing repository also arrives as "pull access denied ... repository
+    # does not exist", so it must match before the generic access-denied cause.
+    (
+        "missing repository",
+        (
+            "repository does not exist",
+            "repository name not known",
+            "repository not found",
+            "name unknown",
+            "name_unknown",
+        ),
+    ),
+    ("missing tag", ("manifest unknown", "manifest for", "manifest not found", "tag does not exist")),
+    ("auth", ("pull access denied", "unauthorized", "authentication required")),
     (
         "registry",
         (
-            "pull access denied",
-            "unauthorized",
             "toomanyrequests",
+            "too many requests",
             "rate limit",
             "service unavailable",
             "bad gateway",
@@ -164,13 +180,19 @@ PULL_CAUSE_TEXT = {
     "daemon": "fbenv could not talk to Docker.",
     "network": "Docker could not reach the registry.",
     "registry": "the registry refused the download.",
+    "missing repository": "that image repository does not exist on the registry.",
     "missing tag": "that tag does not exist on the registry.",
+    "auth": "the registry refused access to that image.",
     "unknown": "Docker could not download it.",
 }
 
 
 def classify_pull_error(output: str) -> str:
-    """Return the likely cause of a failed `docker pull`: platform, daemon, missing tag, registry, network, or unknown."""
+    """Return the likely cause of a failed `docker pull`.
+
+    One of platform, daemon, missing repository, missing tag, auth, registry
+    (transient or rate-limited), network, or unknown.
+    """
     lowered = output.lower()
     for cause, needles in PULL_ERROR_CAUSES:
         if any(needle in lowered for needle in needles):
@@ -189,6 +211,7 @@ class ImagePullError(RuntimeError):
 
     def __init__(self, image: str, detail: str):
         self.image = image
+        self.repository = image.rpartition(":")[0]
         self.tag = image.rpartition(":")[2]
         self.detail = detail.strip()
         self.cause = classify_pull_error(self.detail)
@@ -206,10 +229,20 @@ class ImagePullError(RuntimeError):
             )
         if self.cause == "daemon":
             return f"Start Docker, or fix your permissions on its socket, then run `{command}` again."
+        if self.cause == "missing repository":
+            return (
+                f"The registry has no repository {self.repository}, so waiting will not help. "
+                f"No image can be pulled from it until it is published. {LOCAL_BUILD_HINT.format(command=command)}"
+            )
         if self.cause == "missing tag":
             return (
                 f"fbenv uses the images for your installed client version ({self.tag}), "
                 f"and none are published for it. {LOCAL_BUILD_HINT.format(command=command)}"
+            )
+        if self.cause == "auth":
+            return (
+                f"Check that {self.repository} is public, or run `docker login` for its registry, "
+                f"then run `{command}` again."
             )
         if self.cause == "registry":
             return f"Wait a few minutes and run `{command}` again."
@@ -512,16 +545,24 @@ class Config:
         return project_config_path(self._cwd)
 
     @property
+    def image_repository(self) -> str:
+        """Registry prefix for the three app images, passed to the chart as global.imageRepository."""
+        return IMAGE_REPOSITORY
+
+    def _app_image(self, name: str) -> str:
+        return f"{self.image_repository}/{name}:{self.version}"
+
+    @property
     def foreverbull_image(self) -> str:
-        return f"lhjnilsson/foreverbull:{self.version}"
+        return self._app_image("foreverbull")
 
     @property
     def zipline_image(self) -> str:
-        return f"lhjnilsson/zipline:{self.version}"
+        return self._app_image("zipline")
 
     @property
     def grafana_image(self) -> str:
-        return f"lhjnilsson/fb-grafana:{self.version}"
+        return self._app_image("fb-grafana")
 
     @property
     def app_images(self) -> tuple[str, str, str]:
@@ -749,7 +790,13 @@ class ClusterManager:
         return ("helm", "kubectl")
 
     def verify_images(self) -> None:
-        """Confirm app images exist locally. Kind load waits until the cluster exists."""
+        """Confirm app images exist locally. Kind load waits until the cluster exists.
+
+        Local Kind only: a remote cluster's nodes pull the images themselves,
+        and whether this host can pull says nothing about whether a node can
+        (different network, credentials, and architecture), so a remote
+        create cannot promise to fail before anything changes.
+        """
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self._local_images()
@@ -876,6 +923,8 @@ class ClusterManager:
             str(chart),
             *self._kube_flags(helm=True),
             "--create-namespace",
+            "--set",
+            f"global.imageRepository={self.config.image_repository}",
             "--set",
             f"global.imageTag={self.config.version}",
             "--set",

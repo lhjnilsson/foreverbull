@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
+from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterManager
@@ -206,6 +207,15 @@ class TestConfig:
         assert uut.kube_context == "kind-foreverbull"
         assert uut.broker_address == "localhost:50055"
 
+    def test_image_repository_is_the_single_prefix(self):
+        uut = Config(load_files=False, environ={}, client_version=CLIENT_VERSION)
+        assert uut.image_repository == IMAGE_REPOSITORY == "lhjnilsson"
+        assert uut.app_images == (
+            "lhjnilsson/foreverbull:1.2.3",
+            "lhjnilsson/zipline:1.2.3",
+            "lhjnilsson/fb-grafana:1.2.3",
+        )
+
     def test_foreverbull_image(self):
         assert (
             Config(load_files=False, environ={}, client_version=CLIENT_VERSION).foreverbull_image
@@ -379,6 +389,7 @@ class TestClusterManager:
         assert len(helm) == 1
         assert "--set" in helm[0]
         assert "global.imageTag=1.2.3" in helm[0]
+        assert "global.imageRepository=lhjnilsson" in helm[0]
         assert "expose.hostPort=true" in helm[0]
         assert "credentials.allowDefaults=true" in helm[0]
         assert "broker.logLevel=debug" in helm[0]
@@ -436,6 +447,20 @@ class TestClusterManager:
         assert "credentials.allowDefaults=true" not in helm
         assert "broker.logLevel=debug" not in helm
         assert "global.imageTag=1.2.3" in helm
+        assert "global.imageRepository=lhjnilsson" in helm
+
+    def test_verify_images_does_not_pull_for_remote(self, tmp_path: Path):
+        # Remote nodes pull the images; this host has no pull step to verify.
+        runner = FakeRunner()
+        config = Config(
+            {"cluster": "remote", "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"}},
+            load_files=False,
+            environ={},
+            client_version=CLIENT_VERSION,
+        )
+        uut = _manager(tmp_path, runner, config=config)
+        uut.verify_images()
+        assert runner.calls_starting_with("docker") == []
 
     def test_load_images_errors_when_local_tag_missing(self, tmp_path: Path):
         runner = FakeRunner()
@@ -1130,11 +1155,17 @@ class TestImagePullError:
             ),
             (
                 (
-                    "Error response from daemon: pull access denied for lhjnilsson/foreverbul, "
+                    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
                     "repository does not exist or may require 'docker login'"
                 ),
-                "registry",
+                "missing repository",
             ),
+            ("Error response from daemon: NAME_UNKNOWN: repository name not known to registry", "missing repository"),
+            (
+                ("Error response from daemon: pull access denied for lhjnilsson/foreverbull, you must be logged in"),
+                "auth",
+            ),
+            ("unauthorized: authentication required", "auth"),
             ("toomanyrequests: You have reached your pull rate limit.", "registry"),
             (
                 (
@@ -1195,6 +1226,28 @@ class TestImagePullError:
         assert exc.hint("fbenv update") == (
             "Start Docker, or fix your permissions on its socket, then run `fbenv update` again."
         )
+
+    def test_missing_repository_is_not_a_wait_and_retry(self):
+        exc = ImagePullError(
+            "lhjnilsson/fb-grafana:1.2.3",
+            "pull access denied for lhjnilsson/fb-grafana, repository does not exist or may require 'docker login'",
+        )
+        assert exc.cause == "missing repository"
+        assert exc.repository == "lhjnilsson/fb-grafana"
+        assert str(exc) == (
+            "Couldn't download the Foreverbull image lhjnilsson/fb-grafana:1.2.3: "
+            "that image repository does not exist on the registry."
+        )
+        hint = exc.hint("fbenv create")
+        assert "waiting will not help" in hint
+        assert "Wait a few minutes" not in hint
+        assert "`VERSION=local fbenv create`" in hint
+
+    def test_auth_hint_says_check_access_or_login_not_wait(self):
+        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "unauthorized: authentication required")
+        assert exc.cause == "auth"
+        assert "docker login" in exc.hint("fbenv create")
+        assert "Wait a few minutes" not in exc.hint("fbenv create")
 
     def test_registry_hint_is_wait_and_retry(self):
         exc = ImagePullError("lhjnilsson/zipline:latest", "toomanyrequests")

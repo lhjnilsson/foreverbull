@@ -121,3 +121,15 @@ value already in the Secret, else generated.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{- define "foreverbull.appImage" -}}
+{{- $repo := index . 0 }}
+{{- $tag := index . 1 }}
+{{- $defaultTag := index . 2 }}
+{{- $prefix := index . 3 }}
+{{- if and $prefix (not (contains "/" $repo)) }}
+{{- printf "%s/%s:%s" (trimSuffix "/" $prefix) $repo ($tag | default $defaultTag) }}
+{{- else }}
+{{- printf "%s:%s" $repo ($tag | default $defaultTag) }}
+{{- end }}
+{{- end }}

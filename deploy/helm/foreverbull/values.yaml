@@ -5,6 +5,7 @@
 replicaCount: 1
 
 global:
+  imageRepository: lhjnilsson  # prefix for the three app images; fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
   imagePullPolicy: IfNotPresent
 
@@ -22,13 +23,13 @@ images:
     repository: pgsty/silo
     tag: RELEASE.2026-09-16T00-00-00Z
   broker:
-    repository: lhjnilsson/foreverbull
+    repository: foreverbull  # short name → global.imageRepository/foreverbull; a name with "/" is used as-is
     tag: ""                 # empty → global.imageTag
   zipline:
-    repository: lhjnilsson/zipline
+    repository: zipline
     tag: ""
   grafana:
-    repository: lhjnilsson/fb-grafana
+    repository: fb-grafana
     tag: ""
 
 expose:
