@@ -2,6 +2,18 @@
 {{- if and .Values.expose.hostPort (gt (int .Values.replicaCount) 1) }}
 {{- fail "replicaCount must be 1 when expose.hostPort is true" }}
 {{- end }}
+{{- /* The password is expanded raw into POSTGRES_URL/DATABASE_URL
+($(POSTGRES_PASSWORD) in foreverbull.postgresURL); Kubernetes does not
+URL-encode it, so a set value with reserved characters breaks the DSN.
+Generated (randAlphaNum) and local default values are already safe.
+The MinIO secret key gets the same rule, so both set credentials obey
+one URL-safe contract. */}}
+{{- if and .Values.postgres.password (not (regexMatch "^[-A-Za-z0-9._~]+$" (.Values.postgres.password | toString))) }}
+{{- fail "postgres.password must be URL-safe (letters, digits and -._~ are safe)" }}
+{{- end }}
+{{- if and .Values.minio.secretKey (not (regexMatch "^[-A-Za-z0-9._~]+$" (.Values.minio.secretKey | toString))) }}
+{{- fail "minio.secretKey must be URL-safe (letters, digits and -._~ are safe)" }}
+{{- end }}
 {{- end }}
 
 {{- define "foreverbull.chart" -}}
