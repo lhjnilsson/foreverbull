@@ -1,1 +1,4 @@
 dist/
+
+# Vite prebundle cache. The dev server rebuilds it.
+.vite/
