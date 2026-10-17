@@ -44,6 +44,14 @@ def format_percent(fraction: float) -> str:
     return f"{fraction * 100:+.1f}%"
 
 
+def format_drawdown(fraction: float) -> str:
+    """Drawdown is at most zero, so 0 prints as 0.0% rather than +0.0%."""
+    percent = fraction * 100
+    if round(percent, 1) == 0:
+        percent = 0.0
+    return f"{percent:.1f}%"
+
+
 def _ratio(period: execution_pb.Period, field: Literal["sharpe", "sortino"]) -> str:
     if not period.has_field(field):
         return "-"
@@ -69,7 +77,7 @@ def metrics_table(benchmark: str, period: execution_pb.Period) -> Table:
     benchmark_label, benchmark_value = _benchmark_cells(benchmark, period)
     table.add_row("Return", format_percent(period.algorithm_period_return), benchmark_label, benchmark_value)
     table.add_row("Sharpe", _ratio(period, "sharpe"), "Sortino", _ratio(period, "sortino"))
-    table.add_row("Max drawdown", format_percent(period.max_drawdown), "", "")
+    table.add_row("Max drawdown", format_drawdown(period.max_drawdown), "", "")
     return table
 
 

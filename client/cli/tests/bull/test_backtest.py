@@ -18,6 +18,8 @@ import yaml
 
 from foreverbull_cli.bull.backtest import backtest
 from foreverbull_cli.bull.cli import cli
+from foreverbull_cli.bull.summary import format_drawdown
+from foreverbull_cli.bull.summary import format_percent
 from foreverbull_cli.output import execution_link
 from typer.testing import CliRunner
 
@@ -745,6 +747,22 @@ def test_backtest_run_prints_results_summary(runner):
     assert "-6.8%" in result.stdout
     assert "Details: uv run fbull backtest execution exec-1" in result.stdout
     assert f"Charts:  {execution_link('exec-1')}" in result.stdout
+
+
+def test_format_drawdown_has_no_plus_sign():
+    assert format_drawdown(0.0) == "0.0%"
+    assert format_drawdown(-0.068) == "-6.8%"
+    # Returns keep the signed form, including for zero.
+    assert format_percent(0.0) == "+0.0%"
+    assert format_percent(-0.068) == "-6.8%"
+
+
+def test_backtest_run_prints_zero_drawdown_without_plus(runner):
+    result, _ = _invoke_run(runner, _run_session_mocks(), [_final_period(max_drawdown=0.0)])
+    assert result.exit_code == 0
+    drawdown_line = next(line for line in result.stdout.splitlines() if "Max drawdown" in line)
+    assert "0.0%" in drawdown_line
+    assert "+0.0%" not in drawdown_line
 
 
 def test_backtest_run_says_when_benchmark_return_is_missing(runner):
