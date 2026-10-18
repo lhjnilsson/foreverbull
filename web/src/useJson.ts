@@ -30,7 +30,7 @@ async function readError(res: Response): Promise<string> {
   return "";
 }
 
-export function useJson<T>(url: string | null): Load<T> {
+export function useJson<T>(url: string | null, revision = 0): Load<T> {
   const [load, setLoad] = useState<Load<T>>({ state: "loading" });
 
   useEffect(() => {
@@ -56,7 +56,44 @@ export function useJson<T>(url: string | null): Load<T> {
         setLoad({ state: "error", message });
       });
     return () => ctrl.abort();
-  }, [url]);
+  }, [url, revision]);
 
   return load;
+}
+
+export type PostResult = { ok: true; data: unknown } | { ok: false; message: string };
+
+export async function postJson(url: string, body: unknown): Promise<PostResult> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, message: "" };
+  }
+  if (!res.ok) {
+    return { ok: false, message: await readError(res) };
+  }
+  try {
+    return { ok: true, data: (await res.json()) as unknown };
+  } catch {
+    return { ok: false, message: "" };
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null) return null;
+  return value as Record<string, unknown>;
+}
+
+export function readString(value: unknown, key: string): string | null {
+  const item = asRecord(value);
+  if (!item) return null;
+  const field = item[key];
+  if (typeof field !== "string" || field.trim() === "") return null;
+  return field;
 }

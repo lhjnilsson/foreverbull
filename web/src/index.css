@@ -1,13 +1,14 @@
 :root {
-  --ground: #F3EFE6;
-  --ink: #1C1915;
-  --ink-muted: #5F594F;
-  --hairline: #CFC6B8;
+  --ground: #F4F5F7;
+  --surface: #FFFFFF;
+  --ink: #1B1E24;
+  --ink-muted: #5E6772;
+  --hairline: #E1E4EA;
   --accent: #1A4B7C;
   --status-ok: #2A6B45;
   --status-warn: #8A5A20;
   --status-fail: #8E3B32;
-  --font-text: "Source Serif 4", serif;
+  --font-text: "IBM Plex Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
   color-scheme: light;
 }
@@ -20,37 +21,43 @@ html,
 body,
 #root {
   margin: 0;
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
   background: var(--ground);
   color: var(--ink);
   font-family: var(--font-text);
+  font-weight: 400;
   font-size: 16px;
   line-height: 1.45;
 }
 
 .shell {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  overflow: hidden;
   background: var(--ground);
 }
 
 .chrome {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--ground);
+  flex: 0 0 15rem;
+  width: 15rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--hairline);
 }
 
 .top {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1.5rem;
-  padding: 1rem 1.25rem 0.85rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 1.15rem 1.25rem 1rem;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -61,45 +68,53 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-text);
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 1.25rem;
+  font-weight: 700;
   line-height: 1;
 }
 
 .wordmark svg {
   /* em stands in when the cap unit is unsupported. 1cap is the wordmark cap height. */
   height: 0.7em;
-  width: 0.5em;
+  width: 0.7em;
   height: 1cap;
-  width: calc(10 / 14 * 1cap);
+  width: 1cap;
+  flex: 0 0 auto;
 }
 
 .status-line {
   margin: 0;
   font-family: var(--font-text);
-  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--ink-muted);
 }
 
 .areas {
   display: flex;
-  gap: 1.75rem;
-  padding: 0 1.25rem;
-  border-bottom: 1px solid var(--hairline);
+  flex-direction: column;
+  padding: 0.4rem 0;
 }
 
 .area {
+  display: block;
   color: var(--ink);
   font-family: var(--font-text);
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 600;
   text-decoration: none;
-  padding: 0.7rem 0;
-  border-bottom: 2px solid transparent;
+  padding: 0.55rem 1.25rem;
+  border-left: 2px solid transparent;
+  transition:
+    color 160ms ease-out,
+    border-color 160ms ease-out,
+    transform 160ms ease-out;
 }
 
 .area.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-left-color: var(--accent);
+  transform: translateX(3px);
 }
 
 a:focus-visible {
@@ -109,8 +124,11 @@ a:focus-visible {
 
 main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: auto;
+  background: var(--ground);
 }
 
 .split {
@@ -118,6 +136,7 @@ main {
   display: grid;
   grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
   align-items: stretch;
+  min-height: 100%;
 }
 
 .list {
@@ -135,11 +154,16 @@ main {
   color: var(--ink);
   text-decoration: none;
   background: transparent;
+  transition:
+    color 160ms ease-out,
+    border-color 160ms ease-out,
+    transform 160ms ease-out;
 }
 
 .row.selected {
   border-left-color: var(--accent);
   color: var(--accent);
+  transform: translateX(3px);
 }
 
 .row.selected .primary,
@@ -174,6 +198,7 @@ main {
 
 .secondary {
   color: var(--ink-muted);
+  transition: color 160ms ease-out;
 }
 
 .empty,
@@ -190,6 +215,7 @@ main {
 
 .detail {
   padding: 0.4rem 1.25rem 1.5rem;
+  background: var(--surface);
 }
 
 .field {
@@ -246,6 +272,77 @@ main {
   color: var(--status-fail);
 }
 
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 0 0.2rem;
+}
+
+.create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  max-width: 36rem;
+}
+
+.control {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  padding: 0.35rem 0.5rem;
+}
+
+.action {
+  font-family: var(--font-text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+}
+
+.action:disabled {
+  cursor: default;
+}
+
+.action:focus-visible,
+.control:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.form-error {
+  margin: 0;
+  max-width: 36rem;
+  font-family: var(--font-text);
+  color: var(--status-fail);
+}
+
+.executions {
+  margin-top: 0.75rem;
+}
+
+.run-link {
+  display: inline-block;
+  margin: 0.45rem 0 0.15rem;
+  color: var(--accent);
+  font-family: var(--font-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 @media (max-width: 720px) {
   .split {
     grid-template-columns: 1fr;
@@ -259,5 +356,18 @@ main {
   .field {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .area,
+  .row,
+  .secondary {
+    transition: color 160ms ease-out, border-color 160ms ease-out;
+  }
+
+  .area.active,
+  .row.selected {
+    transform: none;
   }
 }

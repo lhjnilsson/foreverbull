@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type {
   Algorithm,
   AlgorithmFunction,
@@ -26,6 +26,56 @@ export function Field({
       <div className="label">{label}</div>
       <div className={prose ? "value prose" : "value"}>{children}</div>
     </div>
+  );
+}
+
+export function TextControl({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "date";
+}) {
+  return (
+    <label className="create-field">
+      <span className="label">{label}</span>
+      <input
+        className="control"
+        type={type}
+        value={value}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+export function EntryForm({
+  error,
+  pending,
+  submitLabel,
+  onSubmit,
+  children,
+}: {
+  error: string;
+  pending: boolean;
+  submitLabel: string;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <form className="form" onSubmit={onSubmit}>
+      {children}
+      {error ? <p className="form-error">{error}</p> : null}
+      <button className="action" type="submit" disabled={pending}>
+        {submitLabel}
+      </button>
+    </form>
   );
 }
 

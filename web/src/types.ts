@@ -62,3 +62,23 @@ export type Service = {
   algorithm?: Algorithm;
   statuses?: ServiceStatus[];
 };
+
+export type ExecutionResult = {
+  sharpe?: number;
+  maxDrawdown?: number;
+  endingValue?: number;
+};
+
+export type Execution = {
+  id?: string;
+  backtest?: string;
+  session?: string;
+  startDate?: DateParts;
+  endDate?: DateParts;
+  result?: ExecutionResult;
+};
+
+export type ExecutionResponse = {
+  execution?: Execution;
+  periods?: ExecutionResult[];
+};

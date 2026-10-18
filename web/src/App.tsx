@@ -8,35 +8,32 @@ function Wordmark() {
   return (
     <h1 className="wordmark">
       Foreverbull
-      <svg
-        viewBox="0 0 10 14"
-        fill="none"
-        aria-hidden="true"
-        dangerouslySetInnerHTML={{
-          __html: '<path d="M8 1H2v12h6" stroke="currentColor" stroke-width="1.25"/>',
-        }}
-      />
+      <svg viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path
+          d="M1 4.5V1h3.5M9.5 1H13v3.5M13 9.5V13H9.5M4.5 13H1V9.5"
+          stroke="currentColor"
+          strokeWidth="1.25"
+        />
+      </svg>
     </h1>
   );
 }
 
-function statusLine(ok: boolean | undefined, failed: boolean): string {
-  if (failed) return "Start the broker.";
-  if (ok === true) return "Broker answered.";
+function statusLine(ok: boolean | undefined): string {
+  if (ok === true) return "Broker answered";
   return "";
 }
 
 export function App() {
   const health = useJson<{ ok?: boolean }>("/api/health");
-  const failed = health.state === "error" || (health.state === "ready" && health.data.ok !== true);
-  const ok = health.state === "ready" ? health.data.ok : undefined;
+  const line = statusLine(health.state === "ready" ? health.data.ok : undefined);
 
   return (
     <div className="shell">
       <div className="chrome">
         <header className="top">
           <Wordmark />
-          <p className="status-line">{statusLine(ok, failed)}</p>
+          {line ? <p className="status-line">{line}</p> : null}
         </header>
         <nav className="areas" aria-label="Areas">
           <NavLink className="area" to="/services">

@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ServiceFields, StatusText } from "./fields";
+import { type FormEvent, type ReactNode, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { EntryForm, ServiceFields, StatusText, TextControl } from "./fields";
 import type { Service } from "./types";
-import { useJson, type Load } from "./useJson";
+import { postJson, readString, useJson, type Load } from "./useJson";
 
 function Area({ list, detail }: { list: ReactNode; detail: ReactNode }) {
   return (
@@ -63,18 +63,62 @@ function ServiceDetail({ load }: { load: Load<Service> }) {
   return null;
 }
 
+function RegisterService({ onCreated }: { onCreated: (image: string) => void }) {
+  const [image, setImage] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    setError("");
+    setPending(true);
+    const result = await postJson("/api/services", { image: image.trim() });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const created = readString(result.data, "Image");
+    if (!created) return;
+    setImage("");
+    onCreated(created);
+  }
+
+  return (
+    <EntryForm error={error} pending={pending} submitLabel="Register this image." onSubmit={onSubmit}>
+      <TextControl label="image" value={image} onChange={setImage} />
+    </EntryForm>
+  );
+}
+
 export function Services() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [revision, setRevision] = useState(0);
   const image = params.get("image");
-  const list = useJson<Service[]>("/api/services");
+  const list = useJson<Service[]>("/api/services", revision);
   // An image may contain slashes, so the id stays in the query.
   const detailUrl = image ? `/api/services?image=${encodeURIComponent(image)}` : null;
-  const detail = useJson<Service>(detailUrl);
+  const detail = useJson<Service>(detailUrl, revision);
 
   return (
     <Area
       list={<ServiceList load={list} selected={image} />}
-      detail={<ServiceDetail load={detail} />}
+      detail={
+        <>
+          <ServiceDetail load={detail} />
+          <RegisterService
+            onCreated={(created) => {
+              setRevision((current) => current + 1);
+              navigate({
+                pathname: "/services",
+                search: `?${new URLSearchParams({ image: created }).toString()}`,
+              });
+            }}
+          />
+        </>
+      }
     />
   );
 }

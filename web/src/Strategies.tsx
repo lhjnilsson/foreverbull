@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
-import { StrategyFields } from "./fields";
+import { type FormEvent, type ReactNode, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { EntryForm, StrategyFields, TextControl } from "./fields";
 import type { Strategy } from "./types";
-import { useJson, type Load } from "./useJson";
+import { postJson, readString, useJson, type Load } from "./useJson";
 
 function Area({ list, detail }: { list: ReactNode; detail: ReactNode }) {
   return (
@@ -52,16 +52,57 @@ function StrategyDetail({ load }: { load: Load<Strategy> }) {
   return null;
 }
 
+function NameStrategy({ onCreated }: { onCreated: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    setError("");
+    setPending(true);
+    const result = await postJson("/api/strategies", { name: name.trim() });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const created = readString(result.data, "name");
+    if (!created) return;
+    setName("");
+    onCreated(created);
+  }
+
+  return (
+    <EntryForm error={error} pending={pending} submitLabel="Name this strategy." onSubmit={onSubmit}>
+      <TextControl label="name" value={name} onChange={setName} />
+    </EntryForm>
+  );
+}
+
 export function Strategies() {
   const { name } = useParams();
-  const list = useJson<Strategy[]>("/api/strategies");
+  const navigate = useNavigate();
+  const [revision, setRevision] = useState(0);
+  const list = useJson<Strategy[]>("/api/strategies", revision);
   const detailUrl = name === undefined ? null : `/api/strategies/${encodeURIComponent(name)}`;
-  const detail = useJson<Strategy>(detailUrl);
+  const detail = useJson<Strategy>(detailUrl, revision);
 
   return (
     <Area
       list={<StrategyList load={list} selected={name} />}
-      detail={<StrategyDetail load={detail} />}
+      detail={
+        <>
+          <StrategyDetail load={detail} />
+          <NameStrategy
+            onCreated={(created) => {
+              setRevision((current) => current + 1);
+              navigate(`/strategies/${encodeURIComponent(created)}`);
+            }}
+          />
+        </>
+      }
     />
   );
 }
