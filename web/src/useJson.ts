@@ -31,7 +31,15 @@ async function readError(res: Response): Promise<string> {
 }
 
 export function useJson<T>(url: string | null, revision = 0): Load<T> {
-  const [load, setLoad] = useState<Load<T>>({ state: "loading" });
+  const [load, setLoad] = useState<Load<T>>(url === null ? { state: "idle" } : { state: "loading" });
+  const [seenUrl, setSeenUrl] = useState(url);
+  const [seenRevision, setSeenRevision] = useState(revision);
+  // Drop the previous payload before paint so a redirect cannot use a stale list.
+  if (seenUrl !== url || seenRevision !== revision) {
+    setSeenUrl(url);
+    setSeenRevision(revision);
+    setLoad(url === null ? { state: "idle" } : { state: "loading" });
+  }
 
   useEffect(() => {
     if (url === null) {

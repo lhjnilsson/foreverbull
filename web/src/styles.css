@@ -1,0 +1,67 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --color-status-ready: var(--status-ready);
+  --color-status-pending: var(--status-pending);
+  --color-status-error: var(--status-error);
+}
+
+:root {
+  --radius: 0.25rem;
+  --background: oklch(0.966 0.004 264);   /* #F4F5F7 */
+  --card: oklch(1 0 0);
+  --foreground: oklch(0.226 0.012 264);   /* #1B1E24 */
+  --muted-foreground: oklch(0.5 0.018 250); /* #5E6772 */
+  --muted: oklch(0.966 0.004 264);
+  --border: oklch(0.913 0.009 264);       /* #E1E4EA */
+  --primary: oklch(0.402 0.089 251);      /* #1A4B7C */
+  --primary-foreground: oklch(1 0 0);
+  --primary-soft: oklch(0.402 0.089 251 / 8%);
+  --status-ready: oklch(0.47 0.085 152);  /* #2A6B45 */
+  --status-pending: oklch(0.5 0.09 66);   /* #8A5A20 */
+  --status-error: oklch(0.45 0.11 28);    /* #8E3B32 */
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+}
+
+@keyframes enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@utility animate-enter {
+  animation: enter 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-enter { animation: none; }
+  * { transition: none !important; }
+}

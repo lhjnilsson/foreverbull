@@ -1,9 +1,41 @@
 // Protojson names. Image and OccurredAt keep the proto field spelling.
+// EmitDefaultValues keeps zero scalars. Unset optional fields stay absent.
 
 export type DateParts = {
   year?: number;
   month?: number;
   day?: number;
+};
+
+export type ServiceStatus = {
+  status?: "CREATED" | "INTERVIEW" | "READY" | "ERROR" | string;
+  error?: string;
+  OccurredAt?: string;
+};
+
+export type AlgorithmFunction = {
+  name?: string;
+  parameters?: Array<{
+    key?: string;
+    defaultValue?: string;
+    value?: string;
+    valueType?: string;
+  }>;
+  parallelExecution?: boolean;
+  runFirst?: boolean;
+  runLast?: boolean;
+};
+
+export type Algorithm = {
+  filePath?: string;
+  functions?: AlgorithmFunction[];
+  namespaces?: string[];
+};
+
+export type Service = {
+  Image?: string;
+  algorithm?: Algorithm;
+  statuses?: ServiceStatus[];
 };
 
 export type BacktestAsset = {
@@ -20,9 +52,9 @@ export type BacktestPeriod = {
 export type Backtest = {
   name?: string;
   benchmark?: string;
-  periods?: BacktestPeriod[];
   provider?: string;
   profile?: string;
+  periods?: BacktestPeriod[];
 };
 
 export type Strategy = {
@@ -32,41 +64,15 @@ export type Strategy = {
   createdAt?: string;
 };
 
-export type FunctionParameter = {
-  key?: string;
-  defaultValue?: string;
-  valueType?: string;
-};
-
-export type AlgorithmFunction = {
-  name?: string;
-  parameters?: FunctionParameter[];
-  parallelExecution?: boolean;
-  runFirst?: boolean;
-  runLast?: boolean;
-};
-
-export type Algorithm = {
-  filePath?: string;
-  functions?: AlgorithmFunction[];
-  namespaces?: string[];
-};
-
-export type ServiceStatus = {
-  status?: string;
-  OccurredAt?: string;
-};
-
-export type Service = {
-  Image?: string;
-  algorithm?: Algorithm;
-  statuses?: ServiceStatus[];
-};
-
 export type ExecutionResult = {
-  sharpe?: number;
-  maxDrawdown?: number;
+  date?: DateParts;
+  PNL?: number;
+  returns?: number;
+  portfolioValue?: number;
   endingValue?: number;
+  maxDrawdown?: number;
+  sharpe?: number;
+  positions?: unknown[];
 };
 
 export type Execution = {
@@ -78,7 +84,8 @@ export type Execution = {
   result?: ExecutionResult;
 };
 
-export type ExecutionResponse = {
+// GET /api/executions/{id} is GetExecutionResponse, not the execution alone.
+export type GetExecution = {
   execution?: Execution;
   periods?: ExecutionResult[];
 };
