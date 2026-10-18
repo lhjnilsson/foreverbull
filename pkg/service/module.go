@@ -86,5 +86,5 @@ func registerServiceHTTP(p serviceHTTPParams) {
 	if p.Mux == nil || p.Conn == nil {
 		return
 	}
-	RegisterHTTP(p.Mux, &repository.Service{Conn: p.Conn})
+	RegisterHTTP(p.Mux, NewStore(p.Conn))
 }
