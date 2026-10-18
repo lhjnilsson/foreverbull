@@ -115,7 +115,7 @@ type backtestHTTPParams struct {
 	Server *api.BacktestServer
 }
 
-// registerBacktestHTTP mounts read routes when the HTTP mux is in the process.
+// registerBacktestHTTP mounts routes when the HTTP mux is in the process.
 // Module tests that do not provide the mux keep gRPC and do not listen on HTTP_PORT.
 func registerBacktestHTTP(p backtestHTTPParams) {
 	if p.Mux == nil || p.Server == nil {
