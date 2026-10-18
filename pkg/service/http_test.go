@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,10 +17,13 @@ import (
 )
 
 type fakeServices struct {
-	items  []*pb.Service
-	err    error
-	got    string
-	listed bool
+	items     []*pb.Service
+	err       error
+	got       string
+	listed    bool
+	created   string
+	createErr error
+	stored    *pb.Service
 }
 
 func (f *fakeServices) List(context.Context) ([]*pb.Service, error) {
@@ -28,6 +32,17 @@ func (f *fakeServices) List(context.Context) ([]*pb.Service, error) {
 		return nil, f.err
 	}
 	return f.items, nil
+}
+
+func (f *fakeServices) Create(_ context.Context, image string) (*pb.Service, error) {
+	f.created = image
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	if f.stored != nil {
+		return f.stored, nil
+	}
+	return &pb.Service{Image: image}, nil
 }
 
 func (f *fakeServices) Get(_ context.Context, image string) (*pb.Service, error) {
@@ -115,12 +130,50 @@ func TestHTTP(t *testing.T) {
 		require.NotContains(t, rec.Body.String(), "secret")
 	})
 
-	t.Run("no register route", func(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		created := sampleService()
+		created.Statuses = []*pb.Service_Status{{
+			Status: pb.Service_Status_CREATED,
+		}}
+		wantCreated, err := web.Marshal(created)
+		require.NoError(t, err)
+		fake := &fakeServices{stored: created}
 		mux := http.NewServeMux()
-		service.RegisterHTTP(mux, &fakeServices{})
+		service.RegisterHTTP(mux, fake)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/services", nil))
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/services", `{"image":"lhjnilsson/algo:local"}`))
 
-		require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+		require.Equal(t, string(wantCreated), rec.Body.String())
+		require.Equal(t, "lhjnilsson/algo:local", fake.created)
+		require.False(t, fake.listed)
 	})
+
+	t.Run("create rejects an empty image", func(t *testing.T) {
+		fake := &fakeServices{}
+		mux := http.NewServeMux()
+		service.RegisterHTTP(mux, fake)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/services", `{"image":"  "}`))
+
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Empty(t, fake.created)
+	})
+
+	t.Run("create failure hides the cause", func(t *testing.T) {
+		mux := http.NewServeMux()
+		service.RegisterHTTP(mux, &fakeServices{createErr: errors.New("postgres password=secret")})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/services", `{"image":"algo:local"}`))
+
+		require.Equal(t, http.StatusInternalServerError, rec.Code)
+		require.NotContains(t, rec.Body.String(), "secret")
+	})
+}
+
+func jsonRequest(method, path, body string) *http.Request {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }

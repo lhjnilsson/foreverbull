@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -56,6 +57,33 @@ func TestHTTP(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		require.JSONEq(t, `{"error":"internal"}`, rec.Body.String())
 		require.NotContains(t, rec.Body.String(), "secret")
+	})
+
+	t.Run("bad request hides the cause", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		BadRequest(rec)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.JSONEq(t, `{"error":"bad request"}`, rec.Body.String())
+		require.NotContains(t, rec.Body.String(), "secret")
+	})
+
+	t.Run("read json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"image":"algo:local"}`))
+		var body struct {
+			Image string `json:"image"`
+		}
+		require.NoError(t, ReadJSON(req, &body))
+		require.Equal(t, "algo:local", body.Image)
+	})
+
+	t.Run("read json refuses an unknown field", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"image":"algo:local","token":"secret"}`))
+		var body struct {
+			Image string `json:"image"`
+		}
+		err := ReadJSON(req, &body)
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "secret")
 	})
 
 	t.Run("page", func(t *testing.T) {

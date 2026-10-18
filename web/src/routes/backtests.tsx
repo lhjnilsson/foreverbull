@@ -1,0 +1,330 @@
+import { type ChangeEvent, type FormEvent, useState } from "react";
+import { Link, Navigate, Outlet, useMatch, useNavigate, useOutletContext } from "react-router-dom";
+import { ArrowUpRight } from "lucide-react";
+import {
+  Detail,
+  Empty,
+  Field,
+  FormError,
+  H2,
+  ListPane,
+  buttonClass,
+  fmtDate,
+  inputClass,
+  rowActive,
+  rowClass,
+} from "../components/fb";
+import type { Backtest, Execution, ExecutionResult, GetExecution } from "../types";
+import { postJson, useJson, type Load } from "../useJson";
+
+type BacktestList = {
+  load: Load<Backtest[]>;
+  refresh: () => void;
+};
+
+function rowsOf(load: Load<Backtest[]>): Backtest[] | null {
+  if (load.state !== "ready" || !Array.isArray(load.data)) return null;
+  return load.data;
+}
+
+export function BacktestsLayout() {
+  const navigate = useNavigate();
+  const match = useMatch("/backtests/:name");
+  const name = match?.params.name;
+  const [revision, setRevision] = useState(0);
+  const load = useJson<Backtest[]>("/api/backtests", revision);
+  const rows = rowsOf(load);
+  const refresh = () => setRevision((current) => current + 1);
+
+  return (
+    <>
+      <ListPane
+        title="Backtests"
+        newLabel="New backtest"
+        newTitle="Create this backtest."
+        newForm={(close) => (
+          <CreateBacktest
+            onDone={close}
+            onCreated={(created) => {
+              refresh();
+              navigate(`/backtests/${encodeURIComponent(created)}`);
+            }}
+          />
+        )}
+      >
+        {load.state === "error" && load.message ? (
+          <li className="px-4 py-6 text-muted-foreground">{load.message}</li>
+        ) : null}
+        {rows && rows.length === 0 ? <Empty text="Create a backtest." /> : null}
+        {(rows ?? []).map((backtest) => (
+          <li key={backtest.name}>
+            <Link
+              to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
+              className={`${rowClass} flex items-baseline justify-between gap-3 ${backtest.name === name ? rowActive : ""}`}
+            >
+              <span className="truncate font-mono text-[13px]">{backtest.name}</span>
+              {backtest.provider ? (
+                <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
+              ) : null}
+            </Link>
+          </li>
+        ))}
+      </ListPane>
+      <Outlet context={{ load, refresh } satisfies BacktestList} />
+    </>
+  );
+}
+
+export function BacktestIndex() {
+  const { load } = useOutletContext<BacktestList>();
+  const rows = rowsOf(load);
+  const first = rows?.find((backtest) => backtest.name)?.name;
+  if (first) return <Navigate to={`/backtests/${encodeURIComponent(first)}`} replace />;
+  return (
+    <Detail k="none">
+      <p className="text-muted-foreground">Select a backtest.</p>
+    </Detail>
+  );
+}
+
+const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
+
+// List rows always include result. A year-1 date and zero metrics are the empty join, not a stored period.
+function listHasResult(e: Execution): boolean {
+  const result = e.result;
+  if (!result) return false;
+  const year = result.date?.year;
+  if (typeof year === "number" && year > 1) return true;
+  if (typeof result.sharpe === "number") return true;
+  if (typeof result.portfolioValue === "number" && result.portfolioValue !== 0) return true;
+  if (typeof result.endingValue === "number" && result.endingValue !== 0) return true;
+  if (typeof result.maxDrawdown === "number" && result.maxDrawdown !== 0) return true;
+  return false;
+}
+
+export function BacktestDetail() {
+  const match = useMatch("/backtests/:name");
+  const name = match?.params.name ?? "";
+  const { load: listLoad } = useOutletContext<BacktestList>();
+  const listed = rowsOf(listLoad)?.find((item) => item.name === name);
+  const [execRevision, setExecRevision] = useState(0);
+  const backtest = useJson<Backtest>(name ? `/api/backtests/${encodeURIComponent(name)}` : null);
+  const executions = useJson<Execution[]>(
+    name ? `/api/backtests/${encodeURIComponent(name)}/executions` : null,
+    execRevision,
+  );
+
+  if (!name) return <Detail k="none" />;
+  if (backtest.state === "error") {
+    const missing = backtest.message === "not found" || !backtest.message;
+    return (
+      <Detail k="missing">
+        <p className="text-muted-foreground">{missing ? `No backtest named ${name}.` : backtest.message}</p>
+      </Detail>
+    );
+  }
+  const shown = backtest.state === "ready" ? backtest.data : listed;
+  if (!shown?.name) return <Detail k={name} />;
+
+  const b = shown;
+  const periods = b.periods ?? [];
+  const p = periods[0];
+  const assets = periods.flatMap((period) => period.assets ?? []);
+  const on = assets.filter((asset) => asset.enabled).map((asset) => asset.symbol ?? "");
+  const off = assets.filter((asset) => !asset.enabled).map((asset) => asset.symbol ?? "");
+  const runs = executions.state === "ready" && Array.isArray(executions.data) ? executions.data : [];
+
+  return (
+    <Detail k={b.name ?? name}>
+      <h1 className="mb-4 font-mono text-base">{b.name}</h1>
+      <dl>
+        <Field label="Name">{b.name}</Field>
+        <Field label="Start">{fmtDate(p?.startDate)}</Field>
+        <Field label="End">{fmtDate(p?.endDate)}</Field>
+        <Field label="Benchmark">{b.benchmark || "—"}</Field>
+        <Field label="Provider">{b.provider || "—"}</Field>
+      </dl>
+      <H2>Universe</H2>
+      <dl>
+        <Field label="Enabled">{on.filter(Boolean).join(", ") || "—"}</Field>
+        <Field label="Disabled">{off.filter(Boolean).join(", ") || "—"}</Field>
+      </dl>
+      <H2>Executions</H2>
+      {executions.state === "error" && executions.message ? (
+        <p className="text-muted-foreground">{executions.message}</p>
+      ) : null}
+      <ul>
+        {runs.map((execution) => (
+          <ExecutionRow key={execution.id} execution={execution} revision={execRevision} />
+        ))}
+      </ul>
+      <RunForm backtest={b.name ?? name} onStarted={() => setExecRevision((current) => current + 1)} />
+    </Detail>
+  );
+}
+
+function ExecutionRow({ execution, revision }: { execution: Execution; revision: number }) {
+  const id = execution.id ?? "";
+  const detail = useJson<GetExecution>(id ? `/api/executions/${encodeURIComponent(id)}` : null, revision);
+  const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
+  const fromGet = periods.length > 0;
+  const fromList = listHasResult(execution);
+  const stored = fromGet || fromList;
+  const settled = fromList || detail.state === "ready" || detail.state === "error";
+  const status = stored ? "stored" : settled ? "no result" : "";
+  const source: ExecutionResult | undefined = fromGet
+    ? periods[periods.length - 1]
+    : fromList
+      ? execution.result
+      : undefined;
+  const sharpe = source?.sharpe;
+  const drawdown = source?.maxDrawdown;
+  const endValue = source?.endingValue;
+
+  return (
+    <li className="animate-enter border-b py-2.5 font-mono text-[13px]">
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+        <span>{id}</span>
+        {status ? (
+          <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status}</span>
+        ) : null}
+        <span className="text-muted-foreground">
+          {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
+        </span>
+        {id ? (
+          <a
+            href={`/d/ee9ep4jxtwkcgf?var-execution=${encodeURIComponent(id)}`}
+            className="ml-auto inline-flex items-center gap-1 text-primary"
+          >
+            Open the run.
+            <ArrowUpRight size={14} aria-hidden />
+          </a>
+        ) : null}
+      </div>
+      {stored && (typeof sharpe === "number" || typeof drawdown === "number" || typeof endValue === "number") ? (
+        <div className="mt-1 flex gap-5 text-muted-foreground">
+          {typeof sharpe === "number" ? <span>sharpe {sharpe.toFixed(2)}</span> : null}
+          {typeof drawdown === "number" ? <span>max drawdown {pct(drawdown)}</span> : null}
+          {typeof endValue === "number" ? <span>end value {num(endValue)}</span> : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function RunForm({ backtest, onStarted }: { backtest: string; onStarted: () => void }) {
+  const [service, setService] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = service.trim();
+    if (pending || !trimmed) return;
+    setError("");
+    setPending(true);
+    const result = await postJson(`/api/backtests/${encodeURIComponent(backtest)}/executions`, { service: trimmed });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setService("");
+    onStarted();
+  }
+
+  return (
+    <form className="mt-6 max-w-md" onSubmit={onSubmit}>
+      <label className="mb-1 block text-muted-foreground" htmlFor="svc">
+        Service image
+      </label>
+      <input
+        id="svc"
+        className={inputClass}
+        value={service}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(event) => setService(event.target.value)}
+      />
+      <button className={`${buttonClass} mt-4`} disabled={!service.trim() || pending}>
+        Run this service on the backtest.
+      </button>
+      <FormError message={error} />
+    </form>
+  );
+}
+
+function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: (name: string) => void }) {
+  const [f, setF] = useState({ name: "", start: "", end: "", provider: "" });
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const set =
+    (key: keyof typeof f) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setF({ ...f, [key]: event.target.value });
+  const ok = f.name.trim() && f.start && f.end;
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending || !ok) return;
+    setError("");
+    setPending(true);
+    const body: { name: string; start: string; end: string; provider?: string } = {
+      name: f.name.trim(),
+      start: f.start,
+      end: f.end,
+    };
+    // An empty provider is omitted. The server stores yahoo.
+    if (f.provider) body.provider = f.provider;
+    const result = await postJson("/api/backtests", body);
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    const created = f.name.trim();
+    setF({ name: "", start: "", end: "", provider: "" });
+    onCreated(created);
+    onDone();
+  }
+
+  return (
+    <form
+      className="grid max-w-md gap-3"
+      onSubmit={(event) => {
+        void onSubmit(event);
+      }}
+    >
+      <label className="grid gap-1">
+        <span className="text-muted-foreground">Name</span>
+        <input className={inputClass} value={f.name} spellCheck={false} autoComplete="off" onChange={set("name")} />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span className="text-muted-foreground">Start</span>
+          <input type="date" className={inputClass} value={f.start} onChange={set("start")} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-muted-foreground">End</span>
+          <input type="date" className={inputClass} value={f.end} onChange={set("end")} />
+        </label>
+      </div>
+      <label className="grid gap-1">
+        <span className="text-muted-foreground">Provider</span>
+        <select className={inputClass} value={f.provider} onChange={set("provider")}>
+          <option value="">—</option>
+          <option value="yahoo">yahoo</option>
+          <option value="stooq">stooq</option>
+          <option value="alpaca">alpaca</option>
+        </select>
+      </label>
+      <div>
+        <button className={`${buttonClass} mt-1`} disabled={!ok || pending}>
+          Create this backtest.
+        </button>
+        <FormError message={error} />
+      </div>
+    </form>
+  );
+}

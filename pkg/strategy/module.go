@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
+	"github.com/lhjnilsson/foreverbull/pkg/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
@@ -92,15 +93,28 @@ var Module = fx.Options( //nolint: gochecknoglobals
 type strategyHTTPParams struct {
 	fx.In
 
-	Mux    *http.ServeMux `optional:"true"`
-	Server *api.StrategyServer
+	Mux      *http.ServeMux `optional:"true"`
+	Server   *api.StrategyServer
+	Pgx      *pgxpool.Pool         `optional:"true"`
+	Launcher ss.ExperimentLauncher `optional:"true"`
 }
 
-// registerStrategyHTTP mounts read routes when the HTTP mux is in the process.
+// registerStrategyHTTP mounts routes when the HTTP mux is in the process.
 // Module tests that do not provide the mux keep gRPC and do not listen on HTTP_PORT.
+// POST /api/strategies uses the strategy repository. CreateStrategy stays unimplemented.
+// POST /api/backtests/{name}/executions loads the stored service and calls the launcher.
+// The handler does not dial session gRPC.
 func registerStrategyHTTP(p strategyHTTPParams) {
 	if p.Mux == nil || p.Server == nil {
 		return
 	}
-	api.RegisterHTTP(p.Mux, p.Server)
+	var writer api.StrategyWriter
+	if p.Pgx != nil {
+		writer = &repository.Strategy{Conn: p.Pgx}
+	}
+	api.RegisterHTTP(p.Mux, p.Server, writer)
+	if p.Pgx == nil || p.Launcher == nil {
+		return
+	}
+	api.RegisterExecutionHTTP(p.Mux, service.NewStore(p.Pgx), p.Launcher)
 }
