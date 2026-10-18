@@ -1,9 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -23,6 +26,9 @@ const (
 
 	// maxJSONBytes caps one JSON response. A list stops at this size.
 	maxJSONBytes = 4 << 20
+
+	// maxRequestBytes caps one JSON request body.
+	maxRequestBytes = 1 << 20
 )
 
 // NewMux is the process HTTP mux. Domain modules add routes to the same mux.
@@ -101,9 +107,39 @@ func encodeList[T proto.Message](items []T) ([]byte, error) {
 	return body, nil
 }
 
+// ReadJSON decodes one JSON object from the request body.
+// The body is capped at maxRequestBytes. A second value or an unknown field is refused.
+func ReadJSON(r *http.Request, dst any) error {
+	if r.Body == nil {
+		return fmt.Errorf("missing body")
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
+	if err != nil {
+		return fmt.Errorf("read body: %w", err)
+	}
+	if len(raw) > maxRequestBytes {
+		return fmt.Errorf("body exceeds %d bytes", maxRequestBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return fmt.Errorf("decode json: %w", err)
+	}
+	var extra struct{}
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("trailing json")
+	}
+	return nil
+}
+
 // NotFound writes the missing-resource response.
 func NotFound(w http.ResponseWriter) {
 	writeJSON(w, http.StatusNotFound, []byte(`{"error":"not found"}`))
+}
+
+// BadRequest writes the rejected-input response. The cause stays off the wire.
+func BadRequest(w http.ResponseWriter) {
+	writeJSON(w, http.StatusBadRequest, []byte(`{"error":"bad request"}`))
 }
 
 // WriteError maps a missing row to 404. Other failures stay 500 and do not echo the cause.
