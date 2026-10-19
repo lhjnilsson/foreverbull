@@ -21,7 +21,7 @@ RUN go install github.com/magefile/mage@latest
 RUN mage
 
 # Build frontend
-FROM node:25 AS js-builder
+FROM node:26 AS js-builder
 WORKDIR /app
 COPY lhjnilsson-foreverbull-datasource/ .
 RUN npm install
