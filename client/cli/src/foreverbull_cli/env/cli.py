@@ -8,6 +8,7 @@ from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.table import Table
 
+from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import Config
@@ -40,7 +41,7 @@ class FBProgress(Progress):
 
         for task in self.tasks:
             if task.total == 2 and task.completed == 1:
-                if isinstance(exc_val, ImagePullError):
+                if isinstance(exc_val, (ImagePullError, ClusterImagePullError)):
                     # The ✖ line printed after the progress says what failed.
                     self.update(task.id, description=f"{task.description} FAILED")
                 else:
@@ -57,7 +58,9 @@ KubeconfigFlag = Annotated[str | None, typer.Option("--kubeconfig", help="Kubeco
 ContextFlag = Annotated[str | None, typer.Option("--context", help="Kube context (remote)")]
 NamespaceFlag = Annotated[str | None, typer.Option("--namespace", help="Helm namespace")]
 BrokerAddressFlag = Annotated[str | None, typer.Option("--broker-address", help="Broker host:port")]
-VerboseFlag = Annotated[bool, typer.Option("--verbose", "-v", help="Show Docker's own error when an image pull fails")]
+VerboseFlag = Annotated[
+    bool, typer.Option("--verbose", "-v", help="Show Docker's or the cluster's own error when an image pull fails")
+]
 
 
 def _manager(
@@ -164,6 +167,17 @@ def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing
         lines.append(f"Docker said: {exc.detail}")
     elif exc.detail:
         lines.append(f"Run `{command} --verbose` to see Docker's error.")
+    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(1) from exc
+
+
+def fail_cluster_pull(exc: ClusterImagePullError, command: str, *, verbose: bool):
+    """Stop with one ✖ line that names the service and the image the cluster couldn't pull."""
+    lines = [f"✖ {exc}", exc.hint(command)]
+    if verbose and exc.detail:
+        lines.append(f"Kubernetes said: {exc.detail}")
+    elif exc.detail:
+        lines.append(f"Run `{command} --verbose` to see the cluster's error.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
     raise typer.Exit(1) from exc
 
@@ -363,6 +377,8 @@ def update(
         # upgrade, so nothing changed yet. A remote update has no local pull
         # step: its cluster pulls after Helm runs, so do not promise that.
         fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=cm.config.is_local)
+    except ClusterImagePullError as exc:
+        fail_cluster_pull(exc, "fbenv update", verbose=verbose)
 
     print_status(cm)
 

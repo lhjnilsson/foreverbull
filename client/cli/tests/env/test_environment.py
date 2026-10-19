@@ -14,6 +14,7 @@ from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import READY_TIMEOUT_ENV
 from foreverbull_cli.env.environment import WORKLOADS
+from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import CommandRunner
@@ -1380,3 +1381,174 @@ class TestPullFailureChangesNothing:
         last_pull = max(i for i, c in enumerate(runner.calls) if c[:2] == ["docker", "pull"])
         first_helm = next(i for i, c in enumerate(runner.calls) if c[:1] == ["helm"])
         assert last_pull < first_load < first_helm
+
+
+GRAFANA_IMAGE = f"{IMAGE_REPOSITORY}/fb-grafana:{CLIENT_VERSION}"
+REMOTE = {"cluster": "remote", "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"}}
+
+
+class RolloutRunner(FakeRunner):
+    """Answers each `kubectl get deploy,pods` poll with the next snapshot; the last one repeats."""
+
+    def __init__(self, snapshots: list[list[dict]]):
+        super().__init__()
+        self.snapshots = snapshots
+        self.polls = 0
+
+    def run(self, args: Sequence[str], **kwargs) -> subprocess.CompletedProcess[str]:
+        command = [str(a) for a in args]
+        if command[:1] == ["kubectl"] and "deploy,pods" in command:
+            snapshot = self.snapshots[min(self.polls, len(self.snapshots) - 1)]
+            self.polls += 1
+            self.calls.append(command)
+            self.stdins.append(None)
+            return _completed(stdout=json.dumps({"items": snapshot}))
+        return super().run(args, **kwargs)
+
+
+def _rolled_deploy(name: str, image: str, *, replicas: int = 1, updated: int = 1, available: int = 1) -> dict:
+    deploy = _deploy(name, image, replicas=replicas)
+    deploy["metadata"]["generation"] = 2
+    deploy["status"] = {
+        "observedGeneration": 2,
+        "replicas": updated,
+        "updatedReplicas": updated,
+        "availableReplicas": available,
+    }
+    return deploy
+
+
+def _pull_backoff_pod(app: str, image: str, reason: str = "ImagePullBackOff", *, terminating: bool = False) -> dict:
+    pod = _pod(f"{app}-abc", app, image, phase="Pending", ready=False, terminating=terminating)
+    pod["status"]["containerStatuses"] = [
+        {
+            "ready": False,
+            "image": image,
+            "state": {"waiting": {"reason": reason, "message": f'Back-off pulling image "{image}"'}},
+        }
+    ]
+    return pod
+
+
+def _remote_manager(tmp_path: Path, runner: FakeRunner, sleeps: list[float]) -> ClusterManager:
+    uut = _manager(tmp_path, runner, config=Config(REMOTE, load_files=False, environ={}, client_version=CLIENT_VERSION))
+    uut.sleep = sleeps.append
+    return uut
+
+
+class TestRemoteUpdatePullFailure:
+    def test_grafana_in_image_pull_backoff_raises_after_helm(self, tmp_path: Path):
+        snapshot = [
+            _rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0),
+            _pull_backoff_pod("grafana", GRAFANA_IMAGE),
+        ]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(ClusterImagePullError) as raised:
+            uut.update()
+        assert raised.value.service == "Grafana"
+        assert raised.value.image == GRAFANA_IMAGE
+        assert raised.value.reason == "ImagePullBackOff"
+        assert str(raised.value) == (
+            f"Grafana can't start: the cluster couldn't pull the image {GRAFANA_IMAGE} (ImagePullBackOff)."
+        )
+        helm_at = next(i for i, c in enumerate(runner.calls) if c[:3] == ["helm", "upgrade", "--install"])
+        poll_at = next(i for i, c in enumerate(runner.calls) if "deploy,pods" in c)
+        assert helm_at < poll_at
+        assert "--context" in runner.calls[poll_at] and "prod" in runner.calls[poll_at]
+
+    @pytest.mark.parametrize("reason", ["ErrImagePull", "InvalidImageName", "ErrImageNeverPull"])
+    def test_every_pull_failure_reason_raises(self, tmp_path: Path, reason: str):
+        runner = RolloutRunner([[_pull_backoff_pod("foreverbull", "lhjnilsson/foreverbull:1.2.3", reason)]])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(ClusterImagePullError) as raised:
+            uut.update()
+        assert raised.value.service == "Foreverbull"
+        assert raised.value.reason == reason
+
+    def test_init_container_pull_failure_raises(self, tmp_path: Path):
+        pod = _pod("postgres-abc", "postgres", "postgres:17-alpine", phase="Pending", ready=False)
+        pod["status"]["initContainerStatuses"] = [
+            {"image": "busybox:1.36", "state": {"waiting": {"reason": "ErrImagePull", "message": "not found"}}}
+        ]
+        runner = RolloutRunner([[pod]])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(ClusterImagePullError) as raised:
+            uut.update()
+        assert raised.value.image == "busybox:1.36"
+        assert raised.value.detail == "not found"
+
+    def test_pull_failure_after_first_poll_still_raises(self, tmp_path: Path):
+        pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
+        failing = [*pending, _pull_backoff_pod("grafana", GRAFANA_IMAGE, "ErrImagePull")]
+        runner = RolloutRunner([pending, failing])
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+        with pytest.raises(ClusterImagePullError):
+            uut.update()
+        assert runner.polls == 2
+        assert len(sleeps) == 1
+
+    def test_rolled_out_release_returns_after_one_poll(self, tmp_path: Path):
+        runner = RolloutRunner([[_rolled_deploy(name, f"{name}:1") for _, name in WORKLOADS]])
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+        uut.update()
+        assert runner.polls == 1
+        assert sleeps == []
+
+    def test_stopped_workloads_count_as_rolled_out(self, tmp_path: Path):
+        stopped = [_rolled_deploy(name, f"{name}:1", replicas=0, updated=0, available=0) for _, name in WORKLOADS]
+        runner = RolloutRunner([stopped])
+        uut = _remote_manager(tmp_path, runner, [])
+        uut.update()
+        assert runner.polls == 1
+
+    def test_unobserved_generation_is_not_rolled_out(self, tmp_path: Path):
+        stale = _rolled_deploy("grafana", GRAFANA_IMAGE)
+        stale["status"]["observedGeneration"] = 1
+        runner = RolloutRunner([[stale], [_rolled_deploy("grafana", GRAFANA_IMAGE)]])
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+        uut.update()
+        assert runner.polls == 2
+        assert len(sleeps) == 1
+
+    def test_slow_rollout_stops_polling_at_the_timeout_without_failing(self, tmp_path: Path):
+        pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
+        runner = RolloutRunner([pending])
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+        uut.update()
+        # ready_timeout_seconds=5 in tests, polled every 2 s: 3 polls, 2 sleeps.
+        assert runner.polls == 3
+        assert sleeps == [2, 2]
+
+    def test_terminating_pod_in_backoff_is_ignored(self, tmp_path: Path):
+        snapshot = [
+            _rolled_deploy("grafana", GRAFANA_IMAGE),
+            _pull_backoff_pod("grafana", "lhjnilsson/fb-grafana:old", terminating=True),
+        ]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        uut.update()
+        assert runner.polls == 1
+
+    def test_pod_outside_the_chart_workloads_is_ignored(self, tmp_path: Path):
+        snapshot = [_rolled_deploy("grafana", GRAFANA_IMAGE), _pull_backoff_pod("worker-1", "my/strategy:1")]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        uut.update()
+
+    def test_kubectl_error_while_watching_returns(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stderr="connection refused", returncode=1))
+        uut = _remote_manager(tmp_path, runner, [])
+        uut.update()
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
+
+    def test_local_update_does_not_watch_the_rollout(self, tmp_path: Path):
+        runner = RolloutRunner([[_pull_backoff_pod("grafana", GRAFANA_IMAGE)]])
+        uut = _manager(tmp_path, runner, environ={"VERSION": "local"})
+        uut.update()
+        assert runner.polls == 0

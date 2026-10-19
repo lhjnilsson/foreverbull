@@ -9,6 +9,7 @@ import typer
 from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import BrokerDiagnosis
+from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
@@ -244,6 +245,39 @@ def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_containe
     assert "✖ Couldn't download the Foreverbull image" in result.stdout
     assert "Nothing was changed." not in result.stdout
     assert "Traceback" not in result.stdout
+
+
+CLUSTER_PULL_FAILURE = ClusterImagePullError(
+    service="Grafana",
+    image="lhjnilsson/fb-grafana:1.2.3",
+    reason="ImagePullBackOff",
+    detail='Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"',
+)
+
+
+def test_update_on_remote_fails_when_the_cluster_cannot_pull(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = CLUSTER_PULL_FAILURE
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
+        ("✖ Grafana can't start: the cluster couldn't pull the image lhjnilsson/fb-grafana:1.2.3 (ImagePullBackOff).")
+    ]
+    assert "The release was already updated." in result.stdout
+    assert "then run `fbenv update` again." in result.stdout
+    assert "Run `fbenv update --verbose` to see the cluster's error." in result.stdout
+    assert "Nothing was changed." not in result.stdout
+    assert "Back-off pulling image" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
+
+
+def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = CLUSTER_PULL_FAILURE
+    result = runner(cli.cli, ["update", "--verbose"])
+    assert result.exit_code == 1
+    assert 'Kubernetes said: Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"' in result.stdout
 
 
 def _reject_version(manager: MagicMock) -> None:

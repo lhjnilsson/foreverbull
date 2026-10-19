@@ -1,10 +1,12 @@
 import copy
 import importlib.metadata
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
+import time
 
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -74,6 +76,16 @@ WORKLOADS: tuple[tuple[str, str], ...] = (
     ("Grafana", "grafana"),
 )
 DEPLOYMENTS: tuple[str, ...] = tuple(name for _, name in WORKLOADS)
+# Every chart workload carries this label; strategy-worker pods do not.
+PART_OF_LABEL = "app.kubernetes.io/part-of=foreverbull"
+
+# Kubelet waiting reasons that mean a node could not get the image.
+# ErrImagePull is the first failure and ImagePullBackOff the retry delay
+# after it; neither clears until the image or the registry access is fixed.
+CLUSTER_PULL_FAILURE_REASONS = frozenset({"ErrImagePull", "ImagePullBackOff", "InvalidImageName", "ErrImageNeverPull"})
+# A remote `fbenv update` polls its rollout this often, for at most
+# ready_timeout_seconds, so the watch has a fixed number of kubectl calls.
+ROLLOUT_POLL_SECONDS = 2
 
 # kubectl returns at most this many broker log lines, so a crash loop cannot
 # flood the terminal.
@@ -267,6 +279,24 @@ class ImagePullError(RuntimeError):
         if self.cause == "registry":
             return f"Wait a few minutes and run `{command}` again."
         return f"Check your internet connection and run `{command}` again."
+
+
+class ClusterImagePullError(RuntimeError):
+    """A cluster node could not pull a workload's image. Helm has already changed the release."""
+
+    def __init__(self, *, service: str, image: str, reason: str, detail: str):
+        self.service = service
+        self.image = image
+        self.reason = reason
+        self.detail = detail.strip()
+        super().__init__(f"{service} can't start: the cluster couldn't pull the image {image} ({reason}).")
+
+    def hint(self, command: str) -> str:
+        return (
+            "The release was already updated. Check that this image is published and that "
+            "the cluster's nodes can reach its registry and pull from it (network and pull credentials), "
+            f"then run `{command}` again."
+        )
 
 
 class VersionError(ValueError):
@@ -658,6 +688,7 @@ class ClusterManager:
         repo_root: Path | None = None,
         ready_timeout_seconds: int = DEFAULT_READY_TIMEOUT_SECONDS,
         port_probe: Callable[[int], bool] = port_is_free,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         self.config = config
         self.environment = environment
@@ -665,6 +696,7 @@ class ClusterManager:
         self._repo_root = repo_root
         self.ready_timeout_seconds = ready_timeout_seconds
         self.port_probe = port_probe
+        self.sleep = sleep
         self._status_cache: dict[str, WorkloadRow] | None = None
         self.postgres = Workload("Postgres", "postgres", self)
         self.nats = Workload("NATS", "nats", self)
@@ -879,6 +911,33 @@ class ClusterManager:
         self._apply_trading_profiles()
         self.helm_upgrade(reuse_values=True)
         self._status_cache = None
+        if not self.config.is_local:
+            # This host never pulls for a remote cluster, so a node that
+            # cannot get an image only shows up on the pods after Helm ran.
+            self._watch_rollout()
+
+    def _watch_rollout(self) -> None:
+        """Wait for the chart's Deployments to roll out. Raise ClusterImagePullError when a pod can't pull.
+
+        A rollout still going after ready_timeout_seconds returns quietly and
+        the status table shows it as pending: a slow pull of a large image is
+        not a failure. A kubectl error also returns, because the status
+        table that follows reports the cluster it could not read.
+        """
+        polls = max(1, math.ceil(self.ready_timeout_seconds / ROLLOUT_POLL_SECONDS))
+        for poll in range(polls):
+            try:
+                data = self._kubectl_json(["get", "deploy,pods", "-l", PART_OF_LABEL])
+            except CommandError:
+                return
+            items = data.get("items") or []
+            failure = cluster_pull_failure(items)
+            if failure is not None:
+                raise failure
+            if rolled_out(items):
+                return
+            if poll + 1 < polls:
+                self.sleep(ROLLOUT_POLL_SECONDS)
 
     def status_rows(self) -> list[WorkloadRow]:
         self._status_cache = None
@@ -1121,7 +1180,7 @@ class ClusterManager:
         }
         self.require_tools("kubectl")
         try:
-            data = self._kubectl_json(["get", "deploy,pods", "-l", "app.kubernetes.io/part-of=foreverbull"])
+            data = self._kubectl_json(["get", "deploy,pods", "-l", PART_OF_LABEL])
         except CommandError:
             return not_found
 
@@ -1194,6 +1253,53 @@ class ClusterManager:
 
 def _desired_replicas(deploy: dict[str, Any]) -> int:
     return int((deploy.get("spec") or {}).get("replicas") or 0)
+
+
+def rolled_out(items: Sequence[dict[str, Any]]) -> bool:
+    """True when every Deployment in items runs only pods of its current spec."""
+    deploys = [item for item in items if item.get("kind") == "Deployment"]
+    return all(_deploy_rolled_out(deploy) for deploy in deploys)
+
+
+def _deploy_rolled_out(deploy: dict[str, Any]) -> bool:
+    status = deploy.get("status") or {}
+    generation = int((deploy.get("metadata") or {}).get("generation") or 0)
+    if int(status.get("observedGeneration") or 0) < generation:
+        return False
+    desired = _desired_replicas(deploy)
+    if desired == 0:
+        return True
+    updated = int(status.get("updatedReplicas") or 0)
+    total = int(status.get("replicas") or 0)
+    available = int(status.get("availableReplicas") or 0)
+    return updated >= desired and total == updated and available >= desired
+
+
+def cluster_pull_failure(items: Sequence[dict[str, Any]]) -> ClusterImagePullError | None:
+    """Return the first chart workload pod whose container waits on a failed image pull, or None."""
+    services = {name: service for service, name in WORKLOADS}
+    for item in items:
+        if item.get("kind") != "Pod":
+            continue
+        metadata = item.get("metadata") or {}
+        if metadata.get("deletionTimestamp"):
+            continue
+        app = str((metadata.get("labels") or {}).get("app.kubernetes.io/name") or "")
+        if app not in services:
+            continue
+        status = item.get("status") or {}
+        containers = [*(status.get("initContainerStatuses") or []), *(status.get("containerStatuses") or [])]
+        for container in containers:
+            waiting = (container.get("state") or {}).get("waiting") or {}
+            reason = str(waiting.get("reason") or "")
+            if reason in CLUSTER_PULL_FAILURE_REASONS:
+                return ClusterImagePullError(
+                    service=services[app],
+                    image=str(container.get("image") or "unknown"),
+                    reason=reason,
+                    detail=str(waiting.get("message") or ""),
+                )
+    return None
 
 
 def _deploy_image(deploy: dict[str, Any]) -> str:
