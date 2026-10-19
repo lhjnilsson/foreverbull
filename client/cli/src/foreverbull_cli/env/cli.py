@@ -174,8 +174,12 @@ def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing
 def fail_cluster_pull(exc: ClusterImagePullError, command: str, *, verbose: bool):
     """Stop with one ✖ line that names the service and the image the cluster couldn't pull."""
     lines = [f"✖ {exc}", exc.hint(command)]
-    if verbose and exc.detail:
-        lines.append(f"Kubernetes said: {exc.detail}")
+    if verbose:
+        # The Kubernetes reason stays out of the ✖ line; --verbose is where it belongs.
+        said = f"Kubernetes said: {exc.reason}"
+        if exc.detail:
+            said = f"{said}: {exc.detail}"
+        lines.append(said)
     elif exc.detail:
         lines.append(f"Run `{command} --verbose` to see the cluster's error.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
@@ -366,11 +370,13 @@ def update(
     )
     check_version(cm)
 
+    rollout_notice: str | None = None
     try:
         with FBProgress() as progress:
             update_task = progress.add_task("Updating environment", total=2)
             progress.update(update_task, completed=1)
-            cm.update()
+            notice = cm.update()
+            rollout_notice = notice if isinstance(notice, str) else None
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
         # Local update pulls every missing image before kind load and helm
@@ -380,6 +386,8 @@ def update(
     except ClusterImagePullError as exc:
         fail_cluster_pull(exc, "fbenv update", verbose=verbose)
 
+    if rollout_notice:
+        console.print(rollout_notice, markup=False, highlight=False, soft_wrap=True)
     print_status(cm)
 
 

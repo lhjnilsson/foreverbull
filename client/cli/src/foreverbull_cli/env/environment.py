@@ -87,6 +87,29 @@ CLUSTER_PULL_FAILURE_REASONS = frozenset({"ErrImagePull", "ImagePullBackOff", "I
 # ready_timeout_seconds, so the watch has a fixed number of kubectl calls.
 ROLLOUT_POLL_SECONDS = 2
 
+ROLLOUT_UNVERIFIED_LINE = (
+    "⚠ Couldn't verify the rollout: kubectl failed while watching it. Run `fbenv status` to check the workloads."
+)
+
+
+def rollout_still_pulling_line(service: str, timeout_seconds: int) -> str:
+    return (
+        f"⚠ {service} is still downloading its image after {_timeout_text(timeout_seconds)}, "
+        "so this update hasn't finished yet. Run `fbenv status` to check on it."
+    )
+
+
+def _timeout_text(timeout_seconds: int) -> str:
+    if timeout_seconds == 1:
+        return "1 second"
+    if timeout_seconds < 60:
+        return f"{timeout_seconds} seconds"
+    if timeout_seconds % 60 == 0:
+        minutes = timeout_seconds // 60
+        return "1 minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{timeout_seconds} seconds"
+
+
 # kubectl returns at most this many broker log lines, so a crash loop cannot
 # flood the terminal.
 BROKER_LOG_TAIL_LINES = 20
@@ -289,12 +312,12 @@ class ClusterImagePullError(RuntimeError):
         self.image = image
         self.reason = reason
         self.detail = detail.strip()
-        super().__init__(f"{service} can't start: the cluster couldn't pull the image {image} ({reason}).")
+        super().__init__(f"{service} can't start: the cluster couldn't pull the image {image}.")
 
     def hint(self, command: str) -> str:
         return (
             "The release was already updated. Check that this image is published and that "
-            "the cluster's nodes can reach its registry and pull from it (network and pull credentials), "
+            "the cluster's nodes can reach its registry, "
             f"then run `{command}` again."
         )
 
@@ -689,6 +712,7 @@ class ClusterManager:
         ready_timeout_seconds: int = DEFAULT_READY_TIMEOUT_SECONDS,
         port_probe: Callable[[int], bool] = port_is_free,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.config = config
         self.environment = environment
@@ -697,6 +721,7 @@ class ClusterManager:
         self.ready_timeout_seconds = ready_timeout_seconds
         self.port_probe = port_probe
         self.sleep = sleep
+        self.clock = clock
         self._status_cache: dict[str, WorkloadRow] | None = None
         self.postgres = Workload("Postgres", "postgres", self)
         self.nats = Workload("NATS", "nats", self)
@@ -904,7 +929,7 @@ class ClusterManager:
             self.environment.purge()
         self._status_cache = None
 
-    def update(self) -> None:
+    def update(self) -> str | None:
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self.load_images()
@@ -914,30 +939,40 @@ class ClusterManager:
         if not self.config.is_local:
             # This host never pulls for a remote cluster, so a node that
             # cannot get an image only shows up on the pods after Helm ran.
-            self._watch_rollout()
+            return self._watch_rollout()
+        return None
 
-    def _watch_rollout(self) -> None:
+    def _watch_rollout(self) -> str | None:
         """Wait for the chart's Deployments to roll out. Raise ClusterImagePullError when a pod can't pull.
 
-        A rollout still going after ready_timeout_seconds returns quietly and
-        the status table shows it as pending: a slow pull of a large image is
-        not a failure. A kubectl error also returns, because the status
-        table that follows reports the cluster it could not read.
+        Returns a one-line notice when the rollout has not finished at the
+        deadline or when kubectl could not verify it, and None when it has
+        rolled out. Neither notice is a failure: the status table that
+        follows shows the workloads as they are.
         """
         polls = max(1, math.ceil(self.ready_timeout_seconds / ROLLOUT_POLL_SECONDS))
+        started = self.clock()
+        items: list[dict[str, Any]] = []
         for poll in range(polls):
+            remaining = self.ready_timeout_seconds - (self.clock() - started)
+            if remaining <= 0:
+                break
             try:
-                data = self._kubectl_json(["get", "deploy,pods", "-l", PART_OF_LABEL])
-            except CommandError:
-                return
+                data = self._kubectl_json(
+                    ["get", "deploy,rs,pods", "-l", PART_OF_LABEL],
+                    timeout_seconds=remaining,
+                )
+            except (CommandError, subprocess.TimeoutExpired):
+                return ROLLOUT_UNVERIFIED_LINE
             items = data.get("items") or []
             failure = cluster_pull_failure(items)
             if failure is not None:
                 raise failure
             if rolled_out(items):
-                return
+                return None
             if poll + 1 < polls:
                 self.sleep(ROLLOUT_POLL_SECONDS)
+        return rollout_still_pulling_line(_still_pulling_service(items), self.ready_timeout_seconds)
 
     def status_rows(self) -> list[WorkloadRow]:
         self._status_cache = None
@@ -1240,8 +1275,18 @@ class ClusterManager:
             image, container_id = NO_WORKLOAD, NO_WORKLOAD
         return WorkloadRow(service, name, status, image, container_id)
 
-    def _kubectl_json(self, resource_args: Sequence[str]) -> dict[str, Any]:
-        result = self.runner.run(["kubectl", *self._kube_flags(), *resource_args, "-o", "json"])
+    def _kubectl_json(self, resource_args: Sequence[str], *, timeout_seconds: float | None = None) -> dict[str, Any]:
+        args = ["kubectl", *self._kube_flags(), *resource_args]
+        timeout: float | None = None
+        if timeout_seconds is not None:
+            # Bound both the API request and the process, so one hung call
+            # cannot push the whole watch far past its deadline.
+            bounded = max(1, math.ceil(timeout_seconds))
+            args.append(f"--request-timeout={bounded}s")
+            timeout = float(bounded)
+        args.append("-o")
+        args.append("json")
+        result = self.runner.run(args, timeout=timeout)
         stdout = (result.stdout or "").strip()
         if not stdout:
             return {"items": []}
@@ -1275,9 +1320,97 @@ def _deploy_rolled_out(deploy: dict[str, Any]) -> bool:
     return updated >= desired and total == updated and available >= desired
 
 
+def _still_pulling_service(items: Sequence[dict[str, Any]]) -> str:
+    """Name the first chart workload, in status order, that has not rolled out yet."""
+    deploys = {
+        str((item.get("metadata") or {}).get("name") or ""): item for item in items if item.get("kind") == "Deployment"
+    }
+    for service, name in WORKLOADS:
+        deploy = deploys.get(name)
+        if deploy is not None and not _deploy_rolled_out(deploy):
+            return service
+    return WORKLOADS[0][0]
+
+
+def _template_matches(deploy_template: dict[str, Any], rs_template: dict[str, Any]) -> bool:
+    """True when a ReplicaSet template is the Deployment template plus its pod-template-hash label."""
+
+    def normalized(template: dict[str, Any]) -> tuple[Any, Any]:
+        labels = dict((template.get("metadata") or {}).get("labels") or {})
+        labels.pop("pod-template-hash", None)
+        return labels, template.get("spec") or {}
+
+    return normalized(deploy_template) == normalized(rs_template)
+
+
+def _current_replica_sets(items: Sequence[dict[str, Any]]) -> dict[str, tuple[set[str], set[str]]]:
+    """Map each Deployment name to its current ReplicaSet names and pod-template-hashes.
+
+    The current ReplicaSet is owned by the Deployment, carries its current
+    pod template, and has the highest revision among those that do. Older
+    ReplicaSets keep their pods (and any pull failure) until they drain, so
+    only pods of this ReplicaSet belong to the rollout just applied.
+    """
+    deploys = {str((i.get("metadata") or {}).get("name") or ""): i for i in items if i.get("kind") == "Deployment"}
+    best: dict[str, tuple[int, dict[str, Any]]] = {}
+    for item in items:
+        if item.get("kind") != "ReplicaSet":
+            continue
+        metadata = item.get("metadata") or {}
+        owners = metadata.get("ownerReferences") or []
+        deploy_name = next(
+            (str(o.get("name") or "") for o in owners if o.get("kind") == "Deployment"),
+            "",
+        )
+        deploy = deploys.get(deploy_name)
+        if deploy is None:
+            continue
+        deploy_template = ((deploy.get("spec") or {}).get("template") or {}) if isinstance(deploy, dict) else {}
+        rs_template = (item.get("spec") or {}).get("template") or {}
+        if deploy_template and rs_template and not _template_matches(deploy_template, rs_template):
+            continue
+        try:
+            revision = int((metadata.get("annotations") or {}).get("deployment.kubernetes.io/revision") or 0)
+        except (TypeError, ValueError):
+            revision = 0
+        if deploy_name not in best or revision > best[deploy_name][0]:
+            best[deploy_name] = (revision, item)
+    current: dict[str, tuple[set[str], set[str]]] = {}
+    for deploy_name, (_, rs) in best.items():
+        rs_meta = rs.get("metadata") or {}
+        rs_template = (rs.get("spec") or {}).get("template") or {}
+        hashes = {
+            str(v)
+            for v in (
+                ((rs_template.get("metadata") or {}).get("labels") or {}).get("pod-template-hash"),
+                ((rs_meta.get("labels") or {}).get("pod-template-hash")),
+            )
+            if v
+        }
+        names = {str(rs_meta.get("name") or "")} - {""}
+        current[deploy_name] = (names, hashes)
+    return current
+
+
+def _is_current_pod(pod: dict[str, Any], app: str, current: dict[str, tuple[set[str], set[str]]]) -> bool:
+    known = current.get(app)
+    if known is None:
+        # No ReplicaSet in the snapshot (a snapshot without them): keep the
+        # previous app-level check rather than ignoring every failure.
+        return True
+    rs_names, hashes = known
+    metadata = pod.get("metadata") or {}
+    owners = metadata.get("ownerReferences") or []
+    if any(str(o.get("name") or "") in rs_names for o in owners if o.get("kind") == "ReplicaSet"):
+        return True
+    pod_hash = str(((metadata.get("labels") or {}).get("pod-template-hash")) or "")
+    return bool(pod_hash and pod_hash in hashes)
+
+
 def cluster_pull_failure(items: Sequence[dict[str, Any]]) -> ClusterImagePullError | None:
-    """Return the first chart workload pod whose container waits on a failed image pull, or None."""
+    """Return the first current-rollout chart pod whose container waits on a failed image pull, or None."""
     services = {name: service for service, name in WORKLOADS}
+    current = _current_replica_sets(items)
     for item in items:
         if item.get("kind") != "Pod":
             continue
@@ -1286,6 +1419,8 @@ def cluster_pull_failure(items: Sequence[dict[str, Any]]) -> ClusterImagePullErr
             continue
         app = str((metadata.get("labels") or {}).get("app.kubernetes.io/name") or "")
         if app not in services:
+            continue
+        if not _is_current_pod(item, app, current):
             continue
         status = item.get("status") or {}
         containers = [*(status.get("initContainerStatuses") or []), *(status.get("containerStatuses") or [])]

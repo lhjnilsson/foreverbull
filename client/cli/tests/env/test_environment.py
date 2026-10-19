@@ -13,6 +13,7 @@ from foreverbull_cli.env.environment import DEFAULT_READY_TIMEOUT_SECONDS
 from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import READY_TIMEOUT_ENV
+from foreverbull_cli.env.environment import ROLLOUT_UNVERIFIED_LINE
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
@@ -28,6 +29,7 @@ from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
 from foreverbull_cli.env.environment import match_broker_error
 from foreverbull_cli.env.environment import ready_timeout_seconds
+from foreverbull_cli.env.environment import rollout_still_pulling_line
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 
@@ -167,7 +169,10 @@ def _deploy(name: str, image: str, replicas: int = 1) -> dict:
         "metadata": {"name": name},
         "spec": {
             "replicas": replicas,
-            "template": {"spec": {"containers": [{"image": image}]}},
+            "template": {
+                "metadata": {"labels": {"app.kubernetes.io/name": name}},
+                "spec": {"containers": [{"image": image}]},
+            },
         },
     }
 
@@ -1394,14 +1399,16 @@ class RolloutRunner(FakeRunner):
         super().__init__()
         self.snapshots = snapshots
         self.polls = 0
+        self.timeouts: list[float | None] = []
 
     def run(self, args: Sequence[str], **kwargs) -> subprocess.CompletedProcess[str]:
         command = [str(a) for a in args]
-        if command[:1] == ["kubectl"] and "deploy,pods" in command:
+        if command[:1] == ["kubectl"] and any(r in command for r in ("deploy,pods", "deploy,rs,pods")):
             snapshot = self.snapshots[min(self.polls, len(self.snapshots) - 1)]
             self.polls += 1
             self.calls.append(command)
             self.stdins.append(None)
+            self.timeouts.append(kwargs.get("timeout"))
             return _completed(stdout=json.dumps({"items": snapshot}))
         return super().run(args, **kwargs)
 
@@ -1430,6 +1437,32 @@ def _pull_backoff_pod(app: str, image: str, reason: str = "ImagePullBackOff", *,
     return pod
 
 
+def _replica_set(app: str, image: str, pod_hash: str, revision: int) -> dict:
+    return {
+        "kind": "ReplicaSet",
+        "metadata": {
+            "name": f"{app}-{pod_hash}",
+            "labels": {"pod-template-hash": pod_hash},
+            "annotations": {"deployment.kubernetes.io/revision": str(revision)},
+            "ownerReferences": [{"kind": "Deployment", "name": app}],
+        },
+        "spec": {
+            "replicas": 1,
+            "template": {
+                "metadata": {"labels": {"app.kubernetes.io/name": app, "pod-template-hash": pod_hash}},
+                "spec": {"containers": [{"image": image}]},
+            },
+        },
+    }
+
+
+def _pull_pod_with_hash(app: str, image: str, pod_hash: str) -> dict:
+    pod = _pull_backoff_pod(app, image)
+    pod["metadata"]["labels"]["pod-template-hash"] = pod_hash
+    pod["metadata"]["ownerReferences"] = [{"kind": "ReplicaSet", "name": f"{app}-{pod_hash}"}]
+    return pod
+
+
 def _remote_manager(tmp_path: Path, runner: FakeRunner, sleeps: list[float]) -> ClusterManager:
     uut = _manager(tmp_path, runner, config=Config(REMOTE, load_files=False, environ={}, client_version=CLIENT_VERSION))
     uut.sleep = sleeps.append
@@ -1449,11 +1482,13 @@ class TestRemoteUpdatePullFailure:
         assert raised.value.service == "Grafana"
         assert raised.value.image == GRAFANA_IMAGE
         assert raised.value.reason == "ImagePullBackOff"
-        assert str(raised.value) == (
-            f"Grafana can't start: the cluster couldn't pull the image {GRAFANA_IMAGE} (ImagePullBackOff)."
+        assert str(raised.value) == (f"Grafana can't start: the cluster couldn't pull the image {GRAFANA_IMAGE}.")
+        assert raised.value.hint("fbenv update") == (
+            "The release was already updated. Check that this image is published and that "
+            "the cluster's nodes can reach its registry, then run `fbenv update` again."
         )
         helm_at = next(i for i, c in enumerate(runner.calls) if c[:3] == ["helm", "upgrade", "--install"])
-        poll_at = next(i for i, c in enumerate(runner.calls) if "deploy,pods" in c)
+        poll_at = next(i for i, c in enumerate(runner.calls) if "deploy,rs,pods" in c)
         assert helm_at < poll_at
         assert "--context" in runner.calls[poll_at] and "prod" in runner.calls[poll_at]
 
@@ -1519,10 +1554,52 @@ class TestRemoteUpdatePullFailure:
         runner = RolloutRunner([pending])
         sleeps: list[float] = []
         uut = _remote_manager(tmp_path, runner, sleeps)
-        uut.update()
+        notice = uut.update()
         # ready_timeout_seconds=5 in tests, polled every 2 s: 3 polls, 2 sleeps.
         assert runner.polls == 3
         assert sleeps == [2, 2]
+        assert notice == (
+            "⚠ Grafana is still downloading its image after 5 seconds, "
+            "so this update hasn't finished yet. Run `fbenv status` to check on it."
+        )
+        assert notice == rollout_still_pulling_line("Grafana", 5)
+
+    def test_rollout_kubectl_calls_are_bounded_by_the_remaining_time(self, tmp_path: Path):
+        pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
+        runner = RolloutRunner([pending])
+        uut = _remote_manager(tmp_path, runner, [])
+        uut.update()
+        assert runner.polls == 3
+        assert all(timeout is not None and 0 < timeout <= 5 for timeout in runner.timeouts)
+        poll_calls = [c for c in runner.calls if "deploy,rs,pods" in c]
+        assert poll_calls
+        assert all(any(a.startswith("--request-timeout=") for a in c) for c in poll_calls)
+
+    def test_previous_rollout_pod_in_backoff_is_ignored(self, tmp_path: Path):
+        snapshot = [
+            _rolled_deploy("grafana", GRAFANA_IMAGE),
+            _replica_set("grafana", "lhjnilsson/fb-grafana:old", "oldhash", 1),
+            _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
+            _pull_pod_with_hash("grafana", "lhjnilsson/fb-grafana:old", "oldhash"),
+        ]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        assert uut.update() is None
+        assert runner.polls == 1
+
+    def test_current_rollout_pod_in_backoff_still_fails_with_an_old_pod_present(self, tmp_path: Path):
+        snapshot = [
+            _rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0),
+            _replica_set("grafana", "lhjnilsson/fb-grafana:old", "oldhash", 1),
+            _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
+            _pull_pod_with_hash("grafana", "lhjnilsson/fb-grafana:old", "oldhash"),
+            _pull_pod_with_hash("grafana", GRAFANA_IMAGE, "newhash"),
+        ]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(ClusterImagePullError) as raised:
+            uut.update()
+        assert raised.value.image == GRAFANA_IMAGE
 
     def test_terminating_pod_in_backoff_is_ignored(self, tmp_path: Path):
         snapshot = [
@@ -1544,8 +1621,23 @@ class TestRemoteUpdatePullFailure:
         runner = FakeRunner()
         runner.on(["kubectl"], _completed(stderr="connection refused", returncode=1))
         uut = _remote_manager(tmp_path, runner, [])
-        uut.update()
+        notice = uut.update()
+        assert notice == ROLLOUT_UNVERIFIED_LINE
+        assert notice == (
+            "⚠ Couldn't verify the rollout: kubectl failed while watching it. "
+            "Run `fbenv status` to check the workloads."
+        )
         assert runner.calls_starting_with("helm", "upgrade", "--install")
+
+    def test_kubectl_timeout_while_watching_is_unverified_not_silent(self, tmp_path: Path):
+        runner = RolloutRunner([[_rolled_deploy("grafana", GRAFANA_IMAGE)]])
+
+        def hang(args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd=[str(a) for a in args], timeout=kwargs.get("timeout") or 1)
+
+        runner.run = hang  # type: ignore[method-assign]
+        uut = _remote_manager(tmp_path, runner, [])
+        assert uut._watch_rollout() == ROLLOUT_UNVERIFIED_LINE
 
     def test_local_update_does_not_watch_the_rollout(self, tmp_path: Path):
         runner = RolloutRunner([[_pull_backoff_pod("grafana", GRAFANA_IMAGE)]])
