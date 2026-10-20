@@ -21,6 +21,60 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Where the session takes the symbols it passes to Process
+// (pkg/backtest/universe.md section 7). Unspecified means the server did not
+// say, which a caller treats as unknown rather than as either kind.
+type UniverseSource int32
+
+const (
+	UniverseSource_UNIVERSE_SOURCE_UNSPECIFIED UniverseSource = 0
+	// Created from a symbol list: no universe_member rows, enabled period assets.
+	UniverseSource_UNIVERSE_SOURCE_SYMBOL_LIST UniverseSource = 1
+	// Created from an ETF: point-in-time universe_member rows.
+	UniverseSource_UNIVERSE_SOURCE_ETF UniverseSource = 2
+)
+
+// Enum value maps for UniverseSource.
+var (
+	UniverseSource_name = map[int32]string{
+		0: "UNIVERSE_SOURCE_UNSPECIFIED",
+		1: "UNIVERSE_SOURCE_SYMBOL_LIST",
+		2: "UNIVERSE_SOURCE_ETF",
+	}
+	UniverseSource_value = map[string]int32{
+		"UNIVERSE_SOURCE_UNSPECIFIED": 0,
+		"UNIVERSE_SOURCE_SYMBOL_LIST": 1,
+		"UNIVERSE_SOURCE_ETF":         2,
+	}
+)
+
+func (x UniverseSource) Enum() *UniverseSource {
+	p := new(UniverseSource)
+	*p = x
+	return p
+}
+
+func (x UniverseSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UniverseSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_foreverbull_backtest_v1_backtest_proto_enumTypes[0].Descriptor()
+}
+
+func (UniverseSource) Type() protoreflect.EnumType {
+	return &file_foreverbull_backtest_v1_backtest_proto_enumTypes[0]
+}
+
+func (x UniverseSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UniverseSource.Descriptor instead.
+func (UniverseSource) EnumDescriptor() ([]byte, []int) {
+	return file_foreverbull_backtest_v1_backtest_proto_rawDescGZIP(), []int{0}
+}
+
 type Backtest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -256,10 +310,17 @@ var file_foreverbull_backtest_v1_backtest_proto_rawDesc = []byte{
 	0x0a, 0x06, 0x73, 0x79, 0x6d, 0x62, 0x6f, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06,
 	0x73, 0x79, 0x6d, 0x62, 0x6f, 0x6c, 0x12, 0x18, 0x0a, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65,
 	0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64,
-	0x42, 0x33, 0x5a, 0x31, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c,
-	0x68, 0x6a, 0x6e, 0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65,
-	0x72, 0x62, 0x75, 0x6c, 0x6c, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x62, 0x2f, 0x62, 0x61, 0x63,
-	0x6b, 0x74, 0x65, 0x73, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x2a, 0x6b, 0x0a, 0x0e, 0x55, 0x6e, 0x69, 0x76, 0x65, 0x72, 0x73, 0x65, 0x53, 0x6f, 0x75, 0x72,
+	0x63, 0x65, 0x12, 0x1f, 0x0a, 0x1b, 0x55, 0x4e, 0x49, 0x56, 0x45, 0x52, 0x53, 0x45, 0x5f, 0x53,
+	0x4f, 0x55, 0x52, 0x43, 0x45, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45,
+	0x44, 0x10, 0x00, 0x12, 0x1f, 0x0a, 0x1b, 0x55, 0x4e, 0x49, 0x56, 0x45, 0x52, 0x53, 0x45, 0x5f,
+	0x53, 0x4f, 0x55, 0x52, 0x43, 0x45, 0x5f, 0x53, 0x59, 0x4d, 0x42, 0x4f, 0x4c, 0x5f, 0x4c, 0x49,
+	0x53, 0x54, 0x10, 0x01, 0x12, 0x17, 0x0a, 0x13, 0x55, 0x4e, 0x49, 0x56, 0x45, 0x52, 0x53, 0x45,
+	0x5f, 0x53, 0x4f, 0x55, 0x52, 0x43, 0x45, 0x5f, 0x45, 0x54, 0x46, 0x10, 0x02, 0x42, 0x33, 0x5a,
+	0x31, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x68, 0x6a, 0x6e,
+	0x69, 0x6c, 0x73, 0x73, 0x6f, 0x6e, 0x2f, 0x66, 0x6f, 0x72, 0x65, 0x76, 0x65, 0x72, 0x62, 0x75,
+	0x6c, 0x6c, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x62, 0x2f, 0x62, 0x61, 0x63, 0x6b, 0x74, 0x65,
+	0x73, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -274,18 +335,20 @@ func file_foreverbull_backtest_v1_backtest_proto_rawDescGZIP() []byte {
 	return file_foreverbull_backtest_v1_backtest_proto_rawDescData
 }
 
+var file_foreverbull_backtest_v1_backtest_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_foreverbull_backtest_v1_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_foreverbull_backtest_v1_backtest_proto_goTypes = []interface{}{
-	(*Backtest)(nil),              // 0: foreverbull.backtest.v1.Backtest
-	(*Backtest_Period)(nil),       // 1: foreverbull.backtest.v1.Backtest.Period
-	(*Backtest_Period_Asset)(nil), // 2: foreverbull.backtest.v1.Backtest.Period.Asset
-	(*pb.Date)(nil),               // 3: foreverbull.common.Date
+	(UniverseSource)(0),           // 0: foreverbull.backtest.v1.UniverseSource
+	(*Backtest)(nil),              // 1: foreverbull.backtest.v1.Backtest
+	(*Backtest_Period)(nil),       // 2: foreverbull.backtest.v1.Backtest.Period
+	(*Backtest_Period_Asset)(nil), // 3: foreverbull.backtest.v1.Backtest.Period.Asset
+	(*pb.Date)(nil),               // 4: foreverbull.common.Date
 }
 var file_foreverbull_backtest_v1_backtest_proto_depIdxs = []int32{
-	1, // 0: foreverbull.backtest.v1.Backtest.periods:type_name -> foreverbull.backtest.v1.Backtest.Period
-	3, // 1: foreverbull.backtest.v1.Backtest.Period.start_date:type_name -> foreverbull.common.Date
-	3, // 2: foreverbull.backtest.v1.Backtest.Period.end_date:type_name -> foreverbull.common.Date
-	2, // 3: foreverbull.backtest.v1.Backtest.Period.assets:type_name -> foreverbull.backtest.v1.Backtest.Period.Asset
+	2, // 0: foreverbull.backtest.v1.Backtest.periods:type_name -> foreverbull.backtest.v1.Backtest.Period
+	4, // 1: foreverbull.backtest.v1.Backtest.Period.start_date:type_name -> foreverbull.common.Date
+	4, // 2: foreverbull.backtest.v1.Backtest.Period.end_date:type_name -> foreverbull.common.Date
+	3, // 3: foreverbull.backtest.v1.Backtest.Period.assets:type_name -> foreverbull.backtest.v1.Backtest.Period.Asset
 	4, // [4:4] is the sub-list for method output_type
 	4, // [4:4] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -341,13 +404,14 @@ func file_foreverbull_backtest_v1_backtest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_foreverbull_backtest_v1_backtest_proto_rawDesc,
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_foreverbull_backtest_v1_backtest_proto_goTypes,
 		DependencyIndexes: file_foreverbull_backtest_v1_backtest_proto_depIdxs,
+		EnumInfos:         file_foreverbull_backtest_v1_backtest_proto_enumTypes,
 		MessageInfos:      file_foreverbull_backtest_v1_backtest_proto_msgTypes,
 	}.Build()
 	File_foreverbull_backtest_v1_backtest_proto = out.File

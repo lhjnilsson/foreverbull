@@ -262,10 +262,16 @@ func (bs *BacktestServer) GetExecution(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error getting execution functions: %w", err)
 	}
+	source, empty, err := executionUniverse(ctx, &repository.UniverseMember{Conn: bs.pgx}, execution)
+	if err != nil {
+		return nil, err
+	}
 
 	return &servicePb.GetExecutionResponse{
-		Execution: execution,
-		Periods:   periods,
-		Functions: functions,
+		Execution:      execution,
+		Periods:        periods,
+		Functions:      functions,
+		UniverseSource: source,
+		UniverseEmpty:  empty,
 	}, nil
 }

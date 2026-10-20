@@ -6,6 +6,17 @@ import "foreverbull/common.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/backtest";
 
+// Where the session takes the symbols it passes to Process
+// (pkg/backtest/universe.md section 7). Unspecified means the server did not
+// say, which a caller treats as unknown rather than as either kind.
+enum UniverseSource {
+  UNIVERSE_SOURCE_UNSPECIFIED = 0;
+  // Created from a symbol list: no universe_member rows, enabled period assets.
+  UNIVERSE_SOURCE_SYMBOL_LIST = 1;
+  // Created from an ETF: point-in-time universe_member rows.
+  UNIVERSE_SOURCE_ETF = 2;
+}
+
 message Backtest {
   message Period {
     message Asset {

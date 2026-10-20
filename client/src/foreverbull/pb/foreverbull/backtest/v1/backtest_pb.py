@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal, TYPE_CHECKING, TypeAlias
 
-from protobuf import Message
+from protobuf import Enum, Message
 from protobuf._codegen import file_desc
 
 from ... import common_pb
@@ -149,9 +149,42 @@ class Backtest(Message[_BacktestFields]):
                 symbol: str
                 enabled: bool
 
+class UniverseSource(Enum):
+    """
+    Where the session takes the symbols it passes to Process
+    (pkg/backtest/universe.md section 7). Unspecified means the server did not
+    say, which a caller treats as unknown rather than as either kind.
+
+    ```proto
+    enum foreverbull.backtest.v1.UniverseSource
+    ```
+
+    Attributes:
+        UNSPECIFIED:
+            ```proto
+            UNIVERSE_SOURCE_UNSPECIFIED = 0
+            ```
+        SYMBOL_LIST:
+            Created from a symbol list: no universe_member rows, enabled period assets.
+
+            ```proto
+            UNIVERSE_SOURCE_SYMBOL_LIST = 1
+            ```
+        ETF:
+            Created from an ETF: point-in-time universe_member rows.
+
+            ```proto
+            UNIVERSE_SOURCE_ETF = 2
+            ```
+    """
+
+    UNSPECIFIED = 0
+    SYMBOL_LIST = 1
+    ETF = 2
+
 
 _DESC = file_desc(
-    b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17foreverbull.backtest.v1\x1a\x18foreverbull/common.proto"\xb2\x03\n\x08Backtest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12B\n\x07periods\x18\x06 \x03(\x0b2(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x12\x1a\n\x08provider\x18\x07 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x08 \x01(\tR\x07profile\x1a\xf9\x01\n\x06Period\x127\n\nstart_date\x18\x01 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12F\n\x06assets\x18\x03 \x03(\x0b2..foreverbull.backtest.v1.Backtest.Period.AssetR\x06assets\x1a9\n\x05Asset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07enabled\x18\x02 \x01(\x08R\x07enabledB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3',
+    b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17foreverbull.backtest.v1\x1a\x18foreverbull/common.proto"\xb2\x03\n\x08Backtest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12B\n\x07periods\x18\x06 \x03(\x0b2(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x12\x1a\n\x08provider\x18\x07 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x08 \x01(\tR\x07profile\x1a\xf9\x01\n\x06Period\x127\n\nstart_date\x18\x01 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12F\n\x06assets\x18\x03 \x03(\x0b2..foreverbull.backtest.v1.Backtest.Period.AssetR\x06assets\x1a9\n\x05Asset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07enabled\x18\x02 \x01(\x08R\x07enabled*k\n\x0eUniverseSource\x12\x1f\n\x1bUNIVERSE_SOURCE_UNSPECIFIED\x10\x00\x12\x1f\n\x1bUNIVERSE_SOURCE_SYMBOL_LIST\x10\x01\x12\x17\n\x13UNIVERSE_SOURCE_ETF\x10\x02B3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3',
     [
         common_pb.desc(),
     ],
@@ -159,6 +192,7 @@ _DESC = file_desc(
         "Backtest": Backtest,
         "Backtest.Period": Backtest.Period,
         "Backtest.Period.Asset": Backtest.Period.Asset,
+        "UniverseSource": UniverseSource,
     },
 )
 

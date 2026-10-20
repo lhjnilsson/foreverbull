@@ -129,6 +129,14 @@ message GetExecutionResponse {
   repeated foreverbull.backtest.v1.Period periods = 2;
   // functions were stored at create time. Empty when the run has none.
   repeated foreverbull.backtest.v1.ExecutionFunction functions = 3;
+  // Read from the backtest's current universe_member rows when this response
+  // is built, not stored with the run.
+  foreverbull.backtest.v1.UniverseSource universe_source = 4;
+  // True only when universe_source is ETF and no universe_member interval
+  // covers any date of the execution's [start_date, end_date]. False when the
+  // universe had a member on at least one of those dates, or when it is not
+  // known.
+  bool universe_empty = 5;
 }
 
 service BacktestServicer {
