@@ -287,7 +287,7 @@ When no images are published for your client version, the hint says so and tells
 
 ### Pods do not start
 
-`fbenv start` waits up to 120 seconds for the six deployments. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:
+`fbenv start` waits up to 120 seconds for the six deployments. `FBENV_READY_TIMEOUT` sets that wait in whole seconds. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:
 
 - `ErrImagePull` or `ImagePullBackOff` on `foreverbull`, `zipline`, or `grafana`: the `:local` image is not in the Kind node. Build it with `task build` from the repository root, then load it and upgrade with `VERSION=local uv run fbenv update`.
 - `Pending` with `Insufficient cpu` or `Insufficient memory` in the `describe` events (see More detail below): Docker does not have the resources listed under [Host resources](#host-resources). Raise the Docker allocation, then run `uv run fbenv start` again.

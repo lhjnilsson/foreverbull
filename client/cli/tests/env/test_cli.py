@@ -305,6 +305,29 @@ def test_start(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.start.assert_called_once()
 
 
+def test_bad_ready_timeout_stops_before_changes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli.cli, ["status"], env={"FBENV_READY_TIMEOUT": "soon"})
+    assert result.exit_code == 1
+    assert "FBENV_READY_TIMEOUT" in result.stdout
+    assert "Nothing was changed." in result.stdout
+    assert not (tmp_path / ".foreverbull").exists()
+
+
+def test_ready_timeout_reaches_the_cluster_manager(monkeypatch):
+    seen: dict[str, int] = {}
+
+    class Capture(ClusterManager):
+        def __init__(self, *args, **kwargs):
+            seen["timeout"] = kwargs["ready_timeout_seconds"]
+            raise RuntimeError("stop")
+
+    monkeypatch.setattr(cli, "ClusterManager", Capture)
+    result = CliRunner().invoke(cli.cli, ["status"], env={"FBENV_READY_TIMEOUT": "900"})
+    assert seen["timeout"] == 900
+    assert result.exit_code != 0
+
+
 def test_stop(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "stop")
     assert result.exit_code == 0

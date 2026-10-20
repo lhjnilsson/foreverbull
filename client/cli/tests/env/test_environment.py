@@ -9,8 +9,10 @@ from pathlib import Path
 import pytest
 
 from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
+from foreverbull_cli.env.environment import DEFAULT_READY_TIMEOUT_SECONDS
 from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
+from foreverbull_cli.env.environment import READY_TIMEOUT_ENV
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
@@ -24,6 +26,7 @@ from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
 from foreverbull_cli.env.environment import match_broker_error
+from foreverbull_cli.env.environment import ready_timeout_seconds
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 
@@ -547,12 +550,69 @@ class TestClusterManager:
         uut = _manager(tmp_path, runner)
         uut.stop()
 
+    def test_stop_no_deployed_releases_is_ok(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["helm", "upgrade"],
+            _completed(returncode=1, stderr='Error: UPGRADE FAILED: "foreverbull" has no deployed releases'),
+        )
+        uut = _manager(tmp_path, runner)
+        uut.stop()
+        assert runner.calls_starting_with("kind", "get", "clusters") == []
+
+    def test_stop_without_a_kind_cluster_is_ok(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["helm", "upgrade"],
+            _completed(returncode=1, stderr="Error: Kubernetes cluster unreachable: connection refused"),
+        )
+        runner.on(["kind", "get", "clusters"], _completed(stdout=""))
+        uut = _manager(tmp_path, runner)
+        uut.stop()
+
+    def test_stop_refuses_when_the_cluster_exists_but_helm_cannot_reach_it(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["helm", "upgrade"],
+            _completed(returncode=1, stderr="Error: Kubernetes cluster unreachable: connection refused"),
+        )
+        runner.on(["kind", "get", "clusters"], _completed(stdout="foreverbull\n"))
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(CommandError):
+            uut.stop()
+
+    def test_ready_timeout_defaults_to_120(self):
+        assert ready_timeout_seconds({}) == DEFAULT_READY_TIMEOUT_SECONDS
+        assert ready_timeout_seconds({READY_TIMEOUT_ENV: "  "}) == DEFAULT_READY_TIMEOUT_SECONDS
+
+    def test_ready_timeout_reads_whole_seconds(self):
+        assert ready_timeout_seconds({READY_TIMEOUT_ENV: " 900 "}) == 900
+
+    def test_ready_timeout_rejects_a_word(self):
+        with pytest.raises(ValueError, match="whole number"):
+            ready_timeout_seconds({READY_TIMEOUT_ENV: "soon"})
+
+    def test_ready_timeout_rejects_zero(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            ready_timeout_seconds({READY_TIMEOUT_ENV: "0"})
+
     def test_remove_uninstalls_helm(self, tmp_path: Path):
         runner = FakeRunner()
         uut = _manager(tmp_path, runner)
         uut.remove()
         uninstall = runner.calls_starting_with("helm", "uninstall")[0]
         assert "foreverbull" in uninstall
+        assert runner.calls_starting_with("kind", "delete") == []
+
+    def test_remove_without_a_kind_cluster_ignores_unreachable_helm(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(
+            ["helm", "uninstall"],
+            _completed(returncode=1, stderr="Error: Kubernetes cluster unreachable: connection refused"),
+        )
+        runner.on(["kind", "get", "clusters"], _completed(stdout=""))
+        uut = _manager(tmp_path, runner)
+        uut.remove(purge=True)
         assert runner.calls_starting_with("kind", "delete") == []
 
     def test_remove_purge_deletes_kind_and_data(self, tmp_path: Path):
