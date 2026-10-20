@@ -30,7 +30,8 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     elif [ "${TARGETARCH}" = "amd64" ]; then \
     make build; \
     else \
-    echo "Unsupported architecture"; \ exit 1; \
+    echo "Unsupported architecture: ${TARGETARCH}" >&2; \
+    exit 1; \
     fi
 
 RUN pip install -U .
