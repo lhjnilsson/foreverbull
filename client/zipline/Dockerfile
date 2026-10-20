@@ -1,4 +1,7 @@
-FROM lhjnilsson/zipline_base:latest
+# CI passes a base built from base.Dockerfile in the same run. Every other
+# build uses the published base.
+ARG ZIPLINE_BASE=lhjnilsson/zipline_base:latest
+FROM ${ZIPLINE_BASE}
 
 # pip and the probe install need root. A rebuilt base already drops to foreverbull.
 USER root

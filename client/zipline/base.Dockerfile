@@ -1,10 +1,10 @@
-FROM python:3.14
+FROM python:3.14-trixie
 
 ARG TARGETARCH
 
 RUN apt-get update
 RUN apt-get install -y libhdf5-dev liblapack-dev gfortran cmake build-essential python3-dev automake autoconf
-RUN apt install -y libatlas-base-dev python3-dev gfortran pkg-config libfreetype6-dev hdf5-tools
+RUN apt install -y libopenblas-dev python3-dev gfortran pkg-config libfreetype6-dev hdf5-tools
 RUN ln -s /usr/include/locale.h /usr/include/xlocale.h
 
 RUN curl -L -o ta-lib-0.6.4-src.tar.gz  https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
@@ -30,7 +30,8 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     elif [ "${TARGETARCH}" = "amd64" ]; then \
     make build; \
     else \
-    echo "Unsupported architecture"; \ exit 1; \
+    echo "Unsupported architecture: ${TARGETARCH}" >&2; \
+    exit 1; \
     fi
 
 RUN pip install -U .

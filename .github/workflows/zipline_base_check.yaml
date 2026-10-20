@@ -1,0 +1,123 @@
+name: "zipline base build check"
+# Builds client/zipline/base.Dockerfile from scratch, then the zipline
+# image on top of it, and imports the engine stack. Nothing is pushed:
+# zipline_base.yaml (workflow_dispatch) still publishes the base, and
+# on_commit.yaml still builds zipline on the published base for the e2e.
+# The paths are the base itself and what ends up installed on top of it:
+# the engine Dockerfile and the client's Python dependencies.
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - client/zipline/base.Dockerfile
+      - client/zipline/Dockerfile
+      - client/pyproject.toml
+      - client/zipline/pyproject.toml
+      - .github/workflows/zipline_base_check.yaml
+  # Fork branches never push here, so a pull request is the only event that
+  # checks them. Same-repo branches are already checked by the push event, and
+  # the job skips that pull request run instead of building the commit twice.
+  pull_request:
+    branches:
+      - main
+    paths:
+      - client/zipline/base.Dockerfile
+      - client/zipline/Dockerfile
+      - client/pyproject.toml
+      - client/zipline/pyproject.toml
+      - .github/workflows/zipline_base_check.yaml
+  workflow_dispatch:
+
+# A newer commit on the same branch or pull request supersedes the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the job only reads the checkout. No registry login.
+permissions:
+  contents: read
+
+jobs:
+  # Each architecture builds natively on its own runner; QEMU would compile
+  # TA-Lib, bcolz, and wheels without a 3.14 build under emulation.
+  build-zipline-base:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    name: build-zipline-base (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Stage foreverbull wheel
+        working-directory: ./client
+        run: |
+          set -euo pipefail
+          uv build --package foreverbull --wheel --out-dir /tmp/pypi
+          wheel="$(find /tmp/pypi -name 'foreverbull-0.0.0-py3-none-any.whl' -print -quit)"
+          test -s "${wheel}"
+          cp "${wheel}" foreverbull-0.0.0-py3-none-any.whl
+      # The docker driver keeps both images in the runner's image store, so
+      # the zipline build resolves the :ci base locally. That tag is never
+      # published, so a missing base fails the build instead of pulling one.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker
+      - name: Build Zipline base
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./client/zipline
+          file: ./client/zipline/base.Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          pull: true
+          no-cache: true
+          tags: lhjnilsson/zipline_base:ci
+          load: true
+      - name: Build Zipline on that base
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: client
+          file: ./client/zipline/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            ZIPLINE_BASE=lhjnilsson/zipline_base:ci
+            FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
+          tags: lhjnilsson/zipline:base-ci
+          load: true
+      # create_engine loads the DBAPI that SQLAlchemy maps postgresql:// to,
+      # which is where a missing Postgres driver fails ingest.
+      - name: Import the engine stack
+        run: |
+          set -euo pipefail
+          docker run --rm -i lhjnilsson/zipline:base-ci python - <<'PY'
+          import platform
+
+          import bcolz
+          import psycopg
+          import sqlalchemy
+          import zipline
+
+          import foreverbull_zipline  # noqa: F401
+
+          with open("/etc/os-release") as f:
+              release = dict(line.rstrip("\n").split("=", 1) for line in f if "=" in line)
+          codename = release.get("VERSION_CODENAME")
+          if codename != "trixie":
+              raise SystemExit(f"expected Debian trixie, got {codename!r}")
+
+          engine = sqlalchemy.create_engine("postgresql://user:password@localhost/foreverbull")
+          print(f"python {platform.python_version()} on {platform.machine()}, debian {codename}")
+          print(f"zipline {zipline.__version__}, bcolz {getattr(bcolz, '__version__', 'unknown')}")
+          print(f"sqlalchemy {sqlalchemy.__version__}, postgresql driver {engine.dialect.driver}")
+          print(f"psycopg {psycopg.__version__}")
+          PY
