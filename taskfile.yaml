@@ -84,7 +84,7 @@ tasks:
       - strategy:test:unit
 
   test:integration:
-    desc: Run client end-to-end tests
+    desc: Run the Kind demo backtest through fbenv and fbull
     dir: client/
     deps:
       - build:docker
@@ -92,7 +92,7 @@ tasks:
       - grafana:build:docker
     cmds:
       - uv sync
-      - VERSION=local ECHO=true uv run pytest tests/end_to_end/test_demo.py -vs
+      - VERSION=local ECHO=true uv run pytest ../tests/end_to_end/test_demo.py -vs
 
   mock:clean:
     desc: Remove generated mocks

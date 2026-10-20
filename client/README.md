@@ -51,7 +51,7 @@ Details: [cli/README.md](cli/README.md), [deploy/README.md](../deploy/README.md)
 
 ## Tests
 
-Default pytest (this `pyproject.toml`) ignores `tests/end_to_end` and `tests/integration`. Unit tests use Docker Testcontainers for Postgres; they do not use Kind.
+Default pytest (this `pyproject.toml`) ignores `tests/end_to_end` and `tests/integration`. Unit tests use Docker Testcontainers for Postgres; they do not use Kind. The Kind demo is the root suite `tests/end_to_end/`, run with `task test:integration`.
 
 ```bash
 uv run pytest                 # unit tests across the workspace

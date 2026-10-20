@@ -28,6 +28,7 @@ Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you cr
 | `client/cli/` | `fbull` and `fbenv` CLIs (`fbenv` is Kind/Helm, not a Docker network) |
 | `client/zipline/` | Zipline gRPC engine + Docker image |
 | `client/testing/` | Pytest plugin/fixtures (`fb_database`, etc.) |
+| `tests/end_to_end/` | Kind demo: `fbenv` and `fbull`. `task test:integration` |
 | `deploy/` | Kind config, Helm chart, cluster-config example |
 | `docker/Dockerfile` | Local `lhjnilsson/foreverbull` image |
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
@@ -85,7 +86,7 @@ Plain `go test ./...` does **not** run those files unless you pass `-tags=integr
 
 ### Python
 
-All Python tests run from `client/` with uv. `client/pyproject.toml` default addopts ignore `tests/end_to_end` and `tests/integration`.
+All Python tests run from `client/` with uv. `client/pyproject.toml` default addopts ignore `tests/end_to_end` (Zipline container fixtures) and `tests/integration`. The Kind demo is `tests/end_to_end/` at the repository root.
 
 ```bash
 cd client
@@ -140,10 +141,10 @@ These are **not** part of default `uv run pytest`:
 task test:integration
 ```
 
-That builds Foreverbull, Zipline, and Grafana local images, then from `client/` runs:
+That builds Foreverbull, Zipline, and Grafana local images, then from `client/` runs the root demo:
 
 ```bash
-VERSION=local ECHO=true uv run pytest tests/end_to_end/test_demo.py -vs
+VERSION=local ECHO=true uv run pytest ../tests/end_to_end/test_demo.py -vs
 ```
 
 `client/tests/integration/` is a heavier Zipline/ingest suite; pass that path explicitly if you need it. Some fixtures skip unless `BACKTEST_IMAGE` is set.
