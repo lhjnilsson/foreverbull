@@ -3,7 +3,10 @@ from typing import Literal
 from rich.markup import escape
 from rich.padding import Padding
 from rich.table import Table
+from rich.text import Text
 
+from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
+from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -12,6 +15,12 @@ from foreverbull_cli.output import execution_link
 # Eight hex characters of a UUID are enough to tell a user's executions apart;
 # `fbull backtest execution` refuses a prefix that matches more than one.
 SHORT_EXECUTION_ID_LENGTH = 8
+
+# Shown instead of the generic no-trades line when the server says an ETF-built
+# universe had no member on any date of the run. One constant so the copy can change in one place.
+EMPTY_UNIVERSE_NO_TRADES = (
+    "No trades: the backtest's universe was empty for this period, so the strategy had no symbols to trade."
+)
 
 
 def short_execution_id(execution_id: str) -> str:
@@ -76,6 +85,15 @@ def held_no_position(periods: list[execution_pb.Period]) -> bool:
     return all(period.longs_count == 0 and period.shorts_count == 0 for period in periods)
 
 
+def universe_was_empty(response: backtest_service_pb.GetExecutionResponse) -> bool:
+    """The server says the ETF universe had no member on any date of the run.
+
+    Both fields are checked: an older broker sends UNSPECIFIED and false, and a
+    symbol-list backtest is never reported empty, so both keep the generic notice.
+    """
+    return response.universe_source == backtest_pb.UniverseSource.ETF and response.universe_empty
+
+
 def metrics_table(benchmark: str, period: execution_pb.Period) -> Table:
     """The last period carries the run's cumulative return, ratios, and drawdown."""
     table = Table.grid(padding=(0, 2))
@@ -99,6 +117,7 @@ def print_run_summary(
     end_iso: str,
     execution_id: str,
     periods: list[execution_pb.Period],
+    universe_empty: bool,
 ) -> None:
     if not periods:
         console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
@@ -112,10 +131,14 @@ def print_run_summary(
         console.print()
         if held_no_position(periods):
             # Without this line a tradeless run reads as a broken one: zeros and dashes, no reason.
-            console.print(
-                f"  No trades: the strategy held no position on any of the {len(periods)} trading days.",
-                highlight=False,
-            )
+            if universe_empty:
+                # Longer than the generic line, so the padding keeps a wrapped tail under the indent.
+                console.print(Padding(Text(EMPTY_UNIVERSE_NO_TRADES), (0, 0, 0, 2), expand=False))
+            else:
+                console.print(
+                    f"  No trades: the strategy held no position on any of the {len(periods)} trading days.",
+                    highlight=False,
+                )
             console.print(
                 "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
                 highlight=False,

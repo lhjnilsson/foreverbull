@@ -709,20 +709,32 @@ def _final_period(**overrides) -> execution_pb.Period:
     return execution_pb.Period(**fields)
 
 
-def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
+def _invoke_run(
+    runner,
+    mock_backtest_session,
+    periods,
+    backtest_entity=None,
+    universe_source=backtest_pb.UniverseSource.SYMBOL_LIST,
+    universe_empty=False,
+):
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
         patch("foreverbull.broker.backtest.create_session") as create_session,
         patch("foreverbull.broker.backtest.get") as get,
-        patch("foreverbull.broker.backtest.get_execution") as get_execution,
+        patch("foreverbull.broker.backtest.get_execution_response") as get_execution,
     ):
         from_file_path.return_value = True
         get.return_value = backtest_entity or _sample_backtest()
         create_session.return_value = iter(
             [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
-        get_execution.return_value = (_sample_execution(), periods)
+        get_execution.return_value = backtest_service_pb.GetExecutionResponse(
+            execution=_sample_execution(),
+            periods=periods,
+            universe_source=universe_source,
+            universe_empty=universe_empty,
+        )
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py"])
         create_session.assert_called_once()

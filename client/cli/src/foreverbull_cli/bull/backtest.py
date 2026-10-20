@@ -30,6 +30,7 @@ from foreverbull_cli.bull.etf_catalog import etf_catalog
 from foreverbull_cli.bull.etf_catalog import known_etf_names
 from foreverbull_cli.bull.summary import distinguishing_execution_ids
 from foreverbull_cli.bull.summary import print_run_summary
+from foreverbull_cli.bull.summary import universe_was_empty
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -610,7 +611,7 @@ def run(
 
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
-    _, periods = broker.backtest.get_execution(execution_id)
+    response = broker.backtest.get_execution_response(execution_id)
     print_run_summary(
         backtest_name=entity.name,
         benchmark=entity.benchmark,
@@ -618,7 +619,8 @@ def run(
         start_iso=start_iso,
         end_iso=end_iso,
         execution_id=execution_id,
-        periods=list(periods),
+        periods=list(response.periods),
+        universe_empty=universe_was_empty(response),
     )
 
 

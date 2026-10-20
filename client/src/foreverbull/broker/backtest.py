@@ -106,3 +106,13 @@ def get_execution(
     )
     rsp = servicer.get_execution(req)
     return required(rsp.execution, "execution"), rsp.periods
+
+
+@backtest_servicer
+def get_execution_response(
+    servicer: backtest_service_pb_grpc.BacktestServicerClientSync, execution_id: str
+) -> backtest_service_pb.GetExecutionResponse:
+    """The whole response, including the run-level universe fields `get_execution` drops."""
+    rsp = servicer.get_execution(backtest_service_pb.GetExecutionRequest(execution_id=execution_id))
+    required(rsp.execution, "execution")
+    return rsp
