@@ -1,8 +1,9 @@
 name: "on commit jobs"
-# Kind/Helm e2e is not run here (local: task test:integration / task env).
-# Cluster smoke lives in kind_e2e.yaml (workflow_dispatch + push to main).
-# Go backtest tests tagged //go:build integration call container.NewEngine
-# and need a cluster; they stay off this workflow.
+# product-e2e loads the three images built below into Kind and runs
+# tests/end_to_end through fbenv and fbull. It does not run on main.
+# kind_e2e.yaml (workflow_dispatch + push to main) stays the post-merge
+# health probe. Go backtest tests tagged //go:build integration stay off
+# this workflow: they start their own Postgres, NATS, and Minio.
 on:
   push:
     branches-ignore:
@@ -250,3 +251,97 @@ jobs:
           name: zipline
           path: /tmp/zipline.tar
           retention-days: 1
+
+  # Reuses the three image tarballs. fbenv only runs :local or the installed
+  # client version, so the :on_commit tags are retagged before the test.
+  # FBENV_READY_TIMEOUT covers a cold Kind node pulling Postgres, NATS, and Minio.
+  # Trading stays off: no profiles file, and fbenv does not enable it.
+  product-e2e:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    needs:
+      - lint-unit-tests
+      - python-lint-unit-tests
+      - helm-lint
+      - proto-check
+      - build-docker-foreverbull
+      - build-docker-grafana
+      - build-docker-zipline
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: local
+      ECHO: "true"
+      FBENV_READY_TIMEOUT: "900"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download Foreverbull image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: foreverbull
+          path: /tmp/images
+      - name: Download Zipline image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zipline
+          path: /tmp/images
+      - name: Download Grafana image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fb-grafana
+          path: /tmp/images
+      - name: Load images and retag them local
+        run: |
+          set -euo pipefail
+          docker load -i /tmp/images/foreverbull.tar
+          docker load -i /tmp/images/zipline.tar
+          docker load -i /tmp/images/fb_grafana.tar
+          docker tag lhjnilsson/foreverbull:on_commit lhjnilsson/foreverbull:local
+          docker tag lhjnilsson/zipline:on_commit lhjnilsson/zipline:local
+          docker tag lhjnilsson/fb-grafana:on_commit lhjnilsson/fb-grafana:local
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.4
+      - name: Install Kind and kubectl
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/kind "https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64"
+          sudo install -m 755 /tmp/kind /usr/local/bin/kind
+          curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl"
+          sudo install -m 755 /tmp/kubectl /usr/local/bin/kubectl
+          kind version
+          kubectl version --client
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      # zipline-reloaded, pulled in by uv sync --all-packages, builds against this library.
+      - name: Install TA-Lib
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+          tar -xzf /tmp/ta-lib-0.6.4-src.tar.gz -C /tmp
+          cd /tmp/ta-lib-0.6.4
+          ./configure
+          sudo make
+          sudo make install
+          sudo ldconfig
+      - name: Sync the client workspace
+        working-directory: ./client
+        run: uv sync --all-packages --all-extras
+      - name: Run the Kind backtest
+        working-directory: ./client
+        run: uv run pytest ../tests/end_to_end/test_demo.py -vs
+      - name: Dump the cluster
+        if: failure()
+        run: |
+          set +e
+          docker image ls 'lhjnilsson/*'
+          kubectl --context kind-foreverbull -n foreverbull get pods,deploy,svc,pvc -o wide
+          for name in postgres nats minio zipline foreverbull grafana; do
+            kubectl --context kind-foreverbull -n foreverbull describe "deployment/${name}"
+            kubectl --context kind-foreverbull -n foreverbull logs "deploy/${name}" --tail=80
+          done
+          exit 0

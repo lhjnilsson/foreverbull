@@ -1,5 +1,6 @@
 import os
 import pathlib
+import re
 
 import pytest
 import typer
@@ -11,7 +12,8 @@ from foreverbull_cli.env import cli as env_cli
 from typer.testing import CliRunner
 
 
-TEMPLATES = pathlib.Path(__file__).resolve().parents[2] / "templates" / "simple"
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+TEMPLATES = REPO_ROOT / "client" / "templates" / "simple"
 
 
 @pytest.fixture
@@ -50,19 +52,33 @@ def simple_algorithm(tmp_path):
 
 
 def test_start_stop(runner, simple_algorithm):
+    """Install Kind with fbenv and run the simple template through fbull.
+
+    CI retags the images built on this commit to `:local` and runs this test.
+    """
     crossover, backtest_file = simple_algorithm
 
     result = runner(env_cli.cli, "stop --remove --purge")
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
     result = runner(env_cli.cli, "create", env={"VERSION": "local"})
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
     result = runner(env_cli.cli, "start", env={"VERSION": "local"})
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
     result = runner(backtest_cli, f"create --file {backtest_file}")
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert "Using provider: yahoo (default)" in result.output
 
     result = runner(backtest_cli, f"run demo {crossover}")
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert "Backtest finished: demo · 2021-01-01 → 2021-03-31 · provider: yahoo" in result.output
+    assert "Return" in result.output
+
+    match = re.search(r"fbull backtest execution ([0-9a-f]+)", result.output)
+    assert match is not None, result.output
+    execution = runner(backtest_cli, f"execution {match.group(1)}")
+    assert execution.exit_code == 0, execution.output
+    assert "Portfolio" in execution.output
+    assert "2021-" in execution.output

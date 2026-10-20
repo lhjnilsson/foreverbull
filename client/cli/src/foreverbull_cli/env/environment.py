@@ -78,6 +78,11 @@ DEPLOYMENTS: tuple[str, ...] = tuple(name for _, name in WORKLOADS)
 # kubectl returns at most this many broker log lines, so a crash loop cannot
 # flood the terminal.
 BROKER_LOG_TAIL_LINES = 20
+# fbenv start's kubectl wait. A warm machine finishes well inside this.
+# A cold Kind node still has to pull Postgres, NATS, and Minio; CI sets
+# FBENV_READY_TIMEOUT above this default so that pull can finish.
+DEFAULT_READY_TIMEOUT_SECONDS = 120
+READY_TIMEOUT_ENV = "FBENV_READY_TIMEOUT"
 # Python-only users never set POSTGRES_URL or the port range; Helm does. Each
 # known broker error maps to a sentence they can act on, shown before the raw
 # log line.
@@ -351,6 +356,30 @@ def match_broker_error(logs: str) -> BrokerDiagnosis | None:
             if needle in lowered:
                 return BrokerDiagnosis(advice, line.strip())
     return None
+
+
+def ready_timeout_seconds(environ: Mapping[str, str] | None = None) -> int:
+    """Seconds `fbenv start` waits for the six deployments.
+
+    An empty `FBENV_READY_TIMEOUT` keeps the 120 second default. Any other
+    value must be a whole number of seconds, at least 1.
+    """
+    source = os.environ if environ is None else environ
+    raw = str(source.get(READY_TIMEOUT_ENV) or "").strip()
+    if raw == "":
+        return DEFAULT_READY_TIMEOUT_SECONDS
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{READY_TIMEOUT_ENV} must be a whole number of seconds, got {raw!r}.") from exc
+    if value < 1:
+        raise ValueError(f"{READY_TIMEOUT_ENV} must be at least 1 second, got {value}.")
+    return value
+
+
+def _helm_says_release_absent(combined_lower: str) -> bool:
+    """Helm's words for a release this cluster does not have."""
+    return "not found" in combined_lower or "has no deployed releases" in combined_lower
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -627,7 +656,7 @@ class ClusterManager:
         config: Config,
         runner: CommandRunner | None = None,
         repo_root: Path | None = None,
-        ready_timeout_seconds: int = 120,
+        ready_timeout_seconds: int = DEFAULT_READY_TIMEOUT_SECONDS,
         port_probe: Callable[[int], bool] = port_is_free,
     ):
         self.config = config
@@ -1013,10 +1042,8 @@ class ClusterManager:
             cmd.extend(["--set", "credentials.allowDefaults=true"])
         result = self.runner.run(cmd, check=not missing_ok)
         if missing_ok and result.returncode != 0:
-            combined = f"{result.stdout} {result.stderr}".lower()
-            if "not found" in combined:
-                return
-            raise CommandError(cmd, result)
+            self._ignore_missing_helm(result, cmd)
+            return
         self._status_cache = None
 
     def _kind_cluster_exists(self) -> bool:
@@ -1031,15 +1058,26 @@ class ClusterManager:
             return
         self.runner.run(["kind", "delete", "cluster", "--name", self.config.kind_name])
 
+    def _ignore_missing_helm(self, result: subprocess.CompletedProcess[str], cmd: Sequence[str]) -> None:
+        """Treat a missing release, or no local Kind cluster, as nothing to change.
+
+        `fbenv stop --remove --purge` runs before `fbenv create` on a clean
+        machine. Helm then cannot reach a cluster, and its error does not
+        say "not found".
+        """
+        combined = f"{result.stdout} {result.stderr}".lower()
+        if _helm_says_release_absent(combined):
+            return
+        if self.config.is_local and not self._kind_cluster_exists():
+            return
+        raise CommandError(cmd, result)
+
     def _helm_uninstall(self) -> None:
         cmd = ["helm", "uninstall", self.config.release_name, *self._kube_flags(helm=True)]
         result = self.runner.run(cmd, check=False)
         if result.returncode == 0:
             return
-        combined = f"{result.stdout} {result.stderr}".lower()
-        if "not found" in combined or "release: not found" in combined:
-            return
-        raise CommandError(cmd, result)
+        self._ignore_missing_helm(result, cmd)
 
     def _wait_until_ready(self) -> None:
         cmd = [

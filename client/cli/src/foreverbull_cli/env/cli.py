@@ -15,6 +15,7 @@ from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import VersionError
+from foreverbull_cli.env.environment import ready_timeout_seconds
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 from foreverbull_cli.output import FBSpinnerColumn
@@ -395,6 +396,11 @@ def use(
 
 @cli.callback()
 def initialize(ctx: typer.Context):
+    try:
+        timeout = ready_timeout_seconds()
+    except ValueError as exc:
+        console.print(f"✖ {exc}\nNothing was changed.", markup=False, highlight=False)
+        raise typer.Exit(1) from exc
     config = Config()
     environment = Environment()
-    ctx.obj = ClusterManager(environment, config)
+    ctx.obj = ClusterManager(environment, config, ready_timeout_seconds=timeout)
