@@ -16,21 +16,19 @@ from foreverbull_cli.output import execution_link
 # `fbull backtest execution` refuses a prefix that matches more than one.
 SHORT_EXECUTION_ID_LENGTH = 8
 
-# Named in the empty-universe notice when the ETF symbol is not known. GetExecution
-# does not return the symbol a backtest was built from, so `fbull backtest run` uses this.
-UNKNOWN_ETF_UNIVERSE = "the universe"
-
 
 def empty_universe_notice(etf_symbol: str, start_iso: str, end_iso: str) -> tuple[str, str]:
     """Shown instead of the generic no-trades lines when an ETF universe had no member on any date of the run.
 
     There is no Sharpe and Sortino line: the universe, not the ratios, is why the run is flat.
     """
-    subject = etf_symbol or UNKNOWN_ETF_UNIVERSE
-    reason = (
-        f"No trades: {subject} had no member stocks between {start_iso} and {end_iso},"
-        " so the strategy had nothing to trade."
-    )
+    # GetExecution does not return the symbol a backtest was built from, so
+    # `fbull backtest run` has none and names the universe instead.
+    if etf_symbol:
+        what = f"{etf_symbol} had no member stocks"
+    else:
+        what = "the universe was empty"
+    reason = f"No trades: {what} between {start_iso} and {end_iso}, so the strategy had nothing to trade."
     return reason, "Pick another period or universe with `fbull backtest create`, then run it again."
 
 

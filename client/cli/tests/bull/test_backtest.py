@@ -859,8 +859,8 @@ def test_backtest_run_names_an_empty_etf_universe_as_the_reason_for_no_trades(ru
     # GetExecution has no ETF symbol, so the run names the universe. CliRunner output is
     # 80 columns wide, so each line wraps under its indent.
     assert _notice_lines(result.stdout) == [
-        "  No trades: the universe had no member stocks between 2020-01-01 and",
-        "  2020-01-31, so the strategy had nothing to trade.",
+        "  No trades: the universe was empty between 2020-01-01 and 2020-01-31, so the",
+        "  strategy had nothing to trade.",
         "  Pick another period or universe with `fbull backtest create`, then run it",
         "  again.",
         "",
@@ -879,8 +879,8 @@ def test_backtest_run_empty_etf_universe_notice_uses_the_run_dates(runner):
     )
     assert result.exit_code == 0
     assert _notice_lines(result.stdout)[:2] == [
-        "  No trades: the universe had no member stocks between 2020-01-06 and",
-        "  2020-01-08, so the strategy had nothing to trade.",
+        "  No trades: the universe was empty between 2020-01-06 and 2020-01-08, so the",
+        "  strategy had nothing to trade.",
     ]
 
 
@@ -918,8 +918,8 @@ def test_run_summary_names_the_etf_symbol_of_an_empty_universe():
 def test_run_summary_falls_back_to_the_universe_without_an_etf_symbol():
     stdout = _render_summary(universe_etf="")
     assert _notice_lines(stdout)[:2] == [
-        "  No trades: the universe had no member stocks between 2020-01-01 and",
-        "  2020-01-31, so the strategy had nothing to trade.",
+        "  No trades: the universe was empty between 2020-01-01 and 2020-01-31, so the",
+        "  strategy had nothing to trade.",
     ]
     assert "Sharpe and Sortino are not defined" not in stdout
 
