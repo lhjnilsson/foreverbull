@@ -288,6 +288,19 @@ The session decides once, before the first bar: any `universe_member` row for th
 
 `RunBacktestRequest.benchmark` is the stored `backtest.benchmark` for both kinds. An empty benchmark makes Zipline use a flat zero series, so `benchmark_period_return` would be stored as `0`.
 
+### 7.4 Universe of a run on `GetExecution`
+
+`BacktestServicer.GetExecution` returns two run-level fields so a client can tell an empty ETF universe from a strategy that did not trade. Both are read from the backtest's current `universe_member` rows when the response is built. They are not stored with the run.
+
+| Field | Value |
+| --- | --- |
+| `universe_source` | `UNIVERSE_SOURCE_ETF` when the backtest has any `universe_member` row (§7.2), `UNIVERSE_SOURCE_SYMBOL_LIST` when it has none (§7.3). Same rule the session uses. |
+| `universe_empty` | `true` only for `UNIVERSE_SOURCE_ETF` when no half-open `[from_date, to_date)` interval holds any date of the execution's closed `[start_date, end_date]`. |
+
+`universe_empty` is `false` when the universe had a member on at least one date of the run, when the execution has no start or end date, when the end is before the start, and for every symbol-list backtest. Membership on some days and not others is not empty. The check is on calendar dates, so membership that covers only non-trading days of the run counts as not empty, and a member with no `asset_symbol` alias at `t` still counts as a member. Enabled period assets are the ingest union (§7.1), not membership, and are not read.
+
+`UNIVERSE_SOURCE_UNSPECIFIED` with `false` is what an older broker sends, and what `SessionServicer.GetExecution` sends because it does not read membership. A client treats it as unknown. `fbull backtest run` names the empty universe as the reason for no trades only when the source is ETF and `universe_empty` is `true`; every other tradeless run keeps the generic notice.
+
 ## 8. Zipline `auto_close_date`
 
 `SQLIngester.create_metadata` already declares `("auto_close_date", "datetime64[ns]")`. The writer builds `autoclose_date = end_date + pd.Timedelta(days=1)` then sets it to `None`.
