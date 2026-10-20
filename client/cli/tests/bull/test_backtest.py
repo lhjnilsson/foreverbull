@@ -816,6 +816,105 @@ def test_backtest_run_says_plainly_when_no_trades_were_placed(runner):
     assert "+24.8%" in result.stdout
 
 
+def _flat_periods(count: int) -> list[execution_pb.Period]:
+    """Periods of a run that never held a position: zeros and no ratios."""
+    flat = [
+        _final_period(
+            portfolio_value=100000.0,
+            algorithm_period_return=0.0,
+            max_drawdown=0.0,
+            longs_count=0,
+            benchmark_period_return=0.248,
+        )
+        for _ in range(count)
+    ]
+    for period in flat:
+        period.clear_field("sharpe")
+        period.clear_field("sortino")
+    return flat
+
+
+def _notice_lines(stdout: str) -> list[str]:
+    """The lines between the metrics table and Details, without the padding Rich adds to a wrapped line."""
+    lines = [line.rstrip() for line in stdout.splitlines()]
+    first = next(index for index, line in enumerate(lines) if line.startswith("  No trades"))
+    last = next(index for index, line in enumerate(lines) if line.startswith("  Details:"))
+    return lines[first:last]
+
+
+def test_backtest_run_names_an_empty_etf_universe_as_the_reason_for_no_trades(runner):
+    # The server says the ETF universe had no member on any date of the run, so the strategy got no symbols.
+    result, _ = _invoke_run(
+        runner,
+        _run_session_mocks(),
+        _flat_periods(250),
+        universe_source=backtest_pb.UniverseSource.ETF,
+        universe_empty=True,
+    )
+    assert result.exit_code == 0
+    # CliRunner output is 80 columns wide, so the line wraps under its indent.
+    assert _notice_lines(result.stdout) == [
+        "  No trades: the backtest's universe was empty for this period, so the strategy",
+        "  had no symbols to trade.",
+        "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
+        "",
+    ]
+
+
+def test_backtest_run_etf_universe_with_members_keeps_the_generic_no_trades_line(runner):
+    # Members on some or all days, and the strategy still never held a position.
+    result, _ = _invoke_run(
+        runner,
+        _run_session_mocks(),
+        _flat_periods(250),
+        universe_source=backtest_pb.UniverseSource.ETF,
+        universe_empty=False,
+    )
+    assert result.exit_code == 0
+    assert _notice_lines(result.stdout) == [
+        "  No trades: the strategy held no position on any of the 250 trading days.",
+        "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
+        "",
+    ]
+
+
+def test_backtest_run_symbol_list_without_trades_keeps_the_generic_no_trades_line(runner):
+    result, _ = _invoke_run(runner, _run_session_mocks(), _flat_periods(3))
+    assert result.exit_code == 0
+    assert _notice_lines(result.stdout) == [
+        "  No trades: the strategy held no position on any of the 3 trading days.",
+        "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
+        "",
+    ]
+
+
+@pytest.mark.parametrize(
+    "universe_source",
+    [backtest_pb.UniverseSource.SYMBOL_LIST, backtest_pb.UniverseSource.UNSPECIFIED],
+)
+def test_backtest_run_empty_flag_without_an_etf_source_keeps_the_generic_line(runner, universe_source):
+    # Only an ETF source can be empty; an older broker sends UNSPECIFIED.
+    result, _ = _invoke_run(
+        runner, _run_session_mocks(), _flat_periods(3), universe_source=universe_source, universe_empty=True
+    )
+    assert result.exit_code == 0
+    assert "No trades: the strategy held no position on any of the 3 trading days." in result.stdout
+    assert "universe was empty" not in result.stdout
+
+
+def test_backtest_run_empty_etf_universe_with_a_held_position_has_no_no_trades_line(runner):
+    periods = [_final_period(longs_count=0), _final_period(longs_count=1)]
+    result, _ = _invoke_run(
+        runner,
+        _run_session_mocks(),
+        periods,
+        universe_source=backtest_pb.UniverseSource.ETF,
+        universe_empty=True,
+    )
+    assert result.exit_code == 0
+    assert "No trades" not in result.stdout
+
+
 def test_backtest_run_with_a_held_position_has_no_no_trades_line(runner):
     periods = [_final_period(longs_count=0), _final_period(longs_count=0, shorts_count=1), _final_period(longs_count=0)]
     result, _ = _invoke_run(runner, _run_session_mocks(), periods)
