@@ -37,7 +37,9 @@ RUN pip install -U .
 
 
 RUN pip install zipline-reloaded --upgrade
-RUN pip install psycopg2-binary --upgrade
+# SQLAlchemy 2.1 maps postgresql:// to psycopg 3. The client wheel still brings
+# psycopg2-binary, so a base that resolves SQLAlchemy 2.0 keeps working too.
+RUN pip install "psycopg[binary]" --upgrade
 
 # Build steps above stay root. The image user is the one a derived runtime inherits.
 RUN groupadd --gid 10001 foreverbull \
