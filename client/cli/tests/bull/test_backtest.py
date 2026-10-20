@@ -837,8 +837,8 @@ def test_backtest_run_unknown_name_prints_one_plain_line(monkeypatch):
 
     assert result.exit_code == 1
     assert result.output == (
-        "✖ No backtest named 'typo'. Check the name with `fbull backtest list`, "
-        "or create it first with `fbull backtest create`.\n"
+        "✖ There's no backtest named 'typo'. Run `fbull backtest list` to see your "
+        "backtests, or create it with `fbull backtest create`.\n"
     )
     assert "no rows in result set" not in result.output
     create_session.assert_not_called()
@@ -851,7 +851,7 @@ def test_backtest_run_other_lookup_errors_are_not_reported_as_missing():
 
     assert result.exit_code != 0
     assert result.exception is broken
-    assert "No backtest named" not in result.output
+    assert "no backtest named" not in result.output
 
 
 def test_backtest_run_invalid_start(runner):

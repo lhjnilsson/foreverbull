@@ -557,8 +557,8 @@ def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:
         code = getattr(exc, "code", None)
         if callable(code) and code() == grpc.StatusCode.NOT_FOUND:
             _fail(
-                f"No backtest named '{name}'. Check the name with `fbull backtest list`, "
-                "or create it first with `fbull backtest create`."
+                f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
+                "backtests, or create it with `fbull backtest create`."
             )
         raise
 
