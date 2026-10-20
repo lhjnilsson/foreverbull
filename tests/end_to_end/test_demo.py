@@ -1,6 +1,8 @@
+import json
 import os
 import pathlib
 import re
+import subprocess
 
 import pytest
 import typer
@@ -16,6 +18,10 @@ from foreverbull import broker
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 TEMPLATES = REPO_ROOT / "client" / "templates" / "simple"
+ZIPLINE_BUNDLE_SCRIPT = pathlib.Path(__file__).with_name("zipline_bundle.py")
+# fbenv's defaults: Kind cluster `foreverbull`, Helm namespace `foreverbull`.
+KIND_CONTEXT = "kind-foreverbull"
+NAMESPACE = "foreverbull"
 # summary.print_run_summary prints this when no period closed with a position.
 NO_TRADES_NOTICE = "No trades:"
 
@@ -53,6 +59,38 @@ def simple_algorithm(tmp_path):
     )
     project = tmp_path / "simple"
     return project / "crossover.py", project / "backtest.yaml"
+
+
+def zipline_bundle(action: str, backtest: str) -> str:
+    """Run zipline_bundle.py in the Zipline pod, where the run reads its bundle."""
+    completed = subprocess.run(
+        [
+            "kubectl",
+            "--context",
+            KIND_CONTEXT,
+            "-n",
+            NAMESPACE,
+            "exec",
+            "-i",
+            "deploy/zipline",
+            "--",
+            "python",
+            "-",
+            action,
+            backtest,
+        ],
+        input=ZIPLINE_BUNDLE_SCRIPT.read_text(encoding="utf-8"),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return completed.stdout
+
+
+def bundle_state(backtest: str) -> dict:
+    return json.loads(zipline_bundle("state", backtest).strip().splitlines()[-1])
 
 
 def assert_run_traded(output: str) -> None:
@@ -112,3 +150,24 @@ def test_start_stop(runner, simple_algorithm):
     assert execution.exit_code == 0, execution.output
     assert "Portfolio" in execution.output
     assert "2021-" in execution.output
+
+    # A backtest created before the session-alignment fix: its stored
+    # bundle carries 14:30 UTC asset dates and no version marker. It must
+    # run without `fbull backtest create`, rebuilding exactly once.
+    zipline_bundle("stale", "demo")
+    assert bundle_state("demo") == {"ingests": 1, "version": 0, "misaligned": True}
+
+    result = runner(backtest_cli, f"run demo {crossover}")
+    assert result.exit_code == 0, result.output
+    assert "Backtest finished: demo · 2021-01-01 → 2021-03-31 · provider: yahoo" in result.output
+    assert_run_traded(result.output)
+    # The rebuild writes a second, aligned ingest next to the stale one.
+    assert bundle_state("demo") == {"ingests": 2, "version": 1, "misaligned": False}
+
+    # The run downloads the stale ingestion again; the rebuilt ingest is
+    # newer and stamped, so a second rebuild would only add a third.
+    result = runner(backtest_cli, f"run demo {crossover}")
+    assert result.exit_code == 0, result.output
+    assert "Backtest finished: demo · 2021-01-01 → 2021-03-31 · provider: yahoo" in result.output
+    assert_run_traded(result.output)
+    assert bundle_state("demo") == {"ingests": 2, "version": 1, "misaligned": False}
