@@ -826,6 +826,34 @@ def test_backtest_run_dry(runner):
         create_session.assert_not_called()
 
 
+def test_backtest_run_unknown_name_prints_one_plain_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    missing = _BrokenStream("backtest typo not found", grpc.StatusCode.NOT_FOUND)
+    with (
+        patch("foreverbull.broker.backtest.get", side_effect=missing),
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        result = CliRunner().invoke(backtest, ["run", "typo", "demo.py"])
+
+    assert result.exit_code == 1
+    assert result.output == (
+        "✖ No backtest named 'typo'. Check the name with `fbull backtest list`, "
+        "or create it first with `fbull backtest create`.\n"
+    )
+    assert "no rows in result set" not in result.output
+    create_session.assert_not_called()
+
+
+def test_backtest_run_other_lookup_errors_are_not_reported_as_missing():
+    broken = _BrokenStream("Socket closed")
+    with patch("foreverbull.broker.backtest.get", side_effect=broken):
+        result = CliRunner().invoke(backtest, ["run", "demo", "demo.py"])
+
+    assert result.exit_code != 0
+    assert result.exception is broken
+    assert "No backtest named" not in result.output
+
+
 def test_backtest_run_invalid_start(runner):
     with patch("foreverbull.broker.backtest.get") as get:
         get.return_value = _sample_backtest()
