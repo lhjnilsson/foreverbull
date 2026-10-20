@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -132,6 +133,19 @@ func (test *BacktestServerTest) createExecution(session string) *backtest.Execut
 	test.Require().NotNil(execution)
 
 	return execution
+}
+
+// replaceMembers gives the backtest one open universe_member interval from fromDate.
+func (test *BacktestServerTest) replaceMembers(backtestName string, fromDate time.Time) {
+	test.T().Helper()
+
+	const isin = "US0378331005"
+	instruments := repository.Instrument{Conn: test.pgx}
+	test.Require().NoError(instruments.Upsert(context.TODO(), isin, isin))
+	members := repository.UniverseMember{Conn: test.pgx}
+	test.Require().NoError(members.Replace(context.TODO(), backtestName, []repository.MemberInterval{
+		{ISIN: isin, FromDate: fromDate},
+	}))
 }
 
 func (test *BacktestServerTest) TestListBacktests() {
@@ -402,6 +416,43 @@ func (test *BacktestServerTest) TestGetExecution() {
 		test.NotNil(resp)
 		test.Equal(execution, resp.Execution)
 		test.Empty(resp.GetFunctions())
+	})
+	test.Run("symbol-list backtest", func() {
+		// No universe_member rows: the session passed the enabled period assets.
+		backtestRow := test.createBacktest("test_1")
+		execution := test.createExecution(test.createSession(backtestRow.Name).Id)
+
+		resp, err := test.client.GetExecution(context.Background(), &servicePb.GetExecutionRequest{
+			ExecutionId: execution.Id,
+		})
+		test.Require().NoError(err)
+		test.Equal(backtest.UniverseSource_UNIVERSE_SOURCE_SYMBOL_LIST, resp.GetUniverseSource())
+		test.False(resp.GetUniverseEmpty())
+	})
+	test.Run("ETF universe empty for the whole run", func() {
+		backtestRow := test.createBacktest("etf_1")
+		// The run is 2024-01-01; membership starts the next day.
+		test.replaceMembers(backtestRow.Name, time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC))
+		execution := test.createExecution(test.createSession(backtestRow.Name).Id)
+
+		resp, err := test.client.GetExecution(context.Background(), &servicePb.GetExecutionRequest{
+			ExecutionId: execution.Id,
+		})
+		test.Require().NoError(err)
+		test.Equal(backtest.UniverseSource_UNIVERSE_SOURCE_ETF, resp.GetUniverseSource())
+		test.True(resp.GetUniverseEmpty())
+	})
+	test.Run("ETF universe with a member during the run", func() {
+		backtestRow := test.createBacktest("etf_1")
+		test.replaceMembers(backtestRow.Name, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+		execution := test.createExecution(test.createSession(backtestRow.Name).Id)
+
+		resp, err := test.client.GetExecution(context.Background(), &servicePb.GetExecutionRequest{
+			ExecutionId: execution.Id,
+		})
+		test.Require().NoError(err)
+		test.Equal(backtest.UniverseSource_UNIVERSE_SOURCE_ETF, resp.GetUniverseSource())
+		test.False(resp.GetUniverseEmpty())
 	})
 	test.Run("stored arguments", func() {
 		backtestRow := test.createBacktest("test_1")
