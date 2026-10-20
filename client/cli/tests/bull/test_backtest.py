@@ -1,3 +1,4 @@
+import io
 import os
 import tempfile
 import time
@@ -20,7 +21,9 @@ from foreverbull_cli.bull.backtest import backtest
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.summary import format_drawdown
 from foreverbull_cli.bull.summary import format_percent
+from foreverbull_cli.bull.summary import print_run_summary
 from foreverbull_cli.output import execution_link
+from rich.console import Console
 from typer.testing import CliRunner
 
 from foreverbull.foreverbull import BacktestSession
@@ -716,6 +719,7 @@ def _invoke_run(
     backtest_entity=None,
     universe_source=backtest_pb.UniverseSource.SYMBOL_LIST,
     universe_empty=False,
+    args=(),
 ):
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
@@ -736,7 +740,7 @@ def _invoke_run(
             universe_empty=universe_empty,
         )
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
-        result = runner(backtest, ["run", "test_name", "demo.py"])
+        result = runner(backtest, ["run", "test_name", "demo.py", *args])
         create_session.assert_called_once()
         return result, get_execution
 
@@ -852,10 +856,78 @@ def test_backtest_run_names_an_empty_etf_universe_as_the_reason_for_no_trades(ru
         universe_empty=True,
     )
     assert result.exit_code == 0
-    # CliRunner output is 80 columns wide, so the line wraps under its indent.
+    # GetExecution has no ETF symbol, so the run names the universe. CliRunner output is
+    # 80 columns wide, so each line wraps under its indent.
     assert _notice_lines(result.stdout) == [
-        "  No trades: the backtest's universe was empty for this period, so the strategy",
-        "  had no symbols to trade.",
+        "  No trades: the universe had no member stocks between 2020-01-01 and",
+        "  2020-01-31, so the strategy had nothing to trade.",
+        "  Pick another period or universe with `fbull backtest create`, then run it",
+        "  again.",
+        "",
+    ]
+    assert "Sharpe and Sortino are not defined" not in result.stdout
+
+
+def test_backtest_run_empty_etf_universe_notice_uses_the_run_dates(runner):
+    result, _ = _invoke_run(
+        runner,
+        _run_session_mocks(),
+        _flat_periods(3),
+        universe_source=backtest_pb.UniverseSource.ETF,
+        universe_empty=True,
+        args=["--start", "2020-01-06", "--end", "2020-01-08"],
+    )
+    assert result.exit_code == 0
+    assert _notice_lines(result.stdout)[:2] == [
+        "  No trades: the universe had no member stocks between 2020-01-06 and",
+        "  2020-01-08, so the strategy had nothing to trade.",
+    ]
+
+
+def _render_summary(**overrides) -> str:
+    """print_run_summary on an 80-column console, the width CliRunner gives `backtest run`."""
+    fields = {
+        "backtest_name": "test_name",
+        "benchmark": "OEF",
+        "provider": "yahoo",
+        "start_iso": START.isoformat(),
+        "end_iso": END.isoformat(),
+        "execution_id": "exec-1",
+        "periods": _flat_periods(3),
+        "universe_empty": True,
+    }
+    fields.update(overrides)
+    buffer = io.StringIO()
+    with patch("foreverbull_cli.bull.summary.console", Console(file=buffer, width=80, color_system=None)):
+        print_run_summary(**fields)
+    return buffer.getvalue()
+
+
+def test_run_summary_names_the_etf_symbol_of_an_empty_universe():
+    stdout = _render_summary(universe_etf="OEF")
+    assert _notice_lines(stdout) == [
+        "  No trades: OEF had no member stocks between 2020-01-01 and 2020-01-31, so the",
+        "  strategy had nothing to trade.",
+        "  Pick another period or universe with `fbull backtest create`, then run it",
+        "  again.",
+        "",
+    ]
+    assert "Sharpe and Sortino are not defined" not in stdout
+
+
+def test_run_summary_falls_back_to_the_universe_without_an_etf_symbol():
+    stdout = _render_summary(universe_etf="")
+    assert _notice_lines(stdout)[:2] == [
+        "  No trades: the universe had no member stocks between 2020-01-01 and",
+        "  2020-01-31, so the strategy had nothing to trade.",
+    ]
+    assert "Sharpe and Sortino are not defined" not in stdout
+
+
+def test_run_summary_ignores_an_etf_symbol_when_the_universe_was_not_empty():
+    stdout = _render_summary(universe_empty=False, universe_etf="OEF")
+    assert _notice_lines(stdout) == [
+        "  No trades: the strategy held no position on any of the 3 trading days.",
         "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
         "",
     ]
@@ -899,7 +971,7 @@ def test_backtest_run_empty_flag_without_an_etf_source_keeps_the_generic_line(ru
     )
     assert result.exit_code == 0
     assert "No trades: the strategy held no position on any of the 3 trading days." in result.stdout
-    assert "universe was empty" not in result.stdout
+    assert "member stocks" not in result.stdout
 
 
 def test_backtest_run_empty_etf_universe_with_a_held_position_has_no_no_trades_line(runner):

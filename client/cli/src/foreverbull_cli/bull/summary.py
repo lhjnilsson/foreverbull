@@ -16,11 +16,22 @@ from foreverbull_cli.output import execution_link
 # `fbull backtest execution` refuses a prefix that matches more than one.
 SHORT_EXECUTION_ID_LENGTH = 8
 
-# Shown instead of the generic no-trades line when the server says an ETF-built
-# universe had no member on any date of the run. One constant so the copy can change in one place.
-EMPTY_UNIVERSE_NO_TRADES = (
-    "No trades: the backtest's universe was empty for this period, so the strategy had no symbols to trade."
-)
+# Named in the empty-universe notice when the ETF symbol is not known. GetExecution
+# does not return the symbol a backtest was built from, so `fbull backtest run` uses this.
+UNKNOWN_ETF_UNIVERSE = "the universe"
+
+
+def empty_universe_notice(etf_symbol: str, start_iso: str, end_iso: str) -> tuple[str, str]:
+    """Shown instead of the generic no-trades lines when an ETF universe had no member on any date of the run.
+
+    There is no Sharpe and Sortino line: the universe, not the ratios, is why the run is flat.
+    """
+    subject = etf_symbol or UNKNOWN_ETF_UNIVERSE
+    reason = (
+        f"No trades: {subject} had no member stocks between {start_iso} and {end_iso},"
+        " so the strategy had nothing to trade."
+    )
+    return reason, "Pick another period or universe with `fbull backtest create`, then run it again."
 
 
 def short_execution_id(execution_id: str) -> str:
@@ -118,6 +129,7 @@ def print_run_summary(
     execution_id: str,
     periods: list[execution_pb.Period],
     universe_empty: bool,
+    universe_etf: str = "",
 ) -> None:
     if not periods:
         console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
@@ -132,17 +144,18 @@ def print_run_summary(
         if held_no_position(periods):
             # Without this line a tradeless run reads as a broken one: zeros and dashes, no reason.
             if universe_empty:
-                # Longer than the generic line, so the padding keeps a wrapped tail under the indent.
-                console.print(Padding(Text(EMPTY_UNIVERSE_NO_TRADES), (0, 0, 0, 2), expand=False))
+                # Longer than the generic lines, so the padding keeps a wrapped tail under the indent.
+                for line in empty_universe_notice(universe_etf, start_iso, end_iso):
+                    console.print(Padding(Text(line), (0, 0, 0, 2), expand=False))
             else:
                 console.print(
                     f"  No trades: the strategy held no position on any of the {len(periods)} trading days.",
                     highlight=False,
                 )
-            console.print(
-                "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
-                highlight=False,
-            )
+                console.print(
+                    "  Return and drawdown stay at 0 and Sharpe and Sortino are not defined.",
+                    highlight=False,
+                )
             console.print()
     # soft_wrap leaves wrapping to the terminal, so a pasted command or URL has no inserted newline.
     console.print(
