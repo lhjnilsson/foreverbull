@@ -8,6 +8,16 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 
 Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
 
+## Customer experience and dependencies
+
+📝 Customer experience is essential. The connection is client ↔ Foreverbull broker ↔ Zipline, and the client and the user's own code get as much freedom as possible.
+
+- **No version pins on the client side.** Do not add upper bounds or exact pins to the runtime dependencies of `foreverbull` (`client/pyproject.toml`) or `foreverbull-cli`. Users install these next to their own strategy code, and a pin there decides which pandas, numpy, or SQLAlchemy they may use.
+- **Pin on the server side.** When a dependency needs a version constraint, put it in the image that runs the server-side component: `client/zipline/base.Dockerfile` (or `client/zipline/Dockerfile`) for Zipline, and the broker's Go modules or `docker/Dockerfile` for the broker.
+- **Client code must work across versions.** If client code depends on version-specific library behaviour, make it explicit in code (for example, naming the database driver in a URL) rather than constraining the version.
+
+Lockfiles (`client/uv.lock`, `requirements*.lock`) are for development and CI only. They are not a constraint on users.
+
 ## Commits
 
 Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you create a commit. **The subject starts with one gitmoji**, then `type(scope): outcome` in the imperative. The emoji is the intent (✨ `feat`, 🐛 `fix`, ⚡️ `perf`, 📝 `docs`, ✅ `test`; a narrower match such as 💚 `fix(ci)` or 🚨 for a linter beats the generic one). The body says why. One logical change per commit. Leave generated cookiecutter project trees out.
