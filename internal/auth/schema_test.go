@@ -90,6 +90,39 @@ func TestMigrateTwiceKeepsRowsAndRejectsOwner(t *testing.T) {
 	require.Equal(t, 2, grants)
 }
 
+func TestMigrateDeletesGrantWithDomain(t *testing.T) {
+	pool := newAuthDB(t)
+	ctx := context.Background()
+	require.NoError(t, Migrate(ctx, pool))
+
+	_, err := pool.Exec(ctx, `CREATE TABLE service (id text PRIMARY KEY, image text NOT NULL)`)
+	require.NoError(t, err)
+	require.NoError(t, Migrate(ctx, pool))
+
+	var account string
+	err = pool.QueryRow(ctx, `INSERT INTO account (role) VALUES ('editor') RETURNING id`).Scan(&account)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO service (id, image) VALUES ('svc-1', 'algo')`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO domain_grant (domain_kind, domain_id, grantee_id, level)
+		VALUES ('service', 'svc-1', $1, 'viewer')`, account)
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx, `DELETE FROM service WHERE id = 'svc-1'`)
+	require.NoError(t, err)
+
+	var grants int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM domain_grant`).Scan(&grants)
+	require.NoError(t, err)
+	require.Equal(t, 0, grants)
+
+	var accounts int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM account`).Scan(&accounts)
+	require.NoError(t, err)
+	require.Equal(t, 1, accounts)
+}
+
 func newAuthDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 

@@ -75,8 +75,20 @@ const (
 	uuidExtension           = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`
 )
 
-// Migrate creates the auth tables. It does not alter service, backtest, or
-// strategy. Calling it twice is safe.
+const domainGrantDeleteFunction = `
+CREATE OR REPLACE FUNCTION domain_grant_before_delete() RETURNS trigger AS $$
+BEGIN
+	DELETE FROM domain_grant
+	WHERE domain_kind = TG_ARGV[0]
+	  AND domain_id = OLD.id;
+	RETURN OLD;
+END;
+$$ LANGUAGE plpgsql`
+
+// Migrate creates the auth tables. Once service, backtest, or strategy uses
+// id as its primary key, it installs a delete trigger that removes that row's
+// domain_grant entries. It does not assign owners and it does not change
+// those primary keys. Calling it twice is safe.
 func Migrate(ctx context.Context, conn postgres.Query) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -100,11 +112,72 @@ func Migrate(ctx context.Context, conn postgres.Query) error {
 		{"api_token_account_id_idx", apiTokenAccountIndex},
 		{"browser_session_account_id_idx", browserSessionIndex},
 		{"domain_grant_grantee_id_domain_kind_idx", domainGrantGranteeIndex},
+		{"domain_grant_before_delete", domainGrantDeleteFunction},
 	}
 	for _, statement := range statements {
 		if _, err := conn.Exec(ctx, statement.sql); err != nil {
 			return fmt.Errorf("auth migrate %s: %w", statement.name, err)
 		}
+	}
+	return installDomainGrantTriggers(ctx, conn)
+}
+
+// installDomainGrantTriggers deletes grant rows in the same transaction as the
+// domain row. One domain_id cannot reference three tables, so the trigger is
+// the cascade. It waits until id is the primary key.
+func installDomainGrantTriggers(ctx context.Context, conn postgres.Query) error {
+	for _, table := range []string{DomainService, DomainBacktest, DomainStrategy} {
+		if err := installDomainGrantTrigger(ctx, conn, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installDomainGrantTrigger(ctx context.Context, conn postgres.Query, table string) error {
+	exists, err := TableExists(ctx, conn, table)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	columns, err := PrimaryKeyColumns(ctx, conn, table)
+	if err != nil {
+		return err
+	}
+	if !SameColumns(columns, []string{"id"}) {
+		return nil
+	}
+
+	var statement string
+	switch table {
+	case DomainService:
+		statement = `DO $$ BEGIN
+			CREATE TRIGGER domain_grant_delete_service
+			BEFORE DELETE ON service
+			FOR EACH ROW EXECUTE PROCEDURE domain_grant_before_delete('service');
+		EXCEPTION WHEN duplicate_object THEN NULL;
+		END $$;`
+	case DomainBacktest:
+		statement = `DO $$ BEGIN
+			CREATE TRIGGER domain_grant_delete_backtest
+			BEFORE DELETE ON backtest
+			FOR EACH ROW EXECUTE PROCEDURE domain_grant_before_delete('backtest');
+		EXCEPTION WHEN duplicate_object THEN NULL;
+		END $$;`
+	case DomainStrategy:
+		statement = `DO $$ BEGIN
+			CREATE TRIGGER domain_grant_delete_strategy
+			BEFORE DELETE ON strategy
+			FOR EACH ROW EXECUTE PROCEDURE domain_grant_before_delete('strategy');
+		EXCEPTION WHEN duplicate_object THEN NULL;
+		END $$;`
+	default:
+		return fmt.Errorf("domain_grant: unsupported table %s", table)
+	}
+	if _, err = conn.Exec(ctx, statement); err != nil {
+		return fmt.Errorf("domain_grant: delete trigger on %s: %w", table, err)
 	}
 	return nil
 }

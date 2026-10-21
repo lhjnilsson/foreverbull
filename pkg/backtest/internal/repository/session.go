@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
@@ -17,10 +19,26 @@ CREATE TABLE IF NOT EXISTS session (
 `
 
 // MigrateSessionBacktest sets session.backtest NOT NULL.
-// A null backtest stays. Calling it twice is safe.
+// A null backtest stays. Once backtest_id is NOT NULL, or the name column is
+// gone, this returns without reading the old column. Calling it twice is safe.
 func MigrateSessionBacktest(ctx context.Context, conn postgres.Query) error {
+	hasName, err := auth.ColumnExists(ctx, conn, "session", "backtest")
+	if err != nil {
+		return err
+	}
+	if !hasName {
+		return nil
+	}
+	idNotNull, err := auth.ColumnNotNull(ctx, conn, "session", "backtest_id")
+	if err != nil {
+		return err
+	}
+	if idNotNull {
+		return nil
+	}
+
 	var bad bool
-	err := conn.QueryRow(ctx, `
+	err = conn.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM session WHERE backtest IS NULL
 		)`).Scan(&bad)

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -34,6 +36,21 @@ const experimentBacktestForeignKey = "strategy_experiment_backtest_name_fkey"
 // MigrateExperimentBacktest references strategy_experiment.backtest_name to backtest(name).
 // A row whose backtest is missing stays. Calling it twice is safe.
 func MigrateExperimentBacktest(ctx context.Context, conn postgres.Query) error {
+	hasName, err := auth.ColumnExists(ctx, conn, "strategy_experiment", "backtest_name")
+	if err != nil {
+		return err
+	}
+	if !hasName {
+		return nil
+	}
+	idRef, err := experimentReferencesBacktestID(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if idRef {
+		return nil
+	}
+
 	exists, err := strategyConstraintExists(ctx, conn, "strategy_experiment", experimentBacktestForeignKey)
 	if err != nil {
 		return err
@@ -65,6 +82,32 @@ func MigrateExperimentBacktest(ctx context.Context, conn postgres.Query) error {
 		return fmt.Errorf("strategy_experiment: foreign key: %w", err)
 	}
 	return nil
+}
+
+func experimentReferencesBacktestID(ctx context.Context, conn postgres.Query) (bool, error) {
+	var exists bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_constraint c
+			JOIN pg_class src ON src.oid = c.conrelid
+			JOIN pg_namespace sn ON sn.oid = src.relnamespace
+			JOIN pg_class dst ON dst.oid = c.confrelid
+			JOIN LATERAL unnest(c.conkey) AS src_col(attnum) ON true
+			JOIN pg_attribute sa ON sa.attrelid = src.oid AND sa.attnum = src_col.attnum
+			JOIN LATERAL unnest(c.confkey) AS dst_col(attnum) ON true
+			JOIN pg_attribute da ON da.attrelid = dst.oid AND da.attnum = dst_col.attnum
+			WHERE c.contype = 'f'
+			  AND sn.nspname = current_schema()
+			  AND src.relname = 'strategy_experiment'
+			  AND dst.relname = 'backtest'
+			  AND sa.attname = 'backtest_id'
+			  AND da.attname = 'id'
+		)`).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("strategy_experiment: read backtest_id foreign key: %w", err)
+	}
+	return exists, nil
 }
 
 func strategyConstraintExists(ctx context.Context, conn postgres.Query, table, name string) (bool, error) {

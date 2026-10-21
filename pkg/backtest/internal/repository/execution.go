@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -95,19 +97,39 @@ const executionPeriodForeignKey = "backtest_execution_period_backtest_execution_
 // The column is added nullable so an existing row is not stamped yahoo
 // before the backfill runs.
 func MigrateExecutionProvider(ctx context.Context, conn postgres.Query) error {
-	_, err := conn.Exec(ctx, `ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS provider text`)
+	hasBacktest, err := auth.ColumnExists(ctx, conn, "session", "backtest")
+	if err != nil {
+		return err
+	}
+	providerNotNull, err := auth.ColumnNotNull(ctx, conn, "backtest_execution", "provider")
+	if err != nil {
+		return err
+	}
+	checkExists, err := tableConstraintExists(ctx, conn, "backtest_execution", executionProviderCheck)
+	if err != nil {
+		return err
+	}
+	// The name join is gone after the ownership migration. A finished provider
+	// column has nothing left to backfill.
+	if !hasBacktest && providerNotNull && checkExists {
+		return nil
+	}
+
+	_, err = conn.Exec(ctx, `ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS provider text`)
 	if err != nil {
 		return fmt.Errorf("backtest_execution: provider column: %w", err)
 	}
 
-	_, err = conn.Exec(ctx, `
-		UPDATE backtest_execution e
-		SET provider = b.provider
-		FROM session s
-		JOIN backtest b ON b.name = s.backtest
-		WHERE e.session = s.id AND e.provider IS NULL`)
-	if err != nil {
-		return fmt.Errorf("backtest_execution: backfill provider: %w", err)
+	if hasBacktest {
+		_, err = conn.Exec(ctx, `
+			UPDATE backtest_execution e
+			SET provider = b.provider
+			FROM session s
+			JOIN backtest b ON b.name = s.backtest
+			WHERE e.session = s.id AND e.provider IS NULL`)
+		if err != nil {
+			return fmt.Errorf("backtest_execution: backfill provider: %w", err)
+		}
 	}
 
 	_, err = conn.Exec(ctx, `
