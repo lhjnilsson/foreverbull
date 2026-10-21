@@ -242,6 +242,7 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 	if err != nil {
 		return nil, err
 	}
+	listings = seedBacktestStart(etf, listings, start)
 	recordLeadingHoldingsGap(etf, listings)
 
 	snaps := make([]universe.Snapshot, 0, len(listings))
@@ -258,6 +259,52 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
 	}
 	return snaps, nil
+}
+
+// seedBacktestStart opens membership on the backtest start from the last list
+// published on or before it. Diff opens every interval at the first as-of, so
+// that list is moved to the start and held until the next as-of. Listings
+// before the start are dropped; the backtest does not read them.
+//
+// A list published after the start is a look-ahead. It is used only when
+// nothing was published on or before the start, so the universe is not empty,
+// and the warning names the ETF, the start, and the as-of that was used.
+func seedBacktestStart(etf string, listings []dependency.Listing, start time.Time) []dependency.Listing {
+	start = dateOnly(start)
+	src := 0
+	for i := range listings {
+		if !dateOnly(listings[i].AsOf).After(start) {
+			src = i
+		}
+	}
+	published := publishedAsOf(listings[src])
+	if published.After(start) {
+		log.Warn().
+			Str("etf", etf).
+			Str("start_date", start.Format("2006-01-02")).
+			Str("snapshot_date", published.Format("2006-01-02")).
+			Msg("no holdings snapshot published on or before the backtest start, seeded from the first one after it")
+	}
+	seeded := make([]dependency.Listing, 0, len(listings)+1)
+	seeded = append(seeded, dependency.Listing{
+		AsOf:       start,
+		Assets:     slices.Clone(listings[src].Assets),
+		FilledFrom: published,
+	})
+	for _, listing := range listings {
+		if dateOnly(listing.AsOf).After(start) {
+			seeded = append(seeded, listing)
+		}
+	}
+	return seeded
+}
+
+// publishedAsOf is the as-of of the file a listing's rows came from.
+func publishedAsOf(listing dependency.Listing) time.Time {
+	if listing.FilledFrom.IsZero() {
+		return dateOnly(listing.AsOf)
+	}
+	return dateOnly(listing.FilledFrom)
 }
 
 // recordLeadingHoldingsGap logs that a leading gap kept a later published listing.

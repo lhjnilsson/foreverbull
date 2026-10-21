@@ -494,29 +494,78 @@ type Listing struct {
 	Leading    bool
 }
 
-// LoadSnapshotWindow loads each sampled as-of in [start, end].
-// A month with no holdings file is filled from the latest published listing on or
-// before that date, or from the earliest listing after it when the window has not
-// reached a published file yet. The error names the ETF and the window only when
-// nothing in the range parsed.
+// LoadSnapshotWindow loads each sampled as-of in [start, end], plus the seed:
+// the latest listing published on or before start (§6.2 of universe.md). The
+// seed keeps its own as-of, which can be before start, and a gap in the window
+// is filled from it before any later listing, so no day reads ahead.
+// A month with no holdings file is filled from the latest published listing on
+// or before that date, or from the earliest listing after it when nothing
+// earlier was published. The error names the ETF and the window only when
+// nothing parsed.
 func LoadSnapshotWindow(scraper ETFScraper, etf string, start, end time.Time) ([]Listing, error) {
+	start = dateOnly(start)
+	end = dateOnly(end)
 	dates, err := scraper.ListSnapshotDates(etf, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error listing snapshot dates: %w", err)
 	}
-	listings := make([]Listing, 0, len(dates))
+	seed, seeded, err := loadSeedListing(scraper, etf, start)
+	if err != nil {
+		return nil, err
+	}
+	listings := make([]Listing, 0, len(dates)+1)
+	if seeded {
+		listings = append(listings, seed)
+	}
 	for _, asOf := range dates {
+		asOf = dateOnly(asOf)
+		if seeded && asOf.Equal(seed.AsOf) {
+			continue
+		}
 		assets, err := scraper.GetSnapshot(etf, asOf)
 		if err != nil {
 			return nil, err
 		}
-		listings = append(listings, Listing{AsOf: dateOnly(asOf), Assets: assets})
+		listings = append(listings, Listing{AsOf: asOf, Assets: assets})
 	}
 	sort.Slice(listings, func(i, j int) bool { return listings[i].AsOf.Before(listings[j].AsOf) })
 	if err := fillListings(etf, start, end, listings); err != nil {
 		return nil, err
 	}
 	return listings, nil
+}
+
+// loadSeedListing returns the latest listing published on or before start.
+// iShares serves a holdings file for any past as-of, so the month-ends before
+// start are read the same way as the ones in the window. The walk is newest
+// first and stops at the first published file; seedLookbackMonths bounds it,
+// so an ETF that launched after start costs at most that many reads.
+func loadSeedListing(scraper ETFScraper, etf string, start time.Time) (Listing, bool, error) {
+	year, month, _ := start.Date()
+	from := time.Date(year, month-seedLookbackMonths, 1, 0, 0, 0, 0, time.UTC)
+	dates, err := scraper.ListSnapshotDates(etf, from, start)
+	if err != nil {
+		return Listing{}, false, fmt.Errorf("error listing snapshot dates before the start: %w", err)
+	}
+	candidates := make([]time.Time, 0, len(dates))
+	for _, asOf := range dates {
+		asOf = dateOnly(asOf)
+		if asOf.Before(from) || asOf.After(start) {
+			continue
+		}
+		candidates = append(candidates, asOf)
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].After(candidates[j]) })
+	for _, asOf := range candidates {
+		assets, err := scraper.GetSnapshot(etf, asOf)
+		if err != nil {
+			return Listing{}, false, err
+		}
+		if len(assets) > 0 {
+			return Listing{AsOf: asOf, Assets: assets}, true, nil
+		}
+	}
+	return Listing{}, false, nil
 }
 
 func fillListings(etf string, start, end time.Time, listings []Listing) error {

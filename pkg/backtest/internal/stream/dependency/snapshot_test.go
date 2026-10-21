@@ -373,6 +373,63 @@ func TestLoadSnapshotWindowFillsLeadingHTMLFromLaterListing(t *testing.T) {
 	}}, result.Aliases)
 }
 
+// iShares serves a holdings file for any past as-of, so the last month-end
+// before the start is requested with the same asOfDate query as the window.
+// The walk stops at the first published file, and a gap in the window is
+// filled from that earlier list, not from a later one.
+func TestLoadSnapshotWindowReadsLastListingBeforeStart(t *testing.T) {
+	t.Parallel()
+
+	const aaplISIN = "US0378331005"
+	const msftISIN = "US5949181045"
+	dec := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", aaplISIN},
+	})
+	feb := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", aaplISIN},
+		{"MSFT", "Microsoft Corp.", "Technology", "Equity", "", "", "", "", msftISIN},
+	})
+	var mu sync.Mutex
+	asOfs := make([]string, 0, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asOf := r.URL.Query().Get("asOfDate")
+		mu.Lock()
+		asOfs = append(asOfs, asOf)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch asOf {
+		case "20191231":
+			_, _ = w.Write(dec)
+		case "20200229":
+			_, _ = w.Write(feb)
+		default:
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-02-29"))
+	require.NoError(t, err)
+
+	mu.Lock()
+	require.Equal(t, []string{"20191231", "20200131", "20200229"}, asOfs)
+	mu.Unlock()
+	require.Len(t, listings, 3)
+	require.Equal(t, testDate(t, "2019-12-31"), listings[0].AsOf)
+	require.True(t, listings[0].FilledFrom.IsZero())
+	require.Equal(t, testDate(t, "2020-01-31"), listings[1].AsOf)
+	require.Equal(t, testDate(t, "2019-12-31"), listings[1].FilledFrom)
+	require.False(t, listings[1].Leading)
+	require.Equal(t, listings[0].Assets, listings[1].Assets)
+	require.Len(t, listings[2].Assets, 2)
+}
+
 func TestLoadSnapshotWindowNoHoldingsNamesWindow(t *testing.T) {
 	t.Parallel()
 

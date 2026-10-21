@@ -17,6 +17,10 @@ const (
 
 	// snapshotLookbackDays is how far GetSnapshot walks back when asOf has empty aaData.
 	snapshotLookbackDays = 6
+
+	// seedLookbackMonths is how many month-ends before the backtest start the
+	// seed walk reads when looking for the last published list.
+	seedLookbackMonths = 3
 )
 
 // FOREVERBULL_ETF_SNAPSHOT_CACHE overrides the runtime JSON cache directory.

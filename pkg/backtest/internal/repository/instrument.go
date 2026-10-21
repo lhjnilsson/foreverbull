@@ -194,9 +194,24 @@ func (db *Instrument) StoreAlias(ctx context.Context, alias AliasInterval) error
 		to = dateString(*alias.ToDate)
 	}
 
+	// asset_symbol is shared by every ETF backtest, and each one opens its
+	// aliases at its own start. Rows of the same ticker that overlap the new
+	// interval are one alias, so they are replaced by their union. A different
+	// ticker over the same dates still violates asset_symbol_no_overlap.
 	_, err := db.Conn.Exec(ctx, `
+		WITH overlapping AS (
+			DELETE FROM asset_symbol
+			 WHERE isin = $1
+			   AND symbol = $2
+			   AND daterange(from_date, to_date, '[)') && daterange($3::date, $4::date, '[)')
+			RETURNING from_date, to_date
+		)
 		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
-		VALUES ($1, $2, $3::date, $4::date)
+		SELECT $1, $2,
+		       LEAST($3::date, MIN(from_date)),
+		       CASE WHEN $4::date IS NULL OR bool_or(to_date IS NULL) THEN NULL
+		            ELSE GREATEST($4::date, MAX(to_date)) END
+		  FROM overlapping
 		ON CONFLICT (isin, from_date) DO UPDATE
 		SET symbol = EXCLUDED.symbol, to_date = EXCLUDED.to_date`,
 		isin, symbol, dateString(alias.FromDate), to)
