@@ -218,13 +218,17 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	members := repository.UniverseMember{Conn: test.db}
 	listed, err := members.List(ctx, "test-backtest-2")
 	test.Require().NoError(err)
+	// The first published list opens at the backtest start, not at its as-of.
 	test.Equal([]repository.MemberInterval{
-		{ISIN: aaplISIN, FromDate: s0, ToDate: test.toPtr("2023-02-28")},
-		{ISIN: metaISIN, FromDate: s0, ToDate: nil},
+		{ISIN: aaplISIN, FromDate: start, ToDate: test.toPtr("2023-02-28")},
+		{ISIN: metaISIN, FromDate: start, ToDate: nil},
 		{ISIN: msftISIN, FromDate: s1, ToDate: nil},
 	}, listed)
 
-	at, err := members.At(ctx, "test-backtest-2", s0)
+	at, err := members.At(ctx, "test-backtest-2", start)
+	test.Require().NoError(err)
+	test.Equal([]string{aaplISIN, metaISIN}, at)
+	at, err = members.At(ctx, "test-backtest-2", s0)
 	test.Require().NoError(err)
 	test.Equal([]string{aaplISIN, metaISIN}, at)
 	at, err = members.At(ctx, "test-backtest-2", s1)
@@ -265,7 +269,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	}
 	test.Require().NoError(rows.Err())
 	test.Equal([]aliasRow{
-		{Symbol: "FB", FromDate: s0, ToDate: test.toPtr("2023-01-31")},
+		{Symbol: "FB", FromDate: start, ToDate: test.toPtr("2023-01-31")},
 		{Symbol: "META", FromDate: s1, ToDate: nil},
 	}, got)
 
@@ -306,6 +310,80 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	err = command.DownloadFinancialData(ctx, download)
 	test.Require().NoError(err)
 	test.mdclient.AssertExpectations(test.T())
+}
+
+// An ETF universe is never empty on a day of the backtest. iShares lists are
+// sampled at month-ends, so the days between the start and the first as-of
+// hold the first published list. A rename (FB then META) and a drop (AAPL)
+// later in the window do not leave a day without members.
+func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
+	aapl := dependency.Asset{Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity", ISIN: aaplISIN}
+	fb := dependency.Asset{Symbol: "FB", Name: "Meta Platforms Inc.", AssetType: "Equity", ISIN: metaISIN}
+	meta := dependency.Asset{Symbol: "META", Name: "Meta Platforms Inc.", AssetType: "Equity", ISIN: metaISIN}
+	msft := dependency.Asset{Symbol: "MSFT", Name: "Microsoft Corp.", AssetType: "Equity", ISIN: msftISIN}
+	jan := test.date("2020-01-31")
+	feb := test.date("2020-02-29")
+	mar := test.date("2020-03-31")
+	listings := map[time.Time][]dependency.Asset{
+		jan: {aapl, fb},
+		feb: {aapl, meta, msft},
+		mar: {meta, msft},
+	}
+
+	cases := []struct {
+		name  string
+		start string
+	}{
+		{name: "etf-from-year-start", start: "2020-01-01"},
+		{name: "etf-from-mid-month", start: "2020-01-15"},
+		{name: "etf-from-month-end", start: "2020-01-31"},
+	}
+	for _, tc := range cases {
+		test.Run(tc.name, func() {
+			ctx := context.TODO()
+			start := test.date(tc.start)
+			end := mar
+			scraper := new(dependency.MockETFScraper)
+			scraper.On("ListSnapshotDates", "iShares S&P 100", start, end).Return([]time.Time{jan, feb, mar}, nil)
+			for asOf, assets := range listings {
+				scraper.On("GetSnapshot", "iShares S&P 100", asOf).Return(assets, nil)
+			}
+			scraper.On("GetBenchmark", "iShares S&P 100").Return("OEF", nil)
+			mdclient := new(financeServicePB.MockMarketdataClient)
+			test.mdclient = mdclient
+			for _, symbol := range []string{"AAPL", "FB", "META", "MSFT"} {
+				test.mockGetAsset(symbol, nil)
+			}
+			message := etfCreateMessage(test.T(), tc.name, "iShares S&P 100", tc.start, "2020-03-31")
+			message.On("MustGet", stream.DBDep).Return(test.db)
+			message.On("MustGet", dependency.GetMarketdataClient).Return(mdclient)
+			message.On("MustGet", dependency.GetETFScraper).Return(scraper)
+
+			test.Require().NoError(command.CreateBacktestFromETF(ctx, message))
+
+			members := repository.UniverseMember{Conn: test.db}
+			first := []string{aaplISIN, metaISIN}
+			for _, day := range []time.Time{start, start.AddDate(0, 0, 1)} {
+				at, err := members.At(ctx, tc.name, day)
+				test.Require().NoError(err)
+				test.Equal(first, at, "members on %s are the first published list", day.Format("2006-01-02"))
+			}
+			symbols, err := members.SymbolsAt(ctx, tc.name, start)
+			test.Require().NoError(err)
+			test.Equal([]string{"AAPL", "FB"}, symbols)
+
+			// The window is one quarter, so the walk is bounded by end.
+			empty := make([]string, 0)
+			for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+				at, err := members.At(ctx, tc.name, day)
+				test.Require().NoError(err)
+				if len(at) == 0 {
+					empty = append(empty, day.Format("2006-01-02"))
+				}
+			}
+			test.Empty(empty, "days with no members")
+		})
+	}
 }
 
 func (test *BacktestCommandTest) TestDownloadFinancialData() {
