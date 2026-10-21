@@ -16,7 +16,10 @@ from zipline.data import bundles
 from zipline.utils.paths import data_path
 from zipline.utils.paths import data_root
 
+from foreverbull import exceptions
 from foreverbull.broker.storage import Storage
+from foreverbull.broker.utils import describe_exception
+from foreverbull.broker.utils import redact_text
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
@@ -28,6 +31,37 @@ from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.session_service import SessionServiceServicer
+
+
+# The broker reads the first line of an ingest error as the reason and the
+# line after this marker as the cause it shows on --verbose.
+INGEST_DETAILS_MARKER = "\nDetails: "
+
+
+def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
+    """Status code and details for a failed ingest, with every password redacted.
+
+    FAILED_PRECONDITION means the data service itself is broken (a missing
+    driver), UNAVAILABLE that the database could not be reached. Anything else
+    is INTERNAL. The text is redacted again here because a bundle writer or
+    driver can quote a URL that did not pass through get_engine.
+    """
+    cause = getattr(exc, "cause", None) or describe_exception(exc)
+    match exc:
+        case exceptions.DatabaseDriverError():
+            reason = f"the data service is missing its database driver ({exc.driver})"
+            code = grpc.StatusCode.FAILED_PRECONDITION
+        case exceptions.ConnectionError():
+            reason = f"the data service {_lower_first(str(exc))}"
+            code = grpc.StatusCode.UNAVAILABLE
+        case _:
+            reason = "the data service failed while ingesting prices"
+            code = grpc.StatusCode.INTERNAL
+    return code, redact_text(f"{reason}{INGEST_DETAILS_MARKER}{cause}")
+
+
+def _lower_first(text: str) -> str:
+    return text[:1].lower() + text[1:]
 
 
 @dataclass
@@ -73,8 +107,13 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
         backtest = request.backtest
         if backtest is None:
             raise ValueError("ingest request has no backtest")
-        bundles.register(backtest.name, SQLIngester(backtest), calendar_name="XNYS")
-        bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
+        try:
+            bundles.register(backtest.name, SQLIngester(backtest), calendar_name="XNYS")
+            bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
+        except Exception as exc:  # noqa: BLE001 - every failure becomes a redacted gRPC status, never a traceback
+            code, details = ingest_failure(exc)
+            self.logger.error("Ingesting %s failed: %s", backtest.name, details)
+            context.abort(code, details)
         stamp_bundle_version(backtest.name, os.environ)
         self.bundle = bundles.load(backtest.name, os.environ, None)
         self.logger.debug("ingestion completed")

@@ -220,6 +220,150 @@ def _create_from_file(provider: str = "yahoo"):
     return result
 
 
+_INGEST_DRIVER_COPY = (
+    "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
+    "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "
+    "`fbull backtest create` again once it's fixed."
+)
+_INGEST_DRIVER_CAUSE = "ModuleNotFoundError: No module named 'psycopg'"
+_SECRET = "s3cr3t-Pa55"
+
+
+def _ingest_failed_stream(message: str):
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+            INGESTING=common_pb.Step(state=common_pb.State.RUNNING),
+        )
+        # The broker removed the backtest and copied its message into the step.
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+            INGESTING=common_pb.Step(state=common_pb.State.FAILED, message=message),
+        )
+
+    return stream
+
+
+def test_backtest_create_ingest_missing_driver_prints_the_copy(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{_INGEST_DRIVER_COPY}\nDetails: {_INGEST_DRIVER_CAUSE}"
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    # The broker already removed the backtest; the client does not delete again.
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_INGEST_DRIVER_COPY}\n"
+    assert "Could not connect to database" not in result.output
+
+
+_INGEST_UNREACHABLE_COPY = (
+    "Couldn't load data for backtest 'from_file': Foreverbull's data service isn't reachable. "
+    "Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
+)
+_INGEST_OTHER_COPY = (
+    "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
+    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+)
+_INGEST_NOT_REMOVED_COPY = (
+    "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
+    "The backtest couldn't be removed, so run `fbull backtest delete from_file` before you run "
+    "`fbull backtest create` again."
+)
+
+
+@pytest.mark.parametrize(
+    ("copy", "cause"),
+    [
+        (_INGEST_DRIVER_COPY, _INGEST_DRIVER_CAUSE),
+        (_INGEST_UNREACHABLE_COPY, 'OperationalError: connection to server at "postgres" refused'),
+        (_INGEST_OTHER_COPY, "KeyError: 'AAPL'"),
+        (_INGEST_NOT_REMOVED_COPY, "KeyError: 'AAPL'"),
+    ],
+    ids=["missing-driver", "unreachable", "other", "not-removed"],
+)
+def test_backtest_create_ingest_failure_exact_default_output(copy, cause, monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{copy}\nDetails: {cause}"
+    with patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)):
+        result = _create_from_file()
+
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {copy}\n"
+    # The exception text is only shown with --verbose.
+    assert cause not in result.output
+    assert "Details:" not in result.output
+
+
+def test_backtest_create_ingest_failure_verbose_shows_the_cause(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{_INGEST_DRIVER_COPY}\nDetails: {_INGEST_DRIVER_CAUSE}"
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(cli, ["--verbose", "backtest", "create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    assert result.exit_code == 1
+    assert f"✖ {_INGEST_DRIVER_COPY}\n" in result.output
+    assert result.output.endswith(f"Details: {_INGEST_DRIVER_CAUSE}\n")
+
+
+@pytest.mark.parametrize(
+    "hop",
+    [
+        "the Zipline pod couldn't reach Postgres: OperationalError: connection refused",
+        "the broker couldn't reach the Zipline pod: connection error: dial tcp 10.96.0.12:50055: connection refused",
+    ],
+    ids=["postgres", "zipline-pod"],
+)
+def test_backtest_create_unreachable_verbose_names_the_hop(hop, monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{_INGEST_UNREACHABLE_COPY}\nDetails: {hop}"
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(cli, ["--verbose", "backtest", "create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    assert result.exit_code == 1
+    assert f"✖ {_INGEST_UNREACHABLE_COPY}\n" in result.output
+    assert result.output.endswith(f"Details: {hop}\n")
+
+
+@pytest.mark.parametrize("level", ["ERROR", "WARNING"])
+def test_backtest_create_ingest_failure_never_prints_the_password(level, monkeypatch):
+    # A broker older than this client sends the URL unredacted.
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", level)
+    url = f"postgresql://foreverbull:{_SECRET}@postgres:5432/foreverbull"
+    message = (
+        f"error ingesting data: Could not connect to database at {url}"
+        f"\nDetails: OperationalError: connection to {url} refused"
+    )
+    with patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)):
+        result = _create_from_file()
+
+    assert result.exit_code == 1
+    assert _SECRET not in result.output
+    assert "postgresql://foreverbull:***@postgres:5432/foreverbull" in result.output
+
+
 def test_backtest_create_broken_stream_removes_the_backtest(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with (

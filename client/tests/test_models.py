@@ -96,7 +96,7 @@ def test_get_engine_uses_provided_url_only(monkeypatch):
     monkeypatch.setattr("foreverbull.broker.utils.create_engine", fake_create_engine)
     with pytest.raises(
         ConnectionError,
-        match="Could not connect to database at postgresql://user:password@db.internal:5656/demo",
+        match=r"Could not connect to database at postgresql://user:\*\*\*@db.internal:5656/demo",
     ):
         get_engine("postgres://user:password@db.internal:5656/demo")
     assert attempted == ["postgresql://user:password@db.internal:5656/demo"]

@@ -285,6 +285,22 @@ Run `fbenv create --verbose` to see Docker's error.
 
 When no images are published for your client version, the hint says so and tells you to build them with `task build` and run `VERSION=local uv run fbenv create`. When the repository itself does not exist on the registry (for example `lhjnilsson/fb-grafana` before it is first published), the line reads `The Foreverbull image lhjnilsson/fb-grafana:<version> isn't published yet, so this install can't start.` and the checkout build with `task build` / `VERSION=local` follows only as a contributor alternative; only a transient or rate-limited registry failure says to wait a few minutes and retry. A `0.0.0` client is named as a development install and pointed straight at `VERSION=local`. When the image has no build for your machine's architecture, the hint names the architecture and gives the same local-build fix, or asks you to report it at https://github.com/lhjnilsson/foreverbull/issues. Any `VERSION` other than `local` stops `fbenv create` and `fbenv update` before they change anything. The stops-before-anything-changes promise for image pulls is local-Kind only: on a remote cluster, Helm can create or update the release first and the pods can then fail to pull (`ImagePullBackOff`), because the remote nodes pull the images, not this host.
 
+### `fbull backtest create` can't load data
+
+When the data service fails to load prices into a new backtest, `fbull backtest create` removes the half-created backtest and stops with one line. A missing database driver in the Zipline image reads:
+
+```
+✖ Couldn't load data for backtest 'demo': the data service is missing its database driver (psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run `fbull backtest create` again once it's fixed.
+```
+
+When the broker can't reach the data service, or the data service can't reach Postgres, the line reads:
+
+```
+✖ Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that.
+```
+
+Any other failure reads `the data service failed while ingesting prices.` The default line never includes the exception text. Add `--verbose` (`fbull --verbose backtest create …`) to print the underlying exception on a `Details:` line. For the "isn't reachable" line, it also names the hop that failed: the broker to the Zipline pod, or the Zipline pod to Postgres. The database password is shown as `***` there, in the broker log and in the Zipline log. If the backtest couldn't be removed, the line says so and asks you to run `fbull backtest delete <name>` before you create it again.
+
 ### Pods do not start
 
 `fbenv start` waits up to 120 seconds for the six deployments. `FBENV_READY_TIMEOUT` sets that wait in whole seconds. When that times out it prints `Timed out waiting for healthy` followed by the deployment and pod table. Check which pod is not ready with `uv run fbenv status`, then apply the matching fix:
@@ -309,7 +325,7 @@ kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
 
 - Read the reason in the broker log: `kubectl --context kind-foreverbull -n foreverbull logs deploy/foreverbull`.
 - When many symbols fail at once, the price host is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
-- When the connection to the price service or the broker breaks during create, the command stops with one line that says nothing was changed and to run the same create again. The backtest is removed, so the same name works again. Bars that were already downloaded stay. If the backtest could not be removed, the line says so; delete it with `uv run fbull backtest delete <name>` before you retry.
+- When the connection to the price service or the broker breaks during create, the command stops with one line that says nothing was changed and to run the same create again. The backtest is removed, so the same name works again. Bars that were already downloaded stay. If the backtest couldn't be removed, the line says so; delete it with `uv run fbull backtest delete <name>` before you retry.
 
 ### Recreate the Kind cluster
 

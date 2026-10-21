@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 
 from datetime import date
@@ -17,6 +18,7 @@ from rich.table import Table
 
 from foreverbull import broker
 from foreverbull import models
+from foreverbull.broker.utils import redact_text
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.pb import pb_utils
@@ -46,6 +48,9 @@ _PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
 _PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
 _FULL_EXECUTION_ID_LENGTH = 36  # a UUID with hyphens
 _AMBIGUOUS_MATCHES_SHOWN = 5
+# The broker appends the redacted cause of a failed step after this marker.
+_DETAILS_MARKER = "\nDetails: "
+_VERBOSE_LEVELS = frozenset({"WARNING", "INFO", "DEBUG"})
 
 
 def _normalize_provider(raw: object) -> str | None:
@@ -67,11 +72,25 @@ def _choose_provider(flag_provider: str | None, raw: object, file_name: str) -> 
     return _normalize_provider(raw), f"from {file_name or 'backtest.yaml'}"
 
 
+def _verbose() -> bool:
+    """True with `fbull --verbose`, which lowers LOGGING_LEVEL below ERROR."""
+    level = os.environ.get("LOGGING_LEVEL", "ERROR").strip().upper()
+    return level in _VERBOSE_LEVELS
+
+
 def _fail(message: str) -> NoReturn:
-    """Print one ✖ line and exit 1, like the fbenv host checks."""
+    """Print one ✖ line and exit 1, like the fbenv host checks.
+
+    The server puts the underlying exception after a details marker. It is
+    already redacted there, and shown only with --verbose.
+    """
+    # A server older than this client may still quote a database URL.
+    shown, marker, details = redact_text(message).partition(_DETAILS_MARKER)
     console.print(
-        f"✖ {message.strip() or 'Creating the backtest failed.'}", markup=False, highlight=False, soft_wrap=True
+        f"✖ {shown.strip() or 'Creating the backtest failed.'}", markup=False, highlight=False, soft_wrap=True
     )
+    if marker and details.strip() and _verbose():
+        console.print(f"Details: {details.strip()}", markup=False, highlight=False, soft_wrap=True)
     raise typer.Exit(code=1)
 
 
