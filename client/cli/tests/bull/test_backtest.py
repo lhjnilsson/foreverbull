@@ -263,6 +263,45 @@ def test_backtest_create_ingest_missing_driver_prints_the_copy(monkeypatch):
     assert "Could not connect to database" not in result.output
 
 
+_INGEST_UNREACHABLE_COPY = (
+    "Couldn't load data for backtest 'from_file': the Foreverbull database isn't reachable. "
+    "Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
+)
+_INGEST_OTHER_COPY = (
+    "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
+    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+)
+_INGEST_NOT_REMOVED_COPY = (
+    "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
+    "The backtest couldn't be removed, so run `fbull backtest delete from_file` before you run "
+    "`fbull backtest create` again."
+)
+
+
+@pytest.mark.parametrize(
+    ("copy", "cause"),
+    [
+        (_INGEST_DRIVER_COPY, _INGEST_DRIVER_CAUSE),
+        (_INGEST_UNREACHABLE_COPY, 'OperationalError: connection to server at "postgres" refused'),
+        (_INGEST_OTHER_COPY, "KeyError: 'AAPL'"),
+        (_INGEST_NOT_REMOVED_COPY, "KeyError: 'AAPL'"),
+    ],
+    ids=["missing-driver", "unreachable", "other", "not-removed"],
+)
+def test_backtest_create_ingest_failure_exact_default_output(copy, cause, monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{copy}\nDetails: {cause}"
+    with patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)):
+        result = _create_from_file()
+
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {copy}\n"
+    # The exception text is only shown with --verbose.
+    assert cause not in result.output
+    assert "Details:" not in result.output
+
+
 def test_backtest_create_ingest_failure_verbose_shows_the_cause(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     monkeypatch.setenv("LOGGING_LEVEL", "ERROR")

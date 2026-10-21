@@ -31,35 +31,80 @@ func redactURLPasswords(text string) string {
 	return urlPassword.ReplaceAllString(text, "${1}***@")
 }
 
+type ingestFailureKind int
+
+const (
+	// ingestFailed is any failure the data service did not classify. Its
+	// text is never shown as the reason, only behind --verbose.
+	ingestFailed ingestFailureKind = iota
+	// ingestMissingDriver is the data service reporting that it is broken
+	// itself, so the user's backtest and settings are not at fault.
+	ingestMissingDriver
+	// ingestDatabaseUnreachable is the data service failing to reach Postgres.
+	ingestDatabaseUnreachable
+)
+
+// missingDriverReason is the data service's own sentence for a missing
+// driver. Only the driver name is taken from it, and only when it matches.
+var missingDriverReason = regexp.MustCompile(`^the data service is missing its database driver \(([A-Za-z0-9_]+)\)$`)
+
 type ingestFailure struct {
-	reason  string
+	kind ingestFailureKind
+	// driver is the missing driver's module name, empty when unknown.
+	driver string
+	// details is the redacted underlying error, shown only with --verbose.
 	details string
-	// installBug is set when the data service reports that it is broken
-	// itself, for example a missing database driver, so the user's backtest
-	// and settings are not at fault.
-	installBug bool
 }
 
-// readIngestFailure splits the data service's error into the reason and the
-// details after ingestDetailsMarker. FailedPrecondition is the code the data
-// service uses only for a broken install.
+// readIngestFailure classifies the data service's error by its gRPC code.
+// The data service uses FailedPrecondition only for a broken install and
+// Unavailable for a database it cannot reach. The error text never becomes
+// the reason: it goes to details, behind --verbose.
 func readIngestFailure(cause error) ingestFailure {
 	message := cause.Error()
-	installBug := false
+	code := codes.Unknown
 	var grpcErr interface{ GRPCStatus() *status.Status }
 	if errors.As(cause, &grpcErr) {
 		message = grpcErr.GRPCStatus().Message()
-		installBug = grpcErr.GRPCStatus().Code() == codes.FailedPrecondition
+		code = grpcErr.GRPCStatus().Code()
 	}
-	reason, details, _ := strings.Cut(message, ingestDetailsMarker)
-	reason = strings.TrimRight(strings.TrimSpace(reason), ".")
-	if reason == "" {
-		reason = ingestFallbackReason
+	reason, details, hasDetails := strings.Cut(message, ingestDetailsMarker)
+	reason = strings.TrimSpace(reason)
+	if !hasDetails {
+		details = message
 	}
-	return ingestFailure{
-		reason:     reason,
-		details:    strings.TrimSpace(details),
-		installBug: installBug,
+	failure := ingestFailure{kind: ingestFailed, details: strings.TrimSpace(details)}
+	if code == codes.FailedPrecondition {
+		failure.kind = ingestMissingDriver
+		if match := missingDriverReason.FindStringSubmatch(reason); match != nil {
+			failure.driver = match[1]
+		}
+	}
+	if code == codes.Unavailable {
+		failure.kind = ingestDatabaseUnreachable
+	}
+	return failure
+}
+
+// ingestFailureLead is the fixed plain sentence for the failure, then the
+// sentence that ends the message when the backtest was removed.
+func ingestFailureLead(failure ingestFailure) (string, string) {
+	switch failure.kind {
+	case ingestMissingDriver:
+		reason := "the data service is missing its database driver"
+		if failure.driver != "" {
+			reason += " (" + failure.driver + ")"
+		}
+		return reason + ". This is a bug in the Foreverbull install, not in your strategy or settings.",
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	case ingestDatabaseUnreachable:
+		return "the Foreverbull database isn't reachable. Run `fbenv status` to check it's running.",
+			"Nothing was saved, so run `fbull backtest create` again after that."
+	case ingestFailed:
+		return ingestFallbackReason + ".",
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	default:
+		panic(fmt.Sprintf("unknown ingest failure kind %d", failure.kind))
 	}
 }
 
@@ -67,15 +112,13 @@ func readIngestFailure(cause error) ingestFailure {
 // only true when the backtest was removed; otherwise the user has to delete
 // it before the same create can run again.
 func ingestFailureMessage(name string, failure ingestFailure, removed bool) string {
+	lead, saved := ingestFailureLead(failure)
 	var text strings.Builder
-	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': %s.", name, failure.reason)
-	if failure.installBug {
-		text.WriteString(" This is a bug in the Foreverbull install, not in your strategy or settings.")
-	}
+	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': %s ", name, lead)
 	if removed {
-		text.WriteString(" Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+		text.WriteString(saved)
 	} else {
-		fmt.Fprintf(&text, " The backtest could not be removed, so run `fbull backtest delete %s` "+
+		fmt.Fprintf(&text, "The backtest couldn't be removed, so run `fbull backtest delete %s` "+
 			"before you run `fbull backtest create` again.", name)
 	}
 	if failure.details != "" {

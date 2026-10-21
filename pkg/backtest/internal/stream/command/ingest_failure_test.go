@@ -3,6 +3,7 @@ package command
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,13 @@ const (
 	missingDriverCopy = "Couldn't load data for backtest 'demo': the data service is missing its database driver " +
 		"(psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, " +
 		"so run `fbull backtest create` again once it's fixed."
+	missingDriverNoNameCopy = "Couldn't load data for backtest 'demo': the data service is missing its database " +
+		"driver. This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, " +
+		"so run `fbull backtest create` again once it's fixed."
+	unreachableCopy = "Couldn't load data for backtest 'demo': the Foreverbull database isn't reachable. Run " +
+		"`fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
+	otherFailureCopy = "Couldn't load data for backtest 'demo': the data service failed while ingesting prices. " +
+		"Nothing was saved, so run `fbull backtest create` again once it's fixed."
 	secretPassword = "s3cr3t-Pa55"
 )
 
@@ -31,11 +39,10 @@ func TestIngestFailureMessage(t *testing.T) {
 		expected string
 	}{
 		{
-			name:    "missing driver, backtest removed: UX copy and the cause after the details marker",
-			cause:   fmt.Errorf("error ingesting: %w", missingDriver),
-			removed: true,
-			expected: missingDriverCopy +
-				"\nDetails: ModuleNotFoundError: No module named 'psycopg'",
+			name:     "missing driver, backtest removed: UX copy and the cause after the details marker",
+			cause:    fmt.Errorf("error ingesting: %w", missingDriver),
+			removed:  true,
+			expected: missingDriverCopy + "\nDetails: ModuleNotFoundError: No module named 'psycopg'",
 		},
 		{
 			name:    "missing driver, delete failed: tells the user to delete first, not that nothing was saved",
@@ -43,35 +50,63 @@ func TestIngestFailureMessage(t *testing.T) {
 			removed: false,
 			expected: "Couldn't load data for backtest 'demo': the data service is missing its database driver " +
 				"(psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. The backtest " +
-				"could not be removed, so run `fbull backtest delete demo` before you run `fbull backtest create` again." +
+				"couldn't be removed, so run `fbull backtest delete demo` before you run `fbull backtest create` again." +
 				"\nDetails: ModuleNotFoundError: No module named 'psycopg'",
 		},
 		{
-			name:    "connection error is still reported as a connection error, without the install-bug sentence",
+			name:     "missing driver with an unexpected reason: the reason text is not echoed",
+			cause:    status.Error(codes.FailedPrecondition, "Traceback: boom\nDetails: ImportError: boom"),
+			removed:  true,
+			expected: missingDriverNoNameCopy + "\nDetails: ImportError: boom",
+		},
+		{
+			name:     "database unreachable: fixed UX copy, the Zipline reason is not echoed",
+			cause:    fmt.Errorf("error ingesting: %w", connection),
+			removed:  true,
+			expected: unreachableCopy + "\nDetails: OperationalError: connection refused",
+		},
+		{
+			name:    "database unreachable, delete failed",
 			cause:   fmt.Errorf("error ingesting: %w", connection),
-			removed: true,
-			expected: "Couldn't load data for backtest 'demo': the data service could not connect to database at " +
-				"postgresql://foreverbull:***@db.internal:5432/foreverbull. Nothing was saved, so run " +
-				"`fbull backtest create` again once it's fixed.\nDetails: OperationalError: connection refused",
+			removed: false,
+			expected: "Couldn't load data for backtest 'demo': the Foreverbull database isn't reachable. Run " +
+				"`fbenv status` to check it's running. The backtest couldn't be removed, so run " +
+				"`fbull backtest delete demo` before you run `fbull backtest create` again." +
+				"\nDetails: OperationalError: connection refused",
 		},
 		{
-			name:    "plain error without a gRPC status",
-			cause:   errors.New("error getting zipline engine: pod not ready"),
-			removed: true,
-			expected: "Couldn't load data for backtest 'demo': error getting zipline engine: pod not ready. " +
-				"Nothing was saved, so run `fbull backtest create` again once it's fixed.",
+			name:     "other data service failure: fixed reason, the exception only in details",
+			cause:    status.Error(codes.Internal, "the data service failed\nDetails: KeyError: 'AAPL'"),
+			removed:  true,
+			expected: otherFailureCopy + "\nDetails: KeyError: 'AAPL'",
 		},
 		{
-			name:    "empty status message falls back to a generic reason",
-			cause:   status.Error(codes.Internal, ""),
-			removed: true,
-			expected: "Couldn't load data for backtest 'demo': the data service failed while ingesting prices. " +
-				"Nothing was saved, so run `fbull backtest create` again once it's fixed.",
+			name:     "plain error without a gRPC status: its whole text goes to details",
+			cause:    errors.New("error getting zipline engine: pod not ready"),
+			removed:  true,
+			expected: otherFailureCopy + "\nDetails: error getting zipline engine: pod not ready",
+		},
+		{
+			name:     "older data service: raw exception text is never the reason",
+			cause:    status.Error(codes.Unknown, "Exception calling application: KeyError: 'AAPL'"),
+			removed:  true,
+			expected: otherFailureCopy + "\nDetails: Exception calling application: KeyError: 'AAPL'",
+		},
+		{
+			name:     "empty status message: no details line",
+			cause:    status.Error(codes.Internal, ""),
+			removed:  true,
+			expected: otherFailureCopy,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, ingestFailureMessage("demo", readIngestFailure(tc.cause), tc.removed))
+			message := ingestFailureMessage("demo", readIngestFailure(tc.cause), tc.removed)
+			require.Equal(t, tc.expected, message)
+			// The CLI shows only the part before the details marker by default.
+			shown, _, _ := strings.Cut(message, ingestDetailsMarker)
+			require.NotContains(t, shown, "Error")
+			require.NotContains(t, shown, "Exception")
 		})
 	}
 }
@@ -80,8 +115,8 @@ func TestIngestFailureMessage(t *testing.T) {
 // the password into its log or the CLI message.
 func TestIngestFailureMessageRedactsPasswords(t *testing.T) {
 	cause := status.Error(codes.Unknown, "Exception calling application: Could not connect to database at "+
-		"postgresql://foreverbull:"+secretPassword+"@postgres:5432/foreverbull\nDetails: OperationalError: "+
-		"postgres://admin:"+secretPassword+"@10.0.0.1/x refused")
+		"postgresql://foreverbull:"+secretPassword+"@postgres:5432/foreverbull (OperationalError: "+
+		"postgres://admin:"+secretPassword+"@10.0.0.1/x refused)")
 
 	message := ingestFailureMessage("demo", readIngestFailure(fmt.Errorf("error ingesting: %w", cause)), true)
 
