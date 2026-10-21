@@ -59,6 +59,9 @@ six workloads need.
 Remote installs leave `expose.hostPort=false` (ClusterIP only). Point the CLI
 and Python stubs at `remote.broker_address` or `FOREVERBULL_BROKER_ADDRESS`.
 
+On local Kind, `5432`, `4222`, `9000`, and `3000` ignore role. Sharing a
+backtest does not close them. See [Authentication](#authentication).
+
 ### In-cluster env (broker)
 
 Matches `internal/environment/env.go` plus chart overrides:
@@ -77,6 +80,9 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
+| `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
+| `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
+| `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull/admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
 | `TRADING_CURRENCY` | `USD` |
 | `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |
@@ -145,6 +151,62 @@ or `minio.secretKey=minioadmin` stops the install unless
 `credentials.allowDefaults=true` is set explicitly. A remote release
 installed before this change needs the migration below, not a plain
 upgrade.
+
+## Authentication
+
+`AUTH_ENABLED` defaults to false. An empty value is false. Helm and `fbenv`
+do not set it. Chart `broker.auth.enabled` stays `false`. A fresh install is
+the open broker: HTTP `8080`, gRPC `50055`, and session ports `27000`–`27015`
+do not require a credential.
+
+The first start with `AUTH_ENABLED=true` refuses to serve until
+`AUTH_ADMIN_USERNAME` is set and, when that account has no password row,
+`AUTH_ADMIN_PASSWORD_FILE` can be read. That boot assigns existing services,
+backtests, and strategies to that admin, moves `service` and `backtest` onto
+uuid primary keys, copies each MinIO ingestion object from the name key to
+the id key, and then requires a credential on HTTP, broker gRPC, and those
+session ports. A failed copy leaves the name primary key and the name object.
+Rows are not deleted. A failed start serves nothing.
+
+Snapshot Postgres and the MinIO ingestions prefix before that boot. Restoring
+the snapshot is the rollback. An image rollback without it is not one.
+
+The admin password is the file from Secret `foreverbull-admin`, key
+`password`, mounted at `/etc/foreverbull/admin/password`. It is not an
+environment variable, not a CLI flag, and not a key in
+`.foreverbull/config.yaml`. The broker hashes the file and does not log the
+file or the hash. `broker.auth.adminUsername` is the login, not the password.
+`fbenv` does not create the Secret. Create it from a file outside the repo,
+mode `0600`, before the enable boot. Replace `<namespace>` with the Helm
+release namespace:
+
+```bash
+kubectl create secret generic foreverbull-admin \
+  --namespace <namespace> \
+  --from-file=password=./admin-password
+```
+
+Then set the chart values on an upgrade you run yourself. Do not pass the
+password with `--set`:
+
+```bash
+helm upgrade foreverbull deploy/helm/foreverbull \
+  --namespace <namespace> \
+  --reuse-values \
+  --set broker.auth.enabled=true \
+  --set broker.auth.adminUsername=<login>
+```
+
+A later start with `AUTH_ENABLED` false, after `owner_id` is `NOT NULL` on
+`service`, `backtest`, or `strategy`, exits. Turning the flag off is not a
+rollback.
+
+On local Kind, host ports `5432`, `4222`, `9000`, and `3000` ignore role.
+Sharing a backtest does not close them. A remote install with
+`expose.hostPort=false` does not publish those ports, or the session range,
+on the host. A remote broker that still publishes `8080` and `50055` stays
+open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
+"authentication was configured".
 
 ## Upgrading an existing remote install
 
@@ -432,6 +494,9 @@ broker:
       accountId: ""         # IBKR_ACCOUNT_ID; required when provider is ibkr
       accountMode: paper    # IBKR_ACCOUNT_MODE; account mode live is refused unless allowLiveURL. That flag does not unlock deploy mode LIVE.
       accessToken: ""       # IBKR_ACCESS_TOKEN; no tokens in the chart
+  auth:
+    enabled: false          # AUTH_ENABLED; fbenv leaves this false
+    adminUsername: ""       # AUTH_ADMIN_USERNAME; not the password
 
 zipline:
   grpcPort: 50055
