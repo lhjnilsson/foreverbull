@@ -40,8 +40,10 @@ const (
 	// ingestMissingDriver is the data service reporting that it is broken
 	// itself, so the user's backtest and settings are not at fault.
 	ingestMissingDriver
-	// ingestDatabaseUnreachable is the data service failing to reach Postgres.
-	ingestDatabaseUnreachable
+	// ingestUnreachable is either hop failing: the broker to the Zipline pod,
+	// or the Zipline pod to Postgres. The user's next step is the same, so
+	// the line is the same; the details say which hop failed.
+	ingestUnreachable
 )
 
 // missingDriverReason is the data service's own sentence for a missing
@@ -58,7 +60,8 @@ type ingestFailure struct {
 
 // readIngestFailure classifies the data service's error by its gRPC code.
 // The data service uses FailedPrecondition only for a broken install and
-// Unavailable for a database it cannot reach. The error text never becomes
+// Unavailable for a database it cannot reach; gRPC itself uses Unavailable
+// when the broker cannot reach the data service. The error text never becomes
 // the reason: it goes to details, behind --verbose.
 func readIngestFailure(cause error) ingestFailure {
 	message := cause.Error()
@@ -81,9 +84,28 @@ func readIngestFailure(cause error) ingestFailure {
 		}
 	}
 	if code == codes.Unavailable {
-		failure.kind = ingestDatabaseUnreachable
+		failure.kind = ingestUnreachable
+		failure.details = unreachableHop(hasDetails, reason, failure.details)
 	}
 	return failure
+}
+
+// unreachableHop names the hop that failed for the --verbose details. Only
+// the data service sends the details marker, so a status with the marker
+// is the Zipline pod failing to reach Postgres, and one without it is the
+// broker's own call to the Zipline pod failing.
+func unreachableHop(fromDataService bool, reason, details string) string {
+	if !fromDataService {
+		return joinDetail("the broker couldn't reach the Zipline pod", details)
+	}
+	return joinDetail(joinDetail("the Zipline pod couldn't reach Postgres", reason), details)
+}
+
+func joinDetail(lead, detail string) string {
+	if detail == "" {
+		return lead
+	}
+	return lead + ": " + detail
 }
 
 // ingestFailureLead is the fixed plain sentence for the failure, then the
@@ -97,8 +119,8 @@ func ingestFailureLead(failure ingestFailure) (string, string) {
 		}
 		return reason + ". This is a bug in the Foreverbull install, not in your strategy or settings.",
 			"Nothing was saved, so run `fbull backtest create` again once it's fixed."
-	case ingestDatabaseUnreachable:
-		return "the Foreverbull database isn't reachable. Run `fbenv status` to check it's running.",
+	case ingestUnreachable:
+		return "Foreverbull's data service isn't reachable. Run `fbenv status` to check it's running.",
 			"Nothing was saved, so run `fbull backtest create` again after that."
 	case ingestFailed:
 		return ingestFallbackReason + ".",

@@ -264,7 +264,7 @@ def test_backtest_create_ingest_missing_driver_prints_the_copy(monkeypatch):
 
 
 _INGEST_UNREACHABLE_COPY = (
-    "Couldn't load data for backtest 'from_file': the Foreverbull database isn't reachable. "
+    "Couldn't load data for backtest 'from_file': Foreverbull's data service isn't reachable. "
     "Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
 )
 _INGEST_OTHER_COPY = (
@@ -318,6 +318,32 @@ def test_backtest_create_ingest_failure_verbose_shows_the_cause(monkeypatch):
     assert result.exit_code == 1
     assert f"✖ {_INGEST_DRIVER_COPY}\n" in result.output
     assert result.output.endswith(f"Details: {_INGEST_DRIVER_CAUSE}\n")
+
+
+@pytest.mark.parametrize(
+    "hop",
+    [
+        "the Zipline pod couldn't reach Postgres: OperationalError: connection refused",
+        "the broker couldn't reach the Zipline pod: connection error: dial tcp 10.96.0.12:50055: connection refused",
+    ],
+    ids=["postgres", "zipline-pod"],
+)
+def test_backtest_create_unreachable_verbose_names_the_hop(hop, monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    message = f"{_INGEST_UNREACHABLE_COPY}\nDetails: {hop}"
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(message)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(cli, ["--verbose", "backtest", "create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    assert result.exit_code == 1
+    assert f"✖ {_INGEST_UNREACHABLE_COPY}\n" in result.output
+    assert result.output.endswith(f"Details: {hop}\n")
 
 
 @pytest.mark.parametrize("level", ["ERROR", "WARNING"])

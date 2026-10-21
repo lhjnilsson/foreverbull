@@ -293,13 +293,13 @@ When the data service fails to load prices into a new backtest, `fbull backtest 
 ✖ Couldn't load data for backtest 'demo': the data service is missing its database driver (psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run `fbull backtest create` again once it's fixed.
 ```
 
-When the data service can't reach Postgres, the line reads:
+When the broker can't reach the data service, or the data service can't reach Postgres, the line reads:
 
 ```
-✖ Couldn't load data for backtest 'demo': the Foreverbull database isn't reachable. Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that.
+✖ Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that.
 ```
 
-Any other failure reads `the data service failed while ingesting prices.` The default line never includes the exception text. Add `--verbose` (`fbull --verbose backtest create …`) to print the underlying exception on a `Details:` line. The database password is shown as `***` there, in the broker log and in the Zipline log. If the backtest couldn't be removed, the line says so and asks you to run `fbull backtest delete <name>` before you create it again.
+Any other failure reads `the data service failed while ingesting prices.` The default line never includes the exception text. Add `--verbose` (`fbull --verbose backtest create …`) to print the underlying exception on a `Details:` line. For the "isn't reachable" line, it also names the hop that failed: the broker to the Zipline pod, or the Zipline pod to Postgres. The database password is shown as `***` there, in the broker log and in the Zipline log. If the backtest couldn't be removed, the line says so and asks you to run `fbull backtest delete <name>` before you create it again.
 
 ### Pods do not start
 

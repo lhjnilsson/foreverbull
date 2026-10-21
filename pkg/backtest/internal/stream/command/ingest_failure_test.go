@@ -18,7 +18,7 @@ const (
 	missingDriverNoNameCopy = "Couldn't load data for backtest 'demo': the data service is missing its database " +
 		"driver. This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, " +
 		"so run `fbull backtest create` again once it's fixed."
-	unreachableCopy = "Couldn't load data for backtest 'demo': the Foreverbull database isn't reachable. Run " +
+	unreachableCopy = "Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. Run " +
 		"`fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
 	otherFailureCopy = "Couldn't load data for backtest 'demo': the data service failed while ingesting prices. " +
 		"Nothing was saved, so run `fbull backtest create` again once it's fixed."
@@ -60,19 +60,29 @@ func TestIngestFailureMessage(t *testing.T) {
 			expected: missingDriverNoNameCopy + "\nDetails: ImportError: boom",
 		},
 		{
-			name:     "database unreachable: fixed UX copy, the Zipline reason is not echoed",
-			cause:    fmt.Errorf("error ingesting: %w", connection),
-			removed:  true,
-			expected: unreachableCopy + "\nDetails: OperationalError: connection refused",
+			name:    "database unreachable: fixed UX copy, the Zipline reason is not echoed",
+			cause:   fmt.Errorf("error ingesting: %w", connection),
+			removed: true,
+			expected: unreachableCopy + "\nDetails: the Zipline pod couldn't reach Postgres: the data service could not connect to database at " +
+				"postgresql://foreverbull:***@db.internal:5432/foreverbull: OperationalError: connection refused",
 		},
 		{
 			name:    "database unreachable, delete failed",
 			cause:   fmt.Errorf("error ingesting: %w", connection),
 			removed: false,
-			expected: "Couldn't load data for backtest 'demo': the Foreverbull database isn't reachable. Run " +
+			expected: "Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. Run " +
 				"`fbenv status` to check it's running. The backtest couldn't be removed, so run " +
 				"`fbull backtest delete demo` before you run `fbull backtest create` again." +
-				"\nDetails: OperationalError: connection refused",
+				"\nDetails: the Zipline pod couldn't reach Postgres: the data service could not connect to database at " +
+				"postgresql://foreverbull:***@db.internal:5432/foreverbull: OperationalError: connection refused",
+		},
+		{
+			name: "broker can't reach the Zipline pod: same line, details name that hop",
+			cause: fmt.Errorf("error ingesting: %w", status.Error(codes.Unavailable,
+				"connection error: desc = \"transport: Error while dialing: dial tcp 10.96.0.12:50055: connect: connection refused\"")),
+			removed: true,
+			expected: unreachableCopy + "\nDetails: the broker couldn't reach the Zipline pod: connection error: desc = " +
+				"\"transport: Error while dialing: dial tcp 10.96.0.12:50055: connect: connection refused\"",
 		},
 		{
 			name:     "other data service failure: fixed reason, the exception only in details",
