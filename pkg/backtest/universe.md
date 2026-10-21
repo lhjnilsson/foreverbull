@@ -127,7 +127,15 @@ CREATE TABLE IF NOT EXISTS asset_symbol (
 
 Example: FB then META is one ISIN, two rows. Membership does not close.
 
-`asset_symbol` is shared by every ETF backtest. Two backtests over different windows store the same ticker from different dates; overlapping rows of the same ticker are one alias and are stored as their union. A different ticker over overlapping dates is refused by `asset_symbol_no_overlap`.
+`asset_symbol` is shared by every ETF backtest. `CreateBacktestFromETF` writes each alias of its own window with `Instrument.StoreAlias`, which reads the ISIN's rows and changes them in one transaction:
+
+- A NULL `to_date` only says the ticker was still current in the last list that backtest read. A backtest that ends before a rename leaves FB open-ended.
+- An open-ended row yields to a different ticker that starts after its `from_date`. When a later backtest stores META from 2021-10-31, the open FB row is closed at 2021-10-31. When the later window starts after the rename and only sees META from its start, FB is closed at that start; nothing is known about the days in between.
+- The same rule works in reverse order. A new open-ended row is capped at the `from_date` of the next stored row of a different ticker. An older backtest that sees FB open-ended after META is stored from 2021-10-31 stores FB up to 2021-10-31, not NULL.
+- Rows of the same ticker that overlap are one alias and are stored as their union. A known `to_date` wins over an open one.
+- Any other overlap of two tickers is refused with `asset_symbol_no_overlap` (`repository.ErrAliasConflict`), and the create fails. That covers a row with a known `to_date` that another ticker starts inside, an open row that another ticker starts on or before, and two tickers with the same `from_date`. A stored row is never renamed in place.
+
+Known limit: creates run one at a time, because the broker handles each command from one JetStream subscription. `StoreAlias` locks the ISIN's existing rows (`FOR UPDATE`) but takes no advisory lock. If creates ever run in parallel, two of them can miss each other's new rows for one ISIN; the exclusion constraint then fails one create instead of merging its rows. Take `pg_advisory_xact_lock` on the ISIN before that changes.
 
 On date `t`, current ticker is:
 
