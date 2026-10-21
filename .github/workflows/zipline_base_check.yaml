@@ -27,6 +27,11 @@ on:
       - client/pyproject.toml
       - client/zipline/pyproject.toml
       - .github/workflows/zipline_base_check.yaml
+  # The paths above only see changes in this repository. A new release on
+  # PyPI (such as SQLAlchemy 2.1) or a moved base tag can break the build
+  # with no commit here, so build main once a week as well.
+  schedule:
+    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 # A newer commit on the same branch or pull request supersedes the older run.
