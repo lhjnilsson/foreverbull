@@ -93,6 +93,44 @@ func (test *InstrumentTest) TestSymbolAtFollowsTickerChange() {
 	}, aliases)
 }
 
+// asset_symbol is shared by every ETF backtest. Two backtests over different
+// windows store the same ticker from different dates; that is one alias, not
+// an overlap. A different ticker over the same dates is still refused.
+func (test *InstrumentTest) TestStoreAliasMergesSameTickerAcrossBacktests() {
+	ctx := context.Background()
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	store := func(symbol, from string, to *time.Time) error {
+		return test.instruments.StoreAlias(ctx, repository.AliasInterval{
+			ISIN: metaISIN, Symbol: symbol, FromDate: test.date(from), ToDate: to,
+		})
+	}
+
+	test.Require().NoError(store("FB", "2020-01-31", nil))
+	test.Require().NoError(store("FB", "2020-01-15", nil))
+	test.Require().NoError(store("FB", "2020-06-30", nil))
+	aliases, err := test.instruments.ListAliases(ctx, metaISIN)
+	test.Require().NoError(err)
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2020-01-15"), ToDate: nil},
+	}, aliases)
+
+	// A later window that sees the rename closes nothing it did not cover.
+	_, err = test.conn.Exec(ctx, `DELETE FROM asset_symbol`)
+	test.Require().NoError(err)
+	test.Require().NoError(store("FB", "2021-06-30", test.toPtr("2021-10-31")))
+	test.Require().NoError(store("FB", "2021-01-01", test.toPtr("2021-10-31")))
+	test.Require().NoError(store("META", "2021-10-31", nil))
+	aliases, err = test.instruments.ListAliases(ctx, metaISIN)
+	test.Require().NoError(err)
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-01-01"), ToDate: test.toPtr("2021-10-31")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2021-10-31"), ToDate: nil},
+	}, aliases)
+
+	err = store("META", "2021-08-01", nil)
+	test.Require().ErrorContains(err, "asset_symbol_no_overlap")
+}
+
 func (test *InstrumentTest) TestAssetSymbolRejectsOverlapAndAcceptsAdjacent() {
 	ctx := context.Background()
 	test.Require().NoError(repository.MigrateAssetSymbol(ctx, test.conn))
