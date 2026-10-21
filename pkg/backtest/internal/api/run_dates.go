@@ -40,8 +40,8 @@ func resolveRunDates(stored *backtest.Backtest, start, end *commonPB.Date) (*com
 			"End %s is after backtest '%s' ends. %s", commonPB.DateToDateString(end), name, hint)
 	case startTime.After(endTime):
 		return nil, nil, status.Errorf(codes.InvalidArgument,
-			"Start %s is after end %s. Backtest '%s' runs from %s to %s; pick a start on or before the end.",
-			commonPB.DateToDateString(start), commonPB.DateToDateString(end), name, firstDay, lastDay)
+			"Start %s is after end %s. Pick a start on or before the end.",
+			commonPB.DateToDateString(start), commonPB.DateToDateString(end))
 	}
 	return start, end, nil
 }

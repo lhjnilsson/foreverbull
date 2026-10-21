@@ -284,25 +284,28 @@ func (s *SessionTest) TestCreateExecutionRejectsDatesOutsideBacktest() {
 		name  string
 		start *pb.Date
 		end   *pb.Date
-		want  []string
+		want  string
 	}{
 		{
 			name:  "start before first period",
 			start: &pb.Date{Year: 2023, Month: 12, Day: 29},
 			end:   &pb.Date{Year: 2024, Month: 6, Day: 28},
-			want:  []string{"2023-12-29", "before"},
+			want: "Start 2023-12-29 is before backtest 'backtest' begins. " +
+				"Pick dates between 2024-01-01 and 2024-12-31, or leave out the dates to run the whole backtest.",
 		},
 		{
 			name:  "end after last period",
 			start: &pb.Date{Year: 2024, Month: 1, Day: 2},
 			end:   &pb.Date{Year: 2025, Month: 1, Day: 3},
-			want:  []string{"2025-01-03", "after"},
+			want: "End 2025-01-03 is after backtest 'backtest' ends. " +
+				"Pick dates between 2024-01-01 and 2024-12-31, or leave out the dates to run the whole backtest.",
 		},
 		{
 			name:  "start after end",
 			start: &pb.Date{Year: 2024, Month: 6, Day: 28},
 			end:   &pb.Date{Year: 2024, Month: 1, Day: 2},
-			want:  []string{"2024-06-28", "2024-01-02"},
+			// Both dates are inside the backtest, so its range adds nothing.
+			want: "Start 2024-06-28 is after end 2024-01-02. Pick a start on or before the end.",
 		},
 	}
 	for _, tc := range cases {
@@ -317,12 +320,7 @@ func (s *SessionTest) TestCreateExecutionRejectsDatesOutsideBacktest() {
 			st, ok := status.FromError(err)
 			s.Require().True(ok)
 			s.Equal(codes.InvalidArgument, st.Code(), st.Message())
-			s.Contains(st.Message(), "backtest")
-			s.Contains(st.Message(), "2024-01-01")
-			s.Contains(st.Message(), "2024-12-31")
-			for _, w := range tc.want {
-				s.Contains(st.Message(), w)
-			}
+			s.Equal(tc.want, st.Message())
 		})
 	}
 
