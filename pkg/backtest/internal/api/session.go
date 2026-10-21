@@ -64,11 +64,23 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	log.Debug().Msg("create execution")
 	s.pingActivity()
 
+	backtests := repository.Backtest{Conn: s.db}
+	stored, err := backtests.Get(ctx, s.session.GetBacktest())
+	if err != nil {
+		log.Error().Err(err).Str("backtest", s.session.GetBacktest()).Msg("error getting backtest")
+		return nil, fmt.Errorf("error getting backtest %s: %w", s.session.GetBacktest(), err)
+	}
+	startDate, endDate, err := resolveRunDates(stored, req.GetStartDate(), req.GetEndDate())
+	if err != nil {
+		log.Info().Err(err).Str("backtest", s.session.GetBacktest()).Msg("execution dates rejected")
+		return nil, err
+	}
+
 	executions := repository.Execution{Conn: s.db}
 	e := backtest.Execution{
 		Session:   s.session.Id,
-		StartDate: req.StartDate,
-		EndDate:   req.EndDate,
+		StartDate: startDate,
+		EndDate:   endDate,
 	}
 
 	execution, err := executions.Create(ctx, &e, executionFunctionsFromAlgorithm(req.GetAlgorithm()))

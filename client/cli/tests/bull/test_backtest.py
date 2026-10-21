@@ -1277,3 +1277,45 @@ def test_cli_default_provider_matches_zipline_fallback(monkeypatch):
 
     monkeypatch.delenv("OHLC_PROVIDER", raising=False)
     assert ohlc_provider() == _DEFAULT_PROVIDER
+
+
+class _InvalidArgument(grpc.RpcError):
+    def __init__(self, details: str):
+        self._details = details
+
+    def code(self):
+        return grpc.StatusCode.INVALID_ARGUMENT
+
+    def details(self):
+        return self._details
+
+
+def test_backtest_run_shows_broker_date_rejection_as_one_line(fb_env):
+    message = (
+        "Start 2019-12-30 is before backtest 'test_name' begins. Pick dates between 2020-01-01 and 2020-01-31, "
+        "or leave out the dates to run the whole backtest."
+    )
+    mock_backtest_session = _run_session_mocks()
+    mock_backtest_session.run_execution.side_effect = _InvalidArgument(message)
+    with (
+        patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
+        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.get_execution") as get_execution,
+    ):
+        from_file_path.return_value = True
+        get.return_value = _sample_backtest()
+        create_session.return_value = iter(
+            [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
+        )
+        context = mock_foreverbull.return_value.backtest_session.return_value
+        context.__enter__.return_value = mock_backtest_session
+        # A real context manager lets the error through.
+        context.__exit__.return_value = False
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert f"✖ {message}" in " ".join(result.stdout.split())
+    assert "Traceback" not in result.stdout
+    get_execution.assert_not_called()

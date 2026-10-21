@@ -648,6 +648,7 @@ def run(
         return
 
     execution_id = None
+    rejected: str | None = None
     with LiveProgress() as progress:
         has_run = False
         for msg in broker.backtest.create_session(name):
@@ -655,17 +656,27 @@ def run(
             backtest_session = msg.session
             if backtest_session is not None and backtest_session.port and not has_run:
                 has_run = True
-                with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
-                    entity, backtest_session
-                ) as session:
-                    with progress.bar_progress("execution") as bar_progress:
-                        for execution_id, message in session.run_execution(
-                            start_date,
-                            end_date,
-                        ):
-                            bar_progress(message.num_current_period, message.num_total_periods)
-                    log.info(f"Execution completed for {session.backtest.name}")
+                try:
+                    with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
+                        entity, backtest_session
+                    ) as session:
+                        with progress.bar_progress("execution") as bar_progress:
+                            for execution_id, message in session.run_execution(
+                                start_date,
+                                end_date,
+                            ):
+                                bar_progress(message.num_current_period, message.num_total_periods)
+                        log.info(f"Execution completed for {session.backtest.name}")
+                except grpc.RpcError as exc:
+                    # The broker checks the dates too; its message is the whole error.
+                    code = getattr(exc, "code", None)
+                    if not callable(code) or code() != grpc.StatusCode.INVALID_ARGUMENT:
+                        raise
+                    rejected = _rpc_details(exc)
+                    progress.transient = True
 
+    if rejected is not None:
+        _fail(rejected)
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
     _, periods = broker.backtest.get_execution(execution_id)

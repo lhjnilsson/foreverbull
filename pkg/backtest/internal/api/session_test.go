@@ -22,8 +22,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 )
@@ -69,6 +71,9 @@ func (s *SessionTest) SetupTest() {
 	backtests := repository.Backtest{Conn: s.conn}
 	backtest := backtest.Backtest{
 		Name: "backtest",
+		Periods: []*backtest.Backtest_Period{
+			{StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1}, EndDate: &pb.Date{Year: 2024, Month: 12, Day: 31}},
+		},
 	}
 	s.backtest, err = backtests.Create(context.Background(), &backtest)
 	s.Require().NoError(err)
@@ -270,4 +275,82 @@ func (s *SessionTest) TestStopServer() {
 	default:
 		s.Require().Fail("activity channel should be closed")
 	}
+}
+
+// A run outside the backtest's dates has no universe and no bars, so the
+// broker refuses it instead of returning a flat result.
+func (s *SessionTest) TestCreateExecutionRejectsDatesOutsideBacktest() {
+	cases := []struct {
+		name  string
+		start *pb.Date
+		end   *pb.Date
+		want  []string
+	}{
+		{
+			name:  "start before first period",
+			start: &pb.Date{Year: 2023, Month: 12, Day: 29},
+			end:   &pb.Date{Year: 2024, Month: 6, Day: 28},
+			want:  []string{"2023-12-29", "before"},
+		},
+		{
+			name:  "end after last period",
+			start: &pb.Date{Year: 2024, Month: 1, Day: 2},
+			end:   &pb.Date{Year: 2025, Month: 1, Day: 3},
+			want:  []string{"2025-01-03", "after"},
+		},
+		{
+			name:  "start after end",
+			start: &pb.Date{Year: 2024, Month: 6, Day: 28},
+			end:   &pb.Date{Year: 2024, Month: 1, Day: 2},
+			want:  []string{"2024-06-28", "2024-01-02"},
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			_, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+				Session:   s.session.Id,
+				StartDate: tc.start,
+				EndDate:   tc.end,
+				Algorithm: &service_pb.Algorithm{},
+			})
+			s.Require().Error(err)
+			st, ok := status.FromError(err)
+			s.Require().True(ok)
+			s.Equal(codes.InvalidArgument, st.Code(), st.Message())
+			s.Contains(st.Message(), "backtest")
+			s.Contains(st.Message(), "2024-01-01")
+			s.Contains(st.Message(), "2024-12-31")
+			for _, w := range tc.want {
+				s.Contains(st.Message(), w)
+			}
+		})
+	}
+
+	var stored int
+	err := s.conn.QueryRow(context.Background(), `SELECT count(*) FROM backtest_execution`).Scan(&stored)
+	s.Require().NoError(err)
+	s.Zero(stored, "a rejected request stores no execution")
+}
+
+func (s *SessionTest) TestCreateExecutionAcceptsBacktestBounds() {
+	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().NoError(err)
+	s.Equal("2024-01-01", pb.DateToDateString(rsp.GetExecution().GetStartDate()))
+	s.Equal("2024-12-31", pb.DateToDateString(rsp.GetExecution().GetEndDate()))
+}
+
+// A request without dates runs over the whole backtest.
+func (s *SessionTest) TestCreateExecutionWithoutDatesUsesBacktestRange() {
+	rsp, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   s.session.Id,
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().NoError(err)
+	s.Equal("2024-01-01", pb.DateToDateString(rsp.GetExecution().GetStartDate()))
+	s.Equal("2024-12-31", pb.DateToDateString(rsp.GetExecution().GetEndDate()))
 }
