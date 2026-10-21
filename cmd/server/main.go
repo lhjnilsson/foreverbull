@@ -12,6 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/cmd/server/account"
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/grpc"
@@ -120,8 +121,14 @@ func app() *fx.App {
 }
 
 func main() {
+	if err := account.RejectRoleFlag(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "foreverbull: %v\n", err)
+		os.Exit(1)
+	}
+
 	cliApp := &cli.App{
-		Name: "foreverbull",
+		Name:     "foreverbull",
+		Commands: []*cli.Command{account.Command()},
 		Action: func(_ *cli.Context) error {
 			if err := environment.Setup(); err != nil {
 				return fmt.Errorf("failed to setup environment: %w", err)
