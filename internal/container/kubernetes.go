@@ -361,9 +361,23 @@ func (c *container) Stop() error {
 	return nil
 }
 
+// pickPod prefers a Ready pod that is not being deleted. During a rollout
+// the old pod keeps reporting Ready for a moment after it gets a
+// DeletionTimestamp, and a caller that picked it would hold an address
+// that disappears with that pod.
 func pickPod(pods []corev1.Pod) *corev1.Pod {
 	for i := range pods {
+		if pods[i].DeletionTimestamp != nil {
+			continue
+		}
+
 		if podHealth(&pods[i]) == HealthHealthy {
+			return &pods[i]
+		}
+	}
+
+	for i := range pods {
+		if pods[i].DeletionTimestamp == nil {
 			return &pods[i]
 		}
 	}
