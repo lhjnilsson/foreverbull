@@ -257,7 +257,24 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 		return nil, fmt.Errorf("iShares has no holdings file for %s between %s and %s",
 			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
 	}
-	return snaps, nil
+	return seedBacktestStart(snaps, start), nil
+}
+
+// seedBacktestStart opens membership on the backtest start. Lists are sampled
+// at month-ends, and Diff opens every interval at the first as-of, so the days
+// before that as-of would have no members and every Process call would get an
+// empty list. The first published list is held from the start, the same way
+// fillListings fills a leading gap from the next published list. The copy keeps
+// each ISIN and ticker, so the first as-of is not an add or a rename.
+func seedBacktestStart(snaps []universe.Snapshot, start time.Time) []universe.Snapshot {
+	start = dateOnly(start)
+	first := snaps[0]
+	if !dateOnly(first.AsOf).After(start) {
+		return snaps
+	}
+	seeded := make([]universe.Snapshot, 0, len(snaps)+1)
+	seeded = append(seeded, universe.Snapshot{AsOf: start, Holdings: slices.Clone(first.Holdings)})
+	return append(seeded, snaps...)
 }
 
 // recordLeadingHoldingsGap logs that a leading gap kept a later published listing.
