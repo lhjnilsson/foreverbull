@@ -12,12 +12,13 @@ import (
 // resolveRunDates checks a run's dates against the backtest's periods before
 // the execution is stored. A run outside them has no universe and no bars, so
 // it would end flat instead of failing. A missing date takes the backtest's
-// first or last day. A backtest without periods has no range to check against,
-// so its dates pass through unchanged.
+// first or last day. A backtest without periods has no data at all, so any run
+// of it is refused before an execution is stored.
 func resolveRunDates(stored *backtest.Backtest, start, end *commonPB.Date) (*commonPB.Date, *commonPB.Date, error) {
 	first, last := backtestRange(stored.GetPeriods())
 	if first == nil || last == nil {
-		return start, end, nil
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
+			"Backtest '%s' has no data to run. Create it again with `fbull backtest create`.", stored.GetName())
 	}
 	if start == nil {
 		start = first

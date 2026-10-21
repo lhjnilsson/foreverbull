@@ -607,6 +607,10 @@ def _check_run_dates_in_range(
     raise typer.Exit(code=1)
 
 
+# Codes the broker uses to refuse a run it will not start. Any other code is a fault.
+_BROKER_RUN_REJECTIONS = (grpc.StatusCode.INVALID_ARGUMENT, grpc.StatusCode.FAILED_PRECONDITION)
+
+
 def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:
     """Look the backtest up, failing with one plain line when the name doesn't exist."""
     try:
@@ -668,9 +672,10 @@ def run(
                                 bar_progress(message.num_current_period, message.num_total_periods)
                         log.info(f"Execution completed for {session.backtest.name}")
                 except grpc.RpcError as exc:
-                    # The broker checks the dates too; its message is the whole error.
+                    # The broker checks the dates and that the backtest has data;
+                    # its message is the whole error.
                     code = getattr(exc, "code", None)
-                    if not callable(code) or code() != grpc.StatusCode.INVALID_ARGUMENT:
+                    if not callable(code) or code() not in _BROKER_RUN_REJECTIONS:
                         raise
                     rejected = _rpc_details(exc)
                     progress.transient = True

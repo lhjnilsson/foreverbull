@@ -1279,24 +1279,42 @@ def test_cli_default_provider_matches_zipline_fallback(monkeypatch):
     assert ohlc_provider() == _DEFAULT_PROVIDER
 
 
-class _InvalidArgument(grpc.RpcError):
-    def __init__(self, details: str):
+class _BrokerRejection(grpc.RpcError):
+    def __init__(self, details: str, code: grpc.StatusCode = grpc.StatusCode.INVALID_ARGUMENT):
         self._details = details
+        self._code = code
 
     def code(self):
-        return grpc.StatusCode.INVALID_ARGUMENT
+        return self._code
 
     def details(self):
         return self._details
 
 
-def test_backtest_run_shows_broker_date_rejection_as_one_line(fb_env):
-    message = (
-        "Start 2019-12-30 is before backtest 'test_name' begins. Pick dates between 2020-01-01 and 2020-01-31, "
-        "or leave out the dates to run the whole backtest."
-    )
+@pytest.mark.parametrize(
+    ("message", "code"),
+    [
+        (
+            (
+                "Start 2019-12-30 is before backtest 'test_name' begins. Pick dates between 2020-01-01 and 2020-01-31, "
+                "or leave out the dates to run the whole backtest."
+            ),
+            grpc.StatusCode.INVALID_ARGUMENT,
+        ),
+        (
+            "Start 2020-01-31 is after end 2020-01-02. Pick a start on or before the end.",
+            grpc.StatusCode.INVALID_ARGUMENT,
+        ),
+        (
+            "Backtest 'test_name' has no data to run. Create it again with `fbull backtest create`.",
+            grpc.StatusCode.FAILED_PRECONDITION,
+        ),
+    ],
+    ids=["before-start", "start-after-end", "no-periods"],
+)
+def test_backtest_run_shows_broker_rejection_as_one_line(fb_env, message, code):
     mock_backtest_session = _run_session_mocks()
-    mock_backtest_session.run_execution.side_effect = _InvalidArgument(message)
+    mock_backtest_session.run_execution.side_effect = _BrokerRejection(message, code)
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
@@ -1316,6 +1334,7 @@ def test_backtest_run_shows_broker_date_rejection_as_one_line(fb_env):
         result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
     assert f"✖ {message}" in " ".join(result.stdout.split())
     assert "Traceback" not in result.stdout
     get_execution.assert_not_called()

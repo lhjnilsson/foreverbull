@@ -352,3 +352,25 @@ func (s *SessionTest) TestCreateExecutionWithoutDatesUsesBacktestRange() {
 	s.Equal("2024-01-01", pb.DateToDateString(rsp.GetExecution().GetStartDate()))
 	s.Equal("2024-12-31", pb.DateToDateString(rsp.GetExecution().GetEndDate()))
 }
+
+// A backtest without periods has no data, so the broker refuses the run
+// instead of skipping the date check.
+func (s *SessionTest) TestCreateExecutionRejectsBacktestWithoutPeriods() {
+	_, err := s.conn.Exec(context.Background(), `DELETE FROM backtest_period WHERE backtest_name = $1`, s.backtest.GetName())
+	s.Require().NoError(err)
+
+	_, err = s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   s.session.Id,
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().Error(err)
+	st, ok := status.FromError(err)
+	s.Require().True(ok)
+	s.Equal(codes.FailedPrecondition, st.Code(), st.Message())
+	s.Equal("Backtest 'backtest' has no data to run. Create it again with `fbull backtest create`.", st.Message())
+
+	var stored int
+	err = s.conn.QueryRow(context.Background(), `SELECT count(*) FROM backtest_execution`).Scan(&stored)
+	s.Require().NoError(err)
+	s.Zero(stored, "a rejected request stores no execution")
+}
