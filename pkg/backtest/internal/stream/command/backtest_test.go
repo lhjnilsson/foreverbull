@@ -180,7 +180,11 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	msft := dependency.Asset{Symbol: "MSFT", Name: "Microsoft Corp.", Sector: "Technology", AssetType: "Equity", ISIN: msftISIN}
 	cash := dependency.Asset{Symbol: "CASH_USD", Name: "USD Cash", Sector: "-", AssetType: "Cash", ISIN: ""}
 
+	// The seed is the last list published on or before the start.
+	seed := test.date("2021-12-31")
 	test.etfscraper.On("ListSnapshotDates", "iShares S&P 100", start, end).Return([]time.Time{s0, s1, s2}, nil)
+	test.etfscraper.On("ListSnapshotDates", "iShares S&P 100", test.date("2021-10-01"), start).Return([]time.Time{seed}, nil)
+	test.etfscraper.On("GetSnapshot", "iShares S&P 100", seed).Return([]dependency.Asset{aapl, fb, cash}, nil)
 	test.etfscraper.On("GetSnapshot", "iShares S&P 100", s0).Return([]dependency.Asset{aapl, fb, cash}, nil)
 	test.etfscraper.On("GetSnapshot", "iShares S&P 100", s1).Return([]dependency.Asset{aapl, meta, msft, cash}, nil)
 	test.etfscraper.On("GetSnapshot", "iShares S&P 100", s2).Return([]dependency.Asset{meta, msft, cash}, nil)
@@ -218,7 +222,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	members := repository.UniverseMember{Conn: test.db}
 	listed, err := members.List(ctx, "test-backtest-2")
 	test.Require().NoError(err)
-	// The first published list opens at the backtest start, not at its as-of.
+	// The 2021-12-31 list opens at the backtest start, not at its as-of.
 	test.Equal([]repository.MemberInterval{
 		{ISIN: aaplISIN, FromDate: start, ToDate: test.toPtr("2023-02-28")},
 		{ISIN: metaISIN, FromDate: start, ToDate: nil},
@@ -313,18 +317,21 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 }
 
 // An ETF universe is never empty on a day of the backtest. iShares lists are
-// sampled at month-ends, so the days between the start and the first as-of
-// hold the first published list. A rename (FB then META) and a drop (AAPL)
-// later in the window do not leave a day without members.
+// sampled at month-ends, so the days between the start and the next as-of
+// hold the last list published on or before the start. MSFT first appears in
+// the 2020-02-29 list and is not a member before it. A rename (FB then META)
+// and a drop (AAPL) later in the window do not leave a day without members.
 func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 	aapl := dependency.Asset{Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity", ISIN: aaplISIN}
 	fb := dependency.Asset{Symbol: "FB", Name: "Meta Platforms Inc.", AssetType: "Equity", ISIN: metaISIN}
 	meta := dependency.Asset{Symbol: "META", Name: "Meta Platforms Inc.", AssetType: "Equity", ISIN: metaISIN}
 	msft := dependency.Asset{Symbol: "MSFT", Name: "Microsoft Corp.", AssetType: "Equity", ISIN: msftISIN}
+	dec := test.date("2019-12-31")
 	jan := test.date("2020-01-31")
 	feb := test.date("2020-02-29")
 	mar := test.date("2020-03-31")
 	listings := map[time.Time][]dependency.Asset{
+		dec: {aapl, fb},
 		jan: {aapl, fb},
 		feb: {aapl, meta, msft},
 		mar: {meta, msft},
@@ -345,6 +352,11 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 			end := mar
 			scraper := new(dependency.MockETFScraper)
 			scraper.On("ListSnapshotDates", "iShares S&P 100", start, end).Return([]time.Time{jan, feb, mar}, nil)
+			before := []time.Time{dec}
+			if !jan.After(start) {
+				before = append(before, jan)
+			}
+			scraper.On("ListSnapshotDates", "iShares S&P 100", test.date("2019-10-01"), start).Return(before, nil)
 			for asOf, assets := range listings {
 				scraper.On("GetSnapshot", "iShares S&P 100", asOf).Return(assets, nil)
 			}
@@ -371,6 +383,12 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 			symbols, err := members.SymbolsAt(ctx, tc.name, start)
 			test.Require().NoError(err)
 			test.Equal([]string{"AAPL", "FB"}, symbols)
+			at, err := members.At(ctx, tc.name, feb.AddDate(0, 0, -1))
+			test.Require().NoError(err)
+			test.Equal(first, at, "MSFT is not a member before the list that adds it")
+			at, err = members.At(ctx, tc.name, feb)
+			test.Require().NoError(err)
+			test.Equal([]string{aaplISIN, metaISIN, msftISIN}, at)
 
 			// The window is one quarter, so the walk is bounded by end.
 			empty := make([]string, 0)
