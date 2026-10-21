@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS asset_symbol (
 
 Example: FB then META is one ISIN, two rows. Membership does not close.
 
+`asset_symbol` is shared by every ETF backtest. Two backtests over different windows store the same ticker from different dates; overlapping rows of the same ticker are one alias and are stored as their union. A different ticker over overlapping dates is refused by `asset_symbol_no_overlap`.
+
 On date `t`, current ticker is:
 
 ```sql
@@ -235,11 +237,11 @@ Order snapshots for the ETF by `as_of_date`. Restrict to `asset_type = 'Equity'`
 | Same ISIN, different symbol | **Rename.** Close the old `asset_symbol.to_date = Si+1.as_of_date`; insert a new alias from Si+1. Leave `universe_member` open. |
 | Same ISIN, same symbol | No-op. |
 
-Seed from S0: every Equity ISIN opens a member interval at S0.`as_of_date` and an `asset_symbol` interval for that ticker.
+Seed from S0 at the backtest start: every Equity ISIN in S0 opens a member interval at the backtest `start_date` and an `asset_symbol` interval for that ticker from the same day. Month-end sampling puts S0 after the start unless the start is itself an as-of, so `CreateBacktestFromETF` holds S0's list from the start, the same way a leading gap is filled from the next published list. An ETF universe is never empty on a day of the backtest. The copy keeps each ISIN and ticker, so S0.`as_of_date` is not an add or a rename.
 
 Adds/drops change membership. Ticker changes do not.
 
-`pkg/backtest/internal/universe.Diff` is the consecutive-snapshot differ. It emits half-open `universe_member` intervals (and ticker alias intervals). Persistence is `universe_member` in the backtest repository. `CreateBacktestFromETF` loads month-end snapshots, diffs them, and writes `instrument` / `asset_symbol` / `universe_member`.
+`pkg/backtest/internal/universe.Diff` is the consecutive-snapshot differ. It emits half-open `universe_member` intervals (and ticker alias intervals) and opens the first ones at the first snapshot's as-of; it does not know the backtest window. Persistence is `universe_member` in the backtest repository. `CreateBacktestFromETF` loads month-end snapshots, seeds the first one at the backtest start, diffs them, and writes `instrument` / `asset_symbol` / `universe_member`.
 
 ### 6.3 Hysteresis (optional)
 
@@ -304,9 +306,10 @@ Contract:
 
 1. Resolve `[start_date, end_date]` to sampled as-of dates (§5.2).
 2. Fill `etf_holdings_snapshot` from cache or iShares.
-3. Diff → `asset_symbol` + `universe_member` (§6).
-4. `backtest.benchmark` from `GetBenchmark`.
-5. Ingest union (§7.1). Session PIT is a runtime read, not a stored yearly list.
+3. Hold the first published list from `start_date` when the first as-of is later (§6.2).
+4. Diff → `asset_symbol` + `universe_member` (§6). The first interval opens at the backtest start.
+5. `backtest.benchmark` from `GetBenchmark`.
+6. Ingest union (§7.1). Session PIT is a runtime read, not a stored yearly list.
 
 `enabled = GetAsset(symbol)` is not part of membership. Looking up a ticker in Yahoo/Alpaca remains an ingest concern.
 
@@ -354,6 +357,6 @@ Reuse these as-is where the new tables touch them:
 
 ## 12. Status
 
-Landed. ETF create samples month-end iShares as-of dates (filesystem JSON cache; Equity rows with ISIN). Identity is ISIN (`instrument` + `asset_symbol`); ticker is a dated alias (FB then META is one asset). Membership is half-open `universe_member` intervals from consecutive as-of diffs: adds/drops change membership, ticker changes do not. Ingest unions every alias plus the benchmark; the session maps members through `asset_symbol` at `t` into `Process` (empty universe stays `[]`). A symbol-list backtest has no membership rows and passes its enabled period assets instead (§7.3). SQLIngester writes `auto_close_date` on a drop and keeps one sid across a rename. `GetAsset` failure is not a membership drop. Yearly `backtest_period` / `backtest_period_asset` rows remain for ingest windows; they are not membership.
+Landed. ETF create samples month-end iShares as-of dates (filesystem JSON cache; Equity rows with ISIN). Identity is ISIN (`instrument` + `asset_symbol`); ticker is a dated alias (FB then META is one asset). Membership is half-open `universe_member` intervals from consecutive as-of diffs, with the first list held from the backtest start: adds/drops change membership, ticker changes do not. Ingest unions every alias plus the benchmark; the session maps members through `asset_symbol` at `t` into `Process` (empty universe stays `[]`). A symbol-list backtest has no membership rows and passes its enabled period assets instead (§7.3). SQLIngester writes `auto_close_date` on a drop and keeps one sid across a rename. `GetAsset` failure is not a membership drop. Yearly `backtest_period` / `backtest_period_asset` rows remain for ingest windows; they are not membership.
 
 Not in this work: reintroducing `MARKET_DATA_PROVIDER`; daily holdings dumps; the `etf_holdings_snapshot` table (raw JSON cache is enough); hysteresis; rewriting `ohlc` off `symbol`.
