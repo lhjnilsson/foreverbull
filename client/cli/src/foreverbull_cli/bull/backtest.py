@@ -546,7 +546,46 @@ def _parse_run_dates(
             console.print(f"[red]Invalid end date: [yellow]{end}")
             return None
 
+    _check_run_dates_in_range(entity, start_date, end_date, start=bool(start), end=bool(end))
     return start_date, end_date
+
+
+def _check_run_dates_in_range(
+    entity: backtest_pb.Backtest,
+    start_date: common_pb.Date,
+    end_date: common_pb.Date,
+    *,
+    start: bool,
+    end: bool,
+) -> None:
+    """Fail before any session starts when --start/--end fall outside the backtest, one ✖ line per bad flag."""
+    bt_start = pb_utils.from_proto_date_to_pydate(entity.periods[0].start_date)
+    bt_end = pb_utils.from_proto_date_to_pydate(entity.periods[-1].end_date)
+    run_start = pb_utils.from_proto_date_to_pydate(start_date)
+    run_end = pb_utils.from_proto_date_to_pydate(end_date)
+    hint = (
+        f"Pick dates between {bt_start.isoformat()} and {bt_end.isoformat()}, "
+        "or leave out --start and --end to run the whole period."
+    )
+
+    problems: list[str] = []
+    for flag, given, used in (("--start", start, run_start), ("--end", end, run_end)):
+        if not given:
+            continue
+        if used < bt_start:
+            problems.append(f"{flag} {used.isoformat()} is before backtest '{entity.name}' begins. {hint}")
+        elif used > bt_end:
+            problems.append(f"{flag} {used.isoformat()} is after backtest '{entity.name}' ends. {hint}")
+    if not problems and run_start > run_end:
+        problems.append(
+            f"--start {run_start.isoformat()} is after --end {run_end.isoformat()}. "
+            "Pick a start date on or before the end date."
+        )
+    if not problems:
+        return
+    for problem in problems:
+        console.print(f"✖ {problem}", markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(code=1)
 
 
 def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:

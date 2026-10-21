@@ -891,6 +891,114 @@ def test_backtest_run_invalid_start(runner):
         assert "Invalid start date" in result.stdout
 
 
+def _invoke_run_with_dates(args):
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        get.return_value = _sample_backtest()
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py", *args])
+    return result, create_session
+
+
+def test_backtest_run_start_before_backtest_fails_fast(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--start", "2019-06-01"])
+    assert result.exit_code == 1
+    assert result.output == (
+        "✖ --start 2019-06-01 is before backtest 'test_name' begins. Pick dates between 2020-01-01 "
+        "and 2020-01-31, or leave out --start and --end to run the whole period.\n"
+    )
+    create_session.assert_not_called()
+
+
+def test_backtest_run_end_after_backtest_fails_fast(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--end", "2020-03-01"])
+    assert result.exit_code == 1
+    assert result.output == (
+        "✖ --end 2020-03-01 is after backtest 'test_name' ends. Pick dates between 2020-01-01 "
+        "and 2020-01-31, or leave out --start and --end to run the whole period.\n"
+    )
+    create_session.assert_not_called()
+
+
+def test_backtest_run_both_dates_out_of_range_prints_one_line_per_flag(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--start", "2019-06-01", "--end", "2020-03-01"])
+    assert result.exit_code == 1
+    lines = result.output.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("✖ --start 2019-06-01 is before backtest 'test_name' begins.")
+    assert lines[1].startswith("✖ --end 2020-03-01 is after backtest 'test_name' ends.")
+    create_session.assert_not_called()
+
+
+def test_backtest_run_start_after_backtest_end_fails_fast(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--start", "2020-02-15"])
+    assert result.exit_code == 1
+    assert result.output.startswith("✖ --start 2020-02-15 is after backtest 'test_name' ends.")
+    create_session.assert_not_called()
+
+
+def test_backtest_run_start_after_end_fails_fast(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--start", "2020-01-20", "--end", "2020-01-10"])
+    assert result.exit_code == 1
+    assert result.output == (
+        "✖ --start 2020-01-20 is after --end 2020-01-10. Pick a start date on or before the end date.\n"
+    )
+    create_session.assert_not_called()
+
+
+def test_backtest_run_dry_with_out_of_range_date_fails_fast(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, create_session = _invoke_run_with_dates(["--end", "2021-01-01", "--dry"])
+    assert result.exit_code == 1
+    assert "Dry Run" not in result.output
+    assert result.output.startswith("✖ --end 2021-01-01 is after backtest 'test_name' ends.")
+    create_session.assert_not_called()
+
+
+def test_backtest_run_dry_with_dates_inside_range(runner):
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        get.return_value = _sample_backtest()
+        result = runner(
+            backtest, ["run", "test_name", "demo.py", "--start", "2020-01-01", "--end", "2020-01-31", "--dry"]
+        )
+        assert result.exit_code == 0
+        assert "Dry Run" in result.stdout
+        create_session.assert_not_called()
+
+
+def test_backtest_run_with_dates_inside_range_runs(runner):
+    mock_backtest_session = _run_session_mocks()
+    with (
+        patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
+        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.get_execution") as get_execution,
+    ):
+        from_file_path.return_value = True
+        get.return_value = _sample_backtest()
+        create_session.return_value = iter(
+            [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
+        )
+        get_execution.return_value = (_sample_execution(), [_final_period()])
+        mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
+        result = runner(backtest, ["run", "test_name", "demo.py", "--start", "2020-01-10", "--end", "2020-01-20"])
+        assert result.exit_code == 0
+        create_session.assert_called_once()
+        mock_backtest_session.run_execution.assert_called_once_with(
+            from_pydate_to_proto_date(date(2020, 1, 10)), from_pydate_to_proto_date(date(2020, 1, 20))
+        )
+
+
 def test_backtest_executions(runner):
     with patch("foreverbull.broker.backtest.list_executions") as mock_list_executions:
         mock_list_executions.return_value = [_sample_execution()]
