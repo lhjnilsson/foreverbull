@@ -16,7 +16,7 @@ import (
 // unique with (owner_id, name). strategy.id stays the primary key. Service
 // images are backfilled onto strategy_version.service_id while service.image
 // is still unique. It does not search for an editor and it does not insert a
-// password. Calling it twice is safe. Startup does not call it.
+// password. Calling it twice is safe. Startup calls it when authentication is on.
 func MigrateStrategyOwner(ctx context.Context, conn *pgxpool.Pool, adminID string) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -64,6 +64,30 @@ const (
 	// TradingListingsFile replaces the embedded listing sample when a profile
 	// does not set its own listings path.
 	TradingListingsFile = "TRADING_LISTINGS_FILE"
+
+	// AuthEnabled defaults false. Empty is false. Helm and fbenv leave it unset.
+	AuthEnabled        = "AUTH_ENABLED"
+	AuthEnabledDefault = "false"
+
+	// AuthAdminUsername is the platform admin login. Required only when
+	// AUTH_ENABLED is true. Empty means it is not configured.
+	AuthAdminUsername = "AUTH_ADMIN_USERNAME"
+
+	// AuthAdminPasswordFile is the path of the admin password file.
+	// The password is not an environment variable.
+	AuthAdminPasswordFile = "AUTH_ADMIN_PASSWORD_FILE"
+
+	AuthCookieSecure        = "AUTH_COOKIE_SECURE"
+	AuthCookieSecureDefault = "false"
+
+	AuthTrustProxy        = "AUTH_TRUST_PROXY"
+	AuthTrustProxyDefault = "false"
+
+	// GitHub OAuth is read only when AUTH_ENABLED is true. All three stay
+	// empty by default so a partial set is visible at startup.
+	AuthGitHubClientID     = "AUTH_GITHUB_CLIENT_ID"
+	AuthGitHubClientSecret = "AUTH_GITHUB_CLIENT_SECRET"
+	AuthGitHubRedirectURL  = "AUTH_GITHUB_REDIRECT_URL"
 )
 
 type envVar struct {
@@ -91,6 +115,14 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
 	{TradingProfilesFile, func() (string, error) { return "", nil }},
 	{TradingListingsFile, func() (string, error) { return "", nil }},
+	{AuthEnabled, func() (string, error) { return AuthEnabledDefault, nil }},
+	{AuthAdminUsername, func() (string, error) { return "", nil }},
+	{AuthAdminPasswordFile, func() (string, error) { return "", nil }},
+	{AuthCookieSecure, func() (string, error) { return AuthCookieSecureDefault, nil }},
+	{AuthTrustProxy, func() (string, error) { return AuthTrustProxyDefault, nil }},
+	{AuthGitHubClientID, func() (string, error) { return "", nil }},
+	{AuthGitHubClientSecret, func() (string, error) { return "", nil }},
+	{AuthGitHubRedirectURL, func() (string, error) { return "", nil }},
 }
 
 type envSetter interface {
@@ -285,4 +317,50 @@ func GetTradingProfilesFile() string {
 
 func GetTradingListingsFile() string {
 	return os.Getenv(TradingListingsFile)
+}
+
+// GetAuthEnabled reports whether authentication and authorization are on.
+// An empty value and a value ParseBool rejects are both false.
+func GetAuthEnabled() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthEnabled))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthAdminUsername() string {
+	return os.Getenv(AuthAdminUsername)
+}
+
+func GetAuthAdminPasswordFile() string {
+	return os.Getenv(AuthAdminPasswordFile)
+}
+
+func GetAuthCookieSecure() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthCookieSecure))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthTrustProxy() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthTrustProxy))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthGitHubClientID() string {
+	return os.Getenv(AuthGitHubClientID)
+}
+
+func GetAuthGitHubClientSecret() string {
+	return os.Getenv(AuthGitHubClientSecret)
+}
+
+func GetAuthGitHubRedirectURL() string {
+	return os.Getenv(AuthGitHubRedirectURL)
 }

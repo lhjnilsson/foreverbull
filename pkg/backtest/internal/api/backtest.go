@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	internalPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -34,6 +35,9 @@ func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer 
 func (bs *BacktestServer) ListBacktests(ctx context.Context,
 	_ *servicePb.ListBacktestsRequest,
 ) (*servicePb.ListBacktestsResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.listBacktestsAuthed(ctx)
+	}
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	list, err := backtests.List(ctx)
@@ -50,6 +54,9 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 	serverStream servicePb.BacktestServicer_CreateBacktestServer,
 ) error {
 	ctx := serverStream.Context()
+	if environment.GetAuthEnabled() {
+		return bs.createBacktestAuthed(req, serverStream)
+	}
 	rsp := &servicePb.CreateBacktestResponse{
 		CREATING: &pb.Step{
 			State: pb.State_STATE_UNSPECIFIED,
@@ -107,6 +114,9 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 func (bs *BacktestServer) GetBacktest(ctx context.Context,
 	req *servicePb.GetBacktestRequest,
 ) (*servicePb.GetBacktestResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.getBacktestAuthed(ctx, req)
+	}
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	backtest, err := backtests.Get(ctx, req.GetName())
@@ -125,6 +135,9 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 }
 
 func (bs *BacktestServer) DeleteBacktest(ctx context.Context, req *servicePb.DeleteBacktestRequest) (*servicePb.DeleteBacktestResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.deleteBacktestAuthed(ctx, req)
+	}
 	backtests := repository.Backtest{Conn: bs.pgx}
 	err := backtests.Delete(ctx, req.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -140,8 +153,11 @@ func (bs *BacktestServer) DeleteBacktest(ctx context.Context, req *servicePb.Del
 func (bs *BacktestServer) CreateSession(
 	req *servicePb.CreateSessionRequest, serverStream servicePb.BacktestServicer_CreateSessionServer,
 ) error {
-	sessions := repository.Session{Conn: bs.pgx}
 	ctx := serverStream.Context()
+	if environment.GetAuthEnabled() {
+		return bs.createSessionAuthed(req, serverStream)
+	}
+	sessions := repository.Session{Conn: bs.pgx}
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &pb.Step{
 			State: pb.State_STATE_RUNNING,
@@ -198,6 +214,9 @@ func (bs *BacktestServer) CreateSession(
 func (bs *BacktestServer) GetSession(ctx context.Context,
 	req *servicePb.GetSessionRequest,
 ) (*servicePb.GetSessionResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.getSessionAuthed(ctx, req)
+	}
 	sessions := repository.Session{Conn: bs.pgx}
 
 	session, err := sessions.Get(ctx, req.GetSessionId())
@@ -213,6 +232,9 @@ func (bs *BacktestServer) GetSession(ctx context.Context,
 func (bs *BacktestServer) ListExecutions(ctx context.Context,
 	req *servicePb.ListExecutionsRequest,
 ) (*servicePb.ListExecutionsResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.listExecutionsAuthed(ctx, req)
+	}
 	storage := repository.Execution{Conn: bs.pgx}
 
 	if req.GetSessionId() != "" {
@@ -248,6 +270,9 @@ func (bs *BacktestServer) ListExecutions(ctx context.Context,
 func (bs *BacktestServer) GetExecution(ctx context.Context,
 	req *servicePb.GetExecutionRequest,
 ) (*servicePb.GetExecutionResponse, error) {
+	if environment.GetAuthEnabled() {
+		return bs.getExecutionAuthed(ctx, req)
+	}
 	storage := repository.Execution{Conn: bs.pgx}
 
 	execution, err := storage.Get(ctx, req.GetExecutionId())

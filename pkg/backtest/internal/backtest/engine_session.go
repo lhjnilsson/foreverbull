@@ -67,7 +67,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 		}
 	}
 
-	stored, symbolsAt, err := runPlan(ctx, backtests, members, execution.GetBacktest())
+	stored, symbolsAt, err := runPlan(ctx, backtests, members, execution)
 	if err != nil {
 		closePool()
 		return nil, err
@@ -176,7 +176,17 @@ func (z *ZipelineSession) lookups(ctx context.Context) (MemberSymbols, BacktestR
 // are what DownloadFinancialData and SQLIngester put in the bundle, so those
 // are its universe. Without that fallback every bar got no symbols and the
 // algorithm could not place an order.
-func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbols, backtestName string) (*pb.Backtest, symbolSource, error) {
+func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution) (*pb.Backtest, symbolSource, error) {
+	if execution == nil {
+		return nil, nil, errors.New("execution has no backtest")
+	}
+	if environment.GetAuthEnabled() {
+		return runPlanOwned(ctx, backtests, members, execution)
+	}
+	return runPlanNamed(ctx, backtests, members, execution.GetBacktest())
+}
+
+func runPlanNamed(ctx context.Context, backtests BacktestReader, members MemberSymbols, backtestName string) (*pb.Backtest, symbolSource, error) {
 	if backtestName == "" {
 		return nil, nil, errors.New("execution has no backtest")
 	}
@@ -191,6 +201,51 @@ func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbol
 	if len(intervals) > 0 {
 		return stored, func(ctx context.Context, t time.Time) ([]string, error) {
 			return memberSymbolsAt(ctx, members, backtestName, t)
+		}, nil
+	}
+	return stored, func(_ context.Context, t time.Time) ([]string, error) {
+		return periodSymbolsAt(stored.GetPeriods(), t), nil
+	}, nil
+}
+
+type backtestByID interface {
+	IDForSession(ctx context.Context, sessionID string) (string, error)
+	GetByID(ctx context.Context, id string) (*pb.Backtest, error)
+}
+
+type membersByID interface {
+	ListByID(ctx context.Context, backtestID string) ([]repository.MemberInterval, error)
+	SymbolsAtID(ctx context.Context, backtestID string, t time.Time) ([]string, error)
+}
+
+func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution) (*pb.Backtest, symbolSource, error) {
+	ids, ok := backtests.(backtestByID)
+	listed, membersOK := members.(membersByID)
+	if !ok || !membersOK {
+		return nil, nil, errors.New("backtest id is empty")
+	}
+	backtestID, err := ids.IDForSession(ctx, execution.GetSession())
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting backtest for session: %w", err)
+	}
+	stored, err := ids.GetByID(ctx, backtestID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting backtest %s: %w", backtestID, err)
+	}
+	intervals, err := listed.ListByID(ctx, backtestID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error listing universe members of %s: %w", backtestID, err)
+	}
+	if len(intervals) > 0 {
+		return stored, func(ctx context.Context, t time.Time) ([]string, error) {
+			symbols, err := listed.SymbolsAtID(ctx, backtestID, t)
+			if err != nil {
+				return nil, err
+			}
+			if symbols == nil {
+				return []string{}, nil
+			}
+			return symbols, nil
 		}, nil
 	}
 	return stored, func(_ context.Context, t time.Time) ([]string, error) {

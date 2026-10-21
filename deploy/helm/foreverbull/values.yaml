@@ -90,6 +90,10 @@ broker:
   trading:
     # TRADING_ENABLED. Credentials are Secret foreverbull-trading, not chart values.
     enabled: false
+  auth:
+    # AUTH_ENABLED. Default false leaves the variable unset so the process default applies.
+    enabled: false
+    adminUsername: ""
 
 zipline:
   grpcPort: 50055

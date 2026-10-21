@@ -54,6 +54,8 @@ message GetBacktestRequest {
       expression: "this != ''"
     }
   }];
+  // Owner login when the same name exists for more than one account. Empty uses the default rule.
+  string owner = 2;
 }
 
 message GetBacktestResponse {
@@ -69,6 +71,7 @@ message DeleteBacktestRequest {
       expression: "this != ''"
     }
   }];
+  string owner = 2;
 }
 
 message DeleteBacktestResponse {}
@@ -81,6 +84,7 @@ message CreateSessionRequest {
       expression: "this != ''"
     }
   }];
+  string owner = 2;
 }
 
 message CreateSessionResponse {
@@ -89,6 +93,9 @@ message CreateSessionResponse {
   foreverbull.common.Step STORING = 3;
 
   foreverbull.backtest.v1.Session session = 4;
+  // Set on frames whose session has a port, and only when authentication is on.
+  // It is not a column and it is not sent on earlier frames.
+  string session_secret = 5;
 }
 
 message GetSessionRequest {
@@ -108,6 +115,7 @@ message GetSessionResponse {
 message ListExecutionsRequest {
   string backtest = 1;
   string session_id = 2;
+  string owner = 3;
 }
 
 message ListExecutionsResponse {

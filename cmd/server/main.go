@@ -112,6 +112,7 @@ func app() *fx.App {
 		coreModules,
 		grpc.Module,
 		web.Module,
+		fx.Invoke(prepareAuth),
 		backtest.Module,
 		finance.Module,
 		service.Module,

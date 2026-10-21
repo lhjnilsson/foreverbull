@@ -28,6 +28,7 @@ func NewExperimentRunCommand(experimentID string) (stream.Message, error) {
 type RunInput struct {
 	ExperimentID string
 	BacktestName string
+	BacktestID   string
 	ServiceImage string
 	Algorithm    *service.Algorithm
 	StartDate    *common.Date

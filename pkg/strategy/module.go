@@ -116,5 +116,5 @@ func registerStrategyHTTP(p strategyHTTPParams) {
 	if p.Pgx == nil || p.Launcher == nil {
 		return
 	}
-	api.RegisterExecutionHTTP(p.Mux, service.NewStore(p.Pgx), p.Launcher)
+	api.RegisterExecutionHTTPWithAccess(p.Mux, service.NewStore(p.Pgx), p.Launcher, p.Pgx)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
@@ -191,6 +192,9 @@ type Service struct {
 }
 
 func (db *Service) Create(ctx context.Context, image string) (*pb.Service, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("create service by image is refused while AUTH_ENABLED=true")
+	}
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO service (image) VALUES ($1)`,
 		image,
@@ -203,6 +207,9 @@ func (db *Service) Create(ctx context.Context, image string) (*pb.Service, error
 }
 
 func (db *Service) Get(ctx context.Context, image string) (*pb.Service, error) {
+	if environment.GetAuthEnabled() {
+		return db.getByImageJoined(ctx, image)
+	}
 	service := pb.Service{}
 
 	rows, err := db.Conn.Query(ctx,
@@ -289,6 +296,9 @@ func (db *Service) UpdateStatus(ctx context.Context, image string, status pb.Ser
 }
 
 func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("list services is refused while AUTH_ENABLED=true")
+	}
 	rows, err := db.Conn.Query(ctx,
 		`SELECT service.image, algorithm, ss.status, ss.error, ss.occurred_at
 		FROM service
@@ -348,6 +358,9 @@ func (db *Service) List(ctx context.Context) ([]*pb.Service, error) {
 }
 
 func (db *Service) Delete(ctx context.Context, image string) error {
+	if environment.GetAuthEnabled() {
+		return fmt.Errorf("delete service by image is refused while AUTH_ENABLED=true")
+	}
 	_, err := db.Conn.Exec(ctx,
 		"DELETE FROM service WHERE image=$1", image)
 	if err != nil {

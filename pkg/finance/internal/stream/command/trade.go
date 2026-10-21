@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
@@ -13,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	"google.golang.org/grpc"
 )
 
 func SessionRun(ctx context.Context, msg stream.Message) error {
@@ -36,7 +40,19 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("trading is not enabled")
 	}
 
-	server, activity, err := api.NewGRPCSessionServer(trading)
+	var (
+		server   *grpc.Server
+		activity <-chan bool
+	)
+	if environment.GetAuthEnabled() {
+		secret, ok := auth.LookupTradingSecret(cmd.Id)
+		if !ok {
+			return fmt.Errorf("%s is missing", auth.SessionMetadata())
+		}
+		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret)
+	} else {
+		server, activity, err = api.NewGRPCSessionServer(trading)
+	}
 	if err != nil {
 		return fmt.Errorf("error creating grpc session server: %w", err)
 	}
@@ -55,6 +71,9 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	go func() {
 		defer func() {
 			server.Stop()
+			if environment.GetAuthEnabled() {
+				auth.ForgetTradingSecret(cmd.Id)
+			}
 		}()
 		for {
 			select {

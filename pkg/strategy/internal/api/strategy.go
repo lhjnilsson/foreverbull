@@ -6,6 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
@@ -50,6 +52,9 @@ func (s *StrategyServer) ListStrategies(ctx context.Context, _ *servicePb.ListSt
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.listStrategiesAuthed(ctx)
+	}
 
 	strategies := repository.Strategy{Conn: s.pgx}
 	list, err := strategies.List(ctx)
@@ -64,6 +69,9 @@ func (s *StrategyServer) GetStrategy(ctx context.Context, req *servicePb.GetStra
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.getStrategyAuthed(ctx, req)
+	}
 
 	strategies := repository.Strategy{Conn: s.pgx}
 	found, err := strategies.Get(ctx, req.GetName())
@@ -75,4 +83,11 @@ func (s *StrategyServer) GetStrategy(ctx context.Context, req *servicePb.GetStra
 	}
 
 	return &servicePb.GetStrategyResponse{Strategy: found}, nil
+}
+
+func (s *StrategyServer) DeleteStrategy(ctx context.Context, req *servicePb.DeleteStrategyRequest) (*servicePb.DeleteStrategyResponse, error) {
+	if !environment.GetAuthEnabled() {
+		return s.UnimplementedStrategyServicerServer.DeleteStrategy(ctx, req)
+	}
+	return s.deleteStrategyAuthed(ctx, req)
 }

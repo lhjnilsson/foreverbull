@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/web"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
@@ -68,10 +70,43 @@ func (h strategyRoutes) create(w http.ResponseWriter, r *http.Request) {
 		web.BadRequest(w)
 		return
 	}
+	if environment.GetAuthEnabled() {
+		h.createOwned(w, r, name)
+		return
+	}
 	// The form has no description. Persist nil rather than an empty string.
 	item, err := h.writer.Create(r.Context(), name, nil)
 	if err != nil {
 		web.WriteError(w, err)
+		return
+	}
+	if item == nil {
+		web.WriteError(w, errors.New("create strategy returned nothing"))
+		return
+	}
+	web.WriteMessage(w, item)
+}
+
+func (h strategyRoutes) createOwned(w http.ResponseWriter, r *http.Request, name string) {
+	account, ok := auth.FromContext(r.Context())
+	if !ok || account.ID == "" {
+		web.Unauthorized(w)
+		return
+	}
+	if err := auth.MayCreate(account); err != nil {
+		auth.WriteHTTP(w, err)
+		return
+	}
+	owned, ok := h.writer.(interface {
+		CreateOwned(ctx context.Context, ownerID, name string, description *string) (*pb.Strategy, error)
+	})
+	if !ok {
+		web.Forbidden(w)
+		return
+	}
+	item, err := owned.CreateOwned(r.Context(), account.ID, name, nil)
+	if err != nil {
+		auth.WriteHTTP(w, err)
 		return
 	}
 	if item == nil {
@@ -96,7 +131,10 @@ func (h strategyRoutes) get(w http.ResponseWriter, r *http.Request) {
 		web.NotFound(w)
 		return
 	}
-	resp, err := h.api.GetStrategy(r.Context(), &servicePb.GetStrategyRequest{Name: name})
+	resp, err := h.api.GetStrategy(r.Context(), &servicePb.GetStrategyRequest{
+		Name:  name,
+		Owner: r.URL.Query().Get("owner"),
+	})
 	if err != nil {
 		web.WriteError(w, err)
 		return

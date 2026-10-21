@@ -240,7 +240,7 @@ class CreateBacktestResponse(Message[_CreateBacktestResponseFields]):
         STORING: Step | None
         backtest: Backtest | None
 
-_GetBacktestRequestFields: TypeAlias = Literal["name"]
+_GetBacktestRequestFields: TypeAlias = Literal["name", "owner"]
 
 class GetBacktestRequest(Message[_GetBacktestRequestFields]):
     """
@@ -253,9 +253,15 @@ class GetBacktestRequest(Message[_GetBacktestRequestFields]):
             ```proto
             string name = 1;
             ```
+        owner:
+            Owner login when the same name exists for more than one account. Empty uses the default rule.
+
+            ```proto
+            string owner = 2;
+            ```
     """
 
-    __slots__ = ("name",)
+    __slots__ = ("name", "owner")
 
     if TYPE_CHECKING:
 
@@ -263,10 +269,12 @@ class GetBacktestRequest(Message[_GetBacktestRequestFields]):
             self,
             *,
             name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         name: str
+        owner: str
 
 _GetBacktestResponseFields: TypeAlias = Literal["name", "backtest"]
 
@@ -302,7 +310,7 @@ class GetBacktestResponse(Message[_GetBacktestResponseFields]):
         name: str
         backtest: Backtest | None
 
-_DeleteBacktestRequestFields: TypeAlias = Literal["name"]
+_DeleteBacktestRequestFields: TypeAlias = Literal["name", "owner"]
 
 class DeleteBacktestRequest(Message[_DeleteBacktestRequestFields]):
     """
@@ -315,9 +323,13 @@ class DeleteBacktestRequest(Message[_DeleteBacktestRequestFields]):
             ```proto
             string name = 1;
             ```
+        owner:
+            ```proto
+            string owner = 2;
+            ```
     """
 
-    __slots__ = ("name",)
+    __slots__ = ("name", "owner")
 
     if TYPE_CHECKING:
 
@@ -325,10 +337,12 @@ class DeleteBacktestRequest(Message[_DeleteBacktestRequestFields]):
             self,
             *,
             name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         name: str
+        owner: str
 
 _DeleteBacktestResponseFields: TypeAlias = NoReturn
 
@@ -348,7 +362,7 @@ class DeleteBacktestResponse(Message[_DeleteBacktestResponseFields]):
         ) -> None:
             pass
 
-_CreateSessionRequestFields: TypeAlias = Literal["backtest_name"]
+_CreateSessionRequestFields: TypeAlias = Literal["backtest_name", "owner"]
 
 class CreateSessionRequest(Message[_CreateSessionRequestFields]):
     """
@@ -361,9 +375,13 @@ class CreateSessionRequest(Message[_CreateSessionRequestFields]):
             ```proto
             string backtest_name = 1;
             ```
+        owner:
+            ```proto
+            string owner = 2;
+            ```
     """
 
-    __slots__ = ("backtest_name",)
+    __slots__ = ("backtest_name", "owner")
 
     if TYPE_CHECKING:
 
@@ -371,12 +389,14 @@ class CreateSessionRequest(Message[_CreateSessionRequestFields]):
             self,
             *,
             backtest_name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         backtest_name: str
+        owner: str
 
-_CreateSessionResponseFields: TypeAlias = Literal["CREATING", "STARTING", "STORING", "session"]
+_CreateSessionResponseFields: TypeAlias = Literal["CREATING", "STARTING", "STORING", "session", "session_secret"]
 
 class CreateSessionResponse(Message[_CreateSessionResponseFields]):
     """
@@ -401,9 +421,16 @@ class CreateSessionResponse(Message[_CreateSessionResponseFields]):
             ```proto
             optional foreverbull.backtest.v1.Session session = 4;
             ```
+        session_secret:
+            Set on frames whose session has a port, and only when authentication is on.
+            It is not a column and it is not sent on earlier frames.
+
+            ```proto
+            string session_secret = 5;
+            ```
     """
 
-    __slots__ = ("CREATING", "STARTING", "STORING", "session")
+    __slots__ = ("CREATING", "STARTING", "STORING", "session", "session_secret")
 
     if TYPE_CHECKING:
 
@@ -414,6 +441,7 @@ class CreateSessionResponse(Message[_CreateSessionResponseFields]):
             STARTING: Step | None = None,
             STORING: Step | None = None,
             session: Session | None = None,
+            session_secret: str = "",
         ) -> None:
             pass
 
@@ -421,6 +449,7 @@ class CreateSessionResponse(Message[_CreateSessionResponseFields]):
         STARTING: Step | None
         STORING: Step | None
         session: Session | None
+        session_secret: str
 
 _GetSessionRequestFields: TypeAlias = Literal["session_id"]
 
@@ -478,7 +507,7 @@ class GetSessionResponse(Message[_GetSessionResponseFields]):
 
         session: Session | None
 
-_ListExecutionsRequestFields: TypeAlias = Literal["backtest", "session_id"]
+_ListExecutionsRequestFields: TypeAlias = Literal["backtest", "session_id", "owner"]
 
 class ListExecutionsRequest(Message[_ListExecutionsRequestFields]):
     """
@@ -495,9 +524,13 @@ class ListExecutionsRequest(Message[_ListExecutionsRequestFields]):
             ```proto
             string session_id = 2;
             ```
+        owner:
+            ```proto
+            string owner = 3;
+            ```
     """
 
-    __slots__ = ("backtest", "session_id")
+    __slots__ = ("backtest", "session_id", "owner")
 
     if TYPE_CHECKING:
 
@@ -506,11 +539,13 @@ class ListExecutionsRequest(Message[_ListExecutionsRequestFields]):
             *,
             backtest: str = "",
             session_id: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         backtest: str
         session_id: str
+        owner: str
 
 _ListExecutionsResponseFields: TypeAlias = Literal["executions"]
 
@@ -612,7 +647,7 @@ class GetExecutionResponse(Message[_GetExecutionResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n.foreverbull/backtest/service/v1/backtest.proto\x12\x1fforeverbull.backtest.service.v1\x1a\x1bbuf/validate/validate.proto\x1a&foreverbull/backtest/v1/backtest.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a%foreverbull/backtest/v1/session.proto\x1a\x18foreverbull/common.proto"\x16\n\x14ListBacktestsRequest"X\n\x15ListBacktestsResponse\x12?\n\tbacktests\x18\x01 \x03(\x0b2!.foreverbull.backtest.v1.BacktestR\tbacktests"\x9e\x04\n\x15CreateBacktestRequest\x12X\n\x03etf\x18\x01 \x01(\x0b2D.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromETFH\x00R\x03etf\x12g\n\x08backtest\x18\x02 \x01(\x0b2I.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromBacktestH\x00R\x08backtest\x1a\xe2\x01\n\rCreateFromETF\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x127\n\nstart_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x03 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12\x19\n\x08base_etf\x18\x04 \x01(\tR\x07baseEtf\x12\x1a\n\x08provider\x18\x05 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x06 \x01(\tR\x07profile\x1aS\n\x12CreateFromBacktest\x12=\n\x08backtest\x18\x01 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtestB\x08\n\x06create"\xb5\x02\n\x16CreateBacktestResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x12:\n\x0bDOWNLOADING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x0bDOWNLOADING\x126\n\tINGESTING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\tINGESTING\x122\n\x07STORING\x18\x04 \x01(\x0b2\x18.foreverbull.common.StepR\x07STORING\x12=\n\x08backtest\x18\x05 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtest"I\n\x12GetBacktestRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"h\n\x13GetBacktestResponse\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12=\n\x08backtest\x18\x02 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtest"L\n\x15DeleteBacktestRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\x18\n\x16DeleteBacktestResponse"\\\n\x14CreateSessionRequest\x12D\n\rbacktest_name\x18\x01 \x01(\tR\x0cbacktestNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xf3\x01\n\x15CreateSessionResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x124\n\x08STARTING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x08STARTING\x122\n\x07STORING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\x07STORING\x12:\n\x07session\x18\x04 \x01(\x0b2 .foreverbull.backtest.v1.SessionR\x07session"S\n\x11GetSessionRequest\x12>\n\nsession_id\x18\x01 \x01(\tR\tsessionIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"P\n\x12GetSessionResponse\x12:\n\x07session\x18\x01 \x01(\x0b2 .foreverbull.backtest.v1.SessionR\x07session"R\n\x15ListExecutionsRequest\x12\x1a\n\x08backtest\x18\x01 \x01(\tR\x08backtest\x12\x1d\n\nsession_id\x18\x02 \x01(\tR\tsessionId"\\\n\x16ListExecutionsResponse\x12B\n\nexecutions\x18\x01 \x03(\x0b2".foreverbull.backtest.v1.ExecutionR\nexecutions"Y\n\x13GetExecutionRequest\x12B\n\x0cexecution_id\x18\x01 \x01(\tR\x0bexecutionIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xdd\x01\n\x14GetExecutionResponse\x12@\n\texecution\x18\x01 \x01(\x0b2".foreverbull.backtest.v1.ExecutionR\texecution\x129\n\x07periods\x18\x02 \x03(\x0b2\x1f.foreverbull.backtest.v1.PeriodR\x07periods\x12H\n\tfunctions\x18\x03 \x03(\x0b2*.foreverbull.backtest.v1.ExecutionFunctionR\tfunctions2\xa2\x08\n\x10BacktestServicer\x12\x80\x01\n\rListBacktests\x125.foreverbull.backtest.service.v1.ListBacktestsRequest\x1a6.foreverbull.backtest.service.v1.ListBacktestsResponse"\x00\x12\x85\x01\n\x0eCreateBacktest\x126.foreverbull.backtest.service.v1.CreateBacktestRequest\x1a7.foreverbull.backtest.service.v1.CreateBacktestResponse"\x000\x01\x12z\n\x0bGetBacktest\x123.foreverbull.backtest.service.v1.GetBacktestRequest\x1a4.foreverbull.backtest.service.v1.GetBacktestResponse"\x00\x12\x83\x01\n\x0eDeleteBacktest\x126.foreverbull.backtest.service.v1.DeleteBacktestRequest\x1a7.foreverbull.backtest.service.v1.DeleteBacktestResponse"\x00\x12\x82\x01\n\rCreateSession\x125.foreverbull.backtest.service.v1.CreateSessionRequest\x1a6.foreverbull.backtest.service.v1.CreateSessionResponse"\x000\x01\x12w\n\nGetSession\x122.foreverbull.backtest.service.v1.GetSessionRequest\x1a3.foreverbull.backtest.service.v1.GetSessionResponse"\x00\x12\x83\x01\n\x0eListExecutions\x126.foreverbull.backtest.service.v1.ListExecutionsRequest\x1a7.foreverbull.backtest.service.v1.ListExecutionsResponse"\x00\x12}\n\x0cGetExecution\x124.foreverbull.backtest.service.v1.GetExecutionRequest\x1a5.foreverbull.backtest.service.v1.GetExecutionResponse"\x00B;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3',
+    b'\n.foreverbull/backtest/service/v1/backtest.proto\x12\x1fforeverbull.backtest.service.v1\x1a\x1bbuf/validate/validate.proto\x1a&foreverbull/backtest/v1/backtest.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a%foreverbull/backtest/v1/session.proto\x1a\x18foreverbull/common.proto"\x16\n\x14ListBacktestsRequest"X\n\x15ListBacktestsResponse\x12?\n\tbacktests\x18\x01 \x03(\x0b2!.foreverbull.backtest.v1.BacktestR\tbacktests"\x9e\x04\n\x15CreateBacktestRequest\x12X\n\x03etf\x18\x01 \x01(\x0b2D.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromETFH\x00R\x03etf\x12g\n\x08backtest\x18\x02 \x01(\x0b2I.foreverbull.backtest.service.v1.CreateBacktestRequest.CreateFromBacktestH\x00R\x08backtest\x1a\xe2\x01\n\rCreateFromETF\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x127\n\nstart_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x03 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12\x19\n\x08base_etf\x18\x04 \x01(\tR\x07baseEtf\x12\x1a\n\x08provider\x18\x05 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x06 \x01(\tR\x07profile\x1aS\n\x12CreateFromBacktest\x12=\n\x08backtest\x18\x01 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtestB\x08\n\x06create"\xb5\x02\n\x16CreateBacktestResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x12:\n\x0bDOWNLOADING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x0bDOWNLOADING\x126\n\tINGESTING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\tINGESTING\x122\n\x07STORING\x18\x04 \x01(\x0b2\x18.foreverbull.common.StepR\x07STORING\x12=\n\x08backtest\x18\x05 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtest"_\n\x12GetBacktestRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x14\n\x05owner\x18\x02 \x01(\tR\x05owner"h\n\x13GetBacktestResponse\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12=\n\x08backtest\x18\x02 \x01(\x0b2!.foreverbull.backtest.v1.BacktestR\x08backtest"b\n\x15DeleteBacktestRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x14\n\x05owner\x18\x02 \x01(\tR\x05owner"\x18\n\x16DeleteBacktestResponse"r\n\x14CreateSessionRequest\x12D\n\rbacktest_name\x18\x01 \x01(\tR\x0cbacktestNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x14\n\x05owner\x18\x02 \x01(\tR\x05owner"\x9a\x02\n\x15CreateSessionResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x124\n\x08STARTING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x08STARTING\x122\n\x07STORING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\x07STORING\x12:\n\x07session\x18\x04 \x01(\x0b2 .foreverbull.backtest.v1.SessionR\x07session\x12%\n\x0esession_secret\x18\x05 \x01(\tR\rsessionSecret"S\n\x11GetSessionRequest\x12>\n\nsession_id\x18\x01 \x01(\tR\tsessionIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"P\n\x12GetSessionResponse\x12:\n\x07session\x18\x01 \x01(\x0b2 .foreverbull.backtest.v1.SessionR\x07session"h\n\x15ListExecutionsRequest\x12\x1a\n\x08backtest\x18\x01 \x01(\tR\x08backtest\x12\x1d\n\nsession_id\x18\x02 \x01(\tR\tsessionId\x12\x14\n\x05owner\x18\x03 \x01(\tR\x05owner"\\\n\x16ListExecutionsResponse\x12B\n\nexecutions\x18\x01 \x03(\x0b2".foreverbull.backtest.v1.ExecutionR\nexecutions"Y\n\x13GetExecutionRequest\x12B\n\x0cexecution_id\x18\x01 \x01(\tR\x0bexecutionIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xdd\x01\n\x14GetExecutionResponse\x12@\n\texecution\x18\x01 \x01(\x0b2".foreverbull.backtest.v1.ExecutionR\texecution\x129\n\x07periods\x18\x02 \x03(\x0b2\x1f.foreverbull.backtest.v1.PeriodR\x07periods\x12H\n\tfunctions\x18\x03 \x03(\x0b2*.foreverbull.backtest.v1.ExecutionFunctionR\tfunctions2\xa2\x08\n\x10BacktestServicer\x12\x80\x01\n\rListBacktests\x125.foreverbull.backtest.service.v1.ListBacktestsRequest\x1a6.foreverbull.backtest.service.v1.ListBacktestsResponse"\x00\x12\x85\x01\n\x0eCreateBacktest\x126.foreverbull.backtest.service.v1.CreateBacktestRequest\x1a7.foreverbull.backtest.service.v1.CreateBacktestResponse"\x000\x01\x12z\n\x0bGetBacktest\x123.foreverbull.backtest.service.v1.GetBacktestRequest\x1a4.foreverbull.backtest.service.v1.GetBacktestResponse"\x00\x12\x83\x01\n\x0eDeleteBacktest\x126.foreverbull.backtest.service.v1.DeleteBacktestRequest\x1a7.foreverbull.backtest.service.v1.DeleteBacktestResponse"\x00\x12\x82\x01\n\rCreateSession\x125.foreverbull.backtest.service.v1.CreateSessionRequest\x1a6.foreverbull.backtest.service.v1.CreateSessionResponse"\x000\x01\x12w\n\nGetSession\x122.foreverbull.backtest.service.v1.GetSessionRequest\x1a3.foreverbull.backtest.service.v1.GetSessionResponse"\x00\x12\x83\x01\n\x0eListExecutions\x126.foreverbull.backtest.service.v1.ListExecutionsRequest\x1a7.foreverbull.backtest.service.v1.ListExecutionsResponse"\x00\x12}\n\x0cGetExecution\x124.foreverbull.backtest.service.v1.GetExecutionRequest\x1a5.foreverbull.backtest.service.v1.GetExecutionResponse"\x00B;Z9github.com/lhjnilsson/foreverbull/pkg/pb/backtest/serviceb\x06proto3',
     [
         validate_pb.desc(),
         backtest_pb.desc(),

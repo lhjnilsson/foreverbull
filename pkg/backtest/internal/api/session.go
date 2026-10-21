@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -12,6 +14,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type grpcSessionServer struct {
@@ -53,6 +57,33 @@ func NewGRPCSessionServer(session *backtest.Session, database postgres.Query,
 	return grpcServer, activity, nil
 }
 
+// NewSecuredGRPCSessionServer requires x-foreverbull-session on every call.
+// The secret is the value minted for this session. It is not the user bearer.
+func NewSecuredGRPCSessionServer(session *backtest.Session, database postgres.Query,
+	ziplineEngine engine.Engine, secret string,
+) (*grpc.Server, <-chan bool, error) {
+	if secret == "" {
+		return nil, nil, fmt.Errorf("%s is missing", auth.SessionMetadata())
+	}
+	grpcServer := grpc.NewServer(auth.SessionInterceptors(secret)...)
+
+	backtestSession, err := ziplineEngine.NewSession(context.Background(), session)
+	if err != nil {
+		log.Error().Err(err).Msg("fail to create zipline session")
+		return nil, nil, fmt.Errorf("error creating session: %w", err)
+	}
+
+	activity := make(chan bool, ActivityBufferSize)
+	server := &grpcSessionServer{
+		session:         session,
+		db:              database,
+		backtestSession: backtestSession,
+		activity:        activity,
+	}
+	servicePb.RegisterSessionServicerServer(grpcServer, server)
+	return grpcServer, activity, nil
+}
+
 func (s *grpcSessionServer) pingActivity() {
 	select {
 	case s.activity <- true:
@@ -64,6 +95,9 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	log.Debug().Msg("create execution")
 	s.pingActivity()
 
+	if environment.GetAuthEnabled() && req.GetSession() != s.session.GetId() {
+		return nil, status.Error(codes.NotFound, "not found")
+	}
 	backtests := repository.Backtest{Conn: s.db}
 	stored, err := backtests.Get(ctx, s.session.GetBacktest())
 	if err != nil {
@@ -108,12 +142,11 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 	log.Debug().Any("request", req).Msg("run execution")
 	s.pingActivity()
 	ctx := stream.Context()
-	executions := repository.Execution{Conn: s.db}
 
-	execution, err := executions.Get(ctx, req.ExecutionId)
+	execution, err := s.executionForListener(ctx, req.ExecutionId)
 	if err != nil {
 		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error getting execution")
-		return fmt.Errorf("error getting execution: %w", err)
+		return err
 	}
 
 	periods, err := s.backtestSession.RunBacktest(ctx, execution, s.wp)
@@ -133,6 +166,9 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 
 func (s *grpcSessionServer) StoreResult(ctx context.Context, req *servicePb.StoreExecutionResultRequest) (*servicePb.StoreExecutionResultResponse, error) {
 	log.Debug().Any("request", req).Msg("store result")
+	if _, err := s.executionForListener(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	rsp, err := s.backtestSession.GetResult(ctx, req.ExecutionId)
 	if err != nil {
 		return nil, fmt.Errorf("error getting result: %w", err)
@@ -145,26 +181,19 @@ func (s *grpcSessionServer) StoreResult(ctx context.Context, req *servicePb.Stor
 	return &servicePb.StoreExecutionResultResponse{}, nil
 }
 
-func (s *grpcSessionServer) GetExecution(ctx context.Context, req *servicePb.GetExecutionRequest) (*servicePb.GetExecutionResponse, error) {
-	log.Debug().Any("request", req).Msg("get execution")
-	s.pingActivity()
-
+func (s *grpcSessionServer) executionForListener(ctx context.Context, executionID string) (*backtest.Execution, error) {
 	executions := repository.Execution{Conn: s.db}
-
-	execution, err := executions.Get(ctx, req.ExecutionId)
+	execution, err := executions.Get(ctx, executionID)
 	if err != nil {
+		if environment.GetAuthEnabled() {
+			return nil, status.Error(codes.NotFound, "not found")
+		}
 		return nil, fmt.Errorf("error getting execution: %w", err)
 	}
-	functions, err := executions.GetFunctions(ctx, req.ExecutionId)
-	if err != nil {
-		return nil, fmt.Errorf("error getting execution functions: %w", err)
+	if environment.GetAuthEnabled() && execution.GetSession() != s.session.GetId() {
+		return nil, status.Error(codes.NotFound, "not found")
 	}
-
-	return &servicePb.GetExecutionResponse{
-		Execution: execution,
-		Periods:   []*backtest.Period{},
-		Functions: functions,
-	}, nil
+	return execution, nil
 }
 
 func (s *grpcSessionServer) StopServer(_ context.Context, _ *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {

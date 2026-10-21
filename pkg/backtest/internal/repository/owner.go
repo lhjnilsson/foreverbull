@@ -25,7 +25,7 @@ type IngestionCopier interface {
 // backtest.id, and copies ingestion objects before the name primary key is
 // dropped. A failed copy leaves that primary key in place. It does not search
 // for an editor and it does not insert a password. Calling it twice is safe.
-// Startup does not call it.
+// Startup calls it when authentication is on.
 func MigrateBacktestOwner(ctx context.Context, conn *pgxpool.Pool, adminID string, copier IngestionCopier) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -134,6 +134,9 @@ func (db *Backtest) Create(ctx context.Context, backtest *backtest.Backtest) (*b
 }
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
+	if authOn() {
+		return nil, fmt.Errorf("get backtest by name is refused while AUTH_ENABLED=true")
+	}
 	type rowData struct {
 		Name      string
 		Benchmark string
@@ -237,6 +240,9 @@ func (db *Backtest) UpdatePeriod(ctx context.Context, name string, period *backt
 }
 
 func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, asset_symbol string, enabled bool) error {
+	if authOn() {
+		return fmt.Errorf("update period asset by name is refused while AUTH_ENABLED=true")
+	}
 	_, err := db.Conn.Exec(ctx, `UPDATE backtest_period_asset SET enabled=$3 WHERE backtest_name=$1 AND symbol=$2`,
 		name, asset_symbol, enabled)
 	if err != nil {
@@ -333,6 +339,9 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 }
 
 func (db *Backtest) Delete(ctx context.Context, name string) error {
+	if authOn() {
+		return fmt.Errorf("delete backtest by name is refused while AUTH_ENABLED=true")
+	}
 	result, err := db.Conn.Exec(ctx, `DELETE FROM backtest WHERE name=$1`, name)
 	if err != nil {
 		return fmt.Errorf("failed to delete backtest: %w", err)

@@ -121,9 +121,22 @@ spec:
               value: "/etc/foreverbull/profiles.yaml"
             - name: GRAFANA_URL
               value: {{ .Values.grafana.url | default (printf "http://localhost:%v" .Values.grafana.port) | quote }}
+            - name: AUTH_ADMIN_PASSWORD_FILE
+              value: /etc/foreverbull/admin/password
+            {{- if .Values.broker.auth.enabled }}
+            - name: AUTH_ENABLED
+              value: "true"
+            {{- end }}
+            {{- with .Values.broker.auth.adminUsername }}
+            - name: AUTH_ADMIN_USERNAME
+              value: {{ . | quote }}
+            {{- end }}
           volumeMounts:
             - name: trading-profiles
               mountPath: /etc/foreverbull
+              readOnly: true
+            - name: admin-password
+              mountPath: /etc/foreverbull/admin
               readOnly: true
           startupProbe:
             exec:
@@ -153,3 +166,10 @@ spec:
             items:
               - key: profiles.yaml
                 path: profiles.yaml
+        - name: admin-password
+          secret:
+            secretName: foreverbull-admin
+            optional: true
+            items:
+              - key: password
+                path: password

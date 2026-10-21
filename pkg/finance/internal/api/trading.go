@@ -5,6 +5,9 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
@@ -33,6 +36,9 @@ func NewTradingServer(pgx *pgxpool.Pool, stream stream.Stream, trading supplier.
 }
 
 func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrdersRequest) (*servicePb.GetOrdersResponse, error) {
+	if err := requireTradingEditor(ctx); err != nil {
+		return nil, err
+	}
 	if ts.trading == nil {
 		return nil, fmt.Errorf("trading is not enabled")
 	}
@@ -48,6 +54,9 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 }
 
 func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPortfolioRequest) (*servicePb.GetPortfolioResponse, error) {
+	if err := requireTradingEditor(ctx); err != nil {
+		return nil, err
+	}
 	if ts.trading == nil {
 		return nil, fmt.Errorf("trading is not enabled")
 	}
@@ -67,6 +76,9 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 		return status.Error(codes.Unimplemented, "trading is not enabled")
 	}
 	ctx := serverStream.Context()
+	if err := requireTradingEditor(ctx); err != nil {
+		return err
+	}
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &commonPb.Step{
 			State: commonPb.State_STATE_RUNNING,
@@ -91,6 +103,19 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
+	secret := ""
+	if environment.GetAuthEnabled() {
+		secret, err = auth.MintTradingSecret(s.GetId())
+		if err != nil {
+			return err
+		}
+	}
+	published := false
+	defer func() {
+		if secret != "" && !published {
+			auth.ForgetTradingSecret(s.GetId())
+		}
+	}()
 	rsp.Session = s
 	rsp.CREATING.State = commonPb.State_STATE_COMPLETED
 	if err := serverStream.Send(rsp); err != nil {
@@ -105,13 +130,36 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 		if err := stream.UpdateOrchestration(rsp, msg); err != nil {
 			return fmt.Errorf("error updating orchestration: %w", err)
 		}
-		rsp.Session, err = sessions.Get(ctx, s.Id)
+		rsp.Session, err = sessions.Get(ctx, s.GetId())
 		if err != nil {
 			return err
 		}
+		stampTradingSecret(rsp, secret)
 		if err := serverStream.Send(rsp); err != nil {
 			return fmt.Errorf("error sending response: %w", err)
 		}
+	}
+	published = true
+	return nil
+}
+
+func stampTradingSecret(rsp *servicePb.CreateSessionResponse, secret string) {
+	if secret == "" || rsp == nil || rsp.GetSession() == nil || rsp.GetSession().GetPort() == 0 {
+		return
+	}
+	rsp.SessionSecret = secret
+}
+
+func requireTradingEditor(ctx context.Context) error {
+	if !environment.GetAuthEnabled() {
+		return nil
+	}
+	account, ok := auth.FromContext(ctx)
+	if !ok || account.ID == "" {
+		return auth.GRPCStatus(auth.ErrUnauthorized)
+	}
+	if account.Role != auth.RoleEditor && account.Role != auth.RoleAdmin {
+		return auth.GRPCStatus(auth.ErrForbidden)
 	}
 	return nil
 }

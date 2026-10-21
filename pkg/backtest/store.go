@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -33,6 +34,9 @@ func NewStore(conn postgres.Query) Store {
 var _ Store = (*store)(nil)
 
 func (s *store) GetBacktest(ctx context.Context, name string) (*pb.Backtest, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("get backtest by name is refused while AUTH_ENABLED=true")
+	}
 	b, err := s.backtests.Get(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("get backtest: %w", err)
@@ -41,6 +45,9 @@ func (s *store) GetBacktest(ctx context.Context, name string) (*pb.Backtest, err
 }
 
 func (s *store) CreateSession(ctx context.Context, backtestName string) (*pb.Session, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("create session by name is refused while AUTH_ENABLED=true")
+	}
 	session, err := s.sessions.Create(ctx, backtestName)
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
@@ -52,6 +59,24 @@ func (s *store) GetSession(ctx context.Context, id string) (*pb.Session, error) 
 	session, err := s.sessions.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
+	}
+	return session, nil
+}
+
+// GetBacktestByID loads one backtest after the caller resolved its id.
+func (s *store) GetBacktestByID(ctx context.Context, id string) (*pb.Backtest, error) {
+	b, err := s.backtests.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get backtest: %w", err)
+	}
+	return b, nil
+}
+
+// CreateSessionFor inserts a session for a backtest id.
+func (s *store) CreateSessionFor(ctx context.Context, backtestID string) (*pb.Session, error) {
+	session, err := s.sessions.CreateForBacktest(ctx, backtestID)
+	if err != nil {
+		return nil, fmt.Errorf("create session: %w", err)
 	}
 	return session, nil
 }

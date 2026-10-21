@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .worker_pb import Algorithm
 
 
-_ServiceFields: TypeAlias = Literal["Image", "algorithm", "statuses"]
+_ServiceFields: TypeAlias = Literal["Image", "algorithm", "statuses", "owner_login"]
 
 class Service(Message[_ServiceFields]):
     """
@@ -42,9 +42,15 @@ class Service(Message[_ServiceFields]):
             ```proto
             repeated foreverbull.service.v1.Service.Status statuses = 3;
             ```
+        owner_login:
+            Server-filled login of the owning account. A client value is ignored.
+
+            ```proto
+            string owner_login = 4;
+            ```
     """
 
-    __slots__ = ("Image", "algorithm", "statuses")
+    __slots__ = ("Image", "algorithm", "statuses", "owner_login")
 
     if TYPE_CHECKING:
 
@@ -54,12 +60,14 @@ class Service(Message[_ServiceFields]):
             Image: str = "",
             algorithm: Algorithm | None = None,
             statuses: list[Service.Status] | None = None,
+            owner_login: str = "",
         ) -> None:
             pass
 
         Image: str
         algorithm: Algorithm | None
         statuses: list[Service.Status]
+        owner_login: str
 
     _StatusFields: TypeAlias = Literal["status", "error", "OccurredAt"]
 
@@ -133,7 +141,7 @@ class Service(Message[_ServiceFields]):
 
 
 _DESC = file_desc(
-    b'\n$foreverbull/service/v1/service.proto\x12\x16foreverbull.service.v1\x1a#foreverbull/service/v1/worker.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\x93\x03\n\x07Service\x12\x14\n\x05Image\x18\x01 \x01(\tR\x05Image\x12?\n\talgorithm\x18\x02 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithm\x12B\n\x08statuses\x18\x03 \x03(\x0b2&.foreverbull.service.v1.Service.StatusR\x08statuses\x1a\xec\x01\n\x06Status\x12E\n\x06status\x18\x01 \x01(\x0e2-.foreverbull.service.v1.Service.Status.StatusR\x06status\x12\x19\n\x05error\x18\x02 \x01(\tH\x00R\x05error\x88\x01\x01\x12:\n\nOccurredAt\x18\x03 \x01(\x0b2\x1a.google.protobuf.TimestampR\nOccurredAt":\n\x06Status\x12\x0b\n\x07CREATED\x10\x00\x12\r\n\tINTERVIEW\x10\x01\x12\t\n\x05READY\x10\x02\x12\t\n\x05ERROR\x10\x03B\x08\n\x06_errorB2Z0github.com/lhjnilsson/foreverbull/pkg/pb/serviceb\x06proto3',
+    b'\n$foreverbull/service/v1/service.proto\x12\x16foreverbull.service.v1\x1a#foreverbull/service/v1/worker.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xb4\x03\n\x07Service\x12\x14\n\x05Image\x18\x01 \x01(\tR\x05Image\x12?\n\talgorithm\x18\x02 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithm\x12B\n\x08statuses\x18\x03 \x03(\x0b2&.foreverbull.service.v1.Service.StatusR\x08statuses\x12\x1f\n\x0bowner_login\x18\x04 \x01(\tR\nownerLogin\x1a\xec\x01\n\x06Status\x12E\n\x06status\x18\x01 \x01(\x0e2-.foreverbull.service.v1.Service.Status.StatusR\x06status\x12\x19\n\x05error\x18\x02 \x01(\tH\x00R\x05error\x88\x01\x01\x12:\n\nOccurredAt\x18\x03 \x01(\x0b2\x1a.google.protobuf.TimestampR\nOccurredAt":\n\x06Status\x12\x0b\n\x07CREATED\x10\x00\x12\r\n\tINTERVIEW\x10\x01\x12\t\n\x05READY\x10\x02\x12\t\n\x05ERROR\x10\x03B\x08\n\x06_errorB2Z0github.com/lhjnilsson/foreverbull/pkg/pb/serviceb\x06proto3',
     [
         worker_pb.desc(),
         timestamp_pb.desc(),

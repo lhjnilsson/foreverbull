@@ -61,6 +61,9 @@ type Session struct {
 }
 
 func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, error) {
+	if authOn() {
+		return nil, fmt.Errorf("create session by name is refused while AUTH_ENABLED=true")
+	}
 	var sessionID string
 
 	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ($1) RETURNING id`,
@@ -73,6 +76,9 @@ func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, er
 }
 
 func (db *Session) Get(ctx context.Context, sessionID string) (*pb.Session, error) {
+	if authOn() {
+		return db.getJoined(ctx, sessionID)
+	}
 	session := pb.Session{}
 	err := db.Conn.QueryRow(ctx,
 		`SELECT id, backtest, port FROM session WHERE id=$1`, sessionID).Scan(

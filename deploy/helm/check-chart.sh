@@ -79,6 +79,11 @@ if [[ ! -s "${broker_manifest}" ]]; then
   exit 1
 fi
 
+if grep -q 'name: AUTH_ENABLED' "${broker_manifest}"; then
+  echo "default broker manifest must not set AUTH_ENABLED" >&2
+  exit 1
+fi
+
 for forbidden in \
   ALPACA_MARKETS_API_KEY \
   SAXO_ACCESS_TOKEN \
