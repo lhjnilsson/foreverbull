@@ -110,6 +110,10 @@ func (bs *BacktestServer) GetBacktest(ctx context.Context,
 	backtests := repository.Backtest{Conn: bs.pgx}
 
 	backtest, err := backtests.Get(ctx, req.GetName())
+	if errors.Is(err, pgx.ErrNoRows) {
+		// NotFound lets the client say the name is wrong instead of leaking the query error.
+		return nil, status.Errorf(codes.NotFound, "backtest %s not found", req.GetName())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error getting backtest: %w", err)
 	}

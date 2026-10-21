@@ -233,6 +233,8 @@ func (test *BacktestServerTest) TestGetBacktest() {
 		}
 		resp, err := test.client.GetBacktest(context.Background(), req)
 		test.Require().Error(err)
+		test.Equal(codes.NotFound, status.Code(err))
+		test.NotContains(err.Error(), "no rows in result set")
 		test.Nil(resp)
 	})
 	test.Run("found", func() {

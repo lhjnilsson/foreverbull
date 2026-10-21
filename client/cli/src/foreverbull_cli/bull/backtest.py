@@ -549,6 +549,20 @@ def _parse_run_dates(
     return start_date, end_date
 
 
+def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:
+    """Look the backtest up, failing with one plain line when the name doesn't exist."""
+    try:
+        return broker.backtest.get(name)
+    except grpc.RpcError as exc:
+        code = getattr(exc, "code", None)
+        if callable(code) and code() == grpc.StatusCode.NOT_FOUND:
+            _fail(
+                f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
+                "backtests, or create it with `fbull backtest create`."
+            )
+        raise
+
+
 @backtest.command()
 def run(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
@@ -557,7 +571,7 @@ def run(
     end: Annotated[str | None, typer.Option(help="end date of the backtest")] = None,
     dry: Annotated[bool, typer.Option("--dry", help="print the execution plan without running")] = False,
 ):
-    entity = broker.backtest.get(name)
+    entity = _get_backtest_to_run(name)
     dates = _parse_run_dates(entity, start, end)
     if dates is None:
         return
