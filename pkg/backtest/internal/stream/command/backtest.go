@@ -611,14 +611,16 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	}
 
 	metadata := map[string]string{}
+	// The two setup failures below are wrapped with %v, not %w, so only the
+	// data service's own gRPC status can select the broken-install copy.
 	object, err := store.CreateObject(ctx, storage.IngestionsBucket, b.Name, storage.WithMetadata(metadata))
 	if err != nil {
-		return fmt.Errorf("error creating ingestion: %w", err)
+		return discardFailedIngest(ctx, backtests, b.Name, fmt.Errorf("error creating ingestion: %v", err))
 	}
 
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
-		return fmt.Errorf("error getting zipline engine: %w", err)
+		return discardFailedIngest(ctx, backtests, b.Name, fmt.Errorf("error getting zipline engine: %v", err))
 	}
 
 	engine, isEngine := ze.(engine.Engine)
@@ -628,7 +630,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	err = engine.Ingest(ctx, b, object)
 	if err != nil {
-		return fmt.Errorf("error ingesting data: %w", err)
+		return discardFailedIngest(ctx, backtests, b.Name, err)
 	}
 	return nil
 }

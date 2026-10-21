@@ -11,8 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
@@ -504,6 +506,61 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsBacktestWhenSomeS
 			}
 		}
 	}
+}
+
+func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
+	store := new(storage.MockStorage)
+	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
+		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
+	msg := new(stream.MockMessage)
+	msg.On("MustGet", stream.DBDep).Return(test.db)
+	msg.On("MustGet", stream.StorageDep).Return(store)
+	msg.On("Call", mock.Anything, dependency.GetEngineKey).Return(ziplineEngine, nil)
+	msg.On("ParsePayload", &bs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.IngestCommand)
+		payload.BacktestName = name
+	})
+	return msg
+}
+
+// An ingest error reported by the data service removes the backtest, its
+// periods and its assets, so the same create works again without a delete.
+// The step message is the user-facing copy and carries no password.
+func (test *BacktestCommandTest) TestIngestErrorRemovesBacktest() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}},
+	})
+	test.Require().NoError(err)
+
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("error ingesting: %w",
+		status.Error(codes.FailedPrecondition, "the data service is missing its database driver (psycopg)"+
+			"\nDetails: ModuleNotFoundError: No module named 'psycopg' (postgresql://foreverbull:s3cr3t@postgres/x)")))
+
+	err = command.Ingest(context.TODO(), test.ingestMessage("test-backtest", ziplineEngine))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': the data service is missing "+
+		"its database driver (psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. "+
+		"Nothing was saved, so run `fbull backtest create` again once it's fixed."+
+		"\nDetails: ModuleNotFoundError: No module named 'psycopg' (postgresql://foreverbull:***@postgres/x)")
+	test.NotContains(err.Error(), "s3cr3t")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	var periods, assets int
+	test.Require().NoError(test.db.QueryRow(context.TODO(),
+		`SELECT count(*) FROM backtest_period WHERE backtest_name=$1`, "test-backtest").Scan(&periods))
+	test.Require().NoError(test.db.QueryRow(context.TODO(),
+		`SELECT count(*) FROM backtest_period_asset WHERE backtest_name=$1`, "test-backtest").Scan(&assets))
+	test.Zero(periods)
+	test.Zero(assets)
+
+	test.createAgain()
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	test.Equal("test-backtest", b.Name)
 }
 
 func civilToday() string {
