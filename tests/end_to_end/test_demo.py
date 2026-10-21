@@ -3,6 +3,7 @@ import os
 import pathlib
 import re
 import subprocess
+import time
 
 import pytest
 import typer
@@ -24,6 +25,8 @@ KIND_CONTEXT = "kind-foreverbull"
 NAMESPACE = "foreverbull"
 # summary.print_run_summary prints this when no period closed with a position.
 NO_TRADES_NOTICE = "No trades:"
+# Ceiling for the old Zipline pod to finish terminating after a rollout.
+POD_GONE_TIMEOUT_S = 180
 
 
 @pytest.fixture
@@ -87,6 +90,40 @@ def zipline_bundle(action: str, backtest: str) -> str:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     return completed.stdout
+
+
+def kubectl(*args: str) -> str:
+    completed = subprocess.run(
+        ["kubectl", "--context", KIND_CONTEXT, "-n", NAMESPACE, *args],
+        capture_output=True,
+        text=True,
+        timeout=330,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return completed.stdout
+
+
+def pod_names(app: str) -> set[str]:
+    output = kubectl("get", "pods", "-l", f"app.kubernetes.io/name={app}", "-o", "jsonpath={.items[*].metadata.name}")
+    return set(output.split())
+
+
+def restart_zipline() -> None:
+    """Roll deploy/zipline and wait until the old pod is deleted.
+
+    The old pod has to be gone, not only Terminating, or a broker still
+    holding its address could pass by reaching it.
+    """
+    old_pods = pod_names("zipline")
+    assert old_pods, "no zipline pod before the restart"
+    kubectl("rollout", "restart", "deploy/zipline")
+    kubectl("rollout", "status", "deploy/zipline", "--timeout=300s")
+    deadline = time.monotonic() + POD_GONE_TIMEOUT_S
+    while old_pods & pod_names("zipline"):
+        assert time.monotonic() < deadline, f"old zipline pods still present: {old_pods & pod_names('zipline')}"
+        time.sleep(2)
+    assert pod_names("zipline"), "no zipline pod after the restart"
 
 
 def bundle_state(backtest: str) -> dict:
@@ -171,3 +208,21 @@ def test_start_stop(runner, simple_algorithm):
     assert "Backtest finished: demo · 2021-01-01 → 2021-03-31 · provider: yahoo" in result.output
     assert_run_traded(result.output)
     assert bundle_state("demo") == {"ingests": 2, "version": 1, "misaligned": False}
+
+    # Zipline restarts while the broker keeps running. The broker must
+    # reach the new pod for both ingest and the session without a restart.
+    broker_pods = pod_names("foreverbull")
+    restart_zipline()
+    restarted = backtest_file.with_name("restart.yaml")
+    restarted.write_text(
+        backtest_file.read_text(encoding="utf-8").replace("name: demo", "name: demo-restart", 1),
+        encoding="utf-8",
+    )
+
+    result = runner(backtest_cli, f"create --file {restarted}")
+    assert result.exit_code == 0, result.output
+
+    result = runner(backtest_cli, f"run demo-restart {crossover}")
+    assert result.exit_code == 0, result.output
+    assert "Backtest finished: demo-restart · 2021-01-01 → 2021-03-31 · provider: yahoo" in result.output
+    assert pod_names("foreverbull") == broker_pods, "the broker restarted during the Zipline rollout"

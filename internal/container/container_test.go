@@ -470,3 +470,85 @@ func TestGetMissingPodByExactName(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `workload "no-such-pod" not found`)
 }
+
+func ziplinePod(name, ip string, ready, terminating bool) corev1.Pod {
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+			Labels:    map[string]string{LabelAppName: "zipline"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending, PodIP: ip},
+	}
+	if ready {
+		pod.Status.Phase = corev1.PodRunning
+		pod.Status.Conditions = []corev1.PodCondition{{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionTrue,
+		}}
+	}
+	if terminating {
+		deleted := metav1.Now()
+		pod.DeletionTimestamp = &deleted
+	}
+	return pod
+}
+
+func TestPickPodSkipsTerminatingPods(t *testing.T) {
+	cases := []struct {
+		name string
+		pods []corev1.Pod
+		want string
+	}{
+		{
+			name: "terminating ready pod listed first loses to the new ready pod",
+			pods: []corev1.Pod{
+				ziplinePod("zipline-old", "10.42.0.39", true, true),
+				ziplinePod("zipline-new", "10.42.0.41", true, false),
+			},
+			want: "zipline-new",
+		},
+		{
+			name: "terminating ready pod loses to a new pod that is still starting",
+			pods: []corev1.Pod{
+				ziplinePod("zipline-old", "10.42.0.39", true, true),
+				ziplinePod("zipline-new", "", false, false),
+			},
+			want: "zipline-new",
+		},
+		{
+			name: "ready pod wins over a starting pod",
+			pods: []corev1.Pod{
+				ziplinePod("zipline-starting", "", false, false),
+				ziplinePod("zipline-ready", "10.42.0.41", true, false),
+			},
+			want: "zipline-ready",
+		},
+		{
+			name: "only a terminating pod is left",
+			pods: []corev1.Pod{
+				ziplinePod("zipline-old", "10.42.0.39", true, true),
+			},
+			want: "zipline-old",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, pickPod(tc.pods).Name)
+		})
+	}
+}
+
+func TestGetByLabelSkipsTerminatingZiplinePod(t *testing.T) {
+	old := ziplinePod("zipline-a-old", "10.42.0.39", true, true)
+	current := ziplinePod("zipline-b-new", "10.42.0.41", true, false)
+
+	eng := testEngine(t, &old, &current)
+	got, err := eng.Get(context.Background(), "zipline")
+	require.NoError(t, err)
+
+	ip, err := got.GetIpAddress()
+	require.NoError(t, err)
+	require.Equal(t, "10.42.0.41", ip)
+}

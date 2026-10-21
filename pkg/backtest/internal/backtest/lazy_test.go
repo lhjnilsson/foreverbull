@@ -59,7 +59,6 @@ func TestLazyEngineInitCachesSuccess(t *testing.T) {
 	c := container.NewMockContainer(t)
 	ce.On("Get", mock.Anything, "zipline").Return(c, nil).Once()
 	c.On("GetHealth").Return(container.HealthHealthy, nil).Once()
-	c.On("GetConnectionString").Return("127.0.0.1:50055", nil).Once()
 
 	engine := NewLazyEngine(ce)
 	require.NoError(t, engine.Init(context.Background()))
@@ -74,7 +73,6 @@ func TestLazyEngineInitRetriesAfterFailure(t *testing.T) {
 	ce.On("Get", mock.Anything, "zipline").Return(nil, errors.New("down")).Once()
 	ce.On("Get", mock.Anything, "zipline").Return(c, nil).Once()
 	c.On("GetHealth").Return(container.HealthHealthy, nil).Once()
-	c.On("GetConnectionString").Return("127.0.0.1:50055", nil).Once()
 
 	engine := NewLazyEngine(ce)
 	require.Error(t, engine.Init(context.Background()))
