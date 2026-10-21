@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { noteUnauthorized } from "./access";
 
 export type Load<T> =
   | { state: "idle" }
@@ -48,8 +49,9 @@ export function useJson<T>(url: string | null, revision = 0): Load<T> {
     }
     const ctrl = new AbortController();
     setLoad({ state: "loading" });
-    fetch(url, { signal: ctrl.signal, cache: "no-store" })
+    fetch(url, { signal: ctrl.signal, cache: "no-store", credentials: "same-origin" })
       .then(async (res) => {
+        if (res.status === 401) noteUnauthorized();
         if (!res.ok) {
           throw new HttpError(await readError(res));
         }
@@ -72,13 +74,26 @@ export function useJson<T>(url: string | null, revision = 0): Load<T> {
 export type PostResult = { ok: true; data: unknown } | { ok: false; message: string };
 
 export async function postJson(url: string, body: unknown): Promise<PostResult> {
+  return sendJson("POST", url, body);
+}
+
+export async function putJson(url: string, body: unknown): Promise<PostResult> {
+  return sendJson("PUT", url, body);
+}
+
+export async function deleteJson(url: string): Promise<PostResult> {
+  return sendJson("DELETE", url, undefined);
+}
+
+async function sendJson(method: string, url: string, body: unknown | undefined): Promise<PostResult> {
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
+      credentials: "same-origin",
     });
   } catch {
     return { ok: false, message: "" };

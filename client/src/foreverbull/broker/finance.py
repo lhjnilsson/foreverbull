@@ -3,9 +3,8 @@ from collections.abc import Generator
 from functools import wraps
 from typing import Concatenate
 
-import grpc
-
 from foreverbull.broker.config import resolve_broker_address
+from foreverbull.broker.credentials import broker_channel
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb_grpc as trading_service_pb_grpc
 
@@ -15,7 +14,7 @@ def trading_servicer[R, **P](
 ):
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
-        servicer = trading_service_pb_grpc.TradingServicerClientSync(grpc.insecure_channel(resolve_broker_address()))
+        servicer = trading_service_pb_grpc.TradingServicerClientSync(broker_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper

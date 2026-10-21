@@ -3,11 +3,12 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from multiprocessing import Event
 
-import grpc
 import pandas
 
 from foreverbull import models
 from foreverbull.broker.config import broker_host_port
+from foreverbull.broker.credentials import broker_channel
+from foreverbull.broker.credentials import session_channel
 from foreverbull.exceptions import RuntimeError
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
@@ -129,9 +130,10 @@ class Foreverbull:
         backtest: backtest_pb.Backtest,
         backtest_session: session_pb.Session,
         broker_hostname: str | None = None,
+        session_secret: str = "",
     ) -> Generator[BacktestSession, None, None]:
         hostname, _ = broker_host_port(broker_hostname)
-        channel = grpc.insecure_channel(f"{hostname}:{backtest_session.port}")
+        channel = session_channel(f"{hostname}:{backtest_session.port}", session_secret)
         _backtest_session_stub = session_service_pb_grpc.SessionServicerClientSync(channel)
         assert self._model is not None, "no model"
         yield BacktestSession(self._model, backtest, backtest_session, _backtest_session_stub)
@@ -143,11 +145,12 @@ class Foreverbull:
         self,
         trading_session: trading_pb.Session,
         broker_hostname: str | None = None,
+        session_secret: str = "",
     ) -> Generator[TradingSession, None, None]:
         assert self._model is not None, "no model"
         assert trading_session is not None, "session is not set"
         hostname, _ = broker_host_port(broker_hostname)
-        channel = grpc.insecure_channel(f"{hostname}:{trading_session.port}")
+        channel = session_channel(f"{hostname}:{trading_session.port}", session_secret)
         trading_session_stub = trading_service_pb_grpc.SessionServicerClientSync(channel)
         yield TradingSession(self._model, trading_session_stub)
         trading_session_stub.stop_server(trading_service_pb.StopServerRequest())
@@ -160,7 +163,7 @@ class Foreverbull:
         broker_port: int | None = None,
     ) -> tuple[execution_pb.Execution, pandas.DataFrame]:
         hostname, port = broker_host_port(broker_hostname, broker_port)
-        channel = grpc.insecure_channel(f"{hostname}:{port}")
+        channel = broker_channel(f"{hostname}:{port}")
         stub = backtest_service_pb_grpc.BacktestServicerClientSync(channel)
 
         rsp = stub.get_execution(backtest_service_pb.GetExecutionRequest(execution_id=execution_id))

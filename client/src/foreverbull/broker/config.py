@@ -87,6 +87,8 @@ def save_cluster_config(updates: dict[str, Any], *, cwd: Path | None = None, pat
     path = project_config_path(cwd) if path is None else path
     existing = load_yaml_file(path)
     merged = deep_merge(existing, updates)
+    # Cluster config is not a credential store. A token key must not be saved here.
+    merged.pop("token", None)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as fh:
         yaml.safe_dump(merged, fh, default_flow_style=False, sort_keys=False)

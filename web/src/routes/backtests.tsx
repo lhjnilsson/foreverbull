@@ -1,6 +1,9 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Link, Navigate, Outlet, useMatch, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
+import { canCreate } from "../access";
+import { Grants } from "../auth";
+import { useAuth } from "../auth-context";
 import {
   Detail,
   Empty,
@@ -31,6 +34,7 @@ export function BacktestsLayout() {
   const navigate = useNavigate();
   const match = useMatch("/backtests/:name");
   const name = match?.params.name;
+  const { state } = useAuth();
   const [revision, setRevision] = useState(0);
   const load = useJson<Backtest[]>("/api/backtests", revision);
   const rows = rowsOf(load);
@@ -42,6 +46,7 @@ export function BacktestsLayout() {
         title="Backtests"
         newLabel="New backtest"
         newTitle="Create this backtest."
+        allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
         newForm={(close) => (
           <CreateBacktest
             onDone={close}
@@ -62,7 +67,12 @@ export function BacktestsLayout() {
               to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
               className={`${rowClass} flex items-baseline justify-between gap-3 ${backtest.name === name ? rowActive : ""}`}
             >
-              <span className="truncate font-mono text-[13px]">{backtest.name}</span>
+              <span className="min-w-0">
+                <span className="block truncate font-mono text-[13px]">{backtest.name}</span>
+                {backtest.ownerLogin ? (
+                  <span className="block truncate text-xs text-muted-foreground">{backtest.ownerLogin}</span>
+                ) : null}
+              </span>
               {backtest.provider ? (
                 <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
               ) : null}
@@ -107,6 +117,7 @@ function listHasResult(e: Execution): boolean {
 export function BacktestDetail() {
   const match = useMatch("/backtests/:name");
   const name = match?.params.name ?? "";
+  const { state } = useAuth();
   const { load: listLoad } = useOutletContext<BacktestList>();
   const listed = rowsOf(listLoad)?.find((item) => item.name === name);
   const [execRevision, setExecRevision] = useState(0);
@@ -141,6 +152,7 @@ export function BacktestDetail() {
       <h1 className="mb-4 font-mono text-base">{b.name}</h1>
       <dl>
         <Field label="Name">{b.name}</Field>
+        {b.ownerLogin ? <Field label="Owner">{b.ownerLogin}</Field> : null}
         <Field label="Start">{fmtDate(p?.startDate)}</Field>
         <Field label="End">{fmtDate(p?.endDate)}</Field>
         <Field label="Benchmark">{b.benchmark || "—"}</Field>
@@ -160,7 +172,10 @@ export function BacktestDetail() {
           <ExecutionRow key={execution.id} execution={execution} revision={execRevision} />
         ))}
       </ul>
-      <RunForm backtest={b.name ?? name} onStarted={() => setExecRevision((current) => current + 1)} />
+      {canCreate(state.status, state.status === "in" ? state.account.role : undefined) ? (
+        <RunForm backtest={b.name ?? name} onStarted={() => setExecRevision((current) => current + 1)} />
+      ) : null}
+      {b.name ? <Grants kind="backtest" name={b.name} ownerLogin={b.ownerLogin} /> : null}
     </Detail>
   );
 }

@@ -54,7 +54,7 @@ def test_backtest_stub_uses_resolved_address(monkeypatch):
     seen: list[str] = []
     stub = MagicMock()
     stub.list_backtests.return_value.backtests = []
-    monkeypatch.setattr("foreverbull.broker.backtest.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
+    monkeypatch.setattr("foreverbull.broker.backtest.broker_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
         "foreverbull.broker.backtest.backtest_service_pb_grpc.BacktestServicerClientSync",
         lambda channel: stub,
@@ -68,7 +68,7 @@ def test_finance_stub_uses_resolved_address(monkeypatch):
     seen: list[str] = []
     stub = MagicMock()
     stub.get_portfolio.return_value = "portfolio"
-    monkeypatch.setattr("foreverbull.broker.finance.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
+    monkeypatch.setattr("foreverbull.broker.finance.broker_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
         "foreverbull.broker.finance.trading_service_pb_grpc.TradingServicerClientSync",
         lambda channel: stub,
@@ -92,7 +92,7 @@ def test_backtest_stub_uses_config_broker_address(tmp_path: Path, monkeypatch):
     seen: list[str] = []
     stub = MagicMock()
     stub.list_backtests.return_value.backtests = []
-    monkeypatch.setattr("foreverbull.broker.backtest.grpc.insecure_channel", lambda addr: seen.append(addr) or object())
+    monkeypatch.setattr("foreverbull.broker.backtest.broker_channel", lambda addr: seen.append(addr) or object())
     monkeypatch.setattr(
         "foreverbull.broker.backtest.backtest_service_pb_grpc.BacktestServicerClientSync",
         lambda channel: stub,
