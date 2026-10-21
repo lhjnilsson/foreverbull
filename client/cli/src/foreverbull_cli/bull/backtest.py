@@ -543,8 +543,11 @@ def _parse_run_dates(
     end: str | None,
 ) -> tuple[common_pb.Date, common_pb.Date] | None:
     if not entity.periods:
-        console.print(f"[red]Backtest {entity.name} has no periods")
-        return None
+        # Same wording as the broker's refusal, so both paths read the same.
+        _fail(
+            f"Backtest '{entity.name}' has no data to run. Delete it with `fbull backtest delete {entity.name}`, "
+            "then create it again with `fbull backtest create`."
+        )
 
     start_date = entity.periods[0].start_date
     end_date = entity.periods[-1].end_date

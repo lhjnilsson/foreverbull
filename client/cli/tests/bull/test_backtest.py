@@ -999,6 +999,28 @@ def test_backtest_run_dry(runner):
         create_session.assert_not_called()
 
 
+# A run with nothing to run over fails fast instead of exiting 0 silently.
+@pytest.mark.parametrize("extra", [[], ["--dry"]], ids=["run", "dry"])
+def test_backtest_run_without_periods_fails_with_one_line(monkeypatch, extra):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        get.return_value = backtest_pb.Backtest(name="empty", benchmark="SPY")
+        result = CliRunner().invoke(backtest, ["run", "empty", "demo.py", *extra])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert (
+        "✖ Backtest 'empty' has no data to run. Delete it with `fbull backtest delete empty`, "
+        "then create it again with `fbull backtest create`."
+    ) in " ".join(result.stdout.split())
+    assert "Traceback" not in result.stdout
+    assert "Dry Run" not in result.stdout
+    create_session.assert_not_called()
+
+
 def test_backtest_run_unknown_name_prints_one_plain_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     missing = _BrokenStream("backtest typo not found", grpc.StatusCode.NOT_FOUND)
@@ -1306,7 +1328,10 @@ class _BrokerRejection(grpc.RpcError):
             grpc.StatusCode.INVALID_ARGUMENT,
         ),
         (
-            "Backtest 'test_name' has no data to run. Create it again with `fbull backtest create`.",
+            (
+                "Backtest 'test_name' has no data to run. Delete it with `fbull backtest delete test_name`, "
+                "then create it again with `fbull backtest create`."
+            ),
             grpc.StatusCode.FAILED_PRECONDITION,
         ),
     ],

@@ -18,7 +18,8 @@ func resolveRunDates(stored *backtest.Backtest, start, end *commonPB.Date) (*com
 	first, last := backtestRange(stored.GetPeriods())
 	if first == nil || last == nil {
 		return nil, nil, status.Errorf(codes.FailedPrecondition,
-			"Backtest '%s' has no data to run. Create it again with `fbull backtest create`.", stored.GetName())
+			"Backtest '%[1]s' has no data to run. Delete it with `fbull backtest delete %[1]s`, "+
+				"then create it again with `fbull backtest create`.", stored.GetName())
 	}
 	if start == nil {
 		start = first

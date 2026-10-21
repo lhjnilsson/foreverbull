@@ -367,7 +367,8 @@ func (s *SessionTest) TestCreateExecutionRejectsBacktestWithoutPeriods() {
 	st, ok := status.FromError(err)
 	s.Require().True(ok)
 	s.Equal(codes.FailedPrecondition, st.Code(), st.Message())
-	s.Equal("Backtest 'backtest' has no data to run. Create it again with `fbull backtest create`.", st.Message())
+	s.Equal("Backtest 'backtest' has no data to run. Delete it with `fbull backtest delete backtest`, "+
+		"then create it again with `fbull backtest create`.", st.Message())
 
 	var stored int
 	err = s.conn.QueryRow(context.Background(), `SELECT count(*) FROM backtest_execution`).Scan(&stored)
