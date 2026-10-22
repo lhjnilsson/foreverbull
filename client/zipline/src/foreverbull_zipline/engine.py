@@ -6,6 +6,8 @@ import multiprocessing
 import multiprocessing.queues
 import os
 
+from typing import cast
+
 import pandas as pd
 import pynng
 import six
@@ -91,6 +93,39 @@ def load_benchmark_returns(bundle, benchmark_asset, trading_calendar, sessions) 
         opens, closes = reader.load_raw_arrays(["open", "close"], sessions[0], sessions[-1], [benchmark_asset])
         window_sessions = sessions
     return benchmark_returns(window_sessions, sessions, opens[:, 0], closes[:, 0])
+
+
+def ticker_history(asset_finder) -> dict[int, list[tuple[pd.Timestamp, str]]]:
+    """Each sid's tickers by the session they start on, oldest first."""
+    history: dict[int, list[tuple[pd.Timestamp, str]]] = {}
+    for owners in asset_finder.symbol_ownership_map.values():
+        for owner in owners:
+            history.setdefault(int(owner.sid), []).append((_session_day(owner.start), str(owner.value)))
+    for tickers in history.values():
+        tickers.sort()
+    return history
+
+
+def ticker_on(tickers: list[tuple[pd.Timestamp, str]], day: pd.Timestamp) -> str:
+    """The ticker that started last on or before day.
+
+    Zipline names an asset by its latest ticker, so a position held
+    before a rename (FB then META) would read META while the universe
+    still lists FB.
+    """
+    current = tickers[0][1]
+    for start, symbol in tickers:
+        if start > day:
+            break
+        current = symbol
+    return current
+
+
+def _session_day(value) -> pd.Timestamp:
+    ts = cast(pd.Timestamp, pd.Timestamp(value))
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts.normalize()
 
 
 class Engine(multiprocessing.Process):
@@ -337,7 +372,7 @@ class Engine(multiprocessing.Process):
                 positions_exposure=p.positions_exposure,  # type: ignore
                 positions=[
                     marketdata_pb.Position(
-                        symbol=p.sid.symbol,
+                        symbol=self._position_symbol(trading_algorithm, p.sid),
                         amount=int(p.amount),
                         cost_basis=p.cost_basis,
                         last_sale_price=p.last_sale_price,
@@ -347,6 +382,17 @@ class Engine(multiprocessing.Process):
                 ],
             ),
         ).to_binary()
+
+    def _position_symbol(self, trading_algorithm: TradingAlgorithm, asset) -> str:
+        finder = trading_algorithm.asset_finder
+        cached = getattr(self, "_ticker_history", None)
+        if cached is None or cached[0] is not finder:
+            cached = (finder, ticker_history(finder))
+            self._ticker_history = cached
+        tickers = cached[1].get(int(asset.sid))
+        if not tickers:
+            return asset.symbol
+        return ticker_on(tickers, _session_day(trading_algorithm.datetime))
 
     def _get_execution_result(self, data: bytes) -> bytes:
         req = engine_service_pb.GetResultRequest()
