@@ -149,3 +149,19 @@ func (test *YahooTest) TestGetOHLCNoEnd() {
 		}
 	}
 }
+
+// Yahoo has no bars under FB and serves the history from before the
+// 2021-10-31 rename under META, so bars of a renamed ticker are read
+// through asset_symbol (pkg/backtest/universe.md §7.4).
+func (test *YahooTest) TestGetOHLCRenamedTickerIsServedUnderTheNewTicker() {
+	start := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2021, 11, 30, 0, 0, 0, 0, time.UTC)
+
+	_, err := test.client.GetOHLC("FB", start, &end)
+	test.Require().Error(err)
+
+	bars, err := test.client.GetOHLC("META", start, &end)
+	test.Require().NoError(err)
+	test.Require().NotEmpty(bars)
+	test.Equal("2021-10-01", bars[0].Timestamp.AsTime().UTC().Format("2006-01-02"))
+}
