@@ -197,7 +197,10 @@ def test_held_position_survives_ticker_rename(rename_bundle):
     transactions = [txn for day in result["transactions"] for txn in day]
     assert [txn["amount"] for txn in transactions] == [SHARES]
 
-    # After the rename, user code sees the position as META.
+    # User code sees the position under the universe's ticker of the day:
+    # FB before the rename, META from it.
+    before = [row for row in held if row["day"] < RENAME]
     after = [row for row in held if row["day"] >= RENAME]
-    assert after
+    assert before and after
+    assert {row["positions"][0][0] for row in before} == {"FB"}
     assert {row["positions"][0][0] for row in after} == {"META"}
