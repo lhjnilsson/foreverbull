@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -404,6 +405,139 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 			test.Empty(empty, "days with no members")
 		})
 	}
+}
+
+// createETFBacktest runs CreateBacktestFromETF for name over [start, end]
+// against fixture lists keyed by as-of date.
+func (test *BacktestCommandTest) createETFBacktest(name, start, end string, listings map[time.Time][]dependency.Asset) error {
+	const etf = "iShares S&P 100"
+	from, to := test.date(start), test.date(end)
+	lookback := time.Date(from.Year(), from.Month()-3, 1, 0, 0, 0, 0, time.UTC)
+	window := make([]time.Time, 0)
+	before := make([]time.Time, 0)
+	for asOf := range listings {
+		if !asOf.Before(from) && !asOf.After(to) {
+			window = append(window, asOf)
+		}
+		if !asOf.Before(lookback) && !asOf.After(from) {
+			before = append(before, asOf)
+		}
+	}
+	slices.SortFunc(window, func(a, b time.Time) int { return a.Compare(b) })
+	slices.SortFunc(before, func(a, b time.Time) int { return a.Compare(b) })
+
+	scraper := new(dependency.MockETFScraper)
+	scraper.On("ListSnapshotDates", etf, from, to).Return(window, nil)
+	scraper.On("ListSnapshotDates", etf, lookback, from).Return(before, nil)
+	for asOf, assets := range listings {
+		scraper.On("GetSnapshot", etf, asOf).Return(assets, nil)
+	}
+	scraper.On("GetBenchmark", etf).Return("OEF", nil)
+	mdclient := new(financeServicePB.MockMarketdataClient)
+	mdclient.On("GetAsset", mock.Anything, mock.Anything).Return(&financeServicePB.GetAssetResponse{
+		Asset: &finance.Asset{Symbol: "ANY"},
+	}, nil)
+
+	message := etfCreateMessage(test.T(), name, etf, start, end)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.GetMarketdataClient).Return(mdclient)
+	message.On("MustGet", dependency.GetETFScraper).Return(scraper)
+	return command.CreateBacktestFromETF(context.TODO(), message)
+}
+
+// renameListings are month-end S&P 100 lists where FB becomes META in the
+// 2021-10-31 list. Same ISIN on both sides.
+func (test *BacktestCommandTest) renameListings() map[time.Time][]dependency.Asset {
+	aapl := dependency.Asset{Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity", ISIN: aaplISIN}
+	fb := dependency.Asset{Symbol: "FB", Name: "Facebook Inc.", AssetType: "Equity", ISIN: metaISIN}
+	meta := dependency.Asset{Symbol: "META", Name: "Meta Platforms Inc.", AssetType: "Equity", ISIN: metaISIN}
+	listings := map[time.Time][]dependency.Asset{}
+	for _, asOf := range []string{"2021-05-31", "2021-06-30", "2021-07-31", "2021-08-31", "2021-09-30"} {
+		listings[test.date(asOf)] = []dependency.Asset{aapl, fb}
+	}
+	for _, asOf := range []string{"2021-10-31", "2021-11-30", "2021-12-31"} {
+		listings[test.date(asOf)] = []dependency.Asset{aapl, meta}
+	}
+	return listings
+}
+
+func (test *BacktestCommandTest) metaAliases() []repository.AliasInterval {
+	instruments := repository.Instrument{Conn: test.db}
+	aliases, err := instruments.ListAliases(context.TODO(), metaISIN)
+	test.Require().NoError(err)
+	return aliases
+}
+
+// asset_symbol is shared by every ETF backtest. One that ends before the
+// rename leaves FB open-ended; a later one that covers the rename still
+// creates, and the alias is FB before the rename and META from it.
+func (test *BacktestCommandTest) TestCreateBacktestFromETFAfterBacktestThatEndsBeforeRename() {
+	listings := test.renameListings()
+	rename := test.date("2021-10-31")
+
+	test.Require().NoError(test.createETFBacktest("before-rename", "2021-07-01", "2021-09-30", listings))
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-07-01"), ToDate: nil},
+	}, test.metaAliases())
+
+	test.Require().NoError(test.createETFBacktest("over-rename", "2021-09-01", "2021-12-31", listings))
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-07-01"), ToDate: &rename},
+		{ISIN: metaISIN, Symbol: "META", FromDate: rename, ToDate: nil},
+	}, test.metaAliases())
+
+	members := repository.UniverseMember{Conn: test.db}
+	for _, tc := range []struct {
+		name string
+		day  string
+		want []string
+	}{
+		{name: "before-rename", day: "2021-09-30", want: []string{"AAPL", "FB"}},
+		{name: "over-rename", day: "2021-10-30", want: []string{"AAPL", "FB"}},
+		{name: "over-rename", day: "2021-10-31", want: []string{"AAPL", "META"}},
+	} {
+		symbols, err := members.SymbolsAt(context.TODO(), tc.name, test.date(tc.day))
+		test.Require().NoError(err)
+		test.Equal(tc.want, symbols, "%s on %s", tc.name, tc.day)
+	}
+}
+
+// Reverse order: the backtest over the rename is created first. An older
+// backtest that sees FB open-ended still creates, and its FB ends where META
+// starts instead of reopening the alias.
+func (test *BacktestCommandTest) TestCreateBacktestFromETFBeforeRenameAfterBacktestOverIt() {
+	listings := test.renameListings()
+	rename := test.date("2021-10-31")
+
+	test.Require().NoError(test.createETFBacktest("over-rename", "2021-09-01", "2021-12-31", listings))
+	test.Require().NoError(test.createETFBacktest("before-rename", "2021-07-01", "2021-09-30", listings))
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-07-01"), ToDate: &rename},
+		{ISIN: metaISIN, Symbol: "META", FromDate: rename, ToDate: nil},
+	}, test.metaAliases())
+}
+
+// Published lists that name two tickers for one ISIN on the same day are a
+// real conflict, and the second create is refused.
+func (test *BacktestCommandTest) TestCreateBacktestFromETFRefusesConflictingTicker() {
+	listings := test.renameListings()
+	test.Require().NoError(test.createETFBacktest("over-rename", "2021-09-01", "2021-12-31", listings))
+
+	other := dependency.Asset{Symbol: "FBX", Name: "Facebook Inc.", AssetType: "Equity", ISIN: metaISIN}
+	aapl := dependency.Asset{Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity", ISIN: aaplISIN}
+	conflicting := map[time.Time][]dependency.Asset{
+		test.date("2021-10-31"): {aapl, other},
+		test.date("2021-11-30"): {aapl, other},
+	}
+	err := test.createETFBacktest("conflict", "2021-10-31", "2021-11-30", conflicting)
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+	test.Require().ErrorContains(err, "asset_symbol_no_overlap")
+
+	rename := test.date("2021-10-31")
+	test.Equal([]repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-09-01"), ToDate: &rename},
+		{ISIN: metaISIN, Symbol: "META", FromDate: rename, ToDate: nil},
+	}, test.metaAliases())
 }
 
 func (test *BacktestCommandTest) TestDownloadFinancialData() {

@@ -131,6 +131,126 @@ func (test *InstrumentTest) TestStoreAliasMergesSameTickerAcrossBacktests() {
 	test.Require().ErrorContains(err, "asset_symbol_no_overlap")
 }
 
+func (test *InstrumentTest) storeFunc(ctx context.Context) func(symbol, from string, to *time.Time) error {
+	return func(symbol, from string, to *time.Time) error {
+		return test.instruments.StoreAlias(ctx, repository.AliasInterval{
+			ISIN: metaISIN, Symbol: symbol, FromDate: test.date(from), ToDate: to,
+		})
+	}
+}
+
+func (test *InstrumentTest) requireAliases(ctx context.Context, want []repository.AliasInterval) {
+	aliases, err := test.instruments.ListAliases(ctx, metaISIN)
+	test.Require().NoError(err)
+	test.Equal(want, aliases)
+}
+
+// A backtest that ends before a rename leaves FB open-ended. A later backtest
+// that sees the rename closes it where META starts, and its own FB rows join it.
+func (test *InstrumentTest) TestStoreAliasClosesOpenAliasAtLaterRename() {
+	ctx := context.Background()
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	store := test.storeFunc(ctx)
+
+	test.Require().NoError(store("FB", "2021-01-01", nil))
+	test.Require().NoError(store("FB", "2021-06-30", test.toPtr("2021-10-31")))
+	test.Require().NoError(store("META", "2021-10-31", nil))
+	test.requireAliases(ctx, []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-01-01"), ToDate: test.toPtr("2021-10-31")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2021-10-31"), ToDate: nil},
+	})
+
+	symbol, err := test.instruments.SymbolAt(ctx, metaISIN, test.date("2021-10-30"))
+	test.Require().NoError(err)
+	test.Equal("FB", symbol)
+	symbol, err = test.instruments.SymbolAt(ctx, metaISIN, test.date("2021-10-31"))
+	test.Require().NoError(err)
+	test.Equal("META", symbol)
+}
+
+// A later backtest that starts after the rename only sees META. The open FB
+// row ends where META starts; nothing is known about the days in between.
+func (test *InstrumentTest) TestStoreAliasClosesOpenAliasAtLaterTicker() {
+	ctx := context.Background()
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	store := test.storeFunc(ctx)
+
+	test.Require().NoError(store("FB", "2021-01-01", nil))
+	test.Require().NoError(store("META", "2022-01-31", nil))
+	test.requireAliases(ctx, []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-01-01"), ToDate: test.toPtr("2022-01-31")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2022-01-31"), ToDate: nil},
+	})
+}
+
+// Reverse order: the newer backtest already stored the rename. An older one
+// that sees FB open-ended still creates; its FB ends where META starts.
+func (test *InstrumentTest) TestStoreAliasCapsOpenAliasAtStoredRename() {
+	ctx := context.Background()
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	store := test.storeFunc(ctx)
+
+	test.Require().NoError(store("FB", "2021-06-30", test.toPtr("2021-10-31")))
+	test.Require().NoError(store("META", "2021-10-31", nil))
+
+	test.Require().NoError(store("FB", "2021-01-01", nil))
+	want := []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-01-01"), ToDate: test.toPtr("2021-10-31")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2021-10-31"), ToDate: nil},
+	}
+	test.requireAliases(ctx, want)
+
+	// An open FB inside the stored FB row changes nothing.
+	test.Require().NoError(store("FB", "2021-08-31", nil))
+	test.requireAliases(ctx, want)
+
+	// The cap is the next row of another ticker, not the last one.
+	test.Require().NoError(store("META", "2021-10-31", test.toPtr("2022-06-30")))
+	test.Require().NoError(store("FB", "2022-06-30", nil))
+	test.requireAliases(ctx, []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-01-01"), ToDate: test.toPtr("2021-10-31")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2021-10-31"), ToDate: test.toPtr("2022-06-30")},
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2022-06-30"), ToDate: nil},
+	})
+}
+
+// Two tickers for one ISIN on the same day from published lists is a real
+// conflict. It is refused and the stored row is kept, never replaced.
+func (test *InstrumentTest) TestStoreAliasRefusesDifferentTickerOnSameDay() {
+	ctx := context.Background()
+	test.Require().NoError(test.instruments.Upsert(ctx, metaISIN, "Meta Platforms Inc"))
+	store := test.storeFunc(ctx)
+
+	test.Require().NoError(store("FB", "2021-10-31", nil))
+	err := store("META", "2021-10-31", nil)
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+	test.Require().ErrorContains(err, "asset_symbol_no_overlap")
+	err = store("META", "2021-10-31", test.toPtr("2021-11-30"))
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+	test.requireAliases(ctx, []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-10-31"), ToDate: nil},
+	})
+
+	// A published FB interval is not shortened by a META that starts inside it.
+	_, err = test.conn.Exec(ctx, `DELETE FROM asset_symbol`)
+	test.Require().NoError(err)
+	test.Require().NoError(store("FB", "2021-06-30", test.toPtr("2021-10-31")))
+	err = store("META", "2021-09-30", nil)
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+	err = store("META", "2021-09-30", test.toPtr("2021-12-31"))
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+
+	// An open FB is not cut before its own start.
+	_, err = test.conn.Exec(ctx, `DELETE FROM asset_symbol`)
+	test.Require().NoError(err)
+	test.Require().NoError(store("FB", "2021-06-30", nil))
+	err = store("META", "2021-03-31", test.toPtr("2021-12-31"))
+	test.Require().ErrorIs(err, repository.ErrAliasConflict)
+	test.requireAliases(ctx, []repository.AliasInterval{
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-06-30"), ToDate: nil},
+	})
+}
+
 func (test *InstrumentTest) TestAssetSymbolRejectsOverlapAndAcceptsAdjacent() {
 	ctx := context.Background()
 	test.Require().NoError(repository.MigrateAssetSymbol(ctx, test.conn))
