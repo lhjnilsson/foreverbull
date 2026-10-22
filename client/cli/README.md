@@ -108,14 +108,14 @@ When the broker has authentication on, set `GRAFANA_BROKER_TOKEN` on the Grafana
 
 ## Accounts
 
-The server binary creates further password accounts. It is not an `fbull` command, and it does not set `AUTH_ENABLED`. The platform admin is not created here.
+The server binary creates further password accounts. It is not an `fbull` command, and it does not set `AUTH_ENABLED`. The platform admin is not created here. The first `AUTH_ENABLED=true` boot creates that account from `AUTH_ADMIN_USERNAME` and `AUTH_ADMIN_PASSWORD_FILE`. The password is the file from Secret `foreverbull-admin`, key `password`, not an environment variable. See [deploy/README.md](../../deploy/README.md#authentication).
 
 ```bash
 foreverbull account create --username reader
 foreverbull account rotate --username reader
 ```
 
-🔒️ `account create` inserts role `editor`. There is no `--role` flag. Passing `--role`, including `--role viewer` or `--role admin`, is an error that says role changes are SQL. `account rotate` replaces `password_hash` only. It does not change `role`, and it does not revoke browser sessions or API tokens. No command and no HTTP route writes `account.role`.
+🔒️ `account create` inserts role `editor`. There is no `--role` flag. Passing `--role`, including `--role viewer` or `--role admin`, is an error that says role changes are SQL. `account rotate` replaces `password_hash` only. It does not change `role`, and it does not revoke browser sessions or API tokens. No command and no HTTP route changes an existing `account.role`. GitHub first sign-in inserts `pending`. The enable boot inserts `admin` from the password file.
 
 The password is read from stdin with echo off, length 12 to 128. It is not a flag and not an environment variable, and it is not written to a log. Stdout is the account id. A duplicate username is an error and does not change the hash. The command uses `POSTGRES_URL`.
 
