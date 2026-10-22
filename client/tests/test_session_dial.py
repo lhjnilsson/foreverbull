@@ -19,7 +19,7 @@ from foreverbull.worker import WorkerDaemon
 from foreverbull.worker import _run_worker_process
 
 
-class _Details:
+class _Details(grpc.ClientCallDetails):
     method = "/foreverbull.example/Call"
     timeout = None
     metadata = None
