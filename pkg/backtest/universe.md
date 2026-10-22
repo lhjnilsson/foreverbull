@@ -304,17 +304,25 @@ The session decides once, before the first bar: any `universe_member` row for th
 
 `RunBacktestRequest.benchmark` is the stored `backtest.benchmark` for both kinds. An empty benchmark makes Zipline use a flat zero series, so `benchmark_period_return` would be stored as `0`.
 
+### 7.4 Bars of a renamed ticker
+
+Bars stay on the ticker the provider stores them under, and the reader picks them by date through `asset_symbol`. Yahoo has no bars under FB for any date and serves the whole history, before the rename too, under META. Other providers may list FB up to the rename and META from it.
+
+- **Zipline bundle.** `SQLIngester` builds one sid per ISIN alias by alias. Inside an alias's `asset_symbol` dates its own bars win, and a session without one takes the bar another ticker of the ISIN has. The first alias reaches back to the backtest start and the last one forward to its end.
+- **User code.** `Asset.stock_data`, `Assets` and the close `Portfolio.order_value` uses resolve the ticker to the ISIN that holds it on the read date. On each bar time the ticker whose dates cover it wins, then the asked ticker, then another ticker of the ISIN. The frame keeps the asked ticker. A ticker with no `asset_symbol` row reads only its own bars.
+- **Positions.** A held position is named by the ticker that started last on or before the session, so it reads FB before the rename and META from it, as the universe does. Zipline itself names an asset by its latest ticker.
+
 ## 8. Zipline `auto_close_date`
 
 `SQLIngester.create_metadata` already declares `("auto_close_date", "datetime64[ns]")`. The writer builds `autoclose_date = end_date + pd.Timedelta(days=1)` then sets it to `None`.
 
 Contract:
 
-- One Zipline equity row per **symbol** (because `ohlc` is per symbol). FB and META are two equities sharing an ISIN via `asset_symbol`.
-- `start_date` / `end_date` = first and last bar actually present for that symbol in `ohlc`.
+- One Zipline sid per ISIN. Each ticker of the ISIN is a symbol mapping of that sid (FB then META).
+- A ticker's `start_date` / `end_date` = first and last bar the sid has inside that ticker's `asset_symbol` dates (§7.4), not the bars stored under the ticker.
 - `auto_close_date` = session after the last bar (`end_date + 1 day`), i.e. the value already computed. Do not overwrite with `None`.
 - Write the column as `auto_close_date` to match the metadata dtype, not `autoclose_date`.
-- A drop closes membership in `universe_member` and, once bars end, auto-closes the Zipline equity. A rename auto-closes the old ticker’s equity and opens the new one; the ISIN remains a member.
+- A drop closes membership in `universe_member` and, once bars end, auto-closes the Zipline equity. A rename does not auto-close the sid: a held position carries over and changes name on the rename date; the ISIN remains a member.
 
 ## 9. `CreateBacktestFromETF` after this contract
 
