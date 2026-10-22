@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
+from datetime import timedelta
 from math import isnan
 from typing import Any
 from typing import cast
@@ -111,6 +112,67 @@ def _as_date(value) -> date | None:
     if not isinstance(ts, pd.Timestamp) or ts is pd.NaT:
         return None
     return date(int(ts.year), int(ts.month), int(ts.day))
+
+
+def alias_windows(aliases: tuple[AliasSpec, ...], from_date: date, to_date: date) -> list[tuple[AliasSpec, date, date]]:
+    """Each alias's dates inside the backtest, from asset_symbol.
+
+    asset_symbol.to_date is exclusive. The first alias reaches back to the
+    backtest start and the last one forward to its end, so an ISIN keeps
+    the bars it had before its ticker history was known.
+    """
+    ordered = sorted(aliases, key=lambda alias: alias.from_date or date.min)
+    windows: list[tuple[AliasSpec, date, date]] = []
+    for position, alias in enumerate(ordered):
+        start = from_date if position == 0 or alias.from_date is None else max(alias.from_date, from_date)
+        end = to_date
+        if position < len(ordered) - 1 and alias.to_date is not None:
+            end = min(alias.to_date - timedelta(days=1), to_date)
+        if start <= end:
+            windows.append((alias, start, end))
+    return windows
+
+
+def _in_window(frame: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    days = frame.index.date  # type: ignore[attr-defined]
+    return cast(pd.DataFrame, frame[(days >= start) & (days <= end)])
+
+
+def resolve_group_bars(
+    group: InstrumentGroup,
+    frames: dict[str, pd.DataFrame],
+    from_date: date,
+    to_date: date,
+) -> tuple[pd.DataFrame | None, list[tuple[str, pd.Timestamp, pd.Timestamp]]]:
+    """Bars and symbol mappings of one sid, alias by alias.
+
+    Inside an alias's dates the bars stored under that ticker win. A
+    session it has no bar for takes the bar another ticker of the ISIN
+    has: Yahoo serves FB's history only under META. Each ticker maps to
+    the sid from its first to its last bar inside its own dates, so a
+    lookup on a date finds the ticker the universe lists on it.
+    """
+    pieces: list[pd.DataFrame] = []
+    mapping_rows: list[tuple[str, pd.Timestamp, pd.Timestamp]] = []
+    for alias, start, end in alias_windows(group.aliases, from_date, to_date):
+        bars = _in_window(frames[alias.symbol], start, end)
+        for other in group.aliases:
+            if other.symbol == alias.symbol:
+                continue
+            fill = _in_window(frames[other.symbol], start, end)
+            bars = pd.concat([bars, fill[~fill.index.isin(bars.index)]])
+        if len(bars) == 0:
+            continue
+        bars = cast(pd.DataFrame, bars.sort_index())
+        pieces.append(bars)
+        mapping_rows.append((alias.symbol, _index_timestamp(bars.index, 0), _index_timestamp(bars.index, -1)))
+    if not pieces:
+        return None, mapping_rows
+    combined = pd.concat(pieces).sort_index()
+    combined = combined[~combined.index.duplicated(keep="first")]
+    if not isinstance(combined, pd.DataFrame):
+        combined = pd.DataFrame(combined)
+    return combined, mapping_rows
 
 
 def session_labels(times) -> pd.DatetimeIndex:
@@ -226,30 +288,14 @@ class SQLIngester:
 
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
             for index, group in enumerate(groups):
-                frames: list[pd.DataFrame] = []
-                mapping_rows: list[tuple[str, pd.Timestamp, pd.Timestamp]] = []
-                for alias in group.aliases:
-                    data = self.get_stock_data(alias.symbol, from_date, to_date)
-                    if len(data) == 0:
-                        continue
-                    data.dropna(inplace=True)
-                    if len(data) == 0:
-                        continue
-                    frames.append(data)
-                    mapping_rows.append(
-                        (
-                            alias.symbol,
-                            _index_timestamp(data.index, 0),
-                            _index_timestamp(data.index, -1),
-                        )
-                    )
-                if not frames:
+                frames = {
+                    symbol: self._bars(symbol, from_date, to_date)
+                    for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
+                }
+                combined, mapping_rows = resolve_group_bars(group, frames, from_date, to_date)
+                if combined is None:
                     symbols = ", ".join(alias.symbol for alias in group.aliases)
                     raise ValueError(f"No data found for {symbols} on {from_date} to {to_date}")
-                combined = pd.concat(frames).sort_index()
-                combined = combined[~combined.index.duplicated(keep="last")]
-                if not isinstance(combined, pd.DataFrame):
-                    combined = pd.DataFrame(combined)
                 auto_close = membership_auto_close_date(combined.index[-1], group.member_to)
                 for symbol, start_date, end_date in mapping_rows:
                     asset_row = pd.DataFrame(
@@ -264,6 +310,11 @@ class SQLIngester:
                     )
                     self._df_metadata = pd.concat([self._df_metadata, asset_row], ignore_index=True)
                 yield index, combined
+
+    def _bars(self, symbol: str, from_date: date, to_date: date) -> pd.DataFrame:
+        data = self.get_stock_data(symbol, from_date, to_date)
+        data.dropna(inplace=True)
+        return data
 
     def __call__(
         self,
