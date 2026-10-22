@@ -5,6 +5,7 @@ import yfinance
 import yfinance.data
 
 from sqlalchemy import Column
+from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import Integer
 from sqlalchemy import String
@@ -42,6 +43,20 @@ class OHLC(Base):
     provider = Column(String(), nullable=False, server_default="yahoo")
 
     __table_args__ = (UniqueConstraint("provider", "symbol", "time", name="ohlc_provider_symbol_time_key"),)
+
+
+class AssetSymbol(Base):
+    """The broker's dated ticker alias (pkg/backtest/universe.md §4.3), without its constraints.
+
+    Bar reads resolve a ticker to its ISIN through this table, so a test
+    database needs it even when it holds no rows.
+    """
+
+    __tablename__ = "asset_symbol"
+    isin = Column(String(), primary_key=True)
+    symbol = Column(String(), nullable=False)
+    from_date = Column(Date(), primary_key=True)
+    to_date = Column(Date())
 
 
 _OHLC_PROVIDER_COLUMN = text("ALTER TABLE ohlc ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'yahoo'")
