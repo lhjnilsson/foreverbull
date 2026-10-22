@@ -543,8 +543,11 @@ def _parse_run_dates(
     end: str | None,
 ) -> tuple[common_pb.Date, common_pb.Date] | None:
     if not entity.periods:
-        console.print(f"[red]Backtest {entity.name} has no periods")
-        return None
+        # Same wording as the broker's refusal, so both paths read the same.
+        _fail(
+            f"Backtest '{entity.name}' has no data to run. Delete it with `fbull backtest delete {entity.name}`, "
+            "then create it again with `fbull backtest create`."
+        )
 
     start_date = entity.periods[0].start_date
     end_date = entity.periods[-1].end_date
@@ -607,6 +610,10 @@ def _check_run_dates_in_range(
     raise typer.Exit(code=1)
 
 
+# Codes the broker uses to refuse a run it will not start. Any other code is a fault.
+_BROKER_RUN_REJECTIONS = (grpc.StatusCode.INVALID_ARGUMENT, grpc.StatusCode.FAILED_PRECONDITION)
+
+
 def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:
     """Look the backtest up, failing with one plain line when the name doesn't exist."""
     try:
@@ -648,6 +655,7 @@ def run(
         return
 
     execution_id = None
+    rejected: str | None = None
     with LiveProgress() as progress:
         has_run = False
         for msg in broker.backtest.create_session(name):
@@ -655,17 +663,28 @@ def run(
             backtest_session = msg.session
             if backtest_session is not None and backtest_session.port and not has_run:
                 has_run = True
-                with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
-                    entity, backtest_session
-                ) as session:
-                    with progress.bar_progress("execution") as bar_progress:
-                        for execution_id, message in session.run_execution(
-                            start_date,
-                            end_date,
-                        ):
-                            bar_progress(message.num_current_period, message.num_total_periods)
-                    log.info(f"Execution completed for {session.backtest.name}")
+                try:
+                    with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
+                        entity, backtest_session
+                    ) as session:
+                        with progress.bar_progress("execution") as bar_progress:
+                            for execution_id, message in session.run_execution(
+                                start_date,
+                                end_date,
+                            ):
+                                bar_progress(message.num_current_period, message.num_total_periods)
+                        log.info(f"Execution completed for {session.backtest.name}")
+                except grpc.RpcError as exc:
+                    # The broker checks the dates and that the backtest has data;
+                    # its message is the whole error.
+                    code = getattr(exc, "code", None)
+                    if not callable(code) or code() not in _BROKER_RUN_REJECTIONS:
+                        raise
+                    rejected = _rpc_details(exc)
+                    progress.transient = True
 
+    if rejected is not None:
+        _fail(rejected)
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
     _, periods = broker.backtest.get_execution(execution_id)

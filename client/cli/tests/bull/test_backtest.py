@@ -999,6 +999,28 @@ def test_backtest_run_dry(runner):
         create_session.assert_not_called()
 
 
+# A run with nothing to run over fails fast instead of exiting 0 silently.
+@pytest.mark.parametrize("extra", [[], ["--dry"]], ids=["run", "dry"])
+def test_backtest_run_without_periods_fails_with_one_line(monkeypatch, extra):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        get.return_value = backtest_pb.Backtest(name="empty", benchmark="SPY")
+        result = CliRunner().invoke(backtest, ["run", "empty", "demo.py", *extra])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert (
+        "✖ Backtest 'empty' has no data to run. Delete it with `fbull backtest delete empty`, "
+        "then create it again with `fbull backtest create`."
+    ) in " ".join(result.stdout.split())
+    assert "Traceback" not in result.stdout
+    assert "Dry Run" not in result.stdout
+    create_session.assert_not_called()
+
+
 def test_backtest_run_unknown_name_prints_one_plain_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     missing = _BrokenStream("backtest typo not found", grpc.StatusCode.NOT_FOUND)
@@ -1277,3 +1299,67 @@ def test_cli_default_provider_matches_zipline_fallback(monkeypatch):
 
     monkeypatch.delenv("OHLC_PROVIDER", raising=False)
     assert ohlc_provider() == _DEFAULT_PROVIDER
+
+
+class _BrokerRejection(grpc.RpcError):
+    def __init__(self, details: str, code: grpc.StatusCode = grpc.StatusCode.INVALID_ARGUMENT):
+        self._details = details
+        self._code = code
+
+    def code(self):
+        return self._code
+
+    def details(self):
+        return self._details
+
+
+@pytest.mark.parametrize(
+    ("message", "code"),
+    [
+        (
+            (
+                "Start 2019-12-30 is before backtest 'test_name' begins. Pick dates between 2020-01-01 and 2020-01-31, "
+                "or leave out the dates to run the whole backtest."
+            ),
+            grpc.StatusCode.INVALID_ARGUMENT,
+        ),
+        (
+            "Start 2020-01-31 is after end 2020-01-02. Pick a start on or before the end.",
+            grpc.StatusCode.INVALID_ARGUMENT,
+        ),
+        (
+            (
+                "Backtest 'test_name' has no data to run. Delete it with `fbull backtest delete test_name`, "
+                "then create it again with `fbull backtest create`."
+            ),
+            grpc.StatusCode.FAILED_PRECONDITION,
+        ),
+    ],
+    ids=["before-start", "start-after-end", "no-periods"],
+)
+def test_backtest_run_shows_broker_rejection_as_one_line(fb_env, message, code):
+    mock_backtest_session = _run_session_mocks()
+    mock_backtest_session.run_execution.side_effect = _BrokerRejection(message, code)
+    with (
+        patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
+        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.get_execution") as get_execution,
+    ):
+        from_file_path.return_value = True
+        get.return_value = _sample_backtest()
+        create_session.return_value = iter(
+            [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
+        )
+        context = mock_foreverbull.return_value.backtest_session.return_value
+        context.__enter__.return_value = mock_backtest_session
+        # A real context manager lets the error through.
+        context.__exit__.return_value = False
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert f"✖ {message}" in " ".join(result.stdout.split())
+    assert "Traceback" not in result.stdout
+    get_execution.assert_not_called()
