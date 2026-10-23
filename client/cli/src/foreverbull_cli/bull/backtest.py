@@ -459,7 +459,7 @@ def get(
     name: Annotated[str, typer.Argument(help="name of the backtest")],
     output: Annotated[OutputFormat, typer.Option(help="output file")] = OutputFormat.DEFAULT,
 ):
-    entity = broker.backtest.get(name)
+    entity = get_backtest_or_fail(name)
     if output == OutputFormat.YAML:
         backtest_dict = {
             "name": entity.name,
@@ -527,8 +527,10 @@ def delete(
     names: Annotated[list[str], typer.Argument(help="name of the backtest, can be multiple")],
     force: Annotated[bool, typer.Option(help="force delete backtest without confirmation")] = False,
 ):
+    # Check every name before asking or deleting anything, so a typo stops the whole command.
     for name in names:
-        _ = broker.backtest.get(name)
+        get_backtest_or_fail(name, suggest_create=False)
+    for name in names:
         if not force:
             shall_delete = Confirm.ask(f"Are you sure you want to delete backtest {name}?", default=False)
             if not shall_delete:
@@ -614,17 +616,25 @@ def _check_run_dates_in_range(
 _BROKER_RUN_REJECTIONS = (grpc.StatusCode.INVALID_ARGUMENT, grpc.StatusCode.FAILED_PRECONDITION)
 
 
-def _get_backtest_to_run(name: str) -> backtest_pb.Backtest:
-    """Look the backtest up, failing with one plain line when the name doesn't exist."""
+def get_backtest_or_fail(name: str, *, suggest_create: bool = True) -> backtest_pb.Backtest:
+    """Look the backtest up, failing with one plain line when the name doesn't exist.
+
+    The line points at `fbull backtest list` and, when suggest_create is set, at
+    `fbull backtest create`. Callers that remove a backtest leave the create hint out.
+
+    Any other lookup error is raised unchanged, so it is never reported as a missing backtest.
+    """
     try:
         return broker.backtest.get(name)
     except grpc.RpcError as exc:
         code = getattr(exc, "code", None)
         if callable(code) and code() == grpc.StatusCode.NOT_FOUND:
-            _fail(
-                f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
-                "backtests, or create it with `fbull backtest create`."
-            )
+            if suggest_create:
+                _fail(
+                    f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
+                    "backtests, or create it with `fbull backtest create`."
+                )
+            _fail(f"There's no backtest named '{name}'. Run `fbull backtest list` to see your backtests.")
         raise
 
 
@@ -636,7 +646,7 @@ def run(
     end: Annotated[str | None, typer.Option(help="end date of the backtest")] = None,
     dry: Annotated[bool, typer.Option("--dry", help="print the execution plan without running")] = False,
 ):
-    entity = _get_backtest_to_run(name)
+    entity = get_backtest_or_fail(name)
     dates = _parse_run_dates(entity, start, end)
     if dates is None:
         return
