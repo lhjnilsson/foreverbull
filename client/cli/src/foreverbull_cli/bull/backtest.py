@@ -529,7 +529,7 @@ def delete(
 ):
     # Check every name before asking or deleting anything, so a typo stops the whole command.
     for name in names:
-        get_backtest_or_fail(name)
+        get_backtest_or_fail(name, suggest_create=False)
     for name in names:
         if not force:
             shall_delete = Confirm.ask(f"Are you sure you want to delete backtest {name}?", default=False)
@@ -616,8 +616,11 @@ def _check_run_dates_in_range(
 _BROKER_RUN_REJECTIONS = (grpc.StatusCode.INVALID_ARGUMENT, grpc.StatusCode.FAILED_PRECONDITION)
 
 
-def get_backtest_or_fail(name: str) -> backtest_pb.Backtest:
+def get_backtest_or_fail(name: str, *, suggest_create: bool = True) -> backtest_pb.Backtest:
     """Look the backtest up, failing with one plain line when the name doesn't exist.
+
+    The line points at `fbull backtest list` and, when suggest_create is set, at
+    `fbull backtest create`. Callers that remove a backtest leave the create hint out.
 
     Any other lookup error is raised unchanged, so it is never reported as a missing backtest.
     """
@@ -626,10 +629,12 @@ def get_backtest_or_fail(name: str) -> backtest_pb.Backtest:
     except grpc.RpcError as exc:
         code = getattr(exc, "code", None)
         if callable(code) and code() == grpc.StatusCode.NOT_FOUND:
-            _fail(
-                f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
-                "backtests, or create it with `fbull backtest create`."
-            )
+            if suggest_create:
+                _fail(
+                    f"There's no backtest named '{name}'. Run `fbull backtest list` to see your "
+                    "backtests, or create it with `fbull backtest create`."
+                )
+            _fail(f"There's no backtest named '{name}'. Run `fbull backtest list` to see your backtests.")
         raise
 
 

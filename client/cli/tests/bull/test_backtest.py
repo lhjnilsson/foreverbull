@@ -1370,6 +1370,10 @@ _UNKNOWN_BACKTEST_LINE = (
     "backtests, or create it with `fbull backtest create`.\n"
 )
 
+# Deleting a backtest that doesn't exist only points at the list; suggesting to create
+# the backtest the user was trying to delete would be odd.
+_UNKNOWN_BACKTEST_DELETE_LINE = "✖ There's no backtest named 'typo'. Run `fbull backtest list` to see your backtests.\n"
+
 
 def test_backtest_get_unknown_name_prints_one_plain_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
@@ -1382,6 +1386,7 @@ def test_backtest_get_unknown_name_prints_one_plain_line(monkeypatch):
 
     assert result.exit_code == 1
     assert result.output == _UNKNOWN_BACKTEST_LINE
+    assert "or create it with `fbull backtest create`" in result.output
     list_executions.assert_not_called()
 
 
@@ -1410,7 +1415,8 @@ def test_backtest_delete_unknown_name_prints_one_plain_line(monkeypatch):
         result = CliRunner().invoke(backtest, ["delete", "test_name", "typo", "--force"])
 
     assert result.exit_code == 1
-    assert result.output == _UNKNOWN_BACKTEST_LINE
+    assert result.output == _UNKNOWN_BACKTEST_DELETE_LINE
+    assert "fbull backtest create" not in result.output
     delete.assert_not_called()
 
 
