@@ -224,18 +224,27 @@ def test_trading_run_confirm_places(runner):
         mocks["place_orders"].assert_called_once()
 
 
-def test_trading_run_no_periods(runner):
+# One ✖ line and exit 1 that says why there is nothing to trade and how to fix it.
+def test_trading_run_no_periods_fails_with_one_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with (
         patch("foreverbull.broker.backtest.get") as get_backtest,
         patch("foreverbull.broker.finance.create_session") as create_session,
         patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
     ):
         get_backtest.return_value = backtest_pb.Backtest(name="empty")
-        result = runner(cli, ["trading", "run", "empty", "demo.py", "--yes"])
-        assert result.exit_code == 0
-        assert "has no periods" in result.stdout
-        create_session.assert_not_called()
-        get_portfolio.assert_not_called()
+        result = CliRunner().invoke(cli, ["trading", "run", "empty", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert (
+        "✖ Backtest 'empty' has no data, so there are no symbols to trade. Pick another backtest, "
+        "or delete it with `fbull backtest delete empty` and create it again with `fbull backtest create`."
+    ) in " ".join(result.stdout.split())
+    assert "has no periods" not in result.stdout
+    assert "Traceback" not in result.stdout
+    create_session.assert_not_called()
+    get_portfolio.assert_not_called()
 
 
 def test_trading_run_unknown_backtest_prints_one_plain_line(monkeypatch):

@@ -146,7 +146,10 @@ func periodRange(bt *backtestpb.Backtest) (*common.Date, *common.Date, error) {
 		if bt != nil {
 			name = bt.Name
 		}
-		return nil, nil, fmt.Errorf("backtest %q has no periods; create and ingest it with `fbull backtest create` — experiments do not auto-ingest", name)
+		// The agreed copy for a backtest without data is whole sentences, so it
+		// ends with a period; the CLI prints it after ✖ as is.
+		return nil, nil, fmt.Errorf("backtest '%[1]s' has no data to run. Experiments don't load data on their own, "+ //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+			"so delete it with `fbull backtest delete %[1]s`, then create it again with `fbull backtest create`.", name)
 	}
 
 	start := bt.Periods[0].StartDate

@@ -5,12 +5,14 @@ from datetime import date
 from datetime import datetime
 from unittest.mock import patch
 
+import grpc
 import pytest
 
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.strategy import strategy
 from foreverbull_cli.output import execution_link
 from protobuf.wkt import Timestamp
+from typer.testing import CliRunner
 
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
@@ -232,6 +234,56 @@ def test_strategy_experiment_backtest(runner):
     assert "exp-1" in result.stdout
     assert "COMPLETED" in result.stdout
     assert f"Link: {execution_link('exec-1')}" in result.stdout
+
+
+_NO_DATA = (
+    "backtest 'empty' has no data to run. Experiments don't load data on their own, "
+    "so delete it with `fbull backtest delete empty`, then create it again with `fbull backtest create`."
+)
+
+
+class _ExperimentFailed(grpc.RpcError):
+    def __init__(self, details: str, code: grpc.StatusCode = grpc.StatusCode.INTERNAL):
+        self._details = details
+        self._code = code
+
+    def details(self):
+        return self._details
+
+    def code(self):
+        return self._code
+
+
+def _experiment_stream_failing(message: str):
+    running = strategy_service_pb.CreateExperimentResponse(
+        QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
+        RUNNING=common_pb.Step(state=common_pb.State.RUNNING),
+    )
+    yield running
+    yield running
+    yield strategy_service_pb.CreateExperimentResponse(
+        QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
+        RUNNING=common_pb.Step(state=common_pb.State.FAILED, message=message),
+        experiment=_sample_experiment(
+            backtest_name="empty", execution_id="", status=strategy_pb.Experiment.Status.FAILED
+        ),
+    )
+    raise _ExperimentFailed(f"run experiment: {message}")
+
+
+# The launcher's refusal is the whole error: one ✖ line and exit 1, no traceback.
+def test_strategy_experiment_backtest_without_data_fails_with_one_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.strategy.create_experiment") as mock_create:
+        mock_create.return_value = _experiment_stream_failing(_NO_DATA)
+        result = CliRunner().invoke(strategy, ["experiment", "mean-rev", "--backtest", "empty", "--rev", "1"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert f"✖ {_NO_DATA}" in " ".join(result.stdout.split())
+    assert "run experiment:" not in result.stdout
+    assert "auto-ingest" not in result.stdout
+    assert "Traceback" not in result.stdout
 
 
 def test_strategy_experiment_same_version_many_backtests(runner):

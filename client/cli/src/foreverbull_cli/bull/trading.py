@@ -134,8 +134,14 @@ def run(
 ):
     _backtest = get_backtest_or_fail(backtest_name)
     if not _backtest.periods:
-        console.print(f"[red]Backtest {backtest_name} has no periods")
-        return
+        console.print(
+            f"✖ Backtest '{backtest_name}' has no data, so there are no symbols to trade. Pick another backtest, "
+            f"or delete it with `fbull backtest delete {backtest_name}` and create it again with `fbull backtest create`.",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
+        raise typer.Exit(code=1)
     symbols = [a.symbol for a in _backtest.periods[-1].assets if a.enabled]
 
     if dry:

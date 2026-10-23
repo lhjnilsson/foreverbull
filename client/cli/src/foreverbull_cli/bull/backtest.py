@@ -293,13 +293,23 @@ def list_backtests():
     table.add_column("End")
     table.add_column("Benchmark")
     table.add_column("Provider")
+    without_data: list[str] = []
     for entity in broker.backtest.list_backtests():
-        if not len(entity.periods):
-            console.print(f"Backtest {entity.name} has no periods")
+        if not entity.periods:
+            without_data.append(entity.name)
             continue
         start, end = _backtest_range(entity)
         table.add_row(entity.name, start, end, entity.benchmark, _shown_provider(entity))
     console.print(table)
+    # Listed after the table, so the backtests that can run are still shown.
+    # A backtest without data is not a failure of `list`, so it exits 0.
+    for name in without_data:
+        console.print(
+            f"⚠ {name} has no data. Run `fbull backtest delete {name}`, then `fbull backtest create`.",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
 
 
 @backtest.command("etfs")

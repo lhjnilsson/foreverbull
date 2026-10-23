@@ -83,6 +83,25 @@ def test_backtest_list(runner):
         assert "2020-01-31" in result.stdout
 
 
+# A backtest with no data is still listed, with a ⚠ line that says how to
+# fix it, and the command exits 0: listing is not a failure.
+def test_backtest_list_without_periods_warns_and_exits_0(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.backtest.list_backtests") as mock_list:
+        mock_list.return_value = [_sample_backtest(), backtest_pb.Backtest(name="empty", benchmark="SPY")]
+        result = CliRunner().invoke(backtest, ["list"])
+    assert result.exit_code == 0
+    assert result.exception is None
+    assert "test_name" in result.stdout
+    assert result.stdout.count("⚠") == 1
+    assert "✖" not in result.stdout
+    assert ("⚠ empty has no data. Run `fbull backtest delete empty`, then `fbull backtest create`.") in " ".join(
+        result.stdout.split()
+    )
+    assert "has no periods" not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
 def test_backtest_create(runner):
     with patch("foreverbull.broker.backtest.create") as mock_create:
         mock_create.return_value = iter(
