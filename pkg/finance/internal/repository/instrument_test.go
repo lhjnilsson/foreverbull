@@ -53,6 +53,18 @@ func (test *InstrumentTests) date(year int, month time.Month, day int) time.Time
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
+// storeSymbol writes a half-open [from, to) ticker row; a zero to leaves it open.
+func (test *InstrumentTests) storeSymbol(ctx context.Context, isin, symbol string, from, to time.Time) {
+	var toDate any
+	if !to.IsZero() {
+		toDate = to
+	}
+	_, err := test.conn.Exec(ctx,
+		`INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES ($1, $2, $3::date, $4::date)`,
+		isin, symbol, from, toDate)
+	test.Require().NoError(err)
+}
+
 func (test *InstrumentTests) TestStoreMissingISIN() {
 	inst, err := test.instruments.Store(context.TODO(), "", "Meta Platforms Inc")
 	test.Require().ErrorIs(err, repository.ErrMissingISIN)
@@ -93,11 +105,11 @@ func (test *InstrumentTests) TestTickerChangeIsNewAliasNotNewInstrument() {
 
 	inst, err := test.instruments.Store(ctx, metaISIN, "Facebook Inc")
 	test.Require().NoError(err)
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "FB", fbDate))
+	test.storeSymbol(ctx, metaISIN, "FB", fbDate, metaDate)
 	renamed, err := test.instruments.Store(ctx, metaISIN, "Meta Platforms Inc")
 	test.Require().NoError(err)
 	test.Equal(inst.ID, renamed.ID)
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "META", metaDate))
+	test.storeSymbol(ctx, metaISIN, "META", metaDate, time.Time{})
 
 	var n int64
 	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM instrument WHERE isin=$1`, metaISIN).Scan(&n)
@@ -132,31 +144,6 @@ func (test *InstrumentTests) TestTickerChangeIsNewAliasNotNewInstrument() {
 	test.Equal("META", symbol)
 
 	symbol, err = test.instruments.Symbols(ctx, inst, metaDate.AddDate(0, 0, -1))
-	test.Require().NoError(err)
-	test.Equal("FB", symbol)
-}
-
-func (test *InstrumentTests) TestRecordSymbolMissingISIN() {
-	err := test.instruments.RecordSymbol(context.TODO(), "", "FB", test.date(2021, time.June, 30))
-	test.Require().ErrorIs(err, repository.ErrMissingISIN)
-}
-
-func (test *InstrumentTests) TestRecordSymbolSameTickerIsNoop() {
-	ctx := context.TODO()
-	d0 := test.date(2021, time.January, 31)
-	d1 := test.date(2021, time.February, 28)
-
-	_, err := test.instruments.Store(ctx, metaISIN, "Facebook Inc")
-	test.Require().NoError(err)
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "FB", d0))
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "FB", d1))
-
-	var n int64
-	err = test.conn.QueryRow(ctx, `SELECT COUNT(*) FROM asset_symbol WHERE isin=$1`, metaISIN).Scan(&n)
-	test.Require().NoError(err)
-	test.Equal(int64(1), n)
-
-	symbol, err := test.instruments.Symbols(ctx, &repository.Instrument{ISIN: metaISIN}, d1)
 	test.Require().NoError(err)
 	test.Equal("FB", symbol)
 }
@@ -264,8 +251,8 @@ func (test *InstrumentTests) TestIngestAssetAndOHLCStillKeyedBySymbol() {
 	ctx := context.TODO()
 	_, err := test.instruments.Store(ctx, metaISIN, "Meta Platforms Inc")
 	test.Require().NoError(err)
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "FB", test.date(2021, time.June, 30)))
-	test.Require().NoError(test.instruments.RecordSymbol(ctx, metaISIN, "META", test.date(2021, time.October, 31)))
+	test.storeSymbol(ctx, metaISIN, "FB", test.date(2021, time.June, 30), test.date(2021, time.October, 31))
+	test.storeSymbol(ctx, metaISIN, "META", test.date(2021, time.October, 31), time.Time{})
 
 	test.Require().NoError(test.assets.Store(ctx, "FB", "Facebook Inc"))
 	test.Require().NoError(test.assets.Store(ctx, "META", "Meta Platforms Inc"))
