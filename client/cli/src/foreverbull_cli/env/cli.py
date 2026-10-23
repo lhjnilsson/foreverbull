@@ -196,7 +196,7 @@ def warn_rollout(notice: RolloutNotice, command: str, *, verbose: bool):
     if verbose and notice.detail:
         lines.append(f"kubectl said: {notice.detail}")
     elif notice.detail:
-        lines.append(f"Run `{command} --verbose` to see kubectl's error.")
+        lines.append(f"Run `{command} --verbose` to see the details.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
 
 

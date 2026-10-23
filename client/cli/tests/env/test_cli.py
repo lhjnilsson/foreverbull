@@ -315,7 +315,7 @@ def test_update_unverified_rollout_warns_before_the_status_table(runner, mocked_
     assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
     assert "connection refused" not in result.stdout
     assert "kubectl said" not in result.stdout
-    assert "Run `fbenv update --verbose` to see kubectl's error." in result.stdout
+    assert "Run `fbenv update --verbose` to see the details." in result.stdout
     assert result.stdout.index("⚠ Couldn't confirm the update finished") < result.stdout.index("Environment Status")
     mocked_container_manager.status_rows.assert_called()
 
