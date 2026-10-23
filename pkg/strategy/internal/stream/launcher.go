@@ -140,13 +140,20 @@ func (l *SessionLauncher) Run(ctx context.Context, in RunInput) (*RunOutput, err
 	return out, nil
 }
 
+// noDataMessage uses the same wording as the backtest service and the CLI, so
+// every path that refuses a backtest without periods reads the same.
+func noDataMessage(name string) string {
+	return fmt.Sprintf("Backtest '%[1]s' has no data to run. Delete it with `fbull backtest delete %[1]s`, "+
+		"then create it again with `fbull backtest create`.", name)
+}
+
 func periodRange(bt *backtestpb.Backtest) (*common.Date, *common.Date, error) {
 	if bt == nil || len(bt.Periods) == 0 {
 		name := ""
 		if bt != nil {
 			name = bt.Name
 		}
-		return nil, nil, fmt.Errorf("backtest %q has no periods; create and ingest it with `fbull backtest create` — experiments do not auto-ingest", name)
+		return nil, nil, errors.New(noDataMessage(name))
 	}
 
 	start := bt.Periods[0].StartDate

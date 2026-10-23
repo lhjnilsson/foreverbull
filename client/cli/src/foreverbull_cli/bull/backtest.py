@@ -293,13 +293,19 @@ def list_backtests():
     table.add_column("End")
     table.add_column("Benchmark")
     table.add_column("Provider")
+    without_data: list[str] = []
     for entity in broker.backtest.list_backtests():
-        if not len(entity.periods):
-            console.print(f"Backtest {entity.name} has no periods")
+        if not entity.periods:
+            without_data.append(entity.name)
             continue
         start, end = _backtest_range(entity)
         table.add_row(entity.name, start, end, entity.benchmark, _shown_provider(entity))
     console.print(table)
+    # Listed after the table, so the backtests that can run are still shown.
+    for name in without_data:
+        console.print(f"✖ {_no_data_message(name)}", markup=False, highlight=False, soft_wrap=True)
+    if without_data:
+        raise typer.Exit(code=1)
 
 
 @backtest.command("etfs")
@@ -539,17 +545,26 @@ def delete(
         broker.backtest.delete(name)
 
 
+def _no_data_message(name: str) -> str:
+    # Same wording as the broker's refusal, so every path reads the same.
+    return (
+        f"Backtest '{name}' has no data to run. Delete it with `fbull backtest delete {name}`, "
+        "then create it again with `fbull backtest create`."
+    )
+
+
+def fail_if_no_data(entity: backtest_pb.Backtest) -> None:
+    """Fail with one ✖ line and exit 1 when the backtest has no periods to run over."""
+    if not entity.periods:
+        _fail(_no_data_message(entity.name))
+
+
 def _parse_run_dates(
     entity: backtest_pb.Backtest,
     start: str | None,
     end: str | None,
 ) -> tuple[common_pb.Date, common_pb.Date] | None:
-    if not entity.periods:
-        # Same wording as the broker's refusal, so both paths read the same.
-        _fail(
-            f"Backtest '{entity.name}' has no data to run. Delete it with `fbull backtest delete {entity.name}`, "
-            "then create it again with `fbull backtest create`."
-        )
+    fail_if_no_data(entity)
 
     start_date = entity.periods[0].start_date
     end_date = entity.periods[-1].end_date

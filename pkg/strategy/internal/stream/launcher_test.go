@@ -145,8 +145,8 @@ func TestSessionLauncherNoPeriods(t *testing.T) {
 
 	_, err := launcher.Run(context.Background(), ss.RunInput{BacktestName: "spy"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no periods")
-	require.Contains(t, err.Error(), "do not auto-ingest")
+	require.Equal(t, "Backtest 'spy' has no data to run. Delete it with `fbull backtest delete spy`, "+
+		"then create it again with `fbull backtest create`.", err.Error())
 }
 
 func TestSessionLauncherSessionRunFails(t *testing.T) {

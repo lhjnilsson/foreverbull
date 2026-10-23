@@ -10,6 +10,7 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull_cli.bull.backtest import fail_if_no_data
 from foreverbull_cli.bull.backtest import get_backtest_or_fail
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
@@ -133,9 +134,7 @@ def run(
     yes: Annotated[bool, typer.Option("--yes", help="skip confirmation prompt")] = False,
 ):
     _backtest = get_backtest_or_fail(backtest_name)
-    if not _backtest.periods:
-        console.print(f"[red]Backtest {backtest_name} has no periods")
-        return
+    fail_if_no_data(_backtest)
     symbols = [a.symbol for a in _backtest.periods[-1].assets if a.enabled]
 
     if dry:
