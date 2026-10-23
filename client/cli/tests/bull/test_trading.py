@@ -224,7 +224,7 @@ def test_trading_run_confirm_places(runner):
         mocks["place_orders"].assert_called_once()
 
 
-# Same one line and exit 1 as `fbull backtest run` for a backtest with no data.
+# One ✖ line and exit 1 that says why there is nothing to trade and how to fix it.
 def test_trading_run_no_periods_fails_with_one_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with (
@@ -238,8 +238,8 @@ def test_trading_run_no_periods_fails_with_one_line(monkeypatch):
     assert isinstance(result.exception, SystemExit)
     assert result.stdout.count("✖") == 1
     assert (
-        "✖ Backtest 'empty' has no data to run. Delete it with `fbull backtest delete empty`, "
-        "then create it again with `fbull backtest create`."
+        "✖ Backtest 'empty' has no data, so there are no symbols to trade. Pick another backtest, "
+        "or delete it with `fbull backtest delete empty` and create it again with `fbull backtest create`."
     ) in " ".join(result.stdout.split())
     assert "has no periods" not in result.stdout
     assert "Traceback" not in result.stdout

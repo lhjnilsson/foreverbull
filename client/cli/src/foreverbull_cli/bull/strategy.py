@@ -3,6 +3,7 @@ import json
 from enum import Enum
 from typing import Annotated
 
+import grpc
 import typer
 
 from rich.console import Console
@@ -242,17 +243,28 @@ def experiment(
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
 ):
     created: strategy_pb.Experiment | None = None
+    failed: str | None = None
     with LiveProgress() as progress:
-        for rsp in broker.strategy.create_experiment(
-            strategy_name=name,
-            backtest_name=backtest,
-            version_id=version,
-            version_rev=rev,
-        ):
-            progress.update_from_message(rsp)
-            if rsp.has_field("experiment"):
-                created = rsp.experiment
+        try:
+            for rsp in broker.strategy.create_experiment(
+                strategy_name=name,
+                backtest_name=backtest,
+                version_id=version,
+                version_rev=rev,
+            ):
+                progress.update_from_message(rsp)
+                if rsp.has_field("experiment"):
+                    created = rsp.experiment
+        except grpc.RpcError as exc:
+            # The failed step carries the launcher's error as is; the status
+            # details wrap it in a "run experiment:" prefix.
+            details = getattr(exc, "details", None)
+            failed = progress.failure or (str(details()) if callable(details) else str(exc))
+            progress.transient = True
 
+    if failed is not None:
+        console.print(f"✖ {failed}", markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(code=1)
     if created is None:
         return
     _print_experiments([created], title="Experiment")
