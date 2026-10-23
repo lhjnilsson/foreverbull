@@ -82,7 +82,8 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `TRADING_ENABLED` | `false` |
 | `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
-| `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull/admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
+| `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
+| `AUTH_COOKIE_SECURE` | unset (`false`). Set `true` when TLS terminates in front of the broker. Plain HTTP, including local Kind, leaves the cookie unsecured |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
 | `TRADING_CURRENCY` | `USD` |
 | `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |
@@ -172,7 +173,8 @@ Snapshot Postgres and the MinIO ingestions prefix before that boot. Restoring
 the snapshot is the rollback. An image rollback without it is not one.
 
 The admin password is the file from Secret `foreverbull-admin`, key
-`password`, mounted at `/etc/foreverbull/admin/password`. It is not an
+`password`, mounted at `/etc/foreverbull-admin/password`, beside the profiles
+mount rather than inside it. It is not an
 environment variable, not a CLI flag, and not a key in
 `.foreverbull/config.yaml`. The broker hashes the file and does not log the
 file or the hash. `broker.auth.adminUsername` is the login, not the password.
@@ -207,6 +209,26 @@ Sharing a backtest does not close them. A remote install with
 on the host. A remote broker that still publishes `8080` and `50055` stays
 open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
 "authentication was configured".
+
+Authentication on `8080` and `50055` does not separate editors who can register
+a service image. Each worker pod receives `DATABASE_URL` for the broker
+database user and the MinIO root keys (`internal/container` `serviceEnv`).
+NATS has no authentication, and a worker can publish backtest commands. That
+image can read and change every row, including `account.role`. Do not turn
+authentication on for anyone besides the operator until workers have a
+narrower database role, scoped object-storage keys, and no path to Postgres,
+NATS, or MinIO.
+
+Session secrets are kept in the broker process. Run one broker replica. A
+second replica does not have the map and refuses a session it did not mint.
+
+CLI tokens last until they are revoked. `expires_at` is checked and mint does
+not set it. `account rotate` replaces the password hash and leaves browser
+sessions and tokens in place. Revoke those separately when a password was
+stolen. Behind TLS, set `AUTH_COOKIE_SECURE=true`. The chart does not set it.
+Broker gRPC is plaintext, so a token or session secret on a `broker_address`
+you do not trust can be read on the path. Do not publish `50055` or `8080`
+beyond that network.
 
 ## Upgrading an existing remote install
 
