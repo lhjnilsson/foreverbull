@@ -102,6 +102,17 @@ def test_get_engine_uses_provided_url_only(monkeypatch):
     assert attempted == ["postgresql://user:password@db.internal:5656/demo"]
 
 
+def _period_end(backtest: backtest_pb.Backtest) -> datetime:
+    """Read bars as of the last session the fixture stores, not today.
+
+    stock_data scans only _STOCK_DATA_WINDOW before as_of, and the fixture's
+    bars end years before datetime.now().
+    """
+    end = backtest.periods[0].end_date
+    assert end is not None
+    return datetime(end.year, end.month, end.day, 23, 59, tzinfo=UTC)
+
+
 class TestAsset:
     def test_asset_getattr_setattr(self, fb_env, namespace_server):
         asset = Asset(datetime.now(), cast(Connection, None), "AAPL")
@@ -119,7 +130,7 @@ class TestAsset:
         ensure_data(backtest_entity)
         with database.connect() as conn:
             symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assets = Assets(datetime.now(), conn, symbols)
+            assets = Assets(_period_end(backtest_entity), conn, symbols)
             for asset in assets:
                 assert asset is not None
                 assert asset.symbol is not None
@@ -139,7 +150,7 @@ class TestAsset:
         ensure_data(backtest_entity)
         with database.connect() as conn:
             before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            asset = Asset(datetime.now(), conn, "AAPL'; DROP TABLE ohlc; --")
+            asset = Asset(_period_end(backtest_entity), conn, "AAPL'; DROP TABLE ohlc; --")
             stock_data = asset.stock_data
             assert isinstance(stock_data, pandas.DataFrame)
             assert len(stock_data) == 0
@@ -164,7 +175,7 @@ class TestAssets:
         ensure_data(backtest_entity)
         with database.connect() as conn:
             symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assets = Assets(datetime.now(), conn, symbols)
+            assets = Assets(_period_end(backtest_entity), conn, symbols)
             stock_data = assets.stock_data
             assert stock_data is not None
             assert isinstance(stock_data, pandas.DataFrame)
@@ -183,7 +194,7 @@ class TestAssets:
         ensure_data(backtest_entity)
         with database.connect() as conn:
             before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            assets = Assets(datetime.now(), conn, ["AAPL'; DROP TABLE ohlc; --", "MSFT"])
+            assets = Assets(_period_end(backtest_entity), conn, ["AAPL'; DROP TABLE ohlc; --", "MSFT"])
             stock_data = assets.stock_data
             assert isinstance(stock_data, pandas.DataFrame)
             after = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
@@ -210,7 +221,7 @@ class TestAssets:
     def test_iterated_stock_data_matches_direct_asset(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
-        as_of = datetime.now()
+        as_of = _period_end(backtest_entity)
         with database.connect() as conn:
             symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
             assert symbols
@@ -222,7 +233,7 @@ class TestAssets:
     def test_assets_stock_data_one_symbol_matches_asset_query(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
-        as_of = datetime.now()
+        as_of = _period_end(backtest_entity)
         with database.connect() as conn:
             symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
             symbol = symbols[0]
@@ -235,7 +246,7 @@ class TestAssets:
     def test_iterated_stock_data_is_one_statement(self, fb_database, backtest_entity: backtest_pb.Backtest):
         database, ensure_data = fb_database
         ensure_data(backtest_entity)
-        as_of = datetime.now()
+        as_of = _period_end(backtest_entity)
         with database.connect() as conn:
             symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
             assert len(symbols) >= 2

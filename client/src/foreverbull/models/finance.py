@@ -3,6 +3,7 @@ import os
 
 from datetime import date
 from datetime import datetime
+from datetime import timedelta
 
 import pandas
 
@@ -29,6 +30,15 @@ DEFAULT_PROVIDER = "yahoo"
 
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
+
+# Calendar days a stock_data read reaches back from as_of. 252 trading days
+# span about 365 calendar days; twice the lookback plus a month leaves room
+# for holidays and halts, so LIMIT still sees the whole lookback while the
+# scan no longer grows with every bar stored before it.
+_STOCK_DATA_WINDOW = timedelta(days=_STOCK_DATA_LOOKBACK * 2 + 30)
+
+# Fixed condition for _resolved_bars; :since and :as_of are bound parameters.
+_STOCK_DATA_BARS = "o.time > :since AND o.time <= :as_of"
 
 
 def ohlc_provider() -> str:
@@ -103,6 +113,11 @@ def _day(as_of: datetime) -> date:
     return as_of.date() if isinstance(as_of, datetime) else as_of
 
 
+def _stock_data_since(as_of: datetime) -> datetime:
+    """Exclusive lower bound of the bars a stock_data read scans."""
+    return as_of - _STOCK_DATA_WINDOW
+
+
 class Asset:
     def __init__(self, as_of: datetime, db: engine.Connection, symbol: str, *, _stock_data_loader=None):
         self._as_of = as_of
@@ -139,7 +154,7 @@ class Asset:
         if self._stock_data_loader is not None:
             return self._stock_data_loader(self._symbol)
         query = text(
-            _resolved_bars("o.time <= :as_of")
+            _resolved_bars(_STOCK_DATA_BARS)
             + """
             SELECT symbol, time, high, low, open, close, volume
             FROM (
@@ -153,6 +168,7 @@ class Asset:
         ).bindparams(
             bindparam("symbols", value=[self.symbol], expanding=True),
             bindparam("as_of", value=self._as_of),
+            bindparam("since", value=_stock_data_since(self._as_of)),
             bindparam("day", value=_day(self._as_of)),
             bindparam("provider", value=ohlc_provider()),
             bindparam("limit", value=_STOCK_DATA_LOOKBACK),
@@ -214,7 +230,7 @@ class Assets:
     @property
     def stock_data(self) -> DataFrame:
         query = text(
-            _resolved_bars("o.time <= :as_of")
+            _resolved_bars(_STOCK_DATA_BARS)
             + """
             SELECT symbol, time, high, low, open, close, volume
             FROM (
@@ -228,6 +244,7 @@ class Assets:
         ).bindparams(
             bindparam("symbols", value=list(self.symbols), expanding=True),
             bindparam("as_of", value=self._as_of),
+            bindparam("since", value=_stock_data_since(self._as_of)),
             bindparam("day", value=_day(self._as_of)),
             bindparam("provider", value=ohlc_provider()),
             bindparam("limit", value=_STOCK_DATA_LOOKBACK),
