@@ -23,6 +23,7 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import classify_pull_error
@@ -1558,11 +1559,12 @@ class TestRemoteUpdatePullFailure:
         # ready_timeout_seconds=5 in tests, polled every 2 s: 3 polls, 2 sleeps.
         assert runner.polls == 3
         assert sleeps == [2, 2]
-        assert notice == (
+        assert notice == RolloutNotice(
             "⚠ Grafana is still downloading its image after 5 seconds, "
             "so this update hasn't finished yet. Run `fbenv status` to check on it."
         )
-        assert notice == rollout_still_pulling_line("Grafana", 5)
+        assert notice is not None
+        assert notice.line == rollout_still_pulling_line("Grafana", 5)
 
     def test_rollout_kubectl_calls_are_bounded_by_the_remaining_time(self, tmp_path: Path):
         pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
@@ -1622,11 +1624,14 @@ class TestRemoteUpdatePullFailure:
         runner.on(["kubectl"], _completed(stderr="connection refused", returncode=1))
         uut = _remote_manager(tmp_path, runner, [])
         notice = uut.update()
-        assert notice == ROLLOUT_UNVERIFIED_LINE
-        assert notice == (
-            "⚠ Couldn't verify the rollout: kubectl failed while watching it. "
-            "Run `fbenv status` to check the workloads."
+        assert notice is not None
+        assert notice.line == ROLLOUT_UNVERIFIED_LINE
+        assert notice.line == (
+            "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
         )
+        # kubectl's error stays out of the ⚠ line; the CLI shows it with --verbose.
+        assert "kubectl" not in notice.line
+        assert "connection refused" in notice.detail
         assert runner.calls_starting_with("helm", "upgrade", "--install")
 
     def test_kubectl_timeout_while_watching_is_unverified_not_silent(self, tmp_path: Path):
@@ -1637,7 +1642,10 @@ class TestRemoteUpdatePullFailure:
 
         runner.run = hang  # type: ignore[method-assign]
         uut = _remote_manager(tmp_path, runner, [])
-        assert uut._watch_rollout() == ROLLOUT_UNVERIFIED_LINE
+        notice = uut._watch_rollout()
+        assert notice is not None
+        assert notice.line == ROLLOUT_UNVERIFIED_LINE
+        assert "timed out" in notice.detail
 
     def test_local_update_does_not_watch_the_rollout(self, tmp_path: Path):
         runner = RolloutRunner([[_pull_backoff_pod("grafana", GRAFANA_IMAGE)]])

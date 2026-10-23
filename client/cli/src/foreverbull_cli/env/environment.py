@@ -88,8 +88,19 @@ CLUSTER_PULL_FAILURE_REASONS = frozenset({"ErrImagePull", "ImagePullBackOff", "I
 ROLLOUT_POLL_SECONDS = 2
 
 ROLLOUT_UNVERIFIED_LINE = (
-    "⚠ Couldn't verify the rollout: kubectl failed while watching it. Run `fbenv status` to check the workloads."
+    "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
 )
+
+
+@dataclass(frozen=True)
+class RolloutNotice:
+    """A one-line ⚠ notice from a remote `fbenv update`, not a failure.
+
+    detail is kubectl's own error, shown only with --verbose.
+    """
+
+    line: str
+    detail: str = ""
 
 
 def rollout_still_pulling_line(service: str, timeout_seconds: int) -> str:
@@ -929,7 +940,7 @@ class ClusterManager:
             self.environment.purge()
         self._status_cache = None
 
-    def update(self) -> str | None:
+    def update(self) -> RolloutNotice | None:
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
             self.load_images()
@@ -942,12 +953,12 @@ class ClusterManager:
             return self._watch_rollout()
         return None
 
-    def _watch_rollout(self) -> str | None:
+    def _watch_rollout(self) -> RolloutNotice | None:
         """Wait for the chart's Deployments to roll out. Raise ClusterImagePullError when a pod can't pull.
 
         Returns a one-line notice when the rollout has not finished at the
         deadline or when kubectl could not verify it, and None when it has
-        rolled out. Neither notice is a failure: the status table that
+        rolled out. kubectl's error rides in the notice's detail. Neither notice is a failure: the status table that
         follows shows the workloads as they are.
         """
         polls = max(1, math.ceil(self.ready_timeout_seconds / ROLLOUT_POLL_SECONDS))
@@ -962,8 +973,8 @@ class ClusterManager:
                     ["get", "deploy,rs,pods", "-l", PART_OF_LABEL],
                     timeout_seconds=remaining,
                 )
-            except (CommandError, subprocess.TimeoutExpired):
-                return ROLLOUT_UNVERIFIED_LINE
+            except (CommandError, subprocess.TimeoutExpired) as exc:
+                return RolloutNotice(ROLLOUT_UNVERIFIED_LINE, detail=str(exc))
             items = data.get("items") or []
             failure = cluster_pull_failure(items)
             if failure is not None:
@@ -972,7 +983,7 @@ class ClusterManager:
                 return None
             if poll + 1 < polls:
                 self.sleep(ROLLOUT_POLL_SECONDS)
-        return rollout_still_pulling_line(_still_pulling_service(items), self.ready_timeout_seconds)
+        return RolloutNotice(rollout_still_pulling_line(_still_pulling_service(items), self.ready_timeout_seconds))
 
     def status_rows(self) -> list[WorkloadRow]:
         self._status_cache = None

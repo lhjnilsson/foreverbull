@@ -14,6 +14,7 @@ from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.preflight import CheckState
@@ -284,7 +285,7 @@ def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager
 
 def test_update_still_pulling_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
-    mocked_container_manager.update.return_value = (
+    mocked_container_manager.update.return_value = RolloutNotice(
         "⚠ Grafana is still downloading its image after 2 minutes, "
         "so this update hasn't finished yet. Run `fbenv status` to check on it."
     )
@@ -302,18 +303,32 @@ def test_update_still_pulling_warns_before_the_status_table(runner, mocked_conta
     mocked_container_manager.status_rows.assert_called()
 
 
+UNVERIFIED_LINE = "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
+KUBECTL_DETAIL = "kubectl get deploy,rs,pods failed (exit 1): connection refused"
+
+
 def test_update_unverified_rollout_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
-    mocked_container_manager.update.return_value = (
-        "⚠ Couldn't verify the rollout: kubectl failed while watching it. Run `fbenv status` to check the workloads."
-    )
+    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
     result = runner(cli.cli, "update")
     assert result.exit_code == 0
-    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [
-        "⚠ Couldn't verify the rollout: kubectl failed while watching it. Run `fbenv status` to check the workloads."
-    ]
-    assert result.stdout.index("⚠ Couldn't verify the rollout") < result.stdout.index("Environment Status")
+    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
+    assert "connection refused" not in result.stdout
+    assert "kubectl said" not in result.stdout
+    assert "Run `fbenv update --verbose` to see kubectl's error." in result.stdout
+    assert result.stdout.index("⚠ Couldn't confirm the update finished") < result.stdout.index("Environment Status")
     mocked_container_manager.status_rows.assert_called()
+
+
+def test_update_unverified_rollout_shows_kubectl_error_only_with_verbose(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
+    result = runner(cli.cli, ["update", "--verbose"])
+    assert result.exit_code == 0
+    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
+    assert f"kubectl said: {KUBECTL_DETAIL}" in result.stdout
+    assert "--verbose` to see" not in result.stdout
+    assert result.stdout.index("kubectl said") < result.stdout.index("Environment Status")
 
 
 def _reject_version(manager: MagicMock) -> None:

@@ -15,6 +15,7 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import ready_timeout_seconds
 from foreverbull_cli.env.preflight import CheckState
@@ -59,7 +60,10 @@ ContextFlag = Annotated[str | None, typer.Option("--context", help="Kube context
 NamespaceFlag = Annotated[str | None, typer.Option("--namespace", help="Helm namespace")]
 BrokerAddressFlag = Annotated[str | None, typer.Option("--broker-address", help="Broker host:port")]
 VerboseFlag = Annotated[
-    bool, typer.Option("--verbose", "-v", help="Show Docker's or the cluster's own error when an image pull fails")
+    bool,
+    typer.Option(
+        "--verbose", "-v", help="Show Docker's, the cluster's or kubectl's own error behind a failure or warning"
+    ),
 ]
 
 
@@ -184,6 +188,16 @@ def fail_cluster_pull(exc: ClusterImagePullError, command: str, *, verbose: bool
         lines.append(f"Run `{command} --verbose` to see the cluster's error.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
     raise typer.Exit(1) from exc
+
+
+def warn_rollout(notice: RolloutNotice, command: str, *, verbose: bool):
+    """Print the ⚠ rollout line. kubectl's error only with --verbose."""
+    lines = [notice.line]
+    if verbose and notice.detail:
+        lines.append(f"kubectl said: {notice.detail}")
+    elif notice.detail:
+        lines.append(f"Run `{command} --verbose` to see kubectl's error.")
+    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
 
 
 def print_cluster(config: Config, *, path_note: str | None = None):
@@ -370,13 +384,13 @@ def update(
     )
     check_version(cm)
 
-    rollout_notice: str | None = None
+    rollout_notice: RolloutNotice | None = None
     try:
         with FBProgress() as progress:
             update_task = progress.add_task("Updating environment", total=2)
             progress.update(update_task, completed=1)
             notice = cm.update()
-            rollout_notice = notice if isinstance(notice, str) else None
+            rollout_notice = notice if isinstance(notice, RolloutNotice) else None
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
         # Local update pulls every missing image before kind load and helm
@@ -387,7 +401,7 @@ def update(
         fail_cluster_pull(exc, "fbenv update", verbose=verbose)
 
     if rollout_notice:
-        console.print(rollout_notice, markup=False, highlight=False, soft_wrap=True)
+        warn_rollout(rollout_notice, "fbenv update", verbose=verbose)
     print_status(cm)
 
 
