@@ -2,10 +2,12 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import grpc
 import pytest
 
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.trading import PositionAndOrder
+from typer.testing import CliRunner
 
 from foreverbull.foreverbull import TradingSession
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -15,6 +17,18 @@ from foreverbull.pb.foreverbull.finance.v1 import trading_pb
 
 
 pytestmark = pytest.mark.usefixtures("fb_env")
+
+
+class _LookupError(grpc.RpcError):
+    def __init__(self, details: str, code: grpc.StatusCode):
+        self._details = details
+        self._code = code
+
+    def details(self):
+        return self._details
+
+    def code(self):
+        return self._code
 
 
 def _sample_backtest(name="test_name") -> backtest_pb.Backtest:
@@ -222,3 +236,32 @@ def test_trading_run_no_periods(runner):
         assert "has no periods" in result.stdout
         create_session.assert_not_called()
         get_portfolio.assert_not_called()
+
+
+def test_trading_run_unknown_backtest_prints_one_plain_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    missing = _LookupError("backtest typo not found", grpc.StatusCode.NOT_FOUND)
+    with (
+        patch("foreverbull.broker.backtest.get", side_effect=missing),
+        patch("foreverbull.broker.finance.create_session") as create_session,
+        patch("foreverbull.broker.finance.get_portfolio") as get_portfolio,
+    ):
+        result = CliRunner().invoke(cli, ["trading", "run", "typo", "demo.py", "--yes"])
+
+    assert result.exit_code == 1
+    assert result.output == (
+        "✖ There's no backtest named 'typo'. Run `fbull backtest list` to see your "
+        "backtests, or create it with `fbull backtest create`.\n"
+    )
+    create_session.assert_not_called()
+    get_portfolio.assert_not_called()
+
+
+def test_trading_run_other_lookup_errors_are_not_reported_as_missing():
+    broken = _LookupError("Socket closed", grpc.StatusCode.UNAVAILABLE)
+    with patch("foreverbull.broker.backtest.get", side_effect=broken):
+        result = CliRunner().invoke(cli, ["trading", "run", "demo", "demo.py", "--yes"])
+
+    assert result.exit_code != 0
+    assert result.exception is broken
+    assert "no backtest named" not in result.output

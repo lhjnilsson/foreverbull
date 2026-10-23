@@ -1363,3 +1363,66 @@ def test_backtest_run_shows_broker_rejection_as_one_line(fb_env, message, code):
     assert f"✖ {message}" in " ".join(result.stdout.split())
     assert "Traceback" not in result.stdout
     get_execution.assert_not_called()
+
+
+_UNKNOWN_BACKTEST_LINE = (
+    "✖ There's no backtest named 'typo'. Run `fbull backtest list` to see your "
+    "backtests, or create it with `fbull backtest create`.\n"
+)
+
+
+def test_backtest_get_unknown_name_prints_one_plain_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    missing = _BrokenStream("backtest typo not found", grpc.StatusCode.NOT_FOUND)
+    with (
+        patch("foreverbull.broker.backtest.get", side_effect=missing),
+        patch("foreverbull.broker.backtest.list_executions") as list_executions,
+    ):
+        result = CliRunner().invoke(backtest, ["get", "typo"])
+
+    assert result.exit_code == 1
+    assert result.output == _UNKNOWN_BACKTEST_LINE
+    list_executions.assert_not_called()
+
+
+def test_backtest_get_other_lookup_errors_are_not_reported_as_missing():
+    broken = _BrokenStream("Socket closed")
+    with patch("foreverbull.broker.backtest.get", side_effect=broken):
+        result = CliRunner().invoke(backtest, ["get", "demo"])
+
+    assert result.exit_code != 0
+    assert result.exception is broken
+    assert "no backtest named" not in result.output
+
+
+def test_backtest_delete_unknown_name_prints_one_plain_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+
+    def get(name):
+        if name == "typo":
+            raise _BrokenStream("backtest typo not found", grpc.StatusCode.NOT_FOUND)
+        return _sample_backtest()
+
+    with (
+        patch("foreverbull.broker.backtest.get", side_effect=get),
+        patch("foreverbull.broker.backtest.delete") as delete,
+    ):
+        result = CliRunner().invoke(backtest, ["delete", "test_name", "typo", "--force"])
+
+    assert result.exit_code == 1
+    assert result.output == _UNKNOWN_BACKTEST_LINE
+    delete.assert_not_called()
+
+
+def test_backtest_delete_other_lookup_errors_are_not_reported_as_missing():
+    broken = _BrokenStream("Socket closed")
+    with (
+        patch("foreverbull.broker.backtest.get", side_effect=broken),
+        patch("foreverbull.broker.backtest.delete") as delete,
+    ):
+        result = CliRunner().invoke(backtest, ["delete", "demo", "--force"])
+
+    assert result.exit_code != 0
+    assert result.exception is broken
+    assert "no backtest named" not in result.output
+    delete.assert_not_called()

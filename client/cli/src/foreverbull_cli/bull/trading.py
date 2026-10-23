@@ -10,6 +10,7 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull_cli.bull.backtest import get_backtest_or_fail
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 
@@ -131,7 +132,7 @@ def run(
     dry: Annotated[bool, typer.Option("--dry", help="print the trading plan without submitting orders")] = False,
     yes: Annotated[bool, typer.Option("--yes", help="skip confirmation prompt")] = False,
 ):
-    _backtest = broker.backtest.get(backtest_name)
+    _backtest = get_backtest_or_fail(backtest_name)
     if not _backtest.periods:
         console.print(f"[red]Backtest {backtest_name} has no periods")
         return
