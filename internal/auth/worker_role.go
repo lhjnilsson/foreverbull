@@ -14,9 +14,9 @@ import (
 const workerRole = "foreverbull_worker"
 
 // EnsureWorkerRole creates the reader role when WORKER_DB_PASSWORD is set.
-// An empty password leaves the database unchanged. The role can SELECT asset
-// and ohlc. It is not granted account, api_token, browser_session, oauth_state,
-// or domain_grant. The password is not included in the error text.
+// An empty password leaves the database unchanged. The role can SELECT asset,
+// ohlc, and asset_symbol. It is not granted account, api_token, browser_session,
+// oauth_state, or domain_grant. The password is not included in the error text.
 func EnsureWorkerRole(ctx context.Context, conn postgres.Query) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -49,6 +49,7 @@ func EnsureWorkerRole(ctx context.Context, conn postgres.Query) error {
 		`GRANT USAGE ON SCHEMA public TO foreverbull_worker`,
 		`GRANT SELECT ON TABLE asset TO foreverbull_worker`,
 		`GRANT SELECT ON TABLE ohlc TO foreverbull_worker`,
+		`GRANT SELECT ON TABLE asset_symbol TO foreverbull_worker`,
 	}
 	for _, grant := range grants {
 		if _, err := conn.Exec(ctx, grant); err != nil {

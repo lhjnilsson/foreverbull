@@ -167,7 +167,7 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 ### Ingest data and create a backtest
 
-`fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle.
+`fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol with no price data under any of its tickers fails the create: the backtest is removed and nothing is saved.
 
 `fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
 
@@ -321,10 +321,10 @@ kubectl --context kind-foreverbull -n foreverbull logs deploy/<workload>
 
 ### Price downloads fail
 
-`fbull backtest create` downloads bars from inside the broker pod, so the pod needs outbound HTTPS to the price host. A symbol whose download fails is stored with `enabled: false` and left out of the Zipline bundle. The create itself still finishes, so check the printed backtest for disabled symbols.
+`fbull backtest create` downloads bars from inside the broker pod, so the pod needs outbound HTTPS to the price host. A symbol with no price data under any of its tickers fails the create: the backtest is removed and nothing is saved.
 
 - Read the reason in the broker log: `kubectl --context kind-foreverbull -n foreverbull logs deploy/foreverbull`.
-- When many symbols fail at once, the price host is usually throttling the requests. Wait, delete the backtest with `uv run fbull backtest delete <name>`, and create it again.
+- When the price host throttles requests, create fails as soon as a symbol has no bars. Wait, then run the same create again (the failed create already removed the backtest).
 - When the connection to the price service or the broker breaks during create, the command stops with one line that says nothing was changed and to run the same create again. The backtest is removed, so the same name works again. Bars that were already downloaded stay. If the backtest couldn't be removed, the line says so; delete it with `uv run fbull backtest delete <name>` before you retry.
 
 ### Recreate the Kind cluster
