@@ -114,7 +114,6 @@ type CreateBacktestRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Create:
-	//
 	//	*CreateBacktestRequest_Etf
 	//	*CreateBacktestRequest_Backtest
 	Create isCreateBacktestRequest_Create `protobuf_oneof:"create"`
