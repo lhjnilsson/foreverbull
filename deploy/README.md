@@ -219,10 +219,11 @@ open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
 "authentication was configured".
 
 A service image does not receive the database owner URL or the MinIO root
-keys. The worker reads `asset` and `ohlc` as role `foreverbull_worker`. That
-role is not granted `account`, `api_token`, `browser_session`, `oauth_state`,
-or `domain_grant`. Its password is Secret `foreverbull-worker`. NATS
-authenticates the broker user from Secret `foreverbull-nats`. Service pods
+keys. The worker reads `asset`, `ohlc`, and `asset_symbol` as role
+`foreverbull_worker`. That role is not granted `account`, `api_token`,
+`browser_session`, `oauth_state`, or `domain_grant`. Its password is Secret
+`foreverbull-worker`. NATS authenticates the broker user from Secret
+`foreverbull-nats`. Service pods
 have no NATS user. Their NetworkPolicy allows DNS, the broker (gRPC and the
 session ports the worker dials), and Postgres. It does not allow MinIO or
 NATS. The algorithm still reads bars with SQL, so Postgres stays reachable

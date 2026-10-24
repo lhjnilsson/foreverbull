@@ -28,7 +28,8 @@ func TestWorkerRoleReadsBarsAndNotAccounts(t *testing.T) {
 			symbol text,
 			open numeric, high numeric, low numeric, close numeric,
 			volume bigint, time timestamp, provider text
-		)`)
+		);
+		CREATE TABLE asset_symbol (symbol text)`)
 	require.NoError(t, err)
 	require.NoError(t, auth.EnsureWorkerRole(ctx, pool))
 	require.NoError(t, auth.Migrate(ctx, pool))
@@ -37,6 +38,8 @@ func TestWorkerRoleReadsBarsAndNotAccounts(t *testing.T) {
 	_, err = pool.Exec(ctx, `
 		INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
 		VALUES ('AAPL', 1, 4, 2, 3, 5, '2024-01-02', 'yahoo')`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO asset_symbol (symbol) VALUES ('AAPL')`)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `INSERT INTO account (role) VALUES ('admin')`)
 	require.NoError(t, err)
@@ -53,6 +56,8 @@ func TestWorkerRoleReadsBarsAndNotAccounts(t *testing.T) {
 	require.NoError(t, reader.QueryRow(ctx, `SELECT symbol FROM ohlc`).Scan(&symbol))
 	require.Equal(t, "AAPL", symbol)
 	require.NoError(t, reader.QueryRow(ctx, `SELECT symbol FROM asset`).Scan(&symbol))
+	require.NoError(t, reader.QueryRow(ctx, `SELECT symbol FROM asset_symbol`).Scan(&symbol))
+	require.Equal(t, "AAPL", symbol)
 
 	err = reader.QueryRow(ctx, `SELECT id FROM account LIMIT 1`).Scan(&symbol)
 	var pgErr *pgconn.PgError
