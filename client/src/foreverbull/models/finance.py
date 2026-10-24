@@ -1,7 +1,9 @@
 import math
 import os
 
+from datetime import date
 from datetime import datetime
+from datetime import timedelta
 
 import pandas
 
@@ -29,6 +31,15 @@ DEFAULT_PROVIDER = "yahoo"
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
 
+# Calendar days a stock_data read reaches back from as_of. 252 trading days
+# span about 365 calendar days; twice the lookback plus a month leaves room
+# for holidays and halts, so LIMIT still sees the whole lookback while the
+# scan no longer grows with every bar stored before it.
+_STOCK_DATA_WINDOW = timedelta(days=_STOCK_DATA_LOOKBACK * 2 + 30)
+
+# Fixed condition for _resolved_bars; :since and :as_of are bound parameters.
+_STOCK_DATA_BARS = "o.time > :since AND o.time <= :as_of"
+
 
 def ohlc_provider() -> str:
     """Price source for bar reads. Unset or blank OHLC_PROVIDER is DEFAULT_PROVIDER (yahoo)."""
@@ -41,6 +52,53 @@ def ohlc_provider() -> str:
     return provider
 
 
+def _resolved_bars(bar_filter: str) -> str:
+    """CTE `chosen`: the bars of each wanted ticker, resolved through asset_symbol.
+
+    Ticker is a dated alias of an ISIN (pkg/backtest/universe.md). A wanted
+    ticker resolves to the ISIN that holds it on :day, and every ticker of
+    that ISIN is read. On each bar time the ticker whose asset_symbol dates
+    cover it wins, then the wanted ticker, then any other: Yahoo stores the
+    history before the FB to META rename under META, other providers under
+    FB. A ticker with no asset_symbol row reads only its own bars.
+
+    bar_filter is a fixed condition on `o` from this module, never input.
+    """
+    return f"""
+        WITH owner AS (
+            SELECT DISTINCT ON (a.symbol) a.symbol AS wanted, a.isin
+            FROM asset_symbol a
+            WHERE a.symbol IN :symbols
+            ORDER BY a.symbol,
+                     (a.from_date <= :day AND (a.to_date IS NULL OR a.to_date > :day)) DESC,
+                     (a.from_date <= :day) DESC,
+                     a.from_date DESC
+        ),
+        candidate AS (
+            SELECT o.symbol AS wanted, o.symbol AS ticker, NULL::date AS from_date, NULL::date AS to_date,
+                   o.time, o.high, o.low, o.open, o.close, o.volume
+            FROM ohlc o
+            WHERE o.symbol IN :symbols AND o.provider = :provider AND {bar_filter}
+            UNION ALL
+            SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
+            FROM owner w
+            JOIN asset_symbol s ON s.isin = w.isin
+            JOIN ohlc o ON o.symbol = s.symbol
+            WHERE o.provider = :provider AND {bar_filter}
+        ),
+        chosen AS (
+            SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume
+            FROM candidate
+            ORDER BY wanted, time,
+                     CASE
+                         WHEN from_date <= time::date AND (to_date IS NULL OR time::date < to_date) THEN 0
+                         WHEN ticker = wanted THEN 1
+                         ELSE 2
+                     END
+        )
+    """
+
+
 def _exchange_namespace(request: worker_service_pb.NamespaceRequest) -> worker_service_pb.NamespaceResponse:
     with namespace_socket() as s:
         s.send(request.to_binary())
@@ -49,6 +107,15 @@ def _exchange_namespace(request: worker_service_pb.NamespaceRequest) -> worker_s
         if response.has_field("error"):
             raise RuntimeError(response.error)
         return response
+
+
+def _day(as_of: datetime) -> date:
+    return as_of.date() if isinstance(as_of, datetime) else as_of
+
+
+def _stock_data_since(as_of: datetime) -> datetime:
+    """Exclusive lower bound of the bars a stock_data read scans."""
+    return as_of - _STOCK_DATA_WINDOW
 
 
 class Asset:
@@ -87,18 +154,25 @@ class Asset:
         if self._stock_data_loader is not None:
             return self._stock_data_loader(self._symbol)
         query = text(
-            """
+            _resolved_bars(_STOCK_DATA_BARS)
+            + """
             SELECT symbol, time, high, low, open, close, volume
             FROM (
                 SELECT symbol, time, high, low, open, close, volume
-                FROM ohlc
-                WHERE time <= :as_of AND symbol = :symbol AND provider = :provider
-                ORDER BY time DESC, ctid DESC
+                FROM chosen
+                ORDER BY time DESC
                 LIMIT :limit
             ) recent
             ORDER BY time ASC
             """
-        ).bindparams(as_of=self._as_of, symbol=self.symbol, provider=ohlc_provider(), limit=_STOCK_DATA_LOOKBACK)
+        ).bindparams(
+            bindparam("symbols", value=[self.symbol], expanding=True),
+            bindparam("as_of", value=self._as_of),
+            bindparam("since", value=_stock_data_since(self._as_of)),
+            bindparam("day", value=_day(self._as_of)),
+            bindparam("provider", value=ohlc_provider()),
+            bindparam("limit", value=_STOCK_DATA_LOOKBACK),
+        )
         return read_sql_query(query, self._db)
 
 
@@ -156,20 +230,22 @@ class Assets:
     @property
     def stock_data(self) -> DataFrame:
         query = text(
-            """
+            _resolved_bars(_STOCK_DATA_BARS)
+            + """
             SELECT symbol, time, high, low, open, close, volume
             FROM (
                 SELECT symbol, time, high, low, open, close, volume,
-                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC, ctid DESC) AS rn
-                FROM ohlc
-                WHERE time <= :as_of AND symbol IN :symbols AND provider = :provider
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
+                FROM chosen
             ) bounded
             WHERE rn <= :limit
             ORDER BY symbol, time
             """
         ).bindparams(
-            bindparam("as_of", value=self._as_of),
             bindparam("symbols", value=list(self.symbols), expanding=True),
+            bindparam("as_of", value=self._as_of),
+            bindparam("since", value=_stock_data_since(self._as_of)),
+            bindparam("day", value=_day(self._as_of)),
             bindparam("provider", value=ohlc_provider()),
             bindparam("limit", value=_STOCK_DATA_LOOKBACK),
         )
@@ -243,8 +319,11 @@ class Portfolio:
         provider = ohlc_provider()
         key = (provider, symbol, day)
         if key not in self._close_by_symbol_day:
-            q = text("SELECT close FROM ohlc WHERE symbol=:symbol AND provider=:provider AND time::DATE=:dt")
-            q = q.bindparams(symbol=symbol, provider=provider, dt=day)
+            q = text(_resolved_bars("o.time::date = :day") + "SELECT close FROM chosen").bindparams(
+                bindparam("symbols", value=[symbol], expanding=True),
+                bindparam("day", value=timestamp.to_datetime().date()),
+                bindparam("provider", value=provider),
+            )
             latest_close = self._db.execute(q).scalar()
             assert latest_close is not None, f"unable to find latest close price for {symbol}"
             self._close_by_symbol_day[key] = float(latest_close)
