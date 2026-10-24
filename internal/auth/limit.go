@@ -3,6 +3,7 @@ package auth
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,67 +11,135 @@ import (
 )
 
 const (
-	loginUserLimit = 5
-	loginIPLimit   = 30
-	loginWindow    = 15 * time.Minute
-	// loginKeyCap bounds the in-memory failure map for the life of the process.
+	loginIPLimit     = 30
+	loginWindow      = 15 * time.Minute
+	loginBackoffBase = time.Second
+	loginBackoffCap  = 15 * time.Minute
+	// loginKeyCap bounds the in-memory maps for the life of the process.
 	loginKeyCap = 1024
 )
 
+type pairState struct {
+	fails int
+	until time.Time
+}
+
 type failureLimiter struct {
-	mu          sync.Mutex
-	byUser      map[string][]time.Time
-	byIP        map[string][]time.Time
-	pendingUser map[string]int
-	pendingIP   map[string]int
+	mu      sync.Mutex
+	pairs   map[string]pairState
+	byIP    map[string][]time.Time
+	pending map[string]int
 }
 
 func newFailureLimiter() *failureLimiter {
 	return &failureLimiter{
-		byUser:      map[string][]time.Time{},
-		byIP:        map[string][]time.Time{},
-		pendingUser: map[string]int{},
-		pendingIP:   map[string]int{},
+		pairs:   map[string]pairState{},
+		byIP:    map[string][]time.Time{},
+		pending: map[string]int{},
 	}
 }
 
-// Begin reserves one in-flight login. It returns false when this username or
-// address is already at the cap, counting attempts that have not finished yet.
+// Begin reserves one in-flight login before the password is hashed.
+// The address cap counts every attempt. A wrong password backs off that
+// username on that address only.
 func (l *failureLimiter) Begin(username, remote string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.prune(now)
-	if len(l.byUser[username])+l.pendingUser[username] >= loginUserLimit {
+	if l.ipOver(remote) {
 		return false
 	}
-	if len(l.byIP[remote])+l.pendingIP[remote] >= loginIPLimit {
+	if state, ok := l.pairs[pairKey(username, remote)]; ok && now.Before(state.until) {
 		return false
 	}
-	l.pendingUser[username]++
-	l.pendingIP[remote]++
+	l.pending[remote]++
 	return true
 }
 
 // End releases a Begin reservation. Every finished attempt counts toward the
-// address cap, including a correct password. failed records a username stamp.
-// A database error is not a failed password, so the caller passes false.
+// address cap. failed starts or lengthens the backoff for this username and
+// address. A database error is not a failed password.
 func (l *failureLimiter) End(username, remote string, failed bool, now time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	releasePending(l.pendingUser, username)
-	releasePending(l.pendingIP, remote)
-	l.note(l.byIP, remote, now)
+	releasePending(l.pending, remote)
+	l.rememberIP(remote, now)
+	key := pairKey(username, remote)
 	if !failed {
+		delete(l.pairs, key)
 		return
 	}
-	l.note(l.byUser, username, now)
+	l.rememberFailure(key, now)
 }
 
 func (l *failureLimiter) userFailures(username string, now time.Time) int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.prune(now)
-	return len(l.byUser[username])
+	total := 0
+	prefix := username + "\x00"
+	for key, state := range l.pairs {
+		if strings.HasPrefix(key, prefix) && now.Before(state.until) {
+			total += state.fails
+		}
+	}
+	return total
+}
+
+func (l *failureLimiter) ipOver(remote string) bool {
+	return len(l.byIP[remote])+l.pending[remote] >= loginIPLimit
+}
+
+func (l *failureLimiter) rememberIP(remote string, now time.Time) {
+	if _, ok := l.byIP[remote]; !ok && l.size() >= loginKeyCap {
+		return
+	}
+	l.byIP[remote] = append(l.byIP[remote], now)
+}
+
+func (l *failureLimiter) rememberFailure(key string, now time.Time) {
+	state, ok := l.pairs[key]
+	if !ok && l.size() >= loginKeyCap {
+		return
+	}
+	state.fails++
+	state.until = now.Add(backoff(state.fails))
+	l.pairs[key] = state
+}
+
+func (l *failureLimiter) size() int {
+	return len(l.pairs) + len(l.byIP)
+}
+
+func (l *failureLimiter) prune(now time.Time) {
+	cutoff := now.Add(-loginWindow)
+	l.byIP = pruneStamps(l.byIP, cutoff)
+	for key, state := range l.pairs {
+		// Keep the failure count until the window passes, so the next
+		// wrong password waits longer instead of starting over.
+		if !state.until.After(cutoff) {
+			delete(l.pairs, key)
+		}
+	}
+}
+
+func pairKey(username, remote string) string {
+	return username + "\x00" + remote
+}
+
+func backoff(fails int) time.Duration {
+	if fails < 1 {
+		fails = 1
+	}
+	shift := fails - 1
+	if shift > 16 {
+		shift = 16
+	}
+	delay := loginBackoffBase << shift
+	if delay <= 0 || delay > loginBackoffCap {
+		return loginBackoffCap
+	}
+	return delay
 }
 
 func releasePending(pending map[string]int, key string) {
@@ -81,35 +150,6 @@ func releasePending(pending map[string]int, key string) {
 	if pending[key] == 0 {
 		delete(pending, key)
 	}
-}
-
-// Limited reports whether this username or address is over the login failure cap.
-// It does not record a failure. Over the limit, login skips argon2.
-func (l *failureLimiter) Limited(username, remote string, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.prune(now)
-	return len(l.byUser[username]) >= loginUserLimit || len(l.byIP[remote]) >= loginIPLimit
-}
-
-// Add records one failure. The maps drop expired stamps and stay within loginKeyCap.
-func (l *failureLimiter) Add(username, remote string, now time.Time) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.prune(now)
-	l.note(l.byUser, username, now)
-	l.note(l.byIP, remote, now)
-	l.bound()
-}
-
-func (l *failureLimiter) note(stamps map[string][]time.Time, key string, now time.Time) {
-	stamps[key] = append(stamps[key], now)
-}
-
-func (l *failureLimiter) prune(now time.Time) {
-	cutoff := now.Add(-loginWindow)
-	l.byUser = pruneStamps(l.byUser, cutoff)
-	l.byIP = pruneStamps(l.byIP, cutoff)
 }
 
 func pruneStamps(in map[string][]time.Time, cutoff time.Time) map[string][]time.Time {
@@ -129,36 +169,84 @@ func pruneStamps(in map[string][]time.Time, cutoff time.Time) map[string][]time.
 	return in
 }
 
-func (l *failureLimiter) bound() {
-	for len(l.byUser)+len(l.byIP) > loginKeyCap {
-		for key := range l.byUser {
-			delete(l.byUser, key)
-			break
-		}
-		if len(l.byUser)+len(l.byIP) <= loginKeyCap {
-			return
-		}
-		for key := range l.byIP {
-			delete(l.byIP, key)
-			break
-		}
+func clientAddr(r *http.Request) string {
+	remote := remoteHost(r)
+	if r == nil || !environment.GetAuthTrustProxy() {
+		return remote
 	}
+	if host := rightmostUntrusted(r.Header.Get("X-Forwarded-For"), trustedNets(environment.GetAuthTrustedProxies())); host != "" {
+		return host
+	}
+	return remote
 }
 
-func clientAddr(r *http.Request) string {
-	if environment.GetAuthTrustProxy() {
-		forwarded := r.Header.Get("X-Forwarded-For")
-		if forwarded != "" {
-			host := forwarded
-			if comma := indexByte(forwarded, ','); comma >= 0 {
-				host = forwarded[:comma]
-			}
-			return trim(host)
-		}
+func remoteHost(r *http.Request) string {
+	if r == nil {
+		return ""
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
+	}
+	return host
+}
+
+func rightmostUntrusted(forwarded string, trusted []*net.IPNet) string {
+	parts := strings.Split(forwarded, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		host := trim(parts[i])
+		if host == "" {
+			continue
+		}
+		if ipInNets(net.ParseIP(unbracket(host)), trusted) {
+			continue
+		}
+		return host
+	}
+	return ""
+}
+
+func trustedNets(raw string) []*net.IPNet {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var nets []*net.IPNet
+	for _, field := range strings.Split(raw, ",") {
+		field = trim(field)
+		if field == "" {
+			continue
+		}
+		if !strings.Contains(field, "/") {
+			if strings.Contains(field, ":") {
+				field += "/128"
+			} else {
+				field += "/32"
+			}
+		}
+		_, network, err := net.ParseCIDR(field)
+		if err != nil {
+			continue
+		}
+		nets = append(nets, network)
+	}
+	return nets
+}
+
+func ipInNets(ip net.IP, nets []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, network := range nets {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func unbracket(host string) string {
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		return host[1 : len(host)-1]
 	}
 	return host
 }

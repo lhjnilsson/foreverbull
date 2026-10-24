@@ -93,6 +93,11 @@ const (
 	AuthTrustProxy        = "AUTH_TRUST_PROXY"
 	AuthTrustProxyDefault = "false"
 
+	// AuthTrustedProxies is a comma-separated CIDR list. It is used only when
+	// AUTH_TRUST_PROXY is true. The client address is the rightmost forwarded
+	// hop that is not in this list.
+	AuthTrustedProxies = "AUTH_TRUSTED_PROXIES"
+
 	// GitHub OAuth is read only when AUTH_ENABLED is true. All three stay
 	// empty by default so a partial set is visible at startup.
 	AuthGitHubClientID     = "AUTH_GITHUB_CLIENT_ID"
@@ -383,6 +388,10 @@ func GetAuthTrustProxy() bool {
 		return false
 	}
 	return verdict
+}
+
+func GetAuthTrustedProxies() string {
+	return os.Getenv(AuthTrustedProxies)
 }
 
 func GetAuthGitHubClientID() string {

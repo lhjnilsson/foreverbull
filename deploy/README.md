@@ -87,6 +87,8 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
 | `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
 | `AUTH_COOKIE_SECURE` | unset (`false`). Set `true` when TLS terminates in front of the broker. Plain HTTP, including local Kind, leaves the cookie unsecured |
+| `AUTH_TRUST_PROXY` | unset (`false`). When `true`, the client address is the rightmost `X-Forwarded-For` hop that is not in `AUTH_TRUSTED_PROXIES` |
+| `AUTH_TRUSTED_PROXIES` | empty. Comma-separated CIDRs of proxies whose hops are skipped |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
 | `TRADING_CURRENCY` | `USD` |
 | `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |
