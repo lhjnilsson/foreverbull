@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -84,6 +87,28 @@ func NewSecuredGRPCSessionServer(session *backtest.Session, database postgres.Qu
 	return grpcServer, activity, nil
 }
 
+// storedBacktest loads the row the session was opened on. Auth-on sessions
+// store the backtest id. Auth-off sessions store the name.
+func (s *grpcSessionServer) storedBacktest(ctx context.Context) (*backtest.Backtest, error) {
+	backtests := repository.Backtest{Conn: s.db}
+	if !environment.GetAuthEnabled() {
+		return backtests.Get(ctx, s.session.GetBacktest())
+	}
+	sessions := repository.Session{Conn: s.db}
+	id, err := sessions.BacktestID(ctx, s.session.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return backtests.GetByID(ctx, id)
+}
+
+func backtestLoadStatus(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return status.Error(codes.NotFound, "backtest not found")
+	}
+	return status.Error(codes.Internal, "could not load the backtest")
+}
+
 func (s *grpcSessionServer) pingActivity() {
 	select {
 	case s.activity <- true:
@@ -98,11 +123,10 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 	if environment.GetAuthEnabled() && req.GetSession() != s.session.GetId() {
 		return nil, status.Error(codes.NotFound, "not found")
 	}
-	backtests := repository.Backtest{Conn: s.db}
-	stored, err := backtests.Get(ctx, s.session.GetBacktest())
+	stored, err := s.storedBacktest(ctx)
 	if err != nil {
-		log.Error().Err(err).Str("backtest", s.session.GetBacktest()).Msg("error getting backtest")
-		return nil, fmt.Errorf("error getting backtest %s: %w", s.session.GetBacktest(), err)
+		log.Error().Err(err).Str("session", s.session.GetId()).Msg("error getting backtest")
+		return nil, backtestLoadStatus(err)
 	}
 	startDate, endDate, err := resolveRunDates(stored, req.GetStartDate(), req.GetEndDate())
 	if err != nil {

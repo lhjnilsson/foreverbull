@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -20,6 +21,7 @@ import (
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	service_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -374,4 +376,87 @@ func (s *SessionTest) TestCreateExecutionRejectsBacktestWithoutPeriods() {
 	err = s.conn.QueryRow(context.Background(), `SELECT count(*) FROM backtest_execution`).Scan(&stored)
 	s.Require().NoError(err)
 	s.Zero(stored, "a rejected request stores no execution")
+}
+
+func TestCreateExecutionAuthOnUsesBacktestID(t *testing.T) {
+	t.Setenv(environment.AuthEnabled, "true")
+	test_helper.SetupEnvironment(t, &test_helper.Containers{Postgres: true})
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, environment.GetPostgresURL())
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	require.NoError(t, repository.Recreate(ctx, pool))
+	require.NoError(t, auth.Migrate(ctx, pool))
+	admin := insertAccount(t, pool, auth.RoleAdmin, "ada")
+	require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, admin.ID, quietCopier{}))
+
+	backtests := repository.Backtest{Conn: pool}
+	_, err = backtests.CreateOwned(ctx, admin.ID, &backtest.Backtest{
+		Name: "spy",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+		}},
+	})
+	require.NoError(t, err)
+	var backtestID string
+	err = pool.QueryRow(ctx, `SELECT id FROM backtest WHERE owner_id = $1 AND name = 'spy'`, admin.ID).Scan(&backtestID)
+	require.NoError(t, err)
+
+	sessions := repository.Session{Conn: pool}
+	session, err := sessions.CreateForBacktest(ctx, backtestID)
+	require.NoError(t, err)
+	require.Equal(t, "spy", session.GetBacktest())
+	require.NotEqual(t, backtestID, session.GetBacktest())
+
+	client, activity := dialSession(t, session, pool)
+	rsp, err := client.CreateExecution(ctx, &servicePb.CreateExecutionRequest{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 3},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, rsp.GetExecution().GetId())
+	select {
+	case <-activity:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for activity")
+	}
+
+	missing := &backtest.Session{Id: "missing-session", Backtest: backtestID}
+	missingClient, _ := dialSession(t, missing, pool)
+	_, err = missingClient.CreateExecution(ctx, &servicePb.CreateExecutionRequest{
+		Session:   missing.GetId(),
+		Algorithm: &service_pb.Algorithm{},
+	})
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.NotFound, st.Code())
+	require.Equal(t, "backtest not found", st.Message())
+	require.NotContains(t, st.Message(), "SELECT")
+	require.NotContains(t, st.Message(), backtestID)
+}
+
+func dialSession(t *testing.T, session *backtest.Session, pool *pgxpool.Pool) (servicePb.SessionServicerClient, <-chan bool) {
+	t.Helper()
+	eng := new(engine.MockEngine)
+	eng.On("NewSession", mock.Anything, mock.Anything).Return(new(engine.MockEngineSession), nil)
+	srv, activity, err := api.NewGRPCSessionServer(session, pool, eng)
+	require.NoError(t, err)
+	listener := bufconn.Listen(1024 * 1024)
+	go func() { _ = srv.Serve(listener) }()
+	t.Cleanup(func() {
+		srv.Stop()
+		_ = listener.Close()
+	})
+	conn, err := grpc.NewClient("passthrough:///"+listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	return servicePb.NewSessionServicerClient(conn), activity
 }
