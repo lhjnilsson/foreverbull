@@ -57,9 +57,11 @@ def test_save_token_file_is_0600_and_refuses_without_force(tmp_path: Path):
     with pytest.raises(TokenFileError, match="already exists"):
         save_token_file("fb_second", force=False, home=home)
     assert path.read_text() == "fb_first"
+    path.chmod(0o644)
     replaced = save_token_file("fb_second", force=True, home=home)
     assert replaced.read_text() == "fb_second"
     assert stat.S_IMODE(replaced.stat().st_mode) == 0o600
+    assert list(path.parent.glob(f".{path.name}.*.tmp")) == []
 
 
 def test_save_cluster_config_drops_token(tmp_path: Path):

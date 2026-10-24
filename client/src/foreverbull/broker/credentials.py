@@ -103,12 +103,20 @@ def save_token_file(raw: str, *, force: bool, home: Path | None = None) -> Path:
     if path.exists() and not force:
         raise TokenFileError(f"token file already exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Write a new file at 0600, then replace. Truncating the old inode would
+    # leave the secret readable for a moment when --force meets mode 0644.
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.write(fd, token.encode("utf-8"))
-    finally:
+    except Exception:
         os.close(fd)
-    os.chmod(path, 0o600)
+        os.unlink(tmp)
+        raise
+    else:
+        os.close(fd)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
     return path
 
 
