@@ -95,7 +95,8 @@ func sendDownloadResponse(serverStream servicePb.Marketdata_DownloadHistoricalDa
 }
 
 // noPriceDataError is the STATUS_ERROR text when no ticker of the instrument
-// has bars. DownloadFinancialData fail-fasts only on this prefix.
+// has bars. DownloadFinancialData uses this prefix for the no-bars sentence;
+// any STATUS_ERROR fails create.
 func noPriceDataError(symbol string) error {
 	return fmt.Errorf("no price data for %s", symbol)
 }
@@ -105,9 +106,9 @@ func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Error = err.Error()
 }
 
-// failSymbol reports a symbol as failed, which disables it. After a block
-// cancels the download, an in-flight symbol fails only because of that
-// cancel, so it is not reported and stays enabled for the retry.
+// failSymbol reports a symbol as STATUS_ERROR. Create fails on that status.
+// After a block cancels the download, an in-flight symbol fails only because
+// of that cancel, so it is not reported and stays enabled for the retry.
 func failSymbol(ctx context.Context, serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
 	rsp *servicePb.DownloadHistoricalDataResponse, err error,
 ) {
@@ -160,8 +161,8 @@ func (fs *MarketdataServer) downloadSymbol(
 			if errors.As(fetchErr, &blocked) {
 				return blocked
 			}
-			// Sentinel for create: only this error deletes the backtest.
-			// GetAsset / store failures keep their own text and only disable.
+			// no-bars sentinel; create fails on any STATUS_ERROR, and this
+			// prefix selects the "no price data for … between …" sentence.
 			failSymbol(ctx, serverStream, rsp, noPriceDataError(symbol))
 			return nil
 		}

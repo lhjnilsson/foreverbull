@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS asset (
 
 ### 1.3 `enabled` means GetAsset succeeded
 
-For each scraped Equity row, `CreateBacktestFromETF` calls `Marketdata.GetAsset` by symbol (Yahoo metadata for every backtest provider; `MARKET_DATA_PROVIDER` is not read). `backtest_period_asset.enabled` is true when that call succeeds and false when it fails. `DownloadFinancialData` later sets `enabled=false` if `DownloadHistoricalData` returns `STATUS_ERROR`.
+For each scraped Equity row, `CreateBacktestFromETF` calls `Marketdata.GetAsset` by symbol (Yahoo metadata for every backtest provider; `MARKET_DATA_PROVIDER` is not read). `backtest_period_asset.enabled` is true when that call succeeds and false when it fails. `DownloadFinancialData` fails create (and removes the backtest) if `DownloadHistoricalData` returns `STATUS_ERROR` for any symbol; it does not disable the member and continue.
 
 `enabled` is therefore “the vendor knows this ticker,” not “this ISIN is in the ETF on these dates.” Non-Equity rows (`AssetType != "Equity"`) are skipped; that filter stays.
 
@@ -308,7 +308,7 @@ The session decides once, before the first bar: any `universe_member` row for th
 
 Bars stay on the ticker the provider stores them under, and the reader picks them by date through `asset_symbol`. Yahoo has no bars under FB for any date and serves the whole history, before the rename too, under META. Other providers may list FB up to the rename and META from it.
 
-- **Download.** When the asked ticker returns no bars, the download looks up the instrument's other tickers in `asset_symbol` and the provider's current ticker for that instrument, fetches under those, stores bars under the ticker that answered, and records it in `asset_symbol` when it was missing. A member with no bars under any of its tickers fails `fbull backtest create` (the backtest is removed); it is not left out silently.
+- **Download.** When the asked ticker returns no bars, the download looks up the instrument's other tickers in `asset_symbol` and the provider's current ticker for that instrument, fetches under those, stores bars under the ticker that answered, and records it in `asset_symbol` when it was missing. A member with no bars under any of its tickers, or any other per-symbol download `STATUS_ERROR` (GetAsset, store, …), fails `fbull backtest create` (the backtest is removed); it is not left out silently.
 - **Zipline bundle.** `SQLIngester` builds one sid per ISIN alias by alias. Inside an alias's `asset_symbol` dates its own bars win, and a session without one takes the bar another ticker of the ISIN has. The first alias reaches back to the backtest start and the last one forward to its end.
 - **User code.** `Asset.stock_data`, `Assets` and the close `Portfolio.order_value` uses resolve the ticker to the ISIN that holds it on the read date. On each bar time the ticker whose dates cover it wins, then the asked ticker, then another ticker of the ISIN. The frame keeps the asked ticker. A ticker with no `asset_symbol` row reads only its own bars.
 - **Positions.** A held position is named by the ticker that started last on or before the session, so it reads FB before the rename and META from it, as the universe does. Zipline itself names an asset by its latest ticker.
