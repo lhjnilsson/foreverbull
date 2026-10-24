@@ -286,3 +286,99 @@ func (db *Instruments) Symbols(ctx context.Context, inst *Instrument, t time.Tim
 
 	return symbol, nil
 }
+
+// AliasInterval is one dated ticker of an ISIN in asset_symbol ([from, to)).
+type AliasInterval struct {
+	ISIN     string
+	Symbol   string
+	FromDate time.Time
+	ToDate   *time.Time
+}
+
+// ListAliases returns ticker intervals for isin, ordered by from_date.
+func (db *Instruments) ListAliases(ctx context.Context, isin string) ([]AliasInterval, error) {
+	isin = normalizeISIN(isin)
+	if isin == "" {
+		return nil, ErrMissingISIN
+	}
+
+	rows, err := db.Conn.Query(ctx, `
+		SELECT isin, symbol, from_date, to_date
+		  FROM asset_symbol
+		 WHERE isin = $1
+		 ORDER BY from_date`, isin)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list asset_symbol: %w", err)
+	}
+	defer rows.Close()
+
+	aliases := make([]AliasInterval, 0)
+	for rows.Next() {
+		var a AliasInterval
+		var to *time.Time
+		if err := rows.Scan(&a.ISIN, &a.Symbol, &a.FromDate, &to); err != nil {
+			return nil, fmt.Errorf("failed to scan asset_symbol: %w", err)
+		}
+		a.FromDate = dateOnly(a.FromDate)
+		if to != nil {
+			t := dateOnly(*to)
+			a.ToDate = &t
+		}
+		aliases = append(aliases, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list asset_symbol: %w", err)
+	}
+	return aliases, nil
+}
+
+// EnsureLaterAlias records later as a ticker of isin that starts on laterFrom,
+// closing an open current alias at that day when needed. When later is already
+// stored for the ISIN, it is a no-op.
+func (db *Instruments) EnsureLaterAlias(ctx context.Context, isin, current, later string, laterFrom time.Time) error {
+	isin = normalizeISIN(isin)
+	current = strings.TrimSpace(current)
+	later = strings.TrimSpace(later)
+	if isin == "" {
+		return ErrMissingISIN
+	}
+	if later == "" {
+		return fmt.Errorf("missing later symbol for isin %s", isin)
+	}
+	laterFrom = dateOnly(laterFrom)
+
+	aliases, err := db.ListAliases(ctx, isin)
+	if err != nil {
+		return err
+	}
+	for _, a := range aliases {
+		if a.Symbol == later {
+			return nil
+		}
+	}
+
+	// Close an open current alias that still covers laterFrom.
+	if current != "" {
+		_, err = db.Conn.Exec(ctx, `
+			UPDATE asset_symbol
+			   SET to_date = $3::date
+			 WHERE isin = $1
+			   AND symbol = $2
+			   AND to_date IS NULL
+			   AND from_date < $3::date`,
+			isin, current, laterFrom.Format("2006-01-02"))
+		if err != nil {
+			return fmt.Errorf("failed to close asset_symbol: %w", err)
+		}
+	}
+
+	_, err = db.Conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, $2, $3::date, NULL)
+		ON CONFLICT (isin, from_date) DO NOTHING`,
+		isin, later, laterFrom.Format("2006-01-02"))
+	if err != nil {
+		return fmt.Errorf("failed to store later asset_symbol: %w", err)
+	}
+	return nil
+}

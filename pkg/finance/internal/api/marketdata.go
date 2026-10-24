@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -137,20 +139,34 @@ func (fs *MarketdataServer) downloadSymbol(
 		return nil
 	}
 
-	ohlcs, err := bars.GetOHLC(asset.Symbol, start, end)
+	storeSymbol := asset.Symbol
+	ohlcs, err := bars.GetOHLC(storeSymbol, start, end)
 	if err != nil {
-		// A blocked provider is not this symbol's fault, so the symbol is not
-		// reported as failed (which disables it). The whole download stops.
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
 			return blocked
 		}
-		failSymbol(ctx, serverStream, rsp, err)
-		return nil
+	}
+	if err != nil || len(ohlcs) == 0 {
+		fetched, fetchErr := fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
+		if fetchErr != nil {
+			var blocked *marketdata.BlockedError
+			if errors.As(fetchErr, &blocked) {
+				return blocked
+			}
+			if err != nil {
+				failSymbol(ctx, serverStream, rsp, err)
+			} else {
+				failSymbol(ctx, serverStream, rsp, fetchErr)
+			}
+			return nil
+		}
+		storeSymbol = fetched.symbol
+		ohlcs = fetched.bars
 	}
 
 	for _, ohlc := range ohlcs {
-		if err := ohlcRepo.Store(ctx, provider, asset.Symbol, ohlc.Timestamp.AsTime(),
+		if err := ohlcRepo.Store(ctx, provider, storeSymbol, ohlc.Timestamp.AsTime(),
 			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
 			failSymbol(ctx, serverStream, rsp, err)
 			continue
@@ -159,6 +175,132 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	sendDownloadResponse(serverStream, rsp)
 	return nil
+}
+
+type fetchedBars struct {
+	symbol string
+	bars   []*pb.OHLC
+}
+
+// fetchBarsViaLaterTicker loads bars under another ticker of the same instrument
+// when the asked ticker has none. Yahoo keeps a renamed company's history only
+// under the current ticker. Candidates come from asset_symbol, then from a
+// search by the instrument's identity. Bars are stored under the ticker that
+// returned them; asset_symbol gains that ticker when it was not stored yet.
+func (fs *MarketdataServer) fetchBarsViaLaterTicker(
+	ctx context.Context,
+	symbol string,
+	start time.Time,
+	end *time.Time,
+	bars supplier.Marketdata,
+	assetRepo repository.Asset,
+) (*fetchedBars, error) {
+	instruments := repository.Instruments{Conn: fs.pgx}
+	inst, err := instruments.Resolve(ctx, symbol, start)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("no price data for %s", symbol)
+		}
+		return nil, err
+	}
+
+	candidates, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no price data for %s", symbol)
+	}
+
+	var lastErr error
+	for _, candidate := range candidates {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		ohlcs, err := bars.GetOHLC(candidate, start, end)
+		if err != nil {
+			var blocked *marketdata.BlockedError
+			if errors.As(err, &blocked) {
+				return nil, blocked
+			}
+			lastErr = err
+			continue
+		}
+		if len(ohlcs) == 0 {
+			lastErr = fmt.Errorf("no price data for %s", candidate)
+			continue
+		}
+
+		if a, err := fs.marketdata.GetAsset(candidate); err == nil {
+			_ = assetRepo.Store(ctx, a.Symbol, a.Name)
+		} else {
+			_ = assetRepo.Store(ctx, candidate, candidate)
+		}
+
+		laterFrom := start
+		if end != nil {
+			laterFrom = end.AddDate(0, 0, 1)
+		} else {
+			laterFrom = time.Now().UTC().AddDate(0, 0, 1)
+		}
+		if err := instruments.EnsureLaterAlias(ctx, inst.ISIN, symbol, candidate, laterFrom); err != nil {
+			log.Warn().Err(err).Str("isin", inst.ISIN).Str("symbol", candidate).
+				Msg("could not record later ticker after fetching its bars")
+		}
+		return &fetchedBars{symbol: candidate, bars: ohlcs}, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no price data for %s", symbol)
+}
+
+func laterTickerCandidates(
+	ctx context.Context,
+	instruments repository.Instruments,
+	md supplier.Marketdata,
+	isin, asked string,
+) ([]string, error) {
+	asked = strings.TrimSpace(asked)
+	seen := map[string]struct{}{asked: {}}
+	candidates := make([]string, 0)
+
+	aliases, err := instruments.ListAliases(ctx, isin)
+	if err != nil {
+		return nil, err
+	}
+	for _, alias := range aliases {
+		symbol := strings.TrimSpace(alias.Symbol)
+		if symbol == "" {
+			continue
+		}
+		if _, ok := seen[symbol]; ok {
+			continue
+		}
+		seen[symbol] = struct{}{}
+		candidates = append(candidates, symbol)
+	}
+
+	found, err := md.SearchAsset(isin)
+	if err != nil {
+		log.Info().Err(err).Str("isin", isin).Msg("search for current ticker failed")
+	} else {
+		for _, a := range found {
+			symbol := strings.TrimSpace(a.Symbol)
+			if symbol == "" {
+				continue
+			}
+			if a.ISIN != "" && a.ISIN != isin {
+				continue
+			}
+			if _, ok := seen[symbol]; ok {
+				continue
+			}
+			seen[symbol] = struct{}{}
+			candidates = append(candidates, symbol)
+		}
+	}
+	return candidates, nil
 }
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {

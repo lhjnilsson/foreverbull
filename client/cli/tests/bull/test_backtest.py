@@ -239,6 +239,42 @@ def _create_from_file(provider: str = "yahoo"):
     return result
 
 
+_NO_PRICE_DATA_COPY = (
+    "Couldn't load data for backtest 'from_file': no price data for FB between 2019-01-01 and 2020-12-31. "
+    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+)
+
+
+def _download_failed_stream(message: str):
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
+        )
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=message),
+        )
+
+    return stream
+
+
+def test_backtest_create_no_price_data_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_NO_PRICE_DATA_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_NO_PRICE_DATA_COPY}\n"
+    assert "later ticker" not in result.output.lower()
+    assert "isin" not in result.output.lower()
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "

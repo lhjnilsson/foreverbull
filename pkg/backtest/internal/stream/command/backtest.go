@@ -559,10 +559,12 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("price source: %w", err)
 	}
 
+	startDate := b.Periods[0].StartDate
+	endDate := b.Periods[len(b.Periods)-1].EndDate
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
-		StartDate: b.Periods[0].StartDate,
-		EndDate:   b.Periods[len(b.Periods)-1].EndDate,
+		StartDate: startDate,
+		EndDate:   endDate,
 		Provider:  provider,
 		Profile:   b.GetProfile(),
 	})
@@ -582,14 +584,34 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
-			err := backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
-			if err != nil {
-				return fmt.Errorf("error updating period asset: %w", err)
-			}
-
+			// A member with no bars under any of its tickers must not be left
+			// out silently: remove this create and fail with a clear line.
+			return discardNoPriceData(ctx, backtests, command.BacktestName, msg.Symbol, startDate, endDate)
 		}
 	}
 	return nil
+}
+
+// discardNoPriceData deletes the backtest when a symbol has no bars under any
+// of its tickers. The create must not keep a universe that silently omits a
+// member. "Nothing was saved" only when the delete worked.
+func discardNoPriceData(ctx context.Context, backtests repository.Backtest, name, symbol string, start, end *pb.Date) error {
+	err := backtests.Delete(ctx, name)
+	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+	if !removed {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after missing price data")
+	}
+	startText := pb.DateToDateString(start)
+	endText := pb.DateToDateString(end)
+	lead := fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
+	if removed {
+		return plainSentence(fmt.Sprintf(
+			"Couldn't load data for backtest '%s': %s Nothing was saved, so run `fbull backtest create` again once it's fixed.",
+			name, lead))
+	}
+	return plainSentence(fmt.Sprintf(
+		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
+		name, lead, name))
 }
 
 // blockedDownload returns the finance service's sentence when the price
@@ -607,7 +629,7 @@ func blockedDownload(err error) error {
 // so retrying the same create with the other provider is not refused as a
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
 // are stored per provider and symbol, not per backtest. When only some
-// symbols fail, they are disabled one by one and the backtest is kept.
+// symbol fails with no bars under any of its tickers, the create is removed.
 func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name string) {
 	if err := backtests.Delete(ctx, name); err != nil {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
