@@ -2,9 +2,11 @@ package backtest
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/container"
@@ -62,6 +64,9 @@ func serveZipline(t *testing.T, address string, fake *fakeZipline) int {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", address)
+	if err != nil && errors.Is(err, syscall.EADDRNOTAVAIL) {
+		t.Skipf("host has no address for %s", address)
+	}
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
