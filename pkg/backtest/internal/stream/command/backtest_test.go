@@ -736,15 +736,17 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
-// A GetAsset / store style STATUS_ERROR is not the no-bars case: the member is
-// disabled and the backtest is kept, as on main before the rename fix.
-func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsBacktestWhenOtherSymbolErrors() {
+// A GetAsset / store style STATUS_ERROR must fail create like the no-bars
+// case: remove the backtest and return the user-facing sentence. Raw error
+// text (gRPC, stack traces) must not appear in that sentence.
+func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOtherSymbolErrors() {
 	backtests := repository.Backtest{Conn: test.db}
 	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
 		Assets: []*backtest.Backtest_Period_Asset{
 			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "MSFT", Enabled: true},
 		},
 	})
 	test.Require().NoError(err)
@@ -753,22 +755,23 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsBacktestWhenOther
 	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
 		Symbol: "AAPL",
 		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
-		Error:  "not found",
+		Error:  "rpc error: code = Internal desc = asset lookup failed",
 	}, nil).Once()
-	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	// Main still continues after a non-no-bars STATUS_ERROR; EOF lets that
+	// path finish so the assertion is EqualError rather than a mock panic.
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
 
-	test.Require().NoError(command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest")))
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': couldn't download prices for AAPL. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+	test.Require().NotContains(err.Error(), "rpc error")
+	test.Require().NotContains(err.Error(), "Internal")
+	test.Require().NotContains(err.Error(), "asset lookup")
 
-	b, err := backtests.Get(context.TODO(), "test-backtest")
-	test.Require().NoError(err)
-	for _, period := range b.Periods {
-		for _, asset := range period.Assets {
-			if asset.Symbol == "AAPL" {
-				test.False(asset.Enabled)
-			}
-		}
-	}
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
