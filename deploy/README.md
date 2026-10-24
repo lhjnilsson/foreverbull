@@ -69,7 +69,10 @@ Matches `internal/environment/env.go` plus chart overrides:
 | Variable | Value |
 | --- | --- |
 | `POSTGRES_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
-| `NATS_URL` | `nats://nats:4222` |
+| `NATS_URL` | `nats://nats:4222`. The password is not in this URL |
+| `NATS_USER` / `NATS_PASSWORD` | User `broker`. The password is Secret `foreverbull-nats` key `password` |
+| `WORKER_DB_PASSWORD` | Secret `foreverbull-worker` key `password`. Not the database owner password |
+| `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. The broker sends this to a service pod |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
 | `SERVER_ADDRESS` | `foreverbull` |
@@ -97,9 +100,10 @@ Matches `internal/environment/env.go` plus chart overrides:
 
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
-Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
-`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,
-`LOGLEVEL` (`internal/container` `Start`). The broker has no HTTP listener.
+Zipline is reached by in-cluster Service `zipline:50055`. Service pods get
+`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_ENDPOINT`, and
+`LOGLEVEL` (`internal/container` `Start`). They do not get `DATABASE_URL` or
+the MinIO keys. The broker has no HTTP listener.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
@@ -210,14 +214,17 @@ on the host. A remote broker that still publishes `8080` and `50055` stays
 open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
 "authentication was configured".
 
-Authentication on `8080` and `50055` does not separate editors who can register
-a service image. Each worker pod receives `DATABASE_URL` for the broker
-database user and the MinIO root keys (`internal/container` `serviceEnv`).
-NATS has no authentication, and a worker can publish backtest commands. That
-image can read and change every row, including `account.role`. Do not turn
-authentication on for anyone besides the operator until workers have a
-narrower database role, scoped object-storage keys, and no path to Postgres,
-NATS, or MinIO.
+A service image does not receive the database owner URL or the MinIO root
+keys. The worker reads `asset` and `ohlc` as role `foreverbull_worker`. That
+role is not granted `account`, `api_token`, `browser_session`, `oauth_state`,
+or `domain_grant`. Its password is Secret `foreverbull-worker`. NATS
+authenticates the broker user from Secret `foreverbull-nats`. Service pods
+have no NATS user. Their NetworkPolicy allows DNS, the broker (gRPC and the
+session ports the worker dials), and Postgres. It does not allow MinIO or
+NATS. The algorithm still reads bars with SQL, so Postgres stays reachable
+as that role. The Zipline deployment is the platform image and still uses
+the database owner URL. A command that names a backtest id is refused when
+its `owner_id` is not the owner stored on that row.
 
 Session secrets are kept in the broker process. Run one broker replica. A
 second replica does not have the map and refuses a session it did not mint.

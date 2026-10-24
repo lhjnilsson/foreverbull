@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -40,8 +41,17 @@ const (
 	PostgresURL        = "POSTGRES_URL"
 	PostgresURLDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
 
+	// WorkerDatabaseURL is the reader role the broker hands to a service pod.
+	// Empty means the pod is not given a database URL while authentication is on.
+	WorkerDatabaseURL = "WORKER_DATABASE_URL"
+	// WorkerDBPassword is the password for role foreverbull_worker. It is not
+	// the database owner password.
+	WorkerDBPassword = "WORKER_DB_PASSWORD"
+
 	NatsURL                   = "NATS_URL"
 	NatsURLDefault            = "nats://localhost:4222"
+	NatsUser                  = "NATS_USER"
+	NatsPassword              = "NATS_PASSWORD"
 	NatsDurable               = "NATS_DURABLE"
 	NatsDurableDefault        = "foreverbull"
 	NatsDeliveryPolicy        = "NATS_DELIVERY_POLICY"
@@ -279,8 +289,30 @@ func GetPostgresURL() string {
 	return os.Getenv(PostgresURL)
 }
 
+// GetWorkerDatabaseURL is the URL a service pod may use. A configured reader
+// URL wins. With authentication on and no reader URL, the owner URL is not
+// returned. With authentication off and no reader URL, the owner URL is used
+// so local runs and tests keep a database that has no reader role.
+func GetWorkerDatabaseURL() string {
+	if url := strings.TrimSpace(os.Getenv(WorkerDatabaseURL)); url != "" {
+		return url
+	}
+	if GetAuthEnabled() {
+		return ""
+	}
+	return GetPostgresURL()
+}
+
 func GetNATSURL() string {
 	return os.Getenv(NatsURL)
+}
+
+func GetNATSUser() string {
+	return os.Getenv(NatsUser)
+}
+
+func GetNATSPassword() string {
+	return os.Getenv(NatsPassword)
 }
 
 func GetNATSDurable() string {

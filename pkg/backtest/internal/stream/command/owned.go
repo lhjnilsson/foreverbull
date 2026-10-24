@@ -45,12 +45,23 @@ func loadStoredBacktest(ctx context.Context, pool *pgxpool.Pool, name, ownerID, 
 			return nil, "", fmt.Errorf("error getting backtest: %w", err)
 		}
 	}
+	var storedOwner string
+	err := pool.QueryRow(ctx, `SELECT owner_id FROM backtest WHERE id = $1`, id).Scan(&storedOwner)
+	if err != nil {
+		return nil, "", err
+	}
+	// The message owner is not the authority. A different id is a forged command.
+	if strings.TrimSpace(ownerID) != storedOwner {
+		return nil, "", errOwnerMismatch
+	}
 	item, err := backtests.GetByID(ctx, id)
 	if err != nil {
 		return nil, "", err
 	}
 	return item, id, nil
 }
+
+var errOwnerMismatch = errors.New("backtest owner does not match")
 
 func deleteStoredBacktest(ctx context.Context, backtests repository.Backtest, name, id string) error {
 	if environment.GetAuthEnabled() {

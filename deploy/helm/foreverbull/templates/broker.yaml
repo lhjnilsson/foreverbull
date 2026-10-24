@@ -85,6 +85,20 @@ spec:
               value: {{ include "foreverbull.postgresURL" . | quote }}
             - name: NATS_URL
               value: {{ printf "nats://nats:%v" .Values.nats.port | quote }}
+            - name: NATS_USER
+              value: broker
+            - name: NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foreverbull-nats
+                  key: password
+            - name: WORKER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foreverbull-worker
+                  key: password
+            - name: WORKER_DATABASE_URL
+              value: "postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
             - name: MINIO_URL
               value: {{ printf "minio:%v" .Values.minio.port | quote }}
             - name: MINIO_ACCESS_KEY

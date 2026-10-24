@@ -165,13 +165,12 @@ func workerLabels(name string) map[string]string {
 }
 
 func serviceEnv(ohlcProvider string) []corev1.EnvVar {
+	// No database URL and no object-store keys. The worker reads bars through
+	// the execution configuration, as the reader role, and does not use MinIO.
 	env := []corev1.EnvVar{
 		{Name: "BROKER_HOSTNAME", Value: environment.GetServerAddress()},
 		{Name: "BROKER_PORT", Value: environment.GetGRPCPort()},
 		{Name: "STORAGE_ENDPOINT", Value: environment.GetMinioURL()},
-		{Name: "STORAGE_ACCESS_KEY", Value: environment.GetMinioAccessKey()},
-		{Name: "STORAGE_SECRET_KEY", Value: environment.GetMinioSecretKey()},
-		{Name: "DATABASE_URL", Value: environment.GetPostgresURL()},
 		{Name: "LOGLEVEL", Value: environment.GetLogLevel()},
 	}
 	if provider := strings.TrimSpace(ohlcProvider); provider != "" {

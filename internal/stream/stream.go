@@ -30,8 +30,16 @@ type NATSStream struct {
 	jt nats.JetStreamContext
 }
 
+func natsConnOptions() []nats.Option {
+	user := environment.GetNATSUser()
+	if user == "" {
+		return nil
+	}
+	return []nats.Option{nats.UserInfo(user, environment.GetNATSPassword())}
+}
+
 func NewNATSStream() (Stream, error) {
-	natsConnect, err := nats.Connect(environment.GetNATSURL())
+	natsConnect, err := nats.Connect(environment.GetNATSURL(), natsConnOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to nats: %w", err)
 	}

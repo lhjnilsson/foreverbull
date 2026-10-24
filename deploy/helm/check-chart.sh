@@ -238,4 +238,52 @@ if [[ "$(secret_value postgres-password "${second_render}")" != "${generated_pg}
   exit 1
 fi
 
+if ! grep -q '^kind: NetworkPolicy$' "${first_render}"; then
+  echo "chart must include a NetworkPolicy for service pods" >&2
+  exit 1
+fi
+policy="$(mktemp)"
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: NetworkPolicy(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${first_render}" > "${policy}"
+if grep -E 'port: 4222|port: 9000' "${policy}"; then
+  echo "service pods must not be allowed to reach NATS or MinIO" >&2
+  exit 1
+fi
+if ! grep -q 'app.kubernetes.io/name: foreverbull' "${policy}" \
+  || ! grep -q 'app.kubernetes.io/name: postgres' "${policy}"; then
+  echo "service pods must be allowed to reach the broker and Postgres" >&2
+  exit 1
+fi
+rm -f "${policy}"
+for secret_name in foreverbull-nats foreverbull-worker; do
+  if ! grep -q "name: ${secret_name}$" "${first_render}"; then
+    echo "chart must create Secret ${secret_name}" >&2
+    exit 1
+  fi
+done
+for env_name in NATS_PASSWORD WORKER_DB_PASSWORD; do
+  if grep -A1 -E "^ +- name: ${env_name}$" "${first_render}" | grep -qE '^ +value:'; then
+    echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
+    exit 1
+  fi
+done
+if ! grep -Fq 'postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@' "${first_render}"; then
+  echo "broker must pass the reader URL, not a raw worker password" >&2
+  exit 1
+fi
+nats_conf_b64="$(awk '/^  nats.conf:/{print; exit}' "${first_render}" | sed -E 's/.*"([^"]+)".*/\1/')"
+nats_conf="$(printf '%s' "${nats_conf_b64}" | base64 -d)"
+if ! grep -q 'user: "broker"' <<< "${nats_conf}"; then
+  echo "nats config must authenticate the broker user" >&2
+  exit 1
+fi
+
 echo "helm chart checks passed"
