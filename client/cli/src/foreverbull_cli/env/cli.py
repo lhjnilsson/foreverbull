@@ -8,12 +8,14 @@ from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.table import Table
 
+from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import ready_timeout_seconds
 from foreverbull_cli.env.preflight import CheckState
@@ -40,7 +42,7 @@ class FBProgress(Progress):
 
         for task in self.tasks:
             if task.total == 2 and task.completed == 1:
-                if isinstance(exc_val, ImagePullError):
+                if isinstance(exc_val, (ImagePullError, ClusterImagePullError)):
                     # The ✖ line printed after the progress says what failed.
                     self.update(task.id, description=f"{task.description} FAILED")
                 else:
@@ -57,7 +59,12 @@ KubeconfigFlag = Annotated[str | None, typer.Option("--kubeconfig", help="Kubeco
 ContextFlag = Annotated[str | None, typer.Option("--context", help="Kube context (remote)")]
 NamespaceFlag = Annotated[str | None, typer.Option("--namespace", help="Helm namespace")]
 BrokerAddressFlag = Annotated[str | None, typer.Option("--broker-address", help="Broker host:port")]
-VerboseFlag = Annotated[bool, typer.Option("--verbose", "-v", help="Show Docker's own error when an image pull fails")]
+VerboseFlag = Annotated[
+    bool,
+    typer.Option(
+        "--verbose", "-v", help="Show Docker's, the cluster's or kubectl's own error behind a failure or warning"
+    ),
+]
 
 
 def _manager(
@@ -166,6 +173,31 @@ def fail_image_pull(exc: ImagePullError, command: str, *, verbose: bool, nothing
         lines.append(f"Run `{command} --verbose` to see Docker's error.")
     console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
     raise typer.Exit(1) from exc
+
+
+def fail_cluster_pull(exc: ClusterImagePullError, command: str, *, verbose: bool):
+    """Stop with one ✖ line that names the service and the image the cluster couldn't pull."""
+    lines = [f"✖ {exc}", exc.hint(command)]
+    if verbose:
+        # The Kubernetes reason stays out of the ✖ line; --verbose is where it belongs.
+        said = f"Kubernetes said: {exc.reason}"
+        if exc.detail:
+            said = f"{said}: {exc.detail}"
+        lines.append(said)
+    elif exc.detail:
+        lines.append(f"Run `{command} --verbose` to see the cluster's error.")
+    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(1) from exc
+
+
+def warn_rollout(notice: RolloutNotice, command: str, *, verbose: bool):
+    """Print the ⚠ rollout line. kubectl's error only with --verbose."""
+    lines = [notice.line]
+    if verbose and notice.detail:
+        lines.append(f"kubectl said: {notice.detail}")
+    elif notice.detail:
+        lines.append(f"Run `{command} --verbose` to see the details.")
+    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
 
 
 def print_cluster(config: Config, *, path_note: str | None = None):
@@ -352,18 +384,24 @@ def update(
     )
     check_version(cm)
 
+    rollout_notice: RolloutNotice | None = None
     try:
         with FBProgress() as progress:
             update_task = progress.add_task("Updating environment", total=2)
             progress.update(update_task, completed=1)
-            cm.update()
+            notice = cm.update()
+            rollout_notice = notice if isinstance(notice, RolloutNotice) else None
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
         # Local update pulls every missing image before kind load and helm
         # upgrade, so nothing changed yet. A remote update has no local pull
         # step: its cluster pulls after Helm runs, so do not promise that.
         fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=cm.config.is_local)
+    except ClusterImagePullError as exc:
+        fail_cluster_pull(exc, "fbenv update", verbose=verbose)
 
+    if rollout_notice:
+        warn_rollout(rollout_notice, "fbenv update", verbose=verbose)
     print_status(cm)
 
 

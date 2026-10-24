@@ -105,6 +105,7 @@ uv run fbenv stop                        # scale to 0
 uv run fbenv stop --remove               # helm uninstall
 uv run fbenv stop --remove --purge       # uninstall; local also deletes the Kind cluster
 uv run fbenv update                      # reload images (local) and helm upgrade --reuse-values
+                                         # remote: fails if a node can't pull an image
 ```
 
 `create` and `start` run the host checks first and print nothing when they pass: tools installed, Docker running, at least 4 GB of memory for Docker, and the Kind host ports free (or already held by the `foreverbull` cluster). The first failed check stops the command before it changes anything, with a fix hint. A remote cluster checks only `helm` and `kubectl`.

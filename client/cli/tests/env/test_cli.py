@@ -9,10 +9,12 @@ import typer
 from click.testing import Result
 from foreverbull_cli.env import cli
 from foreverbull_cli.env.environment import BrokerDiagnosis
+from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.preflight import CheckState
@@ -244,6 +246,89 @@ def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_containe
     assert "✖ Couldn't download the Foreverbull image" in result.stdout
     assert "Nothing was changed." not in result.stdout
     assert "Traceback" not in result.stdout
+
+
+CLUSTER_PULL_FAILURE = ClusterImagePullError(
+    service="Grafana",
+    image="lhjnilsson/fb-grafana:1.2.3",
+    reason="ImagePullBackOff",
+    detail='Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"',
+)
+
+
+def test_update_on_remote_fails_when_the_cluster_cannot_pull(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = CLUSTER_PULL_FAILURE
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
+        ("✖ Grafana can't start: the cluster couldn't pull the image lhjnilsson/fb-grafana:1.2.3.")
+    ]
+    assert "ImagePullBackOff" not in result.stdout
+    assert "The release was already updated." in result.stdout
+    assert "the cluster's nodes can reach its registry, then run `fbenv update` again." in result.stdout
+    assert "pull credentials" not in result.stdout
+    assert "Run `fbenv update --verbose` to see the cluster's error." in result.stdout
+    assert "Nothing was changed." not in result.stdout
+    assert "Back-off pulling image" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
+
+
+def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = CLUSTER_PULL_FAILURE
+    result = runner(cli.cli, ["update", "--verbose"])
+    assert result.exit_code == 1
+    assert 'Kubernetes said: ImagePullBackOff: Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"' in result.stdout
+
+
+def test_update_still_pulling_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.return_value = RolloutNotice(
+        "⚠ Grafana is still downloading its image after 2 minutes, "
+        "so this update hasn't finished yet. Run `fbenv status` to check on it."
+    )
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 0
+    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [
+        (
+            "⚠ Grafana is still downloading its image after 2 minutes, "
+            "so this update hasn't finished yet. Run `fbenv status` to check on it."
+        )
+    ]
+    assert "Nothing was changed." not in result.stdout
+    assert "✖" not in result.stdout
+    assert result.stdout.index("⚠ Grafana is still downloading") < result.stdout.index("Environment Status")
+    mocked_container_manager.status_rows.assert_called()
+
+
+UNVERIFIED_LINE = "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
+KUBECTL_DETAIL = "kubectl get deploy,rs,pods failed (exit 1): connection refused"
+
+
+def test_update_unverified_rollout_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 0
+    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
+    assert "connection refused" not in result.stdout
+    assert "kubectl said" not in result.stdout
+    assert "Run `fbenv update --verbose` to see the details." in result.stdout
+    assert result.stdout.index("⚠ Couldn't confirm the update finished") < result.stdout.index("Environment Status")
+    mocked_container_manager.status_rows.assert_called()
+
+
+def test_update_unverified_rollout_shows_kubectl_error_only_with_verbose(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
+    result = runner(cli.cli, ["update", "--verbose"])
+    assert result.exit_code == 0
+    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
+    assert f"kubectl said: {KUBECTL_DETAIL}" in result.stdout
+    assert "--verbose` to see" not in result.stdout
+    assert result.stdout.index("kubectl said") < result.stdout.index("Environment Status")
 
 
 def _reject_version(manager: MagicMock) -> None:
