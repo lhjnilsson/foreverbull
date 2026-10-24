@@ -90,6 +90,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `AUTH_TRUST_PROXY` | unset (`false`). When `true`, the client address is the rightmost `X-Forwarded-For` hop that is not in `AUTH_TRUSTED_PROXIES` |
 | `AUTH_TRUSTED_PROXIES` | empty. Comma-separated CIDRs of proxies whose hops are skipped |
 | `AUTH_PUBLIC_URL` | empty. Browser origin of the broker, such as `https://fb.example.com`. A cookie write without `Sec-Fetch-Site: same-origin` or `none` must send this `Origin` |
+| `AUTH_GITHUB_ALLOWED_ORGS` | empty. When set, GitHub login asks for `read:org` and rejects an account that is not an active member of one of the comma-separated orgs |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
 | `TRADING_CURRENCY` | `USD` |
 | `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |

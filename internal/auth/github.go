@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -32,10 +34,14 @@ const (
 type githubIdentity struct {
 	Subject string
 	Login   string
+	token   *oauth2.Token
 }
 
-// githubExchange is replaced in tests. Production calls GitHub.
-var githubExchange = exchangeGitHub
+// githubExchange and githubMember are replaced in tests. Production calls GitHub.
+var (
+	githubExchange = exchangeGitHub
+	githubMember   = githubOrgMember
+)
 
 func (h *handlers) githubStart(w http.ResponseWriter, r *http.Request) {
 	if !githubConfigured() {
@@ -48,9 +54,11 @@ func (h *handlers) githubStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := base64.RawURLEncoding.EncodeToString(raw)
+	verifier := oauth2.GenerateVerifier()
 	sum := sha256.Sum256([]byte(state))
 	_, err := h.db.Exec(r.Context(), `
-		INSERT INTO oauth_state (state_hash, expires_at) VALUES ($1, $2)`, sum[:], h.now().Add(oauthLifetime))
+		INSERT INTO oauth_state (state_hash, expires_at, verifier) VALUES ($1, $2, $3)`,
+		sum[:], h.now().Add(oauthLifetime), verifier)
 	if err != nil {
 		web.WriteError(w, err)
 		return
@@ -64,7 +72,7 @@ func (h *handlers) githubStart(w http.ResponseWriter, r *http.Request) {
 		Secure:   cookieSecure(r),
 		MaxAge:   int(oauthLifetime / time.Second),
 	})
-	http.Redirect(w, r, oauthConfig().AuthCodeURL(state), http.StatusFound)
+	http.Redirect(w, r, oauthConfig().AuthCodeURL(state, oauth2.S256ChallengeOption(verifier)), http.StatusFound)
 }
 
 func (h *handlers) githubCallback(w http.ResponseWriter, r *http.Request) {
@@ -73,21 +81,27 @@ func (h *handlers) githubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cookie, err := r.Cookie(oauthCookie)
+	if cookie != nil {
+		clearOAuthCookie(w, r)
+	}
 	if err != nil || cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
 		h.logf("github callback result=unauthorized")
 		web.Unauthorized(w)
 		return
 	}
 	sum := sha256.Sum256([]byte(cookie.Value))
-	tag, err := h.db.Exec(r.Context(), `
-		DELETE FROM oauth_state WHERE state_hash = $1 AND expires_at > $2`, sum[:], h.now())
-	if err != nil || tag.RowsAffected() != 1 {
+	var verifier string
+	err = h.db.QueryRow(r.Context(), `
+		DELETE FROM oauth_state
+		WHERE state_hash = $1 AND expires_at > $2
+		RETURNING verifier`, sum[:], h.now()).Scan(&verifier)
+	if err != nil || verifier == "" {
 		h.logf("github callback result=unauthorized")
 		web.Unauthorized(w)
 		return
 	}
-	identity, err := githubExchange(r.Context(), r.URL.Query().Get("code"))
-	if err != nil || identity.Subject == "" || identity.Login == "" {
+	identity, err := githubExchange(r.Context(), r.URL.Query().Get("code"), verifier)
+	if err != nil || identity.Subject == "" || identity.Login == "" || !githubOrgAllowed(r.Context(), identity) {
 		h.logf("github callback result=unauthorized")
 		web.Unauthorized(w)
 		return
@@ -105,6 +119,19 @@ func (h *handlers) githubCallback(w http.ResponseWriter, r *http.Request) {
 	SetSessionCookie(w, r, value, h.now())
 	h.logf("github callback result=ok account=%s", account.ID)
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func clearOAuthCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthCookie,
+		Value:    "",
+		Path:     "/api/auth/github",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   cookieSecure(r),
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	})
 }
 
 func (h *handlers) upsertGitHub(ctx context.Context, identity githubIdentity) (Account, error) {
@@ -152,19 +179,83 @@ type txBeginner interface {
 }
 
 func oauthConfig() *oauth2.Config {
+	scopes := []string{"read:user"}
+	if strings.TrimSpace(environment.GetAuthGitHubAllowedOrgs()) != "" {
+		scopes = append(scopes, "read:org")
+	}
 	return &oauth2.Config{
 		ClientID:     environment.GetAuthGitHubClientID(),
 		ClientSecret: environment.GetAuthGitHubClientSecret(),
 		RedirectURL:  environment.GetAuthGitHubRedirectURL(),
 		Endpoint:     github.Endpoint,
-		Scopes:       []string{"read:user"},
+		Scopes:       scopes,
 	}
 }
 
-func exchangeGitHub(ctx context.Context, code string) (githubIdentity, error) {
+func githubOrgAllowed(ctx context.Context, identity githubIdentity) bool {
+	orgs := allowedOrgs()
+	if len(orgs) == 0 {
+		return true
+	}
+	for _, org := range orgs {
+		if githubMember(ctx, identity.token, org) {
+			return true
+		}
+	}
+	return false
+}
+
+func allowedOrgs() []string {
+	raw := strings.TrimSpace(environment.GetAuthGitHubAllowedOrgs())
+	if raw == "" {
+		return nil
+	}
+	var orgs []string
+	for _, field := range strings.Split(raw, ",") {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			orgs = append(orgs, field)
+		}
+	}
+	return orgs
+}
+
+func githubOrgMember(ctx context.Context, tok *oauth2.Token, org string) bool {
+	if tok == nil || org == "" || strings.ContainsAny(org, "/?#") {
+		return false
+	}
 	ctx, cancel := context.WithTimeout(ctx, githubTimeout)
 	defer cancel()
-	tok, err := oauthConfig().Exchange(ctx, code)
+	endpoint := "https://api.github.com/user/memberships/orgs/" + url.PathEscape(org)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := oauthConfig().Client(ctx, tok).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var payload struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	return payload.State == "active"
+}
+
+func exchangeGitHub(ctx context.Context, code, verifier string) (githubIdentity, error) {
+	ctx, cancel := context.WithTimeout(ctx, githubTimeout)
+	defer cancel()
+	if verifier == "" {
+		return githubIdentity{}, errors.New("github verifier is empty")
+	}
+	tok, err := oauthConfig().Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return githubIdentity{}, err
 	}
@@ -194,5 +285,9 @@ func exchangeGitHub(ctx context.Context, code string) (githubIdentity, error) {
 	if payload.ID == 0 || payload.Login == "" {
 		return githubIdentity{}, errors.New("github user is incomplete")
 	}
-	return githubIdentity{Subject: strconv.FormatInt(payload.ID, 10), Login: payload.Login}, nil
+	return githubIdentity{
+		Subject: strconv.FormatInt(payload.ID, 10),
+		Login:   payload.Login,
+		token:   tok,
+	}, nil
 }

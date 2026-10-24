@@ -107,6 +107,10 @@ const (
 	AuthGitHubClientID     = "AUTH_GITHUB_CLIENT_ID"
 	AuthGitHubClientSecret = "AUTH_GITHUB_CLIENT_SECRET"
 	AuthGitHubRedirectURL  = "AUTH_GITHUB_REDIRECT_URL"
+
+	// AuthGitHubAllowedOrgs is an optional comma-separated org allowlist.
+	// Empty means GitHub login does not check org membership.
+	AuthGitHubAllowedOrgs = "AUTH_GITHUB_ALLOWED_ORGS"
 )
 
 type envVar struct {
@@ -412,4 +416,8 @@ func GetAuthGitHubClientSecret() string {
 
 func GetAuthGitHubRedirectURL() string {
 	return os.Getenv(AuthGitHubRedirectURL)
+}
+
+func GetAuthGitHubAllowedOrgs() string {
+	return os.Getenv(AuthGitHubAllowedOrgs)
 }

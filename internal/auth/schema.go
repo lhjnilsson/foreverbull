@@ -55,8 +55,12 @@ const oauthStateTable = `
 CREATE TABLE IF NOT EXISTS oauth_state (
 	state_hash bytea PRIMARY KEY,
 	created_at timestamptz NOT NULL DEFAULT now(),
-	expires_at timestamptz NOT NULL
+	expires_at timestamptz NOT NULL,
+	verifier text NOT NULL DEFAULT ''
 )`
+
+const oauthStateVerifier = `
+ALTER TABLE oauth_state ADD COLUMN IF NOT EXISTS verifier text NOT NULL DEFAULT ''`
 
 const domainGrantTable = `
 CREATE TABLE IF NOT EXISTS domain_grant (
@@ -108,6 +112,7 @@ func Migrate(ctx context.Context, conn postgres.Query) error {
 		{"browser_session", browserSessionTable},
 		{"api_token", apiTokenTable},
 		{"oauth_state", oauthStateTable},
+		{"oauth_state_verifier", oauthStateVerifier},
 		{"domain_grant", domainGrantTable},
 		{"api_token_account_id_idx", apiTokenAccountIndex},
 		{"browser_session_account_id_idx", browserSessionIndex},
