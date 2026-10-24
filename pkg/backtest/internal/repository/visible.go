@@ -194,9 +194,9 @@ func visibleWhere(alias string, caller auth.Account, kind string) (string, []any
 	case auth.RoleAdmin:
 		return "TRUE", nil
 	case auth.RoleEditor:
-		return alias + `.owner_id = $1 OR EXISTS (
+		return `(` + alias + `.owner_id = $1 OR EXISTS (
 			SELECT 1 FROM domain_grant AS gr
-			WHERE gr.domain_kind = $2 AND gr.domain_id = ` + alias + `.id AND gr.grantee_id = $1)`,
+			WHERE gr.domain_kind = $2 AND gr.domain_id = ` + alias + `.id AND gr.grantee_id = $1))`,
 			[]any{caller.ID, kind}
 	default:
 		return `EXISTS (

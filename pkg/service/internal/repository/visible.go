@@ -56,9 +56,9 @@ func serviceVisibleWhere(caller auth.Account) (string, []any) {
 	case auth.RoleAdmin:
 		return "TRUE", nil
 	case auth.RoleEditor:
-		return `service.owner_id = $1 OR EXISTS (
+		return `(service.owner_id = $1 OR EXISTS (
 			SELECT 1 FROM domain_grant AS gr
-			WHERE gr.domain_kind = $2 AND gr.domain_id = service.id AND gr.grantee_id = $1)`,
+			WHERE gr.domain_kind = $2 AND gr.domain_id = service.id AND gr.grantee_id = $1))`,
 			[]any{caller.ID, auth.DomainService}
 	default:
 		return `EXISTS (
