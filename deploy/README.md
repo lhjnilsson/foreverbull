@@ -448,6 +448,8 @@ One chart, these keys. Match `values.yaml`.
 global:
   imageRepository: lhjnilsson  # fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
+  imagePullPolicy: IfNotPresent       # postgres/nats/minio
+  appImagePullPolicy: IfNotPresent    # broker/zipline/grafana
 
 images:
   postgres:
