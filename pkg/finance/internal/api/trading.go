@@ -36,7 +36,7 @@ func NewTradingServer(pgx *pgxpool.Pool, stream stream.Stream, trading supplier.
 }
 
 func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrdersRequest) (*servicePb.GetOrdersResponse, error) {
-	if err := requireTradingEditor(ctx); err != nil {
+	if err := requireTradingAccount(ctx); err != nil {
 		return nil, err
 	}
 	if ts.trading == nil {
@@ -54,7 +54,7 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 }
 
 func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPortfolioRequest) (*servicePb.GetPortfolioResponse, error) {
-	if err := requireTradingEditor(ctx); err != nil {
+	if err := requireTradingAccount(ctx); err != nil {
 		return nil, err
 	}
 	if ts.trading == nil {
@@ -76,7 +76,7 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 		return status.Error(codes.Unimplemented, "trading is not enabled")
 	}
 	ctx := serverStream.Context()
-	if err := requireTradingEditor(ctx); err != nil {
+	if err := requireTradingAccount(ctx); err != nil {
 		return err
 	}
 	rsp := &servicePb.CreateSessionResponse{
@@ -159,6 +159,24 @@ func requireTradingEditor(ctx context.Context) error {
 		return auth.GRPCStatus(auth.ErrUnauthorized)
 	}
 	if account.Role != auth.RoleEditor && account.Role != auth.RoleAdmin {
+		return auth.GRPCStatus(auth.ErrForbidden)
+	}
+	return nil
+}
+
+// requireTradingAccount guards the broker trading account. CreateSession,
+// GetOrders, and GetPortfolio name no strategy, so there is no domain row to
+// grant. An editor uses strategy deploy, which checks a trigger grant. These
+// RPCs stay limited to an admin while authentication is on.
+func requireTradingAccount(ctx context.Context) error {
+	if !environment.GetAuthEnabled() {
+		return nil
+	}
+	account, ok := auth.FromContext(ctx)
+	if !ok || account.ID == "" {
+		return auth.GRPCStatus(auth.ErrUnauthorized)
+	}
+	if account.Role != auth.RoleAdmin {
 		return auth.GRPCStatus(auth.ErrForbidden)
 	}
 	return nil
