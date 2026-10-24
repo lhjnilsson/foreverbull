@@ -207,3 +207,95 @@ def test_held_position_is_named_by_the_universe_ticker_of_the_day(yahoo_bundle):
     assert any(day < RENAME for day, _ in held) and any(day >= RENAME for day, _ in held)
     for day, positions in held:
         assert positions == [(universe_ticker(day), SHARES)], f"position name on {day:%Y-%m-%d}"
+
+
+# --- pre-rename window (internal #43) -----------------------------------------
+# A backtest that ends before 2021-10-31 only lists FB. Yahoo still has no FB
+# bars; the history lives under META. After download records META as a later
+# alias of the same ISIN, SQLIngester must fill FB's sessions from META.
+
+
+PRE_RENAME_BUNDLE = "fb_meta_pre_rename_yahoo"
+PRE_RENAME_END = date(2021, 10, 29)
+
+
+def _pre_rename_backtest() -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
+        name=PRE_RENAME_BUNDLE,
+        benchmark="OEF",
+        periods=[
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2021, month=10, day=1),
+                end_date=common_pb.Date(year=2021, month=10, day=29),
+                assets=[
+                    backtest_pb.Backtest.Period.Asset(symbol="FB", enabled=True),
+                ],
+            )
+        ],
+    )
+
+
+# FB covers the whole pre-rename window; META is only a later alias so the
+# ingester can read the bars Yahoo stored under that ticker.
+PRE_RENAME_ALIASES = pd.DataFrame(
+    {
+        "isin": [META_ISIN, META_ISIN],
+        "symbol": ["FB", "META"],
+        "from_date": [date(2021, 7, 1), date(2021, 10, 30)],
+        "to_date": [date(2021, 10, 30), None],
+        "member_to": [None, None],
+    }
+)
+
+
+@pytest.fixture
+def pre_rename_yahoo_bundle(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    sessions = get_calendar("XNYS").sessions_in_range(
+        pd.Timestamp("2021-10-01"),  # type: ignore[arg-type]
+        pd.Timestamp("2021-10-29"),  # type: ignore[arg-type]
+    )
+    bundles.register(
+        PRE_RENAME_BUNDLE,
+        SQLIngester(_pre_rename_backtest(), engine=YahooOHLC(), aliases=PRE_RENAME_ALIASES),
+        calendar_name="XNYS",
+    )
+    try:
+        bundles.ingest(PRE_RENAME_BUNDLE, os.environ, pd.Timestamp("2021-11-01", tz="UTC"), [], False)
+        yield bundles.load(PRE_RENAME_BUNDLE, os.environ, None), sessions
+    finally:
+        bundles.unregister(PRE_RENAME_BUNDLE)
+
+
+def test_pre_rename_backtest_gets_fb_bars_from_meta_only_source(pre_rename_yahoo_bundle):
+    """ETF window ending before the rename still trades FB on Yahoo's META bars."""
+    bundle, sessions = pre_rename_yahoo_bundle
+    finder = bundle.asset_finder
+    as_of = pd.Timestamp("2021-10-15")
+    sid = finder.lookup_symbol("FB", as_of_date=as_of).sid
+
+    meta = _yahoo_bars("META")
+    closes = {
+        day.date() if hasattr(day, "date") else day: c
+        for day, c in zip(meta["time"].dt.tz_convert("UTC").dt.normalize(), meta["close"], strict=True)
+        if day.date() <= PRE_RENAME_END
+    }
+    seen: list[tuple[pd.Timestamp, float, bool]] = []
+
+    def on_session(engine, context, data, day):
+        if not seen:
+            _order(engine, context, "FB", SHARES)
+        asset = context.sid(sid)
+        seen.append((day, float(data.current(asset, "close")), bool(data.can_trade(asset))))
+
+    result = _run(bundle, sessions, on_session)
+
+    assert [day for day, _, _ in seen] == list(sessions)
+    for day, close, can_trade in seen:
+        assert close == pytest.approx(closes[day.date() if hasattr(day, "date") else day]), (
+            f"Yahoo close on {day:%Y-%m-%d}"
+        )
+        assert can_trade, f"tradable on {day:%Y-%m-%d}"
+
+    transactions = [txn for day in result["transactions"] for txn in day]
+    assert [(txn["sid"].sid, txn["amount"]) for txn in transactions] == [(sid, SHARES)]

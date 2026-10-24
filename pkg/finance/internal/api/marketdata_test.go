@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -227,4 +228,116 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStopsOnBlockedProvider() 
 	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
 	suite.Equal(codes.FailedPrecondition, st.Code())
 	suite.Regexp(`^Yahoo blocked the download for [A-Z]+ \(it returned a bot-check page instead of data\)\. Retry with --provider stooq\.$`, st.Message())
+}
+
+const metaISIN = "US30303M1027"
+
+// Yahoo has no bars under FB. The ISIN's current ticker (META) still has the
+// history, including dates before the rename. Download must fetch under META,
+// store those bars, record META as a later alias, and report OK for FB.
+func (suite *MarketdataTest) TestDownloadHistoricalDataUsesLaterTickerWhenAskedHasNoBars() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "ProShares Buffer ETF"}, nil)
+	suite.marketdata.On("GetAsset", "META").Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2019-06-03")),
+			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
+		},
+	}, nil)
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	var statuses []servicePb.DownloadHistoricalDataResponse_Status
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		suite.Equal("FB", msg.GetSymbol())
+		statuses = append(statuses, msg.GetStatus())
+	}
+	suite.Equal([]servicePb.DownloadHistoricalDataResponse_Status{
+		servicePb.DownloadHistoricalDataResponse_STATUS_OK,
+	}, statuses)
+
+	var metaBars, fbBars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='META'`).Scan(&metaBars))
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='FB'`).Scan(&fbBars))
+	suite.Equal(1, metaBars, "bars must be stored under META")
+	suite.Zero(fbBars, "Yahoo serves no FB bars")
+
+	aliases, err := instruments.ListAliases(ctx, metaISIN)
+	suite.Require().NoError(err)
+	symbols := make([]string, 0, len(aliases))
+	for _, a := range aliases {
+		symbols = append(symbols, a.Symbol)
+	}
+	suite.Contains(symbols, "META")
+	suite.Contains(symbols, "FB")
+}
+
+func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol META: Data doesn't exist")).Maybe()
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+}
+
+func mustTime(day string) time.Time {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }
