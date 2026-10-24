@@ -230,9 +230,10 @@ Session secrets are kept in the broker process. Run one broker replica. A
 second replica does not have the map and refuses a session it did not mint.
 
 CLI tokens last until they are revoked. `expires_at` is checked and mint does
-not set it. `account rotate` replaces the password hash and leaves browser
-sessions and tokens in place. Revoke those separately when a password was
-stolen. Behind TLS, set `AUTH_COOKIE_SECURE=true`. The chart does not set it.
+not set it. `account rotate` replaces the password hash and deletes that
+account's browser sessions. It has no current session to keep. API tokens
+stay until they are revoked, so a forgotten password does not remove the
+Grafana token. Behind TLS, set `AUTH_COOKIE_SECURE=true`. The chart does not set it.
 Broker gRPC is plaintext, so a token or session secret on a `broker_address`
 you do not trust can be read on the path. Do not publish `50055` or `8080`
 beyond that network.

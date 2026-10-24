@@ -6,9 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 )
 
 func TestCreateEditorHashesAndRotateKeepsRole(t *testing.T) {
+	t.Setenv(environment.AuthEnabled, "true")
 	pool := newAuthDB(t)
 	ctx := context.Background()
 	require.NoError(t, Migrate(ctx, pool))
@@ -87,6 +90,10 @@ func TestCreateEditorHashesAndRotateKeepsRole(t *testing.T) {
 		VALUES ('session-1', $1, $2, now() + interval '1 hour')`, id, []byte{1, 2, 3})
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
+		INSERT INTO browser_session (id, account_id, secret_hash, expires_at)
+		VALUES ('other-user', $1, $2, now() + interval '1 hour')`, otherID, []byte{9})
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
 		INSERT INTO api_token (account_id, token_hash, hint, name)
 		VALUES ($1, $2, 'fb_abc123', 'laptop')`, id, []byte{4, 5, 6})
 	require.NoError(t, err)
@@ -99,10 +106,14 @@ func TestCreateEditorHashesAndRotateKeepsRole(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "viewer", role)
 
-	var sessionOpen, tokenOpen bool
-	err = pool.QueryRow(ctx, `SELECT revoked_at IS NULL FROM browser_session WHERE id = 'session-1'`).Scan(&sessionOpen)
+	var sessions int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM browser_session WHERE account_id = $1`, id).Scan(&sessions)
 	require.NoError(t, err)
-	require.True(t, sessionOpen)
+	require.Zero(t, sessions)
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM browser_session WHERE id = 'other-user'`).Scan(&sessions)
+	require.NoError(t, err)
+	require.Equal(t, 1, sessions)
+	var tokenOpen bool
 	err = pool.QueryRow(ctx, `SELECT revoked_at IS NULL FROM api_token WHERE account_id = $1`, id).Scan(&tokenOpen)
 	require.NoError(t, err)
 	require.True(t, tokenOpen)

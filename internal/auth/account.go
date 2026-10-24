@@ -99,7 +99,9 @@ func CreateEditor(ctx context.Context, db DB, username, password string) (string
 }
 
 // RotatePassword replaces password_hash for username. It does not change
-// role and it does not set revoked_at on sessions or tokens.
+// role and it does not revoke API tokens. The caller has no browser session,
+// so every browser_session row for the account is deleted in the same
+// transaction as the hash update.
 func RotatePassword(ctx context.Context, db DB, username, password string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -147,6 +149,9 @@ func RotatePassword(ctx context.Context, db DB, username, password string) (stri
 	}
 	if err != nil {
 		return "", fmt.Errorf("update password: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM browser_session WHERE account_id = $1`, updated); err != nil {
+		return "", fmt.Errorf("revoke sessions: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
