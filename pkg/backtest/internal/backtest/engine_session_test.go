@@ -231,6 +231,32 @@ func TestRunBacktestSymbolListPassesEnabledPeriodAssets(t *testing.T) {
 	drain(t, ch)
 }
 
+func TestRunBacktestStopsWhenTheWorkerCannotReadBars(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2023, 2, 15, 21, 0, 0, 0, time.UTC)
+	const message = "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 1}, nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(periodAt(day), nil).Once()
+	pool.On("Process", mock.Anything, day, []string{"AAPL", "MSFT"}, mock.Anything).
+		Return(nil, errors.New(message)).Once()
+
+	session := &ZipelineSession{
+		client:    client,
+		symbolsAt: fakeMemberSymbols{},
+		backtests: fakeBacktests{backtest: demoBacktest()},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "demo"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.EqualError(t, session.RunFailure(), message)
+}
+
 func TestRunBacktestRefusesUnreadableBacktest(t *testing.T) {
 	t.Parallel()
 

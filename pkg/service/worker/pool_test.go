@@ -155,3 +155,29 @@ func (test *PoolTest) TestProcessRunsFunctionsInDefinitionOrder() {
 	test.ElementsMatch([]string{"measure_assets", "measure_assets"}, tasks[1:3])
 	test.ElementsMatch([][]string{{"AAPL"}, {"MSFT"}}, parallelSymbols)
 }
+
+func (test *PoolTest) TestProcessReturnsTheWorkerError() {
+	message := "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		return &servicePb.WorkerResponse{Error: &message}
+	}
+	pool, socket := test.startWorker(&test_helper.WorkerFunction{CB: cb, Name: "handle_data"})
+	defer socket.Close()
+	defer pool.Close()
+
+	_, err := pool.Process(context.TODO(), time.Now(), []string{"AAPL"}, &finance_pb.Portfolio{})
+	test.Require().EqualError(err, message)
+}
+
+func (test *PoolTest) TestProcessReturnsTheWorkerErrorFromAParallelFunction() {
+	message := "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		return &servicePb.WorkerResponse{Error: &message}
+	}
+	pool, socket := test.startWorker(&test_helper.WorkerFunction{CB: cb, Name: "handle_data", Parallel: true})
+	defer socket.Close()
+	defer pool.Close()
+
+	_, err := pool.Process(context.TODO(), time.Now(), []string{"AAPL", "MSFT"}, &finance_pb.Portfolio{})
+	test.Require().EqualError(err, message)
+}

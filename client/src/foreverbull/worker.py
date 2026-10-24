@@ -24,6 +24,7 @@ from foreverbull.broker.utils import database_url_for_host
 from foreverbull.broker.utils import get_engine
 from foreverbull.broker.utils import nng_hostname
 from foreverbull.broker.utils import redact_url
+from foreverbull.models.finance import worker_request_error
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
@@ -141,7 +142,7 @@ class WorkerInstance(Worker):
                 self.logger.exception("Worker request failed")
                 if request:
                     response = worker_service_pb.WorkerResponse()
-                    response.error = repr(e)
+                    response.error = worker_request_error(e)
                     context_socket.send(response.to_binary())
             finally:
                 context_socket.close()

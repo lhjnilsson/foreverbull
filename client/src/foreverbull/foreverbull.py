@@ -3,6 +3,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from multiprocessing import Event
 
+import grpc
 import pandas
 
 from foreverbull import models
@@ -73,6 +74,8 @@ class BacktestSession:
                 for message in rsp:
                     yield execution.id, message
 
+            except grpc.RpcError:
+                raise
             except Exception as e:
                 raise RuntimeError("Error running backtest") from e
             self._stub.store_result(
@@ -107,6 +110,8 @@ class TradingSession:
                     symbols=symbols,
                 )
                 rsp = self._stub.run(req)
+            except grpc.RpcError:
+                raise
             except Exception as e:
                 raise RuntimeError("Error running trading session") from e
 

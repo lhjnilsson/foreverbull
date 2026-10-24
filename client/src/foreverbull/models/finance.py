@@ -14,6 +14,7 @@ from protobuf.wkt import Struct
 from sqlalchemy import bindparam
 from sqlalchemy import engine
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from foreverbull.broker.utils import namespace_socket
 from foreverbull.exceptions import ConfigurationError
@@ -28,6 +29,11 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_se
 # pkg/finance/supplier/marketdata.go, and both must name the same provider.
 DEFAULT_PROVIDER = "yahoo"
 
+# fbull backtest run prints this as one ✖ line and exits 1. The SQL stays in the worker log.
+WORKER_MARKET_DATA_DENIED = (
+    "The worker cannot read market data. Its database role is missing permission on a market-data table."
+)
+
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
 
@@ -39,6 +45,37 @@ _STOCK_DATA_WINDOW = timedelta(days=_STOCK_DATA_LOOKBACK * 2 + 30)
 
 # Fixed condition for _resolved_bars; :since and :as_of are bound parameters.
 _STOCK_DATA_BARS = "o.time > :since AND o.time <= :as_of"
+
+
+def worker_request_error(exc: BaseException) -> str:
+    """The text a worker returns when a bar read fails.
+
+    A missing SELECT is one sentence. The database error and the SQL stay out of it.
+    """
+    if _market_data_permission_denied(exc):
+        return WORKER_MARKET_DATA_DENIED
+    return repr(exc)
+
+
+def _market_data_permission_denied(exc: BaseException) -> bool:
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, DBAPIError):
+            orig = getattr(current, "orig", None)
+            if _sqlstate(orig) == "42501" or (orig is not None and "permission denied" in str(orig).lower()):
+                return True
+        current = current.__cause__
+    return False
+
+
+def _sqlstate(orig: object) -> str:
+    for name in ("sqlstate", "pgcode"):
+        value = getattr(orig, name, None)
+        if isinstance(value, str) and value != "":
+            return value
+    return ""
 
 
 def ohlc_provider() -> str:
