@@ -216,8 +216,8 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 }
 
 // workerResponseError is the worker's own failure. The text is already the
-// message a caller should show. A database permission failure is one sentence
-// with no SQL.
+// sentence a caller should show. A market-data permission failure is the
+// install-bug sentence, with no SQL. The CLI adds the backtest name.
 func workerResponseError(response *servicePb.WorkerResponse) error {
 	if response == nil {
 		return nil

@@ -14,6 +14,8 @@ from foreverbull_cli.output import execution_link
 from protobuf.wkt import Timestamp
 from typer.testing import CliRunner
 
+from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
+from foreverbull.models.finance import market_data_denied_line
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb
@@ -283,6 +285,25 @@ def test_strategy_experiment_backtest_without_data_fails_with_one_line(monkeypat
     assert f"✖ {_NO_DATA}" in " ".join(result.stdout.split())
     assert "run experiment:" not in result.stdout
     assert "auto-ingest" not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_strategy_experiment_permission_denied_uses_the_backtest_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    wrapped = "run execution: rpc error: code = FailedPrecondition desc = " + WORKER_MARKET_DATA_DENIED
+    with patch("foreverbull.broker.strategy.create_experiment") as mock_create:
+        mock_create.return_value = _experiment_stream_failing(wrapped)
+        result = CliRunner().invoke(strategy, ["experiment", "mean-rev", "--backtest", "spy", "--rev", "1"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert f"✖ {market_data_denied_line('spy')}" in " ".join(result.stdout.split())
+    assert "run experiment:" not in result.stdout
+    assert "run execution:" not in result.stdout
+    assert "SQLAlchemy" not in result.stdout
+    assert "worker" not in result.stdout.lower()
+    assert "database" not in result.stdout.lower()
+    assert "table" not in result.stdout.lower()
     assert "Traceback" not in result.stdout
 
 

@@ -2,6 +2,7 @@ import logging
 
 from typing import Annotated
 
+import grpc
 import typer
 
 from rich.table import Table
@@ -9,7 +10,11 @@ from rich.table import Table
 from foreverbull import broker
 from foreverbull import models
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
+from foreverbull.models.finance import market_data_denied_line
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull_cli.bull.backtest import _fail
+from foreverbull_cli.bull.backtest import _rpc_details
 from foreverbull_cli.bull.backtest import get_backtest_or_fail
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
@@ -157,19 +162,29 @@ def run(
     book = portfolio.portfolio
     held = list(book.positions) if book is not None else []
 
+    denied: str | None = None
     with LiveProgress() as progress:
         has_run = False
         for msg in broker.finance.create_session(symbols):
             progress.update_from_message(msg)
             trading_session = msg.session
             if trading_session is not None and trading_session.port and not has_run:
-                with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(
-                    trading_session,
-                    session_secret=msg.session_secret,
-                ) as session:
-                    orders, place_orders = session.run_trading(symbols)
-                    has_run = True
-                    _print_orders_table(held, orders)
-                    if not yes and not progress.confirm("Place these orders?", default=False):
-                        return
-                    place_orders(orders)
+                try:
+                    with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(
+                        trading_session,
+                        session_secret=msg.session_secret,
+                    ) as session:
+                        orders, place_orders = session.run_trading(symbols)
+                        has_run = True
+                        _print_orders_table(held, orders)
+                        if not yes and not progress.confirm("Place these orders?", default=False):
+                            return
+                        place_orders(orders)
+                except grpc.RpcError as exc:
+                    details = _rpc_details(exc)
+                    if WORKER_MARKET_DATA_DENIED not in details:
+                        raise
+                    denied = market_data_denied_line(backtest_name)
+                    progress.transient = True
+    if denied is not None:
+        _fail(denied)

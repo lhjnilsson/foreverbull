@@ -21,6 +21,7 @@ from foreverbull import models
 from foreverbull.broker.utils import redact_text
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.models.finance import DEFAULT_PROVIDER
+from foreverbull.models.finance import present_market_data_failure
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
@@ -706,7 +707,7 @@ def run(
                     progress.transient = True
 
     if rejected is not None:
-        _fail(rejected)
+        _fail(present_market_data_failure(rejected, name))
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
     _, periods = broker.backtest.get_execution(execution_id)

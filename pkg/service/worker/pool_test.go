@@ -157,7 +157,7 @@ func (test *PoolTest) TestProcessRunsFunctionsInDefinitionOrder() {
 }
 
 func (test *PoolTest) TestProcessReturnsTheWorkerError() {
-	message := "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	message := "Couldn't run backtest: the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."
 	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 		return &servicePb.WorkerResponse{Error: &message}
 	}
@@ -170,7 +170,7 @@ func (test *PoolTest) TestProcessReturnsTheWorkerError() {
 }
 
 func (test *PoolTest) TestProcessReturnsTheWorkerErrorFromAParallelFunction() {
-	message := "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	message := "Couldn't run backtest: the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."
 	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 		return &servicePb.WorkerResponse{Error: &message}
 	}

@@ -29,10 +29,34 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_se
 # pkg/finance/supplier/marketdata.go, and both must name the same provider.
 DEFAULT_PROVIDER = "yahoo"
 
-# fbull backtest run prints this as one ✖ line and exits 1. The SQL stays in the worker log.
-WORKER_MARKET_DATA_DENIED = (
-    "The worker cannot read market data. Its database role is missing permission on a market-data table."
+# The clause after the colon. The SQL stays in the worker log.
+_MARKET_DATA_DENIED_DETAIL = (
+    "the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."
 )
+
+
+def market_data_denied_line(name: str | None = None) -> str:
+    """The one ✖ line for a market-data permission failure.
+
+    Pass the backtest name when the command already has it. An empty name
+    leaves the quotes out.
+    """
+    shown = "" if name is None else str(name).strip()
+    if shown:
+        return f"Couldn't run backtest '{shown}': {_MARKET_DATA_DENIED_DETAIL}"
+    return f"Couldn't run backtest: {_MARKET_DATA_DENIED_DETAIL}"
+
+
+# What a bar read returns. The CLI adds the backtest name when it prints this.
+WORKER_MARKET_DATA_DENIED = market_data_denied_line()
+
+
+def present_market_data_failure(message: str, name: str | None = None) -> str:
+    """The printed line when message is this permission failure, including a wrapped one."""
+    if WORKER_MARKET_DATA_DENIED in message:
+        return market_data_denied_line(name)
+    return message
+
 
 # One trading year of daily bars is enough for SMA/RSI/MACD without a full-history dump.
 _STOCK_DATA_LOOKBACK = 252
@@ -48,9 +72,9 @@ _STOCK_DATA_BARS = "o.time > :since AND o.time <= :as_of"
 
 
 def worker_request_error(exc: BaseException) -> str:
-    """The text a worker returns when a bar read fails.
+    """The text a bar read returns when it fails.
 
-    A missing SELECT is one sentence. The database error and the SQL stay out of it.
+    A missing SELECT is the install-bug sentence. The database error and the SQL stay out of it.
     """
     if _market_data_permission_denied(exc):
         return WORKER_MARKET_DATA_DENIED

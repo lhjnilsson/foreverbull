@@ -235,7 +235,7 @@ func TestRunBacktestStopsWhenTheWorkerCannotReadBars(t *testing.T) {
 	t.Parallel()
 
 	day := time.Date(2023, 2, 15, 21, 0, 0, 0, time.UTC)
-	const message = "The worker cannot read market data. Its database role is missing permission on a market-data table."
+	const message = "Couldn't run backtest: the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."
 	client := servicePb.NewMockEngineSessionClient(t)
 	pool := worker.NewMockPool(t)
 	client.On("RunBacktest", mock.Anything, mock.Anything).
