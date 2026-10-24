@@ -1,9 +1,10 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Link, Navigate, Outlet, useMatch, useNavigate, useOutletContext } from "react-router-dom";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, LoaderCircle } from "lucide-react";
 import { canCreate } from "../access";
 import { Grants } from "../auth";
 import { useAuth } from "../auth-context";
+import { EquityChart } from "../components/equity-chart";
 import {
   Detail,
   DetailHeading,
@@ -12,12 +13,14 @@ import {
   FormError,
   H2,
   ListPane,
+  Modal,
   buttonClass,
   fmtDate,
   inputClass,
   rowActive,
   rowClass,
 } from "../components/fb";
+import { lastStoredPeriod, portfolioSeries } from "../equity";
 import type { Backtest, Execution, ExecutionResult, GetExecution } from "../types";
 import { postJson, useJson, type Load } from "../useJson";
 
@@ -202,7 +205,12 @@ export function BacktestDetail() {
       ) : null}
       <ul>
         {runs.map((execution) => (
-          <ExecutionRow key={execution.id} execution={execution} revision={execRevision} />
+          <ExecutionRow
+            key={execution.id}
+            execution={execution}
+            revision={execRevision}
+            benchmark={b.benchmark ?? ""}
+          />
         ))}
       </ul>
       {canCreate(state.status, state.status === "in" ? state.account.role : undefined) ? (
@@ -213,23 +221,32 @@ export function BacktestDetail() {
   );
 }
 
-function ExecutionRow({ execution, revision }: { execution: Execution; revision: number }) {
+function grafanaHref(id: string): string {
+  return `/d/ee9ep4jxtwkcgf?var-execution=${encodeURIComponent(id)}`;
+}
+
+function ExecutionRow({
+  execution,
+  revision,
+  benchmark,
+}: {
+  execution: Execution;
+  revision: number;
+  benchmark: string;
+}) {
   const id = execution.id ?? "";
   const detail = useJson<GetExecution>(id ? `/api/executions/${encodeURIComponent(id)}` : null, revision);
   const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
-  const fromGet = periods.length > 0;
+  const fromGet = lastStoredPeriod(periods) !== undefined;
   const fromList = listHasResult(execution);
   const stored = fromGet || fromList;
   const settled = fromList || detail.state === "ready" || detail.state === "error";
   const status = stored ? "stored" : settled ? "no result" : "";
-  const source: ExecutionResult | undefined = fromGet
-    ? periods[periods.length - 1]
-    : fromList
-      ? execution.result
-      : undefined;
+  const source: ExecutionResult | undefined = fromGet ? lastStoredPeriod(periods) : fromList ? execution.result : undefined;
   const sharpe = source?.sharpe;
   const drawdown = source?.maxDrawdown;
   const endValue = source?.endingValue;
+  const [open, setOpen] = useState(false);
 
   return (
     <li className="animate-enter border-b py-3 font-mono text-[13px]">
@@ -240,13 +257,15 @@ function ExecutionRow({ execution, revision }: { execution: Execution; revision:
           {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
         </span>
         {id ? (
-          <a
-            href={`/d/ee9ep4jxtwkcgf?var-execution=${encodeURIComponent(id)}`}
-            className="ml-auto inline-flex items-center gap-1 text-primary"
-          >
-            Open the run.
-            <ArrowUpRight size={14} aria-hidden />
-          </a>
+          <span className="ml-auto inline-flex items-center gap-4">
+            <button type="button" className="text-primary" onClick={() => setOpen(true)}>
+              Portfolio
+            </button>
+            <a href={grafanaHref(id)} className="inline-flex items-center gap-1 text-primary">
+              Open the run.
+              <ArrowUpRight size={14} aria-hidden />
+            </a>
+          </span>
         ) : null}
       </div>
       {stored && (typeof sharpe === "number" || typeof drawdown === "number" || typeof endValue === "number") ? (
@@ -256,7 +275,90 @@ function ExecutionRow({ execution, revision }: { execution: Execution; revision:
           {typeof endValue === "number" ? <span>end value {num(endValue)}</span> : null}
         </div>
       ) : null}
+      <Modal open={open} onClose={() => setOpen(false)} title={id ? `Run ${id}` : "Run"} wide>
+        <RunReport execution={execution} detail={detail} benchmark={benchmark} stored={stored} status={status} />
+      </Modal>
     </li>
+  );
+}
+
+function RunReport({
+  execution,
+  detail,
+  benchmark,
+  stored,
+  status,
+}: {
+  execution: Execution;
+  detail: Load<GetExecution>;
+  benchmark: string;
+  stored: boolean;
+  status: string;
+}) {
+  const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
+  const points = portfolioSeries(periods);
+  const last = lastStoredPeriod(periods) ?? (stored ? execution.result : undefined);
+  const id = execution.id ?? "";
+  // benchmark_period_return is a fraction. It stays off the portfolio-value axis.
+  const benchmarkReturn = last?.benchmarkPeriodReturn;
+
+  return (
+    <div className="grid gap-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <dl className="min-w-0 flex-1">
+          <Field label="Execution">{execution.id || "—"}</Field>
+          <Field label="Backtest">{execution.backtest || "—"}</Field>
+          <Field label="Session">{execution.session || "—"}</Field>
+          <Field label="Period">
+            {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
+          </Field>
+          <Field label="Status">
+            <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status || "—"}</span>
+          </Field>
+        </dl>
+        {id ? (
+          <a href={grafanaHref(id)} className="inline-flex items-center gap-1 text-primary">
+            Open the run.
+            <ArrowUpRight size={14} aria-hidden />
+          </a>
+        ) : null}
+      </div>
+      {last ? (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5 border-y py-6 md:grid-cols-4">
+          {typeof last.sharpe === "number" ? <Metric label="Sharpe" value={last.sharpe.toFixed(2)} /> : null}
+          {typeof last.maxDrawdown === "number" ? <Metric label="Max drawdown" value={pct(last.maxDrawdown)} /> : null}
+          {typeof last.portfolioValue === "number" ? <Metric label="Portfolio value" value={num(last.portfolioValue)} /> : null}
+          {typeof last.endingValue === "number" ? <Metric label="End value" value={num(last.endingValue)} /> : null}
+          {typeof benchmarkReturn === "number" ? (
+            <Metric label={benchmark || "Benchmark"} value={pct(benchmarkReturn)} />
+          ) : null}
+        </div>
+      ) : detail.state === "loading" ? null : (
+        <p className="text-muted-foreground">No result stored for this run.</p>
+      )}
+      {detail.state === "loading" ? (
+        <p className="flex items-center gap-2 text-muted-foreground">
+          <LoaderCircle className="animate-spin motion-reduce:animate-none" size={16} aria-hidden />
+          Loading the stored series.
+        </p>
+      ) : null}
+      {detail.state === "error" && detail.message ? <p className="text-muted-foreground">{detail.message}</p> : null}
+      {points.length >= 2 ? (
+        <div>
+          <h3 className="mb-5 font-medium">Portfolio value</h3>
+          <EquityChart points={points} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="py-1">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-2 font-mono text-2xl font-medium">{value}</div>
+    </div>
   );
 }
 
