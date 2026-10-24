@@ -311,6 +311,7 @@ Bars stay on the ticker the provider stores them under, and the reader picks the
 - **Zipline bundle.** `SQLIngester` builds one sid per ISIN alias by alias. Inside an alias's `asset_symbol` dates its own bars win, and a session without one takes the bar another ticker of the ISIN has. The first alias reaches back to the backtest start and the last one forward to its end.
 - **User code.** `Asset.stock_data`, `Assets` and the close `Portfolio.order_value` uses resolve the ticker to the ISIN that holds it on the read date. On each bar time the ticker whose dates cover it wins, then the asked ticker, then another ticker of the ISIN. The frame keeps the asked ticker. A ticker with no `asset_symbol` row reads only its own bars.
 - **Positions.** A held position is named by the ticker that started last on or before the session, so it reads FB before the rename and META from it, as the universe does. Zipline itself names an asset by its latest ticker.
+- **Orders.** An order placed by ticker resolves to the ISIN that holds that ticker on the session the order is placed in, not on the backtest's last session. A ticker later reused by another ISIN still fills on the earlier asset.
 
 ## 8. Zipline `auto_close_date`
 
