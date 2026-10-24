@@ -255,10 +255,21 @@ func roleAllowsMethod(account auth.Account, fullMethod string) error {
 	if account.Role == auth.RoleNone || account.Role == auth.RolePending {
 		return status.Error(codes.PermissionDenied, "forbidden")
 	}
-	if account.Role == auth.RoleViewer && !viewerMayCall(fullMethod) {
+	if account.Role != auth.RoleViewer && account.Role != auth.RoleEditor && account.Role != auth.RoleAdmin {
 		return status.Error(codes.PermissionDenied, "forbidden")
 	}
-	if account.Role != auth.RoleViewer && account.Role != auth.RoleEditor && account.Role != auth.RoleAdmin {
+	// A read token may call only the viewer methods. An empty scope is a
+	// browser session and follows the role. A write token follows the role.
+	switch account.Scope {
+	case "", auth.ScopeWrite:
+		if account.Role == auth.RoleViewer && !viewerMayCall(fullMethod) {
+			return status.Error(codes.PermissionDenied, "forbidden")
+		}
+	case auth.ScopeRead:
+		if !viewerMayCall(fullMethod) {
+			return status.Error(codes.PermissionDenied, "forbidden")
+		}
+	default:
 		return status.Error(codes.PermissionDenied, "forbidden")
 	}
 	return nil

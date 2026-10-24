@@ -21,6 +21,11 @@ const (
 	LevelViewer = "viewer"
 	LevelEditor = "editor"
 
+	// ScopeRead may call only the read RPCs. ScopeWrite follows the role.
+	// An empty scope is a browser session, not a token.
+	ScopeRead  = "read"
+	ScopeWrite = "write"
+
 	DomainService  = "service"
 	DomainBacktest = "backtest"
 	DomainStrategy = "strategy"
@@ -33,9 +38,11 @@ type DB interface {
 }
 
 // Account is a password login row. Role is whatever SQL stored.
+// Scope is set for a bearer token. A browser session leaves it empty.
 type Account struct {
-	ID   string
-	Role string
+	ID    string
+	Role  string
+	Scope string
 }
 
 // CreateEditor inserts role editor and a password hash in one transaction.

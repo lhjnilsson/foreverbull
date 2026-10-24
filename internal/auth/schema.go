@@ -46,10 +46,12 @@ CREATE TABLE IF NOT EXISTS api_token (
 	token_hash bytea NOT NULL UNIQUE,
 	hint text NOT NULL,
 	name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 64),
+	scope text NOT NULL DEFAULT 'write',
 	created_at timestamptz NOT NULL DEFAULT now(),
 	last_used_at timestamptz,
 	expires_at timestamptz,
-	revoked_at timestamptz
+	revoked_at timestamptz,
+	CONSTRAINT api_token_scope_check CHECK (scope IN ('read', 'write'))
 )`
 
 const oauthStateTable = `
@@ -72,6 +74,20 @@ CREATE TABLE IF NOT EXISTS domain_grant (
 	created_at timestamptz NOT NULL DEFAULT now(),
 	PRIMARY KEY (domain_kind, domain_id, grantee_id)
 )`
+
+const apiTokenScopeColumn = `
+ALTER TABLE api_token ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'write'`
+
+const apiTokenScopeCheck = `
+DO $$
+BEGIN
+	ALTER TABLE api_token
+		ADD CONSTRAINT api_token_scope_check CHECK (scope IN ('read', 'write'));
+EXCEPTION
+	WHEN duplicate_object THEN
+		NULL;
+END
+$$`
 
 const (
 	apiTokenAccountIndex       = `CREATE INDEX IF NOT EXISTS api_token_account_id_idx ON api_token (account_id)`
@@ -115,6 +131,8 @@ func Migrate(ctx context.Context, conn postgres.Query) error {
 		{"account_github", accountGitHubTable},
 		{"browser_session", browserSessionTable},
 		{"api_token", apiTokenTable},
+		{"api_token_scope", apiTokenScopeColumn},
+		{"api_token_scope_check", apiTokenScopeCheck},
 		{"oauth_state", oauthStateTable},
 		{"oauth_state_verifier", oauthStateVerifier},
 		{"domain_grant", domainGrantTable},

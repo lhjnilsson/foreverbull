@@ -132,7 +132,8 @@ func (t bearerToken) GetRequestMetadata(context.Context, ...string) (map[string]
 	return map[string]string{"authorization": "Bearer " + string(t)}, nil
 }
 
-// The broker listener is plaintext. The bearer is still sent.
+// The in-cluster broker listener is plaintext. Grafana's NetworkPolicy
+// allows only DNS and that gRPC port. The bearer is still sent.
 func (bearerToken) RequireTransportSecurity() bool { return false }
 
 func dialBroker(address string, extra ...grpc.DialOption) (*grpc.ClientConn, error) {

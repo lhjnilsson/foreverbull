@@ -246,13 +246,14 @@ func (h *handlers) mintToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Scope string `json:"scope"`
 	}
 	if err := web.ReadJSON(r, &body); err != nil {
 		web.BadRequest(w)
 		return
 	}
-	minted, err := MintToken(r.Context(), h.db, account, body.Name)
+	minted, err := MintToken(r.Context(), h.db, account, body.Name, body.Scope)
 	if err != nil {
 		WriteHTTP(w, err)
 		return
@@ -261,6 +262,7 @@ func (h *handlers) mintToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"id":    minted.ID,
 		"name":  minted.Name,
+		"scope": minted.Scope,
 		"token": minted.Secret,
 		"hint":  minted.Hint,
 	})
@@ -280,6 +282,7 @@ func (h *handlers) listTokens(w http.ResponseWriter, r *http.Request) {
 	type item struct {
 		ID         string  `json:"id"`
 		Name       string  `json:"name"`
+		Scope      string  `json:"scope"`
 		Hint       string  `json:"hint"`
 		CreatedAt  string  `json:"created_at"`
 		LastUsedAt *string `json:"last_used_at"`
@@ -290,6 +293,7 @@ func (h *handlers) listTokens(w http.ResponseWriter, r *http.Request) {
 		row := item{
 			ID:        token.ID,
 			Name:      token.Name,
+			Scope:     token.Scope,
 			Hint:      token.Hint,
 			CreatedAt: formatTime(token.CreatedAt),
 		}

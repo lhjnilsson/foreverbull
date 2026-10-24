@@ -27,6 +27,7 @@ const (
 type Token struct {
 	ID         string
 	Name       string
+	Scope      string
 	Secret     string
 	Hint       string
 	CreatedAt  time.Time
@@ -35,7 +36,8 @@ type Token struct {
 }
 
 // MintToken stores SHA-256 of the full token string. The secret is returned once.
-func MintToken(ctx context.Context, db postgres.Query, account Account, name string) (Token, error) {
+// An empty scope is write. Viewers cannot mint, including a read token.
+func MintToken(ctx context.Context, db postgres.Query, account Account, name, scope string) (Token, error) {
 	if account.Role != RoleEditor && account.Role != RoleAdmin {
 		return Token{}, ErrForbidden
 	}
@@ -46,8 +48,12 @@ func MintToken(ctx context.Context, db postgres.Query, account Account, name str
 	if name == "" || len(name) > tokenNameMax {
 		return Token{}, ErrBadRequest
 	}
+	scope, err := tokenScope(scope)
+	if err != nil {
+		return Token{}, err
+	}
 	raw := make([]byte, tokenSecretLen)
-	if _, err := rand.Read(raw); err != nil {
+	if _, err = rand.Read(raw); err != nil {
 		return Token{}, fmt.Errorf("token secret: %w", err)
 	}
 	secret := tokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
@@ -59,17 +65,29 @@ func MintToken(ctx context.Context, db postgres.Query, account Account, name str
 	}
 	sum := sha256.Sum256([]byte(secret))
 	var minted Token
-	err := db.QueryRow(ctx, `
-		INSERT INTO api_token (account_id, token_hash, hint, name)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at`, account.ID, sum[:], secret[:tokenHintLen], name).Scan(&minted.ID, &minted.CreatedAt)
+	err = db.QueryRow(ctx, `
+		INSERT INTO api_token (account_id, token_hash, hint, name, scope)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at`, account.ID, sum[:], secret[:tokenHintLen], name, scope).Scan(&minted.ID, &minted.CreatedAt)
 	if err != nil {
 		return Token{}, fmt.Errorf("insert token: %w", err)
 	}
 	minted.Name = name
+	minted.Scope = scope
 	minted.Secret = secret
 	minted.Hint = secret[:tokenHintLen]
 	return minted, nil
+}
+
+func tokenScope(scope string) (string, error) {
+	switch strings.TrimSpace(scope) {
+	case "", ScopeWrite:
+		return ScopeWrite, nil
+	case ScopeRead:
+		return ScopeRead, nil
+	default:
+		return "", ErrBadRequest
+	}
 }
 
 // ListTokens returns the caller's tokens without the secret.
@@ -81,7 +99,7 @@ func ListTokens(ctx context.Context, db postgres.Query, account Account) ([]Toke
 		return nil, errors.New("token account is empty")
 	}
 	rows, err := db.Query(ctx, `
-		SELECT id, name, hint, created_at, last_used_at, revoked_at
+		SELECT id, name, scope, hint, created_at, last_used_at, revoked_at
 		FROM api_token
 		WHERE account_id = $1
 		ORDER BY created_at ASC`, account.ID)
@@ -92,7 +110,10 @@ func ListTokens(ctx context.Context, db postgres.Query, account Account) ([]Toke
 	out := []Token{}
 	for rows.Next() {
 		var token Token
-		if err := rows.Scan(&token.ID, &token.Name, &token.Hint, &token.CreatedAt, &token.LastUsedAt, &token.RevokedAt); err != nil {
+		if err := rows.Scan(
+			&token.ID, &token.Name, &token.Scope, &token.Hint,
+			&token.CreatedAt, &token.LastUsedAt, &token.RevokedAt,
+		); err != nil {
 			return nil, fmt.Errorf("scan token: %w", err)
 		}
 		out = append(out, token)
@@ -139,18 +160,19 @@ func AccountFromBearer(ctx context.Context, db postgres.Query, token string, now
 		expires *time.Time
 	)
 	err := db.QueryRow(ctx, `
-		SELECT a.id, a.role, t.id, t.revoked_at, t.expires_at
+		SELECT a.id, a.role, t.scope, t.id, t.revoked_at, t.expires_at
 		FROM api_token AS t
 		JOIN account AS a ON a.id = t.account_id
 		WHERE t.token_hash = $1
-		  AND (t.expires_at IS NULL OR t.expires_at > $2)`, sum[:], now).Scan(&account.ID, &account.Role, &tokenID, &revoked, &expires)
+		  AND (t.expires_at IS NULL OR t.expires_at > $2)`, sum[:], now).Scan(
+		&account.ID, &account.Role, &account.Scope, &tokenID, &revoked, &expires)
 	if errors.Is(err, pgx.ErrNoRows) || revoked != nil || (expires != nil && !expires.After(now)) {
 		return Account{}, ErrUnauthorized
 	}
 	if err != nil {
 		return Account{}, fmt.Errorf("lookup token: %w", err)
 	}
-	if !knownRole(account.Role) {
+	if !knownRole(account.Role) || (account.Scope != ScopeRead && account.Scope != ScopeWrite) {
 		return Account{}, ErrUnauthorized
 	}
 	_, _ = db.Exec(ctx, `

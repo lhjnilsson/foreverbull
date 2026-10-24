@@ -104,7 +104,7 @@ uv run fbull token save --force
 
 `token save` reads stdin and writes `~/.foreverbull/token` with mode `0600`. It does not take the token as an argument. If the file already exists, the command refuses unless `--force` is passed. A mode looser than `0600` is refused. The error prints the path, not the contents.
 
-When the broker has authentication on, set `GRAFANA_BROKER_TOKEN` on the Grafana deployment from a Secret you create. The chart does not generate that token and does not ship a default. Prefer a token minted by an editor. A token minted by the admin shows every row. A viewer cannot mint a token. Leave `GRAFANA_BROKER_TOKEN` unset while `AUTH_ENABLED` is false: the plugin then dials with no metadata. Do not put the user bearer or the session secret on a worker pod. `fbenv` does not set `AUTH_ENABLED`.
+When the broker has authentication on, set `GRAFANA_BROKER_TOKEN` on the Grafana deployment from a Secret you create. The chart does not generate that token and does not ship a default. Mint it as an editor with scope `read` (`{"name":"grafana","scope":"read"}` on `POST /api/auth/tokens`). A `read` token may call only the read RPCs. An omitted scope is `write`. A token minted by the admin shows every row. A viewer cannot mint a token. Leave `GRAFANA_BROKER_TOKEN` unset while `AUTH_ENABLED` is false: the plugin then dials with no metadata. Grafana reaches the broker at `foreverbull:50055` without TLS. Its NetworkPolicy allows only DNS and that port. Do not publish `50055` beyond the cluster. Do not put the user bearer or the session secret on a worker pod. `fbenv` does not set `AUTH_ENABLED`.
 
 ## Accounts
 

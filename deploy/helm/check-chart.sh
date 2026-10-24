@@ -262,7 +262,27 @@ if ! grep -q 'app.kubernetes.io/name: foreverbull' "${policy}" \
   echo "service pods must be allowed to reach the broker and Postgres" >&2
   exit 1
 fi
-rm -f "${policy}"
+grafana_policy="$(mktemp)"
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: NetworkPolicy(\n|$)/ && doc ~ /(^|\n)  name: grafana(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${first_render}" > "${grafana_policy}"
+if ! grep -q 'app.kubernetes.io/name: grafana' "${grafana_policy}" \
+  || ! grep -q 'port: 50055' "${grafana_policy}"; then
+  echo "grafana must be allowed to reach broker gRPC" >&2
+  exit 1
+fi
+if grep -E 'port: 4222|port: 9000|port: 5432|name: postgres' "${grafana_policy}"; then
+  echo "grafana must not reach NATS, MinIO, or Postgres" >&2
+  exit 1
+fi
+rm -f "${policy}" "${grafana_policy}"
 for secret_name in foreverbull-nats foreverbull-worker; do
   if ! grep -q "name: ${secret_name}$" "${first_render}"; then
     echo "chart must create Secret ${secret_name}" >&2
