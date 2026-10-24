@@ -30,8 +30,18 @@ type NATSStream struct {
 	jt nats.JetStreamContext
 }
 
+// NATSConnOptions sends the broker user when NATS_USER is set.
+// An empty user stays anonymous so unit tests and a local server keep working.
+func NATSConnOptions() []nats.Option {
+	user := environment.GetNATSUser()
+	if user == "" {
+		return nil
+	}
+	return []nats.Option{nats.UserInfo(user, environment.GetNATSPassword())}
+}
+
 func NewNATSStream() (Stream, error) {
-	natsConnect, err := nats.Connect(environment.GetNATSURL())
+	natsConnect, err := nats.Connect(environment.GetNATSURL(), NATSConnOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to nats: %w", err)
 	}

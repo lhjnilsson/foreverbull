@@ -139,8 +139,8 @@ def test_backtest_fixture_yields_broker_backtest(monkeypatch):
     entity = backtest_pb.Backtest(name="demo")
     ready = session_pb.Session(id="sess-1", backtest="demo", port=27001)
     messages = [
-        backtest_service_pb.CreateSessionResponse(),
-        backtest_service_pb.CreateSessionResponse(session=ready),
+        backtest_service_pb.CreateSessionResponse(session_secret="early-secret"),
+        backtest_service_pb.CreateSessionResponse(session=ready, session_secret="port-frame-secret"),
     ]
     calls = {"get": [], "create_session": [], "backtest_session": [], "trading_session": []}
     trading_before = os.environ.get("TRADING_ENABLED")
@@ -173,8 +173,8 @@ def test_backtest_fixture_yields_broker_backtest(monkeypatch):
         def __init__(self, model):
             self.model = model
 
-        def backtest_session(self, backtest, session, broker_hostname=None):
-            calls["backtest_session"].append((backtest, session, broker_hostname))
+        def backtest_session(self, backtest, session, broker_hostname=None, session_secret=""):
+            calls["backtest_session"].append((backtest, session, broker_hostname, session_secret))
             self.ctx = _Ctx(_Live(backtest))
             return self.ctx
 
@@ -200,11 +200,12 @@ def test_backtest_fixture_yields_broker_backtest(monkeypatch):
         assert calls["get"] == ["demo"]
         assert calls["create_session"] == ["demo"]
         assert len(calls["backtest_session"]) == 1
-        found, session, hostname = calls["backtest_session"][0]
+        found, session, hostname, secret = calls["backtest_session"][0]
         assert found.name == "demo"
         assert session.port == 27001
         assert session.id == "sess-1"
         assert hostname is None
+        assert secret == "port-frame-secret"
         assert calls["trading_session"] == []
         assert holder["fb"].model is not None
         assert os.environ.get("TRADING_ENABLED") == trading_before

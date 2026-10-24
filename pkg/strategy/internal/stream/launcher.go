@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
@@ -15,6 +17,7 @@ import (
 	service "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // ErrBacktestMissing is returned when the named backtest does not exist.
@@ -64,12 +67,10 @@ func (l *SessionLauncher) Run(ctx context.Context, in RunInput) (*RunOutput, err
 		dial = DialSession
 	}
 
-	bt, err := l.Store.GetBacktest(ctx, in.BacktestName)
+	bt, err := l.loadBacktest(ctx, in)
 	if err != nil {
-		return nil, fmt.Errorf("%w: backtest %q; create and ingest it with `fbull backtest create` — experiments do not auto-ingest: %w",
-			ErrBacktestMissing, in.BacktestName, err)
+		return nil, err
 	}
-
 	start, end := in.StartDate, in.EndDate
 	if start == nil || end == nil {
 		start, end, err = periodRange(bt)
@@ -78,21 +79,12 @@ func (l *SessionLauncher) Run(ctx context.Context, in RunInput) (*RunOutput, err
 		}
 	}
 
-	session, err := l.Store.CreateSession(ctx, in.BacktestName)
+	session, secret, err := l.openSession(ctx, in)
 	if err != nil {
-		return nil, fmt.Errorf("create backtest session: %w", err)
+		return nil, err
 	}
 
-	msg, err := backtestStream.NewSessionRunCommand(in.BacktestName, session.Id)
-	if err != nil {
-		return nil, fmt.Errorf("create session run command: %w", err)
-	}
-	if err := l.Stream.Publish(ctx, msg, stream.WaitForCompletion()); err != nil {
-		return nil, fmt.Errorf("start backtest session for %q (ingest it first with `fbull backtest create`): %w",
-			in.BacktestName, err)
-	}
-
-	session, err = l.Store.GetSession(ctx, session.Id)
+	session, err = l.Store.GetSession(ctx, session.GetId())
 	if err != nil {
 		return nil, fmt.Errorf("get backtest session: %w", err)
 	}
@@ -101,7 +93,12 @@ func (l *SessionLauncher) Run(ctx context.Context, in RunInput) (*RunOutput, err
 			in.BacktestName)
 	}
 
-	client, err := dial(ctx, session.GetPort())
+	var client SessionClient
+	if environment.GetAuthEnabled() {
+		client, err = DialSessionSecret(ctx, session.GetPort(), secret)
+	} else {
+		client, err = dial(ctx, session.GetPort())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("dial backtest session: %w", err)
 	}
@@ -138,6 +135,79 @@ func (l *SessionLauncher) Run(ctx context.Context, in RunInput) (*RunOutput, err
 	}
 
 	return out, nil
+}
+
+func (l *SessionLauncher) loadBacktest(ctx context.Context, in RunInput) (*backtestpb.Backtest, error) {
+	if environment.GetAuthEnabled() {
+		if in.BacktestID == "" {
+			return nil, errors.New("backtest id is empty")
+		}
+		reader, ok := l.Store.(interface {
+			GetBacktestByID(context.Context, string) (*backtestpb.Backtest, error)
+		})
+		if !ok {
+			return nil, errors.New("backtest id is empty")
+		}
+		bt, err := reader.GetBacktestByID(ctx, in.BacktestID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: backtest %q; create and ingest it with `fbull backtest create` — experiments do not auto-ingest: %w",
+				ErrBacktestMissing, in.BacktestName, err)
+		}
+		return bt, nil
+	}
+	bt, err := l.Store.GetBacktest(ctx, in.BacktestName)
+	if err != nil {
+		return nil, fmt.Errorf("%w: backtest %q; create and ingest it with `fbull backtest create` — experiments do not auto-ingest: %w",
+			ErrBacktestMissing, in.BacktestName, err)
+	}
+	return bt, nil
+}
+
+func (l *SessionLauncher) openSession(ctx context.Context, in RunInput) (*backtestpb.Session, string, error) {
+	if environment.GetAuthEnabled() {
+		return l.openOwnedSession(ctx, in)
+	}
+	session, err := l.Store.CreateSession(ctx, in.BacktestName)
+	if err != nil {
+		return nil, "", fmt.Errorf("create backtest session: %w", err)
+	}
+	if err := l.publishSession(ctx, in.BacktestName, session.GetId()); err != nil {
+		return nil, "", err
+	}
+	return session, "", nil
+}
+
+func (l *SessionLauncher) openOwnedSession(ctx context.Context, in RunInput) (*backtestpb.Session, string, error) {
+	creator, ok := l.Store.(interface {
+		CreateSessionFor(context.Context, string) (*backtestpb.Session, error)
+	})
+	if !ok || in.BacktestID == "" {
+		return nil, "", errors.New("backtest id is empty")
+	}
+	session, err := creator.CreateSessionFor(ctx, in.BacktestID)
+	if err != nil {
+		return nil, "", fmt.Errorf("create backtest session: %w", err)
+	}
+	secret, err := auth.MintBacktestSecret(session.GetId())
+	if err != nil {
+		return nil, "", err
+	}
+	if err := l.publishSession(ctx, in.BacktestName, session.GetId()); err != nil {
+		auth.ForgetBacktestSecret(session.GetId())
+		return nil, "", err
+	}
+	return session, secret, nil
+}
+
+func (l *SessionLauncher) publishSession(ctx context.Context, name, sessionID string) error {
+	msg, err := backtestStream.NewSessionRunCommand(name, sessionID)
+	if err != nil {
+		return fmt.Errorf("create session run command: %w", err)
+	}
+	if err := l.Stream.Publish(ctx, msg, stream.WaitForCompletion()); err != nil {
+		return fmt.Errorf("start backtest session for %q (ingest it first with `fbull backtest create`): %w", name, err)
+	}
+	return nil
 }
 
 func periodRange(bt *backtestpb.Backtest) (*common.Date, *common.Date, error) {
@@ -184,6 +254,7 @@ func dateBefore(a, b *common.Date) bool {
 type grpcSessionClient struct {
 	conn   *grpc.ClientConn
 	client servicePb.SessionServicerClient
+	secret string
 }
 
 // DialSession connects to a backtest SessionServicer on localhost:port.
@@ -201,12 +272,34 @@ func DialSession(_ context.Context, port int64) (SessionClient, error) {
 	}, nil
 }
 
+// DialSessionSecret connects to a backtest SessionServicer and sends the session secret.
+// The user bearer is not attached.
+func DialSessionSecret(ctx context.Context, port int64, secret string) (SessionClient, error) {
+	client, err := DialSession(ctx, port)
+	if err != nil {
+		return nil, err
+	}
+	secured, ok := client.(*grpcSessionClient)
+	if !ok {
+		return nil, fmt.Errorf("%s is missing", auth.SessionMetadata())
+	}
+	secured.secret = secret
+	return secured, nil
+}
+
+func (c *grpcSessionClient) withSecret(ctx context.Context) context.Context {
+	if c == nil || c.secret == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, auth.SessionMetadata(), c.secret)
+}
+
 func (c *grpcSessionClient) CreateExecution(ctx context.Context, req *servicePb.CreateExecutionRequest) (*servicePb.CreateExecutionResponse, error) {
-	return c.client.CreateExecution(ctx, req)
+	return c.client.CreateExecution(c.withSecret(ctx), req)
 }
 
 func (c *grpcSessionClient) RunExecution(ctx context.Context, executionID string) error {
-	recv, err := c.client.RunExecution(ctx, &servicePb.RunExecutionRequest{ExecutionId: executionID})
+	recv, err := c.client.RunExecution(c.withSecret(ctx), &servicePb.RunExecutionRequest{ExecutionId: executionID})
 	if err != nil {
 		return err
 	}
@@ -222,12 +315,12 @@ func (c *grpcSessionClient) RunExecution(ctx context.Context, executionID string
 }
 
 func (c *grpcSessionClient) StoreResult(ctx context.Context, executionID string) error {
-	_, err := c.client.StoreResult(ctx, &servicePb.StoreExecutionResultRequest{ExecutionId: executionID})
+	_, err := c.client.StoreResult(c.withSecret(ctx), &servicePb.StoreExecutionResultRequest{ExecutionId: executionID})
 	return err
 }
 
 func (c *grpcSessionClient) Close(ctx context.Context) error {
-	_, stopErr := c.client.StopServer(ctx, &servicePb.StopServerRequest{})
+	_, stopErr := c.client.StopServer(c.withSecret(ctx), &servicePb.StopServerRequest{})
 	closeErr := c.conn.Close()
 	if stopErr != nil {
 		return stopErr

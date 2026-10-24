@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -157,6 +158,36 @@ func (s *MinioStorage) ListObjects(ctx context.Context, bucket Bucket) (*[]Objec
 	}
 
 	return &results, nil
+}
+
+// IngestionReadable reports whether the ingestions object can be read.
+// A missing key is false. Other storage errors are returned.
+func (s *MinioStorage) IngestionReadable(ctx context.Context, key string) (bool, error) {
+	_, err := s.client.StatObject(ctx, string(IngestionsBucket), key, minio.StatObjectOptions{})
+	if err == nil {
+		return true, nil
+	}
+	resp := minio.ToErrorResponse(err)
+	if resp.Code == "NoSuchKey" || resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	return false, fmt.Errorf("%s: %w", IngestionsBucket, err)
+}
+
+// CopyIngestion copies one ingestions object onto another key.
+// The source key is left in place.
+func (s *MinioStorage) CopyIngestion(ctx context.Context, fromKey, toKey string) error {
+	_, err := s.client.CopyObject(ctx, minio.CopyDestOptions{
+		Bucket: string(IngestionsBucket),
+		Object: toKey,
+	}, minio.CopySrcOptions{
+		Bucket: string(IngestionsBucket),
+		Object: fromKey,
+	})
+	if err != nil {
+		return fmt.Errorf("%s: copy %s to %s: %w", IngestionsBucket, fromKey, toKey, err)
+	}
+	return nil
 }
 
 func (s *MinioStorage) GetObject(ctx context.Context, bucket Bucket, name string) (*Object, error) {

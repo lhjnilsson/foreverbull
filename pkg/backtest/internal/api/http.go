@@ -62,7 +62,10 @@ func (h backtestRoutes) get(w http.ResponseWriter, r *http.Request) {
 		web.NotFound(w)
 		return
 	}
-	resp, err := h.api.GetBacktest(r.Context(), &servicePb.GetBacktestRequest{Name: name})
+	resp, err := h.api.GetBacktest(r.Context(), &servicePb.GetBacktestRequest{
+		Name:  name,
+		Owner: r.URL.Query().Get("owner"),
+	})
 	if err != nil {
 		web.WriteError(w, err)
 		return
@@ -111,7 +114,10 @@ func (h backtestRoutes) executions(w http.ResponseWriter, r *http.Request) {
 		web.NotFound(w)
 		return
 	}
-	resp, err := h.api.ListExecutions(r.Context(), &servicePb.ListExecutionsRequest{Backtest: name})
+	resp, err := h.api.ListExecutions(r.Context(), &servicePb.ListExecutionsRequest{
+		Backtest: name,
+		Owner:    r.URL.Query().Get("owner"),
+	})
 	if err != nil {
 		web.WriteError(w, err)
 		return

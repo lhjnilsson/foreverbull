@@ -33,6 +33,8 @@ message CreateSessionResponse {
   foreverbull.common.Step FINISHING = 4;
 
   foreverbull.finance.v1.Session session = 5;
+  // Set on frames whose session has a port, and only when authentication is on.
+  string session_secret = 6;
 }
 
 service TradingServicer {

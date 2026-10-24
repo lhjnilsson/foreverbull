@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -34,6 +37,21 @@ const experimentBacktestForeignKey = "strategy_experiment_backtest_name_fkey"
 // MigrateExperimentBacktest references strategy_experiment.backtest_name to backtest(name).
 // A row whose backtest is missing stays. Calling it twice is safe.
 func MigrateExperimentBacktest(ctx context.Context, conn postgres.Query) error {
+	hasName, err := auth.ColumnExists(ctx, conn, "strategy_experiment", "backtest_name")
+	if err != nil {
+		return err
+	}
+	if !hasName {
+		return nil
+	}
+	idRef, err := experimentReferencesBacktestID(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if idRef {
+		return nil
+	}
+
 	exists, err := strategyConstraintExists(ctx, conn, "strategy_experiment", experimentBacktestForeignKey)
 	if err != nil {
 		return err
@@ -67,6 +85,32 @@ func MigrateExperimentBacktest(ctx context.Context, conn postgres.Query) error {
 	return nil
 }
 
+func experimentReferencesBacktestID(ctx context.Context, conn postgres.Query) (bool, error) {
+	var exists bool
+	err := conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_constraint c
+			JOIN pg_class src ON src.oid = c.conrelid
+			JOIN pg_namespace sn ON sn.oid = src.relnamespace
+			JOIN pg_class dst ON dst.oid = c.confrelid
+			JOIN LATERAL unnest(c.conkey) AS src_col(attnum) ON true
+			JOIN pg_attribute sa ON sa.attrelid = src.oid AND sa.attnum = src_col.attnum
+			JOIN LATERAL unnest(c.confkey) AS dst_col(attnum) ON true
+			JOIN pg_attribute da ON da.attrelid = dst.oid AND da.attnum = dst_col.attnum
+			WHERE c.contype = 'f'
+			  AND sn.nspname = current_schema()
+			  AND src.relname = 'strategy_experiment'
+			  AND dst.relname = 'backtest'
+			  AND sa.attname = 'backtest_id'
+			  AND da.attname = 'id'
+		)`).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("strategy_experiment: read backtest_id foreign key: %w", err)
+	}
+	return exists, nil
+}
+
 func strategyConstraintExists(ctx context.Context, conn postgres.Query, table, name string) (bool, error) {
 	var exists bool
 	err := conn.QueryRow(ctx, `
@@ -90,6 +134,9 @@ type Experiment struct {
 }
 
 func (db *Experiment) Create(ctx context.Context, versionID, backtestName string) (*pb.Experiment, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("create experiment by backtest name is refused while AUTH_ENABLED=true")
+	}
 	var id string
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO strategy_experiment (strategy_id, version_id, backtest_name, status)
@@ -105,7 +152,11 @@ func (db *Experiment) Create(ctx context.Context, versionID, backtestName string
 }
 
 func (db *Experiment) Get(ctx context.Context, id string) (*pb.Experiment, error) {
-	e, err := db.scanOne(ctx, experimentSelect+` WHERE e.id=$1`, id)
+	query := experimentSelect + ` WHERE e.id=$1`
+	if environment.GetAuthEnabled() {
+		query = experimentSelectOwned + ` WHERE e.id=$1`
+	}
+	e, err := db.scanOne(ctx, query, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get strategy experiment: %w", err)
 	}
@@ -114,13 +165,15 @@ func (db *Experiment) Get(ctx context.Context, id string) (*pb.Experiment, error
 }
 
 func (db *Experiment) List(ctx context.Context, strategyName, versionID, backtestName string) ([]*pb.Experiment, error) {
-	rows, err := db.Conn.Query(ctx, experimentSelect+`
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("list experiments by name is refused while AUTH_ENABLED=true")
+	}
+	query := experimentSelect + `
 		WHERE ($1 = '' OR s.name = $1)
 		AND ($2 = '' OR e.version_id = $2)
 		AND ($3 = '' OR e.backtest_name = $3)
-		ORDER BY e.created_at ASC`,
-		strategyName, versionID, backtestName,
-	)
+		ORDER BY e.created_at ASC`
+	rows, err := db.Conn.Query(ctx, query, strategyName, versionID, backtestName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list strategy experiments: %w", err)
 	}
@@ -198,6 +251,70 @@ func (db *Experiment) GetLastPeriod(ctx context.Context, executionID string) (*b
 		BenchmarkPeriodReturn: benchmarkPeriodReturn,
 	}, nil
 }
+
+// ListByStrategyID lists experiments for one strategy after the caller was authorized.
+func (db *Experiment) ListByStrategyID(ctx context.Context, strategyID, versionID, backtestID string) ([]*pb.Experiment, error) {
+	if strategyID == "" {
+		return nil, fmt.Errorf("strategy id is empty")
+	}
+	rows, err := db.Conn.Query(ctx, experimentSelectOwned+`
+		WHERE e.strategy_id = $1
+		AND ($2 = '' OR e.version_id = $2)
+		AND ($3 = '' OR e.backtest_id = $3)
+		ORDER BY e.created_at ASC`, strategyID, versionID, backtestID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list strategy experiments: %w", err)
+	}
+	defer rows.Close()
+	return parseExperimentRows(rows)
+}
+
+// BacktestID is the backtest stored on the experiment. It is empty before the ownership migration.
+func (db *Experiment) BacktestID(ctx context.Context, experimentID string) (string, error) {
+	var id *string
+	err := db.Conn.QueryRow(ctx, `SELECT backtest_id FROM strategy_experiment WHERE id = $1`, experimentID).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	if id == nil {
+		return "", nil
+	}
+	return *id, nil
+}
+
+// CreateForBacktest inserts an experiment against one backtest id.
+func (db *Experiment) CreateForBacktest(ctx context.Context, versionID, backtestID string) (*pb.Experiment, error) {
+	if backtestID == "" {
+		return nil, fmt.Errorf("backtest id is empty")
+	}
+	var id string
+	err := db.Conn.QueryRow(ctx, `
+		INSERT INTO strategy_experiment (strategy_id, version_id, backtest_id, status)
+		SELECT strategy_id, id, $2, $3 FROM strategy_version WHERE id=$1
+		RETURNING id`,
+		versionID, backtestID, pb.Experiment_QUEUED,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create strategy experiment: %w", err)
+	}
+	return db.Get(ctx, id)
+}
+
+const experimentSelectOwned = `
+SELECT e.id, e.strategy_id, s.name, e.version_id, v.rev, b.name,
+	e.execution_id, e.status, e.error, e.created_at, e.completed_at,
+	p.portfolio_value, p.max_drawdown, p.sharpe, p.algorithm_period_return, p.benchmark_period_return
+FROM strategy_experiment e
+JOIN strategy s ON e.strategy_id = s.id
+JOIN strategy_version v ON e.version_id = v.id
+JOIN backtest b ON b.id = e.backtest_id
+LEFT JOIN LATERAL (
+	SELECT portfolio_value, max_drawdown, sharpe, algorithm_period_return, benchmark_period_return
+	FROM backtest_execution_period
+	WHERE backtest_execution = e.execution_id
+	ORDER BY date DESC
+	LIMIT 1
+) p ON true`
 
 const experimentSelect = `
 SELECT e.id, e.strategy_id, s.name, e.version_id, v.rev, e.backtest_name,

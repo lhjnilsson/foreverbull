@@ -86,6 +86,23 @@ foreverbull-credentials
 {{- end }}
 
 {{- /*
+A password kept in its own Secret. lookup reuses the live value so an
+upgrade does not rotate it. helm template has no live Secret, so it
+renders a fresh alphanumeric value.
+*/ -}}
+{{- define "foreverbull.generatedSecret" -}}
+{{- $root := index . 0 }}
+{{- $name := index . 1 }}
+{{- $key := index . 2 }}
+{{- $existing := lookup "v1" "Secret" $root.Release.Namespace $name }}
+{{- if and $existing $existing.data (hasKey $existing.data $key) }}
+{{- index $existing.data $key | b64dec }}
+{{- else }}
+{{- randAlphaNum 32 }}
+{{- end }}
+{{- end }}
+
+{{- /*
 One credential for Secret foreverbull-credentials. Arguments: list root key
 value localDefault generatedDefault secret. generatedDefault "" means random.
 expose.hostPort is networking only and never authorises a default:

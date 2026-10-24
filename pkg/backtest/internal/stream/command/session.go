@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -16,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -48,40 +51,37 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	engine := depEngine.(engine.Engine)
 
-	var ingestions *[]storage.Object
-
-	ingestions, err = s.ListObjects(ctx, storage.IngestionsBucket)
-	if err != nil {
-		log.Err(err).Msg("error listing ingestions")
-		return fmt.Errorf("error listing ingestions: %w", err)
-	}
-
-	if len(*ingestions) == 0 {
-		return errors.New("no ingestions found")
-	}
-
-	var ingestion *storage.Object
-
-	for _, stored := range *ingestions {
-		stored.Refresh() //nolint: errcheck
-		if ingestion == nil || stored.LastModified.After(ingestion.LastModified) {
-			ingestion = &stored
+	var server *grpc.Server
+	var activity <-chan bool
+	if environment.GetAuthEnabled() {
+		secret, ok := auth.LookupBacktestSecret(command.SessionID)
+		if !ok {
+			return fmt.Errorf("%s is missing", auth.SessionMetadata())
 		}
-
+		backtestID, idErr := sessions.BacktestID(ctx, command.SessionID)
+		if idErr != nil {
+			return fmt.Errorf("error getting session backtest: %w", idErr)
+		}
+		ingestion, getErr := s.GetObject(ctx, storage.IngestionsBucket, backtestID)
+		if getErr != nil {
+			return fmt.Errorf("error getting ingestion: %w", getErr)
+		}
+		if err = engine.DownloadIngestion(ctx, ingestion); err != nil {
+			log.Err(err).Msg("error downloading ingestion")
+			return fmt.Errorf("error downloading ingestion: %w", err)
+		}
+		server, activity, err = api.NewSecuredGRPCSessionServer(session, db, engine, secret)
+	} else {
+		ingestion, pickErr := newestIngestion(ctx, s)
+		if pickErr != nil {
+			return pickErr
+		}
+		if err = engine.DownloadIngestion(ctx, ingestion); err != nil {
+			log.Err(err).Msg("error downloading ingestion")
+			return fmt.Errorf("error downloading ingestion: %w", err)
+		}
+		server, activity, err = api.NewGRPCSessionServer(session, db, engine)
 	}
-
-	if ingestion == nil {
-		err = errors.New("no completed ingestions found, create one before running a session")
-		return err
-	}
-
-	err = engine.DownloadIngestion(ctx, ingestion)
-	if err != nil {
-		log.Err(err).Msg("error downloading ingestion")
-		return fmt.Errorf("error downloading ingestion: %w", err)
-	}
-
-	server, activity, err := api.NewGRPCSessionServer(session, db, engine)
 	if err != nil {
 		log.Err(err).Msg("error creating grpc session server")
 		return fmt.Errorf("error creating grpc session server: %w", err)
@@ -102,6 +102,9 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		defer func() {
 			log.Info().Msg("closing session server")
 			server.Stop()
+			if environment.GetAuthEnabled() {
+				auth.ForgetBacktestSecret(command.SessionID)
+			}
 		}()
 
 		for {
@@ -122,4 +125,26 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	}
 
 	return nil
+}
+
+func newestIngestion(ctx context.Context, store storage.Storage) (*storage.Object, error) {
+	ingestions, err := store.ListObjects(ctx, storage.IngestionsBucket)
+	if err != nil {
+		log.Err(err).Msg("error listing ingestions")
+		return nil, fmt.Errorf("error listing ingestions: %w", err)
+	}
+	if len(*ingestions) == 0 {
+		return nil, errors.New("no ingestions found")
+	}
+	var ingestion *storage.Object
+	for _, stored := range *ingestions {
+		stored.Refresh() //nolint: errcheck
+		if ingestion == nil || stored.LastModified.After(ingestion.LastModified) {
+			ingestion = &stored
+		}
+	}
+	if ingestion == nil {
+		return nil, errors.New("no completed ingestions found, create one before running a session")
+	}
+	return ingestion, nil
 }

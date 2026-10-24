@@ -36,6 +36,7 @@ export type Service = {
   Image?: string;
   algorithm?: Algorithm;
   statuses?: ServiceStatus[];
+  ownerLogin?: string;
 };
 
 export type BacktestAsset = {
@@ -55,6 +56,7 @@ export type Backtest = {
   provider?: string;
   profile?: string;
   periods?: BacktestPeriod[];
+  ownerLogin?: string;
 };
 
 export type Strategy = {
@@ -62,6 +64,7 @@ export type Strategy = {
   name?: string;
   description?: string;
   createdAt?: string;
+  ownerLogin?: string;
 };
 
 export type ExecutionResult = {

@@ -61,6 +61,14 @@ func (db *Version) Get(ctx context.Context, id string) (*pb.Version, error) {
 	return v, nil
 }
 
+func (db *Version) GetByStrategyIDAndRev(ctx context.Context, strategyID string, rev int32) (*pb.Version, error) {
+	v, err := db.scanOne(ctx, versionSelect+` WHERE v.strategy_id=$1 AND v.rev=$2`, strategyID, rev)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get strategy version: %w", err)
+	}
+	return v, nil
+}
+
 func (db *Version) GetByStrategyAndRev(ctx context.Context, strategyName string, rev int32) (*pb.Version, error) {
 	v, err := db.scanOne(ctx, versionSelect+` WHERE s.name=$1 AND v.rev=$2`, strategyName, rev)
 	if err != nil {

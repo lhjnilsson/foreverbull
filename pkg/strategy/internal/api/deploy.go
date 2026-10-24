@@ -21,6 +21,9 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.deployAuthed(ctx, req)
+	}
 
 	if req.GetMode() == pb.Deployment_LIVE {
 		return nil, status.Error(codes.FailedPrecondition,
@@ -94,6 +97,9 @@ func (s *StrategyServer) StopDeployment(ctx context.Context, req *servicePb.Stop
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.stopDeploymentAuthed(ctx, req)
+	}
 
 	deployments := repository.Deployment{Conn: s.pgx}
 	var deployment *pb.Deployment
@@ -157,6 +163,9 @@ func (s *StrategyServer) StopDeployment(ctx context.Context, req *servicePb.Stop
 func (s *StrategyServer) ListDeploymentRuns(ctx context.Context, req *servicePb.ListDeploymentRunsRequest) (*servicePb.ListDeploymentRunsResponse, error) {
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
+	}
+	if environment.GetAuthEnabled() {
+		return s.listDeploymentRunsAuthed(ctx, req)
 	}
 
 	runs := repository.DeploymentRun{Conn: s.pgx}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
@@ -17,10 +19,26 @@ CREATE TABLE IF NOT EXISTS session (
 `
 
 // MigrateSessionBacktest sets session.backtest NOT NULL.
-// A null backtest stays. Calling it twice is safe.
+// A null backtest stays. Once backtest_id is NOT NULL, or the name column is
+// gone, this returns without reading the old column. Calling it twice is safe.
 func MigrateSessionBacktest(ctx context.Context, conn postgres.Query) error {
+	hasName, err := auth.ColumnExists(ctx, conn, "session", "backtest")
+	if err != nil {
+		return err
+	}
+	if !hasName {
+		return nil
+	}
+	idNotNull, err := auth.ColumnNotNull(ctx, conn, "session", "backtest_id")
+	if err != nil {
+		return err
+	}
+	if idNotNull {
+		return nil
+	}
+
 	var bad bool
-	err := conn.QueryRow(ctx, `
+	err = conn.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM session WHERE backtest IS NULL
 		)`).Scan(&bad)
@@ -43,6 +61,9 @@ type Session struct {
 }
 
 func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, error) {
+	if authOn() {
+		return nil, fmt.Errorf("create session by name is refused while AUTH_ENABLED=true")
+	}
 	var sessionID string
 
 	err := db.Conn.QueryRow(ctx, `INSERT INTO session (backtest) VALUES ($1) RETURNING id`,
@@ -55,6 +76,9 @@ func (db *Session) Create(ctx context.Context, backtest string) (*pb.Session, er
 }
 
 func (db *Session) Get(ctx context.Context, sessionID string) (*pb.Session, error) {
+	if authOn() {
+		return db.getJoined(ctx, sessionID)
+	}
 	session := pb.Session{}
 	err := db.Conn.QueryRow(ctx,
 		`SELECT id, backtest, port FROM session WHERE id=$1`, sessionID).Scan(

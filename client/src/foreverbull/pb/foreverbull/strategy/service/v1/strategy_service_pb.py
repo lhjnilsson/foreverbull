@@ -88,7 +88,7 @@ class CreateStrategyResponse(Message[_CreateStrategyResponseFields]):
 
         strategy: Strategy | None
 
-_GetStrategyRequestFields: TypeAlias = Literal["name"]
+_GetStrategyRequestFields: TypeAlias = Literal["name", "owner"]
 
 class GetStrategyRequest(Message[_GetStrategyRequestFields]):
     """
@@ -101,9 +101,13 @@ class GetStrategyRequest(Message[_GetStrategyRequestFields]):
             ```proto
             string name = 1;
             ```
+        owner:
+            ```proto
+            string owner = 2;
+            ```
     """
 
-    __slots__ = ("name",)
+    __slots__ = ("name", "owner")
 
     if TYPE_CHECKING:
 
@@ -111,10 +115,12 @@ class GetStrategyRequest(Message[_GetStrategyRequestFields]):
             self,
             *,
             name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         name: str
+        owner: str
 
 _GetStrategyResponseFields: TypeAlias = Literal["strategy"]
 
@@ -190,7 +196,7 @@ class ListStrategiesResponse(Message[_ListStrategiesResponseFields]):
 
         strategies: list[Strategy]
 
-_DeleteStrategyRequestFields: TypeAlias = Literal["name"]
+_DeleteStrategyRequestFields: TypeAlias = Literal["name", "owner"]
 
 class DeleteStrategyRequest(Message[_DeleteStrategyRequestFields]):
     """
@@ -203,9 +209,13 @@ class DeleteStrategyRequest(Message[_DeleteStrategyRequestFields]):
             ```proto
             string name = 1;
             ```
+        owner:
+            ```proto
+            string owner = 2;
+            ```
     """
 
-    __slots__ = ("name",)
+    __slots__ = ("name", "owner")
 
     if TYPE_CHECKING:
 
@@ -213,10 +223,12 @@ class DeleteStrategyRequest(Message[_DeleteStrategyRequestFields]):
             self,
             *,
             name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         name: str
+        owner: str
 
 _DeleteStrategyResponseFields: TypeAlias = NoReturn
 
@@ -236,7 +248,7 @@ class DeleteStrategyResponse(Message[_DeleteStrategyResponseFields]):
         ) -> None:
             pass
 
-_CreateVersionRequestFields: TypeAlias = Literal["strategy_name", "service_image", "parameters"]
+_CreateVersionRequestFields: TypeAlias = Literal["strategy_name", "service_image", "parameters", "strategy_owner", "service_owner"]
 
 class CreateVersionRequest(Message[_CreateVersionRequestFields]):
     """
@@ -257,9 +269,17 @@ class CreateVersionRequest(Message[_CreateVersionRequestFields]):
             ```proto
             optional google.protobuf.Struct parameters = 3;
             ```
+        strategy_owner:
+            ```proto
+            string strategy_owner = 4;
+            ```
+        service_owner:
+            ```proto
+            string service_owner = 5;
+            ```
     """
 
-    __slots__ = ("strategy_name", "service_image", "parameters")
+    __slots__ = ("strategy_name", "service_image", "parameters", "strategy_owner", "service_owner")
 
     if TYPE_CHECKING:
 
@@ -269,12 +289,16 @@ class CreateVersionRequest(Message[_CreateVersionRequestFields]):
             strategy_name: str = "",
             service_image: str = "",
             parameters: Struct | None = None,
+            strategy_owner: str = "",
+            service_owner: str = "",
         ) -> None:
             pass
 
         strategy_name: str
         service_image: str
         parameters: Struct | None
+        strategy_owner: str
+        service_owner: str
 
 _CreateVersionResponseFields: TypeAlias = Literal["version"]
 
@@ -304,7 +328,7 @@ class CreateVersionResponse(Message[_CreateVersionResponseFields]):
 
         version: Version | None
 
-_CreateExperimentRequestFields: TypeAlias = Literal["strategy_name", "version_id", "version_rev", "backtest_name"]
+_CreateExperimentRequestFields: TypeAlias = Literal["strategy_name", "version_id", "version_rev", "backtest_name", "strategy_owner", "backtest_owner"]
 
 class CreateExperimentRequest(Message[_CreateExperimentRequestFields]):
     """
@@ -332,9 +356,17 @@ class CreateExperimentRequest(Message[_CreateExperimentRequestFields]):
             ```proto
             string backtest_name = 4;
             ```
+        strategy_owner:
+            ```proto
+            string strategy_owner = 5;
+            ```
+        backtest_owner:
+            ```proto
+            string backtest_owner = 6;
+            ```
     """
 
-    __slots__ = ("strategy_name", "version_id", "version_rev", "backtest_name")
+    __slots__ = ("strategy_name", "version_id", "version_rev", "backtest_name", "strategy_owner", "backtest_owner")
 
     if TYPE_CHECKING:
 
@@ -345,6 +377,8 @@ class CreateExperimentRequest(Message[_CreateExperimentRequestFields]):
             version_id: str = "",
             version_rev: int = 0,
             backtest_name: str = "",
+            strategy_owner: str = "",
+            backtest_owner: str = "",
         ) -> None:
             pass
 
@@ -352,6 +386,8 @@ class CreateExperimentRequest(Message[_CreateExperimentRequestFields]):
         version_id: str
         version_rev: int
         backtest_name: str
+        strategy_owner: str
+        backtest_owner: str
 
 _CreateExperimentResponseFields: TypeAlias = Literal["QUEUED", "RUNNING", "COMPLETED", "experiment"]
 
@@ -467,7 +503,7 @@ class GetExperimentResponse(Message[_GetExperimentResponseFields]):
         grafana_path: str
         last_period: Period | None
 
-_ListExperimentsRequestFields: TypeAlias = Literal["strategy_name", "version_id", "backtest_name"]
+_ListExperimentsRequestFields: TypeAlias = Literal["strategy_name", "version_id", "backtest_name", "owner"]
 
 class ListExperimentsRequest(Message[_ListExperimentsRequestFields]):
     """
@@ -488,9 +524,13 @@ class ListExperimentsRequest(Message[_ListExperimentsRequestFields]):
             ```proto
             string backtest_name = 3;
             ```
+        owner:
+            ```proto
+            string owner = 4;
+            ```
     """
 
-    __slots__ = ("strategy_name", "version_id", "backtest_name")
+    __slots__ = ("strategy_name", "version_id", "backtest_name", "owner")
 
     if TYPE_CHECKING:
 
@@ -500,12 +540,14 @@ class ListExperimentsRequest(Message[_ListExperimentsRequestFields]):
             strategy_name: str = "",
             version_id: str = "",
             backtest_name: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         strategy_name: str
         version_id: str
         backtest_name: str
+        owner: str
 
 _ListExperimentsResponseFields: TypeAlias = Literal["experiments"]
 
@@ -535,7 +577,7 @@ class ListExperimentsResponse(Message[_ListExperimentsResponseFields]):
 
         experiments: list[Experiment]
 
-_DeployRequestFields: TypeAlias = Literal["strategy_name", "version_id", "version_rev", "mode", "backend", "calendar_code", "symbols", "schedule_kind", "dry_run", "confirm"]
+_DeployRequestFields: TypeAlias = Literal["strategy_name", "version_id", "version_rev", "mode", "backend", "calendar_code", "symbols", "schedule_kind", "dry_run", "confirm", "owner"]
 
 class DeployRequest(Message[_DeployRequestFields]):
     """
@@ -588,9 +630,13 @@ class DeployRequest(Message[_DeployRequestFields]):
             ```proto
             bool confirm = 10;
             ```
+        owner:
+            ```proto
+            string owner = 11;
+            ```
     """
 
-    __slots__ = ("strategy_name", "version_id", "version_rev", "mode", "backend", "calendar_code", "symbols", "schedule_kind", "dry_run", "confirm")
+    __slots__ = ("strategy_name", "version_id", "version_rev", "mode", "backend", "calendar_code", "symbols", "schedule_kind", "dry_run", "confirm", "owner")
 
     if TYPE_CHECKING:
 
@@ -607,6 +653,7 @@ class DeployRequest(Message[_DeployRequestFields]):
             schedule_kind: Deployment.ScheduleKind | None = None,
             dry_run: bool | None = None,
             confirm: bool = False,
+            owner: str = "",
         ) -> None:
             pass
 
@@ -620,6 +667,7 @@ class DeployRequest(Message[_DeployRequestFields]):
         schedule_kind: Deployment.ScheduleKind
         dry_run: bool
         confirm: bool
+        owner: str
 
 _DeployResponseFields: TypeAlias = Literal["deployment"]
 
@@ -649,7 +697,7 @@ class DeployResponse(Message[_DeployResponseFields]):
 
         deployment: Deployment | None
 
-_StopDeploymentRequestFields: TypeAlias = Literal["strategy_name", "deployment_id"]
+_StopDeploymentRequestFields: TypeAlias = Literal["strategy_name", "deployment_id", "owner"]
 
 class StopDeploymentRequest(Message[_StopDeploymentRequestFields]):
     """
@@ -666,9 +714,13 @@ class StopDeploymentRequest(Message[_StopDeploymentRequestFields]):
             ```proto
             string deployment_id = 2;
             ```
+        owner:
+            ```proto
+            string owner = 3;
+            ```
     """
 
-    __slots__ = ("strategy_name", "deployment_id")
+    __slots__ = ("strategy_name", "deployment_id", "owner")
 
     if TYPE_CHECKING:
 
@@ -677,11 +729,13 @@ class StopDeploymentRequest(Message[_StopDeploymentRequestFields]):
             *,
             strategy_name: str = "",
             deployment_id: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         strategy_name: str
         deployment_id: str
+        owner: str
 
 _StopDeploymentResponseFields: TypeAlias = Literal["deployment"]
 
@@ -711,7 +765,7 @@ class StopDeploymentResponse(Message[_StopDeploymentResponseFields]):
 
         deployment: Deployment | None
 
-_ListDeploymentRunsRequestFields: TypeAlias = Literal["strategy_name", "deployment_id"]
+_ListDeploymentRunsRequestFields: TypeAlias = Literal["strategy_name", "deployment_id", "owner"]
 
 class ListDeploymentRunsRequest(Message[_ListDeploymentRunsRequestFields]):
     """
@@ -728,9 +782,13 @@ class ListDeploymentRunsRequest(Message[_ListDeploymentRunsRequestFields]):
             ```proto
             string deployment_id = 2;
             ```
+        owner:
+            ```proto
+            string owner = 3;
+            ```
     """
 
-    __slots__ = ("strategy_name", "deployment_id")
+    __slots__ = ("strategy_name", "deployment_id", "owner")
 
     if TYPE_CHECKING:
 
@@ -739,11 +797,13 @@ class ListDeploymentRunsRequest(Message[_ListDeploymentRunsRequestFields]):
             *,
             strategy_name: str = "",
             deployment_id: str = "",
+            owner: str = "",
         ) -> None:
             pass
 
         strategy_name: str
         deployment_id: str
+        owner: str
 
 _ListDeploymentRunsResponseFields: TypeAlias = Literal["runs"]
 
@@ -775,7 +835,7 @@ class ListDeploymentRunsResponse(Message[_ListDeploymentRunsResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n6foreverbull/strategy/service/v1/strategy_service.proto\x12\x1fforeverbull.strategy.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a\x18foreverbull/common.proto\x1a&foreverbull/strategy/v1/strategy.proto\x1a\x1cgoogle/protobuf/struct.proto"\x83\x01\n\x15CreateStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12%\n\x0bdescription\x18\x02 \x01(\tH\x00R\x0bdescription\x88\x01\x01B\x0e\n\x0c_description"W\n\x16CreateStrategyResponse\x12=\n\x08strategy\x18\x01 \x01(\x0b2!.foreverbull.strategy.v1.StrategyR\x08strategy"I\n\x12GetStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"T\n\x13GetStrategyResponse\x12=\n\x08strategy\x18\x01 \x01(\x0b2!.foreverbull.strategy.v1.StrategyR\x08strategy"\x17\n\x15ListStrategiesRequest"[\n\x16ListStrategiesResponse\x12A\n\nstrategies\x18\x01 \x03(\x0b2!.foreverbull.strategy.v1.StrategyR\nstrategies"L\n\x15DeleteStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\x18\n\x16DeleteStrategyResponse"\xdb\x01\n\x14CreateVersionRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12D\n\rservice_image\x18\x02 \x01(\tR\x0cserviceImageB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x127\n\nparameters\x18\x03 \x01(\x0b2\x17.google.protobuf.StructR\nparameters"S\n\x15CreateVersionResponse\x12:\n\x07version\x18\x01 \x01(\x0b2 .foreverbull.strategy.v1.VersionR\x07version"\xe5\x01\n\x17CreateExperimentRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12\x1f\n\x0bversion_rev\x18\x03 \x01(\x05R\nversionRev\x12D\n\rbacktest_name\x18\x04 \x01(\tR\x0cbacktestNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xfd\x01\n\x18CreateExperimentResponse\x120\n\x06QUEUED\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x06QUEUED\x122\n\x07RUNNING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x07RUNNING\x126\n\tCOMPLETED\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\tCOMPLETED\x12C\n\nexperiment\x18\x04 \x01(\x0b2#.foreverbull.strategy.v1.ExperimentR\nexperiment"\\\n\x14GetExperimentRequest\x12D\n\rexperiment_id\x18\x01 \x01(\tR\x0cexperimentIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xd7\x01\n\x15GetExperimentResponse\x12C\n\nexperiment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.ExperimentR\nexperiment\x12&\n\x0cgrafana_path\x18\x02 \x01(\tH\x00R\x0bgrafanaPath\x88\x01\x01\x12@\n\x0blast_period\x18\x03 \x01(\x0b2\x1f.foreverbull.backtest.v1.PeriodR\nlastPeriodB\x0f\n\r_grafana_path"\x81\x01\n\x16ListExperimentsRequest\x12#\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyName\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12#\n\rbacktest_name\x18\x03 \x01(\tR\x0cbacktestName"`\n\x17ListExperimentsResponse\x12E\n\x0bexperiments\x18\x01 \x03(\x0b2#.foreverbull.strategy.v1.ExperimentR\x0bexperiments"\xc7\x03\n\rDeployRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12\x1f\n\x0bversion_rev\x18\x03 \x01(\x05R\nversionRev\x12<\n\x04mode\x18\x04 \x01(\x0e2(.foreverbull.strategy.v1.Deployment.ModeR\x04mode\x12\x18\n\x07backend\x18\x05 \x01(\tR\x07backend\x12#\n\rcalendar_code\x18\x06 \x01(\tR\x0ccalendarCode\x12\x18\n\x07symbols\x18\x07 \x03(\tR\x07symbols\x12U\n\rschedule_kind\x18\x08 \x01(\x0e20.foreverbull.strategy.v1.Deployment.ScheduleKindR\x0cscheduleKind\x12\x1c\n\x07dry_run\x18\t \x01(\x08H\x00R\x06dryRun\x88\x01\x01\x12\x18\n\x07confirm\x18\n \x01(\x08R\x07confirmB\n\n\x08_dry_run"U\n\x0eDeployResponse\x12C\n\ndeployment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.DeploymentR\ndeployment"\x82\x01\n\x15StopDeploymentRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12#\n\rdeployment_id\x18\x02 \x01(\tR\x0cdeploymentId"]\n\x16StopDeploymentResponse\x12C\n\ndeployment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.DeploymentR\ndeployment"e\n\x19ListDeploymentRunsRequest\x12#\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyName\x12#\n\rdeployment_id\x18\x02 \x01(\tR\x0cdeploymentId"X\n\x1aListDeploymentRunsResponse\x12:\n\x04runs\x18\x01 \x03(\x0b2&.foreverbull.strategy.v1.DeploymentRunR\x04runs2\xc2\x0b\n\x10StrategyServicer\x12\x83\x01\n\x0eCreateStrategy\x126.foreverbull.strategy.service.v1.CreateStrategyRequest\x1a7.foreverbull.strategy.service.v1.CreateStrategyResponse"\x00\x12z\n\x0bGetStrategy\x123.foreverbull.strategy.service.v1.GetStrategyRequest\x1a4.foreverbull.strategy.service.v1.GetStrategyResponse"\x00\x12\x83\x01\n\x0eListStrategies\x126.foreverbull.strategy.service.v1.ListStrategiesRequest\x1a7.foreverbull.strategy.service.v1.ListStrategiesResponse"\x00\x12\x83\x01\n\x0eDeleteStrategy\x126.foreverbull.strategy.service.v1.DeleteStrategyRequest\x1a7.foreverbull.strategy.service.v1.DeleteStrategyResponse"\x00\x12\x80\x01\n\rCreateVersion\x125.foreverbull.strategy.service.v1.CreateVersionRequest\x1a6.foreverbull.strategy.service.v1.CreateVersionResponse"\x00\x12\x8b\x01\n\x10CreateExperiment\x128.foreverbull.strategy.service.v1.CreateExperimentRequest\x1a9.foreverbull.strategy.service.v1.CreateExperimentResponse"\x000\x01\x12\x80\x01\n\rGetExperiment\x125.foreverbull.strategy.service.v1.GetExperimentRequest\x1a6.foreverbull.strategy.service.v1.GetExperimentResponse"\x00\x12\x86\x01\n\x0fListExperiments\x127.foreverbull.strategy.service.v1.ListExperimentsRequest\x1a8.foreverbull.strategy.service.v1.ListExperimentsResponse"\x00\x12k\n\x06Deploy\x12..foreverbull.strategy.service.v1.DeployRequest\x1a/.foreverbull.strategy.service.v1.DeployResponse"\x00\x12\x83\x01\n\x0eStopDeployment\x126.foreverbull.strategy.service.v1.StopDeploymentRequest\x1a7.foreverbull.strategy.service.v1.StopDeploymentResponse"\x00\x12\x8f\x01\n\x12ListDeploymentRuns\x12:.foreverbull.strategy.service.v1.ListDeploymentRunsRequest\x1a;.foreverbull.strategy.service.v1.ListDeploymentRunsResponse"\x00B;Z9github.com/lhjnilsson/foreverbull/pkg/pb/strategy/serviceb\x06proto3',
+    b'\n6foreverbull/strategy/service/v1/strategy_service.proto\x12\x1fforeverbull.strategy.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\'foreverbull/backtest/v1/execution.proto\x1a\x18foreverbull/common.proto\x1a&foreverbull/strategy/v1/strategy.proto\x1a\x1cgoogle/protobuf/struct.proto"\x83\x01\n\x15CreateStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12%\n\x0bdescription\x18\x02 \x01(\tH\x00R\x0bdescription\x88\x01\x01B\x0e\n\x0c_description"W\n\x16CreateStrategyResponse\x12=\n\x08strategy\x18\x01 \x01(\x0b2!.foreverbull.strategy.v1.StrategyR\x08strategy"_\n\x12GetStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x14\n\x05owner\x18\x02 \x01(\tR\x05owner"T\n\x13GetStrategyResponse\x12=\n\x08strategy\x18\x01 \x01(\x0b2!.foreverbull.strategy.v1.StrategyR\x08strategy"\x17\n\x15ListStrategiesRequest"[\n\x16ListStrategiesResponse\x12A\n\nstrategies\x18\x01 \x03(\x0b2!.foreverbull.strategy.v1.StrategyR\nstrategies"b\n\x15DeleteStrategyRequest\x123\n\x04name\x18\x01 \x01(\tR\x04nameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x14\n\x05owner\x18\x02 \x01(\tR\x05owner"\x18\n\x16DeleteStrategyResponse"\xa7\x02\n\x14CreateVersionRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12D\n\rservice_image\x18\x02 \x01(\tR\x0cserviceImageB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x127\n\nparameters\x18\x03 \x01(\x0b2\x17.google.protobuf.StructR\nparameters\x12%\n\x0estrategy_owner\x18\x04 \x01(\tR\rstrategyOwner\x12#\n\rservice_owner\x18\x05 \x01(\tR\x0cserviceOwner"S\n\x15CreateVersionResponse\x12:\n\x07version\x18\x01 \x01(\x0b2 .foreverbull.strategy.v1.VersionR\x07version"\xb3\x02\n\x17CreateExperimentRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12\x1f\n\x0bversion_rev\x18\x03 \x01(\x05R\nversionRev\x12D\n\rbacktest_name\x18\x04 \x01(\tR\x0cbacktestNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12%\n\x0estrategy_owner\x18\x05 \x01(\tR\rstrategyOwner\x12%\n\x0ebacktest_owner\x18\x06 \x01(\tR\rbacktestOwner"\xfd\x01\n\x18CreateExperimentResponse\x120\n\x06QUEUED\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x06QUEUED\x122\n\x07RUNNING\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x07RUNNING\x126\n\tCOMPLETED\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\tCOMPLETED\x12C\n\nexperiment\x18\x04 \x01(\x0b2#.foreverbull.strategy.v1.ExperimentR\nexperiment"\\\n\x14GetExperimentRequest\x12D\n\rexperiment_id\x18\x01 \x01(\tR\x0cexperimentIdB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01"\xd7\x01\n\x15GetExperimentResponse\x12C\n\nexperiment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.ExperimentR\nexperiment\x12&\n\x0cgrafana_path\x18\x02 \x01(\tH\x00R\x0bgrafanaPath\x88\x01\x01\x12@\n\x0blast_period\x18\x03 \x01(\x0b2\x1f.foreverbull.backtest.v1.PeriodR\nlastPeriodB\x0f\n\r_grafana_path"\x97\x01\n\x16ListExperimentsRequest\x12#\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyName\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12#\n\rbacktest_name\x18\x03 \x01(\tR\x0cbacktestName\x12\x14\n\x05owner\x18\x04 \x01(\tR\x05owner"`\n\x17ListExperimentsResponse\x12E\n\x0bexperiments\x18\x01 \x03(\x0b2#.foreverbull.strategy.v1.ExperimentR\x0bexperiments"\xdd\x03\n\rDeployRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12\x1d\n\nversion_id\x18\x02 \x01(\tR\tversionId\x12\x1f\n\x0bversion_rev\x18\x03 \x01(\x05R\nversionRev\x12<\n\x04mode\x18\x04 \x01(\x0e2(.foreverbull.strategy.v1.Deployment.ModeR\x04mode\x12\x18\n\x07backend\x18\x05 \x01(\tR\x07backend\x12#\n\rcalendar_code\x18\x06 \x01(\tR\x0ccalendarCode\x12\x18\n\x07symbols\x18\x07 \x03(\tR\x07symbols\x12U\n\rschedule_kind\x18\x08 \x01(\x0e20.foreverbull.strategy.v1.Deployment.ScheduleKindR\x0cscheduleKind\x12\x1c\n\x07dry_run\x18\t \x01(\x08H\x00R\x06dryRun\x88\x01\x01\x12\x18\n\x07confirm\x18\n \x01(\x08R\x07confirm\x12\x14\n\x05owner\x18\x0b \x01(\tR\x05ownerB\n\n\x08_dry_run"U\n\x0eDeployResponse\x12C\n\ndeployment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.DeploymentR\ndeployment"\x98\x01\n\x15StopDeploymentRequest\x12D\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyNameB\x1f\xbaH\x1c\xba\x01\x16\n\x08required\x1a\nthis != \'\'\xc8\x01\x01\x12#\n\rdeployment_id\x18\x02 \x01(\tR\x0cdeploymentId\x12\x14\n\x05owner\x18\x03 \x01(\tR\x05owner"]\n\x16StopDeploymentResponse\x12C\n\ndeployment\x18\x01 \x01(\x0b2#.foreverbull.strategy.v1.DeploymentR\ndeployment"{\n\x19ListDeploymentRunsRequest\x12#\n\rstrategy_name\x18\x01 \x01(\tR\x0cstrategyName\x12#\n\rdeployment_id\x18\x02 \x01(\tR\x0cdeploymentId\x12\x14\n\x05owner\x18\x03 \x01(\tR\x05owner"X\n\x1aListDeploymentRunsResponse\x12:\n\x04runs\x18\x01 \x03(\x0b2&.foreverbull.strategy.v1.DeploymentRunR\x04runs2\xc2\x0b\n\x10StrategyServicer\x12\x83\x01\n\x0eCreateStrategy\x126.foreverbull.strategy.service.v1.CreateStrategyRequest\x1a7.foreverbull.strategy.service.v1.CreateStrategyResponse"\x00\x12z\n\x0bGetStrategy\x123.foreverbull.strategy.service.v1.GetStrategyRequest\x1a4.foreverbull.strategy.service.v1.GetStrategyResponse"\x00\x12\x83\x01\n\x0eListStrategies\x126.foreverbull.strategy.service.v1.ListStrategiesRequest\x1a7.foreverbull.strategy.service.v1.ListStrategiesResponse"\x00\x12\x83\x01\n\x0eDeleteStrategy\x126.foreverbull.strategy.service.v1.DeleteStrategyRequest\x1a7.foreverbull.strategy.service.v1.DeleteStrategyResponse"\x00\x12\x80\x01\n\rCreateVersion\x125.foreverbull.strategy.service.v1.CreateVersionRequest\x1a6.foreverbull.strategy.service.v1.CreateVersionResponse"\x00\x12\x8b\x01\n\x10CreateExperiment\x128.foreverbull.strategy.service.v1.CreateExperimentRequest\x1a9.foreverbull.strategy.service.v1.CreateExperimentResponse"\x000\x01\x12\x80\x01\n\rGetExperiment\x125.foreverbull.strategy.service.v1.GetExperimentRequest\x1a6.foreverbull.strategy.service.v1.GetExperimentResponse"\x00\x12\x86\x01\n\x0fListExperiments\x127.foreverbull.strategy.service.v1.ListExperimentsRequest\x1a8.foreverbull.strategy.service.v1.ListExperimentsResponse"\x00\x12k\n\x06Deploy\x12..foreverbull.strategy.service.v1.DeployRequest\x1a/.foreverbull.strategy.service.v1.DeployResponse"\x00\x12\x83\x01\n\x0eStopDeployment\x126.foreverbull.strategy.service.v1.StopDeploymentRequest\x1a7.foreverbull.strategy.service.v1.StopDeploymentResponse"\x00\x12\x8f\x01\n\x12ListDeploymentRuns\x12:.foreverbull.strategy.service.v1.ListDeploymentRunsRequest\x1a;.foreverbull.strategy.service.v1.ListDeploymentRunsResponse"\x00B;Z9github.com/lhjnilsson/foreverbull/pkg/pb/strategy/serviceb\x06proto3',
     [
         validate_pb.desc(),
         execution_pb.desc(),

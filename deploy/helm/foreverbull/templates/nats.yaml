@@ -1,4 +1,21 @@
 {{- $sel := dict "name" "nats" "root" . }}
+{{- $natsPassword := include "foreverbull.generatedSecret" (list . "foreverbull-nats" "password") }}
+{{- $natsConf := printf "port: %v\nhttp_port: %v\n" (int .Values.nats.port) (int .Values.nats.monitorPort) }}
+{{- if .Values.nats.jetstream }}
+{{- $natsConf = printf "%sjetstream {\n  store_dir: %q\n}\n" $natsConf .Values.persistence.nats.path }}
+{{- end }}
+{{- $natsConf = printf "%sauthorization: {\n  users: [\n    { user: \"broker\", password: %q }\n  ]\n}\n" $natsConf $natsPassword }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: foreverbull-nats
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+type: Opaque
+data:
+  password: {{ $natsPassword | b64enc | quote }}
+  nats.conf: {{ $natsConf | b64enc | quote }}
+---
 {{- if .Values.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -61,14 +78,9 @@ spec:
         - name: nats
           image: {{ include "foreverbull.image" (list .Values.images.nats.repository .Values.images.nats.tag .Values.global.imageTag) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
-          {{- if .Values.nats.jetstream }}
           args:
-            - -js
-            - -sd
-            - {{ .Values.persistence.nats.path | quote }}
-            - -m
-            - {{ .Values.nats.monitorPort | quote }}
-          {{- end }}
+            - -c
+            - /etc/nats/nats.conf
           ports:
             - name: client
               containerPort: {{ .Values.nats.port }}
@@ -80,6 +92,9 @@ spec:
               containerPort: {{ .Values.nats.monitorPort }}
               protocol: TCP
           volumeMounts:
+            - name: config
+              mountPath: /etc/nats
+              readOnly: true
             - name: data
               mountPath: {{ .Values.persistence.nats.path }}
           startupProbe:
@@ -106,6 +121,12 @@ spec:
           resources:
             {{- toYaml .Values.resources.nats | nindent 12 }}
       volumes:
+        - name: config
+          secret:
+            secretName: foreverbull-nats
+            items:
+              - key: nats.conf
+                path: nats.conf
         - name: data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:

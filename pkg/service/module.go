@@ -86,5 +86,5 @@ func registerServiceHTTP(p serviceHTTPParams) {
 	if p.Mux == nil || p.Conn == nil {
 		return
 	}
-	RegisterHTTP(p.Mux, NewStore(p.Conn))
+	RegisterHTTPWithAccess(p.Mux, NewStore(p.Conn), p.Conn)
 }

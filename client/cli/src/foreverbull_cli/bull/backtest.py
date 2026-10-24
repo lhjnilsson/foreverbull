@@ -685,7 +685,9 @@ def run(
                 has_run = True
                 try:
                     with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
-                        entity, backtest_session
+                        entity,
+                        backtest_session,
+                        session_secret=msg.session_secret,
                     ) as session:
                         with progress.bar_progress("execution") as bar_progress:
                             for execution_id, message in session.run_execution(

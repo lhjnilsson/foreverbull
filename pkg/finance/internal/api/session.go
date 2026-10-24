@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -33,6 +35,21 @@ func NewGRPCSessionServer(trading supplier.Trading) (*grpc.Server, <-chan bool, 
 	}
 	servicePb.RegisterSessionServicerServer(grpcServer, server)
 
+	return grpcServer, activity, nil
+}
+
+// NewSecuredGRPCSessionServer requires x-foreverbull-session on every call.
+func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string) (*grpc.Server, <-chan bool, error) {
+	if secret == "" {
+		return nil, nil, fmt.Errorf("%s is missing", auth.SessionMetadata())
+	}
+	grpcServer := grpc.NewServer(auth.SessionInterceptors(secret)...)
+	activity := make(chan bool)
+	server := &grpcSessionServer{
+		trading:  trading,
+		activity: activity,
+	}
+	servicePb.RegisterSessionServicerServer(grpcServer, server)
 	return grpcServer, activity, nil
 }
 

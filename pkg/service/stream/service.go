@@ -19,6 +19,7 @@ type ServiceStartCommand struct {
 	InstanceID   string
 	OHLCProvider string
 	Backtest     string
+	BacktestID   string
 }
 
 func NewUpdateServiceStatusCommand(image string, status pb.Service_Status_Status, err error) (stream.Message, error) {

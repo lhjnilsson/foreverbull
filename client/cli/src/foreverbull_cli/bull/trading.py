@@ -164,7 +164,8 @@ def run(
             trading_session = msg.session
             if trading_session is not None and trading_session.port and not has_run:
                 with Foreverbull(models.Algorithm.from_file_path(file_path)).trading_session(
-                    trading_session
+                    trading_session,
+                    session_secret=msg.session_secret,
                 ) as session:
                     orders, place_orders = session.run_trading(symbols)
                     has_run = True

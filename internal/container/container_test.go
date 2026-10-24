@@ -60,11 +60,16 @@ func TestStartCreatesLabeledPodWithBrokerEnv(t *testing.T) {
 	require.Equal(t, environment.GetServerAddress(), envValue(t, env, "BROKER_HOSTNAME"))
 	require.Equal(t, environment.GetGRPCPort(), envValue(t, env, "BROKER_PORT"))
 	require.Equal(t, environment.GetMinioURL(), envValue(t, env, "STORAGE_ENDPOINT"))
-	require.Equal(t, environment.GetMinioAccessKey(), envValue(t, env, "STORAGE_ACCESS_KEY"))
-	require.Equal(t, environment.GetMinioSecretKey(), envValue(t, env, "STORAGE_SECRET_KEY"))
-	require.Equal(t, environment.GetPostgresURL(), envValue(t, env, "DATABASE_URL"))
 	require.Equal(t, environment.GetLogLevel(), envValue(t, env, "LOGLEVEL"))
 	require.False(t, envSet(env, OHLCProviderEnv))
+	require.False(t, envSet(env, "DATABASE_URL"))
+	require.False(t, envSet(env, "STORAGE_ACCESS_KEY"))
+	require.False(t, envSet(env, "STORAGE_SECRET_KEY"))
+	for _, item := range env {
+		require.NotContains(t, item.Value, environment.GetPostgresURL())
+		require.NotContains(t, item.Value, environment.GetMinioAccessKey())
+		require.NotContains(t, item.Value, environment.GetMinioSecretKey())
+	}
 }
 
 func TestStartSetsOHLCProviderFromContext(t *testing.T) {

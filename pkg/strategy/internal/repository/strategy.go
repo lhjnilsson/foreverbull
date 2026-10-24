@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
@@ -25,6 +26,9 @@ type Strategy struct {
 }
 
 func (db *Strategy) Create(ctx context.Context, name string, description *string) (*pb.Strategy, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("create strategy by name is refused while AUTH_ENABLED=true")
+	}
 	_, err := db.Conn.Exec(ctx,
 		`INSERT INTO strategy (name, description) VALUES ($1, $2)`,
 		name, description,
@@ -37,6 +41,9 @@ func (db *Strategy) Create(ctx context.Context, name string, description *string
 }
 
 func (db *Strategy) Get(ctx context.Context, name string) (*pb.Strategy, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("get strategy by name is refused while AUTH_ENABLED=true")
+	}
 	s, err := db.scanOne(ctx,
 		`SELECT id, name, description, created_at FROM strategy WHERE name=$1`, name)
 	if err != nil {
@@ -57,6 +64,9 @@ func (db *Strategy) GetByID(ctx context.Context, id string) (*pb.Strategy, error
 }
 
 func (db *Strategy) List(ctx context.Context) ([]*pb.Strategy, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("list strategies is refused while AUTH_ENABLED=true")
+	}
 	rows, err := db.Conn.Query(ctx,
 		`SELECT id, name, description, created_at FROM strategy ORDER BY created_at ASC`)
 	if err != nil {
@@ -68,6 +78,9 @@ func (db *Strategy) List(ctx context.Context) ([]*pb.Strategy, error) {
 }
 
 func (db *Strategy) Delete(ctx context.Context, name string) error {
+	if err := db.guardNameDelete(); err != nil {
+		return err
+	}
 	_, err := db.Conn.Exec(ctx, `DELETE FROM strategy WHERE name=$1`, name)
 	if err != nil {
 		return fmt.Errorf("failed to delete strategy: %w", err)

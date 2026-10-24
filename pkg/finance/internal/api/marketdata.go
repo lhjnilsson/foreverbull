@@ -163,6 +163,9 @@ func (fs *MarketdataServer) downloadSymbol(
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
 	ctx := serverStream.Context()
+	if err := requireTradingEditor(ctx); err != nil {
+		return err
+	}
 
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
 	if err != nil {

@@ -1,5 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Link, Navigate, Outlet, useMatch, useNavigate, useOutletContext } from "react-router-dom";
+import { canCreate } from "../access";
+import { Grants } from "../auth";
+import { useAuth } from "../auth-context";
 import {
   Detail,
   Empty,
@@ -29,6 +32,7 @@ export function StrategiesLayout() {
   const navigate = useNavigate();
   const match = useMatch("/strategies/:name");
   const name = match?.params.name;
+  const { state } = useAuth();
   const [revision, setRevision] = useState(0);
   const load = useJson<Strategy[]>("/api/strategies", revision);
   const rows = rowsOf(load);
@@ -41,6 +45,7 @@ export function StrategiesLayout() {
         title="Strategies"
         newLabel="New strategy"
         newTitle="Name this strategy."
+        allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
         newForm={(close) => (
           <CreateStrategy
             onDone={close}
@@ -61,7 +66,10 @@ export function StrategiesLayout() {
               to={strategy.name ? `/strategies/${encodeURIComponent(strategy.name)}` : "/strategies"}
               className={`${rowClass} font-mono text-[13px] ${strategy.name === name ? rowActive : ""}`}
             >
-              {strategy.name}
+              <span className="block truncate">{strategy.name}</span>
+              {strategy.ownerLogin ? (
+                <span className="block truncate text-xs text-muted-foreground">{strategy.ownerLogin}</span>
+              ) : null}
             </Link>
           </li>
         ))}
@@ -107,8 +115,10 @@ export function StrategyDetail() {
       <h1 className="mb-4 font-mono text-base">{strategy.name}</h1>
       <dl>
         <Field label="Name">{strategy.name}</Field>
+        {strategy.ownerLogin ? <Field label="Owner">{strategy.ownerLogin}</Field> : null}
         <Field label="Created">{fmtTime(strategy.createdAt)}</Field>
       </dl>
+      <Grants kind="strategy" name={strategy.name} ownerLogin={strategy.ownerLogin} />
     </Detail>
   );
 }
