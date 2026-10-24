@@ -102,6 +102,8 @@ jobs:
           version: v3.16.4
       - name: Lint and template chart
         run: bash deploy/helm/check-chart.sh
+      - name: Check server release scripts
+        run: bash deploy/server/self-test.sh
 
   proto-check:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
