@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS browser_session (
 	secret_hash bytea NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now(),
 	expires_at timestamptz NOT NULL,
+	last_seen_at timestamptz NOT NULL DEFAULT now(),
 	revoked_at timestamptz
 )`
 
@@ -73,10 +74,13 @@ CREATE TABLE IF NOT EXISTS domain_grant (
 )`
 
 const (
-	apiTokenAccountIndex    = `CREATE INDEX IF NOT EXISTS api_token_account_id_idx ON api_token (account_id)`
-	browserSessionIndex     = `CREATE INDEX IF NOT EXISTS browser_session_account_id_idx ON browser_session (account_id)`
-	domainGrantGranteeIndex = `CREATE INDEX IF NOT EXISTS domain_grant_grantee_id_domain_kind_idx ON domain_grant (grantee_id, domain_kind)`
-	uuidExtension           = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`
+	apiTokenAccountIndex       = `CREATE INDEX IF NOT EXISTS api_token_account_id_idx ON api_token (account_id)`
+	browserSessionIndex        = `CREATE INDEX IF NOT EXISTS browser_session_account_id_idx ON browser_session (account_id)`
+	browserSessionExpiresIndex = `CREATE INDEX IF NOT EXISTS browser_session_expires_at_idx ON browser_session (expires_at)`
+	browserSessionLastSeen     = `ALTER TABLE browser_session ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now()`
+	oauthStateExpiresIndex     = `CREATE INDEX IF NOT EXISTS oauth_state_expires_at_idx ON oauth_state (expires_at)`
+	domainGrantGranteeIndex    = `CREATE INDEX IF NOT EXISTS domain_grant_grantee_id_domain_kind_idx ON domain_grant (grantee_id, domain_kind)`
+	uuidExtension              = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`
 )
 
 const domainGrantDeleteFunction = `
@@ -116,6 +120,9 @@ func Migrate(ctx context.Context, conn postgres.Query) error {
 		{"domain_grant", domainGrantTable},
 		{"api_token_account_id_idx", apiTokenAccountIndex},
 		{"browser_session_account_id_idx", browserSessionIndex},
+		{"browser_session_last_seen_at", browserSessionLastSeen},
+		{"browser_session_expires_at_idx", browserSessionExpiresIndex},
+		{"oauth_state_expires_at_idx", oauthStateExpiresIndex},
 		{"domain_grant_grantee_id_domain_kind_idx", domainGrantGranteeIndex},
 		{"domain_grant_before_delete", domainGrantDeleteFunction},
 	}

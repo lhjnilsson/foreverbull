@@ -21,6 +21,8 @@ func TestMigrateTwiceKeepsRowsAndRejectsOwner(t *testing.T) {
 	for _, indexName := range []string{
 		"api_token_account_id_idx",
 		"browser_session_account_id_idx",
+		"browser_session_expires_at_idx",
+		"oauth_state_expires_at_idx",
 		"domain_grant_grantee_id_domain_kind_idx",
 	} {
 		var exists bool

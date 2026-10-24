@@ -91,6 +91,11 @@ func accountFromCookie(ctx context.Context, db postgres.Query, value string, now
 	if !knownRole(account.Role) {
 		return Account{}, ErrUnauthorized
 	}
+	_, _ = db.Exec(ctx, `
+		UPDATE browser_session
+		SET last_seen_at = $2
+		WHERE id = $1
+		  AND last_seen_at < $2::timestamptz - interval '5 minutes'`, id, now)
 	return account, nil
 }
 

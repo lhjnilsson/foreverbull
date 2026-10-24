@@ -111,6 +111,7 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.releaseLoginHash()
+	sweepExpired(r.Context(), h.db, h.now(), h.logf)
 	account, err := Authenticate(r.Context(), h.db, username, password)
 	if err != nil {
 		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrPasswordLength) || errors.Is(err, ErrUsername) {

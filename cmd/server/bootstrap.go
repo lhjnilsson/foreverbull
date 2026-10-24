@@ -43,6 +43,7 @@ func prepareAuth(pool *pgxpool.Pool, store storage.Storage, mux *http.ServeMux) 
 	}
 	auth.RegisterHTTP(mux, pool)
 	web.UseGuard(auth.Protect(pool))
+	go auth.SweepLoop(context.Background(), pool, log.Printf)
 	return nil
 }
 
