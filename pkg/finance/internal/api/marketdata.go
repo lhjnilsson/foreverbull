@@ -94,6 +94,12 @@ func sendDownloadResponse(serverStream servicePb.Marketdata_DownloadHistoricalDa
 	}
 }
 
+// noPriceDataError is the STATUS_ERROR text when no ticker of the instrument
+// has bars. DownloadFinancialData fail-fasts only on this prefix.
+func noPriceDataError(symbol string) error {
+	return fmt.Errorf("no price data for %s", symbol)
+}
+
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
 	rsp.Error = err.Error()
@@ -154,11 +160,9 @@ func (fs *MarketdataServer) downloadSymbol(
 			if errors.As(fetchErr, &blocked) {
 				return blocked
 			}
-			if err != nil {
-				failSymbol(ctx, serverStream, rsp, err)
-			} else {
-				failSymbol(ctx, serverStream, rsp, fetchErr)
-			}
+			// Sentinel for create: only this error deletes the backtest.
+			// GetAsset / store failures keep their own text and only disable.
+			failSymbol(ctx, serverStream, rsp, noPriceDataError(symbol))
 			return nil
 		}
 		storeSymbol = fetched.symbol
@@ -199,7 +203,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 	inst, err := instruments.Resolve(ctx, symbol, start)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("no price data for %s", symbol)
+			return nil, noPriceDataError(symbol)
 		}
 		return nil, err
 	}
@@ -209,10 +213,9 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		return nil, err
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no price data for %s", symbol)
+		return nil, noPriceDataError(symbol)
 	}
 
-	var lastErr error
 	for _, candidate := range candidates {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -223,11 +226,9 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 			if errors.As(err, &blocked) {
 				return nil, blocked
 			}
-			lastErr = err
 			continue
 		}
 		if len(ohlcs) == 0 {
-			lastErr = fmt.Errorf("no price data for %s", candidate)
 			continue
 		}
 
@@ -249,10 +250,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		}
 		return &fetchedBars{symbol: candidate, bars: ohlcs}, nil
 	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("no price data for %s", symbol)
+	return nil, noPriceDataError(symbol)
 }
 
 func laterTickerCandidates(

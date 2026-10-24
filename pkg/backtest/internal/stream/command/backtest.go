@@ -584,12 +584,24 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
-			// A member with no bars under any of its tickers must not be left
-			// out silently: remove this create and fail with a clear line.
-			return discardNoPriceData(ctx, backtests, command.BacktestName, msg.Symbol, startDate, endDate)
+			if isNoPriceDataError(msg.GetError()) {
+				// No bars under any ticker of this member: fail create.
+				return discardNoPriceData(ctx, backtests, command.BacktestName, msg.Symbol, startDate, endDate)
+			}
+			// Other download errors (GetAsset, store, …) only disable the member.
+			err := backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
+			if err != nil {
+				return fmt.Errorf("error updating period asset: %w", err)
+			}
 		}
 	}
 	return nil
+}
+
+// isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
+// Other download failures keep a different error text and only disable the member.
+func isNoPriceDataError(text string) bool {
+	return strings.HasPrefix(text, "no price data for ")
 }
 
 // discardNoPriceData deletes the backtest when a symbol has no bars under any
@@ -629,7 +641,7 @@ func blockedDownload(err error) error {
 // so retrying the same create with the other provider is not refused as a
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
 // are stored per provider and symbol, not per backtest. When only some
-// symbol fails with no bars under any of its tickers, the create is removed.
+// symbols fail, they are disabled one by one and the backtest is kept.
 func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name string) {
 	if err := backtests.Delete(ctx, name); err != nil {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
