@@ -98,6 +98,10 @@ const (
 	// hop that is not in this list.
 	AuthTrustedProxies = "AUTH_TRUSTED_PROXIES"
 
+	// AuthPublicURL is the broker origin browsers use, such as https://fb.example.com.
+	// Cookie writes may send this Origin when Sec-Fetch-Site is absent.
+	AuthPublicURL = "AUTH_PUBLIC_URL"
+
 	// GitHub OAuth is read only when AUTH_ENABLED is true. All three stay
 	// empty by default so a partial set is visible at startup.
 	AuthGitHubClientID     = "AUTH_GITHUB_CLIENT_ID"
@@ -392,6 +396,10 @@ func GetAuthTrustProxy() bool {
 
 func GetAuthTrustedProxies() string {
 	return os.Getenv(AuthTrustedProxies)
+}
+
+func GetAuthPublicURL() string {
+	return os.Getenv(AuthPublicURL)
 }
 
 func GetAuthGitHubClientID() string {

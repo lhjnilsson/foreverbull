@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -31,6 +32,10 @@ func Protect(db postgres.Query) func(http.Handler) http.Handler {
 				return
 			}
 			r = r.WithContext(WithAccount(r.Context(), account))
+			if !mutationAllowed(r) {
+				web.Forbidden(w)
+				return
+			}
 			if anyRoleRequest(r) {
 				next.ServeHTTP(w, r)
 				return
@@ -82,4 +87,40 @@ func anyRoleRequest(r *http.Request) bool {
 
 func underAPI(path string) bool {
 	return path == "/api" || strings.HasPrefix(path, "/api/")
+}
+
+// mutationAllowed rejects a cookie-authenticated write from another site.
+// SameSite=Lax still sends the cookie on a top-level navigation from a sibling.
+// A bearer token is not a browser cookie, so it skips this check. A write with
+// neither Sec-Fetch-Site nor a matching Origin is refused.
+func mutationAllowed(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	if strings.HasPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ") {
+		return true
+	}
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "same-origin", "none":
+		return true
+	}
+	return originMatchesPublic(r.Header.Get("Origin"))
+}
+
+func originMatchesPublic(origin string) bool {
+	origin = strings.TrimSpace(origin)
+	configured := strings.TrimSpace(environment.GetAuthPublicURL())
+	if origin == "" || configured == "" {
+		return false
+	}
+	got, err := url.Parse(origin)
+	want, wantErr := url.Parse(configured)
+	if err != nil || wantErr != nil || got.Host == "" || want.Host == "" || got.Scheme == "" || want.Scheme == "" {
+		return false
+	}
+	return strings.EqualFold(got.Scheme, want.Scheme) && strings.EqualFold(got.Host, want.Host)
 }
