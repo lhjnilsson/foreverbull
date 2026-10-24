@@ -256,6 +256,7 @@ func putGrant(handler http.Handler, cookie, name, login, level string) *httptest
 	req := httptest.NewRequest(http.MethodPut, "/api/backtests/"+name+"/grants", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", "fb_session="+cookie)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec

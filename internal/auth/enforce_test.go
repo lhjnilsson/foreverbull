@@ -129,6 +129,7 @@ func authed(handler http.Handler, method, path, body, cookie string) *httptest.R
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Cookie", "fb_session="+cookie)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
