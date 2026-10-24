@@ -136,13 +136,15 @@ func AccountFromBearer(ctx context.Context, db postgres.Query, token string, now
 		account Account
 		tokenID string
 		revoked *time.Time
+		expires *time.Time
 	)
 	err := db.QueryRow(ctx, `
-		SELECT a.id, a.role, t.id, t.revoked_at
+		SELECT a.id, a.role, t.id, t.revoked_at, t.expires_at
 		FROM api_token AS t
 		JOIN account AS a ON a.id = t.account_id
-		WHERE t.token_hash = $1`, sum[:]).Scan(&account.ID, &account.Role, &tokenID, &revoked)
-	if errors.Is(err, pgx.ErrNoRows) || revoked != nil {
+		WHERE t.token_hash = $1
+		  AND (t.expires_at IS NULL OR t.expires_at > $2)`, sum[:], now).Scan(&account.ID, &account.Role, &tokenID, &revoked, &expires)
+	if errors.Is(err, pgx.ErrNoRows) || revoked != nil || (expires != nil && !expires.After(now)) {
 		return Account{}, ErrUnauthorized
 	}
 	if err != nil {
