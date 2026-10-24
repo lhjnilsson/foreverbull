@@ -10,6 +10,8 @@ from foreverbull_cli.bull.trading import PositionAndOrder
 from typer.testing import CliRunner
 
 from foreverbull.foreverbull import TradingSession
+from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
+from foreverbull.models.finance import market_data_denied_line
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
@@ -161,7 +163,9 @@ def _mock_live_trading():
             [trading_service_pb.CreateSessionResponse(session=trading_pb.Session(port=7878))]
         )
         get_portfolio.return_value = trading_service_pb.GetPortfolioResponse(portfolio=_sample_portfolio())
-        mock_foreverbull.return_value.trading_session.return_value.__enter__.return_value = mock_session
+        context = mock_foreverbull.return_value.trading_session.return_value
+        context.__enter__.return_value = mock_session
+        context.__exit__.return_value = False
         yield {
             "place_orders": place_orders,
             "create_session": create_session,
@@ -245,6 +249,24 @@ def test_trading_run_no_periods_fails_with_one_line(monkeypatch):
     assert "Traceback" not in result.stdout
     create_session.assert_not_called()
     get_portfolio.assert_not_called()
+
+
+def test_trading_run_permission_denied_exits_with_the_backtest_line(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    denied = _LookupError(WORKER_MARKET_DATA_DENIED, grpc.StatusCode.FAILED_PRECONDITION)
+    with _mock_live_trading() as mocks:
+        mocks["session"].run_trading.side_effect = denied
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert f"✖ {market_data_denied_line('test_name')}" in " ".join(result.stdout.split())
+    assert "SQLAlchemy" not in result.stdout
+    assert "worker" not in result.stdout.lower()
+    assert "database" not in result.stdout.lower()
+    assert "table" not in result.stdout.lower()
+    assert "Traceback" not in result.stdout
+    mocks["place_orders"].assert_not_called()
 
 
 def test_trading_run_unknown_backtest_prints_one_plain_line(monkeypatch):

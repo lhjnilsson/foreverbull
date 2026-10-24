@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -174,6 +175,9 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 					if err != nil {
 						return fmt.Errorf("error processing request: %w", err)
 					}
+					if err := workerResponseError(&response); err != nil {
+						return err
+					}
 
 					orderWriteMutex.Lock()
 					defer orderWriteMutex.Unlock()
@@ -186,7 +190,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 
 			err := group.Wait()
 			if err != nil {
-				return nil, fmt.Errorf("error processing request: %w", err)
+				return nil, err
 			}
 		} else {
 			request := servicePb.WorkerRequest{
@@ -200,12 +204,29 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 			if err != nil {
 				return nil, fmt.Errorf("error processing request: %w", err)
 			}
+			if err := workerResponseError(&response); err != nil {
+				return nil, err
+			}
 
 			orders = append(orders, response.Orders...)
 		}
 	}
 
 	return orders, nil
+}
+
+// workerResponseError is the worker's own failure. The text is already the
+// sentence a caller should show. A market-data permission failure is the
+// install-bug sentence, with no SQL. The CLI adds the backtest name.
+func workerResponseError(response *servicePb.WorkerResponse) error {
+	if response == nil {
+		return nil
+	}
+	message := strings.TrimSpace(response.GetError())
+	if message == "" {
+		return nil
+	}
+	return errors.New(message)
 }
 
 func (p *pool) Close() error {

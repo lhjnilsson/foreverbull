@@ -12,7 +12,7 @@ The install path is Kubernetes: Kind locally via `fbenv`, Helm on a remote clust
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - [Task](https://taskfile.dev/) (`go-task`)
-- Go 1.24 (contributors; see `go.mod`)
+- Go 1.27.3 (contributors; see `go.mod`)
 
 This is not a Docker Compose / Docker-network stack. Tests still use Testcontainers on Docker; they do not run on Kind.
 

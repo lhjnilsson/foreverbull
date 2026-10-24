@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-# Plugin go.mod requires Go 1.24. `replace => ../..` needs the repo module
+# Plugin go.mod requires Go 1.27.3. `replace => ../..` needs the repo module
 # two directories above the plugin. Grafana OSS stays 11.3.2.
 # Build with: docker build -f Dockerfile --build-context foreverbull=.. .
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make

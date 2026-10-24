@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from foreverbull import broker
+from foreverbull.models.finance import present_market_data_failure
 from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
@@ -263,7 +264,12 @@ def experiment(
             progress.transient = True
 
     if failed is not None:
-        console.print(f"✖ {failed}", markup=False, highlight=False, soft_wrap=True)
+        console.print(
+            f"✖ {present_market_data_failure(failed, backtest)}",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
         raise typer.Exit(code=1)
     if created is None:
         return

@@ -185,6 +185,11 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 			return fmt.Errorf("error sending portfolio: %w", err)
 		}
 	}
+	if failure, ok := s.backtestSession.(interface{ RunFailure() error }); ok {
+		if err := failure.RunFailure(); err != nil {
+			return status.Error(codes.FailedPrecondition, err.Error())
+		}
+	}
 	return nil
 }
 

@@ -48,9 +48,19 @@ func NewZiplineEngineSession(ctx context.Context, connStr string) (engine.Engine
 }
 
 type ZipelineSession struct {
-	client    servicePb.EngineSessionClient
-	symbolsAt MemberSymbols
-	backtests BacktestReader
+	client     servicePb.EngineSessionClient
+	symbolsAt  MemberSymbols
+	backtests  BacktestReader
+	runFailure chan error
+}
+
+// RunFailure is the error that stopped the run, or nil when the run finished.
+// Call it after the period channel has closed. It returns one result.
+func (z *ZipelineSession) RunFailure() error {
+	if z.runFailure == nil {
+		return nil
+	}
+	return <-z.runFailure
 }
 
 // symbolSource returns the tickers Process receives on date t.
@@ -90,18 +100,21 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	log.Debug().Any("response", rsp).Msg("run backtest sent")
 
 	ch := make(chan *servicePb.RunExecutionResponse)
+	z.runFailure = make(chan error, 1)
 
 	runner := func() {
 		defer closePool()
+		defer close(ch)
+		var runErr error
+		defer func() { z.runFailure <- runErr }()
 		var currentPeriod int64 = 0
 		for {
 			period, err := z.client.GetCurrentPeriod(ctx, &servicePb.GetCurrentPeriodRequest{})
 			if err != nil {
-				close(ch)
+				runErr = err
 				return
 			}
 			if !period.IsRunning {
-				close(ch)
 				return
 			}
 			currentPeriod++
@@ -120,13 +133,13 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 			symbols, err := symbolsAt(ctx, t)
 			if err != nil {
 				log.Error().Err(err).Msg("error listing members at timestamp")
-				close(ch)
+				runErr = err
 				return
 			}
 			orders, err := workers.Process(ctx, t, symbols, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
-				close(ch)
+				runErr = err
 				return
 			}
 
@@ -137,8 +150,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 			)
 			if err != nil {
 				log.Error().Err(err).Msg("error placing orders")
-				close(ch)
-
+				runErr = err
 				return
 			}
 		}

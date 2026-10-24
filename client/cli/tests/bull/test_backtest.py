@@ -24,6 +24,8 @@ from foreverbull_cli.output import execution_link
 from typer.testing import CliRunner
 
 from foreverbull.foreverbull import BacktestSession
+from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
+from foreverbull.models.finance import market_data_denied_line
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
@@ -1416,6 +1418,42 @@ def test_backtest_run_shows_broker_rejection_as_one_line(fb_env, message, code):
     assert isinstance(result.exception, SystemExit)
     assert result.stdout.count("✖") == 1
     assert f"✖ {message}" in " ".join(result.stdout.split())
+    assert "Traceback" not in result.stdout
+    get_execution.assert_not_called()
+
+
+def test_backtest_run_permission_denied_exits_with_one_plain_line(fb_env):
+    mock_backtest_session = _run_session_mocks()
+    mock_backtest_session.run_execution.side_effect = _BrokerRejection(
+        WORKER_MARKET_DATA_DENIED,
+        grpc.StatusCode.FAILED_PRECONDITION,
+    )
+    with (
+        patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
+        patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.get_execution") as get_execution,
+    ):
+        from_file_path.return_value = True
+        get.return_value = _sample_backtest()
+        create_session.return_value = iter(
+            [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
+        )
+        context = mock_foreverbull.return_value.backtest_session.return_value
+        context.__enter__.return_value = mock_backtest_session
+        context.__exit__.return_value = False
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert f"✖ {market_data_denied_line('test_name')}" in " ".join(result.stdout.split())
+    assert "No trades" not in result.stdout
+    assert "SQLAlchemy" not in result.stdout
+    assert "permission denied for table" not in result.stdout
+    assert "worker" not in result.stdout.lower()
+    assert "database" not in result.stdout.lower()
+    assert "table" not in result.stdout.lower()
     assert "Traceback" not in result.stdout
     get_execution.assert_not_called()
 

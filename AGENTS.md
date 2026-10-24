@@ -50,7 +50,7 @@ ETF-built universes are point-in-time from iShares as-of snapshots. Identity is 
 
 - Docker (unit tests use Testcontainers; Kind also needs a Docker daemon; integration/e2e need local images)
 - Kind, Helm, and kubectl (local `fbenv` / Kind cluster)
-- Go 1.24 (see `go.mod`)
+- Go 1.27.3 (see `go.mod`)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - Task
 - For proto generation: [Buf](https://buf.build/docs/installation), `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (pinned `buf`, `protoc-gen-py`, and `protoc-gen-grpc-py`)
