@@ -75,6 +75,7 @@ export type ExecutionResult = {
   endingValue?: number;
   maxDrawdown?: number;
   sharpe?: number;
+  benchmarkPeriodReturn?: number;
   positions?: unknown[];
 };
 

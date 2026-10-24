@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { showTokenMint, canGrant, type Me } from "./access";
 import { useAuth } from "./auth-context";
-import { Detail, Field, FormError, H2, buttonClass, inputClass } from "./components/fb";
+import { Detail, DetailHeading, Field, FormError, H2, buttonClass, inputClass } from "./components/fb";
 import { deleteJson, postJson, putJson, useJson } from "./useJson";
 
 type Providers = { password?: boolean; github?: boolean };
@@ -64,9 +64,14 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <form className="w-full max-w-sm rounded-sm border bg-card p-6" onSubmit={(event) => void onSubmit(event)}>
-        <h1 className="mb-4 font-medium">Sign in</h1>
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-8">
+      <h1 className="text-2xl font-semibold">Foreverbull</h1>
+      <form
+        className="w-full max-w-sm rounded-md border bg-card p-6 shadow-report"
+        aria-label="Sign in"
+        onSubmit={(event) => void onSubmit(event)}
+      >
+        <h2 className="mb-4 font-medium">Sign in</h2>
         <label className="mb-1 block text-muted-foreground" htmlFor="username">
           Username
         </label>
@@ -150,7 +155,7 @@ export function AccountPage() {
   const account = state.account;
   return (
     <Detail k={account.id}>
-      <h1 className="mb-4 font-mono text-base">{account.login}</h1>
+      <DetailHeading title={account.login} subtitle="Account" />
       <dl>
         <Field label="Role">{account.role}</Field>
         <Field label="Login">{account.login}</Field>

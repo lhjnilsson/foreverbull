@@ -5,6 +5,7 @@ import { Grants } from "../auth";
 import { useAuth } from "../auth-context";
 import {
   Detail,
+  DetailHeading,
   Empty,
   Field,
   FormError,
@@ -50,6 +51,7 @@ export function ServicesPage() {
       {redirectTo ? <Navigate to={servicePath(redirectTo)} replace /> : null}
       <ListPane
         title="Services"
+        count={rows ? rows.length : undefined}
         newLabel="New service"
         newTitle="Register this image."
         allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
@@ -64,7 +66,7 @@ export function ServicesPage() {
         )}
       >
         {list.state === "error" && list.message ? (
-          <li className="px-4 py-6 text-muted-foreground">{list.message}</li>
+          <li className="px-5 py-6 text-muted-foreground">{list.message}</li>
         ) : null}
         {rows && rows.length === 0 ? <Empty text="Register a service." /> : null}
         {(rows ?? []).map((service) => (
@@ -108,7 +110,9 @@ function ServiceDetail({ service }: { service: Service }) {
     .join(", ");
   return (
     <Detail k={service.Image ?? "service"}>
-      <h1 className="mb-4 break-all font-mono text-base">{service.Image}</h1>
+      <DetailHeading title={service.Image ?? ""} subtitle="Service">
+        <StatusText s={service.statuses?.at(-1)?.status} />
+      </DetailHeading>
       <dl>
         <Field label="Image">{service.Image}</Field>
         {service.ownerLogin ? <Field label="Owner">{service.ownerLogin}</Field> : null}

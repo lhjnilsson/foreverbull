@@ -1,22 +1,26 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Link, Navigate, Outlet, useMatch, useNavigate, useOutletContext } from "react-router-dom";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, LoaderCircle } from "lucide-react";
 import { canCreate } from "../access";
 import { Grants } from "../auth";
 import { useAuth } from "../auth-context";
+import { EquityChart } from "../components/equity-chart";
 import {
   Detail,
+  DetailHeading,
   Empty,
   Field,
   FormError,
   H2,
   ListPane,
+  Modal,
   buttonClass,
   fmtDate,
   inputClass,
   rowActive,
   rowClass,
 } from "../components/fb";
+import { lastStoredPeriod, portfolioSeries } from "../equity";
 import type { Backtest, Execution, ExecutionResult, GetExecution } from "../types";
 import { postJson, useJson, type Load } from "../useJson";
 
@@ -44,6 +48,7 @@ export function BacktestsLayout() {
     <>
       <ListPane
         title="Backtests"
+        count={rows ? rows.length : undefined}
         newLabel="New backtest"
         newTitle="Create this backtest."
         allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
@@ -58,26 +63,11 @@ export function BacktestsLayout() {
         )}
       >
         {load.state === "error" && load.message ? (
-          <li className="px-4 py-6 text-muted-foreground">{load.message}</li>
+          <li className="px-5 py-6 text-muted-foreground">{load.message}</li>
         ) : null}
         {rows && rows.length === 0 ? <Empty text="Create a backtest." /> : null}
         {(rows ?? []).map((backtest) => (
-          <li key={backtest.name}>
-            <Link
-              to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
-              className={`${rowClass} flex items-baseline justify-between gap-3 ${backtest.name === name ? rowActive : ""}`}
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-mono text-[13px]">{backtest.name}</span>
-                {backtest.ownerLogin ? (
-                  <span className="block truncate text-xs text-muted-foreground">{backtest.ownerLogin}</span>
-                ) : null}
-              </span>
-              {backtest.provider ? (
-                <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
-              ) : null}
-            </Link>
-          </li>
+          <BacktestRow key={backtest.name} backtest={backtest} selected={backtest.name === name} />
         ))}
       </ListPane>
       <Outlet context={{ load, refresh } satisfies BacktestList} />
@@ -112,6 +102,52 @@ function listHasResult(e: Execution): boolean {
   if (typeof result.endingValue === "number" && result.endingValue !== 0) return true;
   if (typeof result.maxDrawdown === "number" && result.maxDrawdown !== 0) return true;
   return false;
+}
+
+function latestStored(runs: Execution[]): ExecutionResult | undefined {
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const execution = runs[index];
+    if (execution && listHasResult(execution)) return execution.result;
+  }
+  return undefined;
+}
+
+function BacktestRow({ backtest, selected }: { backtest: Backtest; selected: boolean }) {
+  const load = useJson<Execution[]>(
+    backtest.name ? `/api/backtests/${encodeURIComponent(backtest.name)}/executions` : null,
+  );
+  const runs = load.state === "ready" && Array.isArray(load.data) ? load.data : null;
+  const stored = runs ? latestStored(runs) : undefined;
+  const sharpe = stored?.sharpe;
+  const start = backtest.periods?.[0]?.startDate;
+  return (
+    <li>
+      <Link
+        to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
+        className={`${rowClass} ${selected ? rowActive : ""}`}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate font-mono text-[13px]">{backtest.name}</span>
+          {backtest.provider ? (
+            <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
+          ) : null}
+        </div>
+        {backtest.ownerLogin ? (
+          <span className="mt-1 block truncate text-xs text-muted-foreground">{backtest.ownerLogin}</span>
+        ) : null}
+        {runs ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              {runs.length} {runs.length === 1 ? "run" : "runs"}
+            </span>
+            {typeof sharpe === "number" ? <span className="font-mono">Sharpe {sharpe.toFixed(2)}</span> : null}
+            {runs.length > 0 && !stored ? <span>no result</span> : null}
+            {runs.length === 0 ? <span>{fmtDate(start)}</span> : null}
+          </div>
+        ) : null}
+      </Link>
+    </li>
+  );
 }
 
 export function BacktestDetail() {
@@ -149,7 +185,7 @@ export function BacktestDetail() {
 
   return (
     <Detail k={b.name ?? name}>
-      <h1 className="mb-4 font-mono text-base">{b.name}</h1>
+      <DetailHeading title={b.name ?? name} subtitle="Backtest" />
       <dl>
         <Field label="Name">{b.name}</Field>
         {b.ownerLogin ? <Field label="Owner">{b.ownerLogin}</Field> : null}
@@ -169,7 +205,12 @@ export function BacktestDetail() {
       ) : null}
       <ul>
         {runs.map((execution) => (
-          <ExecutionRow key={execution.id} execution={execution} revision={execRevision} />
+          <ExecutionRow
+            key={execution.id}
+            execution={execution}
+            revision={execRevision}
+            benchmark={b.benchmark ?? ""}
+          />
         ))}
       </ul>
       {canCreate(state.status, state.status === "in" ? state.account.role : undefined) ? (
@@ -180,42 +221,51 @@ export function BacktestDetail() {
   );
 }
 
-function ExecutionRow({ execution, revision }: { execution: Execution; revision: number }) {
+function grafanaHref(id: string): string {
+  return `/d/ee9ep4jxtwkcgf?var-execution=${encodeURIComponent(id)}`;
+}
+
+function ExecutionRow({
+  execution,
+  revision,
+  benchmark,
+}: {
+  execution: Execution;
+  revision: number;
+  benchmark: string;
+}) {
   const id = execution.id ?? "";
   const detail = useJson<GetExecution>(id ? `/api/executions/${encodeURIComponent(id)}` : null, revision);
   const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
-  const fromGet = periods.length > 0;
+  const fromGet = lastStoredPeriod(periods) !== undefined;
   const fromList = listHasResult(execution);
   const stored = fromGet || fromList;
   const settled = fromList || detail.state === "ready" || detail.state === "error";
   const status = stored ? "stored" : settled ? "no result" : "";
-  const source: ExecutionResult | undefined = fromGet
-    ? periods[periods.length - 1]
-    : fromList
-      ? execution.result
-      : undefined;
+  const source: ExecutionResult | undefined = fromGet ? lastStoredPeriod(periods) : fromList ? execution.result : undefined;
   const sharpe = source?.sharpe;
   const drawdown = source?.maxDrawdown;
   const endValue = source?.endingValue;
+  const [open, setOpen] = useState(false);
 
   return (
-    <li className="animate-enter border-b py-2.5 font-mono text-[13px]">
+    <li className="animate-enter border-b py-3 font-mono text-[13px]">
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-        <span>{id}</span>
-        {status ? (
-          <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status}</span>
-        ) : null}
+        <span className="break-all">{id}</span>
+        {status ? <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status}</span> : null}
         <span className="text-muted-foreground">
           {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
         </span>
         {id ? (
-          <a
-            href={`/d/ee9ep4jxtwkcgf?var-execution=${encodeURIComponent(id)}`}
-            className="ml-auto inline-flex items-center gap-1 text-primary"
-          >
-            Open the run.
-            <ArrowUpRight size={14} aria-hidden />
-          </a>
+          <span className="ml-auto inline-flex items-center gap-4">
+            <button type="button" className="text-primary" onClick={() => setOpen(true)}>
+              Portfolio
+            </button>
+            <a href={grafanaHref(id)} className="inline-flex items-center gap-1 text-primary">
+              Open the run.
+              <ArrowUpRight size={14} aria-hidden />
+            </a>
+          </span>
         ) : null}
       </div>
       {stored && (typeof sharpe === "number" || typeof drawdown === "number" || typeof endValue === "number") ? (
@@ -225,7 +275,90 @@ function ExecutionRow({ execution, revision }: { execution: Execution; revision:
           {typeof endValue === "number" ? <span>end value {num(endValue)}</span> : null}
         </div>
       ) : null}
+      <Modal open={open} onClose={() => setOpen(false)} title={id ? `Run ${id}` : "Run"} wide>
+        <RunReport execution={execution} detail={detail} benchmark={benchmark} stored={stored} status={status} />
+      </Modal>
     </li>
+  );
+}
+
+function RunReport({
+  execution,
+  detail,
+  benchmark,
+  stored,
+  status,
+}: {
+  execution: Execution;
+  detail: Load<GetExecution>;
+  benchmark: string;
+  stored: boolean;
+  status: string;
+}) {
+  const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
+  const points = portfolioSeries(periods);
+  const last = lastStoredPeriod(periods) ?? (stored ? execution.result : undefined);
+  const id = execution.id ?? "";
+  // benchmark_period_return is a fraction. It stays off the portfolio-value axis.
+  const benchmarkReturn = last?.benchmarkPeriodReturn;
+
+  return (
+    <div className="grid gap-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <dl className="min-w-0 flex-1">
+          <Field label="Execution">{execution.id || "—"}</Field>
+          <Field label="Backtest">{execution.backtest || "—"}</Field>
+          <Field label="Session">{execution.session || "—"}</Field>
+          <Field label="Period">
+            {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
+          </Field>
+          <Field label="Status">
+            <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status || "—"}</span>
+          </Field>
+        </dl>
+        {id ? (
+          <a href={grafanaHref(id)} className="inline-flex items-center gap-1 text-primary">
+            Open the run.
+            <ArrowUpRight size={14} aria-hidden />
+          </a>
+        ) : null}
+      </div>
+      {last ? (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5 border-y py-6 md:grid-cols-4">
+          {typeof last.sharpe === "number" ? <Metric label="Sharpe" value={last.sharpe.toFixed(2)} /> : null}
+          {typeof last.maxDrawdown === "number" ? <Metric label="Max drawdown" value={pct(last.maxDrawdown)} /> : null}
+          {typeof last.portfolioValue === "number" ? <Metric label="Portfolio value" value={num(last.portfolioValue)} /> : null}
+          {typeof last.endingValue === "number" ? <Metric label="End value" value={num(last.endingValue)} /> : null}
+          {typeof benchmarkReturn === "number" ? (
+            <Metric label={benchmark || "Benchmark"} value={pct(benchmarkReturn)} />
+          ) : null}
+        </div>
+      ) : detail.state === "loading" ? null : (
+        <p className="text-muted-foreground">No result stored for this run.</p>
+      )}
+      {detail.state === "loading" ? (
+        <p className="flex items-center gap-2 text-muted-foreground">
+          <LoaderCircle className="animate-spin motion-reduce:animate-none" size={16} aria-hidden />
+          Loading the stored series.
+        </p>
+      ) : null}
+      {detail.state === "error" && detail.message ? <p className="text-muted-foreground">{detail.message}</p> : null}
+      {points.length >= 2 ? (
+        <div>
+          <h3 className="mb-5 font-medium">Portfolio value</h3>
+          <EquityChart points={points} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="py-1">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-2 font-mono text-2xl font-medium">{value}</div>
+    </div>
   );
 }
 
