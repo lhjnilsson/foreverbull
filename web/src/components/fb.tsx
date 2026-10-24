@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useEffect, useState, type ReactNode } from "react";
 import { Boxes, FlaskConical, Plus, Target, X } from "lucide-react";
+import { useAuth } from "../auth-context";
 import type { DateParts } from "../types";
 import { useJson } from "../useJson";
 
@@ -12,6 +13,7 @@ const nav = [
 
 export function Sidebar() {
   const health = useJson<{ ok?: boolean }>("/api/health");
+  const { state } = useAuth();
   const answered = health.state === "ready" && health.data.ok === true;
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card">
@@ -33,6 +35,11 @@ export function Sidebar() {
         ))}
       </nav>
       <div className="mt-auto flex flex-col items-start gap-2 px-5 py-4 text-xs text-muted-foreground">
+        {state.status === "in" ? (
+          <NavLink to="/account" className="truncate font-mono text-[13px] hover:text-foreground">
+            {state.account.login}
+          </NavLink>
+        ) : null}
         {answered ? (
           <span
             role="img"
@@ -51,12 +58,14 @@ export function ListPane({
   newLabel,
   newTitle,
   newForm,
+  allowCreate = true,
   children,
 }: {
   title: string;
   newLabel: string;
   newTitle: string;
   newForm: (close: () => void) => ReactNode;
+  allowCreate?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -64,20 +73,24 @@ export function ListPane({
     <section className="flex h-full min-h-0 w-80 shrink-0 flex-col overflow-hidden border-r">
       <header className="flex h-12 items-center justify-between border-b px-4">
         <h1 className="font-medium">{title}</h1>
-        <button
-          type="button"
-          aria-label={newLabel}
-          title={newLabel}
-          onClick={() => setOpen(true)}
-          className="rounded-sm p-1 text-muted-foreground transition-colors duration-150 hover:text-primary"
-        >
-          <Plus size={16} aria-hidden />
-        </button>
+        {allowCreate ? (
+          <button
+            type="button"
+            aria-label={newLabel}
+            title={newLabel}
+            onClick={() => setOpen(true)}
+            className="rounded-sm p-1 text-muted-foreground transition-colors duration-150 hover:text-primary"
+          >
+            <Plus size={16} aria-hidden />
+          </button>
+        ) : null}
       </header>
       <ul className="min-h-0 flex-1 overflow-auto">{children}</ul>
-      <Modal open={open} onClose={() => setOpen(false)} title={newTitle}>
-        {newForm(() => setOpen(false))}
-      </Modal>
+      {allowCreate ? (
+        <Modal open={open} onClose={() => setOpen(false)} title={newTitle}>
+          {newForm(() => setOpen(false))}
+        </Modal>
+      ) : null}
     </section>
   );
 }

@@ -85,6 +85,62 @@ This talks to a running broker. Paper trading stays off unless `TRADING_ENABLED=
 
 Credentials live only in the profiles file. In the cluster, `TRADING_PROFILES_FILE` is `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading`, key `profiles.yaml`. On local Kind, `fbenv` applies `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and does not print it. The committed example is [deploy/trading-profiles.example.yaml](../../deploy/trading-profiles.example.yaml) and its credential fields are empty. Do not put keys in the Helm chart, Postgres, or `.foreverbull/config.yaml`.
 
+### Token
+
+`fbull` sends a bearer only when a token is configured. While `AUTH_ENABLED` is false, leave it unset. `task test:integration` does not set `FOREVERBULL_TOKEN`.
+
+Resolution order, first match, each value trimmed:
+
+1. `--token` (not stored; it can land in shell history)
+2. `FOREVERBULL_TOKEN`
+3. `~/.foreverbull/token`
+
+The token is not a key in `.foreverbull/config.yaml`, `~/.foreverbull/config.yaml`, or `FOREVERBULL_CONFIG`. `fbenv` does not send it.
+
+```bash
+uv run fbull token save
+uv run fbull token save --force
+```
+
+`token save` reads stdin and writes `~/.foreverbull/token` with mode `0600`. It does not take the token as an argument. If the file already exists, the command refuses unless `--force` is passed. A mode looser than `0600` is refused. The error prints the path, not the contents.
+
+When the broker has authentication on, set `GRAFANA_BROKER_TOKEN` on the Grafana deployment from a Secret you create. The chart does not generate that token and does not ship a default. Mint it as an editor with scope `read` (`{"name":"grafana","scope":"read"}` on `POST /api/auth/tokens`). A `read` token may call only the read RPCs. An omitted scope is `write`. A token minted by the admin shows every row. A viewer cannot mint a token. Leave `GRAFANA_BROKER_TOKEN` unset while `AUTH_ENABLED` is false: the plugin then dials with no metadata. Grafana reaches the broker at `foreverbull:50055` without TLS. Its NetworkPolicy allows only DNS and that port. Do not publish `50055` beyond the cluster. Do not put the user bearer or the session secret on a worker pod. `fbenv` does not set `AUTH_ENABLED`.
+
+## Accounts
+
+The server binary creates further password accounts. It is not an `fbull` command, and it does not set `AUTH_ENABLED`. The platform admin is not created here. The first `AUTH_ENABLED=true` boot creates that account from `AUTH_ADMIN_USERNAME` and `AUTH_ADMIN_PASSWORD_FILE`. The password is the file from Secret `foreverbull-admin`, key `password`, not an environment variable. See [deploy/README.md](../../deploy/README.md#authentication).
+
+```bash
+foreverbull account create --username reader
+foreverbull account rotate --username reader
+```
+
+🔒️ `account create` inserts role `editor`. There is no `--role` flag. Passing `--role`, including `--role viewer` or `--role admin`, is an error that says role changes are SQL. `account rotate` replaces `password_hash` and deletes that account's browser sessions. It does not change `role` and it does not revoke API tokens. No command and no HTTP route changes an existing `account.role`. GitHub first sign-in inserts `pending`. The enable boot inserts `admin` from the password file.
+
+The password is read from stdin with echo off, length 12 to 128. It is not a flag and not an environment variable, and it is not written to a log. Stdout is the account id. A duplicate username is an error and does not change the hash. The command uses `POSTGRES_URL`.
+
+Role changes are SQL. For a password account:
+
+```sql
+UPDATE account AS a
+SET role = 'viewer'
+FROM account_password AS p
+WHERE p.account_id = a.id
+  AND p.username = 'reader';
+```
+
+Use `'none'`, `'editor'`, or `'admin'` in that statement for the other changes. For a GitHub account, match `account_github.github_subject` instead of the password username:
+
+```sql
+UPDATE account AS a
+SET role = 'viewer'
+FROM account_github AS g
+WHERE g.account_id = a.id
+  AND g.github_subject = '123456';
+```
+
+Use `'editor'` in that statement when the person should create rows and mint a token. The broker does not run these statements.
+
 ## fbenv
 
 Installs the six workloads (Postgres, NATS JetStream, Minio, Zipline, broker, Grafana) with **one Helm chart**. It does **not** create a Docker network or mount `/var/run/docker.sock`.

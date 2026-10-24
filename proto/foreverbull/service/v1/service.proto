@@ -22,4 +22,6 @@ message Service {
   string Image = 1;
   Algorithm algorithm = 2;
   repeated Status statuses = 3;
+  // Server-filled login of the owning account. A client value is ignored.
+  string owner_login = 4;
 }

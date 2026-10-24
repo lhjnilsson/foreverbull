@@ -1,5 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { canCreate } from "../access";
+import { Grants } from "../auth";
+import { useAuth } from "../auth-context";
 import {
   Detail,
   Empty,
@@ -28,6 +31,7 @@ function rowsOf(data: Service[] | undefined): Service[] {
 export function ServicesPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { state } = useAuth();
   const [revision, setRevision] = useState(0);
   const image = params.get("image");
   const list = useJson<Service[]>("/api/services", revision);
@@ -48,6 +52,7 @@ export function ServicesPage() {
         title="Services"
         newLabel="New service"
         newTitle="Register this image."
+        allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
         newForm={(close) => (
           <CreateService
             onDone={close}
@@ -69,6 +74,9 @@ export function ServicesPage() {
               className={`${rowClass} ${service.Image === image ? rowActive : ""}`}
             >
               <div className="truncate font-mono text-[13px]">{service.Image}</div>
+              {service.ownerLogin ? (
+                <div className="truncate text-xs text-muted-foreground">{service.ownerLogin}</div>
+              ) : null}
               <StatusText s={service.statuses?.at(-1)?.status} />
             </Link>
           </li>
@@ -103,6 +111,7 @@ function ServiceDetail({ service }: { service: Service }) {
       <h1 className="mb-4 break-all font-mono text-base">{service.Image}</h1>
       <dl>
         <Field label="Image">{service.Image}</Field>
+        {service.ownerLogin ? <Field label="Owner">{service.ownerLogin}</Field> : null}
         <Field label="File path">{service.algorithm?.filePath || "—"}</Field>
         <Field label="Functions">{names || "—"}</Field>
       </dl>
@@ -118,6 +127,7 @@ function ServiceDetail({ service }: { service: Service }) {
           </li>
         ))}
       </ul>
+      {service.Image ? <Grants kind="service" name={service.Image} ownerLogin={service.ownerLogin} /> : null}
     </Detail>
   );
 }

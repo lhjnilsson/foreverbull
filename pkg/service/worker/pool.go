@@ -134,7 +134,7 @@ func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 	return &worker_pb.ExecutionConfiguration{
 		BrokerPort:    int32(p.Socket.GetPort()),
 		NamespacePort: int32(p.NamespaceSocket.GetPort()),
-		DatabaseURL:   environment.GetPostgresURL(),
+		DatabaseURL:   environment.GetWorkerDatabaseURL(),
 		Functions:     functions,
 	}
 }

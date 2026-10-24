@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
@@ -45,14 +47,25 @@ func ExperimentRun(ctx context.Context, msg stream.Message) error {
 		return failErr
 	}
 
-	out, runErr := launcher.Run(ctx, ss.RunInput{
+	runInput := ss.RunInput{
 		ExperimentID: experiment.Id,
 		BacktestName: experiment.BacktestName,
 		ServiceImage: version.ServiceImage,
-		Algorithm:    nil,
-		StartDate:    nil,
-		EndDate:      nil,
-	})
+	}
+	if environment.GetAuthEnabled() {
+		backtestID, idErr := experiments.BacktestID(ctx, experiment.Id)
+		if idErr != nil {
+			_ = experiments.UpdateStatus(ctx, experiment.Id, pb.Experiment_FAILED, idErr)
+			return fmt.Errorf("experiment backtest id: %w", idErr)
+		}
+		if backtestID == "" {
+			err = fmt.Errorf("backtest id is empty")
+			_ = experiments.UpdateStatus(ctx, experiment.Id, pb.Experiment_FAILED, err)
+			return err
+		}
+		runInput.BacktestID = backtestID
+	}
+	out, runErr := launcher.Run(ctx, runInput)
 	if out != nil && out.ExecutionID != "" {
 		if err := experiments.SetExecutionID(ctx, experiment.Id, out.ExecutionID); err != nil {
 			_ = experiments.UpdateStatus(ctx, experiment.Id, pb.Experiment_FAILED, err)

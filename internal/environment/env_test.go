@@ -32,6 +32,25 @@ func TestSetupForTestFillsDefaultsWithoutDocker(t *testing.T) {
 	require.Equal(t, PortRange{Start: 27000, End: 27015}, portRange)
 }
 
+func TestWorkerDatabaseURLDoesNotFallBackToTheOwnerWhenAuthIsOn(t *testing.T) {
+	t.Setenv(AuthEnabled, "true")
+	t.Setenv(WorkerDatabaseURL, "")
+	t.Setenv(PostgresURL, "postgres://postgres:foreverbull@localhost:5432/postgres")
+	require.Empty(t, GetWorkerDatabaseURL())
+
+	reader := "postgres://foreverbull_worker:reader@postgres:5432/foreverbull"
+	t.Setenv(WorkerDatabaseURL, reader)
+	require.Equal(t, reader, GetWorkerDatabaseURL())
+	require.NotContains(t, GetWorkerDatabaseURL(), "postgres:foreverbull@")
+}
+
+func TestWorkerDatabaseURLUsesTheOwnerURLWhenAuthIsOff(t *testing.T) {
+	t.Setenv(AuthEnabled, "false")
+	t.Setenv(WorkerDatabaseURL, "")
+	t.Setenv(PostgresURL, PostgresURLDefault)
+	require.Equal(t, PostgresURLDefault, GetWorkerDatabaseURL())
+}
+
 func TestGetBacktestPortRangeRejectsBadValues(t *testing.T) {
 	cases := []struct {
 		name  string

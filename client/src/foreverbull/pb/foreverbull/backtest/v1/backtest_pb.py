@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ...common_pb import Date
 
 
-_BacktestFields: TypeAlias = Literal["name", "benchmark", "periods", "provider", "profile"]
+_BacktestFields: TypeAlias = Literal["name", "benchmark", "periods", "provider", "profile", "owner_login"]
 
 class Backtest(Message[_BacktestFields]):
     """
@@ -52,9 +52,15 @@ class Backtest(Message[_BacktestFields]):
             ```proto
             string profile = 8;
             ```
+        owner_login:
+            Server-filled login of the owning account. A client value is ignored.
+
+            ```proto
+            string owner_login = 9;
+            ```
     """
 
-    __slots__ = ("name", "benchmark", "periods", "provider", "profile")
+    __slots__ = ("name", "benchmark", "periods", "provider", "profile", "owner_login")
 
     if TYPE_CHECKING:
 
@@ -66,6 +72,7 @@ class Backtest(Message[_BacktestFields]):
             periods: list[Backtest.Period] | None = None,
             provider: str = "",
             profile: str = "",
+            owner_login: str = "",
         ) -> None:
             pass
 
@@ -74,6 +81,7 @@ class Backtest(Message[_BacktestFields]):
         periods: list[Backtest.Period]
         provider: str
         profile: str
+        owner_login: str
 
     _PeriodFields: TypeAlias = Literal["start_date", "end_date", "assets"]
 
@@ -151,7 +159,7 @@ class Backtest(Message[_BacktestFields]):
 
 
 _DESC = file_desc(
-    b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17foreverbull.backtest.v1\x1a\x18foreverbull/common.proto"\xb2\x03\n\x08Backtest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12B\n\x07periods\x18\x06 \x03(\x0b2(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x12\x1a\n\x08provider\x18\x07 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x08 \x01(\tR\x07profile\x1a\xf9\x01\n\x06Period\x127\n\nstart_date\x18\x01 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12F\n\x06assets\x18\x03 \x03(\x0b2..foreverbull.backtest.v1.Backtest.Period.AssetR\x06assets\x1a9\n\x05Asset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07enabled\x18\x02 \x01(\x08R\x07enabledB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3',
+    b'\n&foreverbull/backtest/v1/backtest.proto\x12\x17foreverbull.backtest.v1\x1a\x18foreverbull/common.proto"\xd3\x03\n\x08Backtest\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n\tbenchmark\x18\x05 \x01(\tR\tbenchmark\x12B\n\x07periods\x18\x06 \x03(\x0b2(.foreverbull.backtest.v1.Backtest.PeriodR\x07periods\x12\x1a\n\x08provider\x18\x07 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x08 \x01(\tR\x07profile\x12\x1f\n\x0bowner_login\x18\t \x01(\tR\nownerLogin\x1a\xf9\x01\n\x06Period\x127\n\nstart_date\x18\x01 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDate\x123\n\x08end_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12F\n\x06assets\x18\x03 \x03(\x0b2..foreverbull.backtest.v1.Backtest.Period.AssetR\x06assets\x1a9\n\x05Asset\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n\x07enabled\x18\x02 \x01(\x08R\x07enabledB3Z1github.com/lhjnilsson/foreverbull/pkg/pb/backtestb\x06proto3',
     [
         common_pb.desc(),
     ],

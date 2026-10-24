@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -47,8 +48,7 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	_, err = backtests.Create(ctx, &b)
-	if err != nil {
+	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 	return nil
@@ -105,14 +105,22 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 	fillPeriodAssets(b.Periods, result.Aliases, hasData)
 
+	if err := requireStoredOwner(command.OwnerID, ""); err != nil {
+		return err
+	}
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	_, err = backtests.Create(ctx, &b)
-	if err != nil {
+	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
-
-	if err := persistUniverse(ctx, db, command.BacktestName, snapshots, result); err != nil {
+	backtestID := ""
+	if environment.GetAuthEnabled() {
+		backtestID, err = backtests.IDByOwnerAndName(ctx, command.OwnerID, command.BacktestName)
+		if err != nil {
+			return fmt.Errorf("error getting backtest: %w", err)
+		}
+	}
+	if err := persistUniverse(ctx, db, command.BacktestName, backtestID, snapshots, result); err != nil {
 		return err
 	}
 
@@ -429,7 +437,7 @@ func intervalOverlapsPeriod(from time.Time, to *time.Time, start, end time.Time)
 	return dateOnly(*to).After(start)
 }
 
-func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName string, snaps []universe.Snapshot, result universe.Result) error {
+func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName, backtestID string, snaps []universe.Snapshot, result universe.Result) error {
 	names := instrumentNames(snaps)
 	instruments := repository.Instrument{Conn: db}
 	for _, member := range result.Members {
@@ -457,6 +465,15 @@ func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName string,
 		})
 	}
 	members := repository.UniverseMember{Conn: db}
+	if environment.GetAuthEnabled() {
+		if backtestID == "" {
+			return errors.New("backtest id is empty")
+		}
+		if err := members.ReplaceByID(ctx, backtestID, intervals); err != nil {
+			return fmt.Errorf("error storing universe members: %w", err)
+		}
+		return nil
+	}
 	if err := members.Replace(ctx, backtestName, intervals); err != nil {
 		return fmt.Errorf("error storing universe members: %w", err)
 	}
@@ -481,15 +498,24 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest) ([]string, error) {
+func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, backtestID string) ([]string, error) {
 	symbols := []string{b.Benchmark}
+	column := "m.backtest_name"
+	key := b.Name
+	if environment.GetAuthEnabled() {
+		if backtestID == "" {
+			return nil, errors.New("backtest id is empty")
+		}
+		column = "m.backtest_id"
+		key = backtestID
+	}
 
 	rows, err := db.Query(ctx, `
 		SELECT DISTINCT s.symbol
 		  FROM universe_member m
 		  JOIN asset_symbol s ON s.isin = m.isin
-		 WHERE m.backtest_name = $1
-		 ORDER BY s.symbol`, b.Name)
+		 WHERE `+column+` = $1
+		 ORDER BY s.symbol`, key)
 	if err != nil {
 		return nil, err
 	}
@@ -541,12 +567,12 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	}
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	b, err := backtests.Get(ctx, command.BacktestName)
+	b, backtestID, err := loadStoredBacktest(ctx, db, command.BacktestName, command.OwnerID, command.BacktestID)
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
 
-	symbols, err := ingestSymbols(ctx, db, b)
+	symbols, err := ingestSymbols(ctx, db, b, backtestID)
 	if err != nil {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
@@ -567,7 +593,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		Profile:   b.GetProfile(),
 	})
 	if err != nil {
-		return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
+		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
 	for {
 		msg, err := rsp.Recv()
@@ -576,13 +602,18 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				break
 			}
 			if blocked := blockedDownload(err); blocked != nil {
-				discardBlockedBacktest(ctx, backtests, command.BacktestName)
+				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
 				return blocked
 			}
-			return discardFailedBacktest(ctx, backtests, command.BacktestName, err)
+			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
-			err := backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
+			var err error
+			if environment.GetAuthEnabled() {
+				err = backtests.UpdatePeriodAssetByID(ctx, backtestID, msg.Symbol, false)
+			} else {
+				err = backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
+			}
 			if err != nil {
 				return fmt.Errorf("error updating period asset: %w", err)
 			}
@@ -608,8 +639,8 @@ func blockedDownload(err error) error {
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
 // are stored per provider and symbol, not per backtest. When only some
 // symbols fail, they are disabled one by one and the backtest is kept.
-func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name string) {
-	if err := backtests.Delete(ctx, name); err != nil {
+func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name, id string) {
+	if err := deleteStoredBacktest(ctx, backtests, name, id); err != nil {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
 	}
 }
@@ -619,13 +650,13 @@ func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, 
 // the backtest record, its periods and its assets are removed, and a retry
 // under the same name works. Bars are stored per provider and symbol, not per
 // backtest, so they are kept. The returned error is the step's whole message.
-func discardFailedBacktest(ctx context.Context, backtests repository.Backtest, name string, cause error) error {
+func discardFailedBacktest(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
 	reason := cause.Error()
 	if st, ok := status.FromError(cause); ok && st.Message() != "" {
 		reason = st.Message()
 	}
 	reason = strings.TrimRight(strings.TrimSpace(reason), ".")
-	if err := backtests.Delete(ctx, name); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err := deleteStoredBacktest(ctx, backtests, name, id); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed download")
 		return plainSentence(fmt.Sprintf("Downloading prices failed: %s. The backtest %s could not be removed; "+
 			"delete it with `fbull backtest delete %s` before you retry.", reason, name, name))
@@ -647,7 +678,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	b, err := backtests.Get(ctx, command.BacktestName)
+	b, backtestID, err := loadStoredBacktest(ctx, db, command.BacktestName, command.OwnerID, command.BacktestID)
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
@@ -660,14 +691,18 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	metadata := map[string]string{}
 	// The two setup failures below are wrapped with %v, not %w, so only the
 	// data service's own gRPC status can select the broken-install copy.
-	object, err := store.CreateObject(ctx, storage.IngestionsBucket, b.Name, storage.WithMetadata(metadata))
+	objectKey := b.Name
+	if environment.GetAuthEnabled() {
+		objectKey = backtestID
+	}
+	object, err := store.CreateObject(ctx, storage.IngestionsBucket, objectKey, storage.WithMetadata(metadata))
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, b.Name, fmt.Errorf("error creating ingestion: %v", err))
+		return discardFailedIngest(ctx, backtests, b.Name, backtestID, fmt.Errorf("error creating ingestion: %v", err))
 	}
 
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, b.Name, fmt.Errorf("error getting zipline engine: %v", err))
+		return discardFailedIngest(ctx, backtests, b.Name, backtestID, fmt.Errorf("error getting zipline engine: %v", err))
 	}
 
 	engine, isEngine := ze.(engine.Engine)
@@ -677,7 +712,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	err = engine.Ingest(ctx, b, object)
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, b.Name, err)
+		return discardFailedIngest(ctx, backtests, b.Name, backtestID, err)
 	}
 	return nil
 }

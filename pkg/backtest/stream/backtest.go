@@ -13,6 +13,8 @@ import (
 
 type IngestCommand struct {
 	BacktestName string
+	OwnerID      string `json:"owner_id,omitempty"`
+	BacktestID   string `json:"backtest_id,omitempty"`
 }
 
 func NewBacktestIngestCommand(backtest_name string) (stream.Message, error) {
@@ -54,6 +56,7 @@ type CreateBacktestFromETFCommand struct {
 	EndDate      string `json:"end_date"`
 	Provider     string `json:"provider,omitempty"`
 	Profile      string `json:"profile,omitempty"`
+	OwnerID      string `json:"owner_id,omitempty"`
 }
 
 func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, provider, profile string) (stream.Message, error) {
@@ -70,6 +73,7 @@ func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, 
 
 type CreateBacktestFromBacktestCommand struct {
 	Backtest []byte `json:"backtest"`
+	OwnerID  string `json:"owner_id,omitempty"`
 }
 
 func NewCreateBacktestFromBacktestCommand(backtest []byte) (stream.Message, error) {
@@ -81,6 +85,8 @@ func NewCreateBacktestFromBacktestCommand(backtest []byte) (stream.Message, erro
 
 type DownloadFinancialDataCommand struct {
 	BacktestName string `json:"backtest_name"`
+	OwnerID      string `json:"owner_id,omitempty"`
+	BacktestID   string `json:"backtest_id,omitempty"`
 }
 
 func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error) {
@@ -148,6 +154,86 @@ func CreateBacktestFromBacktest(backtest *backtest.Backtest) (*streamPb.Orchestr
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("INGESTING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	return &o, nil
+}
+
+// CreateBacktestFromETFOwned stamps OwnerID on each step. An empty owner is refused
+// by the subscriber once authentication is on.
+func CreateBacktestFromETFOwned(backtestName, etfName, startDate, endDate, provider, profile, ownerID string) (*streamPb.Orchestration, error) {
+	o := streamPb.Orchestration{}
+	rsp := &backtestServicePb.CreateBacktestResponse{}
+	rspFields := rsp.ProtoReflect().Descriptor().Fields()
+
+	cmd, err := stream.NewMessage("backtest", "create", "from_etf", &CreateBacktestFromETFCommand{
+		BacktestName: backtestName,
+		ETFName:      etfName,
+		StartDate:    startDate,
+		EndDate:      endDate,
+		Provider:     provider,
+		Profile:      profile,
+		OwnerID:      ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	cmd, err = stream.NewMessage("backtest", "download", "download", &DownloadFinancialDataCommand{
+		BacktestName: backtestName,
+		OwnerID:      ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("DOWNLOADING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	cmd, err = stream.NewMessage("backtest", "ingest", "ingest", &IngestCommand{
+		BacktestName: backtestName,
+		OwnerID:      ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("INGESTING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+	return &o, nil
+}
+
+// CreateBacktestFromBacktestOwned stamps OwnerID on each step.
+func CreateBacktestFromBacktestOwned(item *backtest.Backtest, ownerID string) (*streamPb.Orchestration, error) {
+	o := streamPb.Orchestration{}
+	rsp := &backtestServicePb.CreateBacktestResponse{}
+	rspFields := rsp.ProtoReflect().Descriptor().Fields()
+
+	encoded, err := proto.Marshal(item)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling backtest: %w", err)
+	}
+	cmd, err := stream.NewMessage("backtest", "create", "from_backtest", &CreateBacktestFromBacktestCommand{
+		Backtest: encoded,
+		OwnerID:  ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	cmd, err = stream.NewMessage("backtest", "download", "download", &DownloadFinancialDataCommand{
+		BacktestName: item.GetName(),
+		OwnerID:      ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("DOWNLOADING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
+
+	cmd, err = stream.NewMessage("backtest", "ingest", "ingest", &IngestCommand{
+		BacktestName: item.GetName(),
+		OwnerID:      ownerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating message: %w", err)
+	}
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("INGESTING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 	return &o, nil
 }

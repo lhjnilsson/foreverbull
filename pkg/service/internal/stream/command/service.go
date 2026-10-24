@@ -6,9 +6,11 @@ import (
 	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/container"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest"
+	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/service/internal/stream/dependency"
 	ss "github.com/lhjnilsson/foreverbull/pkg/service/stream"
@@ -44,7 +46,23 @@ func ServiceStart(ctx context.Context, message stream.Message) error {
 	}
 
 	provider := strings.TrimSpace(command.OHLCProvider)
-	if provider == "" && strings.TrimSpace(command.Backtest) != "" {
+	if environment.GetAuthEnabled() && strings.TrimSpace(command.Backtest) != "" && strings.TrimSpace(command.BacktestID) == "" {
+		return fmt.Errorf("backtest id is empty")
+	}
+	if provider == "" && environment.GetAuthEnabled() && strings.TrimSpace(command.BacktestID) != "" {
+		reader, ok := backtest.NewStore(postgres).(interface {
+			GetBacktestByID(context.Context, string) (*backtestpb.Backtest, error)
+		})
+		if !ok {
+			return fmt.Errorf("backtest id is empty")
+		}
+		stored, getErr := reader.GetBacktestByID(ctx, strings.TrimSpace(command.BacktestID))
+		if getErr != nil {
+			return fmt.Errorf("error getting backtest %s: %w", command.BacktestID, getErr)
+		}
+		provider = strings.TrimSpace(stored.GetProvider())
+	}
+	if provider == "" && !environment.GetAuthEnabled() && strings.TrimSpace(command.Backtest) != "" {
 		stored, getErr := backtest.NewStore(postgres).GetBacktest(ctx, strings.TrimSpace(command.Backtest))
 		if getErr != nil {
 			return fmt.Errorf("error getting backtest %s: %w", command.Backtest, getErr)

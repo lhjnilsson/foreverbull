@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
+	"time"
 
 	"buf.build/go/protovalidate"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -117,7 +121,32 @@ func InterceptorLogger(logger *zap.Logger) logging.Logger {
 	})
 }
 
-func NewServer() (*grpc.Server, error) {
+// BearerLookup loads the account for one CLI token. The token is not logged.
+type BearerLookup func(ctx context.Context, token string) (auth.Account, error)
+
+type serverConfig struct {
+	lookup BearerLookup
+}
+
+// ServerOption configures the broker gRPC server.
+type ServerOption func(*serverConfig)
+
+// WithBearerLookup supplies the token check used when AUTH_ENABLED is true.
+func WithBearerLookup(lookup BearerLookup) ServerOption {
+	return func(cfg *serverConfig) {
+		cfg.lookup = lookup
+	}
+}
+
+func NewServer(opts ...ServerOption) (*grpc.Server, error) {
+	var cfg serverConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if environment.GetAuthEnabled() && cfg.lookup == nil {
+		return nil, errors.New("AUTH_ENABLED=true requires a bearer lookup")
+	}
+
 	logger := zap.NewExample()
 
 	allButHealthZ := func(_ context.Context, callMeta interceptors.CallMeta) bool {
@@ -129,34 +158,147 @@ func NewServer() (*grpc.Server, error) {
 		return nil, fmt.Errorf("failed to create validator: %w", err)
 	}
 
-	opts := []logging.Option{
+	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 	}
 
+	unary := []grpc.UnaryServerInterceptor{
+		selector.UnaryServerInterceptor(
+			logging.UnaryServerInterceptor(InterceptorLogger(logger), logOpts...),
+			selector.MatchFunc(allButHealthZ),
+		),
+	}
+	stream := []grpc.StreamServerInterceptor{
+		selector.StreamServerInterceptor(
+			logging.StreamServerInterceptor(InterceptorLogger(logger), logOpts...),
+			selector.MatchFunc(allButHealthZ),
+		),
+	}
+	if environment.GetAuthEnabled() {
+		unary = append(unary, bearerUnary(cfg.lookup))
+		stream = append(stream, bearerStream(cfg.lookup))
+	}
+	unary = append(unary, protovalidate_middleware.UnaryServerInterceptor(validator), pgxErrorInterceptor)
+	stream = append(stream, protovalidate_middleware.StreamServerInterceptor(validator), pgxStreamErrorInterceptor)
+
 	return grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(InterceptorLogger(logger), opts...),
-				selector.MatchFunc(allButHealthZ),
-			),
-			protovalidate_middleware.UnaryServerInterceptor(validator),
-			pgxErrorInterceptor,
-		),
-		grpc.ChainStreamInterceptor(
-			selector.StreamServerInterceptor(
-				logging.StreamServerInterceptor(InterceptorLogger(logger), opts...),
-				selector.MatchFunc(allButHealthZ),
-			),
-			protovalidate_middleware.StreamServerInterceptor(validator),
-			pgxStreamErrorInterceptor,
-		),
+		grpc.ChainUnaryInterceptor(unary...),
+		grpc.ChainStreamInterceptor(stream...),
 	), nil
+}
+
+func bearerUnary(lookup BearerLookup) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if healthMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+		account, err := accountFromBearer(ctx, lookup)
+		if err != nil {
+			return nil, err
+		}
+		if err := roleAllowsMethod(account, info.FullMethod); err != nil {
+			return nil, err
+		}
+		return handler(auth.WithAccount(ctx, account), req)
+	}
+}
+
+func bearerStream(lookup BearerLookup) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if healthMethod(info.FullMethod) {
+			return handler(srv, ss)
+		}
+		account, err := accountFromBearer(ss.Context(), lookup)
+		if err != nil {
+			return err
+		}
+		if err := roleAllowsMethod(account, info.FullMethod); err != nil {
+			return err
+		}
+		return handler(srv, &accountStream{ServerStream: ss, ctx: auth.WithAccount(ss.Context(), account)})
+	}
+}
+
+type accountStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *accountStream) Context() context.Context {
+	return s.ctx
+}
+
+func healthMethod(full string) bool {
+	return strings.HasPrefix(full, "/"+healthgrpc.Health_ServiceDesc.ServiceName+"/")
+}
+
+func accountFromBearer(ctx context.Context, lookup BearerLookup) (auth.Account, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return auth.Account{}, status.Error(codes.Unauthenticated, "unauthorized")
+	}
+	values := md.Get("authorization")
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
+		return auth.Account{}, status.Error(codes.Unauthenticated, "unauthorized")
+	}
+	account, err := lookup(ctx, strings.TrimSpace(strings.TrimPrefix(values[0], "Bearer ")))
+	if err != nil {
+		if errors.Is(err, auth.ErrUnauthorized) {
+			return auth.Account{}, status.Error(codes.Unauthenticated, "unauthorized")
+		}
+		return auth.Account{}, status.Error(codes.Internal, "Internal database error")
+	}
+	return account, nil
+}
+
+func roleAllowsMethod(account auth.Account, fullMethod string) error {
+	if account.Role == auth.RoleNone || account.Role == auth.RolePending {
+		return status.Error(codes.PermissionDenied, "forbidden")
+	}
+	if account.Role != auth.RoleViewer && account.Role != auth.RoleEditor && account.Role != auth.RoleAdmin {
+		return status.Error(codes.PermissionDenied, "forbidden")
+	}
+	// A read token may call only the viewer methods. An empty scope is a
+	// browser session and follows the role. A write token follows the role.
+	switch account.Scope {
+	case "", auth.ScopeWrite:
+		if account.Role == auth.RoleViewer && !viewerMayCall(fullMethod) {
+			return status.Error(codes.PermissionDenied, "forbidden")
+		}
+	case auth.ScopeRead:
+		if !viewerMayCall(fullMethod) {
+			return status.Error(codes.PermissionDenied, "forbidden")
+		}
+	default:
+		return status.Error(codes.PermissionDenied, "forbidden")
+	}
+	return nil
+}
+
+func viewerMayCall(fullMethod string) bool {
+	switch methodName(fullMethod) {
+	case "ListBacktests", "GetBacktest", "GetSession", "ListExecutions", "GetExecution",
+		"GetStrategy", "ListStrategies", "GetExperiment", "ListExperiments", "ListDeploymentRuns",
+		"GetAsset", "GetIndex":
+		return true
+	default:
+		return false
+	}
+}
+
+func methodName(fullMethod string) string {
+	if i := strings.LastIndex(fullMethod, "/"); i >= 0 {
+		return fullMethod[i+1:]
+	}
+	return fullMethod
 }
 
 var Module = fx.Options( //nolint: gochecknoglobals
 	fx.Provide(
-		func() (*grpc.Server, error) {
-			return NewServer()
+		func(pool *pgxpool.Pool) (*grpc.Server, error) {
+			return NewServer(WithBearerLookup(func(ctx context.Context, token string) (auth.Account, error) {
+				return auth.AccountFromBearer(ctx, pool, token, time.Now())
+			}))
 		},
 	),
 	fx.Invoke(

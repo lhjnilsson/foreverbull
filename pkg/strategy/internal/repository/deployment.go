@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
@@ -77,6 +79,31 @@ func (db *Deployment) Get(ctx context.Context, id string) (*pb.Deployment, error
 	return d, nil
 }
 
+func (db *Deployment) GetRunningByStrategyID(ctx context.Context, strategyID string) (*pb.Deployment, error) {
+	if strategyID == "" {
+		return nil, fmt.Errorf("strategy id is empty")
+	}
+	d, err := db.scanOne(ctx, deploymentSelect+` WHERE d.strategy_id=$1 AND d.status=$2`, strategyID, pb.Deployment_RUNNING)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (db *Deployment) ListByStrategyID(ctx context.Context, strategyID string) ([]*pb.Deployment, error) {
+	if strategyID == "" {
+		return nil, fmt.Errorf("strategy id is empty")
+	}
+	rows, err := db.Conn.Query(ctx, deploymentSelect+`
+		WHERE d.strategy_id = $1
+		ORDER BY d.started_at ASC NULLS LAST, d.id ASC`, strategyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list strategy deployments: %w", err)
+	}
+	defer rows.Close()
+	return parseDeploymentRows(rows)
+}
+
 func (db *Deployment) GetRunningByStrategyName(ctx context.Context, strategyName string) (*pb.Deployment, error) {
 	d, err := db.scanOne(ctx,
 		deploymentSelect+` WHERE s.name=$1 AND d.status=$2`,
@@ -90,6 +117,9 @@ func (db *Deployment) GetRunningByStrategyName(ctx context.Context, strategyName
 }
 
 func (db *Deployment) List(ctx context.Context, strategyName string) ([]*pb.Deployment, error) {
+	if environment.GetAuthEnabled() {
+		return nil, fmt.Errorf("list deployments by name is refused while AUTH_ENABLED=true")
+	}
 	rows, err := db.Conn.Query(ctx, deploymentSelect+`
 		WHERE ($1 = '' OR s.name = $1)
 		ORDER BY d.started_at ASC NULLS LAST, d.id ASC`,

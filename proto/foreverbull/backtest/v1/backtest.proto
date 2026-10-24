@@ -26,4 +26,6 @@ message Backtest {
   string provider = 7;
   // Profile name for an alpaca price source. Not a credential.
   string profile = 8;
+  // Server-filled login of the owning account. A client value is ignored.
+  string owner_login = 9;
 }

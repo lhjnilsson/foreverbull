@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	grafana "github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -16,6 +17,7 @@ import (
 	backtestsvc "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	strategysvc "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -38,7 +40,7 @@ func NewDatasource(_ context.Context, _ grafana.DataSourceInstanceSettings) (ins
 
 	log := log.DefaultLogger.With("datasource", "foreverbull")
 
-	conn, err := grpc.NewClient(foreverbull, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := dialBroker(foreverbull)
 	if err != nil {
 		log.Error("Fail to connecto to foreverbull backend", err)
 		return nil, fmt.Errorf("could not connect: %w", err)
@@ -113,6 +115,34 @@ func (d *Datasource) Dispose() {
 
 func (d *Datasource) QueryData(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
 	return d.queryMux.QueryData(ctx, req)
+}
+
+// brokerCredentials reads GRAFANA_BROKER_TOKEN. Empty means the dial sends no metadata.
+func brokerCredentials() credentials.PerRPCCredentials {
+	token := strings.TrimSpace(os.Getenv("GRAFANA_BROKER_TOKEN"))
+	if token == "" {
+		return nil
+	}
+	return bearerToken(token)
+}
+
+type bearerToken string
+
+func (t bearerToken) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + string(t)}, nil
+}
+
+// The in-cluster broker listener is plaintext. Grafana's NetworkPolicy
+// allows only DNS and that gRPC port. The bearer is still sent.
+func (bearerToken) RequireTransportSecurity() bool { return false }
+
+func dialBroker(address string, extra ...grpc.DialOption) (*grpc.ClientConn, error) {
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	if creds := brokerCredentials(); creds != nil {
+		opts = append(opts, grpc.WithPerRPCCredentials(creds))
+	}
+	opts = append(opts, extra...)
+	return grpc.NewClient(address, opts...)
 }
 
 func (d *Datasource) CheckHealth(ctx context.Context, _ *grafana.CheckHealthRequest) (*grafana.CheckHealthResult, error) {

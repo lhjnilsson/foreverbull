@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -40,8 +41,17 @@ const (
 	PostgresURL        = "POSTGRES_URL"
 	PostgresURLDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
 
+	// WorkerDatabaseURL is the reader role the broker hands to a service pod.
+	// Empty means the pod is not given a database URL while authentication is on.
+	WorkerDatabaseURL = "WORKER_DATABASE_URL"
+	// WorkerDBPassword is the password for role foreverbull_worker. It is not
+	// the database owner password.
+	WorkerDBPassword = "WORKER_DB_PASSWORD"
+
 	NatsURL                   = "NATS_URL"
 	NatsURLDefault            = "nats://localhost:4222"
+	NatsUser                  = "NATS_USER"
+	NatsPassword              = "NATS_PASSWORD"
 	NatsDurable               = "NATS_DURABLE"
 	NatsDurableDefault        = "foreverbull"
 	NatsDeliveryPolicy        = "NATS_DELIVERY_POLICY"
@@ -64,6 +74,43 @@ const (
 	// TradingListingsFile replaces the embedded listing sample when a profile
 	// does not set its own listings path.
 	TradingListingsFile = "TRADING_LISTINGS_FILE"
+
+	// AuthEnabled defaults false. Empty is false. Helm and fbenv leave it unset.
+	AuthEnabled        = "AUTH_ENABLED"
+	AuthEnabledDefault = "false"
+
+	// AuthAdminUsername is the platform admin login. Required only when
+	// AUTH_ENABLED is true. Empty means it is not configured.
+	AuthAdminUsername = "AUTH_ADMIN_USERNAME"
+
+	// AuthAdminPasswordFile is the path of the admin password file.
+	// The password is not an environment variable.
+	AuthAdminPasswordFile = "AUTH_ADMIN_PASSWORD_FILE"
+
+	AuthCookieSecure        = "AUTH_COOKIE_SECURE"
+	AuthCookieSecureDefault = "false"
+
+	AuthTrustProxy        = "AUTH_TRUST_PROXY"
+	AuthTrustProxyDefault = "false"
+
+	// AuthTrustedProxies is a comma-separated CIDR list. It is used only when
+	// AUTH_TRUST_PROXY is true. The client address is the rightmost forwarded
+	// hop that is not in this list.
+	AuthTrustedProxies = "AUTH_TRUSTED_PROXIES"
+
+	// AuthPublicURL is the broker origin browsers use, such as https://fb.example.com.
+	// Cookie writes may send this Origin when Sec-Fetch-Site is absent.
+	AuthPublicURL = "AUTH_PUBLIC_URL"
+
+	// GitHub OAuth is read only when AUTH_ENABLED is true. All three stay
+	// empty by default so a partial set is visible at startup.
+	AuthGitHubClientID     = "AUTH_GITHUB_CLIENT_ID"
+	AuthGitHubClientSecret = "AUTH_GITHUB_CLIENT_SECRET"
+	AuthGitHubRedirectURL  = "AUTH_GITHUB_REDIRECT_URL"
+
+	// AuthGitHubAllowedOrgs is an optional comma-separated org allowlist.
+	// Empty means GitHub login does not check org membership.
+	AuthGitHubAllowedOrgs = "AUTH_GITHUB_ALLOWED_ORGS"
 )
 
 type envVar struct {
@@ -91,6 +138,14 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
 	{TradingProfilesFile, func() (string, error) { return "", nil }},
 	{TradingListingsFile, func() (string, error) { return "", nil }},
+	{AuthEnabled, func() (string, error) { return AuthEnabledDefault, nil }},
+	{AuthAdminUsername, func() (string, error) { return "", nil }},
+	{AuthAdminPasswordFile, func() (string, error) { return "", nil }},
+	{AuthCookieSecure, func() (string, error) { return AuthCookieSecureDefault, nil }},
+	{AuthTrustProxy, func() (string, error) { return AuthTrustProxyDefault, nil }},
+	{AuthGitHubClientID, func() (string, error) { return "", nil }},
+	{AuthGitHubClientSecret, func() (string, error) { return "", nil }},
+	{AuthGitHubRedirectURL, func() (string, error) { return "", nil }},
 }
 
 type envSetter interface {
@@ -247,8 +302,30 @@ func GetPostgresURL() string {
 	return os.Getenv(PostgresURL)
 }
 
+// GetWorkerDatabaseURL is the URL a service pod may use. A configured reader
+// URL wins. With authentication on and no reader URL, the owner URL is not
+// returned. With authentication off and no reader URL, the owner URL is used
+// so local runs and tests keep a database that has no reader role.
+func GetWorkerDatabaseURL() string {
+	if url := strings.TrimSpace(os.Getenv(WorkerDatabaseURL)); url != "" {
+		return url
+	}
+	if GetAuthEnabled() {
+		return ""
+	}
+	return GetPostgresURL()
+}
+
 func GetNATSURL() string {
 	return os.Getenv(NatsURL)
+}
+
+func GetNATSUser() string {
+	return os.Getenv(NatsUser)
+}
+
+func GetNATSPassword() string {
+	return os.Getenv(NatsPassword)
 }
 
 func GetNATSDurable() string {
@@ -285,4 +362,62 @@ func GetTradingProfilesFile() string {
 
 func GetTradingListingsFile() string {
 	return os.Getenv(TradingListingsFile)
+}
+
+// GetAuthEnabled reports whether authentication and authorization are on.
+// An empty value and a value ParseBool rejects are both false.
+func GetAuthEnabled() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthEnabled))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthAdminUsername() string {
+	return os.Getenv(AuthAdminUsername)
+}
+
+func GetAuthAdminPasswordFile() string {
+	return os.Getenv(AuthAdminPasswordFile)
+}
+
+func GetAuthCookieSecure() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthCookieSecure))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthTrustProxy() bool {
+	verdict, err := strconv.ParseBool(os.Getenv(AuthTrustProxy))
+	if err != nil {
+		return false
+	}
+	return verdict
+}
+
+func GetAuthTrustedProxies() string {
+	return os.Getenv(AuthTrustedProxies)
+}
+
+func GetAuthPublicURL() string {
+	return os.Getenv(AuthPublicURL)
+}
+
+func GetAuthGitHubClientID() string {
+	return os.Getenv(AuthGitHubClientID)
+}
+
+func GetAuthGitHubClientSecret() string {
+	return os.Getenv(AuthGitHubClientSecret)
+}
+
+func GetAuthGitHubRedirectURL() string {
+	return os.Getenv(AuthGitHubRedirectURL)
+}
+
+func GetAuthGitHubAllowedOrgs() string {
+	return os.Getenv(AuthGitHubAllowedOrgs)
 }

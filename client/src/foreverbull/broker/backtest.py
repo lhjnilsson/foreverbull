@@ -3,11 +3,10 @@ from collections.abc import Generator
 from functools import wraps
 from typing import Concatenate
 
-import grpc
-
 from protobuf import Oneof
 
 from foreverbull.broker.config import resolve_broker_address
+from foreverbull.broker.credentials import broker_channel
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -21,7 +20,7 @@ def backtest_servicer[R, **P](
 ) -> Callable[P, R]:
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
-        servicer = backtest_service_pb_grpc.BacktestServicerClientSync(grpc.insecure_channel(resolve_broker_address()))
+        servicer = backtest_service_pb_grpc.BacktestServicerClientSync(broker_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper

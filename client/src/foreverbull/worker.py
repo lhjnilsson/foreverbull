@@ -214,6 +214,13 @@ class WorkerDaemon(WorkerInstance):
         return
 
 
+def _run_worker_process(daemon: WorkerDaemon) -> None:
+    # The algorithm process is not a broker client. A bearer inherited from
+    # fbull would let GetExecution run as the operator.
+    os.environ.pop("FOREVERBULL_TOKEN", None)
+    daemon.run()
+
+
 class WorkerPool(Worker):
     def __init__(self, file_path: str, executors: int = multiprocessing.cpu_count()):
         self._file_path = file_path
@@ -245,7 +252,9 @@ class WorkerPool(Worker):
                 stop_event,
                 self._file_path,
             )
-            worker = threading.Thread(target=daemon.run) if threaded else Process(target=daemon.run)
+            worker = (
+                threading.Thread(target=daemon.run) if threaded else Process(target=_run_worker_process, args=(daemon,))
+            )
             worker.start()
             if not is_ready.wait(5.0):
                 raise exceptions.ConfigurationError("Worker failed to start")

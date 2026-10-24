@@ -1,0 +1,10 @@
+{{- $workerPassword := include "foreverbull.generatedSecret" (list . "foreverbull-worker" "password") }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: foreverbull-worker
+  labels:
+    {{- include "foreverbull.labels" . | nindent 4 }}
+type: Opaque
+data:
+  password: {{ $workerPassword | b64enc | quote }}

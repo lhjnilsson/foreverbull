@@ -33,6 +33,7 @@ message GetStrategyRequest {
       expression: "this != ''"
     }
   }];
+  string owner = 2;
 }
 
 message GetStrategyResponse {
@@ -53,6 +54,7 @@ message DeleteStrategyRequest {
       expression: "this != ''"
     }
   }];
+  string owner = 2;
 }
 
 message DeleteStrategyResponse {}
@@ -73,6 +75,8 @@ message CreateVersionRequest {
     }
   }];
   google.protobuf.Struct parameters = 3;
+  string strategy_owner = 4;
+  string service_owner = 5;
 }
 
 message CreateVersionResponse {
@@ -98,6 +102,8 @@ message CreateExperimentRequest {
       expression: "this != ''"
     }
   }];
+  string strategy_owner = 5;
+  string backtest_owner = 6;
 }
 
 message CreateExperimentResponse {
@@ -128,6 +134,7 @@ message ListExperimentsRequest {
   string strategy_name = 1;
   string version_id = 2;
   string backtest_name = 3;
+  string owner = 4;
 }
 
 message ListExperimentsResponse {
@@ -153,6 +160,7 @@ message DeployRequest {
   optional bool dry_run = 9;
   // Required when mode is LIVE.
   bool confirm = 10;
+  string owner = 11;
 }
 
 message DeployResponse {
@@ -168,6 +176,7 @@ message StopDeploymentRequest {
     }
   }];
   string deployment_id = 2;
+  string owner = 3;
 }
 
 message StopDeploymentResponse {
@@ -177,6 +186,7 @@ message StopDeploymentResponse {
 message ListDeploymentRunsRequest {
   string strategy_name = 1;
   string deployment_id = 2;
+  string owner = 3;
 }
 
 message ListDeploymentRunsResponse {

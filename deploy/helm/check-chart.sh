@@ -79,6 +79,11 @@ if [[ ! -s "${broker_manifest}" ]]; then
   exit 1
 fi
 
+if grep -q 'name: AUTH_ENABLED' "${broker_manifest}"; then
+  echo "default broker manifest must not set AUTH_ENABLED" >&2
+  exit 1
+fi
+
 for forbidden in \
   ALPACA_MARKETS_API_KEY \
   SAXO_ACCESS_TOKEN \
@@ -232,5 +237,85 @@ if [[ "$(secret_value postgres-password "${second_render}")" != "${generated_pg}
   echo "credentials fed back on upgrade must render the same Secret" >&2
   exit 1
 fi
+
+if ! grep -q '^kind: NetworkPolicy$' "${first_render}"; then
+  echo "chart must include a NetworkPolicy for service pods" >&2
+  exit 1
+fi
+policy="$(mktemp)"
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: NetworkPolicy(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${first_render}" > "${policy}"
+if grep -E 'port: 4222|port: 9000' "${policy}"; then
+  echo "service pods must not be allowed to reach NATS or MinIO" >&2
+  exit 1
+fi
+if ! grep -q 'app.kubernetes.io/name: foreverbull' "${policy}" \
+  || ! grep -q 'app.kubernetes.io/name: postgres' "${policy}"; then
+  echo "service pods must be allowed to reach the broker and Postgres" >&2
+  exit 1
+fi
+grafana_policy="$(mktemp)"
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: NetworkPolicy(\n|$)/ && doc ~ /(^|\n)  name: grafana(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${first_render}" > "${grafana_policy}"
+if ! grep -q 'app.kubernetes.io/name: grafana' "${grafana_policy}" \
+  || ! grep -q 'port: 50055' "${grafana_policy}"; then
+  echo "grafana must be allowed to reach broker gRPC" >&2
+  exit 1
+fi
+if grep -E 'port: 4222|port: 9000|port: 5432|name: postgres' "${grafana_policy}"; then
+  echo "grafana must not reach NATS, MinIO, or Postgres" >&2
+  exit 1
+fi
+rm -f "${policy}" "${grafana_policy}"
+for secret_name in foreverbull-nats foreverbull-worker; do
+  if ! grep -q "name: ${secret_name}$" "${first_render}"; then
+    echo "chart must create Secret ${secret_name}" >&2
+    exit 1
+  fi
+done
+for env_name in NATS_PASSWORD WORKER_DB_PASSWORD; do
+  if grep -A1 -E "^ +- name: ${env_name}$" "${first_render}" | grep -qE '^ +value:'; then
+    echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
+    exit 1
+  fi
+done
+if ! grep -Fq 'postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@' "${first_render}"; then
+  echo "broker must pass the reader URL, not a raw worker password" >&2
+  exit 1
+fi
+nats_conf_b64="$(awk '/^  nats.conf:/{print; exit}' "${first_render}" | sed -E 's/.*"([^"]+)".*/\1/')"
+nats_conf="$(printf '%s' "${nats_conf_b64}" | base64 -d)"
+if ! grep -q 'user: "broker"' <<< "${nats_conf}"; then
+  echo "nats config must authenticate the broker user" >&2
+  exit 1
+fi
+
+if grep -A2 -E '^ +- name: AUTH_COOKIE_SECURE$' "${first_render}" | grep -q 'value: "true"'; then
+  echo "default chart must leave AUTH_COOKIE_SECURE unset" >&2
+  exit 1
+fi
+tls_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set ingress.tls=true > "${tls_render}"
+if ! grep -A1 -E '^ +- name: AUTH_COOKIE_SECURE$' "${tls_render}" | grep -q 'value: "true"'; then
+  echo "ingress.tls must set AUTH_COOKIE_SECURE" >&2
+  exit 1
+fi
+rm -f "${tls_render}"
 
 echo "helm chart checks passed"

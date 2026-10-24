@@ -18,7 +18,7 @@ COPY --from=web /web/dist /app/internal/web/page
 
 RUN echo "" > .env
 
-RUN go build -o /foreverbull cmd/server/main.go
+RUN go build -o /foreverbull ./cmd/server
 
 EXPOSE 50055
 EXPOSE 8080

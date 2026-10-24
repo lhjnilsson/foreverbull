@@ -3,11 +3,10 @@ from collections.abc import Generator
 from functools import wraps
 from typing import Concatenate
 
-import grpc
-
 from protobuf.wkt import Struct
 
 from foreverbull.broker.config import resolve_broker_address
+from foreverbull.broker.credentials import broker_channel
 from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb
 from foreverbull.pb.foreverbull.strategy.service.v1 import strategy_service_pb_grpc
 from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
@@ -19,7 +18,7 @@ def strategy_servicer[R, **P](
 ) -> Callable[P, R]:
     @wraps(f)
     def wrapper(*args: P.args, **kwargs: P.kwargs):
-        servicer = strategy_service_pb_grpc.StrategyServicerClientSync(grpc.insecure_channel(resolve_broker_address()))
+        servicer = strategy_service_pb_grpc.StrategyServicerClientSync(broker_channel(resolve_broker_address()))
         return f(servicer, *args, **kwargs)
 
     return wrapper

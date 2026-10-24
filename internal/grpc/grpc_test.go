@@ -10,6 +10,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/lhjnilsson/foreverbull/internal/auth"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 )
 
 func TestPgxErrorToStatus(t *testing.T) {
@@ -67,4 +70,25 @@ func TestPgxErrorToStatus(t *testing.T) {
 		require.Equal(t, "ok", resp)
 		require.ErrorIs(t, err, want)
 	})
+}
+
+func TestReadScopeAllowsOnlyReadRPCs(t *testing.T) {
+	t.Setenv(environment.AuthEnabled, "true")
+
+	const (
+		create = "/foreverbull.backtest.service.v1.BacktestServicer/CreateBacktest"
+		get    = "/foreverbull.backtest.service.v1.BacktestServicer/GetBacktest"
+	)
+	read := auth.Account{ID: "a", Role: auth.RoleEditor, Scope: auth.ScopeRead}
+	write := auth.Account{ID: "a", Role: auth.RoleEditor, Scope: auth.ScopeWrite}
+	session := auth.Account{ID: "a", Role: auth.RoleEditor}
+	viewer := auth.Account{ID: "a", Role: auth.RoleViewer, Scope: auth.ScopeWrite}
+
+	err := roleAllowsMethod(read, create)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.NoError(t, roleAllowsMethod(read, get))
+	require.NoError(t, roleAllowsMethod(write, create))
+	require.NoError(t, roleAllowsMethod(session, create))
+	require.Equal(t, codes.PermissionDenied, status.Code(roleAllowsMethod(viewer, create)))
+	require.NoError(t, roleAllowsMethod(viewer, get))
 }

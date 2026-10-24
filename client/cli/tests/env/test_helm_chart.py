@@ -41,6 +41,34 @@ def _docs_of_kind(docs: list[dict], kind: str) -> list[dict]:
     return [doc for doc in docs if doc.get("kind") == kind]
 
 
+def _broker_mounts() -> list[dict]:
+    return [
+        {"name": "trading-profiles", "mountPath": "/etc/foreverbull", "readOnly": True},
+        {"name": "admin-password", "mountPath": "/etc/foreverbull-admin", "readOnly": True},
+    ]
+
+
+def _broker_volumes() -> list[dict]:
+    return [
+        {
+            "name": "trading-profiles",
+            "secret": {
+                "secretName": "foreverbull-trading",
+                "optional": True,
+                "items": [{"key": "profiles.yaml", "path": "profiles.yaml"}],
+            },
+        },
+        {
+            "name": "admin-password",
+            "secret": {
+                "secretName": "foreverbull-admin",
+                "optional": True,
+                "items": [{"key": "password", "path": "password"}],
+            },
+        },
+    ]
+
+
 @pytest.fixture(scope="module")
 def chart() -> Path:
     return _chart_path()
@@ -89,6 +117,8 @@ def test_helm_template_has_rbac_and_no_docker_sock(chart: Path):
     env = {item["name"]: item.get("value") for item in container.get("env") or []}
     assert env.get("TRADING_ENABLED") == "false"
     assert env.get("TRADING_PROFILES_FILE") == "/etc/foreverbull/profiles.yaml"
+    assert env.get("AUTH_ADMIN_PASSWORD_FILE") == "/etc/foreverbull-admin/password"
+    assert "AUTH_ENABLED" not in env
     for forbidden in (
         "ALPACA_MARKETS_API_KEY",
         "ALPACA_MARKETS_API_SECRET",
@@ -102,18 +132,9 @@ def test_helm_template_has_rbac_and_no_docker_sock(chart: Path):
         assert forbidden not in env
         assert forbidden not in rendered
     mounts = container.get("volumeMounts") or []
-    assert mounts == [{"name": "trading-profiles", "mountPath": "/etc/foreverbull", "readOnly": True}]
+    assert mounts == _broker_mounts()
     volumes = spec.get("volumes") or []
-    assert volumes == [
-        {
-            "name": "trading-profiles",
-            "secret": {
-                "secretName": "foreverbull-trading",
-                "optional": True,
-                "items": [{"key": "profiles.yaml", "path": "profiles.yaml"}],
-            },
-        }
-    ]
+    assert volumes == _broker_volumes()
 
     grafana_env = {
         item["name"]: item.get("value")
@@ -144,6 +165,6 @@ def test_helm_template_hostport_still_has_no_docker_sock(chart: Path):
     spec = broker["spec"]["template"]["spec"]
     volumes = spec.get("volumes") or []
     mounts = spec["containers"][0].get("volumeMounts") or []
-    assert [volume["secret"]["secretName"] for volume in volumes] == ["foreverbull-trading"]
-    assert mounts == [{"name": "trading-profiles", "mountPath": "/etc/foreverbull", "readOnly": True}]
+    assert volumes == _broker_volumes()
+    assert mounts == _broker_mounts()
     assert "/var/run/docker.sock" not in result.stdout

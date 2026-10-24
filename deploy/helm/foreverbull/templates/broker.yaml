@@ -85,6 +85,20 @@ spec:
               value: {{ include "foreverbull.postgresURL" . | quote }}
             - name: NATS_URL
               value: {{ printf "nats://nats:%v" .Values.nats.port | quote }}
+            - name: NATS_USER
+              value: broker
+            - name: NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foreverbull-nats
+                  key: password
+            - name: WORKER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foreverbull-worker
+                  key: password
+            - name: WORKER_DATABASE_URL
+              value: "postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
             - name: MINIO_URL
               value: {{ printf "minio:%v" .Values.minio.port | quote }}
             - name: MINIO_ACCESS_KEY
@@ -121,9 +135,30 @@ spec:
               value: "/etc/foreverbull/profiles.yaml"
             - name: GRAFANA_URL
               value: {{ .Values.grafana.url | default (printf "http://localhost:%v" .Values.grafana.port) | quote }}
+            - name: AUTH_ADMIN_PASSWORD_FILE
+              value: /etc/foreverbull-admin/password
+            {{- if .Values.broker.auth.enabled }}
+            - name: AUTH_ENABLED
+              value: "true"
+            {{- end }}
+            {{- $cookieSecure := .Values.ingress.tls }}
+            {{- if kindIs "bool" .Values.broker.auth.cookieSecure }}
+            {{- $cookieSecure = .Values.broker.auth.cookieSecure }}
+            {{- end }}
+            {{- if $cookieSecure }}
+            - name: AUTH_COOKIE_SECURE
+              value: "true"
+            {{- end }}
+            {{- with .Values.broker.auth.adminUsername }}
+            - name: AUTH_ADMIN_USERNAME
+              value: {{ . | quote }}
+            {{- end }}
           volumeMounts:
             - name: trading-profiles
               mountPath: /etc/foreverbull
+              readOnly: true
+            - name: admin-password
+              mountPath: /etc/foreverbull-admin
               readOnly: true
           startupProbe:
             exec:
@@ -153,3 +188,10 @@ spec:
             items:
               - key: profiles.yaml
                 path: profiles.yaml
+        - name: admin-password
+          secret:
+            secretName: foreverbull-admin
+            optional: true
+            items:
+              - key: password
+                path: password

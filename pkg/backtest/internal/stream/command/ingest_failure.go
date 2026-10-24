@@ -156,9 +156,9 @@ func ingestFailureMessage(name string, failure ingestFailure, removed bool) stri
 // periods and its assets are removed so a retry under the same name works.
 // Bars are stored per provider and symbol, not per backtest, so they are
 // kept. The returned error is the step's whole message.
-func discardFailedIngest(ctx context.Context, backtests repository.Backtest, name string, cause error) error {
+func discardFailedIngest(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
 	failure := readIngestFailure(cause)
-	err := backtests.Delete(ctx, name)
+	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed ingest")

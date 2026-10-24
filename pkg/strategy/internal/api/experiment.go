@@ -54,6 +54,9 @@ func (s *StrategyServer) CreateExperiment(
 	if s.launcher == nil {
 		return status.Error(codes.Internal, "experiment launcher is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.createExperimentAuthed(req, serverStream)
+	}
 
 	ctx := serverStream.Context()
 	rsp := &servicePb.CreateExperimentResponse{
@@ -144,6 +147,9 @@ func (s *StrategyServer) GetExperiment(ctx context.Context, req *servicePb.GetEx
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
 	}
+	if environment.GetAuthEnabled() {
+		return s.getExperimentAuthed(ctx, req)
+	}
 
 	experiments := repository.Experiment{Conn: s.pgx}
 	experiment, err := experiments.Get(ctx, req.GetExperimentId())
@@ -170,6 +176,9 @@ func (s *StrategyServer) GetExperiment(ctx context.Context, req *servicePb.GetEx
 func (s *StrategyServer) ListExperiments(ctx context.Context, req *servicePb.ListExperimentsRequest) (*servicePb.ListExperimentsResponse, error) {
 	if s.pgx == nil {
 		return nil, status.Error(codes.Internal, "strategy storage is not configured")
+	}
+	if environment.GetAuthEnabled() {
+		return s.listExperimentsAuthed(ctx, req)
 	}
 
 	experiments := repository.Experiment{Conn: s.pgx}

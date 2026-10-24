@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 )
 
@@ -73,6 +74,15 @@ func migrateUniverseMemberForeignKey(ctx context.Context, conn postgres.Query) e
 }
 
 func migrateUniverseMemberExclusion(ctx context.Context, conn postgres.Query) error {
+	hasName, err := auth.ColumnExists(ctx, conn, "universe_member", "backtest_name")
+	if err != nil {
+		return err
+	}
+	// The ownership migration keeps this constraint name on backtest_id.
+	// Do not rebuild it against a dropped backtest_name column.
+	if !hasName {
+		return nil
+	}
 	exists, err := tableConstraintExists(ctx, conn, "universe_member", "universe_member_no_overlap")
 	if err != nil {
 		return err

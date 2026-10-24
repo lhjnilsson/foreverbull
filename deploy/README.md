@@ -59,6 +59,9 @@ six workloads need.
 Remote installs leave `expose.hostPort=false` (ClusterIP only). Point the CLI
 and Python stubs at `remote.broker_address` or `FOREVERBULL_BROKER_ADDRESS`.
 
+On local Kind, `5432`, `4222`, `9000`, and `3000` ignore role. Sharing a
+backtest does not close them. See [Authentication](#authentication).
+
 ### In-cluster env (broker)
 
 Matches `internal/environment/env.go` plus chart overrides:
@@ -66,7 +69,10 @@ Matches `internal/environment/env.go` plus chart overrides:
 | Variable | Value |
 | --- | --- |
 | `POSTGRES_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
-| `NATS_URL` | `nats://nats:4222` |
+| `NATS_URL` | `nats://nats:4222`. The password is not in this URL |
+| `NATS_USER` / `NATS_PASSWORD` | User `broker`. The password is Secret `foreverbull-nats` key `password` |
+| `WORKER_DB_PASSWORD` | Secret `foreverbull-worker` key `password`. Not the database owner password |
+| `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. The broker sends this to a service pod |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
 | `SERVER_ADDRESS` | `foreverbull` |
@@ -77,6 +83,14 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
 | `TRADING_ENABLED` | `false` |
+| `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
+| `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
+| `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
+| `AUTH_COOKIE_SECURE` | unset on local Kind (`false`). The chart sets `true` when `ingress.tls` is true, or when `broker.auth.cookieSecure` is true. The session cookie is then `__Host-fb_session` |
+| `AUTH_TRUST_PROXY` | unset (`false`). When `true`, the client address is the rightmost `X-Forwarded-For` hop that is not in `AUTH_TRUSTED_PROXIES` |
+| `AUTH_TRUSTED_PROXIES` | empty. Comma-separated CIDRs of proxies whose hops are skipped |
+| `AUTH_PUBLIC_URL` | empty. Browser origin of the broker, such as `https://fb.example.com`. A cookie write without `Sec-Fetch-Site: same-origin` or `none` must send this `Origin` |
+| `AUTH_GITHUB_ALLOWED_ORGS` | empty. When set, GitHub login asks for `read:org` and rejects an account that is not an active member of one of the comma-separated orgs |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
 | `TRADING_CURRENCY` | `USD` |
 | `TRADING_ALLOW_LIVE_URL` | `false`. Does not enable deploy mode LIVE |
@@ -90,9 +104,10 @@ Matches `internal/environment/env.go` plus chart overrides:
 
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
-Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
-`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,
-`LOGLEVEL` (`internal/container` `Start`). The broker has no HTTP listener.
+Zipline is reached by in-cluster Service `zipline:50055`. Service pods get
+`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_ENDPOINT`, and
+`LOGLEVEL` (`internal/container` `Start`). They do not get `DATABASE_URL` or
+the MinIO keys. The broker has no HTTP listener.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
@@ -145,6 +160,94 @@ or `minio.secretKey=minioadmin` stops the install unless
 `credentials.allowDefaults=true` is set explicitly. A remote release
 installed before this change needs the migration below, not a plain
 upgrade.
+
+## Authentication
+
+`AUTH_ENABLED` defaults to false. An empty value is false. Helm and `fbenv`
+do not set it. Chart `broker.auth.enabled` stays `false`. A fresh install is
+the open broker: HTTP `8080`, gRPC `50055`, and session ports `27000`–`27015`
+do not require a credential.
+
+The first start with `AUTH_ENABLED=true` refuses to serve until
+`AUTH_ADMIN_USERNAME` is set and, when that account has no password row,
+`AUTH_ADMIN_PASSWORD_FILE` can be read. That boot assigns existing services,
+backtests, and strategies to that admin, moves `service` and `backtest` onto
+uuid primary keys, copies each MinIO ingestion object from the name key to
+the id key, and then requires a credential on HTTP, broker gRPC, and those
+session ports. A failed copy leaves the name primary key and the name object.
+Rows are not deleted. A failed start serves nothing.
+
+Snapshot Postgres and the MinIO ingestions prefix before that boot. Restoring
+the snapshot is the rollback. An image rollback without it is not one.
+
+The admin password is the file from Secret `foreverbull-admin`, key
+`password`, mounted at `/etc/foreverbull-admin/password`, beside the profiles
+mount rather than inside it. It is not an
+environment variable, not a CLI flag, and not a key in
+`.foreverbull/config.yaml`. The broker hashes the file and does not log the
+file or the hash. `broker.auth.adminUsername` is the login, not the password.
+`fbenv` does not create the Secret. Create it from a file outside the repo,
+mode `0600`, before the enable boot. Replace `<namespace>` with the Helm
+release namespace:
+
+```bash
+kubectl create secret generic foreverbull-admin \
+  --namespace <namespace> \
+  --from-file=password=./admin-password
+```
+
+Then set the chart values on an upgrade you run yourself. Do not pass the
+password with `--set`:
+
+```bash
+helm upgrade foreverbull deploy/helm/foreverbull \
+  --namespace <namespace> \
+  --reuse-values \
+  --set broker.auth.enabled=true \
+  --set broker.auth.adminUsername=<login>
+```
+
+A later start with `AUTH_ENABLED` false, after `owner_id` is `NOT NULL` on
+`service`, `backtest`, or `strategy`, exits. Turning the flag off is not a
+rollback.
+
+On local Kind, host ports `5432`, `4222`, `9000`, and `3000` ignore role.
+Sharing a backtest does not close them. A remote install with
+`expose.hostPort=false` does not publish those ports, or the session range,
+on the host. A remote broker that still publishes `8080` and `50055` stays
+open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
+"authentication was configured".
+
+A service image does not receive the database owner URL or the MinIO root
+keys. The worker reads `asset` and `ohlc` as role `foreverbull_worker`. That
+role is not granted `account`, `api_token`, `browser_session`, `oauth_state`,
+or `domain_grant`. Its password is Secret `foreverbull-worker`. NATS
+authenticates the broker user from Secret `foreverbull-nats`. Service pods
+have no NATS user. Their NetworkPolicy allows DNS, the broker (gRPC and the
+session ports the worker dials), and Postgres. It does not allow MinIO or
+NATS. The algorithm still reads bars with SQL, so Postgres stays reachable
+as that role. The Zipline deployment is the platform image and still uses
+the database owner URL. A command that names a backtest id is refused when
+its `owner_id` is not the owner stored on that row.
+
+Session secrets are kept in the broker process. Run one broker replica. A
+second replica does not have the map and refuses a session it did not mint.
+
+CLI tokens last until they are revoked. `expires_at` is checked when it is
+set, and mint does not set it. Mint scope is `read` or `write`. An omitted
+scope is `write`. A `read` token may call only the read RPCs. `account
+rotate` replaces the password hash and deletes that account's browser
+sessions. It has no current session to keep. API tokens stay until they are
+revoked, so a forgotten password does not remove the Grafana token. Behind
+TLS the chart sets `AUTH_COOKIE_SECURE=true` when `ingress.tls` is true. The
+session cookie name is then `__Host-fb_session`. Local Kind is plain HTTP,
+so the chart leaves the flag unset.
+
+Broker gRPC inside the cluster is plaintext. Grafana dials
+`foreverbull:50055` and its NetworkPolicy allows only DNS and that port.
+Set `GRAFANA_BROKER_TOKEN` to a `read` token an editor mints. The chart does
+not create the token. Do not publish `50055` or `8080` beyond the cluster.
+A token on a path you do not trust can be read.
 
 ## Upgrading an existing remote install
 
@@ -432,6 +535,9 @@ broker:
       accountId: ""         # IBKR_ACCOUNT_ID; required when provider is ibkr
       accountMode: paper    # IBKR_ACCOUNT_MODE; account mode live is refused unless allowLiveURL. That flag does not unlock deploy mode LIVE.
       accessToken: ""       # IBKR_ACCESS_TOKEN; no tokens in the chart
+  auth:
+    enabled: false          # AUTH_ENABLED; fbenv leaves this false
+    adminUsername: ""       # AUTH_ADMIN_USERNAME; not the password
 
 zipline:
   grpcPort: 50055

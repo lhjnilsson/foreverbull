@@ -260,7 +260,11 @@ def _backtest(request):
         pytest.skip(f"backtest {name!r} session did not start")
 
     # Foreverbull requires a model. The test algorithm replaces it inside run_execution.
-    with Foreverbull(cast(Algorithm, _UnsetAlgorithm())).backtest_session(entity, started.session) as live:
+    with Foreverbull(cast(Algorithm, _UnsetAlgorithm())).backtest_session(
+        entity,
+        started.session,
+        session_secret=started.session_secret,
+    ) as live:
         yield Backtest(live)
 
 
