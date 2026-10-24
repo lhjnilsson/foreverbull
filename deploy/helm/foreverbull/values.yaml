@@ -8,6 +8,8 @@ global:
   imageRepository: lhjnilsson  # prefix for the three app images; fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
   imagePullPolicy: IfNotPresent
+  # Broker, zipline, and grafana only. Infra (postgres/nats/minio) keeps imagePullPolicy.
+  appImagePullPolicy: IfNotPresent
 
 images:
   postgres:

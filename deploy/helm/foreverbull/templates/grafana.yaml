@@ -40,7 +40,7 @@ spec:
       containers:
         - name: grafana
           image: {{ include "foreverbull.appImage" (list .Values.images.grafana.repository .Values.images.grafana.tag .Values.global.imageTag .Values.global.imageRepository) }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          imagePullPolicy: {{ .Values.global.appImagePullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.grafana.port }}
