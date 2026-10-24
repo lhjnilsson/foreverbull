@@ -11,7 +11,7 @@ The image Helm installs is `lhjnilsson/fb-grafana`. In-cluster it sets `BROKER_U
 ## Prerequisites
 
 - Node.js 22+ (see `engines` in `package.json`) and npm
-- Go 1.24+ (plugin `go.mod` toolchain is go1.24.5; the image builder is `golang:1.24-alpine`)
+- Go 1.27.3 (plugin `go.mod` and the image builder `golang:1.27.3-alpine`)
 - [Mage](https://magefile.org/): `go install github.com/magefile/mage@latest`
 
 For the platform Grafana pod: Docker, Kind, Helm, and the rest of the Foreverbull stack (`task build`, then `fbenv create` and `fbenv start`). That is **not** this `docker-compose.yaml`.
