@@ -16,7 +16,7 @@ RUN pip install grpcio-health-checking==1.71.0
 RUN export PYTHONPATH="${PYTHONPATH}:/app/src"
 WORKDIR /app
 
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.34/grpc_health_probe-linux-${TARGETARCH}
 RUN chmod +x /bin/grpc_health_probe
 # The published base may predate this user. Create it only when it is missing.
