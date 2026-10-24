@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,13 +19,26 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/web"
 )
 
-const loginBodyCap = 4 << 10
+const (
+	loginBodyCap = 4 << 10
+)
+
+// loginHashCapacity bounds concurrent argon2id checks. Each one asks for 64 MiB.
+func loginHashCapacity() int {
+	n := runtime.NumCPU()
+	if n < 2 {
+		return 2
+	}
+	return n
+}
 
 type handlers struct {
 	db      postgres.Query
 	logf    LogFunc
 	limiter *failureLimiter
 	now     func() time.Time
+	// hashes bounds concurrent argon2id checks. Each one uses 64 MiB.
+	hashes chan struct{}
 }
 
 // RegisterHTTP mounts login, session, token, and grant routes.
@@ -40,7 +54,10 @@ func registerHTTP(mux *http.ServeMux, db postgres.Query, logf LogFunc) {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	h := &handlers{db: db, logf: logf, limiter: newFailureLimiter(), now: time.Now}
+	h := &handlers{
+		db: db, logf: logf, limiter: newFailureLimiter(), now: time.Now,
+		hashes: make(chan struct{}, loginHashCapacity()),
+	}
 	mux.HandleFunc("GET /api/auth/providers", h.providers)
 	mux.HandleFunc("POST /api/auth/login", h.login)
 	mux.HandleFunc("POST /api/auth/logout", h.logout)
@@ -74,16 +91,30 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 		web.BadRequest(w)
 		return
 	}
+	// Longer than 128 is already under 1 KiB. Reject it before argon2 and before a database read.
+	if err := CheckPasswordLength(password); err != nil {
+		h.logf("login username=%s result=unauthorized", username)
+		web.Unauthorized(w)
+		return
+	}
 	remote := clientAddr(r)
-	if h.limiter.Limited(username, remote, h.now()) {
+	if !h.limiter.Begin(username, remote, h.now()) {
 		h.logf("login username=%s result=limited", username)
 		web.Unauthorized(w)
 		return
 	}
+	failed := false
+	defer func() { h.limiter.End(username, remote, failed, h.now()) }()
+	if !h.acquireLoginHash() {
+		h.logf("login username=%s result=busy", username)
+		web.StatusJSON(w, http.StatusServiceUnavailable, `{"error":"unavailable"}`)
+		return
+	}
+	defer h.releaseLoginHash()
 	account, err := Authenticate(r.Context(), h.db, username, password)
 	if err != nil {
 		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrPasswordLength) || errors.Is(err, ErrUsername) {
-			h.limiter.Add(username, remote, h.now())
+			failed = true
 			h.logf("login username=%s result=unauthorized", username)
 			web.Unauthorized(w)
 			return
@@ -99,6 +130,25 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 	SetSessionCookie(w, r, value, h.now())
 	h.writeMe(w, r, account)
+}
+
+func (h *handlers) acquireLoginHash() bool {
+	if h.hashes == nil {
+		return true
+	}
+	select {
+	case h.hashes <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *handlers) releaseLoginHash() {
+	if h.hashes == nil {
+		return
+	}
+	<-h.hashes
 }
 
 func readLogin(r *http.Request) (string, string, error) {

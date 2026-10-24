@@ -18,15 +18,68 @@ const (
 )
 
 type failureLimiter struct {
-	mu     sync.Mutex
-	byUser map[string][]time.Time
-	byIP   map[string][]time.Time
+	mu          sync.Mutex
+	byUser      map[string][]time.Time
+	byIP        map[string][]time.Time
+	pendingUser map[string]int
+	pendingIP   map[string]int
 }
 
 func newFailureLimiter() *failureLimiter {
 	return &failureLimiter{
-		byUser: map[string][]time.Time{},
-		byIP:   map[string][]time.Time{},
+		byUser:      map[string][]time.Time{},
+		byIP:        map[string][]time.Time{},
+		pendingUser: map[string]int{},
+		pendingIP:   map[string]int{},
+	}
+}
+
+// Begin reserves one in-flight login. It returns false when this username or
+// address is already at the cap, counting attempts that have not finished yet.
+func (l *failureLimiter) Begin(username, remote string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.prune(now)
+	if len(l.byUser[username])+l.pendingUser[username] >= loginUserLimit {
+		return false
+	}
+	if len(l.byIP[remote])+l.pendingIP[remote] >= loginIPLimit {
+		return false
+	}
+	l.pendingUser[username]++
+	l.pendingIP[remote]++
+	return true
+}
+
+// End releases a Begin reservation. Every finished attempt counts toward the
+// address cap, including a correct password. failed records a username stamp.
+// A database error is not a failed password, so the caller passes false.
+func (l *failureLimiter) End(username, remote string, failed bool, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	releasePending(l.pendingUser, username)
+	releasePending(l.pendingIP, remote)
+	l.note(l.byIP, remote, now)
+	if !failed {
+		return
+	}
+	l.note(l.byUser, username, now)
+}
+
+func (l *failureLimiter) userFailures(username string, now time.Time) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.prune(now)
+	return len(l.byUser[username])
+}
+
+func releasePending(pending map[string]int, key string) {
+	if pending[key] == 0 {
+		return
+	}
+	pending[key]--
+	if pending[key] == 0 {
+		delete(pending, key)
 	}
 }
 
@@ -44,9 +97,13 @@ func (l *failureLimiter) Add(username, remote string, now time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.prune(now)
-	l.byUser[username] = append(l.byUser[username], now)
-	l.byIP[remote] = append(l.byIP[remote], now)
+	l.note(l.byUser, username, now)
+	l.note(l.byIP, remote, now)
 	l.bound()
+}
+
+func (l *failureLimiter) note(stamps map[string][]time.Time, key string, now time.Time) {
+	stamps[key] = append(stamps[key], now)
 }
 
 func (l *failureLimiter) prune(now time.Time) {
