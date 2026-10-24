@@ -14,6 +14,10 @@ import (
 // Bar queries in the Python client use asset, ohlc, and asset_symbol.
 var WorkerReadTables = []string{"asset", "ohlc", "asset_symbol"}
 
+// workerRoleLockKey serializes EnsureWorkerRole. The login is cluster-wide,
+// and two ALTER ROLE statements on it return SQLSTATE XX000.
+const workerRoleLockKey int64 = 0x6662776b
+
 // EnsureWorkerRole creates the read-only login foreverbull_worker and grants
 // SELECT on the bar tables in the current database. The password is
 // WORKER_POSTGRES_PASSWORD, never the broker URL. Calling it again resets
@@ -24,6 +28,34 @@ func EnsureWorkerRole(ctx context.Context, conn Query) error {
 		return err
 	}
 
+	beginner, ok := conn.(interface {
+		Begin(context.Context) (pgx.Tx, error)
+	})
+	if !ok {
+		return applyWorkerRole(ctx, conn, secret)
+	}
+
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin worker role: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	// The lock is transaction-scoped, so it drops on commit or rollback
+	// even when the caller shares a pooled connection.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, workerRoleLockKey); err != nil {
+		return fmt.Errorf("lock worker role: %w", err)
+	}
+	if err := applyWorkerRole(ctx, tx, secret); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit worker role: %w", err)
+	}
+	return nil
+}
+
+func applyWorkerRole(ctx context.Context, conn Query, secret string) error {
 	role := pgx.Identifier{environment.WorkerPostgresRole}.Sanitize()
 	if err := createWorkerRole(ctx, conn, role); err != nil {
 		return err
