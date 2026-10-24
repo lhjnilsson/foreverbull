@@ -5,6 +5,7 @@ import { Grants } from "../auth";
 import { useAuth } from "../auth-context";
 import {
   Detail,
+  DetailHeading,
   Empty,
   Field,
   FormError,
@@ -43,6 +44,7 @@ export function StrategiesLayout() {
     <>
       <ListPane
         title="Strategies"
+        count={rows ? rows.length : undefined}
         newLabel="New strategy"
         newTitle="Name this strategy."
         allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
@@ -57,18 +59,21 @@ export function StrategiesLayout() {
         )}
       >
         {load.state === "error" && load.message ? (
-          <li className="px-4 py-6 text-muted-foreground">{load.message}</li>
+          <li className="px-5 py-6 text-muted-foreground">{load.message}</li>
         ) : null}
         {rows && rows.length === 0 ? <Empty text="Name a strategy." /> : null}
         {(rows ?? []).map((strategy) => (
           <li key={strategy.id ?? strategy.name}>
             <Link
               to={strategy.name ? `/strategies/${encodeURIComponent(strategy.name)}` : "/strategies"}
-              className={`${rowClass} font-mono text-[13px] ${strategy.name === name ? rowActive : ""}`}
+              className={`${rowClass} ${strategy.name === name ? rowActive : ""}`}
             >
-              <span className="block truncate">{strategy.name}</span>
+              <span className="block truncate font-mono text-[13px]">{strategy.name}</span>
               {strategy.ownerLogin ? (
                 <span className="block truncate text-xs text-muted-foreground">{strategy.ownerLogin}</span>
+              ) : null}
+              {strategy.createdAt ? (
+                <span className="mt-2 block text-xs text-muted-foreground">{fmtTime(strategy.createdAt).slice(0, 10)}</span>
               ) : null}
             </Link>
           </li>
@@ -112,7 +117,7 @@ export function StrategyDetail() {
   }
   return (
     <Detail k={strategy.id ?? strategy.name ?? name}>
-      <h1 className="mb-4 font-mono text-base">{strategy.name}</h1>
+      <DetailHeading title={strategy.name} subtitle="Strategy" />
       <dl>
         <Field label="Name">{strategy.name}</Field>
         {strategy.ownerLogin ? <Field label="Owner">{strategy.ownerLogin}</Field> : null}

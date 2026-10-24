@@ -21,7 +21,9 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-input: var(--border);
+  --color-overlay: var(--overlay);
   --color-ring: var(--primary);
+  --shadow-report: var(--report-shadow);
   --color-status-ready: var(--status-ready);
   --color-status-pending: var(--status-pending);
   --color-status-error: var(--status-error);
@@ -29,6 +31,8 @@
 
 :root {
   --radius: 0.25rem;
+  --overlay: oklch(0.226 0.012 264 / 28%);
+  --report-shadow: 0 24px 80px oklch(0.226 0.012 264 / 18%);
   --background: oklch(0.966 0.004 264);   /* #F4F5F7 */
   --card: oklch(1 0 0);
   --foreground: oklch(0.226 0.012 264);   /* #1B1E24 */
@@ -50,6 +54,7 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-size: 14px;
+    letter-spacing: 0;
   }
   :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 }

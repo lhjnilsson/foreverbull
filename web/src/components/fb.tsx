@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { useEffect, useState, type ReactNode } from "react";
-import { Boxes, FlaskConical, Plus, Target, X } from "lucide-react";
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { Boxes, FlaskConical, LogOut, Plus, Target, X } from "lucide-react";
 import { useAuth } from "../auth-context";
 import type { DateParts } from "../types";
-import { useJson } from "../useJson";
+import { postJson, useJson } from "../useJson";
 
 const nav = [
   { to: "/services", label: "Services", icon: Boxes },
@@ -13,32 +13,46 @@ const nav = [
 
 export function Sidebar() {
   const health = useJson<{ ok?: boolean }>("/api/health");
-  const { state } = useAuth();
+  const { state, signedOut } = useAuth();
+  const [leaving, setLeaving] = useState(false);
   const answered = health.state === "ready" && health.data.ok === true;
+
+  async function logOut() {
+    if (leaving) return;
+    setLeaving(true);
+    await postJson("/api/auth/logout", {});
+    signedOut();
+  }
+
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card">
-      <div className="px-5 py-5 text-[15px] font-semibold tracking-tight text-foreground">Foreverbull</div>
+      <div className="px-5 py-6 text-lg font-semibold text-foreground">Foreverbull</div>
       <nav className="flex flex-col px-2">
-        {nav.map((n) => (
+        {nav.map((item) => (
           <NavLink
-            key={n.to}
-            to={n.to}
+            key={item.to}
+            to={item.to}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-sm px-3 py-1.5 transition-colors duration-150 hover:text-foreground ${
+              `flex items-center gap-3 rounded-sm px-3 py-2.5 transition-colors duration-150 hover:text-foreground ${
                 isActive ? "bg-primary-soft font-medium !text-primary" : "text-muted-foreground"
               }`
             }
           >
-            <n.icon size={14} aria-hidden />
-            {n.label}
+            <item.icon size={16} aria-hidden />
+            {item.label}
           </NavLink>
         ))}
       </nav>
       <div className="mt-auto flex flex-col items-start gap-2 px-5 py-4 text-xs text-muted-foreground">
         {state.status === "in" ? (
-          <NavLink to="/account" className="truncate font-mono text-[13px] hover:text-foreground">
-            {state.account.login}
-          </NavLink>
+          <div className="flex w-full items-center justify-between gap-2">
+            <NavLink to="/account" className="min-w-0 truncate font-mono text-[13px] hover:text-foreground">
+              {state.account.login}
+            </NavLink>
+            <IconButton label="Log out" disabled={leaving} onClick={() => void logOut()}>
+              <LogOut size={16} aria-hidden />
+            </IconButton>
+          </div>
         ) : null}
         {answered ? (
           <span
@@ -55,6 +69,7 @@ export function Sidebar() {
 
 export function ListPane({
   title,
+  count,
   newLabel,
   newTitle,
   newForm,
@@ -62,6 +77,7 @@ export function ListPane({
   children,
 }: {
   title: string;
+  count?: number;
   newLabel: string;
   newTitle: string;
   newForm: (close: () => void) => ReactNode;
@@ -70,19 +86,16 @@ export function ListPane({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <section className="flex h-full min-h-0 w-80 shrink-0 flex-col overflow-hidden border-r">
-      <header className="flex h-12 items-center justify-between border-b px-4">
-        <h1 className="font-medium">{title}</h1>
+    <section className="flex h-full min-h-0 w-80 shrink-0 flex-col overflow-hidden border-r bg-background">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b px-5">
+        <div className="flex items-baseline gap-2.5">
+          <h1 className="text-base font-semibold">{title}</h1>
+          {count !== undefined ? <span className="font-mono text-xs text-muted-foreground">{count}</span> : null}
+        </div>
         {allowCreate ? (
-          <button
-            type="button"
-            aria-label={newLabel}
-            title={newLabel}
-            onClick={() => setOpen(true)}
-            className="rounded-sm p-1 text-muted-foreground transition-colors duration-150 hover:text-primary"
-          >
+          <IconButton label={newLabel} onClick={() => setOpen(true)}>
             <Plus size={16} aria-hidden />
-          </button>
+          </IconButton>
         ) : null}
       </header>
       <ul className="min-h-0 flex-1 overflow-auto">{children}</ul>
@@ -108,68 +121,107 @@ export function Modal({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-foreground/20" onClick={onClose} />
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`animate-enter relative max-h-[85vh] w-full ${wide ? "max-w-4xl" : "max-w-md"} overflow-auto rounded-sm border bg-card p-6 shadow-lg`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`animate-enter absolute left-1/2 top-1/2 max-h-[90vh] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-md border bg-card shadow-report ${
+          wide ? "max-w-6xl" : "max-w-md"
+        }`}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-medium">{title}</h2>
-          <button
-            type="button"
-            aria-label="Close"
-            title="Close"
-            onClick={onClose}
-            className="rounded-sm p-1 text-muted-foreground transition-colors duration-150 hover:text-foreground"
-          >
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b bg-card px-6 py-4">
+          <h2 id={titleId} className="min-w-0 break-all text-base font-semibold">
+            {title}
+          </h2>
+          <IconButton label="Close" onClick={onClose}>
             <X size={16} aria-hidden />
-          </button>
-        </div>
-        {children}
+          </IconButton>
+        </header>
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );
 }
 
+export function IconButton({
+  label,
+  children,
+  className,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`shrink-0 rounded-sm p-1 text-muted-foreground transition-colors duration-150 hover:text-primary ${className ?? ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export const rowClass =
-  "block border-b border-l-2 border-l-transparent px-4 py-2.5 transition-colors duration-150 hover:bg-card";
-export const rowActive = "!border-l-primary bg-card";
+  "block border-b border-l-2 border-l-transparent px-5 py-4 transition-colors duration-150 hover:bg-card";
+export const rowActive = "!border-l-primary bg-primary-soft";
 
 export function Empty({ text }: { text: string }) {
-  return <li className="px-4 py-6 text-muted-foreground">{text}</li>;
+  return <li className="px-5 py-6 text-muted-foreground">{text}</li>;
 }
 
 export function Detail({ k, children }: { k: string; children?: ReactNode }) {
   return (
-    <section key={k} className="animate-enter h-full min-h-0 flex-1 overflow-auto bg-card px-8 py-6">
+    <section key={k} className="animate-enter h-full min-h-0 flex-1 overflow-auto bg-card px-8 py-8 lg:px-10">
       {children}
     </section>
   );
 }
 
+export function DetailHeading({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b pb-6">
+      <div className="min-w-0">
+        <h1 className="break-all font-mono text-2xl font-medium leading-snug">{title}</h1>
+        {subtitle ? <div className="mt-2 text-sm text-muted-foreground">{subtitle}</div> : null}
+      </div>
+      {children}
+    </header>
+  );
+}
+
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[9rem_1fr] gap-4 py-1.5">
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 py-2.5 sm:grid-cols-[9rem_minmax(0,1fr)]">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-mono text-[13px]">{children}</dd>
+      <dd className="break-words font-mono text-[13px]">{children}</dd>
     </div>
   );
 }
 
 export function H2({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="mb-2 mt-8 text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</h2>
-  );
+  return <h2 className="mb-3 mt-9 text-xs font-semibold uppercase text-muted-foreground">{children}</h2>;
 }
 
 export const inputClass =
@@ -196,7 +248,12 @@ const statusColor: Record<string, string> = {
 
 export function StatusText({ s }: { s?: string }) {
   if (!s) return null;
-  return <span className={`font-mono text-xs ${statusColor[s] ?? ""}`}>{s}</span>;
+  return (
+    <span className={`inline-flex items-center gap-2 font-mono text-xs ${statusColor[s] ?? ""}`}>
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+      {s}
+    </span>
+  );
 }
 
 export function FormError({ message }: { message: string }) {

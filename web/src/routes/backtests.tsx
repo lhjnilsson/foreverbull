@@ -6,6 +6,7 @@ import { Grants } from "../auth";
 import { useAuth } from "../auth-context";
 import {
   Detail,
+  DetailHeading,
   Empty,
   Field,
   FormError,
@@ -44,6 +45,7 @@ export function BacktestsLayout() {
     <>
       <ListPane
         title="Backtests"
+        count={rows ? rows.length : undefined}
         newLabel="New backtest"
         newTitle="Create this backtest."
         allowCreate={canCreate(state.status, state.status === "in" ? state.account.role : undefined)}
@@ -58,26 +60,11 @@ export function BacktestsLayout() {
         )}
       >
         {load.state === "error" && load.message ? (
-          <li className="px-4 py-6 text-muted-foreground">{load.message}</li>
+          <li className="px-5 py-6 text-muted-foreground">{load.message}</li>
         ) : null}
         {rows && rows.length === 0 ? <Empty text="Create a backtest." /> : null}
         {(rows ?? []).map((backtest) => (
-          <li key={backtest.name}>
-            <Link
-              to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
-              className={`${rowClass} flex items-baseline justify-between gap-3 ${backtest.name === name ? rowActive : ""}`}
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-mono text-[13px]">{backtest.name}</span>
-                {backtest.ownerLogin ? (
-                  <span className="block truncate text-xs text-muted-foreground">{backtest.ownerLogin}</span>
-                ) : null}
-              </span>
-              {backtest.provider ? (
-                <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
-              ) : null}
-            </Link>
-          </li>
+          <BacktestRow key={backtest.name} backtest={backtest} selected={backtest.name === name} />
         ))}
       </ListPane>
       <Outlet context={{ load, refresh } satisfies BacktestList} />
@@ -112,6 +99,52 @@ function listHasResult(e: Execution): boolean {
   if (typeof result.endingValue === "number" && result.endingValue !== 0) return true;
   if (typeof result.maxDrawdown === "number" && result.maxDrawdown !== 0) return true;
   return false;
+}
+
+function latestStored(runs: Execution[]): ExecutionResult | undefined {
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const execution = runs[index];
+    if (execution && listHasResult(execution)) return execution.result;
+  }
+  return undefined;
+}
+
+function BacktestRow({ backtest, selected }: { backtest: Backtest; selected: boolean }) {
+  const load = useJson<Execution[]>(
+    backtest.name ? `/api/backtests/${encodeURIComponent(backtest.name)}/executions` : null,
+  );
+  const runs = load.state === "ready" && Array.isArray(load.data) ? load.data : null;
+  const stored = runs ? latestStored(runs) : undefined;
+  const sharpe = stored?.sharpe;
+  const start = backtest.periods?.[0]?.startDate;
+  return (
+    <li>
+      <Link
+        to={backtest.name ? `/backtests/${encodeURIComponent(backtest.name)}` : "/backtests"}
+        className={`${rowClass} ${selected ? rowActive : ""}`}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate font-mono text-[13px]">{backtest.name}</span>
+          {backtest.provider ? (
+            <span className="font-mono text-xs text-muted-foreground">{backtest.provider}</span>
+          ) : null}
+        </div>
+        {backtest.ownerLogin ? (
+          <span className="mt-1 block truncate text-xs text-muted-foreground">{backtest.ownerLogin}</span>
+        ) : null}
+        {runs ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              {runs.length} {runs.length === 1 ? "run" : "runs"}
+            </span>
+            {typeof sharpe === "number" ? <span className="font-mono">Sharpe {sharpe.toFixed(2)}</span> : null}
+            {runs.length > 0 && !stored ? <span>no result</span> : null}
+            {runs.length === 0 ? <span>{fmtDate(start)}</span> : null}
+          </div>
+        ) : null}
+      </Link>
+    </li>
+  );
 }
 
 export function BacktestDetail() {
@@ -149,7 +182,7 @@ export function BacktestDetail() {
 
   return (
     <Detail k={b.name ?? name}>
-      <h1 className="mb-4 font-mono text-base">{b.name}</h1>
+      <DetailHeading title={b.name ?? name} subtitle="Backtest" />
       <dl>
         <Field label="Name">{b.name}</Field>
         {b.ownerLogin ? <Field label="Owner">{b.ownerLogin}</Field> : null}
@@ -199,12 +232,10 @@ function ExecutionRow({ execution, revision }: { execution: Execution; revision:
   const endValue = source?.endingValue;
 
   return (
-    <li className="animate-enter border-b py-2.5 font-mono text-[13px]">
+    <li className="animate-enter border-b py-3 font-mono text-[13px]">
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-        <span>{id}</span>
-        {status ? (
-          <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status}</span>
-        ) : null}
+        <span className="break-all">{id}</span>
+        {status ? <span className={stored ? "text-status-ready" : "text-muted-foreground"}>{status}</span> : null}
         <span className="text-muted-foreground">
           {fmtDate(execution.startDate)} → {fmtDate(execution.endDate)}
         </span>
