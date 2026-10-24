@@ -22,9 +22,11 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --set expose.hostPort=false
 ```
 
-Generated Postgres/MinIO credentials live in Secret
+🔒️ Generated Postgres/MinIO credentials live in Secret
 `foreverbull-credentials` in the release namespace and are reused on
-upgrade via a live-cluster lookup. Read them back with:
+upgrade via a live-cluster lookup. `worker-postgres-password` is the
+read-only role `foreverbull_worker`; the broker applies it, and service
+pods do not receive it. Read the database owner and MinIO keys back with:
 
 ```bash
 kubectl get secret foreverbull-credentials -n <namespace> -o jsonpath='{.data.postgres-password}' | base64 -d; echo

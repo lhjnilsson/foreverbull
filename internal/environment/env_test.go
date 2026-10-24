@@ -74,6 +74,32 @@ func TestSetupFailsOnBadPortRange(t *testing.T) {
 	require.ErrorContains(t, err, "BACKTEST_PORT_RANGE_START")
 }
 
+func TestWorkerDatabaseURLDropsBrokerCredentials(t *testing.T) {
+	t.Setenv(PostgresURL, "postgres://postgres:foreverbull@postgres:5432/foreverbull?sslmode=disable")
+	t.Setenv(WorkerPostgresPassword, "worker-secret")
+
+	got, err := WorkerDatabaseURL()
+	require.NoError(t, err)
+	require.Equal(t, "postgres://foreverbull_worker:worker-secret@postgres:5432/foreverbull?sslmode=disable", got)
+	require.NotContains(t, got, "postgres:foreverbull@")
+}
+
+func TestWorkerDatabaseURLRejectsBrokerPassword(t *testing.T) {
+	t.Setenv(PostgresURL, "postgres://foreverbull:same-secret@postgres:5432/foreverbull")
+	t.Setenv(WorkerPostgresPassword, "same-secret")
+
+	_, err := WorkerDatabaseURL()
+	require.ErrorContains(t, err, WorkerPostgresPassword)
+}
+
+func TestWorkerDatabaseURLRejectsUnsafePassword(t *testing.T) {
+	t.Setenv(PostgresURL, PostgresURLDefault)
+	t.Setenv(WorkerPostgresPassword, "p@ss/word")
+
+	_, err := WorkerDatabaseURL()
+	require.ErrorContains(t, err, "URL-safe")
+}
+
 func TestSetupForTestDoesNotOverrideSetValues(t *testing.T) {
 	t.Setenv(HTTPPort, "12345")
 	SetupForTest(t)

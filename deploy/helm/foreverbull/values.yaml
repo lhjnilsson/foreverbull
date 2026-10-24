@@ -64,6 +64,11 @@ credentials:
 postgres:
   user: foreverbull
   password: ""
+  # Password for role foreverbull_worker (SELECT on asset, ohlc, asset_symbol).
+  # Empty follows the same rule as postgres.password: the local default when
+  # credentials.allowDefaults=true, otherwise generated into the Secret.
+  # The broker applies it. Service pods do not receive it.
+  workerPassword: ""
   database: foreverbull
   port: 5432
 

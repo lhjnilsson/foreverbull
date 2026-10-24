@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
@@ -48,6 +49,12 @@ func (test *PoolTest) TestSimple() {
 	test.Require().NoError(err)
 
 	configuration := pool.Configure()
+	workerURL, err := environment.WorkerDatabaseURL()
+	test.Require().NoError(err)
+	test.Equal(workerURL, configuration.GetDatabaseURL())
+	test.NotEqual(environment.GetPostgresURL(), configuration.GetDatabaseURL())
+	test.NotContains(configuration.GetDatabaseURL(), "postgres:foreverbull@")
+	test.Contains(configuration.GetDatabaseURL(), environment.WorkerPostgresRole+":")
 
 	socket, err := rep.NewSocket()
 	test.Require().NoError(err)

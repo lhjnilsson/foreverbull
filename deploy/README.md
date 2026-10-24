@@ -66,6 +66,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | Variable | Value |
 | --- | --- |
 | `POSTGRES_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
+| `WORKER_POSTGRES_PASSWORD` | From Secret `foreverbull-credentials` key `worker-postgres-password`. Login for role `foreverbull_worker`. Not the database owner password |
 | `NATS_URL` | `nats://nats:4222` |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
@@ -91,8 +92,13 @@ Matches `internal/environment/env.go` plus chart overrides:
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
 Zipline is reached by in-cluster Service `zipline:50055`. Worker pods get
-`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_*`, `DATABASE_URL`,
-`LOGLEVEL` (`internal/container` `Start`). The broker has no HTTP listener.
+`BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `LOGLEVEL`, and `OHLC_PROVIDER`
+when the backtest names a price source (`internal/container` `Start`). They do
+not get `DATABASE_URL` or MinIO keys. The broker sends a read-only Postgres
+URL (role `foreverbull_worker`, `SELECT` on `asset`, `ohlc`, and `asset_symbol`)
+in the execution configuration, because the worker still reads bars itself.
+Zipline is a platform pod: its chart `DATABASE_URL` is the database owner, and
+it reads and writes ingestion archives in MinIO. The broker has no HTTP listener.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
@@ -100,24 +106,28 @@ under `.foreverbull/{postgres,minio,nats}` are not used.
 ### Credentials
 
 Postgres and MinIO credentials live in Secret `foreverbull-credentials` (keys
-`postgres-password`, `minio-accessKey`, `minio-secretKey`). Pods read them with
-`secretKeyRef`; `POSTGRES_PASSWORD` is expanded into `POSTGRES_URL` and
-`DATABASE_URL`. Leave `postgres.password`, `minio.accessKey`, and
+`postgres-password`, `worker-postgres-password`, `minio-accessKey`,
+`minio-secretKey`). Pods read them with `secretKeyRef`; `POSTGRES_PASSWORD`
+is expanded into `POSTGRES_URL` and the Zipline `DATABASE_URL`.
+`worker-postgres-password` stays on the broker. The broker applies it to role
+`foreverbull_worker` and sends that login only in the execution configuration.
+Leave `postgres.password`, `postgres.workerPassword`, `minio.accessKey`, and
 `minio.secretKey` empty and the chart picks them:
 
 - `credentials.allowDefaults=true` (local Kind; `fbenv` passes it
-  explicitly): `foreverbull` and `minioadmin` / `minioadmin`, so host
-  tools on `localhost` keep working. `expose.hostPort` is networking
-  only: it publishes ports, is for local Kind only, and never selects
-  these defaults on its own.
-- Otherwise: a random password and MinIO secret key (access key
-  `foreverbull`), generated on the first install and read back from the Secret
-  on every upgrade.
+  explicitly): `foreverbull`, worker password `foreverbull-worker`, and
+  `minioadmin` / `minioadmin`, so host tools on `localhost` keep working.
+  `expose.hostPort` is networking only: it publishes ports, is for local
+  Kind only, and never selects these defaults on its own.
+- Otherwise: a random database-owner password, worker password, and MinIO
+  secret key (access key `foreverbull`), generated on the first install and
+  read back from the Secret on every upgrade.
 
-A value you set wins. `postgres.password` and `minio.secretKey` must be
-URL-safe (letters, digits and `-._~` are safe): the Postgres password is
-expanded raw into `POSTGRES_URL`, and the chart now fails the install or
-upgrade on any other character instead of rendering a broken DSN.
+A value you set wins. `postgres.password`, `postgres.workerPassword`, and
+`minio.secretKey` must be URL-safe (letters, digits and `-._~` are safe): the
+database-owner password is expanded raw into `POSTGRES_URL`, and the chart
+fails the install or upgrade on any other character instead of rendering a
+broken DSN.
 
 Generated credentials are not printed again, so read them back from the
 Secret. Replace `<namespace>` with the Helm release namespace
@@ -140,11 +150,11 @@ password it was initialised with. Likewise, deleting Secret
 upgrade generates fresh values that the already-initialised Postgres
 does not know.
 
-🔒️ With or without `expose.hostPort`, a set `postgres.password=foreverbull`
-or `minio.secretKey=minioadmin` stops the install unless
-`credentials.allowDefaults=true` is set explicitly. A remote release
-installed before this change needs the migration below, not a plain
-upgrade.
+🔒️ With or without `expose.hostPort`, a set `postgres.password=foreverbull`,
+`postgres.workerPassword=foreverbull-worker`, or `minio.secretKey=minioadmin`
+stops the install unless `credentials.allowDefaults=true` is set explicitly.
+A remote release installed before this change needs the migration below, not
+a plain upgrade.
 
 ## Upgrading an existing remote install
 

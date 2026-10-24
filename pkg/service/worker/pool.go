@@ -130,11 +130,17 @@ func (p *pool) orderedFunctions() (<-chan *worker_pb.Algorithm_Function, error) 
 
 func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 	functions := make([]*worker_pb.ExecutionConfiguration_Function, 0)
+	databaseURL, err := environment.WorkerDatabaseURL()
+	if err != nil {
+		// An empty URL fails the worker's database check. The broker URL is
+		// not a fallback: that password owns every table.
+		log.Error().Err(err).Msg("worker database URL is not available")
+	}
 
 	return &worker_pb.ExecutionConfiguration{
 		BrokerPort:    int32(p.Socket.GetPort()),
 		NamespacePort: int32(p.NamespaceSocket.GetPort()),
-		DatabaseURL:   environment.GetPostgresURL(),
+		DatabaseURL:   databaseURL,
 		Functions:     functions,
 	}
 }

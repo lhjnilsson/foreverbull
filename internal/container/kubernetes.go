@@ -164,14 +164,13 @@ func workerLabels(name string) map[string]string {
 	}
 }
 
+// serviceEnv is what an editor-supplied service pod can read at start.
+// Bar reads use the read-only database URL on ExecutionConfiguration.
+// The pod does not get POSTGRES_URL or the MinIO root keys.
 func serviceEnv(ohlcProvider string) []corev1.EnvVar {
 	env := []corev1.EnvVar{
 		{Name: "BROKER_HOSTNAME", Value: environment.GetServerAddress()},
 		{Name: "BROKER_PORT", Value: environment.GetGRPCPort()},
-		{Name: "STORAGE_ENDPOINT", Value: environment.GetMinioURL()},
-		{Name: "STORAGE_ACCESS_KEY", Value: environment.GetMinioAccessKey()},
-		{Name: "STORAGE_SECRET_KEY", Value: environment.GetMinioSecretKey()},
-		{Name: "DATABASE_URL", Value: environment.GetPostgresURL()},
 		{Name: "LOGLEVEL", Value: environment.GetLogLevel()},
 	}
 	if provider := strings.TrimSpace(ohlcProvider); provider != "" {
