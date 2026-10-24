@@ -736,6 +736,41 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// A GetAsset / store style STATUS_ERROR is not the no-bars case: the member is
+// disabled and the backtest is kept, as on main before the rename fix.
+func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsBacktestWhenOtherSymbolErrors() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "not found",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	test.Require().NoError(command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest")))
+
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	for _, period := range b.Periods {
+		for _, asset := range period.Assets {
+			if asset.Symbol == "AAPL" {
+				test.False(asset.Enabled)
+			}
+		}
+	}
+}
+
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).

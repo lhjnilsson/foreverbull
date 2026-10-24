@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -332,6 +333,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 	suite.Require().NoError(err)
 	suite.Equal("FB", msg.GetSymbol())
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.True(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
 }
 
 func mustTime(day string) time.Time {
