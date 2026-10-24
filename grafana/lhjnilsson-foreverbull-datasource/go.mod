@@ -1,6 +1,6 @@
 module github.com/lhjnilsson/foreverbull-grafana-datasource
 
-go 1.26.5
+go 1.27.3
 
 require (
 	github.com/grafana/grafana-plugin-sdk-go v0.297.0
