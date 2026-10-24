@@ -348,7 +348,13 @@ class Engine(multiprocessing.Process):
         merge_from_binary(req, data)
         for order in req.orders:
             self.log.info("Placing order: %s", order)
-            asset = trading_algorithm.symbol(order.symbol)
+            # TradingAlgorithm.symbol resolves as of the last session. A
+            # ticker reused by another ISIN later in the backtest must still
+            # map to the ISIN that held it on this session.
+            asset = trading_algorithm.asset_finder.lookup_symbol(
+                order.symbol,
+                as_of_date=_session_day(trading_algorithm.datetime),
+            )
             order_id = trading_algorithm.order(asset=asset, amount=order.amount)
             self.log.debug("Placed order: %s", order_id)
 
