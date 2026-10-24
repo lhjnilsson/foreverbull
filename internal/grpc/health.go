@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -65,12 +66,16 @@ func (h *HealthCheck) Watch(_ *healthgrpc.HealthCheckRequest, _ healthgrpc.Healt
 	return status.Error(codes.Unimplemented, "Watch is not implemented")
 }
 
-func pingNATS(ctx context.Context) error {
-	nc, err := nats.Connect(environment.GetNATSURL(),
+func natsHealthOptions() []nats.Option {
+	return append([]nats.Option{
 		nats.Name("foreverbull-health"),
 		nats.Timeout(healthTimeout),
 		nats.MaxReconnects(0),
-	)
+	}, stream.NATSConnOptions()...)
+}
+
+func pingNATS(ctx context.Context) error {
+	nc, err := nats.Connect(environment.GetNATSURL(), natsHealthOptions()...)
 	if err != nil {
 		return fmt.Errorf("nats connect: %w", err)
 	}

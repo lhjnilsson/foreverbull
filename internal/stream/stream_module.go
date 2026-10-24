@@ -80,7 +80,7 @@ var Module = fx.Options(
 			if err := CreateTables(ctx, conn); err != nil {
 				return nil, fmt.Errorf("error creating tables: %w", err)
 			}
-			natsConn, err := nats.Connect(environment.GetNATSURL(), natsConnOptions()...)
+			natsConn, err := nats.Connect(environment.GetNATSURL(), NATSConnOptions()...)
 			if err != nil {
 				return nil, fmt.Errorf("error connecting to nats: %w", err)
 			}

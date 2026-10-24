@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -76,4 +77,26 @@ func TestPingMinioUnhealthyStatus(t *testing.T) {
 func TestPingNATSUnreachable(t *testing.T) {
 	t.Setenv(environment.NatsURL, "nats://127.0.0.1:1")
 	require.Error(t, pingNATS(context.Background()))
+}
+
+func TestPingNATSUsesTheBrokerUser(t *testing.T) {
+	t.Setenv(environment.NatsUser, "broker")
+	t.Setenv(environment.NatsPassword, "secret-value")
+	applied := nats.GetDefaultOptions()
+	for _, opt := range natsHealthOptions() {
+		require.NoError(t, opt(&applied))
+	}
+	require.Equal(t, "broker", applied.User)
+	require.Equal(t, "secret-value", applied.Password)
+}
+
+func TestPingNATSStaysAnonymousWithoutAUser(t *testing.T) {
+	t.Setenv(environment.NatsUser, "")
+	t.Setenv(environment.NatsPassword, "secret-value")
+	applied := nats.GetDefaultOptions()
+	for _, opt := range natsHealthOptions() {
+		require.NoError(t, opt(&applied))
+	}
+	require.Empty(t, applied.User)
+	require.Empty(t, applied.Password)
 }
