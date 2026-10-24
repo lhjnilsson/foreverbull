@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	sessionCookie    = "fb_session"
-	sessionLifetime  = 7 * 24 * time.Hour
-	sessionSecretLen = 32
+	sessionCookie     = "fb_session"
+	hostSessionCookie = "__Host-fb_session"
+	sessionLifetime   = 7 * 24 * time.Hour
+	sessionSecretLen  = 32
 )
 
 // OpenSession inserts a browser session and returns the cookie value.
@@ -54,7 +55,7 @@ func OpenSession(ctx context.Context, db postgres.Query, accountID string, now t
 
 // AccountFromRequest loads the account for fb_session. A bad cookie is ErrUnauthorized.
 func AccountFromRequest(ctx context.Context, db postgres.Query, r *http.Request, now time.Time) (Account, error) {
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(sessionCookieName(r))
 	if err != nil {
 		return Account{}, ErrUnauthorized
 	}
@@ -118,30 +119,32 @@ func secretHashMatches(got, want []byte) bool {
 // SetSessionCookie writes fb_session. Secure is on when AUTH_COOKIE_SECURE is
 // true or the request is HTTPS.
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, value string, now time.Time) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+	http.SetCookie(w, sessionCookieHeader(r, value, now.Add(sessionLifetime), int(sessionLifetime/time.Second)))
+}
+
+// ClearSessionCookie expires fb_session.
+func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, sessionCookieHeader(r, "", time.Unix(0, 0), -1))
+}
+
+func sessionCookieHeader(r *http.Request, value string, expires time.Time, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     sessionCookieName(r),
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   cookieSecure(r),
-		Expires:  now.Add(sessionLifetime),
-		MaxAge:   int(sessionLifetime / time.Second),
-	})
+		Expires:  expires,
+		MaxAge:   maxAge,
+	}
 }
 
-// ClearSessionCookie expires fb_session.
-func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   cookieSecure(r),
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-	})
+func sessionCookieName(r *http.Request) string {
+	if cookieSecure(r) {
+		return hostSessionCookie
+	}
+	return sessionCookie
 }
 
 func cookieSecure(r *http.Request) bool {

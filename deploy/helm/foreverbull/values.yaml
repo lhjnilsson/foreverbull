@@ -94,6 +94,10 @@ broker:
     # AUTH_ENABLED. Default false leaves the variable unset so the process default applies.
     enabled: false
     adminUsername: ""
+    # AUTH_COOKIE_SECURE. Null follows ingress.tls. Local Kind has no TLS, so the cookie stays unsecured.
+    cookieSecure:
+ingress:
+  tls: false
 
 zipline:
   grpcPort: 50055

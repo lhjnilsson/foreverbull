@@ -86,7 +86,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
 | `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
-| `AUTH_COOKIE_SECURE` | unset (`false`). Set `true` when TLS terminates in front of the broker. Plain HTTP, including local Kind, leaves the cookie unsecured |
+| `AUTH_COOKIE_SECURE` | unset on local Kind (`false`). The chart sets `true` when `ingress.tls` is true, or when `broker.auth.cookieSecure` is true. The session cookie is then `__Host-fb_session` |
 | `AUTH_TRUST_PROXY` | unset (`false`). When `true`, the client address is the rightmost `X-Forwarded-For` hop that is not in `AUTH_TRUSTED_PROXIES` |
 | `AUTH_TRUSTED_PROXIES` | empty. Comma-separated CIDRs of proxies whose hops are skipped |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
@@ -235,7 +235,7 @@ CLI tokens last until they are revoked. `expires_at` is checked and mint does
 not set it. `account rotate` replaces the password hash and deletes that
 account's browser sessions. It has no current session to keep. API tokens
 stay until they are revoked, so a forgotten password does not remove the
-Grafana token. Behind TLS, set `AUTH_COOKIE_SECURE=true`. The chart does not set it.
+Grafana token. Behind TLS the chart sets `AUTH_COOKIE_SECURE=true` when `ingress.tls` is true. The session cookie name is then `__Host-fb_session`. Local Kind is plain HTTP, so the chart leaves the flag unset.
 Broker gRPC is plaintext, so a token or session secret on a `broker_address`
 you do not trust can be read on the path. Do not publish `50055` or `8080`
 beyond that network.

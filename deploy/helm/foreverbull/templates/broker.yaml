@@ -141,6 +141,14 @@ spec:
             - name: AUTH_ENABLED
               value: "true"
             {{- end }}
+            {{- $cookieSecure := .Values.ingress.tls }}
+            {{- if kindIs "bool" .Values.broker.auth.cookieSecure }}
+            {{- $cookieSecure = .Values.broker.auth.cookieSecure }}
+            {{- end }}
+            {{- if $cookieSecure }}
+            - name: AUTH_COOKIE_SECURE
+              value: "true"
+            {{- end }}
             {{- with .Values.broker.auth.adminUsername }}
             - name: AUTH_ADMIN_USERNAME
               value: {{ . | quote }}

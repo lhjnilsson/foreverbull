@@ -184,7 +184,7 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 		web.Unauthorized(w)
 		return
 	}
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(sessionCookieName(r))
 	if err == nil {
 		id, _, splitErr := splitCookie(cookie.Value)
 		if splitErr == nil {

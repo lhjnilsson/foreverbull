@@ -286,4 +286,16 @@ if ! grep -q 'user: "broker"' <<< "${nats_conf}"; then
   exit 1
 fi
 
+if grep -A2 -E '^ +- name: AUTH_COOKIE_SECURE$' "${first_render}" | grep -q 'value: "true"'; then
+  echo "default chart must leave AUTH_COOKIE_SECURE unset" >&2
+  exit 1
+fi
+tls_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set ingress.tls=true > "${tls_render}"
+if ! grep -A1 -E '^ +- name: AUTH_COOKIE_SECURE$' "${tls_render}" | grep -q 'value: "true"'; then
+  echo "ingress.tls must set AUTH_COOKIE_SECURE" >&2
+  exit 1
+fi
+rm -f "${tls_render}"
+
 echo "helm chart checks passed"
