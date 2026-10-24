@@ -96,7 +96,7 @@ func (s *StrategyServer) createExperimentAuthed(
 	if err != nil {
 		return auth.GRPCStatus(err)
 	}
-	backtestID, err := auth.Resolve(ctx, s.pgx, account, auth.DomainBacktest, req.GetBacktestName(), req.GetBacktestOwner(), auth.ActionRead)
+	backtestID, err := auth.Resolve(ctx, s.pgx, account, auth.DomainBacktest, req.GetBacktestName(), req.GetBacktestOwner(), auth.ActionTrigger)
 	if err != nil {
 		return auth.GRPCStatus(err)
 	}
