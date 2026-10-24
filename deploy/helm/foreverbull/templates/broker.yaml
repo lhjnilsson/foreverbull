@@ -39,6 +39,10 @@ metadata:
     {{- include "foreverbull.selectorLabels" $sel | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  # RollingUpdate leaves the old pod holding the NATS JetStream consumer;
+  # the new pod then fails with "consumer is already bound to a subscription".
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "foreverbull.selectorLabels" $sel | nindent 6 }}
