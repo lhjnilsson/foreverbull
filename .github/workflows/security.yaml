@@ -1,8 +1,11 @@
 name: security scans
 
-# CodeQL (Go, Python), govulncheck, and Trivy. Results go to the repository's
-# code scanning alerts. Nothing here fails a build or gates a release yet:
-# the baseline findings are triaged first, and gating comes after that.
+# CodeQL (Go, Python), govulncheck, and Trivy. SARIF still uploads to code
+# scanning. govulncheck fails the job on any reachable finding outside the
+# two unfixed Moby client IDs named below. Trivy fails the job on a secret
+# finding. Lockfile CVEs and Helm/Dockerfile misconfig stay report-only:
+# that baseline is untriaged, and the non-root image work is internal #21.
+# CodeQL analyze does not fail on alerts; a pull-request ruleset is separate.
 on:
   push:
     branches:
@@ -59,6 +62,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      actions: write
       security-events: write
     env:
       # Scan with the go.mod toolchain (the one docker/Dockerfile builds with),
@@ -70,24 +74,90 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # v1.1.4 is the newest govulncheck that builds with Go 1.24.
-      # SARIF output reports findings without a failing exit code.
+      # v1.9.0 matches the Go 1.27 module line. Exit 0 is clean or
+      # SARIF-only. Exit 3 means the text formatter found vulns. Any
+      # other exit is a tool failure. Called findings are gated from
+      # the SARIF (level error), because -format sarif still lists
+      # imported-but-not-called modules as level note.
       - name: Run govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -format sarif ./... > govulncheck.sarif
-      # Keep the untouched output: the steps below rewrite
+        id: govulncheck
+        run: |
+          set +e
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format sarif ./... > govulncheck.sarif
+          code=$?
+          set -e
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then
+            echo "govulncheck failed with exit ${code}"
+            exit "$code"
+          fi
+      # Keep the untouched output: the dedupe step rewrites
       # govulncheck.sarif, and the findings must stay visible even
       # when the code-scanning upload is rejected.
       - name: Preserve raw govulncheck SARIF
         if: always()
         run: cp govulncheck.sarif govulncheck-raw.sarif
+      # Called vulns with no patch on the current Moby 28 client.
+      # GO-2026-4887 (CVE-2026-34040) AuthZ plugin body bypass.
+      # GO-2026-4883 (CVE-2026-33997) plugin privilege off-by-one.
+      # The call graph is the test Docker client and errors.As on
+      # client error types, not the AuthZ or plugin paths. A new rule
+      # id fails the job. Drop an id here once a module bump removes it.
+      - name: Fail on govulncheck findings outside the baseline
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, pathlib, sys
+          allowed = {"GO-2026-4887", "GO-2026-4883"}
+          raw = pathlib.Path("govulncheck-raw.sarif")
+          if not raw.is_file() or raw.stat().st_size == 0:
+              print("govulncheck SARIF is missing")
+              sys.exit(1)
+          data = json.loads(raw.read_text())
+          called = []
+          noted = []
+          for run in data.get("runs", []):
+              for result in run.get("results", []):
+                  rule_id = result.get("ruleId") or ""
+                  # level "note" is an imported module with no called symbol.
+                  # level "error" is a called symbol. Missing level fails closed.
+                  if result.get("level") == "note":
+                      noted.append(rule_id)
+                  else:
+                      called.append(rule_id)
+          extra = sorted({rule_id for rule_id in called if rule_id not in allowed})
+          print(f"govulncheck called: {len(called)}; imported only: {len(noted)}")
+          for rule_id in sorted(set(called)):
+              print(f"- called {rule_id}")
+          for rule_id in sorted(set(noted)):
+              print(f"- imported {rule_id}")
+          code = os.environ.get("GOVULNCHECK_EXIT", "")
+          if code not in {"0", "3"}:
+              print(f"govulncheck exit {code} is not 0 or 3")
+              sys.exit(1)
+          if code == "3" and not called and not noted:
+              print("govulncheck reported findings but SARIF has no results")
+              sys.exit(1)
+          if extra:
+              print("reachable findings outside the baseline allowlist:")
+              for rule_id in extra:
+                  print(f"- {rule_id}")
+              sys.exit(1)
+          PYEOF
+        env:
+          GOVULNCHECK_EXIT: ${{ steps.govulncheck.outputs.exit_code }}
       - name: Report govulncheck findings in job summary
         if: always()
-        continue-on-error: true
         run: |
           python3 - <<'PYEOF'
           import json, pathlib
           raw = pathlib.Path("govulncheck-raw.sarif")
-          lines = ["## govulncheck findings (non-gating, baseline triage)", ""]
+          lines = [
+              "## govulncheck",
+              "",
+              "The job fails when a called result (SARIF level error) is outside GO-2026-4887 and GO-2026-4883.",
+              "",
+          ]
           try:
               data = json.loads(raw.read_text())
               rules = {}
@@ -109,6 +179,7 @@ jobs:
                   lines.append("- No rules in SARIF; see govulncheck-raw.sarif artifact and the Run step log.")
           except Exception as exc:
               lines.append(f"Could not parse govulncheck SARIF ({exc}); see the raw artifact and Run step log.")
+              raise SystemExit(1)
           text = "\n".join(lines) + "\n"
           print(text)
           summary = pathlib.Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
@@ -117,7 +188,6 @@ jobs:
           PYEOF
       - name: Upload raw govulncheck SARIF artifact
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: govulncheck-sarif
@@ -125,15 +195,18 @@ jobs:
             govulncheck-raw.sarif
             govulncheck.sarif
           if-no-files-found: warn
-      # v1.1.4 can emit the same call stack twice in one result, which
+      # govulncheck can emit the same call stack twice in one result, which
       # the SARIF validator rejects (uniqueItems on results[].stacks).
       # Drop exact duplicates so the findings still reach code scanning.
       - name: Drop duplicate stacks from govulncheck SARIF
-        continue-on-error: true
+        if: always()
         run: |
           python3 - <<'PYEOF'
-          import json, pathlib
+          import json, pathlib, sys
           path = pathlib.Path("govulncheck.sarif")
+          if not path.is_file():
+              print("govulncheck.sarif is missing")
+              sys.exit(1)
           data = json.loads(path.read_text())
           for run in data.get("runs", []):
               for result in run.get("results", []):
@@ -149,10 +222,11 @@ jobs:
                   result["stacks"] = unique
           path.write_text(json.dumps(data))
           PYEOF
-      # Non-gating while the baseline is triaged, like Trivy
-      # (exit-code "0") and CodeQL (findings do not fail the job):
-      # a rejected or unuploadable SARIF must not fail the PR.
+      # Upload stays best-effort: code scanning rejects the file while
+      # CodeQL default setup is on. The gate above already failed the job
+      # when a finding is outside the allowlist.
       - name: Upload results
+        if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
@@ -168,6 +242,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Lockfiles, Dockerfiles, the Helm chart, and committed secrets.
+      # Vuln and misconfig stay report-only. A local fs scan of this tree
+      # is red on Python/npm lockfile CVEs and on non-root Helm checks
+      # (internal #21). Failing the job on that set would be a standing
+      # red baseline. Secrets are gated below; that scan is clean.
       - name: Scan repository
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -178,14 +256,26 @@ jobs:
           output: trivy-repo.sarif
           exit-code: "0"
       - name: Upload results
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy-repo.sarif
           category: trivy-repo
+      - name: Fail on leaked secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          format: table
+          exit-code: "1"
 
   # Builds this commit's images and scans them. Nothing is pushed. Base images
   # change without a commit, so this runs weekly too. Not on pull requests:
   # three image builds are slow, and on_commit already builds them there.
+  # exit-code stays 0: base-image CVEs and non-root are internal #21, and
+  # this job cannot tell a new finding from that baseline.
   trivy-images:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -243,6 +333,8 @@ jobs:
           output: trivy-image.sarif
           exit-code: "0"
       - name: Upload results
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy-image.sarif

@@ -83,6 +83,11 @@ spec:
                   key: postgres-password
             - name: POSTGRES_URL
               value: {{ include "foreverbull.postgresURL" . | quote }}
+            - name: WORKER_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: worker-postgres-password
             - name: NATS_URL
               value: {{ printf "nats://nats:%v" .Values.nats.port | quote }}
             - name: MINIO_URL

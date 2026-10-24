@@ -50,7 +50,7 @@ ETF-built universes are point-in-time from iShares as-of snapshots. Identity is 
 
 - Docker (unit tests use Testcontainers; Kind also needs a Docker daemon; integration/e2e need local images)
 - Kind, Helm, and kubectl (local `fbenv` / Kind cluster)
-- Go 1.24 (see `go.mod`)
+- Go 1.27.3 (see `go.mod`)
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - Task
 - For proto generation: [Buf](https://buf.build/docs/installation), `protoc-gen-go`, `protoc-gen-go-grpc`, and `uv sync` in `client/` (pinned `buf`, `protoc-gen-py`, and `protoc-gen-grpc-py`)
@@ -284,7 +284,8 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`; prefix is CLI `IMAGE_REPOSITORY`, passed as chart `global.imageRepository`). Unset: the installed `foreverbull` client version (never `latest`). `local`: images from `task build`. `fbenv` refuses any other value. Image-pull fails-before-changes is local-Kind only; remote nodes pull after Helm runs |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
-| `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |
+| `DATABASE_URL` | Zipline Postgres URL (chart database owner). Strategy pods do not receive it. Pytest sets it via Testcontainers for tests that open a database directly |
+| `WORKER_POSTGRES_PASSWORD` | Password for role `foreverbull_worker` (`SELECT` on `asset`, `ohlc`, `asset_symbol`). Go default `foreverbull-worker`, which is not the broker database password. Helm stores a generated value in Secret `foreverbull-credentials` except when `credentials.allowDefaults=true`. The broker sends the read-only URL on the execution configuration. Service pods do not get this env var |
 | `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`; in-cluster workers get `SERVER_ADDRESS`) |
 | `BROKER_PORT` | Worker broker gRPC port; in-cluster workers get `GRPC_PORT` (`50055`) |
 | `NAMESPACE_PORT` | Required for the worker namespace socket |

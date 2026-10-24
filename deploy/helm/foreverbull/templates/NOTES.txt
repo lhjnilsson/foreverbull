@@ -17,6 +17,7 @@ Credentials (Secret foreverbull-credentials, namespace {{ .Release.Namespace }})
   kubectl get secret foreverbull-credentials -n {{ .Release.Namespace }} -o jsonpath='{.data.minio-accessKey}' | base64 -d; echo
   kubectl get secret foreverbull-credentials -n {{ .Release.Namespace }} -o jsonpath='{.data.minio-secretKey}' | base64 -d; echo
 Docker socket: not mounted. Worker pods use ServiceAccount {{ include "foreverbull.serviceAccountName" . }}.
+Worker role foreverbull_worker uses Secret key worker-postgres-password. Service pods do not receive it, and this note does not print it.
 
 {{- if .Values.expose.hostPort }}
 

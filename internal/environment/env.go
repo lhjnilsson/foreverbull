@@ -2,8 +2,11 @@ package environment
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -39,6 +42,14 @@ const (
 
 	PostgresURL        = "POSTGRES_URL"
 	PostgresURLDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
+
+	// WorkerPostgresPassword is the login password for role foreverbull_worker.
+	// Helm stores it in Secret foreverbull-credentials. It is never the broker
+	// database password, and service pods do not receive it.
+	WorkerPostgresPassword        = "WORKER_POSTGRES_PASSWORD"
+	WorkerPostgresPasswordDefault = "foreverbull-worker"
+	// WorkerPostgresRole is the login that strategy workers use to read bars.
+	WorkerPostgresRole = "foreverbull_worker"
 
 	NatsURL                   = "NATS_URL"
 	NatsURLDefault            = "nats://localhost:4222"
@@ -82,6 +93,7 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{BacktestPortRangeEnd, func() (string, error) { return BacktestPortRangeEndDefault, nil }},
 	{LogLevel, func() (string, error) { return LogLevelDefault, nil }},
 	{PostgresURL, func() (string, error) { return PostgresURLDefault, nil }},
+	{WorkerPostgresPassword, func() (string, error) { return WorkerPostgresPasswordDefault, nil }},
 	{NatsURL, func() (string, error) { return NatsURLDefault, nil }},
 	{NatsDurable, func() (string, error) { return NatsDurableDefault, nil }},
 	{NatsDeliveryPolicy, func() (string, error) { return NatsDeliveryPolicyDefault, nil }},
@@ -245,6 +257,54 @@ func GetLogLevel() string {
 
 func GetPostgresURL() string {
 	return os.Getenv(PostgresURL)
+}
+
+// workerPasswordPattern matches the chart's URL-safe credential rule.
+var workerPasswordPattern = regexp.MustCompile(`^[-A-Za-z0-9._~]+$`)
+
+func workerPostgresPassword() (string, error) {
+	password := strings.TrimSpace(os.Getenv(WorkerPostgresPassword))
+	if password == "" {
+		password = WorkerPostgresPasswordDefault
+	}
+	if !workerPasswordPattern.MatchString(password) {
+		return "", fmt.Errorf("%s must be URL-safe (letters, digits and -._~)", WorkerPostgresPassword)
+	}
+
+	return password, nil
+}
+
+// WorkerDatabaseURL is the read-only DSN strategy workers use for bar reads.
+// The user is foreverbull_worker. The broker database user and password are
+// not copied into it.
+func WorkerDatabaseURL() (string, error) {
+	raw := strings.TrimSpace(GetPostgresURL())
+	if raw == "" {
+		return "", fmt.Errorf("%s is empty", PostgresURL)
+	}
+
+	password, err := workerPostgresPassword()
+	if err != nil {
+		return "", err
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", PostgresURL, err)
+	}
+	if parsed.User == nil || parsed.User.Username() == "" {
+		return "", fmt.Errorf("%s has no user", PostgresURL)
+	}
+	if parsed.User.Username() == WorkerPostgresRole {
+		return "", fmt.Errorf("%s user is %s; the broker must connect as the database owner", PostgresURL, WorkerPostgresRole)
+	}
+	if super, ok := parsed.User.Password(); ok && super == password {
+		return "", fmt.Errorf("%s matches the broker database password", WorkerPostgresPassword)
+	}
+
+	parsed.User = url.UserPassword(WorkerPostgresRole, password)
+
+	return parsed.String(), nil
 }
 
 func GetNATSURL() string {

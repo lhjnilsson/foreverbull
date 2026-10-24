@@ -59,12 +59,28 @@ func TestStartCreatesLabeledPodWithBrokerEnv(t *testing.T) {
 	env := pod.Spec.Containers[0].Env
 	require.Equal(t, environment.GetServerAddress(), envValue(t, env, "BROKER_HOSTNAME"))
 	require.Equal(t, environment.GetGRPCPort(), envValue(t, env, "BROKER_PORT"))
-	require.Equal(t, environment.GetMinioURL(), envValue(t, env, "STORAGE_ENDPOINT"))
-	require.Equal(t, environment.GetMinioAccessKey(), envValue(t, env, "STORAGE_ACCESS_KEY"))
-	require.Equal(t, environment.GetMinioSecretKey(), envValue(t, env, "STORAGE_SECRET_KEY"))
-	require.Equal(t, environment.GetPostgresURL(), envValue(t, env, "DATABASE_URL"))
 	require.Equal(t, environment.GetLogLevel(), envValue(t, env, "LOGLEVEL"))
 	require.False(t, envSet(env, OHLCProviderEnv))
+	requireServicePodOmitsBrokerCredentials(t, env)
+}
+
+func requireServicePodOmitsBrokerCredentials(t *testing.T, env []corev1.EnvVar) {
+	t.Helper()
+
+	for _, name := range []string{"DATABASE_URL", "STORAGE_ENDPOINT", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"} {
+		require.Falsef(t, envSet(env, name), "service pod env must not set %s", name)
+	}
+
+	brokerURL := environment.GetPostgresURL()
+	minioKey := environment.GetMinioAccessKey()
+	minioSecret := environment.GetMinioSecretKey()
+	for _, item := range env {
+		require.NotEqual(t, brokerURL, item.Value)
+		require.NotContains(t, item.Value, minioSecret)
+		if item.Name != "BROKER_HOSTNAME" && item.Name != "BROKER_PORT" && item.Name != "LOGLEVEL" && item.Name != OHLCProviderEnv {
+			require.NotEqual(t, minioKey, item.Value)
+		}
+	}
 }
 
 func TestStartSetsOHLCProviderFromContext(t *testing.T) {
@@ -80,6 +96,7 @@ func TestStartSetsOHLCProviderFromContext(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "stooq", envValue(t, pod.Spec.Containers[0].Env, OHLCProviderEnv))
+	requireServicePodOmitsBrokerCredentials(t, pod.Spec.Containers[0].Env)
 }
 
 func envSet(env []corev1.EnvVar, name string) bool {

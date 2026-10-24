@@ -93,7 +93,7 @@ do
 done
 
 # Credentials come from Secret foreverbull-credentials, never a plain env value.
-for env_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
+for env_name in POSTGRES_PASSWORD WORKER_POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
   if grep -A1 -E "^ +- name: ${env_name}$" "${rendered}" | grep -qE '^ +value:'; then
     echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
     exit 1
@@ -103,7 +103,7 @@ done
 # hostPort is networking only: the public defaults must stop the
 # install with or without it, unless allowDefaults is explicit.
 for hostport in false true; do
-  for default_value in postgres.password=foreverbull minio.secretKey=minioadmin; do
+  for default_value in postgres.password=foreverbull postgres.workerPassword=foreverbull-worker minio.secretKey=minioadmin; do
     if output="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set "expose.hostPort=${hostport}" --set "${default_value}" 2>&1)"; then
       echo "chart must refuse ${default_value} with expose.hostPort=${hostport}" >&2
       exit 1
@@ -119,7 +119,7 @@ helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
 
 # A set password is expanded raw into POSTGRES_URL/DATABASE_URL, so a
 # value that is not URL-safe must stop the install with this message.
-for case in 'postgres.password|postgres.password=p@ss/word' 'minio.secretKey|minio.secretKey=p@ss:word'; do
+for case in 'postgres.password|postgres.password=p@ss/word' 'minio.secretKey|minio.secretKey=p@ss:word' 'postgres.workerPassword|postgres.workerPassword=p@ss/word'; do
   key="${case%%|*}"
   setting="${case#*|}"
   if output="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set "${setting}" 2>&1)"; then
@@ -140,7 +140,8 @@ helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
 hostport_render="$(mktemp)"
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.hostPort=true > "${hostport_render}"
 if grep -Fq 'postgres-password: "Zm9yZXZlcmJ1bGw="' "${hostport_render}" \
-  || grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${hostport_render}"; then
+  || grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${hostport_render}" \
+  || grep -Fq 'worker-postgres-password: "Zm9yZXZlcmJ1bGwtd29ya2Vy"' "${hostport_render}"; then
   echo "expose.hostPort alone must not select the public default credentials" >&2
   exit 1
 fi
@@ -148,7 +149,8 @@ rm -f "${hostport_render}"
 defaults_render="$(mktemp)"
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set credentials.allowDefaults=true > "${defaults_render}"
 if ! grep -Fq 'postgres-password: "Zm9yZXZlcmJ1bGw="' "${defaults_render}" \
-  || ! grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${defaults_render}"; then
+  || ! grep -Fq 'minio-secretKey: "bWluaW9hZG1pbg=="' "${defaults_render}" \
+  || ! grep -Fq 'worker-postgres-password: "Zm9yZXZlcmJ1bGwtd29ya2Vy"' "${defaults_render}"; then
   echo "credentials.allowDefaults=true must select the public defaults" >&2
   exit 1
 fi
@@ -214,20 +216,29 @@ secret_value() {
   grep -E "^  $1: " "$2" | head -n 1 | sed -E 's/^[^:]+: "?(.*)"?$/\1/' | tr -d '"'
 }
 generated_pg="$(secret_value postgres-password "${first_render}")"
+generated_worker="$(secret_value worker-postgres-password "${first_render}")"
 generated_minio="$(secret_value minio-secretKey "${first_render}")"
-if [[ -z "${generated_pg}" || -z "${generated_minio}" ]]; then
-  echo "first render must generate postgres and MinIO credentials" >&2
+if [[ -z "${generated_pg}" || -z "${generated_worker}" || -z "${generated_minio}" ]]; then
+  echo "first render must generate postgres, worker, and MinIO credentials" >&2
   exit 1
 fi
 generated_pg_clear="$(printf '%s' "${generated_pg}" | base64 -d)"
+generated_worker_clear="$(printf '%s' "${generated_worker}" | base64 -d)"
 generated_minio_clear="$(printf '%s' "${generated_minio}" | base64 -d)"
-if [[ ! "${generated_pg_clear}" =~ ^[-A-Za-z0-9._~]+$ || ! "${generated_minio_clear}" =~ ^[-A-Za-z0-9._~]+$ ]]; then
+if [[ ! "${generated_pg_clear}" =~ ^[-A-Za-z0-9._~]+$ || ! "${generated_worker_clear}" =~ ^[-A-Za-z0-9._~]+$ || ! "${generated_minio_clear}" =~ ^[-A-Za-z0-9._~]+$ ]]; then
   echo "generated credentials must be URL-safe" >&2
   exit 1
 fi
+if [[ "${generated_worker_clear}" == "${generated_pg_clear}" ]]; then
+  echo "worker postgres password must not be the broker postgres password" >&2
+  exit 1
+fi
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
-  --set "postgres.password=${generated_pg_clear}" --set "minio.secretKey=${generated_minio_clear}" > "${second_render}"
+  --set "postgres.password=${generated_pg_clear}" \
+  --set "postgres.workerPassword=${generated_worker_clear}" \
+  --set "minio.secretKey=${generated_minio_clear}" > "${second_render}"
 if [[ "$(secret_value postgres-password "${second_render}")" != "${generated_pg}" \
+  || "$(secret_value worker-postgres-password "${second_render}")" != "${generated_worker}" \
   || "$(secret_value minio-secretKey "${second_render}")" != "${generated_minio}" ]]; then
   echo "credentials fed back on upgrade must render the same Secret" >&2
   exit 1

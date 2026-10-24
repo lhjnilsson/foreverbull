@@ -78,7 +78,6 @@ type GetAssetRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Identifier:
-	//
 	//	*GetAssetRequest_Symbol
 	//	*GetAssetRequest_Isin
 	Identifier isGetAssetRequest_Identifier `protobuf_oneof:"identifier"`

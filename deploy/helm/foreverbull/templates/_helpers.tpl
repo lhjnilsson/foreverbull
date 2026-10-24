@@ -14,6 +14,9 @@ one URL-safe contract. */}}
 {{- if and .Values.minio.secretKey (not (regexMatch "^[-A-Za-z0-9._~]+$" (.Values.minio.secretKey | toString))) }}
 {{- fail "minio.secretKey must be URL-safe (letters, digits and -._~ are safe)" }}
 {{- end }}
+{{- if and .Values.postgres.workerPassword (not (regexMatch "^[-A-Za-z0-9._~]+$" (.Values.postgres.workerPassword | toString))) }}
+{{- fail "postgres.workerPassword must be URL-safe (letters, digits and -._~ are safe)" }}
+{{- end }}
 {{- /* Fail fast on a pre-Secret install: an existing Postgres (PVC or
 Deployment postgres in the release namespace) with no Secret
 foreverbull-credentials yet would otherwise get a fresh generated
