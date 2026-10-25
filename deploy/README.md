@@ -448,6 +448,8 @@ One chart, these keys. Match `values.yaml`.
 global:
   imageRepository: lhjnilsson  # fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
+  imagePullPolicy: IfNotPresent       # postgres/nats/minio
+  appImagePullPolicy: IfNotPresent    # broker/zipline/grafana
 
 images:
   postgres:
@@ -556,7 +558,7 @@ rbac:
   create: true
 ```
 
-`replicaCount` is `1`. `global.imagePullPolicy` is `IfNotPresent`. `resources.*`
+`replicaCount` is `1`. `global.imagePullPolicy` (postgres/nats/minio) and `global.appImagePullPolicy` (broker/zipline/grafana) are `IfNotPresent`. `resources.*`
 are modest CPU/memory requests for a local Kind node (limits omitted).
 
 Workload object names (Deployment + Service): `postgres`, `nats`, `minio`,
