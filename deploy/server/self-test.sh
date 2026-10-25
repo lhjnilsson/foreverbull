@@ -73,6 +73,16 @@ assert_fail "short sha tag" require_sha_tag "sha-abc"
 assert_ok "ghcr prefix" require_ghcr_repo "ghcr.io/lhjnilsson"
 assert_fail "ghcr image as prefix" require_ghcr_repo "ghcr.io/lhjnilsson/foreverbull"
 assert_fail "docker hub prefix" require_ghcr_repo "docker.io/lhjnilsson"
+assert_ok "ghcr image" require_ghcr_image "ghcr.io/lhjnilsson/foreverbull"
+assert_ok "ghcr grafana image" require_ghcr_image "ghcr.io/lhjnilsson/fb-grafana"
+assert_ok "ghcr zipline image" require_ghcr_image "ghcr.io/lhjnilsson/zipline"
+assert_fail "ghcr prefix as image" require_ghcr_image "ghcr.io/lhjnilsson"
+assert_fail "ghcr nested image" require_ghcr_image "ghcr.io/lhjnilsson/foreverbull/extra"
+assert_fail "ghcr tagged image" require_ghcr_image "ghcr.io/lhjnilsson/foreverbull:sha-abc1234"
+assert_fail "ghcr digest image" require_ghcr_image "ghcr.io/lhjnilsson/foreverbull@sha256:${A}"
+assert_fail "docker hub image" require_ghcr_image "docker.io/lhjnilsson/foreverbull"
+assert_fail "uppercase ghcr image" require_ghcr_image "ghcr.io/LhjNilsson/foreverbull"
+assert_fail "ghcr image newline" require_ghcr_image $'ghcr.io/lhjnilsson/foreverbull\nlatest'
 assert_ok "nightly namespace" require_release_namespace "fb-nightly"
 assert_ok "e2e namespace" require_release_namespace "e2e-abc1234"
 assert_fail "other namespace" require_release_namespace "kube-system"
@@ -139,6 +149,148 @@ assert_fail "pin rejects bad repo" bash -c "
   grep -qx 'IMAGE=ghcr.io/lhjnilsson/foreverbull' <<<"${ref}" || exit 1
 ) || bad "image ref"
 ok "image ref"
+
+# Workflow jobs pass IMAGE from image-ref.sh (ghcr.io/<owner>/<name>).
+# A stub docker answers imagetools so the check stays offline. The command
+# must get past argument checks and reach that stub. require_ghcr_repo still
+# rejects a package path; that helper is the Helm prefix.
+GHCR_STUB="$(mktemp -d)"
+cat >"${GHCR_STUB}/docker" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${DOCKER_LOG:?}"
+if [[ "${1:-}" != "buildx" || "${2:-}" != "imagetools" ]]; then
+  echo "unexpected docker invocation" >&2
+  exit 1
+fi
+case "${3:-}" in
+  inspect)
+    if [[ "$*" == *"--format"* && "$*" == *":latest" ]]; then
+      [[ -n "${STUB_DIGEST:-}" ]] || exit 1
+      printf '%s\n' "${STUB_DIGEST}"
+      exit 0
+    fi
+    echo "manifest unknown" >&2
+    exit 1
+    ;;
+  create)
+    exit 0
+    ;;
+  *)
+    echo "unexpected imagetools command" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "${GHCR_STUB}/docker"
+resolved="$(PATH="${GHCR_STUB}:${PATH}" command -v docker)"
+[[ "${resolved}" == "${GHCR_STUB}/docker" ]] || bad "docker stub was not first on PATH"
+
+GHCR_REVISION="0123456789abcdef0123456789abcdef01234567"
+GHCR_SHA_TAG="sha-${GHCR_REVISION::7}"
+
+run_ghcr() {
+  local log="$1"
+  shift
+  : >"${log}"
+  (
+    export PATH="${GHCR_STUB}:${PATH}"
+    export DOCKER_LOG="${log}"
+    export STUB_DIGEST="${GHCR_STUB_DIGEST:-}"
+    bash "${ROOT}/deploy/server/ghcr.sh" "$@"
+  )
+}
+
+expect_existing_absent() {
+  local image="$1"
+  local log out err got
+  log="$(mktemp)"
+  out="$(mktemp)"
+  err="$(mktemp)"
+  if ! run_ghcr "${log}" existing-digest "${image}" "${GHCR_SHA_TAG}" "${GHCR_REVISION}" >"${out}" 2>"${err}"; then
+    bad "existing-digest ${image}: $(cat "${err}")"
+    rm -f "${log}" "${out}" "${err}"
+    return
+  fi
+  got="$(cat "${out}")"
+  if [[ "${got}" != "absent" ]]; then
+    bad "existing-digest ${image} printed ${got}"
+  elif ! grep -F "imagetools inspect ${image}:${GHCR_SHA_TAG}" "${log}" >/dev/null; then
+    bad "existing-digest ${image} did not reach imagetools"
+  elif grep -F 'image must be ghcr.io/<owner> without a tag or digest' "${err}" >/dev/null; then
+    bad "existing-digest ${image} rejected the package image as a registry prefix"
+  else
+    ok "existing-digest ${image}"
+  fi
+  rm -f "${log}" "${out}" "${err}"
+}
+
+expect_move_latest() {
+  local image="$1"
+  local digest="$2"
+  local log out err
+  log="$(mktemp)"
+  out="$(mktemp)"
+  err="$(mktemp)"
+  GHCR_STUB_DIGEST="${digest}"
+  if ! run_ghcr "${log}" move-latest "${image}" "${digest}" >"${out}" 2>"${err}"; then
+    bad "move-latest ${image}: $(cat "${err}")"
+    rm -f "${log}" "${out}" "${err}"
+    return
+  fi
+  if ! grep -F "latest -> ${image}@${digest}" "${out}" >/dev/null; then
+    bad "move-latest ${image} printed $(cat "${out}")"
+  elif ! grep -F "imagetools create --tag ${image}:latest ${image}@${digest}" "${log}" >/dev/null; then
+    bad "move-latest ${image} did not reach imagetools"
+  else
+    ok "move-latest ${image}"
+  fi
+  rm -f "${log}" "${out}" "${err}"
+}
+
+refuse_ghcr_before_docker() {
+  local desc="$1"
+  shift
+  local log out err
+  log="$(mktemp)"
+  out="$(mktemp)"
+  err="$(mktemp)"
+  if run_ghcr "${log}" "$@" >"${out}" 2>"${err}"; then
+    bad "${desc} was accepted"
+  elif [[ -s "${log}" ]]; then
+    bad "${desc} called docker before rejecting the arguments"
+  else
+    ok "${desc}"
+  fi
+  rm -f "${log}" "${out}" "${err}"
+}
+
+for name in foreverbull zipline fb-grafana; do
+  expect_existing_absent "ghcr.io/lhjnilsson/${name}"
+done
+expect_move_latest "ghcr.io/lhjnilsson/foreverbull" "sha256:${A}"
+refuse_ghcr_before_docker "existing-digest prefix" \
+  existing-digest "ghcr.io/lhjnilsson" "${GHCR_SHA_TAG}" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest tagged image" \
+  existing-digest "ghcr.io/lhjnilsson/foreverbull:${GHCR_SHA_TAG}" "${GHCR_SHA_TAG}" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest digest image" \
+  existing-digest "ghcr.io/lhjnilsson/foreverbull@sha256:${A}" "${GHCR_SHA_TAG}" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest other registry" \
+  existing-digest "docker.io/lhjnilsson/foreverbull" "${GHCR_SHA_TAG}" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest uppercase owner" \
+  existing-digest "ghcr.io/LhjNilsson/foreverbull" "${GHCR_SHA_TAG}" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest latest tag" \
+  existing-digest "ghcr.io/lhjnilsson/foreverbull" "latest" "${GHCR_REVISION}"
+refuse_ghcr_before_docker "existing-digest short revision" \
+  existing-digest "ghcr.io/lhjnilsson/foreverbull" "${GHCR_SHA_TAG}" "0123456"
+refuse_ghcr_before_docker "move-latest prefix" \
+  move-latest "ghcr.io/lhjnilsson" "sha256:${A}"
+refuse_ghcr_before_docker "move-latest tagged image" \
+  move-latest "ghcr.io/lhjnilsson/foreverbull:latest" "sha256:${A}"
+refuse_ghcr_before_docker "move-latest bad digest" \
+  move-latest "ghcr.io/lhjnilsson/foreverbull" "sha256:abc"
+rm -rf "${GHCR_STUB}"
+unset GHCR_STUB_DIGEST
 
 (
   unset FOREVERBULL_DIGEST ZIPLINE_DIGEST GRAFANA_DIGEST

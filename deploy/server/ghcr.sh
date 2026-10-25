@@ -23,7 +23,7 @@ cmd_existing_digest() {
   local tag="$2"
   local revision="$3"
   local ref err digest ann
-  require_ghcr_repo "$image" || die "image must be ghcr.io/<owner> without a tag or digest"
+  require_ghcr_image "$image" || die "image must be ghcr.io/<owner>/<name> without a tag or digest"
   require_sha_tag "$tag" || die "refusing to inspect a tag that is not sha-<hex>"
   [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || die "revision must be the full git sha"
   ref="${image}:${tag}"
@@ -48,7 +48,7 @@ cmd_move_latest() {
   local image="$1"
   local digest="$2"
   local got
-  require_ghcr_repo "$image" || die "image must be ghcr.io/<owner> without a tag or digest"
+  require_ghcr_image "$image" || die "image must be ghcr.io/<owner>/<name> without a tag or digest"
   require_digest "$digest" || die "digest must be sha256:<64 hex>"
   docker buildx imagetools create --tag "${image}:latest" "${image}@${digest}"
   got="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${image}:latest")"
