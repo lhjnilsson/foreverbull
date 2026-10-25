@@ -437,8 +437,9 @@ bash deploy/helm/check-chart.sh
 ```
 
 `check-chart.sh` lints, templates with and without `expose.hostPort`, and
-asserts the render has ServiceAccount/Role/RoleBinding and does not mention
-`/var/run/docker.sock`.
+asserts the render has ServiceAccount/Role/RoleBinding, does not mention
+`/var/run/docker.sock`, and keeps the broker, Zipline, and Grafana
+containers non-root (see [Container security](#container-security)).
 
 ## Helm value keys
 
@@ -569,6 +570,41 @@ above. Grafana gets `BROKER_URL` from `grafana.brokerUrl`. The broker gets `GRAF
 from `grafana.url` for `GetExperiment` deep links. CLI on the laptop still
 defaults to `http://localhost:3000`; remote installs should set `grafana.url`
 to the public Grafana origin.
+
+## 🔒️ Container security
+
+Broker, Zipline, and Grafana run as a non-root user. The pod and the
+container set `runAsNonRoot`, `seccompProfile: RuntimeDefault`, and
+`allowPrivilegeEscalation: false`. The container drops every capability
+(`ALL`).
+
+| Workload | Image user | Chart `runAsUser` |
+| --- | --- | --- |
+| Broker | `foreverbull` in `docker/Dockerfile` | `10001` |
+| Zipline | `foreverbull` in `client/zipline/Dockerfile` | `10001` |
+| Grafana | uid `472` in `grafana/Dockerfile` (Grafana OSS) | `472` |
+
+Grafana also keeps `fsGroup: 472`. The chart uid has to match the image
+user. A mismatch runs the process as an account that does not own the
+files the image copied for that user.
+
+Local Kind (`fbenv`, `expose.hostPort=true`) renders this same template.
+The broker host ports are `50055`, `8080`, and `27000`–`27015`. Grafana's
+host port is `3000`. Zipline has no host port. All of those are above
+1024, so the non-root process can bind them. `fbenv` installs this
+chart with `expose.hostPort=true` and leaves the security context in
+the template.
+
+Postgres stays on the `postgres` image entrypoint, which starts as root
+so it can prepare the data directory and then drops to the `postgres`
+user (`fsGroup: 70`). NATS and MinIO (Silo) stay on the user their
+upstream images start as, with the `fsGroup` the chart already set.
+The capability drop in this change applies to the three app workloads
+above.
+
+Strategy-worker pods are not in the chart. The broker creates them from
+`internal/container` using the image a strategy version names, and that
+image may still start as root.
 
 ## Broker RBAC
 
