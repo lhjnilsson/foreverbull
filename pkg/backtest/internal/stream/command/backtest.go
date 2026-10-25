@@ -610,43 +610,38 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
-			if isNoPriceDataError(msg.GetError()) {
-				// No bars under any ticker of this member: fail create.
-				return discardNoPriceData(ctx, backtests, command.BacktestName, backtestID, msg.Symbol, startDate, endDate)
-			}
-			// Other download errors (GetAsset, store, …) only disable the member.
-			var err error
-			if environment.GetAuthEnabled() {
-				err = backtests.UpdatePeriodAssetByID(ctx, backtestID, msg.Symbol, false)
-			} else {
-				err = backtests.UpdatePeriodAsset(ctx, command.BacktestName, msg.Symbol, false)
-			}
-			if err != nil {
-				return fmt.Errorf("error updating period asset: %w", err)
-			}
+			// Any per-symbol download failure must fail create. Disabling the
+			// member and exiting 0 left an incomplete universe with no warning.
+			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
+				msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
 	return nil
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
-// Other download failures keep a different error text and only disable the member.
 func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
-// discardNoPriceData deletes the backtest when a symbol has no bars under any
-// of its tickers. The create must not keep a universe that silently omits a
-// member. "Nothing was saved" only when the delete worked.
-func discardNoPriceData(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date) error {
+// discardSymbolDownloadError deletes the backtest when a symbol's download
+// returns STATUS_ERROR. The create must not keep a universe that silently
+// omits a member. The lead names the symbol; raw finance/gRPC text stays out
+// of the user sentence. "Nothing was saved" only when the delete worked.
+func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
-		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after missing price data")
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after download error")
 	}
-	startText := pb.DateToDateString(start)
-	endText := pb.DateToDateString(end)
-	lead := fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
+	var lead string
+	if isNoPriceDataError(errText) {
+		startText := pb.DateToDateString(start)
+		endText := pb.DateToDateString(end)
+		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
+	} else {
+		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
+	}
 	if removed {
 		return plainSentence(fmt.Sprintf(
 			"Couldn't load data for backtest '%s': %s Nothing was saved, so run `fbull backtest create` again once it's fixed.",
@@ -671,8 +666,8 @@ func blockedDownload(err error) error {
 // discardBlockedBacktest deletes the backtest that the CREATING step stored,
 // so retrying the same create with the other provider is not refused as a
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
-// are stored per provider and symbol, not per backtest. When only some
-// symbols fail, they are disabled one by one and the backtest is kept.
+// are stored per provider and symbol, not per backtest. Per-symbol
+// STATUS_ERROR also removes the backtest (see discardSymbolDownloadError).
 func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name, id string) {
 	if err := deleteStoredBacktest(ctx, backtests, name, id); err != nil {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")

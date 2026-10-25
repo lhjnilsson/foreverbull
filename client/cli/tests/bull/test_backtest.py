@@ -277,6 +277,33 @@ def test_backtest_create_no_price_data_prints_exact_copy_and_exits_1(monkeypatch
     assert "isin" not in result.output.lower()
 
 
+_DOWNLOAD_OTHER_ERROR_COPY = (
+    "Couldn't load data for backtest 'from_file': couldn't download prices for AAPL. "
+    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+)
+
+
+def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monkeypatch):
+    """Non-no-bars download STATUS_ERROR must fail create like no-bars (internal #46)."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch(
+            "foreverbull.broker.backtest.create",
+            side_effect=_download_failed_stream(_DOWNLOAD_OTHER_ERROR_COPY),
+        ),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_DOWNLOAD_OTHER_ERROR_COPY}\n"
+    assert "rpc error" not in result.output.lower()
+    assert "traceback" not in result.output.lower()
+    assert "grpc" not in result.output.lower()
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "
