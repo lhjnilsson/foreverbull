@@ -126,3 +126,9 @@ jobs:
           print(f"sqlalchemy {sqlalchemy.__version__}, postgresql driver {engine.dialect.driver}")
           print(f"psycopg {psycopg.__version__}")
           PY
+      # Wrong-arch grpc_health_probe (x86 binary in an arm64 image) fails here
+      # instead of only at pod start on arm64 nodes.
+      - name: Check grpc_health_probe runs on this arch
+        run: |
+          set -euo pipefail
+          docker run --rm lhjnilsson/zipline:base-ci grpc_health_probe -version
