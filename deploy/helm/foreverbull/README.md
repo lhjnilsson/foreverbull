@@ -41,3 +41,15 @@ new random credentials on every render.
 
 Do not pass broker credentials as chart values. `broker.trading.enabled` stays false.
 Optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml`.
+
+## 🔒️ Workload user
+
+Broker and Zipline run as uid `10001`. Grafana runs as uid `472`, with
+`fsGroup: 472`. Each of those containers sets `runAsNonRoot`,
+`seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`,
+and drops every capability. The policy is part of the template for
+every install, including local Kind (`expose.hostPort=true`). Postgres,
+NATS, and MinIO keep their image users. Details:
+[Container security](../../README.md#container-security).
+
+Report a vulnerability through [SECURITY.md](../../../SECURITY.md).

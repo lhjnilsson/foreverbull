@@ -54,10 +54,14 @@ spec:
     spec:
       serviceAccountName: {{ include "foreverbull.serviceAccountName" . }}
       automountServiceAccountToken: true
+      securityContext:
+        {{- include "foreverbull.appPodSecurityContext" (dict "runAsUser" 10001) | nindent 8 }}
       containers:
         - name: foreverbull
           image: {{ include "foreverbull.appImage" (list .Values.images.broker.repository .Values.images.broker.tag .Values.global.imageTag .Values.global.imageRepository) }}
           imagePullPolicy: {{ .Values.global.appImagePullPolicy }}
+          securityContext:
+            {{- include "foreverbull.appContainerSecurityContext" (dict "runAsUser" 10001) | nindent 12 }}
           ports:
             - name: grpc
               containerPort: {{ .Values.broker.grpcPort }}

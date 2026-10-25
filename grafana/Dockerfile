@@ -38,10 +38,6 @@ COPY --from=builder /src/grafana/lhjnilsson-foreverbull-datasource/dist/* /var/l
 COPY --from=js-builder /app/dist/* /var/lib/grafana/plugins/lhjnilsson-foreverbull-datasource/
 COPY lhjnilsson-foreverbull-datasource/provisioning/ /etc/grafana/provisioning
 
-# Set permissions for Grafana user (uid 472)
-#RUN chown -R 472:472 /var/lib/grafana/plugins/foreverbull \
-#    && chmod +x /var/lib/grafana/plugins/foreverbull/foreverbull
-
 # Enable unsigned plugins
 ENV GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=lhjnilsson-foreverbull-datasource
 ENV GF_AUTH_ANONYMOUS_ENABLED=true
@@ -52,3 +48,7 @@ ENV GF_AUTH_DISABLE_SIGNOUT_MENU=true
 
 # Expose Grafana port
 EXPOSE 3000
+
+# Chart runAsUser is 472. The OSS image user is that uid; pin it so the
+# published image stays non-root after the plugin layers.
+USER 472

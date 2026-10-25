@@ -363,4 +363,97 @@ if ! grep -A1 -E '^ +- name: AUTH_COOKIE_SECURE$' "${tls_render}" | grep -q 'val
 fi
 rm -f "${tls_render}"
 
+# Non-root policy for the three app Deployments. ${rendered} includes the
+# default template and the Kind hostPort template, so each Deployment is
+# checked more than once. Postgres, NATS, and MinIO stay on their image users.
+# Documents are split to files: mawk does not pass a NUL record to read -d ''.
+deploy_docs="$(mktemp -d)"
+awk -v dir="${deploy_docs}" '
+  function flush() {
+    if (doc ~ /(^|\n)kind: Deployment(\n|$)/) {
+      n++
+      path = dir "/" n
+      printf "%s", doc > path
+      close(path)
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${rendered}"
+app_seen_foreverbull=0
+app_seen_zipline=0
+app_seen_grafana=0
+infra_seen_postgres=0
+infra_seen_nats=0
+infra_seen_minio=0
+for doc_path in "${deploy_docs}"/*; do
+  [[ -f "${doc_path}" ]] || continue
+  name="$(awk '/^  name: /{print $2; exit}' "${doc_path}")"
+  case "${name}" in
+    foreverbull|zipline|grafana)
+      uid=10001
+      if [[ "${name}" == "grafana" ]]; then
+        uid=472
+      fi
+      for required in \
+        "runAsNonRoot: true" \
+        "runAsUser: ${uid}" \
+        "allowPrivilegeEscalation: false" \
+        "type: RuntimeDefault"
+      do
+        if ! grep -Fq "${required}" "${doc_path}"; then
+          echo "${name} deployment must set ${required}" >&2
+          exit 1
+        fi
+      done
+      if ! grep -Eq '^[[:space:]]+- ALL$' "${doc_path}"; then
+        echo "${name} deployment must drop capability ALL" >&2
+        exit 1
+      fi
+      if grep -Eq 'privileged:[[:space:]]*true' "${doc_path}"; then
+        echo "${name} deployment must not be privileged" >&2
+        exit 1
+      fi
+      if [[ "${name}" == "grafana" ]] && ! grep -Fq 'fsGroup: 472' "${doc_path}"; then
+        echo "grafana must keep fsGroup 472" >&2
+        exit 1
+      fi
+      case "${name}" in
+        foreverbull) app_seen_foreverbull=$((app_seen_foreverbull + 1)) ;;
+        zipline) app_seen_zipline=$((app_seen_zipline + 1)) ;;
+        grafana) app_seen_grafana=$((app_seen_grafana + 1)) ;;
+      esac
+      ;;
+    postgres|nats|minio)
+      if grep -Eq 'runAsNonRoot:|allowPrivilegeEscalation:|RuntimeDefault' "${doc_path}"; then
+        echo "${name} stays on its image user in this slice" >&2
+        exit 1
+      fi
+      case "${name}" in
+        postgres) infra_seen_postgres=$((infra_seen_postgres + 1)) ;;
+        nats) infra_seen_nats=$((infra_seen_nats + 1)) ;;
+        minio) infra_seen_minio=$((infra_seen_minio + 1)) ;;
+      esac
+      ;;
+  esac
+done
+rm -rf "${deploy_docs}"
+
+for pair in \
+  "foreverbull:${app_seen_foreverbull}" \
+  "zipline:${app_seen_zipline}" \
+  "grafana:${app_seen_grafana}" \
+  "postgres:${infra_seen_postgres}" \
+  "nats:${infra_seen_nats}" \
+  "minio:${infra_seen_minio}"
+do
+  workload="${pair%%:*}"
+  count="${pair##*:}"
+  if [[ "${count}" -lt 1 ]]; then
+    echo "rendered chart is missing Deployment ${workload}" >&2
+    exit 1
+  fi
+done
+
 echo "helm chart checks passed"

@@ -163,3 +163,27 @@ tag stays repository:tag, including the immutable sha-<shortsha> registry tag.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+App containers (broker, zipline, grafana). Pass runAsUser.
+Kind hostPort publishes only ports above 1024, so local fbenv installs
+use this same policy. Postgres, NATS, and MinIO are not included.
+Postgres still starts as root so it can prepare the data directory.
+*/}}
+{{- define "foreverbull.appPodSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ .runAsUser }}
+seccompProfile:
+  type: RuntimeDefault
+{{- end }}
+
+{{- define "foreverbull.appContainerSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ .runAsUser }}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+seccompProfile:
+  type: RuntimeDefault
+{{- end }}

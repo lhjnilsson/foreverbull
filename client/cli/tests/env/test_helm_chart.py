@@ -74,6 +74,48 @@ def chart() -> Path:
     return _chart_path()
 
 
+APP_RUN_AS_USER = {
+    "foreverbull": 10001,
+    "zipline": 10001,
+    "grafana": 472,
+}
+INFRA_FS_GROUP = {
+    "postgres": 70,
+    "nats": 1000,
+    "minio": 1000,
+}
+
+
+def _assert_runtime_hardening(docs: list[dict]) -> None:
+    deployments = {doc["metadata"]["name"]: doc for doc in _docs_of_kind(docs, "Deployment")}
+    for name, uid in APP_RUN_AS_USER.items():
+        spec = deployments[name]["spec"]["template"]["spec"]
+        pod_context = spec["securityContext"]
+        assert pod_context["runAsNonRoot"] is True
+        assert pod_context["runAsUser"] == uid
+        assert pod_context["seccompProfile"] == {"type": "RuntimeDefault"}
+        container = spec["containers"][0]["securityContext"]
+        assert container["runAsNonRoot"] is True
+        assert container["runAsUser"] == uid
+        assert container["allowPrivilegeEscalation"] is False
+        assert container["capabilities"] == {"drop": ["ALL"]}
+        assert container["seccompProfile"] == {"type": "RuntimeDefault"}
+        assert container.get("privileged") is not True
+        assert "hostPID" not in spec
+        assert "hostNetwork" not in spec
+    assert deployments["foreverbull"]["spec"]["template"]["spec"]["automountServiceAccountToken"] is True
+    assert deployments["grafana"]["spec"]["template"]["spec"]["securityContext"]["fsGroup"] == 472
+    for name, fs_group in INFRA_FS_GROUP.items():
+        spec = deployments[name]["spec"]["template"]["spec"]
+        pod_context = spec.get("securityContext") or {}
+        assert pod_context.get("fsGroup") == fs_group
+        assert "runAsNonRoot" not in pod_context
+        assert "runAsUser" not in pod_context
+        container_context = spec["containers"][0].get("securityContext") or {}
+        assert "runAsNonRoot" not in container_context
+        assert "capabilities" not in container_context
+
+
 def test_helm_lint(chart: Path):
     result = _run_helm("lint", str(chart))
     assert result.returncode == 0, result.stdout + result.stderr
@@ -141,6 +183,7 @@ def test_helm_template_has_rbac_and_no_docker_sock(chart: Path):
         for item in deployments["grafana"]["spec"]["template"]["spec"]["containers"][0].get("env") or []
     }
     assert grafana_env.get("BROKER_URL") == "foreverbull:50055"
+    _assert_runtime_hardening(docs)
 
 
 def test_helm_template_hostport_still_has_no_docker_sock(chart: Path):
@@ -168,3 +211,4 @@ def test_helm_template_hostport_still_has_no_docker_sock(chart: Path):
     assert volumes == _broker_volumes()
     assert mounts == _broker_mounts()
     assert "/var/run/docker.sock" not in result.stdout
+    _assert_runtime_hardening(docs)
