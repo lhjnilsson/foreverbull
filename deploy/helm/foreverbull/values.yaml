@@ -6,7 +6,7 @@ replicaCount: 1
 
 global:
   imageRepository: lhjnilsson  # prefix for the three app images; fbenv passes its IMAGE_REPOSITORY here
-  imageTag: latest          # fbenv sets the client version, or local
+  imageTag: latest          # fbenv sets the client version, or local. A sha256: tag pins that image by digest.
   imagePullPolicy: IfNotPresent
   # Broker, zipline, and grafana only. Infra (postgres/nats/minio) keeps imagePullPolicy.
   appImagePullPolicy: IfNotPresent
@@ -26,7 +26,7 @@ images:
     tag: RELEASE.2026-09-16T00-00-00Z
   broker:
     repository: foreverbull  # short name → global.imageRepository/foreverbull; a name with "/" is used as-is
-    tag: ""                 # empty → global.imageTag
+    tag: ""                 # empty → global.imageTag. sha256:<64 hex> pins this image by digest.
   zipline:
     repository: zipline
     tag: ""

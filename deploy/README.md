@@ -28,7 +28,7 @@ In-cluster DNS names match the Service object names.
 | Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
 | Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
 
-`{tag}` is `images.*.tag` or `global.imageTag`. The three app images are `global.imageRepository` plus their short `images.*.repository` name (`foreverbull`, `zipline`, `fb-grafana`); a repository name containing `/` is used as-is. `fbenv` sets `global.imageRepository` from its own `IMAGE_REPOSITORY` and `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
+`{tag}` is `images.*.tag` or `global.imageTag`. The three app images are `global.imageRepository` plus their short `images.*.repository` name (`foreverbull`, `zipline`, `fb-grafana`); a repository name containing `/` is used as-is. A tag that starts with `sha256:` is rendered as `repository@sha256:…` so a release can pin a digest. Any other tag, including `sha-<shortsha>`, stays `repository:tag`. `fbenv` sets `global.imageRepository` from its own `IMAGE_REPOSITORY` and `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
 
 ### Host ports (local Kind)
 

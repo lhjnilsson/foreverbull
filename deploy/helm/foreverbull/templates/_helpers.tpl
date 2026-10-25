@@ -139,14 +139,27 @@ value already in the Secret, else generated.
 {{- end }}
 {{- end }}
 
+{{- /*
+A tag that starts with sha256: is a digest pin (repository@sha256:…). Any other
+tag stays repository:tag, including the immutable sha-<shortsha> registry tag.
+*/ -}}
 {{- define "foreverbull.appImage" -}}
 {{- $repo := index . 0 }}
 {{- $tag := index . 1 }}
 {{- $defaultTag := index . 2 }}
 {{- $prefix := index . 3 }}
+{{- $resolved := $tag | default $defaultTag }}
 {{- if and $prefix (not (contains "/" $repo)) }}
-{{- printf "%s/%s:%s" (trimSuffix "/" $prefix) $repo ($tag | default $defaultTag) }}
+{{- if hasPrefix "sha256:" $resolved }}
+{{- printf "%s/%s@%s" (trimSuffix "/" $prefix) $repo $resolved }}
 {{- else }}
-{{- printf "%s:%s" $repo ($tag | default $defaultTag) }}
+{{- printf "%s/%s:%s" (trimSuffix "/" $prefix) $repo $resolved }}
+{{- end }}
+{{- else }}
+{{- if hasPrefix "sha256:" $resolved }}
+{{- printf "%s@%s" $repo $resolved }}
+{{- else }}
+{{- printf "%s:%s" $repo $resolved }}
+{{- end }}
 {{- end }}
 {{- end }}

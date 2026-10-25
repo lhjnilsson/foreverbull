@@ -44,6 +44,51 @@ for app_image in foreverbull zipline fb-grafana; do
   fi
 done
 
+# sha-<shortsha> is an immutable registry tag and must stay tag syntax.
+# sha256:<64 hex> is a digest pin (repository@sha256:…), per image.
+sha_tag_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set global.imageTag=sha-abcdef1 > "${sha_tag_render}"
+if ! grep -q "image: lhjnilsson/foreverbull:sha-abcdef1" "${sha_tag_render}"; then
+  echo "a sha- tag must stay repository:tag" >&2
+  rm -f "${sha_tag_render}"
+  exit 1
+fi
+rm -f "${sha_tag_render}"
+
+pin_a="$(printf 'a%.0s' {1..64})"
+pin_b="$(printf 'b%.0s' {1..64})"
+pin_c="$(printf 'c%.0s' {1..64})"
+digest_render="$(mktemp)"
+helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" \
+  --set global.imageRepository=ghcr.io/example \
+  --set-string "images.broker.tag=sha256:${pin_a}" \
+  --set-string "images.zipline.tag=sha256:${pin_b}" \
+  --set-string "images.grafana.tag=sha256:${pin_c}" > "${digest_render}"
+for pinned in \
+  "image: ghcr.io/example/foreverbull@sha256:${pin_a}" \
+  "image: ghcr.io/example/zipline@sha256:${pin_b}" \
+  "image: ghcr.io/example/fb-grafana@sha256:${pin_c}" \
+  "image: postgres:13.3-alpine"
+do
+  if ! grep -Fq "${pinned}" "${digest_render}"; then
+    echo "rendered chart missing digest pin: ${pinned}" >&2
+    rm -f "${digest_render}"
+    exit 1
+  fi
+done
+for tagged in \
+  "image: ghcr.io/example/foreverbull:" \
+  "image: ghcr.io/example/zipline:" \
+  "image: ghcr.io/example/fb-grafana:"
+do
+  if grep -Fq "${tagged}" "${digest_render}"; then
+    echo "digest pin must not also render a tag: ${tagged}" >&2
+    rm -f "${digest_render}"
+    exit 1
+  fi
+done
+rm -f "${digest_render}"
+
 if grep -F '/var/run/docker.sock' "${rendered}"; then
   echo "chart must not mount /var/run/docker.sock" >&2
   exit 1
