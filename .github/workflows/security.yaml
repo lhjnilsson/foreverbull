@@ -243,9 +243,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Lockfiles, Dockerfiles, the Helm chart, and committed secrets.
       # Vuln and misconfig stay report-only. A local fs scan of this tree
-      # is red on Python/npm lockfile CVEs and on non-root Helm checks
-      # (internal #21). Failing the job on that set would be a standing
-      # red baseline. Secrets are gated below; that scan is clean.
+      # is red on Python/npm lockfile CVEs and on non-root checks for the
+      # Postgres, NATS, and MinIO manifests. Those workloads stay on their
+      # upstream images. Failing the job on that set would be a standing
+      # red baseline.
+      # Secrets are gated below; that scan is clean.
       - name: Scan repository
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -274,8 +276,8 @@ jobs:
   # Builds this commit's images and scans them. Nothing is pushed. Base images
   # change without a commit, so this runs weekly too. Not on pull requests:
   # three image builds are slow, and on_commit already builds them there.
-  # exit-code stays 0: base-image CVEs and non-root are internal #21, and
-  # this job cannot tell a new finding from that baseline.
+  # exit-code stays 0: base-image CVEs stay report-only, and this job
+  # cannot tell a new finding from that baseline.
   trivy-images:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
