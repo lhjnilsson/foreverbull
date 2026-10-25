@@ -23,6 +23,17 @@ require_ghcr_repo() {
   [[ "${1:-}" =~ ^ghcr\.io/[a-z0-9]+([._-][a-z0-9]+)*$ ]]
 }
 
+require_ghcr_image() {
+  # Package image ghcr.io/<owner>/<name>. No tag and no digest: callers append them.
+  # Owner rules stay in require_ghcr_repo, so a Helm prefix cannot grow a package path.
+  local image="${1:-}"
+  local name="${image##*/}"
+  local repo="${image%/*}"
+  [[ "${image}" == */* ]] || return 1
+  [[ "${name}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]] || return 1
+  require_ghcr_repo "${repo}"
+}
+
 require_namespace() {
   local ns="${1:-}"
   [[ ${#ns} -le 63 && "$ns" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]
