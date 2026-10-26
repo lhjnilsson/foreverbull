@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -10,8 +12,16 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestMinioNotInitialized(t *testing.T) {
+	require.False(t, minioNotInitialized(nil))
+	require.False(t, minioNotInitialized(errors.New("connection refused")))
+	require.True(t, minioNotInitialized(errors.New("Server not initialized yet, please try again.")))
+	require.True(t, minioNotInitialized(fmt.Errorf("wrap: %w", errors.New("Server not initialized yet"))))
+}
 
 type StorageTest struct {
 	suite.Suite

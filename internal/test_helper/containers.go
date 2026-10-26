@@ -195,6 +195,13 @@ func MinioContainer(t *testing.T, networkID string) (ConnectionString, AccessKey
 				NetworkID: networkID,
 			}
 		}),
+		// /minio/health/live returns before BucketExists is served.
+		// /minio/health/ready is the point the API accepts bucket calls.
+		testcontainers.WithWaitStrategy(
+			wait.ForHTTP("/minio/health/ready").
+				WithPort("9000/tcp").
+				WithStartupTimeout(time.Minute),
+		),
 		reuse,
 	)
 	require.NoError(t, err)
