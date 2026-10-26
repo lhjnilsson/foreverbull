@@ -27,7 +27,7 @@ FROM --platform=$BUILDPLATFORM node:26 AS js-builder
 
 WORKDIR /app
 
-COPY lhjnilsson-foreverbull-datasource/package.json lhjnilsson-foreverbull-datasource/package-lock.json ./
+COPY lhjnilsson-foreverbull-datasource/package.json lhjnilsson-foreverbull-datasource/package-lock.json lhjnilsson-foreverbull-datasource/.npmrc ./
 RUN --mount=type=cache,target=/root/.npm,id=fb-grafana-npm \
     npm ci --cache /root/.npm
 

@@ -88,4 +88,8 @@ updates:
       security-updates:
         applies-to: security-updates
         patterns: ["*"]
+    # typescript-eslint peer still requires typescript <6.1; hold majors until eslint supports 7
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 2
