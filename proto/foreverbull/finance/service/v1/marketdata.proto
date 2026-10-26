@@ -5,6 +5,7 @@ package foreverbull.finance.service.v1;
 import "buf/validate/validate.proto";
 import "foreverbull/common.proto";
 import "foreverbull/finance/v1/marketdata.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service";
 
@@ -60,8 +61,40 @@ message DownloadHistoricalDataResponse {
   string error = 3;
 }
 
+// GetOHLC reads bars already stored in the broker database.
+// It does not download from Yahoo, Stooq, or Alpaca.
+// Empty provider means yahoo. limit 0 means 252 (one trading year).
+// limit is capped at 2520. symbols must be non-empty and is capped at 500.
+message GetOHLCRequest {
+  repeated string symbols = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "symbols_required"
+      expression: "size(this) > 0"
+    }
+  }];
+  // Inclusive upper bound on bar time. Required.
+  google.protobuf.Timestamp as_of = 2 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "as_of_required"
+      expression: "this != null"
+    }
+  }];
+  // yahoo, stooq, or alpaca. Empty means yahoo.
+  string provider = 3;
+  // Per-symbol bar cap. 0 means 252. Values above 2520 are rejected.
+  uint32 limit = 4;
+}
+
+message GetOHLCResponse {
+  // Bars ordered by symbol ascending, then time ascending.
+  repeated foreverbull.finance.v1.OHLC bars = 1;
+}
+
 service Marketdata {
   rpc GetAsset(GetAssetRequest) returns (GetAssetResponse) {}
   rpc GetIndex(GetIndexRequest) returns (GetIndexResponse) {}
   rpc DownloadHistoricalData(DownloadHistoricalDataRequest) returns (stream DownloadHistoricalDataResponse) {}
+  rpc GetOHLC(GetOHLCRequest) returns (GetOHLCResponse) {}
 }

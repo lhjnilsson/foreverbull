@@ -6,7 +6,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 
 ## Style
 
-Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/backtest/reproducibility.md](pkg/backtest/reproducibility.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/backtest/reproducibility.md](pkg/backtest/reproducibility.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md), [pkg/finance/broker-door.md](pkg/finance/broker-door.md).
 
 ## Customer experience and dependencies
 

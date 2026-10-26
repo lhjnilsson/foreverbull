@@ -88,10 +88,13 @@ type ExecutionConfiguration struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	BrokerPort    int32                              `protobuf:"varint,1,opt,name=brokerPort,proto3" json:"brokerPort,omitempty"`
-	NamespacePort int32                              `protobuf:"varint,2,opt,name=namespacePort,proto3" json:"namespacePort,omitempty"`
-	DatabaseURL   string                             `protobuf:"bytes,3,opt,name=databaseURL,proto3" json:"databaseURL,omitempty"`
-	Functions     []*ExecutionConfiguration_Function `protobuf:"bytes,4,rep,name=functions,proto3" json:"functions,omitempty"`
+	BrokerPort    int32 `protobuf:"varint,1,opt,name=brokerPort,proto3" json:"brokerPort,omitempty"`
+	NamespacePort int32 `protobuf:"varint,2,opt,name=namespacePort,proto3" json:"namespacePort,omitempty"`
+	// Deprecated for client use. Hands the Postgres URL (password included) to
+	// the worker. Removed once workers use WorkerRequest.bars / Marketdata.GetOHLC
+	// instead of a direct DB connection. Field number kept for wire compatibility.
+	DatabaseURL string                             `protobuf:"bytes,3,opt,name=databaseURL,proto3" json:"databaseURL,omitempty"`
+	Functions   []*ExecutionConfiguration_Function `protobuf:"bytes,4,rep,name=functions,proto3" json:"functions,omitempty"`
 }
 
 func (x *ExecutionConfiguration) Reset() {

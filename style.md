@@ -8,6 +8,7 @@ Read this file before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain 
 - [pkg/finance/profiles.md](pkg/finance/profiles.md) — price source on the backtest, credentials only in the profiles file
 - [pkg/finance/trading.md](pkg/finance/trading.md) — `supplier.Trading`, signed share amount, paper only
 - [pkg/strategy/implementation.md](pkg/strategy/implementation.md) and [pkg/strategy/research-to-paper.md](pkg/strategy/research-to-paper.md)
+- [pkg/finance/broker-door.md](pkg/finance/broker-door.md) — broker-mediated OHLC / positions / results; no client DB URL
 
 Apply this file to the code a task already touches. A style mismatch in untouched code is not a task. A reading of this file that would change a stored price, a share count, or an order a user already gets needs confirmation before the code changes.
 

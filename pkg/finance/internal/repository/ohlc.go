@@ -10,6 +10,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const OHLCTable = `CREATE TABLE IF NOT EXISTS ohlc (
@@ -251,4 +253,79 @@ func (db *OHLC) MinMax(ctx context.Context) (*pb.Date, *pb.Date, error) {
 	}
 
 	return pb.GoTimeToDate(*minTime), pb.GoTimeToDate(*maxTime), nil
+}
+
+// maxOHLCListSymbols and maxOHLCListLimit bound GetOHLC / List input.
+const (
+	maxOHLCListSymbols   = 500
+	maxOHLCListLimit     = 2520
+	defaultOHLCListLimit = 252
+)
+
+// List returns stored bars for provider and symbols with time <= asOf,
+// at most limit bars per symbol (newest first in the window, returned oldest
+// first). limit 0 means 252. Symbols with no bars are omitted.
+func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
+	if len(symbols) == 0 {
+		return nil, fmt.Errorf("symbols: empty")
+	}
+	if len(symbols) > maxOHLCListSymbols {
+		return nil, fmt.Errorf("symbols: at most %d", maxOHLCListSymbols)
+	}
+	if limit < 0 {
+		return nil, fmt.Errorf("limit: negative")
+	}
+	if limit == 0 {
+		limit = defaultOHLCListLimit
+	}
+	if limit > maxOHLCListLimit {
+		return nil, fmt.Errorf("limit: at most %d", maxOHLCListLimit)
+	}
+	provider = priceProvider(provider)
+
+	rows, err := db.Conn.Query(ctx, `
+		SELECT symbol, time, open::float8, high::float8, low::float8, close::float8, volume
+		FROM (
+			SELECT symbol, time, open, high, low, close, volume,
+			       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC, ctid DESC) AS rn
+			FROM ohlc
+			WHERE provider = $1 AND symbol = ANY($2) AND time <= $3
+		) bounded
+		WHERE rn <= $4
+		ORDER BY symbol ASC, time ASC`,
+		provider, symbols, asOf.UTC(), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ohlc: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*financepb.OHLC, 0)
+	for rows.Next() {
+		var (
+			symbol       string
+			t            time.Time
+			o, h, l, c   float64
+			volume       int64
+		)
+		if err := rows.Scan(&symbol, &t, &o, &h, &l, &c, &volume); err != nil {
+			return nil, fmt.Errorf("failed to scan ohlc: %w", err)
+		}
+		if volume < 0 {
+			return nil, fmt.Errorf("ohlc volume negative for %s", symbol)
+		}
+		out = append(out, &financepb.OHLC{
+			Symbol:    symbol,
+			Timestamp: timestamppb.New(t.UTC()),
+			Open:      o,
+			High:      h,
+			Low:       l,
+			Close:     c,
+			Volume:    uint64(volume),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate ohlc: %w", err)
+	}
+	return out, nil
 }
