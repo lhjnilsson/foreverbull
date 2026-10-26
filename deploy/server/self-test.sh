@@ -183,6 +183,16 @@ case "${3:-}" in
 esac
 EOF
 chmod +x "${GHCR_STUB}/docker"
+cat >"${GHCR_STUB}/cosign" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${COSIGN_LOG:?}"
+if [[ "${COSIGN_FAIL:-}" == "1" ]]; then
+  echo "stub refused to sign" >&2
+  exit 1
+fi
+EOF
+chmod +x "${GHCR_STUB}/cosign"
 resolved="$(PATH="${GHCR_STUB}:${PATH}" command -v docker)"
 [[ "${resolved}" == "${GHCR_STUB}/docker" ]] || bad "docker stub was not first on PATH"
 
@@ -196,6 +206,8 @@ run_ghcr() {
   (
     export PATH="${GHCR_STUB}:${PATH}"
     export DOCKER_LOG="${log}"
+    export COSIGN_LOG="${log}"
+    export COSIGN_FAIL="${GHCR_COSIGN_FAIL:-}"
     export STUB_DIGEST="${GHCR_STUB_DIGEST:-}"
     bash "${ROOT}/deploy/server/ghcr.sh" "$@"
   )
@@ -289,8 +301,74 @@ refuse_ghcr_before_docker "move-latest tagged image" \
   move-latest "ghcr.io/lhjnilsson/foreverbull:latest" "sha256:${A}"
 refuse_ghcr_before_docker "move-latest bad digest" \
   move-latest "ghcr.io/lhjnilsson/foreverbull" "sha256:abc"
+
+expect_sign() {
+  local image="$1"
+  local digest="$2"
+  local log out err
+  log="$(mktemp)"
+  out="$(mktemp)"
+  err="$(mktemp)"
+  unset GHCR_COSIGN_FAIL
+  if ! run_ghcr "${log}" sign "${image}" "${digest}" >"${out}" 2>"${err}"; then
+    bad "sign ${image}: $(cat "${err}")"
+    rm -f "${log}" "${out}" "${err}"
+    return
+  fi
+  if ! grep -qx "signed ${image}@${digest}" "${out}"; then
+    bad "sign ${image} printed $(cat "${out}")"
+  elif ! grep -qx "sign --yes ${image}@${digest}" "${log}"; then
+    bad "sign ${image} did not call cosign with the digest"
+  elif grep -F 'imagetools' "${log}" >/dev/null; then
+    bad "sign ${image} called imagetools"
+  else
+    ok "sign ${image}"
+  fi
+  rm -f "${log}" "${out}" "${err}"
+}
+
+for name in foreverbull zipline fb-grafana; do
+  expect_sign "ghcr.io/lhjnilsson/${name}" "sha256:${A}"
+done
+refuse_ghcr_before_docker "sign prefix" \
+  sign "ghcr.io/lhjnilsson" "sha256:${A}"
+refuse_ghcr_before_docker "sign tagged image" \
+  sign "ghcr.io/lhjnilsson/foreverbull:${GHCR_SHA_TAG}" "sha256:${A}"
+refuse_ghcr_before_docker "sign digest image" \
+  sign "ghcr.io/lhjnilsson/foreverbull@sha256:${A}" "sha256:${A}"
+refuse_ghcr_before_docker "sign other registry" \
+  sign "docker.io/lhjnilsson/foreverbull" "sha256:${A}"
+refuse_ghcr_before_docker "sign bad digest" \
+  sign "ghcr.io/lhjnilsson/foreverbull" "sha256:abc"
+(
+  log="$(mktemp)"
+  err="$(mktemp)"
+  if PATH="/usr/bin:/bin" bash "${ROOT}/deploy/server/ghcr.sh" sign "ghcr.io/lhjnilsson/foreverbull" "sha256:${A}" >"${log}" 2>"${err}"; then
+    bad "sign without cosign was accepted"
+  elif grep -q 'cosign is not on PATH' "${err}"; then
+    ok "sign without cosign"
+  else
+    bad "sign without cosign printed $(cat "${err}")"
+  fi
+  rm -f "${log}" "${err}"
+)
+(
+  log="$(mktemp)"
+  err="$(mktemp)"
+  GHCR_COSIGN_FAIL=1
+  if run_ghcr "${log}" sign "ghcr.io/lhjnilsson/foreverbull" "sha256:${A}" >"${log}" 2>"${err}"; then
+    bad "failed cosign was accepted"
+  elif grep -q 'could not sign ghcr.io/lhjnilsson/foreverbull@sha256:' "${err}" \
+    && grep -q 'Delete that tag before re-running this commit' "${err}"; then
+    ok "sign failure names the retry"
+  else
+    bad "sign failure printed $(cat "${err}")"
+  fi
+  unset GHCR_COSIGN_FAIL
+  rm -f "${log}" "${err}"
+)
 rm -rf "${GHCR_STUB}"
-unset GHCR_STUB_DIGEST
+unset GHCR_STUB_DIGEST GHCR_COSIGN_FAIL
 
 (
   unset FOREVERBULL_DIGEST ZIPLINE_DIGEST GRAFANA_DIGEST
@@ -424,6 +502,31 @@ grep -q 'fb-nightly' "${wf}" || bad "workflow must name fb-nightly"
 grep -q 'image-ref.sh' "${wf}" || bad "workflow must name images through image-ref.sh"
 grep -q 'existing-digest' "${wf}" || bad "workflow must reuse sha tags instead of overwriting them"
 grep -q 'retarget.sh' "${wf}" || bad "workflow must move latest and the nightly release together"
+
+sbom_n="$(grep -c 'sbom: true' "${wf}" || true)"
+prov_n="$(grep -c 'provenance: mode=max' "${wf}" || true)"
+token_n="$(grep -c 'id-token: write' "${wf}" || true)"
+sign_n="$(grep -c 'ghcr.sh sign' "${wf}" || true)"
+cosign_n="$(grep -c 'sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6' "${wf}" || true)"
+[[ "${sbom_n}" -eq 3 ]] || bad "publish jobs must set sbom: true (found ${sbom_n})"
+[[ "${prov_n}" -eq 3 ]] || bad "publish jobs must set provenance mode=max (found ${prov_n})"
+[[ "${token_n}" -eq 3 ]] || bad "publish jobs must request id-token: write (found ${token_n})"
+[[ "${sign_n}" -eq 3 ]] || bad "publish jobs must sign through ghcr.sh (found ${sign_n})"
+[[ "${cosign_n}" -eq 3 ]] || bad "cosign-installer must be pinned in each publish job (found ${cosign_n})"
+gated=0
+while IFS= read -r n; do
+  start=$((n - 8))
+  [[ "${start}" -lt 1 ]] && start=1
+  window="$(sed -n "${start},$((n - 1))p" "${wf}")"
+  if grep -q "steps.existing.outputs.state == 'absent'" <<<"${window}" \
+    && grep -q 'steps.push.outputs.digest' <<<"${window}"; then
+    gated=$((gated + 1))
+  else
+    bad "sign step at line ${n} is not limited to a newly pushed digest"
+  fi
+done < <(grep -n 'ghcr.sh sign' "${wf}" | cut -d: -f1)
+[[ "${gated}" -eq 3 ]] || bad "expected 3 gated sign steps, found ${gated}"
+ok "publish signs a new index only"
 
 if [[ "${failed}" -ne 0 ]]; then
   echo "server release self-test failed" >&2

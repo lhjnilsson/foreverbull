@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -13,6 +14,11 @@ import (
 
 const (
 	PresignedURLExpiry = 24 * time.Hour
+
+	// /minio/health/live can succeed while BucketExists still returns
+	// "Server not initialized yet". Ten tries at 300ms is the bound.
+	minioInitAttempts = 10
+	minioInitDelay    = 300 * time.Millisecond
 )
 
 func WithMetadata(metadata map[string]string) func(*minio.PutObjectOptions) error {
@@ -117,20 +123,81 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 	storage := &MinioStorage{client: client}
 
 	for _, bucket := range []Bucket{ResultsBucket, IngestionsBucket} {
-		exists, err := client.BucketExists(ctx, string(bucket))
-		if err != nil {
-			return nil, fmt.Errorf("error checking if bucket exists: %w", err)
-		}
-
-		if !exists {
-			err = client.MakeBucket(ctx, string(bucket), minio.MakeBucketOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("error creating bucket: %w", err)
-			}
+		if err := ensureBucket(ctx, client, bucket); err != nil {
+			return nil, err
 		}
 	}
 
 	return storage, nil
+}
+
+func minioNotInitialized(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "Server not initialized yet")
+}
+
+func waitMinioInit(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	timer := time.NewTimer(minioInitDelay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// retryWhileMinioStarts repeats call while MinIO reports that it is still
+// starting. Any other error is returned on the first attempt.
+func retryWhileMinioStarts(ctx context.Context, op string, call func() error) error {
+	var err error
+
+	for attempt := 1; attempt <= minioInitAttempts; attempt++ {
+		err = call()
+		if !minioNotInitialized(err) {
+			break
+		}
+
+		if attempt == minioInitAttempts {
+			break
+		}
+
+		if waitErr := waitMinioInit(ctx); waitErr != nil {
+			return fmt.Errorf("%s: %w", op, waitErr)
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func ensureBucket(ctx context.Context, client *minio.Client, bucket Bucket) error {
+	var exists bool
+
+	err := retryWhileMinioStarts(ctx, "error checking if bucket exists", func() error {
+		var callErr error
+		exists, callErr = client.BucketExists(ctx, string(bucket))
+
+		return callErr
+	})
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return nil
+	}
+
+	return retryWhileMinioStarts(ctx, "error creating bucket", func() error {
+		return client.MakeBucket(ctx, string(bucket), minio.MakeBucketOptions{})
+	})
 }
 
 type MinioStorage struct {

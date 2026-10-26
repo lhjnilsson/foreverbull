@@ -1,17 +1,24 @@
 name: server e2e
 
-# Push to main publishes multi-arch images to public GHCR, exercises that
-# digest in an ephemeral namespace, and only then moves the latest tag and
-# the fb-nightly Helm release together. A manual run does not build: it
-# points latest and fb-nightly at an existing digest.
+# Push to main publishes multi-arch images to public GHCR, attaches a
+# BuildKit SBOM and max provenance to the index, and keyless-signs that
+# index digest. It then exercises the digest in an ephemeral namespace,
+# and only then moves the latest tag and the fb-nightly Helm release
+# together. A reused sha-* tag is not rebuilt and is not signed again.
+# A manual run does not build or sign: it points latest and fb-nightly
+# at an existing digest.
+#
+# The keyless certificate identity is this workflow file at
+# refs/heads/main. A reusable workflow would change that identity.
 #
 # on_merge.yaml stays disabled and is not this path. Kind e2e and the commit
 # workflow stay the checks that gate a merge.
 #
 # Publish stays inert until the e2e environment has its secrets. Jobs that
 # push or deploy fail before docker push and before helm when those secrets
-# are empty. The environment must not require a reviewer; this channel has
-# no manual approval. Branch protection is configured in Settings, not here.
+# are empty. Signing uses the job OIDC token, not a stored key. The
+# environment must not require a reviewer; this channel has no manual
+# approval. Branch protection is configured in Settings, not here.
 on:
   push:
     branches:
@@ -73,6 +80,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless Cosign uses this job's OIDC token. No signing key is stored.
+      id-token: write
     outputs:
       digest: ${{ steps.record.outputs.digest }}
     steps:
@@ -125,7 +134,18 @@ jobs:
             index:org.opencontainers.image.revision=${{ github.sha }}
             manifest:org.opencontainers.image.source=https://github.com/${{ github.repository }}
             manifest:org.opencontainers.image.revision=${{ github.sha }}
+          # Attached to the multi-arch index. The digest output is that index.
+          sbom: true
+          provenance: mode=max
           push: true
+      - name: Install Cosign
+        if: steps.existing.outputs.state == 'absent'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2, installs cosign v3.0.6
+      - name: Sign the published index
+        if: steps.existing.outputs.state == 'absent'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash deploy/server/ghcr.sh sign "${IMAGE}" "${DIGEST}"
       - name: Confirm the package is public
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -157,6 +177,8 @@ jobs:
       packages: write
       # type=gha cache export writes through the Actions cache API.
       actions: write
+      # Keyless Cosign uses this job's OIDC token. No signing key is stored.
+      id-token: write
     outputs:
       digest: ${{ steps.record.outputs.digest }}
     steps:
@@ -221,7 +243,18 @@ jobs:
           # this repo exports a Buildx cache; scope keeps this one separate.
           cache-from: type=gha,scope=fb-grafana
           cache-to: type=gha,scope=fb-grafana,mode=max,ignore-error=true
+          # Attached to the multi-arch index. The digest output is that index.
+          sbom: true
+          provenance: mode=max
           push: true
+      - name: Install Cosign
+        if: steps.existing.outputs.state == 'absent'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2, installs cosign v3.0.6
+      - name: Sign the published index
+        if: steps.existing.outputs.state == 'absent'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash deploy/server/ghcr.sh sign "${IMAGE}" "${DIGEST}"
       - name: Confirm the package is public
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -252,6 +285,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless Cosign uses this job's OIDC token. No signing key is stored.
+      id-token: write
     outputs:
       digest: ${{ steps.record.outputs.digest }}
     steps:
@@ -318,7 +353,18 @@ jobs:
             index:org.opencontainers.image.revision=${{ github.sha }}
             manifest:org.opencontainers.image.source=https://github.com/${{ github.repository }}
             manifest:org.opencontainers.image.revision=${{ github.sha }}
+          # Attached to the multi-arch index. The digest output is that index.
+          sbom: true
+          provenance: mode=max
           push: true
+      - name: Install Cosign
+        if: steps.existing.outputs.state == 'absent'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2, installs cosign v3.0.6
+      - name: Sign the published index
+        if: steps.existing.outputs.state == 'absent'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash deploy/server/ghcr.sh sign "${IMAGE}" "${DIGEST}"
       - name: Confirm the package is public
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

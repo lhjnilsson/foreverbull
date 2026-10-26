@@ -606,6 +606,11 @@ Strategy-worker pods are not in the chart. The broker creates them from
 `internal/container` using the image a strategy version names, and that
 image may still start as root.
 
+Images published from `main` carry a keyless Cosign signature, plus a
+BuildKit SBOM and provenance attestation, on the multi-arch index.
+`fbenv` does not check the signature. The commands are in
+[Published images](../SECURITY.md#published-images).
+
 ## Broker RBAC
 
 The broker ServiceAccount (`serviceAccount.name`) needs a Role in the install
