@@ -137,6 +137,9 @@ message GetExecutionResponse {
   repeated foreverbull.backtest.v1.Period periods = 2;
   // functions were stored at create time. Empty when the run has none.
   repeated foreverbull.backtest.v1.ExecutionFunction functions = 3;
+  // Price provider copied onto the execution at create time (yahoo, stooq, or alpaca).
+  // Empty only for legacy rows that predate the column; new runs always set it.
+  string provider = 4;
 }
 
 service BacktestServicer {

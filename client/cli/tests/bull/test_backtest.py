@@ -950,7 +950,7 @@ def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
         create_session.return_value = iter(
             [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
-        get_execution.return_value = (_sample_execution(), periods)
+        get_execution.return_value = (_sample_execution(), periods, [], "yahoo")
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py"])
         create_session.assert_called_once()
@@ -1239,7 +1239,7 @@ def test_backtest_run_with_dates_inside_range_runs(runner):
         create_session.return_value = iter(
             [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
-        get_execution.return_value = (_sample_execution(), [_final_period()])
+        get_execution.return_value = (_sample_execution(), [_final_period()], [], "yahoo")
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py", "--start", "2020-01-10", "--end", "2020-01-20"])
         assert result.exit_code == 0
@@ -1277,7 +1277,7 @@ def test_backtest_execution(runner):
         patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
         patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
     ):
-        mock_get_execution.return_value = (_sample_execution(full_id), [period])
+        mock_get_execution.return_value = (_sample_execution(full_id), [period], [], "yahoo")
         result = runner(backtest, ["execution", full_id])
         assert result.exit_code == 0
         # A full UUID goes straight to the broker without listing executions.
@@ -1290,6 +1290,33 @@ def test_backtest_execution(runner):
         assert f"Link: {execution_link(full_id)}" in result.stdout
 
 
+def test_backtest_execution_shows_pinned_inputs(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
+    functions = [
+        execution_pb.ExecutionFunction(
+            name="rebalance",
+            parameters=[
+                execution_pb.ExecutionFunction.Parameter(key="fastperiod", value="12", value_type="int"),
+                execution_pb.ExecutionFunction.Parameter(key="cash_reserve", value="0.05", value_type="float"),
+            ],
+        )
+    ]
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+    ):
+        mock_get_execution.return_value = (_sample_execution(full_id), [], functions, "stooq")
+        result = runner(backtest, ["execution", full_id])
+        assert result.exit_code == 0
+        mock_list_executions.assert_not_called()
+        assert "stooq" in result.stdout
+        assert "Pinned inputs" in result.stdout
+        assert "rebalance" in result.stdout
+        assert "fastperiod" in result.stdout
+        assert "12" in result.stdout
+        assert "cash_reserve" in result.stdout
+
+
 def test_backtest_execution_resolves_short_id(runner):
     full_id = "01234567-89ab-cdef-0123-456789abcdef"
     with (
@@ -1300,7 +1327,7 @@ def test_backtest_execution_resolves_short_id(runner):
             _sample_execution(full_id),
             _sample_execution("fedcba98-0000-0000-0000-000000000000"),
         ]
-        mock_get_execution.return_value = (_sample_execution(full_id), [])
+        mock_get_execution.return_value = (_sample_execution(full_id), [], [], "yahoo")
         result = runner(backtest, ["execution", "01234567"])
         assert result.exit_code == 0
         mock_get_execution.assert_called_once_with(full_id)
@@ -1343,7 +1370,7 @@ def test_backtest_execution_resolves_distinguishing_prefix(runner):
             _sample_execution(full_id),
             _sample_execution("01234567-ffff-cdef-0123-456789abcdef"),
         ]
-        mock_get_execution.return_value = (_sample_execution(full_id), [])
+        mock_get_execution.return_value = (_sample_execution(full_id), [], [], "yahoo")
         result = runner(backtest, ["execution", "01234567-89ab"])
         assert result.exit_code == 0
         mock_get_execution.assert_called_once_with(full_id)

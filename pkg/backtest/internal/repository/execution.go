@@ -281,6 +281,21 @@ func (db *Execution) GetFunctions(ctx context.Context, executionID string) ([]*b
 	return functions, nil
 }
 
+// GetProvider returns the price provider stored on the execution at create time.
+// Empty string means a legacy row before the column existed (caller may treat as unknown).
+func (db *Execution) GetProvider(ctx context.Context, executionID string) (string, error) {
+	var provider sql.NullString
+	err := db.Conn.QueryRow(ctx,
+		`SELECT provider FROM backtest_execution WHERE id=$1`, executionID).Scan(&provider)
+	if err != nil {
+		return "", fmt.Errorf("failed to get execution provider: %w", err)
+	}
+	if !provider.Valid {
+		return "", nil
+	}
+	return provider.String, nil
+}
+
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*backtest.Period) error {
 	for _, period := range periods {
 		_, err := db.Conn.Exec(ctx,
