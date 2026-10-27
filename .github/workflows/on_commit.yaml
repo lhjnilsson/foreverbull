@@ -340,7 +340,7 @@ jobs:
         if: failure()
         run: |
           set +e
-          docker image ls 'lhjnilsson/*'
+          docker image ls 'ghcr.io/lhjnilsson/*'
           kubectl --context kind-foreverbull -n foreverbull get pods,deploy,svc,pvc -o wide
           for name in postgres nats minio zipline foreverbull grafana; do
             kubectl --context kind-foreverbull -n foreverbull describe "deployment/${name}"
