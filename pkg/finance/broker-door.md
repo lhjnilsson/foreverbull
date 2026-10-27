@@ -5,16 +5,18 @@ Postgres for normal backtest and paper flows. This file is the short API
 surface that replaces those direct reads. Implementation that contradicts it
 is wrong.
 
-Parent epic: broker as the only door. This contract unblocks removing the
-client DB URL and dropping client DB drivers.
+Parent epic: broker as the only door. Workers read `WorkerRequest.bars`.
+The broker leaves `ExecutionConfiguration.databaseURL` empty. This supersedes
+planning leaf #33 (broker-mediated access for backtest and paper). Multi-tenant
+auth stays a separate change.
 
 ## Gap map
 
 | Client need today | Direct DB today | Broker path |
 | --- | --- | --- |
-| `Asset.stock_data` / `Assets.stock_data` (last 252 bars, `time <= as_of`, provider) | `SELECT` on `ohlc` | `Marketdata.GetOHLC` |
-| `Portfolio._close_on_bar` (close on bar day) | `SELECT close FROM ohlc` | Same `GetOHLC` with `limit = 1`, or the matching bar in `WorkerRequest.bars` |
-| Connectivity check at configure | `SELECT 1 FROM asset` | Dropped once the worker no longer opens a DB |
+| `Asset.stock_data` / `Assets.stock_data` (last 252 bars, `time <= as_of`, provider) | `SELECT` on `ohlc` | `WorkerRequest.bars` (alias-resolved). `Marketdata.GetOHLC` stays symbol-exact for CLI and gRPC clients |
+| `Portfolio._close_on_bar` (close on bar day) | `SELECT close FROM ohlc` | The matching bar in `WorkerRequest.bars` |
+| Connectivity check at configure | `SELECT 1 FROM asset` | Dropped. Configure does not open a database |
 | Positions during a run | None (already on the wire) | `WorkerRequest.portfolio.positions` |
 | Positions / portfolio outside a worker | None for paper session | `TradingServicer.GetPortfolio` |
 | Positions on a finished period | None | `Period.positions` on `BacktestServicer.GetExecution` |
@@ -46,30 +48,30 @@ Go entry: `pkg/finance/internal/api.MarketdataServer.GetOHLC`. Storage:
 
 ## WorkerRequest.bars
 
-Optional field on the pynng worker request. When non-empty, the worker must
-not open a database for OHLC; it builds `Asset` / `Assets` / close lookups
-from those bars. When empty, today's `databaseURL` path still works until
-that path is removed.
+The pynng worker request carries the lookback bars for that step. The worker
+builds `Asset` / `Assets` / close lookups from those bars and does not open
+a database. An empty list means no stored bars for the step.
 
-The broker fills `bars` from the same stored rows `GetOHLC` reads (same
-lookback and provider as the backtest). Prefer this push for the worker so
-strategy processes never dial Postgres and do not need a Marketdata gRPC
-client. `GetOHLC` remains for CLI, tests, and any caller that is already a
+The broker fills `bars` with alias-resolved rows (FB then META is one ISIN,
+labeled with the symbol the algorithm asked for). The window matches the
+client filter: `since < time <= as_of`, at most 252 bars per symbol.
+Backtests use the backtest provider. Paper runs use `yahoo`. `GetOHLC`
+stays symbol-exact for CLI, tests, and any caller that is already a
 broker gRPC client.
 
 ## ExecutionConfiguration.databaseURL
 
-Deprecated for client use. Field number 3 stays for wire compatibility until
-workers stop reading it. Brokers may still set it during the transition;
-clients must not require it once `WorkerRequest.bars` is always filled.
+Deprecated. Field number 3 stays for wire compatibility. The broker leaves
+it empty. A client ignores a URL an older broker still sets and does not
+open Postgres.
 
 ## Out of scope here
 
-- Removing the client DB URL and SQLAlchemy/psycopg deps (follow-up
-  implementation)
 - Changing Grafana; it already uses `GetExecution`
 - Auth / multi-tenant row filters (separate security work)
 - Reproducible backtest pins (separate issue)
+- Dropping the unused `foreverbull_worker` role and `WORKER_DATABASE_URL`
+  on the broker pod
 
 ## Checks
 

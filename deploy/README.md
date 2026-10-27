@@ -72,7 +72,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `NATS_URL` | `nats://nats:4222`. The password is not in this URL |
 | `NATS_USER` / `NATS_PASSWORD` | User `broker`. The password is Secret `foreverbull-nats` key `password` |
 | `WORKER_DB_PASSWORD` | Secret `foreverbull-worker` key `password`. Not the database owner password |
-| `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. The broker sends this to a service pod |
+| `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. Still set on the broker pod. The broker does not copy it into `ExecutionConfiguration` |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
 | `SERVER_ADDRESS` | `foreverbull` |
