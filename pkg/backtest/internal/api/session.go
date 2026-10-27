@@ -187,7 +187,9 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 	}
 	if failure, ok := s.backtestSession.(interface{ RunFailure() error }); ok {
 		if err := failure.RunFailure(); err != nil {
-			return status.Error(codes.FailedPrecondition, err.Error())
+			log.Error().Err(err).Msg("backtest run failed")
+			// Fixed sentence: err.Error() can quote a DB URL or stack fragment.
+			return status.Error(codes.FailedPrecondition, "The backtest run stopped early. Try again, or run `fbenv status`.")
 		}
 	}
 	return nil

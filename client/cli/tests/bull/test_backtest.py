@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import click
+import foreverbull_cli.bull.backtest as backtest_cli
 import grpc
 import pytest
 import typer
@@ -1579,3 +1580,13 @@ def test_backtest_delete_other_lookup_errors_are_not_reported_as_missing():
     assert result.exception is broken
     assert "no backtest named" not in result.output
     delete.assert_not_called()
+
+
+def test_rpc_details_redacts_url_password():
+    class _FakeRpc(grpc.RpcError):
+        def details(self):
+            return "could not connect to postgresql://foreverbull:s3cret@postgres:5432/foreverbull"
+
+    text = backtest_cli._rpc_details(_FakeRpc())
+    assert "s3cret" not in text
+    assert "***@" in text
