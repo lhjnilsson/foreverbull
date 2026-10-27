@@ -26,28 +26,56 @@ Give Docker at least 2 CPUs, 4 GB of memory and 30 GB of disk. On macOS and Wind
 
 ## Your first backtest
 
-One copy-paste path from a fresh clone to printed execution results. Prerequisites are listed under [Requirements](#requirements) (Docker, Kind, Helm, uv, Task). Check [Host resources](#host-resources) before `task build` so Docker has enough CPU, memory, and disk. Commands after `task build` run from `client/`. Accept the cookiecutter defaults so the strategy lands at `simple_foreverbull/crossover.py`. Deeper options (remote clusters, strategy lifecycle) stay in [Quickstart](#quickstart) below. Stooq and Alpaca bars are opt-in via `--provider`; see [client/cli/README.md](client/cli/README.md). If a step fails, see [Troubleshooting](#troubleshooting).
+Two copy-paste paths. Prefer **published images** when you only want to run a backtest. Use **local development** when you are changing this repository. Prerequisites are under [Requirements](#requirements) (Docker, Kind, Helm, uv; Task only for the local path). Check [Host resources](#host-resources) before you create an env. Stooq and Alpaca bars are opt-in via `--provider`; see [client/cli/README.md](client/cli/README.md). Deeper options stay in [Quickstart](#quickstart). If a step fails, see [Troubleshooting](#troubleshooting).
+
+### Published images (product loop)
+
+Install the client from this repository, pull public GHCR `:latest` images, and run a first backtest. Do **not** set `VERSION=local`. Do **not** run `task build` — the broker/zipline/grafana images come from the registry, not from a local Docker build.
+
+PyPI wheels are not the product line yet (see the internal release design). Until they are, install the client packages from git:
 
 ```bash
-# build :local images (and sync the Python workspace from the repo root)
+mkdir foreverbull-demo && cd foreverbull-demo
+uv venv --python 3.12
+source .venv/bin/activate
+
+uv pip install \
+  "foreverbull @ git+https://github.com/lhjnilsson/foreverbull.git@main#subdirectory=client" \
+  "foreverbull-cli @ git+https://github.com/lhjnilsson/foreverbull.git@main#subdirectory=client/cli" \
+  cookiecutter
+
+# Create and start the local environment from public GHCR :latest (workloads stopped)
+fbenv create
+fbenv start
+
+curl -fsSL -o demo.yaml \
+  https://raw.githubusercontent.com/lhjnilsson/foreverbull/main/examples/demo.yaml
+fbull backtest create --file demo.yaml
+
+cookiecutter https://github.com/lhjnilsson/foreverbull.git --directory templates/simple
+# accept the defaults → simple_foreverbull/crossover.py
+
+fbull backtest run demo simple_foreverbull/crossover.py
+```
+
+`fbenv create` without `VERSION` pulls `ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:latest`. If a pull fails, it stops with one ✖ line naming the image (on local Kind, before installing anything). Grafana: the `Charts:` link from the run, or [http://localhost:3000](http://localhost:3000) (anonymous access).
+
+### Local development (from this checkout)
+
+For contributors changing broker, chart, or client code. Builds `:local` images from this tree.
+
+```bash
+# from the repository root
 task build
 
 cd client
-# sync the client workspace so fbull and fbenv are available
 uv sync
 
-# create the Kind cluster and Helm release with workloads stopped
 VERSION=local uv run fbenv create
-# start the six workloads
 uv run fbenv start
 
-# ingest the demo universe (Yahoo default)
 uv run fbull backtest create --file ../examples/demo.yaml
-
-# generate the simple crossover strategy (defaults → simple_foreverbull/)
 uv run cookiecutter templates/simple
-
-# run the strategy against the backtest; it ends with a results summary
 uv run fbull backtest run demo simple_foreverbull/crossover.py
 ```
 
