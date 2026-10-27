@@ -13,7 +13,7 @@ One linear path: write a strategy file, check it locally, run it as a backtest a
 You need:
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/). On Python 3.14, `uv sync` can fail building the `tables` dependency from source (`H5public.h: No such file or directory`). Pass `--python 3.12` to `uv sync` or `uv venv`.
-- A running Foreverbull environment (Kind locally via `fbenv`, or a remote Helm install). To create one, follow [Your first backtest](../README.md#your-first-backtest) in the root README up to and including `fbenv start`, then come back here.
+- A running Foreverbull environment (local via `fbenv`, or a remote install). To create one, follow [Your first backtest](../README.md#your-first-backtest) in the root README up to and including `fbenv start`, then come back here.
 
 Check that the environment is up and the broker answers:
 
@@ -229,7 +229,7 @@ uv run fbull backtest get my-demo                     # the backtest, its period
 
 ### Charts in Grafana
 
-Open the `Charts:` URL. It is the backtest execution dashboard with that run selected; the backtest and execution selectors at the top switch to other runs. Local Kind serves Grafana at [http://localhost:3000](http://localhost:3000) with anonymous access. A remote install uses its own Grafana address (`GRAFANA_URL`). What the dashboards show: [grafana/ANALYSIS.md](../grafana/ANALYSIS.md).
+Open the `Charts:` URL. It is the backtest execution dashboard with that run selected; the backtest and execution selectors at the top switch to other runs. A local install serves Grafana at [http://localhost:3000](http://localhost:3000) with anonymous access. A remote install uses its own Grafana address (`GRAFANA_URL`). What the dashboards show: [grafana/ANALYSIS.md](../grafana/ANALYSIS.md).
 
 ### Iterate
 
@@ -241,7 +241,7 @@ Messages that start with `✖` are one line and exit with code 1. Fix the cause 
 
 | You see | Meaning | Fix |
 | --- | --- | --- |
-| Traceback ending in `StatusCode.UNAVAILABLE` … `failed to connect to all addresses` | `fbull` cannot reach the broker (`localhost:50055` on local Kind, or `FOREVERBULL_BROKER_ADDRESS` / `remote.broker_address`). | `uv run fbenv status`. If the workloads are stopped, `uv run fbenv start`. For a remote cluster, check the broker address. |
+| Traceback ending in `StatusCode.UNAVAILABLE` … `failed to connect to all addresses` | `fbull` cannot reach the broker (`localhost:50055` on a local install, or `FOREVERBULL_BROKER_ADDRESS` / `remote.broker_address`). | `uv run fbenv status`. If the workloads are stopped, `uv run fbenv start`. For a remote cluster, check the broker address. |
 | `✖ There's no backtest named 'my-demo'. …` | The name passed to `run` does not exist. | `uv run fbull backtest list`, then use a listed name or run step 2. |
 | `✖ Backtest 'my-demo' has no data to run. …` | The backtest record exists but its data is missing. | `uv run fbull backtest delete my-demo`, then step 2 again. |
 | `✖ --start 2022-06-01 is before backtest 'my-demo' begins. …` (or `--end … is after …`) | `--start`/`--end` is outside the backtest's range. | Use dates inside the range shown by `fbull backtest get`, or leave both out. |
@@ -249,7 +249,7 @@ Messages that start with `✖` are one line and exit with code 1. Fix the cause 
 | `FileNotFoundError: … No such file or directory` | The strategy path is wrong, relative to the current directory. | Run from the directory in [Conventions](#conventions), or pass an absolute path. |
 | `ConfigurationError: No algorithm found in …` | The file has no module-level `Algorithm(...)`. | Add `algo = Algorithm(functions=[Function(callable=handle_data)])` at the bottom. |
 | `TypeError: Function handle_data must have a parameter of type Asset or Assets` | No argument is annotated `Asset` or `Assets`. | Annotate one, as in step 3. |
-| `TypeError: ('Unsupported type: ', …)` | An argument has no annotation, or one other than `Portfolio`, `Asset`, `Assets`, `int`, `float`, `bool`, or `str`. | Annotate every argument. Use `int` or `float` for parameters. |
+| `TypeError: ('Unsupported type: ', …)` | An argument has no annotation, or one other than `Portfolio`, `Asset`, `Assets`, `int`, or `float`. | Annotate every argument. Use `int` or `float` for parameters. |
 | `Worker request failed` with a Python traceback, then the run stops with a `✖` line | Your function raised an exception on some trading day. The traceback names the line. Depending on the broker version, the `✖` line repeats the exception or says the run stopped early. | Fix the code, re-run step 4, then step 5. Typical causes: too few bars for a window, a `NaN` from an indicator, a `KeyError` from a DataFrame column name. |
 | `✖ Couldn't run backtest 'my-demo': the data service can't read market data. …` | The install's database permissions are wrong. Not your strategy. | Recreate or update the environment (README [Troubleshooting](../README.md#troubleshooting)). Report it if it persists. |
 | `✖ The backtest session ended before an execution started.` | The broker closed the session before the run started. | Run again. If it repeats, check the broker log below. |
