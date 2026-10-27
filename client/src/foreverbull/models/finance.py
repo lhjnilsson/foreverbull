@@ -362,7 +362,7 @@ class Portfolio:
         if key not in self._close_by_symbol_day:
             latest_close = _close_on_day(self._bars, symbol, day)
             if latest_close is None:
-                raise ConfigurationError(f"unable to find latest close price for {symbol}")
+                raise ConfigurationError(f"Couldn't find a close price for {symbol} on this bar.")
             self._close_by_symbol_day[key] = latest_close
         return self._close_by_symbol_day[key]
 
