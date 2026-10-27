@@ -40,7 +40,7 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 		return nil, err
 	}
 	if ts.trading == nil {
-		return nil, fmt.Errorf("trading is not enabled")
+		return nil, status.Error(codes.Unimplemented, "trading is not enabled")
 	}
 
 	orders, err := ts.trading.GetOrders(ctx)
@@ -58,7 +58,7 @@ func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPor
 		return nil, err
 	}
 	if ts.trading == nil {
-		return nil, fmt.Errorf("trading is not enabled")
+		return nil, status.Error(codes.Unimplemented, "trading is not enabled")
 	}
 
 	portfolio, err := ts.trading.GetPortfolio(ctx)

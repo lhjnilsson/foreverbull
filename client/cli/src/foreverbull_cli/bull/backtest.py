@@ -97,7 +97,9 @@ def _fail(message: str) -> NoReturn:
 
 def _rpc_details(exc: grpc.RpcError) -> str:
     details = getattr(exc, "details", None)
-    return str(details()) if callable(details) else str(exc)
+    text = str(details()) if callable(details) else str(exc)
+    # Defense in depth: an older broker may still quote a DB URL or password.
+    return redact_text(text)
 
 
 def _entity_name(

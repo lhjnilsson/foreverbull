@@ -50,7 +50,7 @@ func pgxErrorToStatus(err *pgconn.PgError) error {
 	case "57014":
 		return status.Error(codes.DeadlineExceeded, "Query timeout")
 	default:
-		return status.Error(codes.Internal, "Internal database error")
+		return status.Error(codes.Internal, clientInternalDatabase)
 	}
 }
 
@@ -178,8 +178,16 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 		unary = append(unary, bearerUnary(cfg.lookup))
 		stream = append(stream, bearerStream(cfg.lookup))
 	}
-	unary = append(unary, protovalidate_middleware.UnaryServerInterceptor(validator), pgxErrorInterceptor)
-	stream = append(stream, protovalidate_middleware.StreamServerInterceptor(validator), pgxStreamErrorInterceptor)
+	unary = append(unary,
+		protovalidate_middleware.UnaryServerInterceptor(validator),
+		clientFacingUnary,
+		pgxErrorInterceptor,
+	)
+	stream = append(stream,
+		protovalidate_middleware.StreamServerInterceptor(validator),
+		clientFacingStream,
+		pgxStreamErrorInterceptor,
+	)
 
 	return grpc.NewServer(
 		grpc.ChainUnaryInterceptor(unary...),
@@ -246,7 +254,7 @@ func accountFromBearer(ctx context.Context, lookup BearerLookup) (auth.Account, 
 		if errors.Is(err, auth.ErrUnauthorized) {
 			return auth.Account{}, status.Error(codes.Unauthenticated, "unauthorized")
 		}
-		return auth.Account{}, status.Error(codes.Internal, "Internal database error")
+		return auth.Account{}, status.Error(codes.Internal, clientInternalDatabase)
 	}
 	return account, nil
 }
