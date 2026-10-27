@@ -42,7 +42,6 @@ updates:
     directories:
       - /docker
       - /client
-      - /client/zipline
       - /grafana
     schedule:
       interval: weekly
@@ -56,6 +55,28 @@ updates:
       security-updates:
         applies-to: security-updates
         patterns: ["*"]
+    open-pull-requests-limit: 2
+
+  # Zipline base fails on python 3.15-trixie (amd64+arm64); hold minor/major until Zipline supports 3.15
+  - package-ecosystem: docker
+    directory: /client/zipline
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    groups:
+      docker:
+        applies-to: version-updates
+        patterns: ["*"]
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      - dependency-name: python
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     open-pull-requests-limit: 2
 
   - package-ecosystem: github-actions
