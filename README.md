@@ -139,6 +139,8 @@ Link: http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=01234567-89ab-cdef-01
 
 Next: edit your strategy. Open `simple_foreverbull/crossover.py`, change a parameter (for example the short or long window lengths `10` and `30`), and run the same `fbull backtest run` command again.
 
+To write your own strategy file, check it locally, and read results and errors step by step, see [docs/strategy-run-results.md](docs/strategy-run-results.md).
+
 For a real index universe, run `fbull backtest create` without `--file` and pick an iShares ETF; membership is point-in-time from historical holdings, not today's list.
 
 ## Quickstart

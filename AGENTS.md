@@ -300,7 +300,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 
 Python Minio client (`Storage.from_environment`) also reads `STORAGE_ENDPOINT` (default `localhost:9000`), `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_SECURE`.
 
-Package docs: [client/README.md](client/README.md), [client/cli/README.md](client/cli/README.md), [client/zipline/README.md](client/zipline/README.md), [client/testing/README.md](client/testing/README.md), [deploy/README.md](deploy/README.md). Cookiecutter templates: `client/templates/simple` and `client/templates/advanced` (root `cookiecutter.json`).
+Package docs: [client/README.md](client/README.md), [client/cli/README.md](client/cli/README.md), [client/zipline/README.md](client/zipline/README.md), [client/testing/README.md](client/testing/README.md), [deploy/README.md](deploy/README.md). Strategy → backtest → results walkthrough: [docs/strategy-run-results.md](docs/strategy-run-results.md). Cookiecutter templates: `client/templates/simple` and `client/templates/advanced` (root `cookiecutter.json`).
 
 ## CLI and fbenv
 
