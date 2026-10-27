@@ -99,9 +99,15 @@ def list_executions(
 @backtest_servicer
 def get_execution(
     servicer: backtest_service_pb_grpc.BacktestServicerClientSync, execution_id: str
-) -> tuple[execution_pb.Execution, list[execution_pb.Period]]:
+) -> tuple[execution_pb.Execution, list[execution_pb.Period], list[execution_pb.ExecutionFunction], str]:
+    """Return execution, periods, pinned function arguments, and price provider."""
     req = backtest_service_pb.GetExecutionRequest(
         execution_id=execution_id,
     )
     rsp = servicer.get_execution(req)
-    return required(rsp.execution, "execution"), rsp.periods
+    return (
+        required(rsp.execution, "execution"),
+        list(rsp.periods),
+        list(rsp.functions),
+        rsp.provider,
+    )

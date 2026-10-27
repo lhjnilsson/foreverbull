@@ -402,6 +402,7 @@ func (test *BacktestServerTest) TestGetExecution() {
 		test.NotNil(resp)
 		test.Equal(execution, resp.Execution)
 		test.Empty(resp.GetFunctions())
+		test.Equal("yahoo", resp.GetProvider())
 	})
 	test.Run("stored arguments", func() {
 		backtestRow := test.createBacktest("test_1")
@@ -434,5 +435,6 @@ func (test *BacktestServerTest) TestGetExecution() {
 		for i := range want {
 			test.True(proto.Equal(want[i], resp.GetFunctions()[i]))
 		}
+		test.Equal("yahoo", resp.GetProvider())
 	})
 }

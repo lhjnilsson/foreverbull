@@ -6,7 +6,7 @@ Install [Task](https://taskfile.dev/) (`go-task`) to run the root `taskfile.yaml
 
 ## Style
 
-Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
+Go and Python follow [style.md](style.md). The order there is safety, then performance, then developer experience. Read it before editing `cmd/`, `pkg/`, `internal/`, or `client/`. Domain contracts still name fields and behavior when they disagree with a style rule: [pkg/backtest/universe.md](pkg/backtest/universe.md), [pkg/backtest/reproducibility.md](pkg/backtest/reproducibility.md), [pkg/finance/profiles.md](pkg/finance/profiles.md), [pkg/finance/trading.md](pkg/finance/trading.md), [pkg/strategy/implementation.md](pkg/strategy/implementation.md).
 
 ## Customer experience and dependencies
 
@@ -44,7 +44,7 @@ Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you cr
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
-ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `yahoo` (default when omitted), `stooq` (daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md).
+ETF-built universes are point-in-time from iShares as-of snapshots. Identity is ISIN; do not treat ticker as identity (FB then META is one asset). Stooq is not part of ETF membership. Contract: [pkg/backtest/universe.md](pkg/backtest/universe.md). A backtest's `provider` is `yahoo` (default when omitted), `stooq` (daily GetOHLC only; Yahoo stays for `GetAsset`, `SearchAsset`, and `GetIndex`), or `alpaca`. Bars are stored per provider. Trading credentials live only in the profiles file. Contract: [pkg/finance/profiles.md](pkg/finance/profiles.md). Re-running a backtest for comparison: [pkg/backtest/reproducibility.md](pkg/backtest/reproducibility.md).
 
 ## Prerequisites
 

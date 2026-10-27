@@ -139,6 +139,14 @@ def _optional_profile(raw: object) -> str:
     return str(raw).strip()
 
 
+def _shown_execution_provider(provider: str) -> str:
+    """Provider pinned on the execution; unknown when a legacy row has none."""
+    normalized = provider.strip().lower()
+    if not normalized:
+        return "(unknown)"
+    return normalized
+
+
 def _shown_provider(entity: backtest_pb.Backtest) -> str:
     provider = entity.provider.strip().lower()
     return provider or _DEFAULT_PROVIDER
@@ -260,6 +268,30 @@ def _backtest_range(entity: backtest_pb.Backtest) -> tuple[str, str]:
 def _print_execution_link(execution_id: str) -> None:
     if execution_id:
         console.print(f"Link: {execution_link(execution_id)}", soft_wrap=True)
+
+
+def _print_execution_inputs(functions: list[execution_pb.ExecutionFunction]) -> None:
+    """Show worker parameters stored when the execution was created (re-run pins)."""
+    if not functions:
+        return
+    table = Table(title="Pinned inputs (function parameters)", expand=True)
+    table.add_column("Function")
+    table.add_column("Parameter")
+    table.add_column("Value")
+    table.add_column("Type")
+    for fn in functions:
+        params = list(fn.parameters)
+        if not params:
+            table.add_row(fn.name, "—", "—", "—")
+            continue
+        for index, param in enumerate(params):
+            table.add_row(
+                fn.name if index == 0 else "",
+                param.key,
+                param.value if param.value != "" else "(empty)",
+                param.value_type,
+            )
+    console.print(table)
 
 
 def _print_executions(executions: list[execution_pb.Execution], include_backtest: bool = False) -> None:
@@ -710,7 +742,7 @@ def run(
         _fail(present_market_data_failure(rejected, name))
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
-    _, periods = broker.backtest.get_execution(execution_id)
+    _, periods, _, _ = broker.backtest.get_execution(execution_id)
     print_run_summary(
         backtest_name=entity.name,
         benchmark=entity.benchmark,
@@ -751,7 +783,7 @@ def executions(
 def execution(
     id: Annotated[str, typer.Argument(help="id of the execution, or the short id `backtest run` prints")],
 ):
-    entity, periods = broker.backtest.get_execution(_resolve_execution_id(id))
+    entity, periods, functions, provider = broker.backtest.get_execution(_resolve_execution_id(id))
 
     summary = Table(title="Execution")
     summary.add_column("ID")
@@ -759,15 +791,18 @@ def execution(
     summary.add_column("Session")
     summary.add_column("Start")
     summary.add_column("End")
+    summary.add_column("Provider")
     summary.add_row(
         entity.id,
         entity.backtest,
         entity.session,
         format_date_field(entity, "start_date"),
         format_date_field(entity, "end_date"),
+        _shown_execution_provider(provider),
     )
     console.print(summary)
     _print_execution_link(entity.id)
+    _print_execution_inputs(functions)
 
     table = Table(title="periods")
     table.add_column("Date", no_wrap=True)

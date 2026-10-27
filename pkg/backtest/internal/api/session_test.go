@@ -205,6 +205,7 @@ func (s *SessionTest) TestCreateExecutionStoresUsedArguments() {
 	for i := range want {
 		s.True(proto.Equal(want[i], got.GetFunctions()[i]))
 	}
+	s.Equal("yahoo", got.GetProvider())
 }
 
 func strp(v string) *string {

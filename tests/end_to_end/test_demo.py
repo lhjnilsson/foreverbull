@@ -144,7 +144,7 @@ def assert_run_traded(output: str) -> None:
     assert match is not None, output
     ids = [current.id for current in broker.backtest.list_executions("demo") if current.id.startswith(match.group(1))]
     assert len(ids) == 1, ids
-    _, periods = broker.backtest.get_execution(ids[0])
+    _, periods, _, _ = broker.backtest.get_execution(ids[0])
     assert periods, ids[0]
     # A daily fill moves cash on its session, so these are the days with trades.
     trade_days = [period for period in periods if period.capital_used != 0]

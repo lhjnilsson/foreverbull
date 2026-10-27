@@ -315,7 +315,16 @@ func (bs *BacktestServer) getExecutionAuthed(ctx context.Context, req *servicePb
 	if err != nil {
 		return nil, fmt.Errorf("error getting execution functions: %w", err)
 	}
-	return &servicePb.GetExecutionResponse{Execution: execution, Periods: periods, Functions: functions}, nil
+	provider, err := storage.GetProvider(ctx, req.GetExecutionId())
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution provider: %w", err)
+	}
+	return &servicePb.GetExecutionResponse{
+		Execution: execution,
+		Periods:   periods,
+		Functions: functions,
+		Provider:  provider,
+	}, nil
 }
 
 func accountFrom(ctx context.Context) (auth.Account, error) {
