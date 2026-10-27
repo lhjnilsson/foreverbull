@@ -122,7 +122,7 @@ From a clone of this repository, build the `:local` images and sync the Python w
 task build
 ```
 
-`task build` builds `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` at tag `local`, then runs `uv sync` in `client/`. It does not start the cluster.
+`task build` builds `ghcr.io/lhjnilsson/foreverbull`, `ghcr.io/lhjnilsson/zipline`, and `ghcr.io/lhjnilsson/fb-grafana` at tag `local`, then runs `uv sync` in `client/`. It does not start the cluster.
 
 Install the chart into a Kind cluster named `foreverbull` (namespace `foreverbull`):
 
@@ -135,7 +135,7 @@ uv run fbenv status
 
 `fbenv create` installs the Kind cluster and the Helm release with the workloads stopped. `fbenv start` scales them to 1.
 
-Without `VERSION`, `fbenv create` pulls `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and `lhjnilsson/fb-grafana` tagged with the version of the installed `foreverbull` Python client, never `latest`, so the client and the broker come from the same release. `VERSION=local` uses the `:local` images that `task build` made instead, and it is the only other value `fbenv` accepts. A checkout's client version is `0.0.0`, which has no published images, so the commands in this README use `VERSION=local`. On a local Kind cluster, when the images for your client version can't be pulled, `fbenv create` stops before it installs anything, names the image and tag, and tells you to build them locally. On a remote cluster there is no such promise: this host does not pull the images, the cluster's nodes do, so Helm can create the release first and the pods can then sit in `ImagePullBackOff` if a node cannot pull. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
+Without `VERSION`, `fbenv create` pulls the published images `ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:latest` (the public nightly channel). `VERSION=local` uses the `:local` images that `task build` made instead; any other `VERSION` is refused. Contributor checkouts in this README use `VERSION=local` because they build from source. On a local Kind cluster, when a published image can't be pulled, `fbenv create` stops before it installs anything, names the image and tag, and gives a fix hint. On a remote cluster there is no such promise: this host does not pull the images, the cluster's nodes do, so Helm can create the release first and the pods can then sit in `ImagePullBackOff` if a node cannot pull. Run `fbenv` through `uv run`. A `fbenv` already on `PATH` can be an older installer that starts Postgres, NATS, Minio, and Grafana as separate Docker containers. The workspace command is Kind and Helm.
 
 `fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` at `replicaCount=0`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
 
@@ -277,13 +277,13 @@ Before they change anything, `fbenv create` and `fbenv start` also check that `k
 When an image download fails, `fbenv create` and `fbenv update` stop with one line that names the image and the likely cause (no network, Docker is not running, the registry refused, the repository does not exist, the tag does not exist, or the image has no build for this machine), then a fix hint. Add `--verbose` to see Docker's own error:
 
 ```
-✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:0.1.0: Docker could not reach the registry.
+✖ Couldn't download the Foreverbull image ghcr.io/lhjnilsson/foreverbull:latest: Docker could not reach the registry.
 Check your internet connection and run `fbenv create` again.
 Nothing was changed.
 Run `fbenv create --verbose` to see Docker's error.
 ```
 
-When no images are published for your client version, the hint says so and tells you to build them with `task build` and run `VERSION=local uv run fbenv create`. When the repository itself does not exist on the registry (for example `lhjnilsson/fb-grafana` before it is first published), the line reads `The Foreverbull image lhjnilsson/fb-grafana:<version> isn't published yet, so this install can't start.` and the checkout build with `task build` / `VERSION=local` follows only as a contributor alternative; only a transient or rate-limited registry failure says to wait a few minutes and retry. A `0.0.0` client is named as a development install and pointed straight at `VERSION=local`. When the image has no build for your machine's architecture, the hint names the architecture and gives the same local-build fix, or asks you to report it at https://github.com/lhjnilsson/foreverbull/issues. Any `VERSION` other than `local` stops `fbenv create` and `fbenv update` before they change anything. The stops-before-anything-changes promise for image pulls is local-Kind only: on a remote cluster, Helm can create or update the release first and the pods can then fail to pull (`ImagePullBackOff`), because the remote nodes pull the images, not this host.
+When a published tag is missing, the hint names the image and tells you to build locally with `task build` and run `VERSION=local uv run fbenv create`. When the repository itself does not exist on the registry (for example before first publish), the line reads `The Foreverbull image ghcr.io/lhjnilsson/fb-grafana:latest isn't published yet, so this install can't start.` and the checkout build with `task build` / `VERSION=local` follows only as a contributor alternative; only a transient or rate-limited registry failure says to wait a few minutes and retry. When the image has no build for your machine's architecture, the hint names the architecture and gives the same local-build fix, or asks you to report it at https://github.com/lhjnilsson/foreverbull/issues. Any `VERSION` other than unset/`latest` or `local` stops `fbenv create` and `fbenv update` before they change anything. The stops-before-anything-changes promise for image pulls is local-Kind only: on a remote cluster, Helm can create or update the release first and the pods can then fail to pull (`ImagePullBackOff`), because the remote nodes pull the images, not this host.
 
 ### `fbull backtest create` can't load data
 
@@ -422,9 +422,9 @@ task backtest:test:integration  # needs the local Zipline image
 task client:test              # Python unit tests (uv run pytest from client/)
 task test:integration         # client end-to-end; builds images first
 
-task build:docker             # lhjnilsson/foreverbull:local
-task client:docker:zipline    # lhjnilsson/zipline:local
-task grafana:build:docker     # lhjnilsson/fb-grafana:local
+task build:docker             # ghcr.io/lhjnilsson/foreverbull:local
+task client:docker:zipline    # ghcr.io/lhjnilsson/zipline:local
+task grafana:build:docker     # ghcr.io/lhjnilsson/fb-grafana:local
 
 task proto                    # regenerate Go + Python protobuf from proto/ (Buf)
 task mock:generate            # mockery

@@ -12,6 +12,7 @@ from foreverbull_cli.env.environment import BROKER_ERROR_ADVICE
 from foreverbull_cli.env.environment import DEFAULT_READY_TIMEOUT_SECONDS
 from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
+from foreverbull_cli.env.environment import PUBLISHED_VERSION
 from foreverbull_cli.env.environment import READY_TIMEOUT_ENV
 from foreverbull_cli.env.environment import ROLLOUT_UNVERIFIED_LINE
 from foreverbull_cli.env.environment import WORKLOADS
@@ -180,11 +181,11 @@ def _deploy(name: str, image: str, replicas: int = 1) -> dict:
 
 class TestConfig:
     def test_version_default_is_the_client_version(self):
-        assert Config(load_files=False, environ={}, client_version=CLIENT_VERSION).version == CLIENT_VERSION
+        assert Config(load_files=False, environ={}, client_version=CLIENT_VERSION).version == PUBLISHED_VERSION
 
     def test_version_empty_env_is_the_client_version(self):
         uut = Config(load_files=False, environ={"VERSION": " "}, client_version=CLIENT_VERSION)
-        assert uut.version == CLIENT_VERSION
+        assert uut.version == PUBLISHED_VERSION
 
     def test_client_version_reads_the_installed_package(self):
         assert Config(load_files=False, environ={}).client_version == importlib.metadata.version("foreverbull")
@@ -192,20 +193,25 @@ class TestConfig:
     def test_version_local_from_env(self):
         assert Config(load_files=False, environ={"VERSION": "local"}).version == "local"
 
-    @pytest.mark.parametrize("value", ["latest", "0.0.2503031831", "on_commit"])
+    def test_version_latest_from_env_matches_published(self):
+        assert Config(load_files=False, environ={"VERSION": "latest"}).version == PUBLISHED_VERSION
+
+    @pytest.mark.parametrize("value", ["0.0.2503031831", "on_commit", "sha-abc1234"])
     def test_version_rejects_other_tags(self, value: str):
         uut = Config(load_files=False, environ={"VERSION": value}, client_version=CLIENT_VERSION)
         with pytest.raises(VersionError) as raised:
             _ = uut.version
-        assert str(raised.value) == f"VERSION can only be `local`, got `{value}`."
+        assert str(raised.value) == (f"VERSION can only be unset (published `latest`) or `local`, got `{value}`.")
         assert raised.value.hint() == (
-            "fbenv uses the images for your installed client version (1.2.3). "
+            "fbenv pulls the published GHCR images tagged `latest` "
+            "(ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}). "
             "Unset VERSION to use them, or set VERSION=local to use images you built with `task build`."
         )
 
-    def test_app_images_never_use_latest(self):
+    def test_app_images_default_to_published_latest(self):
         uut = Config(load_files=False, environ={}, client_version=CLIENT_VERSION)
-        assert all(not image.endswith(":latest") for image in uut.app_images)
+        assert uut.version == PUBLISHED_VERSION == "latest"
+        assert all(image.endswith(":latest") for image in uut.app_images)
 
     def test_default_cluster_is_local(self):
         uut = Config(load_files=False, environ={})
@@ -219,29 +225,29 @@ class TestConfig:
 
     def test_image_repository_is_the_single_prefix(self):
         uut = Config(load_files=False, environ={}, client_version=CLIENT_VERSION)
-        assert uut.image_repository == IMAGE_REPOSITORY == "lhjnilsson"
+        assert uut.image_repository == IMAGE_REPOSITORY == "ghcr.io/lhjnilsson"
         assert uut.app_images == (
-            "lhjnilsson/foreverbull:1.2.3",
-            "lhjnilsson/zipline:1.2.3",
-            "lhjnilsson/fb-grafana:1.2.3",
+            "ghcr.io/lhjnilsson/foreverbull:latest",
+            "ghcr.io/lhjnilsson/zipline:latest",
+            "ghcr.io/lhjnilsson/fb-grafana:latest",
         )
 
     def test_foreverbull_image(self):
         assert (
             Config(load_files=False, environ={}, client_version=CLIENT_VERSION).foreverbull_image
-            == "lhjnilsson/foreverbull:1.2.3"
+            == "ghcr.io/lhjnilsson/foreverbull:latest"
         )
 
     def test_backtest_image(self):
         assert (
             Config(load_files=False, environ={}, client_version=CLIENT_VERSION).zipline_image
-            == "lhjnilsson/zipline:1.2.3"
+            == "ghcr.io/lhjnilsson/zipline:latest"
         )
 
     def test_grafana_image(self):
         assert (
             Config(load_files=False, environ={}, client_version=CLIENT_VERSION).grafana_image
-            == "lhjnilsson/fb-grafana:1.2.3"
+            == "ghcr.io/lhjnilsson/fb-grafana:latest"
         )
 
     def test_remote_namespace_and_kube_flags(self):
@@ -398,8 +404,8 @@ class TestClusterManager:
         helm = runner.calls_starting_with("helm", "upgrade", "--install")
         assert len(helm) == 1
         assert "--set" in helm[0]
-        assert "global.imageTag=1.2.3" in helm[0]
-        assert "global.imageRepository=lhjnilsson" in helm[0]
+        assert "global.imageTag=latest" in helm[0]
+        assert "global.imageRepository=ghcr.io/lhjnilsson" in helm[0]
         assert "expose.hostPort=true" in helm[0]
         assert "credentials.allowDefaults=true" in helm[0]
         assert "broker.logLevel=debug" in helm[0]
@@ -456,8 +462,8 @@ class TestClusterManager:
         assert "expose.hostPort=false" in helm
         assert "credentials.allowDefaults=true" not in helm
         assert "broker.logLevel=debug" not in helm
-        assert "global.imageTag=1.2.3" in helm
-        assert "global.imageRepository=lhjnilsson" in helm
+        assert "global.imageTag=latest" in helm
+        assert "global.imageRepository=ghcr.io/lhjnilsson" in helm
 
     def test_verify_images_does_not_pull_for_remote(self, tmp_path: Path):
         # Remote nodes pull the images; this host has no pull step to verify.
@@ -486,9 +492,9 @@ class TestClusterManager:
         uut.load_images()
         pulled = [call[2] for call in runner.calls_starting_with("docker", "pull")]
         assert pulled == [
-            "lhjnilsson/foreverbull:1.2.3",
-            "lhjnilsson/zipline:1.2.3",
-            "lhjnilsson/fb-grafana:1.2.3",
+            "ghcr.io/lhjnilsson/foreverbull:latest",
+            "ghcr.io/lhjnilsson/zipline:latest",
+            "ghcr.io/lhjnilsson/fb-grafana:latest",
         ]
         assert runner.calls_starting_with("kind", "load", "docker-image")
 
@@ -506,10 +512,10 @@ class TestClusterManager:
         uut = _manager(tmp_path, runner)
         with pytest.raises(ImagePullError) as raised:
             uut.verify_images()
-        assert raised.value.image == "lhjnilsson/foreverbull:1.2.3"
+        assert raised.value.image == "ghcr.io/lhjnilsson/foreverbull:latest"
         assert raised.value.cause == "network"
         assert "no such host" in raised.value.detail
-        assert "lhjnilsson/foreverbull:1.2.3" in str(raised.value)
+        assert "ghcr.io/lhjnilsson/foreverbull:latest" in str(raised.value)
         assert "no such host" not in str(raised.value)
         assert len(runner.calls_starting_with("docker", "pull")) == 1
         assert runner.calls_starting_with("kind", "create") == []
@@ -765,15 +771,15 @@ class TestClusterManager:
             _deploy("nats", "nats:2.10-alpine", replicas=0),
             _deploy("minio", "minio/minio:latest"),
             _pod("minio-abc", "minio", "minio/minio:latest", phase="Pending", ready=False),
-            _deploy("zipline", "lhjnilsson/zipline:latest"),
-            _pod("zipline-abc", "zipline", "lhjnilsson/zipline:latest"),
-            _deploy("foreverbull", "lhjnilsson/foreverbull:latest"),
-            _pod("foreverbull-abc", "foreverbull", "lhjnilsson/foreverbull:latest"),
-            _deploy("grafana", "lhjnilsson/fb-grafana:latest"),
+            _deploy("zipline", "ghcr.io/lhjnilsson/zipline:latest"),
+            _pod("zipline-abc", "zipline", "ghcr.io/lhjnilsson/zipline:latest"),
+            _deploy("foreverbull", "ghcr.io/lhjnilsson/foreverbull:latest"),
+            _pod("foreverbull-abc", "foreverbull", "ghcr.io/lhjnilsson/foreverbull:latest"),
+            _deploy("grafana", "ghcr.io/lhjnilsson/fb-grafana:latest"),
             _pod(
                 "grafana-abc",
                 "grafana",
-                "lhjnilsson/fb-grafana:latest",
+                "ghcr.io/lhjnilsson/fb-grafana:latest",
                 phase="Failed",
                 ready=False,
             ),
@@ -1118,8 +1124,8 @@ class TestHostChecks:
 
 def _broker_items(phase: str, ready: bool) -> list[dict]:
     return [
-        _deploy("foreverbull", "lhjnilsson/foreverbull:latest"),
-        _pod("foreverbull-abc", "foreverbull", "lhjnilsson/foreverbull:latest", phase=phase, ready=ready),
+        _deploy("foreverbull", "ghcr.io/lhjnilsson/foreverbull:latest"),
+        _pod("foreverbull-abc", "foreverbull", "ghcr.io/lhjnilsson/foreverbull:latest", phase=phase, ready=ready),
     ]
 
 
@@ -1217,19 +1223,21 @@ class TestImagePullError:
         "output,cause",
         [
             (
-                "Error response from daemon: manifest for lhjnilsson/foreverbull:v9 not found: manifest unknown",
+                "Error response from daemon: manifest for ghcr.io/lhjnilsson/foreverbull:v9 not found: manifest unknown",
                 "missing tag",
             ),
             (
                 (
-                    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+                    "Error response from daemon: pull access denied for ghcr.io/lhjnilsson/fb-grafana, "
                     "repository does not exist or may require 'docker login'"
                 ),
                 "missing repository",
             ),
             ("Error response from daemon: NAME_UNKNOWN: repository name not known to registry", "missing repository"),
             (
-                ("Error response from daemon: pull access denied for lhjnilsson/foreverbull, you must be logged in"),
+                (
+                    "Error response from daemon: pull access denied for ghcr.io/lhjnilsson/foreverbull, you must be logged in"
+                ),
                 "auth",
             ),
             ("unauthorized: authentication required", "auth"),
@@ -1237,7 +1245,7 @@ class TestImagePullError:
             (
                 (
                     "no matching manifest for linux/arm64/v8 in the manifest list entries: "
-                    "manifest for lhjnilsson/zipline:latest"
+                    "manifest for ghcr.io/lhjnilsson/zipline:latest"
                 ),
                 "platform",
             ),
@@ -1262,20 +1270,20 @@ class TestImagePullError:
         assert classify_pull_error(output) == cause
 
     def test_hint_names_the_command(self):
-        exc = ImagePullError("lhjnilsson/zipline:latest", "dial tcp: i/o timeout")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:latest", "dial tcp: i/o timeout")
         assert exc.hint("fbenv create") == "Check your internet connection and run `fbenv create` again."
 
     def test_missing_tag_hint_names_the_client_version_and_local_build(self):
-        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "manifest unknown")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:1.2.3", "manifest unknown")
         assert exc.tag == "1.2.3"
         assert exc.hint("fbenv create") == (
-            "fbenv uses the images for your installed client version (1.2.3), and none are published for it. "
+            "fbenv expected the published image tag `1.2.3` on ghcr.io/lhjnilsson/zipline, and it is not there. "
             "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local fbenv create`."
         )
 
     def test_platform_hint_names_the_architecture(self):
         exc = ImagePullError(
-            "lhjnilsson/zipline:latest", "no matching manifest for linux/arm64/v8 in the manifest list entries"
+            "ghcr.io/lhjnilsson/zipline:latest", "no matching manifest for linux/arm64/v8 in the manifest list entries"
         )
         assert exc.hint("fbenv create") == (
             "This image has no build for your machine (arm64). "
@@ -1284,12 +1292,14 @@ class TestImagePullError:
         )
 
     def test_platform_hint_uses_the_detected_architecture(self):
-        exc = ImagePullError("lhjnilsson/zipline:latest", "no matching manifest for linux/riscv64 in the manifest list")
+        exc = ImagePullError(
+            "ghcr.io/lhjnilsson/zipline:latest", "no matching manifest for linux/riscv64 in the manifest list"
+        )
         assert exc.hint("fbenv create").startswith("This image has no build for your machine (riscv64). ")
         assert "`VERSION=local fbenv create`" in exc.hint("fbenv create")
 
     def test_daemon_hint_says_start_docker(self):
-        exc = ImagePullError("lhjnilsson/zipline:latest", "Cannot connect to the Docker daemon at unix:///x")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:latest", "Cannot connect to the Docker daemon at unix:///x")
         assert exc.hint("fbenv update") == (
             "Start Docker, or fix your permissions on its socket, then run `fbenv update` again."
         )
@@ -1297,14 +1307,14 @@ class TestImagePullError:
     def test_missing_repository_is_not_a_wait_and_retry(self):
         # Real Docker Hub wording for a repository that was never published.
         exc = ImagePullError(
-            "lhjnilsson/fb-grafana:1.2.3",
-            "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+            "ghcr.io/lhjnilsson/fb-grafana:1.2.3",
+            "Error response from daemon: pull access denied for ghcr.io/lhjnilsson/fb-grafana, "
             "repository does not exist or may require 'docker login'",
         )
         assert exc.cause == "missing repository"
-        assert exc.repository == "lhjnilsson/fb-grafana"
+        assert exc.repository == "ghcr.io/lhjnilsson/fb-grafana"
         assert str(exc) == (
-            "Couldn't download the Foreverbull image lhjnilsson/fb-grafana:1.2.3: "
+            "Couldn't download the Foreverbull image ghcr.io/lhjnilsson/fb-grafana:1.2.3: "
             "that image repository does not exist on the registry."
         )
         hint = exc.hint("fbenv create")
@@ -1317,8 +1327,8 @@ class TestImagePullError:
     def test_missing_tag_stays_a_missing_tag_not_a_missing_repository(self):
         # Real Docker Hub wording when the repository exists but the tag does not.
         exc = ImagePullError(
-            "lhjnilsson/foreverbull:1.2.3",
-            "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+            "ghcr.io/lhjnilsson/foreverbull:1.2.3",
+            "Error response from daemon: manifest for ghcr.io/lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
         )
         assert exc.cause == "missing tag"
         assert "that tag does not exist" in str(exc)
@@ -1326,24 +1336,24 @@ class TestImagePullError:
 
     @pytest.mark.parametrize("cause_detail", ["manifest unknown", "repository does not exist"])
     def test_development_install_names_itself_and_points_at_version_local(self, cause_detail: str):
-        exc = ImagePullError("lhjnilsson/fb-grafana:0.0.0", cause_detail)
+        exc = ImagePullError("ghcr.io/lhjnilsson/fb-grafana:0.0.0", cause_detail)
         hint = exc.hint("fbenv create")
         assert "development install (client version 0.0.0)" in hint
         assert "`VERSION=local fbenv create`" in hint
         assert "Wait a few minutes" not in hint
 
     def test_auth_hint_says_check_access_or_login_not_wait(self):
-        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "unauthorized: authentication required")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:1.2.3", "unauthorized: authentication required")
         assert exc.cause == "auth"
         assert "docker login" in exc.hint("fbenv create")
         assert "Wait a few minutes" not in exc.hint("fbenv create")
 
     def test_registry_hint_is_wait_and_retry(self):
-        exc = ImagePullError("lhjnilsson/zipline:latest", "toomanyrequests")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:latest", "toomanyrequests")
         assert exc.hint("fbenv update") == "Wait a few minutes and run `fbenv update` again."
 
     def test_missing_tag_hint_names_the_command(self):
-        exc = ImagePullError("lhjnilsson/zipline:1.2.3", "manifest unknown")
+        exc = ImagePullError("ghcr.io/lhjnilsson/zipline:1.2.3", "manifest unknown")
         assert "`VERSION=local fbenv update`" in exc.hint("fbenv update")
 
 
@@ -1389,7 +1399,7 @@ class TestPullFailureChangesNothing:
         assert last_pull < first_load < first_helm
 
 
-GRAFANA_IMAGE = f"{IMAGE_REPOSITORY}/fb-grafana:{CLIENT_VERSION}"
+GRAFANA_IMAGE = f"{IMAGE_REPOSITORY}/fb-grafana:{PUBLISHED_VERSION}"
 REMOTE = {"cluster": "remote", "remote": {"kubeconfig": "/tmp/kube", "context": "prod", "namespace": "fb"}}
 
 
@@ -1495,7 +1505,7 @@ class TestRemoteUpdatePullFailure:
 
     @pytest.mark.parametrize("reason", ["ErrImagePull", "InvalidImageName", "ErrImageNeverPull"])
     def test_every_pull_failure_reason_raises(self, tmp_path: Path, reason: str):
-        runner = RolloutRunner([[_pull_backoff_pod("foreverbull", "lhjnilsson/foreverbull:1.2.3", reason)]])
+        runner = RolloutRunner([[_pull_backoff_pod("foreverbull", "ghcr.io/lhjnilsson/foreverbull:latest", reason)]])
         uut = _remote_manager(tmp_path, runner, [])
         with pytest.raises(ClusterImagePullError) as raised:
             uut.update()
@@ -1580,9 +1590,9 @@ class TestRemoteUpdatePullFailure:
     def test_previous_rollout_pod_in_backoff_is_ignored(self, tmp_path: Path):
         snapshot = [
             _rolled_deploy("grafana", GRAFANA_IMAGE),
-            _replica_set("grafana", "lhjnilsson/fb-grafana:old", "oldhash", 1),
+            _replica_set("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash", 1),
             _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
-            _pull_pod_with_hash("grafana", "lhjnilsson/fb-grafana:old", "oldhash"),
+            _pull_pod_with_hash("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash"),
         ]
         runner = RolloutRunner([snapshot])
         uut = _remote_manager(tmp_path, runner, [])
@@ -1592,9 +1602,9 @@ class TestRemoteUpdatePullFailure:
     def test_current_rollout_pod_in_backoff_still_fails_with_an_old_pod_present(self, tmp_path: Path):
         snapshot = [
             _rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0),
-            _replica_set("grafana", "lhjnilsson/fb-grafana:old", "oldhash", 1),
+            _replica_set("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash", 1),
             _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
-            _pull_pod_with_hash("grafana", "lhjnilsson/fb-grafana:old", "oldhash"),
+            _pull_pod_with_hash("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash"),
             _pull_pod_with_hash("grafana", GRAFANA_IMAGE, "newhash"),
         ]
         runner = RolloutRunner([snapshot])
@@ -1606,7 +1616,7 @@ class TestRemoteUpdatePullFailure:
     def test_terminating_pod_in_backoff_is_ignored(self, tmp_path: Path):
         snapshot = [
             _rolled_deploy("grafana", GRAFANA_IMAGE),
-            _pull_backoff_pod("grafana", "lhjnilsson/fb-grafana:old", terminating=True),
+            _pull_backoff_pod("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", terminating=True),
         ]
         runner = RolloutRunner([snapshot])
         uut = _remote_manager(tmp_path, runner, [])

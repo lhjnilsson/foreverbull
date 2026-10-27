@@ -40,7 +40,7 @@ Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you cr
 | `client/testing/` | Pytest plugin/fixtures (`fb_database`, etc.) |
 | `tests/end_to_end/` | Kind demo: `fbenv` and `fbull`. `task test:integration` |
 | `deploy/` | Kind config, Helm chart, cluster-config example |
-| `docker/Dockerfile` | Local `lhjnilsson/foreverbull` image |
+| `docker/Dockerfile` | Local `ghcr.io/lhjnilsson/foreverbull` image |
 | `grafana/` | Grafana OSS image + `lhjnilsson-foreverbull-datasource` plugin. Contract: [grafana/ANALYSIS.md](grafana/ANALYSIS.md) |
 | `internal/container/` | Kubernetes runtime for extra strategy-worker pods (no docker.sock) |
 
@@ -123,9 +123,9 @@ The `foreverbull-testing` package is a pytest plugin (`fb_database` and related 
 ### Docker / Zipline images
 
 ```bash
-task client:docker:zipline    # build lhjnilsson/zipline:local (also builds the foreverbull wheel)
-task build:docker             # build lhjnilsson/foreverbull:local
-task grafana:build:docker     # build lhjnilsson/fb-grafana:local
+task client:docker:zipline    # build ghcr.io/lhjnilsson/zipline:local (also builds the foreverbull wheel)
+task build:docker             # build ghcr.io/lhjnilsson/foreverbull:local
+task grafana:build:docker     # build ghcr.io/lhjnilsson/fb-grafana:local
 ```
 
 `task client:docker:zipline` is the Zipline image used by Go backtest integration tests.
@@ -141,7 +141,7 @@ mage -v          # gpx_foreverbull_*  (go install github.com/magefile/mage@lates
 task grafana:build:docker
 ```
 
-The Dockerfile also runs `npm run build` and `mage` itself. Product Grafana is Kind/Helm (`lhjnilsson/fb-grafana` on host port 3000). Plugin `docker-compose.yaml` is a leftover UI harness on port 3001; Kind/`fbenv` does **not** create a Docker network named `foreverbull`.
+The Dockerfile also runs `npm run build` and `mage` itself. Product Grafana is Kind/Helm (`ghcr.io/lhjnilsson/fb-grafana` on host port 3000). Plugin `docker-compose.yaml` is a leftover UI harness on port 3001; Kind/`fbenv` does **not** create a Docker network named `foreverbull`.
 
 ### Python integration / end-to-end
 
@@ -285,7 +285,7 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `AUTH_COOKIE_SECURE` | `false`. Set `true` when TLS terminates in front of the broker. Local Kind is plain HTTP, so the session cookie stays unsecured there. |
 | `OHLC_PROVIDER` | Set on a worker pod from the backtest `provider` when the pod is created. Python and Zipline default it to `yahoo` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when unset or blank. Not a broker-wide price switch. |
 | `GRAFANA_URL` | Grafana origin for CLI `execution_link` and broker `GetExperiment.grafana_path`. Default `http://localhost:3000` (Kind host port). Helm `grafana.url` sets it on the broker. Path is always `/d/ee9ep4jxtwkcgf?var-execution=` |
-| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`lhjnilsson/foreverbull`, `lhjnilsson/zipline`, `lhjnilsson/fb-grafana`; prefix is CLI `IMAGE_REPOSITORY`, passed as chart `global.imageRepository`). Unset: the installed `foreverbull` client version (never `latest`). `local`: images from `task build`. `fbenv` refuses any other value. Image-pull fails-before-changes is local-Kind only; remote nodes pull after Helm runs |
+| `VERSION` | Image tag for `fbenv` / chart `global.imageTag` (`ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}`; prefix is CLI `IMAGE_REPOSITORY`, passed as chart `global.imageRepository`). Unset or `latest`: published nightly channel on public GHCR. `local`: images from `task build`. `fbenv` refuses any other value. Image-pull fails-before-changes is local-Kind only; remote nodes pull after Helm runs |
 | `FOREVERBULL_BROKER_ADDRESS` | Python stubs/CLI broker `host:port` (highest priority) |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
 | `DATABASE_URL` | Zipline/worker Postgres URL; pytest plugin sets this via Testcontainers |

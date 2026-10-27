@@ -24,11 +24,11 @@ In-cluster DNS names match the Service object names.
 | Postgres | `postgres` | `postgres:13.3-alpine` | `5432` |
 | NATS JetStream | `nats` | `nats:2.10-alpine` | `4222` |
 | Minio | `minio` | `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` | `9000` |
-| Zipline | `zipline` | `lhjnilsson/zipline:{tag}` | none (in-cluster gRPC `:50055`) |
-| Foreverbull broker | `foreverbull` | `lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
-| Grafana | `grafana` | `lhjnilsson/fb-grafana:{tag}` | `3000` |
+| Zipline | `zipline` | `ghcr.io/lhjnilsson/zipline:{tag}` | none (in-cluster gRPC `:50055`) |
+| Foreverbull broker | `foreverbull` | `ghcr.io/lhjnilsson/foreverbull:{tag}` | `50055`, `8080`, `27000`–`27015` |
+| Grafana | `grafana` | `ghcr.io/lhjnilsson/fb-grafana:{tag}` | `3000` |
 
-`{tag}` is `images.*.tag` or `global.imageTag`. The three app images are `global.imageRepository` plus their short `images.*.repository` name (`foreverbull`, `zipline`, `fb-grafana`); a repository name containing `/` is used as-is. A tag that starts with `sha256:` is rendered as `repository@sha256:…` so a release can pin a digest. Any other tag, including `sha-<shortsha>`, stays `repository:tag`. `fbenv` sets `global.imageRepository` from its own `IMAGE_REPOSITORY` and `global.imageTag` to the installed `foreverbull` client version, or to `local` with `VERSION=local`; it never uses `latest`.
+`{tag}` is `images.*.tag` or `global.imageTag`. The three app images are `global.imageRepository` plus their short `images.*.repository` name (`foreverbull`, `zipline`, `fb-grafana`); a repository name containing `/` is used as-is. A tag that starts with `sha256:` is rendered as `repository@sha256:…` so a release can pin a digest. Any other tag, including `sha-<shortsha>`, stays `repository:tag`. `fbenv` sets `global.imageRepository` from its own `IMAGE_REPOSITORY` (`ghcr.io/lhjnilsson`) and `global.imageTag` to `latest` (published nightly), or to `local` with `VERSION=local`.
 
 ### Host ports (local Kind)
 
@@ -352,7 +352,7 @@ VERSION=local uv run fbenv create   # workloads stay stopped
 uv run fbenv start
 ```
 
-Without `VERSION`, a local `fbenv create` pulls the three app images tagged with the installed `foreverbull` client version and stops before installing anything when one is missing. That promise is local-Kind only: on a remote cluster this host does not pull the images, so Helm can create or update the release first and the remote nodes can then fail to pull, leaving pods in `ImagePullBackOff`. A remote `fbenv update` therefore watches the rollout after Helm runs, for at most two minutes. When a pod of the current rollout waits on a failed pull, it exits non-zero with one error line naming the service and the image; `--verbose` adds the Kubernetes reason and the cluster's own error. A rollout that is still pulling at the two-minute mark is not a failure: `fbenv update` exits 0, prints a warning naming the workload that is still downloading before the status table, and the table shows it as pending. If kubectl fails while watching, the update still prints the status table, preceded by a warning that the update couldn't be confirmed; `--verbose` adds kubectl's own error. `VERSION=local` uses the `:local` images built from this checkout; `fbenv` refuses any other `VERSION`.
+Without `VERSION`, a local `fbenv create` pulls `ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:latest` and stops before installing anything when one is missing. That promise is local-Kind only: on a remote cluster this host does not pull the images, so Helm can create or update the release first and the remote nodes can then fail to pull, leaving pods in `ImagePullBackOff`. A remote `fbenv update` therefore watches the rollout after Helm runs, for at most two minutes. When a pod of the current rollout waits on a failed pull, it exits non-zero with one error line naming the service and the image; `--verbose` adds the Kubernetes reason and the cluster's own error. A rollout that is still pulling at the two-minute mark is not a failure: `fbenv update` exits 0, prints a warning naming the workload that is still downloading before the status table, and the table shows it as pending. If kubectl fails while watching, the update still prints the status table, preceded by a warning that the update couldn't be confirmed; `--verbose` adds kubectl's own error. `VERSION=local` uses the `:local` images built from this checkout; `fbenv` refuses any other `VERSION`.
 
 From the repository root, `task kind:redeploy` does the local rebuild in one step. It builds the `:local` images, deletes the Kind cluster `foreverbull` when it exists, installs the chart, and starts the workloads. The purge also removes `client/.foreverbull` data other than `config.yaml`.
 
@@ -381,8 +381,8 @@ helm upgrade --install foreverbull deploy/helm/foreverbull \
   --set broker.logLevel=debug
 ```
 
-`load-images.sh` loads `lhjnilsson/foreverbull`, `lhjnilsson/zipline`, and
-`lhjnilsson/fb-grafana` at `$VERSION` (or `local`) into the Kind node. Postgres,
+`load-images.sh` loads `ghcr.io/lhjnilsson/foreverbull`, `ghcr.io/lhjnilsson/zipline`, and
+`ghcr.io/lhjnilsson/fb-grafana` at `$VERSION` (or `local`) into the Kind node. Postgres,
 NATS, and Minio are pulled by the node on first pod start (or use images already
 cached on the Docker host).
 

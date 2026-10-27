@@ -122,7 +122,7 @@ tasks:
       - web/tsconfig.json
       - web/src/**/*
     cmds:
-      - docker build -t lhjnilsson/foreverbull:local -f docker/Dockerfile .
+      - docker build -t ghcr.io/lhjnilsson/foreverbull:local -f docker/Dockerfile .
 
   build:
     desc: Build local images and sync the Python workspace
@@ -164,7 +164,7 @@ tasks:
       - bash deploy/kind/create-cluster.sh
 
   kind:load:
-    desc: Load lhjnilsson/foreverbull, zipline, and fb-grafana into Kind
+    desc: Load ghcr.io/lhjnilsson/foreverbull, zipline, and fb-grafana into Kind
     cmds:
       - bash deploy/kind/load-images.sh
 

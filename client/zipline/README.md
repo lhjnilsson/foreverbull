@@ -1,6 +1,6 @@
 # foreverbull-zipline
 
-Zipline-Reloaded engine with a gRPC API for the Foreverbull broker. In the Helm chart this is the `zipline` workload (`lhjnilsson/zipline:{tag}`), reached in-cluster at `zipline:50055`.
+Zipline-Reloaded engine with a gRPC API for the Foreverbull broker. In the Helm chart this is the `zipline` workload (`ghcr.io/lhjnilsson/zipline:{tag}`), reached in-cluster at `zipline:50055`.
 
 It is a uv workspace member (`foreverbull-zipline`). Do not run it as a host process for the platform install; Kind/Helm starts the image. Unit tests run the engine in-process.
 
@@ -27,7 +27,7 @@ From `client/` (needs a built `foreverbull` wheel in `client/dist/`):
 
 ```bash
 uv build
-docker build -t lhjnilsson/zipline:local -f zipline/Dockerfile .
+docker build -t ghcr.io/lhjnilsson/zipline:local -f zipline/Dockerfile .
 ```
 
 From the repo root: `task client:docker:zipline` (builds the wheel, then the image). `task build` builds that image with the others. `fbenv create` loads the tag into Kind. `fbenv start` runs the workloads.
