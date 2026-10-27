@@ -32,6 +32,18 @@ func TestPool(t *testing.T) {
 	suite.Run(t, new(PoolTest))
 }
 
+func (test *PoolTest) TestConfigureDoesNotSendADatabaseURL() {
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "test"})
+	pool, err := worker.NewPool(context.TODO(), algo)
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	configuration := pool.Configure()
+	test.Empty(configuration.GetDatabaseURL())
+	test.NotContains(configuration.String(), "postgres://")
+	test.NotContains(configuration.String(), "foreverbull@")
+}
+
 func (test *PoolTest) TestSimple() {
 	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 		return &servicePb.WorkerResponse{}
