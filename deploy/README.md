@@ -450,7 +450,7 @@ global:
   imageRepository: lhjnilsson  # fbenv passes its IMAGE_REPOSITORY here
   imageTag: latest          # fbenv sets the client version, or local
   imagePullPolicy: IfNotPresent       # postgres/nats/minio
-  appImagePullPolicy: IfNotPresent    # broker/zipline/grafana
+  appImagePullPolicy: Always           # broker/zipline/grafana; Always for floating latest
 
 images:
   postgres:
@@ -559,7 +559,7 @@ rbac:
   create: true
 ```
 
-`replicaCount` is `1`. `global.imagePullPolicy` (postgres/nats/minio) and `global.appImagePullPolicy` (broker/zipline/grafana) are `IfNotPresent`. `resources.*`
+`replicaCount` is `1`. `global.imagePullPolicy` (postgres/nats/minio) is `IfNotPresent`. `global.appImagePullPolicy` (broker/zipline/grafana) is `Always` for the floating `latest` channel (nightlies must re-pull); `fbenv` sets `IfNotPresent` when `VERSION=local`. `resources.*`
 are modest CPU/memory requests for a local Kind node (limits omitted).
 
 Workload object names (Deployment + Service): `postgres`, `nats`, `minio`,

@@ -405,6 +405,7 @@ class TestClusterManager:
         assert len(helm) == 1
         assert "--set" in helm[0]
         assert "global.imageTag=latest" in helm[0]
+        assert "global.appImagePullPolicy=Always" in helm[0]
         assert "global.imageRepository=ghcr.io/lhjnilsson" in helm[0]
         assert "expose.hostPort=true" in helm[0]
         assert "credentials.allowDefaults=true" in helm[0]
@@ -463,6 +464,7 @@ class TestClusterManager:
         assert "credentials.allowDefaults=true" not in helm
         assert "broker.logLevel=debug" not in helm
         assert "global.imageTag=latest" in helm
+        assert "global.appImagePullPolicy=Always" in helm
         assert "global.imageRepository=ghcr.io/lhjnilsson" in helm
 
     def test_verify_images_does_not_pull_for_remote(self, tmp_path: Path):
@@ -762,6 +764,7 @@ class TestClusterManager:
         helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
         assert "--reuse-values" in helm
         assert "global.imageTag=local" in helm
+        assert "global.appImagePullPolicy=IfNotPresent" in helm
         assert "replicaCount=" not in " ".join(helm)
 
     def test_status_from_kubectl_json(self, tmp_path: Path):

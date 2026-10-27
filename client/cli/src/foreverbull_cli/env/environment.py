@@ -1081,6 +1081,10 @@ class ClusterManager:
             "--set",
             f"global.imageTag={self.config.version}",
             "--set",
+            # Floating latest must Always-pull so nightlies do not stick under IfNotPresent.
+            # VERSION=local (kind-loaded) keeps IfNotPresent.
+            f"global.appImagePullPolicy={'Always' if self.config.version == PUBLISHED_VERSION else 'IfNotPresent'}",
+            "--set",
             f"expose.hostPort={'true' if self.config.is_local else 'false'}",
         ]
         if self.config.is_local:

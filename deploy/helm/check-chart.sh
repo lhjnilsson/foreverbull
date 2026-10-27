@@ -34,6 +34,14 @@ for app_image in foreverbull zipline fb-grafana; do
   fi
 done
 
+# Default imageTag is latest → app images must Always-pull (nightlies must not stick).
+# Three app Deployments × three template passes appended above → expect >= 3.
+always_count="$(grep -c "imagePullPolicy: Always" "${rendered}" || true)"
+if [[ "${always_count}" -lt 3 ]]; then
+  echo "expected >=3 imagePullPolicy Always for broker/zipline/grafana (floating latest), got ${always_count}" >&2
+  exit 1
+fi
+
 prefixed="$(mktemp)"
 trap 'rm -f "${rendered}" "${prefixed}"' EXIT
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set global.imageRepository=example.invalid/fb > "${prefixed}"
