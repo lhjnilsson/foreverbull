@@ -5,11 +5,12 @@
 replicaCount: 1
 
 global:
-  imageRepository: lhjnilsson  # prefix for the three app images; fbenv passes its IMAGE_REPOSITORY here
-  imageTag: latest          # fbenv sets the client version, or local. A sha256: tag pins that image by digest.
+  imageRepository: ghcr.io/lhjnilsson  # prefix for the three app images; fbenv passes its IMAGE_REPOSITORY here
+  imageTag: latest          # fbenv sets latest (published), or local. A sha256: tag pins that image by digest.
   imagePullPolicy: IfNotPresent
   # Broker, zipline, and grafana only. Infra (postgres/nats/minio) keeps imagePullPolicy.
-  appImagePullPolicy: IfNotPresent
+  # Always: floating latest must re-pull nightlies (IfNotPresent would stick). local/digest: fbenv sets IfNotPresent.
+  appImagePullPolicy: Always
 
 images:
   postgres:

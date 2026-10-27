@@ -30,9 +30,9 @@ STATUS_ROWS = [
     WorkloadRow("Postgres", "postgres", "running", "postgres:13.3-alpine", "abc"),
     WorkloadRow("NATS", "nats", "running", "nats:2.10-alpine", "def"),
     WorkloadRow("Minio", "minio", "running", "minio/minio:latest", "ghi"),
-    WorkloadRow("Zipline", "zipline", "running", "lhjnilsson/zipline:latest", "jkl"),
-    WorkloadRow("Foreverbull", "foreverbull", "running", "lhjnilsson/foreverbull:latest", "mno"),
-    WorkloadRow("Grafana", "grafana", "running", "lhjnilsson/fb-grafana:latest", "pqr"),
+    WorkloadRow("Zipline", "zipline", "running", "ghcr.io/lhjnilsson/zipline:latest", "jkl"),
+    WorkloadRow("Foreverbull", "foreverbull", "running", "ghcr.io/lhjnilsson/foreverbull:latest", "mno"),
+    WorkloadRow("Grafana", "grafana", "running", "ghcr.io/lhjnilsson/fb-grafana:latest", "pqr"),
 ]
 
 HOST_CHECKS = [
@@ -139,7 +139,7 @@ def test_create_stops_on_failed_host_check(runner, mocked_container_manager: Mag
 
 
 PULL_FAILURE = ImagePullError(
-    "lhjnilsson/foreverbull:latest",
+    "ghcr.io/lhjnilsson/foreverbull:latest",
     'Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: i/o timeout',
 )
 
@@ -150,7 +150,7 @@ def test_create_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
     assert result.exit_code == 1
     lines = result.stdout.splitlines()
     assert [line for line in lines if line.startswith("✖")] == [
-        "✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:latest: Docker could not reach the registry."
+        "✖ Couldn't download the Foreverbull image ghcr.io/lhjnilsson/foreverbull:latest: Docker could not reach the registry."
     ]
     assert "Check your internet connection and run `fbenv create` again." in result.stdout
     assert "Nothing was changed." in result.stdout
@@ -182,14 +182,14 @@ def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: Mag
 
 
 REPO_MISSING = ImagePullError(
-    "lhjnilsson/fb-grafana:1.2.3",
-    "Error response from daemon: pull access denied for lhjnilsson/fb-grafana, "
+    "ghcr.io/lhjnilsson/fb-grafana:1.2.3",
+    "Error response from daemon: pull access denied for ghcr.io/lhjnilsson/fb-grafana, "
     "repository does not exist or may require 'docker login'",
 )
 
 TAG_MISSING = ImagePullError(
-    "lhjnilsson/foreverbull:1.2.3",
-    "Error response from daemon: manifest for lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
+    "ghcr.io/lhjnilsson/foreverbull:1.2.3",
+    "Error response from daemon: manifest for ghcr.io/lhjnilsson/foreverbull:1.2.3 not found: manifest unknown",
 )
 
 
@@ -200,7 +200,7 @@ def test_create_missing_repository_leads_with_not_published(runner, mocked_conta
     lines = result.stdout.splitlines()
     assert [line for line in lines if line.startswith("✖")] == [
         (
-            "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start. Nothing was changed."
+            "✖ The Foreverbull image ghcr.io/lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start. Nothing was changed."
         )
     ]
     assert result.stdout.count("Nothing was changed.") == 1
@@ -219,7 +219,7 @@ def test_create_missing_tag_keeps_the_download_message(runner, mocked_container_
     lines = result.stdout.splitlines()
     assert [line for line in lines if line.startswith("✖")] == [
         (
-            "✖ Couldn't download the Foreverbull image lhjnilsson/foreverbull:1.2.3: that tag does not exist on the registry."
+            "✖ Couldn't download the Foreverbull image ghcr.io/lhjnilsson/foreverbull:1.2.3: that tag does not exist on the registry."
         )
     ]
     assert "isn't published yet" not in result.stdout
@@ -233,7 +233,7 @@ def test_update_missing_repository_on_remote_omits_nothing_changed(runner, mocke
     result = runner(cli.cli, "update")
     assert result.exit_code == 1
     assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
-        "✖ The Foreverbull image lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start."
+        "✖ The Foreverbull image ghcr.io/lhjnilsson/fb-grafana:1.2.3 isn't published yet, so this install can't start."
     ]
     assert "Nothing was changed." not in result.stdout
 
@@ -250,9 +250,9 @@ def test_update_on_remote_does_not_claim_nothing_changed(runner, mocked_containe
 
 CLUSTER_PULL_FAILURE = ClusterImagePullError(
     service="Grafana",
-    image="lhjnilsson/fb-grafana:1.2.3",
+    image="ghcr.io/lhjnilsson/fb-grafana:1.2.3",
     reason="ImagePullBackOff",
-    detail='Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"',
+    detail='Back-off pulling image "ghcr.io/lhjnilsson/fb-grafana:1.2.3"',
 )
 
 
@@ -262,7 +262,7 @@ def test_update_on_remote_fails_when_the_cluster_cannot_pull(runner, mocked_cont
     result = runner(cli.cli, "update")
     assert result.exit_code == 1
     assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [
-        ("✖ Grafana can't start: the cluster couldn't pull the image lhjnilsson/fb-grafana:1.2.3.")
+        ("✖ Grafana can't start: the cluster couldn't pull the image ghcr.io/lhjnilsson/fb-grafana:1.2.3.")
     ]
     assert "ImagePullBackOff" not in result.stdout
     assert "The release was already updated." in result.stdout
@@ -280,7 +280,10 @@ def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager
     mocked_container_manager.update.side_effect = CLUSTER_PULL_FAILURE
     result = runner(cli.cli, ["update", "--verbose"])
     assert result.exit_code == 1
-    assert 'Kubernetes said: ImagePullBackOff: Back-off pulling image "lhjnilsson/fb-grafana:1.2.3"' in result.stdout
+    assert (
+        'Kubernetes said: ImagePullBackOff: Back-off pulling image "ghcr.io/lhjnilsson/fb-grafana:1.2.3"'
+        in result.stdout
+    )
 
 
 def test_update_still_pulling_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
@@ -332,7 +335,7 @@ def test_update_unverified_rollout_shows_kubectl_error_only_with_verbose(runner,
 
 
 def _reject_version(manager: MagicMock) -> None:
-    type(manager.config).version = PropertyMock(side_effect=VersionError("latest", "1.2.3"))
+    type(manager.config).version = PropertyMock(side_effect=VersionError("0.0.2503031831", "1.2.3"))
 
 
 def test_create_rejects_a_version_other_than_local(runner, mocked_container_manager: MagicMock):
@@ -340,8 +343,10 @@ def test_create_rejects_a_version_other_than_local(runner, mocked_container_mana
     result = runner(cli.cli, "create")
     assert result.exit_code == 1
     lines = result.stdout.splitlines()
-    assert [line for line in lines if line.startswith("✖")] == ["✖ VERSION can only be `local`, got `latest`."]
-    assert "installed client version (1.2.3)" in result.stdout
+    assert [line for line in lines if line.startswith("✖")] == [
+        "✖ VERSION can only be unset (published `latest`) or `local`, got `0.0.2503031831`."
+    ]
+    assert "ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}" in result.stdout
     assert "Nothing was changed." in result.stdout
     assert "Traceback" not in result.stdout
     mocked_container_manager.preflight.assert_not_called()
@@ -353,7 +358,7 @@ def test_update_rejects_a_version_other_than_local(runner, mocked_container_mana
     _reject_version(mocked_container_manager)
     result = runner(cli.cli, "update")
     assert result.exit_code == 1
-    assert "✖ VERSION can only be `local`, got `latest`." in result.stdout
+    assert "✖ VERSION can only be unset (published `latest`) or `local`, got `0.0.2503031831`." in result.stdout
     assert "Nothing was changed." in result.stdout
     mocked_container_manager.update.assert_not_called()
 

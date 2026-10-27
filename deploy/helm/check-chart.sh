@@ -28,11 +28,19 @@ helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set expose.ho
 
 # The three app images share global.imageRepository; third-party images do not.
 for app_image in foreverbull zipline fb-grafana; do
-  if ! grep -q "image: lhjnilsson/${app_image}:" "${rendered}"; then
-    echo "rendered chart must default ${app_image} to the lhjnilsson repository" >&2
+  if ! grep -q "image: ghcr.io/lhjnilsson/${app_image}:" "${rendered}"; then
+    echo "rendered chart must default ${app_image} to the ghcr.io/lhjnilsson repository" >&2
     exit 1
   fi
 done
+
+# Default imageTag is latest → app images must Always-pull (nightlies must not stick).
+# Three app Deployments × three template passes appended above → expect >= 3.
+always_count="$(grep -c "imagePullPolicy: Always" "${rendered}" || true)"
+if [[ "${always_count}" -lt 3 ]]; then
+  echo "expected >=3 imagePullPolicy Always for broker/zipline/grafana (floating latest), got ${always_count}" >&2
+  exit 1
+fi
 
 prefixed="$(mktemp)"
 trap 'rm -f "${rendered}" "${prefixed}"' EXIT
@@ -48,7 +56,7 @@ done
 # sha256:<64 hex> is a digest pin (repository@sha256:…), per image.
 sha_tag_render="$(mktemp)"
 helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set global.imageTag=sha-abcdef1 > "${sha_tag_render}"
-if ! grep -q "image: lhjnilsson/foreverbull:sha-abcdef1" "${sha_tag_render}"; then
+if ! grep -q "image: ghcr.io/lhjnilsson/foreverbull:sha-abcdef1" "${sha_tag_render}"; then
   echo "a sha- tag must stay repository:tag" >&2
   rm -f "${sha_tag_render}"
   exit 1

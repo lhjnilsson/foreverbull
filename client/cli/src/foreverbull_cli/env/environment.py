@@ -50,11 +50,14 @@ RELEASE_NAME = "foreverbull"
 # Python client and the broker always come from the same release.
 CLIENT_PACKAGE = "foreverbull"
 # Single source for the app-image registry prefix. fbenv passes this to the
-# chart as global.imageRepository, so moving the three app images to another
-# registry (for example GHCR) is a change here and to the chart default.
-IMAGE_REPOSITORY = "lhjnilsson"
-# A checkout / editable install reports this version; no images are ever
-# published for it, so the pull hints name it as a development install.
+# chart as global.imageRepository. Published images live on public GHCR; local
+# `task build` tags use the same prefix so VERSION=local stays consistent.
+IMAGE_REPOSITORY = "ghcr.io/lhjnilsson"
+# Moving tag for the published nightly channel (release-design). Unset VERSION
+# uses this; client-version tags are not published on GHCR yet.
+PUBLISHED_VERSION = "latest"
+# A checkout / editable install reports this version. It is never used as an
+# image tag (published path is latest; local path is VERSION=local).
 DEVELOPMENT_VERSION = "0.0.0"
 LOCAL_VERSION = "local"
 LOCAL_BUILD_HINT = "Build the images with `task build` from a Foreverbull checkout, then run `VERSION=local {command}`."
@@ -302,8 +305,8 @@ class ImagePullError(RuntimeError):
                     f"{LOCAL_BUILD_HINT.format(command=command)}"
                 )
             return (
-                f"fbenv uses the images for your installed client version ({self.tag}), "
-                f"and none are published for it. {LOCAL_BUILD_HINT.format(command=command)}"
+                f"fbenv expected the published image tag `{self.tag}` on {self.repository}, "
+                f"and it is not there. {LOCAL_BUILD_HINT.format(command=command)}"
             )
         if self.cause == "auth":
             return (
@@ -339,17 +342,18 @@ class VersionError(ValueError):
     def __init__(self, value: str, client_version: str):
         self.value = value
         self.client_version = client_version
-        super().__init__(f"VERSION can only be `local`, got `{value}`.")
+        super().__init__(f"VERSION can only be unset (published `{PUBLISHED_VERSION}`) or `local`, got `{value}`.")
 
     def hint(self) -> str:
         return (
-            f"fbenv uses the images for your installed client version ({self.client_version}). "
+            f"fbenv pulls the published GHCR images tagged `{PUBLISHED_VERSION}` "
+            f"({IMAGE_REPOSITORY}/{{foreverbull,zipline,fb-grafana}}). "
             "Unset VERSION to use them, or set VERSION=local to use images you built with `task build`."
         )
 
 
 def installed_client_version() -> str:
-    """Version of the installed foreverbull Python client. Its images carry the same tag."""
+    """Version of the installed foreverbull Python client (for diagnostics; not the image tag)."""
     return importlib.metadata.version(CLIENT_PACKAGE)
 
 
@@ -589,10 +593,10 @@ class Config:
 
     @property
     def version(self) -> str:
-        """Image tag: the installed client version, or `local` with VERSION=local. Raises VersionError otherwise."""
+        """Image tag: published `latest`, or `local` with VERSION=local. Raises VersionError otherwise."""
         requested = str(self._environ.get("VERSION") or "").strip()
-        if not requested:
-            return self.client_version
+        if not requested or requested == PUBLISHED_VERSION:
+            return PUBLISHED_VERSION
         if requested == LOCAL_VERSION:
             return LOCAL_VERSION
         raise VersionError(requested, self.client_version)
@@ -1076,6 +1080,10 @@ class ClusterManager:
             f"global.imageRepository={self.config.image_repository}",
             "--set",
             f"global.imageTag={self.config.version}",
+            "--set",
+            # Floating latest must Always-pull so nightlies do not stick under IfNotPresent.
+            # VERSION=local (kind-loaded) keeps IfNotPresent.
+            f"global.appImagePullPolicy={'Always' if self.config.version == PUBLISHED_VERSION else 'IfNotPresent'}",
             "--set",
             f"expose.hostPort={'true' if self.config.is_local else 'false'}",
         ]
