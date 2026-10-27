@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from protobuf import DescFile
     from protobuf.wkt.google.protobuf.struct_pb import Struct
 
-    from ....finance.v1.marketdata_pb import Order, Portfolio
+    from ....finance.v1.marketdata_pb import OHLC, Order, Portfolio
     from ...v1.worker_pb import Algorithm, ExecutionConfiguration
 
 
@@ -152,7 +152,7 @@ class RunExecutionResponse(Message[_RunExecutionResponseFields]):
         ) -> None:
             pass
 
-_WorkerRequestFields: TypeAlias = Literal["task", "symbols", "portfolio"]
+_WorkerRequestFields: TypeAlias = Literal["task", "symbols", "portfolio", "bars"]
 
 class WorkerRequest(Message[_WorkerRequestFields]):
     """
@@ -173,9 +173,18 @@ class WorkerRequest(Message[_WorkerRequestFields]):
             ```proto
             optional foreverbull.finance.v1.Portfolio portfolio = 3;
             ```
+        bars:
+            Optional lookback bars for symbols as of the portfolio timestamp.
+            When non-empty, the worker must not open a database connection for OHLC.
+            Broker fills these from stored bars (same shape as Marketdata.GetOHLC).
+            Empty keeps today's direct-DB path until that path is removed.
+
+            ```proto
+            repeated foreverbull.finance.v1.OHLC bars = 4;
+            ```
     """
 
-    __slots__ = ("task", "symbols", "portfolio")
+    __slots__ = ("task", "symbols", "portfolio", "bars")
 
     if TYPE_CHECKING:
 
@@ -185,12 +194,14 @@ class WorkerRequest(Message[_WorkerRequestFields]):
             task: str = "",
             symbols: list[str] | None = None,
             portfolio: Portfolio | None = None,
+            bars: list[OHLC] | None = None,
         ) -> None:
             pass
 
         task: str
         symbols: list[str]
         portfolio: Portfolio | None
+        bars: list[OHLC]
 
 _WorkerResponseFields: TypeAlias = Literal["task", "orders", "error"]
 
@@ -328,7 +339,7 @@ class NamespaceRequestType(Enum):
 
 
 _DESC = file_desc(
-    b'\n+foreverbull/service/service/v1/worker.proto\x12\x1eforeverbull.service.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a#foreverbull/service/v1/worker.proto\x1a\x1cgoogle/protobuf/struct.proto"\x17\n\x15GetServiceInfoRequest"Y\n\x16GetServiceInfoResponse\x12?\n\talgorithm\x18\x01 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithm"\x94\x01\n\x19ConfigureExecutionRequest\x12w\n\rconfiguration\x18\x01 \x01(\x0b2..foreverbull.service.v1.ExecutionConfigurationR\rconfigurationB!\xbaH\x1e\xba\x01\x18\n\x08required\x1a\x0cthis != null\xc8\x01\x01"\x1c\n\x1aConfigureExecutionResponse"\x15\n\x13RunExecutionRequest"\x16\n\x14RunExecutionResponse"~\n\rWorkerRequest\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x18\n\x07symbols\x18\x02 \x03(\tR\x07symbols\x12?\n\tportfolio\x18\x03 \x01(\x0b2!.foreverbull.finance.v1.PortfolioR\tportfolio"\x80\x01\n\x0eWorkerResponse\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x125\n\x06orders\x18\x02 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders\x12\x19\n\x05error\x18\x03 \x01(\tH\x00R\x05error\x88\x01\x01B\x08\n\x06_error"\xac\x01\n\x10NamespaceRequest\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12H\n\x04type\x18\x02 \x01(\x0e24.foreverbull.service.service.v1.NamespaceRequestTypeR\x04type\x122\n\x05value\x18\x03 \x01(\x0b2\x17.google.protobuf.StructH\x00R\x05value\x88\x01\x01B\x08\n\x06_value"v\n\x11NamespaceResponse\x122\n\x05value\x18\x01 \x01(\x0b2\x17.google.protobuf.StructH\x00R\x05value\x88\x01\x01\x12\x19\n\x05error\x18\x02 \x01(\tH\x01R\x05error\x88\x01\x01B\x08\n\x06_valueB\x08\n\x06_error*(\n\x14NamespaceRequestType\x12\x07\n\x03GET\x10\x00\x12\x07\n\x03SET\x10\x012\x99\x03\n\x06Worker\x12\x81\x01\n\x0eGetServiceInfo\x125.foreverbull.service.service.v1.GetServiceInfoRequest\x1a6.foreverbull.service.service.v1.GetServiceInfoResponse"\x00\x12\x8d\x01\n\x12ConfigureExecution\x129.foreverbull.service.service.v1.ConfigureExecutionRequest\x1a:.foreverbull.service.service.v1.ConfigureExecutionResponse"\x00\x12{\n\x0cRunExecution\x123.foreverbull.service.service.v1.RunExecutionRequest\x1a4.foreverbull.service.service.v1.RunExecutionResponse"\x00B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/service/serviceb\x06proto3',
+    b'\n+foreverbull/service/service/v1/worker.proto\x12\x1eforeverbull.service.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a#foreverbull/service/v1/worker.proto\x1a\x1cgoogle/protobuf/struct.proto"\x17\n\x15GetServiceInfoRequest"Y\n\x16GetServiceInfoResponse\x12?\n\talgorithm\x18\x01 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithm"\x94\x01\n\x19ConfigureExecutionRequest\x12w\n\rconfiguration\x18\x01 \x01(\x0b2..foreverbull.service.v1.ExecutionConfigurationR\rconfigurationB!\xbaH\x1e\xba\x01\x18\n\x08required\x1a\x0cthis != null\xc8\x01\x01"\x1c\n\x1aConfigureExecutionResponse"\x15\n\x13RunExecutionRequest"\x16\n\x14RunExecutionResponse"\xb0\x01\n\rWorkerRequest\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x18\n\x07symbols\x18\x02 \x03(\tR\x07symbols\x12?\n\tportfolio\x18\x03 \x01(\x0b2!.foreverbull.finance.v1.PortfolioR\tportfolio\x120\n\x04bars\x18\x04 \x03(\x0b2\x1c.foreverbull.finance.v1.OHLCR\x04bars"\x80\x01\n\x0eWorkerResponse\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x125\n\x06orders\x18\x02 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders\x12\x19\n\x05error\x18\x03 \x01(\tH\x00R\x05error\x88\x01\x01B\x08\n\x06_error"\xac\x01\n\x10NamespaceRequest\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12H\n\x04type\x18\x02 \x01(\x0e24.foreverbull.service.service.v1.NamespaceRequestTypeR\x04type\x122\n\x05value\x18\x03 \x01(\x0b2\x17.google.protobuf.StructH\x00R\x05value\x88\x01\x01B\x08\n\x06_value"v\n\x11NamespaceResponse\x122\n\x05value\x18\x01 \x01(\x0b2\x17.google.protobuf.StructH\x00R\x05value\x88\x01\x01\x12\x19\n\x05error\x18\x02 \x01(\tH\x01R\x05error\x88\x01\x01B\x08\n\x06_valueB\x08\n\x06_error*(\n\x14NamespaceRequestType\x12\x07\n\x03GET\x10\x00\x12\x07\n\x03SET\x10\x012\x99\x03\n\x06Worker\x12\x81\x01\n\x0eGetServiceInfo\x125.foreverbull.service.service.v1.GetServiceInfoRequest\x1a6.foreverbull.service.service.v1.GetServiceInfoResponse"\x00\x12\x8d\x01\n\x12ConfigureExecution\x129.foreverbull.service.service.v1.ConfigureExecutionRequest\x1a:.foreverbull.service.service.v1.ConfigureExecutionResponse"\x00\x12{\n\x0cRunExecution\x123.foreverbull.service.service.v1.RunExecutionRequest\x1a4.foreverbull.service.service.v1.RunExecutionResponse"\x00B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/service/serviceb\x06proto3',
     [
         validate_pb.desc(),
         marketdata_pb.desc(),

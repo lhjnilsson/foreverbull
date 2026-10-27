@@ -374,3 +374,28 @@ feed:
 	}
 	return ctx.Err()
 }
+
+func (fs *MarketdataServer) GetOHLC(ctx context.Context, req *servicePb.GetOHLCRequest) (*servicePb.GetOHLCResponse, error) {
+	symbols := req.GetSymbols()
+	if len(symbols) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "symbols is required")
+	}
+	if req.GetAsOf() == nil {
+		return nil, status.Error(codes.InvalidArgument, "as_of is required")
+	}
+	provider, err := marketdata.NormalizeProvider(req.GetProvider())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	limit := int(req.GetLimit())
+	ohlcRepo := repository.OHLC{Conn: fs.pgx}
+	bars, err := ohlcRepo.List(ctx, provider, symbols, req.GetAsOf().AsTime(), limit)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "symbols:") || strings.Contains(msg, "limit:") {
+			return nil, status.Error(codes.InvalidArgument, msg)
+		}
+		return nil, fmt.Errorf("list ohlc: %w", err)
+	}
+	return &servicePb.GetOHLCResponse{Bars: bars}, nil
+}

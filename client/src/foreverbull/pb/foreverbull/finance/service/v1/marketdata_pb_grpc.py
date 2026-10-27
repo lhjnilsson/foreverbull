@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from grpc import StatusCode, method_handlers_generic_handler, unary_stream_rpc_method_handler, unary_unary_rpc_method_handler
 
-from .marketdata_pb import DownloadHistoricalDataRequest, DownloadHistoricalDataResponse, GetAssetRequest, GetAssetResponse, GetIndexRequest, GetIndexResponse
+from .marketdata_pb import DownloadHistoricalDataRequest, DownloadHistoricalDataResponse, GetAssetRequest, GetAssetResponse, GetIndexRequest, GetIndexResponse, GetOHLCRequest, GetOHLCResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
@@ -34,6 +34,11 @@ class MarketdataService:
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    async def get_ohlc(self, request: GetOHLCRequest, context: aio.ServicerContext) -> GetOHLCResponse:
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
     def add_to_server(self, server: aio.Server) -> None:
         """Register this service's RPC handlers with a grpc server."""
         rpc_method_handlers = {
@@ -51,6 +56,11 @@ class MarketdataService:
                 self.download_historical_data,
                 request_deserializer=DownloadHistoricalDataRequest.from_binary,
                 response_serializer=DownloadHistoricalDataResponse.to_binary,
+            ),
+            "GetOHLC": unary_unary_rpc_method_handler(
+                self.get_ohlc,
+                request_deserializer=GetOHLCRequest.from_binary,
+                response_serializer=GetOHLCResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -76,6 +86,11 @@ class MarketdataClient:
             "/foreverbull.finance.service.v1.Marketdata/DownloadHistoricalData",
             request_serializer=DownloadHistoricalDataRequest.to_binary,
             response_deserializer=DownloadHistoricalDataResponse.from_binary,
+        )
+        self._get_ohlc = channel.unary_unary(
+            "/foreverbull.finance.service.v1.Marketdata/GetOHLC",
+            request_serializer=GetOHLCRequest.to_binary,
+            response_deserializer=GetOHLCResponse.from_binary,
         )
 
     def get_asset(
@@ -114,6 +129,18 @@ class MarketdataClient:
     ) -> aio.UnaryStreamCall[DownloadHistoricalDataRequest, DownloadHistoricalDataResponse]:
         return self._download_historical_data(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
 
+    def get_ohlc(
+        self,
+        request: GetOHLCRequest,
+        *,
+        timeout: float | None = None,
+        metadata: aio.Metadata | Sequence[tuple[str, str | bytes]] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> aio.UnaryUnaryCall[GetOHLCRequest, GetOHLCResponse]:
+        return self._get_ohlc(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
 
 class MarketdataServiceSync:
     def get_asset(self, request: GetAssetRequest, context: ServicerContext) -> GetAssetResponse:
@@ -127,6 +154,11 @@ class MarketdataServiceSync:
         raise NotImplementedError("Method not implemented!")
 
     def download_historical_data(self, request: DownloadHistoricalDataRequest, context: ServicerContext) -> Iterator[DownloadHistoricalDataResponse]:
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def get_ohlc(self, request: GetOHLCRequest, context: ServicerContext) -> GetOHLCResponse:
         context.set_code(StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
@@ -148,6 +180,11 @@ class MarketdataServiceSync:
                 self.download_historical_data,
                 request_deserializer=DownloadHistoricalDataRequest.from_binary,
                 response_serializer=DownloadHistoricalDataResponse.to_binary,
+            ),
+            "GetOHLC": unary_unary_rpc_method_handler(
+                self.get_ohlc,
+                request_deserializer=GetOHLCRequest.from_binary,
+                response_serializer=GetOHLCResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -173,6 +210,11 @@ class MarketdataClientSync:
             "/foreverbull.finance.service.v1.Marketdata/DownloadHistoricalData",
             request_serializer=DownloadHistoricalDataRequest.to_binary,
             response_deserializer=DownloadHistoricalDataResponse.from_binary,
+        )
+        self._get_ohlc = channel.unary_unary(
+            "/foreverbull.finance.service.v1.Marketdata/GetOHLC",
+            request_serializer=GetOHLCRequest.to_binary,
+            response_deserializer=GetOHLCResponse.from_binary,
         )
 
     def get_asset(
@@ -210,3 +252,15 @@ class MarketdataClientSync:
         compression: Compression | None = None,
     ) -> _CallIterator[DownloadHistoricalDataResponse]:
         return self._download_historical_data(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
+    def get_ohlc(
+        self,
+        request: GetOHLCRequest,
+        *,
+        timeout: float | None = None,
+        metadata: tuple[tuple[str, str | bytes], ...] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> GetOHLCResponse:
+        return self._get_ohlc(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
