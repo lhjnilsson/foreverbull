@@ -20,6 +20,7 @@ from foreverbull.foreverbull import BacktestSession
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull_testing.bars import messages as ohlc_messages
 
 
 @dataclass
@@ -159,7 +160,7 @@ class PortfolioManager:
                 positions=proto_positions,
                 portfolio_value=portfolio_value,
             ),
-            self._db,
+            ohlc_messages(self._db, dt),
         )
 
 

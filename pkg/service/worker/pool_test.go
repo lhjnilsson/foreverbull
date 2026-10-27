@@ -44,6 +44,125 @@ func (test *PoolTest) TestConfigureDoesNotSendADatabaseURL() {
 	test.NotContains(configuration.String(), "foreverbull@")
 }
 
+type recordingBars struct {
+	calls    int
+	sizes    []int
+	provider string
+	asOf     time.Time
+	limit    int
+	bars     []*finance_pb.OHLC
+	err      error
+}
+
+func (r *recordingBars) List(_ context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*finance_pb.OHLC, error) {
+	r.calls++
+	r.sizes = append(r.sizes, len(symbols))
+	r.provider = provider
+	r.asOf = asOf
+	r.limit = limit
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.bars, nil
+}
+
+func (test *PoolTest) TestProcessSendsBarsWithoutADatabaseURL() {
+	when := time.Date(2024, time.March, 9, 15, 4, 5, 0, time.UTC)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		&finance_pb.OHLC{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(when)},
+		&finance_pb.OHLC{Symbol: "MSFT", Close: 11, Timestamp: timestamppb.New(when)},
+	}}
+
+	var mu sync.Mutex
+	var requests []*servicePb.WorkerRequest
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		mu.Lock()
+		defer mu.Unlock()
+		requests = append(requests, proto.Clone(req).(*servicePb.WorkerRequest))
+		return &servicePb.WorkerResponse{}
+	}
+	algo, runner := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{
+		CB: handler, Name: "handle_data", Parallel: true,
+	})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "stooq"))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	configuration := pool.Configure()
+	test.Empty(configuration.GetDatabaseURL())
+	configBytes, err := proto.Marshal(configuration)
+	test.Require().NoError(err)
+	test.NotContains(string(configBytes), "postgres://")
+
+	socket, err := rep.NewSocket()
+	test.Require().NoError(err)
+	defer socket.Close()
+	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
+	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
+	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+	go runner(socket)
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(when)}
+	_, err = pool.Process(context.TODO(), when.Add(time.Hour), []string{"AAPL", "MSFT"}, portfolio)
+	test.Require().NoError(err)
+	test.Equal("stooq", source.provider)
+	test.Equal(252, source.limit)
+	test.True(when.Equal(source.asOf))
+	test.Require().Len(requests, 2)
+	bySymbol := map[string]string{}
+	for _, req := range requests {
+		test.Require().Len(req.GetBars(), 1)
+		bySymbol[req.GetSymbols()[0]] = req.GetBars()[0].GetSymbol()
+	}
+	test.Equal("AAPL", bySymbol["AAPL"])
+	test.Equal("MSFT", bySymbol["MSFT"])
+	raw, err := proto.Marshal(requests[0])
+	test.Require().NoError(err)
+	test.NotContains(string(raw), "postgres://")
+	test.NotContains(string(raw), "foreverbull@")
+}
+
+func (test *PoolTest) TestProcessChunksBarReads() {
+	source := &recordingBars{}
+	handler := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		return &servicePb.WorkerResponse{}
+	}
+	algo, runner := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{CB: handler, Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	configuration := pool.Configure()
+	socket, err := rep.NewSocket()
+	test.Require().NoError(err)
+	defer socket.Close()
+	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
+	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
+	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+	go runner(socket)
+
+	symbols := make([]string, 501)
+	for i := range symbols {
+		symbols[i] = fmt.Sprintf("S%d", i)
+	}
+	_, err = pool.Process(context.TODO(), time.Now(), symbols, &finance_pb.Portfolio{})
+	test.Require().NoError(err)
+	test.Equal(2, source.calls)
+	test.Equal([]int{500, 1}, source.sizes)
+}
+
+func (test *PoolTest) TestProcessReturnsABarLoadErrorBeforeSending() {
+	source := &recordingBars{err: fmt.Errorf("read failed")}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	_, err = pool.Process(context.TODO(), time.Now(), []string{"AAPL"}, &finance_pb.Portfolio{})
+	test.Require().EqualError(err, "load bars: read failed")
+	test.NotContains(err.Error(), "postgres://")
+}
+
 func (test *PoolTest) TestSimple() {
 	cb := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 		return &servicePb.WorkerResponse{}

@@ -18,10 +18,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from zipline.utils.cli import maybe_show_progress
 
-from foreverbull.models import get_engine
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull_zipline.database import get_engine
 
 
 warnings.filterwarnings("ignore")

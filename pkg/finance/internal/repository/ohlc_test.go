@@ -386,6 +386,54 @@ func (test *OHLCTests) TestListRespectsAsOfLimitAndProvider() {
 	test.Empty(missing)
 }
 
+func (test *OHLCTests) TestListResolvedFollowsTickerAliases() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: test.conn}
+	_, err := instruments.Store(ctx, "US30303M1027", "Meta Platforms")
+	test.Require().NoError(err)
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "FB", "Facebook"))
+	test.Require().NoError(assets.Store(ctx, "META", "Meta Platforms"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		($1, 'FB', '2021-07-01', '2021-10-31'),
+		($1, 'META', '2021-10-31', NULL)`, "US30303M1027")
+	test.Require().NoError(err)
+
+	oct := time.Date(2021, 10, 1, 21, 0, 0, 0, time.UTC)
+	nov := time.Date(2021, 11, 1, 21, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "FB", oct, 1, 1, 1, 10, 1))
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "META", nov, 1, 1, 1, 20, 1))
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", oct, 1, 1, 1, 7, 1))
+
+	asOf := time.Date(2021, 11, 15, 21, 0, 0, 0, time.UTC)
+	bars, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"META"}, asOf, 252)
+	test.Require().NoError(err)
+	test.Require().Len(bars, 2)
+	test.Equal("META", bars[0].GetSymbol())
+	test.InDelta(10, bars[0].GetClose(), 0.0001)
+	test.Equal("META", bars[1].GetSymbol())
+	test.InDelta(20, bars[1].GetClose(), 0.0001)
+	test.NotContains(bars[0].String(), "postgres://")
+
+	before := time.Date(2021, 10, 15, 21, 0, 0, 0, time.UTC)
+	fb, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"FB"}, before, 252)
+	test.Require().NoError(err)
+	test.Require().Len(fb, 1)
+	test.Equal("FB", fb[0].GetSymbol())
+	test.InDelta(10, fb[0].GetClose(), 0.0001)
+
+	own, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"ABC"}, asOf, 10)
+	test.Require().NoError(err)
+	test.Require().Len(own, 1)
+	test.Equal("ABC", own[0].GetSymbol())
+	test.InDelta(7, own[0].GetClose(), 0.0001)
+
+	none, err := test.ohlcStorage.ListResolved(ctx, "yahoo", nil, asOf, 10)
+	test.Require().NoError(err)
+	test.Empty(none)
+}
+
 func (test *OHLCTests) TestListRejectsBadInput() {
 	ctx := context.Background()
 	asOf := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)

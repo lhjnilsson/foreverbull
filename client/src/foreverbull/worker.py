@@ -14,16 +14,12 @@ from multiprocessing import Queue
 from multiprocessing.synchronize import Event
 
 import pynng
-import sqlalchemy
 
 from protobuf import merge_from_binary
 
 from foreverbull import exceptions
 from foreverbull import models
-from foreverbull.broker.utils import database_url_for_host
-from foreverbull.broker.utils import get_engine
 from foreverbull.broker.utils import nng_hostname
-from foreverbull.broker.utils import redact_url
 from foreverbull.models.finance import worker_request_error
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
@@ -49,7 +45,6 @@ class WorkerInstance(Worker):
 
         self._broker_socket: pynng.Socket | None = None
         self._namespace_socket: pynng.Socket | None = None
-        self._database_engine: sqlalchemy.Engine | None = None
 
     def _dial(self, socket_cls, port: int):
         hostname = nng_hostname()
@@ -80,16 +75,8 @@ class WorkerInstance(Worker):
         except Exception as e:
             raise exceptions.ConfigurationError("Unable to connect to namespace") from e
 
-        database_url = database_url_for_host(req.databaseURL)
-        try:
-            engine = get_engine(database_url)
-            with engine.connect() as connection:
-                connection.execute(sqlalchemy.text("SELECT 1 from asset;"))
-            self._database_engine = engine
-            self.logger.debug(f"connected to database: {redact_url(database_url)}")
-        except Exception as e:
-            raise exceptions.ConfigurationError("Unable to connect to database") from e
-
+        # databaseURL stays on the wire for old brokers. The worker does not
+        # open it: bars arrive on each WorkerRequest.
         for function in req.functions:
             for parameter in function.parameters:
                 self._algo.configure(function.name, parameter.key, parameter.value)
@@ -103,7 +90,6 @@ class WorkerInstance(Worker):
         return all(
             [
                 self._algo is not None,
-                self._database_engine is not None,
                 self._broker_socket is not None,
                 self._namespace_socket is not None,
             ]
@@ -111,7 +97,7 @@ class WorkerInstance(Worker):
 
     def run_execution(self, stop_event: Event | threading.Event) -> None:
         self.logger.info("running execution")
-        if not self._algo or not self._database_engine or not self._broker_socket or not self._namespace_socket:
+        if not self._algo or not self._broker_socket or not self._namespace_socket:
             raise exceptions.ConfigurationError("Worker not configured")
         while not stop_event.is_set():
             request = None
@@ -125,13 +111,12 @@ class WorkerInstance(Worker):
                 if portfolio is None:
                     raise exceptions.ConfigurationError("worker request has no portfolio")
                 self.logger.debug(f"Processing {portfolio.timestamp} symbols: {request.symbols}")
-                with self._database_engine.connect() as db:
-                    orders = self._algo.process(
-                        request.task,
-                        db,
-                        portfolio,
-                        [symbol for symbol in request.symbols],
-                    )
+                orders = self._algo.process(
+                    request.task,
+                    portfolio,
+                    [symbol for symbol in request.symbols],
+                    list(request.bars),
+                )
                 self.logger.debug("Sending orders to broker: %s", orders)
                 for order in orders:
                     response.orders.append(marketdata_pb.Order(symbol=order.symbol, amount=order.amount))

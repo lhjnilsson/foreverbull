@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	worker_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
@@ -24,7 +23,30 @@ type Pool interface {
 	Close() error
 }
 
-func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
+// BarSource loads stored bars for one worker step. The broker calls it;
+// the worker never opens Postgres.
+type BarSource interface {
+	List(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*finance_pb.OHLC, error)
+}
+
+// Option configures a pool.
+type Option func(*pool)
+
+// WithBars attaches stored bars to each WorkerRequest. provider is the
+// backtest price source; an empty provider is yahoo inside the source.
+func WithBars(source BarSource, provider string) Option {
+	return func(p *pool) {
+		p.bars = source
+		p.provider = provider
+	}
+}
+
+const (
+	workerBarChunk = 500
+	workerBarLimit = 252
+)
+
+func NewPool(ctx context.Context, algo *worker_pb.Algorithm, opts ...Option) (Pool, error) {
 	poolSocket, err := socket.NewRequester("0.0.0.0", 0, false)
 	if err != nil {
 		return nil, fmt.Errorf("error creating requester: %w", err)
@@ -46,6 +68,9 @@ func NewPool(ctx context.Context, algo *worker_pb.Algorithm) (Pool, error) {
 	namespace := CreateNamespace(algo.Namespaces)
 
 	p := &pool{Socket: poolSocket, NamespaceSocket: namespaceSocket, algo: algo, namespace: namespace}
+	for _, opt := range opts {
+		opt(p)
+	}
 	go p.startNamespaceListener()
 
 	return p, nil
@@ -57,6 +82,9 @@ type pool struct {
 
 	algo      *worker_pb.Algorithm
 	namespace Namespace
+
+	bars     BarSource
+	provider string
 }
 
 func (p *pool) startNamespaceListener() {
@@ -135,7 +163,6 @@ func (p *pool) Configure() *worker_pb.ExecutionConfiguration {
 	return &worker_pb.ExecutionConfiguration{
 		BrokerPort:    int32(p.Socket.GetPort()),
 		NamespacePort: int32(p.NamespaceSocket.GetPort()),
-		DatabaseURL:   environment.GetWorkerDatabaseURL(),
 		Functions:     functions,
 	}
 }
@@ -148,6 +175,15 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 	}
 
 	p.namespace.Flush()
+
+	asOf := timestamp
+	if portfolio != nil && portfolio.GetTimestamp() != nil {
+		asOf = portfolio.GetTimestamp().AsTime()
+	}
+	loaded, err := p.lookupBars(ctx, symbols, asOf)
+	if err != nil {
+		return nil, err
+	}
 
 	var orders []*finance_pb.Order
 
@@ -168,6 +204,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 						Task:      function.Name,
 						Symbols:   []string{s},
 						Portfolio: portfolio,
+						Bars:      barsForSymbol(loaded, s),
 					}
 					response := servicePb.WorkerResponse{}
 
@@ -197,6 +234,7 @@ func (p *pool) Process(ctx context.Context, timestamp time.Time, symbols []strin
 				Task:      function.Name,
 				Symbols:   symbols,
 				Portfolio: portfolio,
+				Bars:      loaded,
 			}
 			response := servicePb.WorkerResponse{}
 
@@ -227,6 +265,35 @@ func workerResponseError(response *servicePb.WorkerResponse) error {
 		return nil
 	}
 	return errors.New(message)
+}
+
+func (p *pool) lookupBars(ctx context.Context, symbols []string, asOf time.Time) ([]*finance_pb.OHLC, error) {
+	if p.bars == nil || len(symbols) == 0 {
+		return nil, nil
+	}
+	loaded := make([]*finance_pb.OHLC, 0)
+	for start := 0; start < len(symbols); start += workerBarChunk {
+		end := start + workerBarChunk
+		if end > len(symbols) {
+			end = len(symbols)
+		}
+		chunk, err := p.bars.List(ctx, p.provider, symbols[start:end], asOf, workerBarLimit)
+		if err != nil {
+			return nil, fmt.Errorf("load bars: %w", err)
+		}
+		loaded = append(loaded, chunk...)
+	}
+	return loaded, nil
+}
+
+func barsForSymbol(bars []*finance_pb.OHLC, symbol string) []*finance_pb.OHLC {
+	matched := make([]*finance_pb.OHLC, 0)
+	for _, bar := range bars {
+		if bar.GetSymbol() == symbol {
+			matched = append(matched, bar)
+		}
+	}
+	return matched
 }
 
 func (p *pool) Close() error {

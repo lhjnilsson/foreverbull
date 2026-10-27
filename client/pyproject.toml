@@ -11,8 +11,6 @@ dependencies = [
   "pynng",
   "minio",
   "pandas",
-  "sqlalchemy",
-  "psycopg2-binary",
   "click",
   "cython",
   "docker",

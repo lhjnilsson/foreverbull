@@ -20,6 +20,7 @@ from foreverbull.models.finance import ohlc_provider
 from foreverbull.models.service import Algorithm
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
+from foreverbull_testing.bars import messages as ohlc_messages
 
 
 _OHLC_COLUMNS = ("symbol", "time", "open", "high", "low", "close", "volume")
@@ -129,7 +130,8 @@ class Session:
         return times
 
     def assets(self, symbols: Sequence[str], as_of: datetime) -> Assets:
-        return Assets(as_of, self._conn, list(symbols))
+        names = list(symbols)
+        return Assets(as_of, names, ohlc_messages(self._conn, as_of, names))
 
     def portfolio(
         self,
@@ -137,7 +139,10 @@ class Session:
         portfolio_value: float,
         positions: Sequence[Any] | None = None,
     ) -> Portfolio:
-        return Portfolio(self._portfolio_message(as_of, portfolio_value, positions), self._conn)
+        return Portfolio(
+            self._portfolio_message(as_of, portfolio_value, positions),
+            ohlc_messages(self._conn, as_of, self._symbols),
+        )
 
     def run(
         self,
@@ -152,8 +157,9 @@ class Session:
             raise ValueError("algorithm has no functions")
         orders = []
         symbols = list(self._symbols)
+        bars = ohlc_messages(self._conn, as_of, symbols)
         for function in functions:
-            orders.extend(algorithm.process(function.name, self._conn, message, symbols))
+            orders.extend(algorithm.process(function.name, message, symbols, bars))
         return orders
 
     def replay(

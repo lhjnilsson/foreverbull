@@ -1,6 +1,7 @@
 import math
 import os
 
+from datetime import UTC
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
@@ -8,13 +9,8 @@ from datetime import timedelta
 import pandas
 
 from pandas import DataFrame
-from pandas import read_sql_query
 from protobuf import merge_from_binary
 from protobuf.wkt import Struct
-from sqlalchemy import bindparam
-from sqlalchemy import engine
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
 
 from foreverbull.broker.utils import namespace_socket
 from foreverbull.exceptions import ConfigurationError
@@ -67,14 +63,14 @@ _STOCK_DATA_LOOKBACK = 252
 # scan no longer grows with every bar stored before it.
 _STOCK_DATA_WINDOW = timedelta(days=_STOCK_DATA_LOOKBACK * 2 + 30)
 
-# Fixed condition for _resolved_bars; :since and :as_of are bound parameters.
-_STOCK_DATA_BARS = "o.time > :since AND o.time <= :as_of"
+_STOCK_DATA_COLUMNS = ["symbol", "time", "high", "low", "open", "close", "volume"]
 
 
 def worker_request_error(exc: BaseException) -> str:
-    """The text a bar read returns when it fails.
+    """The text a worker failure returns.
 
-    A missing SELECT is the install-bug sentence. The database error and the SQL stay out of it.
+    A permission-denied database error is the install-bug sentence. The
+    database error and the SQL stay out of it.
     """
     if _market_data_permission_denied(exc):
         return WORKER_MARKET_DATA_DENIED
@@ -86,10 +82,9 @@ def _market_data_permission_denied(exc: BaseException) -> bool:
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if isinstance(current, DBAPIError):
-            orig = getattr(current, "orig", None)
-            if _sqlstate(orig) == "42501" or (orig is not None and "permission denied" in str(orig).lower()):
-                return True
+        orig = getattr(current, "orig", None)
+        if orig is not None and (_sqlstate(orig) == "42501" or "permission denied" in str(orig).lower()):
+            return True
         current = current.__cause__
     return False
 
@@ -113,51 +108,67 @@ def ohlc_provider() -> str:
     return provider
 
 
-def _resolved_bars(bar_filter: str) -> str:
-    """CTE `chosen`: the bars of each wanted ticker, resolved through asset_symbol.
+def _as_utc(as_of: datetime) -> datetime:
+    if as_of.tzinfo is None:
+        return as_of.replace(tzinfo=UTC)
+    return as_of.astimezone(UTC)
 
-    Ticker is a dated alias of an ISIN (pkg/backtest/universe.md). A wanted
-    ticker resolves to the ISIN that holds it on :day, and every ticker of
-    that ISIN is read. On each bar time the ticker whose asset_symbol dates
-    cover it wins, then the wanted ticker, then any other: Yahoo stores the
-    history before the FB to META rename under META, other providers under
-    FB. A ticker with no asset_symbol row reads only its own bars.
 
-    bar_filter is a fixed condition on `o` from this module, never input.
+def _empty_stock_frame() -> DataFrame:
+    return DataFrame({name: [] for name in _STOCK_DATA_COLUMNS})
+
+
+def _bar_time(bar: marketdata_pb.OHLC) -> datetime:
+    return _as_utc(pb_utils.from_proto_timestamp(bar.timestamp))
+
+
+def _frame_for_symbol(bars: list[marketdata_pb.OHLC], symbol: str, as_of: datetime) -> DataFrame:
+    """Last lookback bars for symbol with since < time <= as_of, oldest first.
+
+    The broker already resolved ticker aliases. The symbol on each bar is the
+    one the algorithm asked for.
     """
-    return f"""
-        WITH owner AS (
-            SELECT DISTINCT ON (a.symbol) a.symbol AS wanted, a.isin
-            FROM asset_symbol a
-            WHERE a.symbol IN :symbols
-            ORDER BY a.symbol,
-                     (a.from_date <= :day AND (a.to_date IS NULL OR a.to_date > :day)) DESC,
-                     (a.from_date <= :day) DESC,
-                     a.from_date DESC
-        ),
-        candidate AS (
-            SELECT o.symbol AS wanted, o.symbol AS ticker, NULL::date AS from_date, NULL::date AS to_date,
-                   o.time, o.high, o.low, o.open, o.close, o.volume
-            FROM ohlc o
-            WHERE o.symbol IN :symbols AND o.provider = :provider AND {bar_filter}
-            UNION ALL
-            SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
-            FROM owner w
-            JOIN asset_symbol s ON s.isin = w.isin
-            JOIN ohlc o ON o.symbol = s.symbol
-            WHERE o.provider = :provider AND {bar_filter}
-        ),
-        chosen AS (
-            SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume
-            FROM candidate
-            ORDER BY wanted, time,
-                     CASE
-                         WHEN from_date <= time::date AND (to_date IS NULL OR time::date < to_date) THEN 0
-                         WHEN ticker = wanted THEN 1
-                         ELSE 2
-                     END
-        )
-    """
+    as_of = _as_utc(as_of)
+    since = as_of - _STOCK_DATA_WINDOW
+    rows = []
+    for bar in bars:
+        if bar.symbol != symbol:
+            continue
+        when = _bar_time(bar)
+        if when <= as_of and when > since:
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "time": when,
+                    "high": float(bar.high),
+                    "low": float(bar.low),
+                    "open": float(bar.open),
+                    "close": float(bar.close),
+                    "volume": int(bar.volume),
+                }
+            )
+    rows.sort(key=lambda row: row["time"])
+    if len(rows) > _STOCK_DATA_LOOKBACK:
+        rows = rows[-_STOCK_DATA_LOOKBACK:]
+    if not rows:
+        return _empty_stock_frame()
+    return DataFrame(rows, columns=_STOCK_DATA_COLUMNS)
+
+
+def _close_on_day(bars: list[marketdata_pb.OHLC], symbol: str, day: date) -> float | None:
+    """Close of the latest bar for symbol on that calendar day, in UTC."""
+    chosen: tuple[datetime, float] | None = None
+    for bar in bars:
+        if bar.symbol != symbol:
+            continue
+        when = _bar_time(bar)
+        if when.date() != day:
+            continue
+        if chosen is None or when >= chosen[0]:
+            chosen = (when, float(bar.close))
+    if chosen is None:
+        return None
+    return chosen[1]
 
 
 def _exchange_namespace(request: worker_service_pb.NamespaceRequest) -> worker_service_pb.NamespaceResponse:
@@ -170,21 +181,24 @@ def _exchange_namespace(request: worker_service_pb.NamespaceRequest) -> worker_s
         return response
 
 
-def _day(as_of: datetime) -> date:
-    return as_of.date() if isinstance(as_of, datetime) else as_of
-
-
 def _stock_data_since(as_of: datetime) -> datetime:
     """Exclusive lower bound of the bars a stock_data read scans."""
     return as_of - _STOCK_DATA_WINDOW
 
 
 class Asset:
-    def __init__(self, as_of: datetime, db: engine.Connection, symbol: str, *, _stock_data_loader=None):
+    def __init__(
+        self,
+        as_of: datetime,
+        symbol: str,
+        bars: list[marketdata_pb.OHLC] | None = None,
+        *,
+        _stock_data_loader=None,
+    ):
         self._as_of = as_of
-        self._db = db
         self._symbol = symbol
-        # Set only for Assets iteration. A direct Asset keeps the single-symbol query.
+        self._bars = [] if bars is None else bars
+        # Set only for Assets iteration. A direct Asset keeps its own frame.
         self._stock_data_loader = _stock_data_loader
 
     def get_metric[T: (int, float, bool, str, None)](self, key: str) -> T:
@@ -214,34 +228,14 @@ class Asset:
     def stock_data(self) -> DataFrame:
         if self._stock_data_loader is not None:
             return self._stock_data_loader(self._symbol)
-        query = text(
-            _resolved_bars(_STOCK_DATA_BARS)
-            + """
-            SELECT symbol, time, high, low, open, close, volume
-            FROM (
-                SELECT symbol, time, high, low, open, close, volume
-                FROM chosen
-                ORDER BY time DESC
-                LIMIT :limit
-            ) recent
-            ORDER BY time ASC
-            """
-        ).bindparams(
-            bindparam("symbols", value=[self.symbol], expanding=True),
-            bindparam("as_of", value=self._as_of),
-            bindparam("since", value=_stock_data_since(self._as_of)),
-            bindparam("day", value=_day(self._as_of)),
-            bindparam("provider", value=ohlc_provider()),
-            bindparam("limit", value=_STOCK_DATA_LOOKBACK),
-        )
-        return read_sql_query(query, self._db)
+        return _frame_for_symbol(self._bars, self._symbol, self._as_of)
 
 
 class Assets:
-    def __init__(self, as_of: datetime, db: engine.Connection, symbols: list[str]):
+    def __init__(self, as_of: datetime, symbols: list[str], bars: list[marketdata_pb.OHLC] | None = None):
         self._as_of = as_of
-        self._db = db
         self._symbols = symbols
+        self._bars = [] if bars is None else bars
         self._asset_frames: dict[str, DataFrame] | None = None
 
     def get_metrics[T: (int, float, bool, str)](self, key: str) -> pandas.Series:
@@ -266,7 +260,7 @@ class Assets:
 
     def __iter__(self):
         for symbol in self.symbols:
-            yield Asset(self._as_of, self._db, symbol, _stock_data_loader=self._asset_frame)
+            yield Asset(self._as_of, symbol, self._bars, _stock_data_loader=self._asset_frame)
 
     def _asset_frame(self, symbol: str) -> DataFrame:
         if self._asset_frames is None:
@@ -274,11 +268,13 @@ class Assets:
         return self._asset_frames[symbol]
 
     def _load_asset_frames(self) -> dict[str, DataFrame]:
-        # One statement. ohlc is UNIQUE(provider, symbol, time), so this window matches
-        # Asset.stock_data's ORDER BY time DESC LIMIT, and time ASC is a total order.
+        # One pass over the bars the broker sent. time ASC is a total order.
         batched = self.stock_data
         empty = batched.iloc[0:0].reset_index()
-        present = set(batched.index.get_level_values("symbol"))
+        if batched.empty:
+            present: set[str] = set()
+        else:
+            present = set(batched.index.get_level_values("symbol"))
         frames: dict[str, DataFrame] = {}
         for symbol in self._symbols:
             if symbol in present:
@@ -290,27 +286,12 @@ class Assets:
 
     @property
     def stock_data(self) -> DataFrame:
-        query = text(
-            _resolved_bars(_STOCK_DATA_BARS)
-            + """
-            SELECT symbol, time, high, low, open, close, volume
-            FROM (
-                SELECT symbol, time, high, low, open, close, volume,
-                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
-                FROM chosen
-            ) bounded
-            WHERE rn <= :limit
-            ORDER BY symbol, time
-            """
-        ).bindparams(
-            bindparam("symbols", value=list(self.symbols), expanding=True),
-            bindparam("as_of", value=self._as_of),
-            bindparam("since", value=_stock_data_since(self._as_of)),
-            bindparam("day", value=_day(self._as_of)),
-            bindparam("provider", value=ohlc_provider()),
-            bindparam("limit", value=_STOCK_DATA_LOOKBACK),
-        )
-        df = read_sql_query(query, self._db)
+        frames = [_frame_for_symbol(self._bars, symbol, self._as_of) for symbol in self._symbols]
+        if not frames:
+            empty = _empty_stock_frame()
+            empty.set_index(["symbol", "time"], inplace=True)
+            return empty
+        df = pandas.concat(frames, ignore_index=True)
         df.set_index(["symbol", "time"], inplace=True)
         df.sort_index(inplace=True)
         return df
@@ -356,11 +337,11 @@ def equal_weight_percent(n_selected: int, cash_reserve: float, max_positions: in
 
 
 class Portfolio:
-    def __init__(self, pb: marketdata_pb.Portfolio, db: engine.Connection):
+    def __init__(self, pb: marketdata_pb.Portfolio, bars: list[marketdata_pb.OHLC] | None = None):
         self._pb = pb
-        self._db = db
+        self._bars = [] if bars is None else bars
         self.pending_orders: list[marketdata_pb.Order] = []
-        self._close_by_symbol_day: dict[tuple[str, str, str], float] = {}
+        self._close_by_symbol_day: dict[tuple[str, str], float] = {}
 
     @property
     def positions(self) -> Positions:
@@ -376,18 +357,13 @@ class Portfolio:
         timestamp = self._pb.timestamp
         if timestamp is None:
             raise ValueError("portfolio has no timestamp")
-        day = timestamp.to_datetime().strftime("%Y-%m-%d")
-        provider = ohlc_provider()
-        key = (provider, symbol, day)
+        day = _as_utc(pb_utils.from_proto_timestamp(timestamp)).date()
+        key = (symbol, day.isoformat())
         if key not in self._close_by_symbol_day:
-            q = text(_resolved_bars("o.time::date = :day") + "SELECT close FROM chosen").bindparams(
-                bindparam("symbols", value=[symbol], expanding=True),
-                bindparam("day", value=timestamp.to_datetime().date()),
-                bindparam("provider", value=provider),
-            )
-            latest_close = self._db.execute(q).scalar()
-            assert latest_close is not None, f"unable to find latest close price for {symbol}"
-            self._close_by_symbol_day[key] = float(latest_close)
+            latest_close = _close_on_day(self._bars, symbol, day)
+            if latest_close is None:
+                raise ConfigurationError(f"unable to find latest close price for {symbol}")
+            self._close_by_symbol_day[key] = latest_close
         return self._close_by_symbol_day[key]
 
     def _calculate_order_value_amount(self, symbol: str, value: float) -> int:
