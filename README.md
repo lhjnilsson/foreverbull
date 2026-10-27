@@ -58,7 +58,7 @@ cookiecutter https://github.com/lhjnilsson/foreverbull.git --directory templates
 fbull backtest run demo simple_foreverbull/crossover.py
 ```
 
-`fbenv create` without `VERSION` pulls `ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:latest`. If a pull fails, it stops with one ✖ line naming the image (on local Kind, before installing anything). Grafana: the `Charts:` link from the run, or [http://localhost:3000](http://localhost:3000) (anonymous access).
+`fbenv create` without `VERSION` pulls `ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:latest`. If a pull fails, it stops with one ✖ line naming the image (on a local install, before installing anything). Grafana: the `Charts:` link from the run, or [http://localhost:3000](http://localhost:3000) (anonymous access).
 
 ### Local development (from this checkout)
 
