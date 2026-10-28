@@ -18,12 +18,10 @@ def _render(renderable) -> str:
 
 
 def test_format_usd_uses_two_decimals_and_a_leading_minus():
-    assert format_usd(104200) == "104,200.00"
-    assert format_usd(100000.126) == "100,000.13"
-    assert format_usd(0) == "0.00"
-    assert format_usd(-12.3) == "-12.30"
-    assert "$" not in format_usd(104200)
-    assert "$" not in format_usd(-12.3)
+    assert format_usd(104200) == "$104,200.00"
+    assert format_usd(100000.126) == "$100,000.13"
+    assert format_usd(0) == "$0.00"
+    assert format_usd(-12.3) == "-$12.30"
 
 
 def test_format_active_days_is_n_of_m():
@@ -74,11 +72,10 @@ def test_metrics_table_prints_last_period_scalars_and_first_open():
         longs_count=2,
     )
     rendered = _render(metrics_table("SPY", [first, held_short, last]))
-    assert "100,000.00" in rendered
-    assert "104,200.00" in rendered
-    assert "$" not in rendered
-    assert "102,000.00" not in rendered
-    assert "90,000.00" not in rendered
+    assert "$100,000.00" in rendered
+    assert "$104,200.00" in rendered
+    assert "$102,000.00" not in rendered
+    assert "$90,000.00" not in rendered
     assert "+4.2%" in rendered
     assert "+1.0%" not in rendered
     assert "Benchmark (SPY)" in rendered
@@ -132,8 +129,7 @@ def test_tradeless_periods_keep_zero_return_and_leave_ratios_unset():
     assert held_no_position(periods)
     assert active_day_count(periods) == 0
     rendered = _render(metrics_table("SPY", periods))
-    assert "100,000.00" in rendered
-    assert "$" not in rendered
+    assert "$100,000.00" in rendered
     assert "+0.0%" in rendered
     assert "+24.8%" in rendered
     assert "0 of 2" in rendered

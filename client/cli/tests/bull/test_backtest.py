@@ -984,11 +984,10 @@ def test_backtest_run_prints_results_summary(runner):
     mock_backtest_session.run_execution.assert_called_once()
     assert "Backtest finished: test_name · 2020-01-01 → 2020-01-31 · provider: yahoo" in result.stdout
     # The last period holds the cumulative numbers for the whole run.
-    assert "100,000.00" in result.stdout
-    assert "104,200.00" in result.stdout
-    assert "$" not in result.stdout
-    assert "102,000.00" not in result.stdout
-    assert "90,000.00" not in result.stdout
+    assert "$100,000.00" in result.stdout
+    assert "$104,200.00" in result.stdout
+    assert "$102,000.00" not in result.stdout
+    assert "$90,000.00" not in result.stdout
     assert "+4.2%" in result.stdout
     assert "+1.0%" not in result.stdout
     assert "Benchmark (SPY)" in result.stdout
