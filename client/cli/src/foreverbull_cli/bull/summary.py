@@ -53,10 +53,10 @@ def format_drawdown(fraction: float) -> str:
 
 
 def format_usd(amount: float) -> str:
-    """Portfolio dollars, two decimals. A minus sits in front of the dollar sign."""
+    """Portfolio dollars: two decimals and thousands separators, no currency sign."""
     if amount < 0:
-        return f"-${abs(amount):,.2f}"
-    return f"${amount:,.2f}"
+        return f"-{abs(amount):,.2f}"
+    return f"{amount:,.2f}"
 
 
 def format_active_days(active: int, total: int) -> str:
@@ -128,8 +128,12 @@ def metrics_table(benchmark: str, periods: list[execution_pb.Period]) -> Table:
     )
     table.add_row("Return", format_percent(last.algorithm_period_return), benchmark_label, benchmark_value)
     table.add_row("Sharpe", _ratio(last, "sharpe"), "Sortino", _ratio(last, "sortino"))
-    table.add_row("Max drawdown", format_drawdown(last.max_drawdown), "", "")
-    table.add_row("Active days", format_active_days(active_day_count(periods), len(periods)), "", "")
+    table.add_row(
+        "Max drawdown",
+        format_drawdown(last.max_drawdown),
+        "Active days",
+        format_active_days(active_day_count(periods), len(periods)),
+    )
     return table
 
 
