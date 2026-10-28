@@ -54,6 +54,21 @@ def test_simple_template_renders_algorithm(tmp_path):
     assert (project / "requirements.txt").is_file()
     algo = Algorithm.from_file_path(str(crossover))
     assert "handle_data" in algo._functions
+    text = crossover.read_text()
+    assert "talib" not in text
+    assert "order_target_percent" in text
+    assert "equal_weight_percent" in text
+    assert "not position" not in text
+    assert text.count("order_target(") == 1
+    assert "order_target(position.symbol, 0)" in text
+    fn = algo.get_definition().functions[0]
+    assert fn.name == "handle_data"
+    assert [(parameter.key, parameter.valueType, parameter.defaultValue) for parameter in fn.parameters] == [
+        ("short_window", "int", "10"),
+        ("long_window", "int", "30"),
+        ("cash_reserve", "float", "0.05"),
+        ("max_positions", "int", "10"),
+    ]
 
 
 def test_advanced_template_renders_files(tmp_path):
