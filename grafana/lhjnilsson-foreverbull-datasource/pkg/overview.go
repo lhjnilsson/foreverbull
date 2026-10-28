@@ -36,6 +36,7 @@ type overviewRow struct {
 	sortino                *float64
 	startingPortfolioValue *float64
 	portfolioValue         *float64
+	benchmark              string
 	activeDays             string
 }
 
@@ -69,6 +70,7 @@ func (d *Datasource) handleListExecutionOverview(ctx context.Context, _ grafana.
 	}
 
 	rows := make([]overviewRow, 0)
+	benchmarks := map[string]string{}
 	for _, execution := range rsp.GetExecutions() {
 		if execution == nil || execution.GetId() == "" {
 			continue
@@ -85,7 +87,8 @@ func (d *Datasource) handleListExecutionOverview(ctx context.Context, _ grafana.
 			log.Error("fail to get execution", err)
 			return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("get execution: %v", err.Error()))
 		}
-		rows = append(rows, overviewRowFrom(execution, got.GetPeriods()))
+		ticker := d.overviewBenchmark(ctx, execution.GetBacktest(), benchmarks)
+		rows = append(rows, overviewRowFrom(execution, got.GetPeriods(), ticker))
 	}
 	sortOverviewRows(rows)
 
@@ -209,7 +212,38 @@ func activityLabel(periods []*backtestpb.Period) string {
 	return fmt.Sprintf("%d of %d", active, total)
 }
 
-func overviewRowFrom(execution *backtestpb.Execution, periods []*backtestpb.Period) overviewRow {
+// overviewBenchmark is the backtest's benchmark ticker. A failed lookup is
+// an unset benchmark, so the cell stays "not set" and the board still loads.
+func (d *Datasource) overviewBenchmark(ctx context.Context, name string, cache map[string]string) string {
+	if name == "" {
+		return ""
+	}
+	if ticker, ok := cache[name]; ok {
+		return ticker
+	}
+	ticker := ""
+	rsp, err := d.backend.GetBacktest(ctx, &backtestsvc.GetBacktestRequest{Name: name})
+	if err == nil && rsp != nil && rsp.GetBacktest() != nil {
+		ticker = rsp.GetBacktest().GetBenchmark()
+	}
+	cache[name] = ticker
+	return ticker
+}
+
+// benchmarkCell matches the CLI summary. An empty ticker is "not set".
+// A ticker with no stored benchmark_period_return is "not available".
+// A stored fraction prints as a signed percent, the same as Return's source.
+func benchmarkCell(ticker string, period *backtestpb.Period) string {
+	if strings.TrimSpace(ticker) == "" {
+		return "not set"
+	}
+	if period == nil || period.BenchmarkPeriodReturn == nil {
+		return "not available"
+	}
+	return fmt.Sprintf("%+.1f%%", period.GetBenchmarkPeriodReturn()*100)
+}
+
+func overviewRowFrom(execution *backtestpb.Execution, periods []*backtestpb.Period, benchmarkTicker string) overviewRow {
 	row := overviewRow{
 		executionID: execution.GetId(),
 		backtest:    execution.GetBacktest(),
@@ -219,13 +253,15 @@ func overviewRowFrom(execution *backtestpb.Execution, periods []*backtestpb.Peri
 	}
 	// Return, drawdown, ratios, and ending value stay on the last stored period.
 	// A nil Sharpe or Sortino is not replaced with 0 or with an earlier day.
-	if last := lastStoredPeriod(periods); last != nil {
+	last := lastStoredPeriod(periods)
+	if last != nil {
 		row.algorithmPeriodReturn = newFloat(last.GetAlgorithmPeriodReturn())
 		row.maxDrawdown = newFloat(last.GetMaxDrawdown())
 		row.portfolioValue = newFloat(last.GetPortfolioValue())
 		row.sharpe = cloneFloat(last.Sharpe)
 		row.sortino = cloneFloat(last.Sortino)
 	}
+	row.benchmark = benchmarkCell(benchmarkTicker, last)
 	if first := firstStoredPeriod(periods); first != nil {
 		row.startingPortfolioValue = newFloat(startingPortfolioValue(first))
 	}
@@ -283,6 +319,7 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 	sortinos := make([]*float64, n)
 	startingValues := make([]*float64, n)
 	values := make([]*float64, n)
+	benchmarkCells := make([]string, n)
 	activeDays := make([]string, n)
 	for i, row := range rows {
 		backtests[i] = row.backtest
@@ -296,17 +333,21 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		sortinos[i] = row.sortino
 		startingValues[i] = row.startingPortfolioValue
 		values[i] = row.portfolioValue
+		benchmarkCells[i] = row.benchmark
 		activeDays[i] = row.activeDays
 	}
 
+	// Calendar columns are "Start date" and "End date" so the locked
+	// headers Start and End are the portfolio values, not the dates.
 	frame := data.NewFrame("Executions",
 		overviewTextField("backtest", "Backtest", backtests, true),
-		overviewTextField("start", "Start", starts, true),
-		overviewTextField("end", "End", ends, true),
+		overviewTextField("start", "Start date", starts, true),
+		overviewTextField("end", "End date", ends, true),
 		overviewTextField("id", "ID", ids, true),
-		overviewNumberField("starting_portfolio_value", "Starting portfolio value", "currencyUSD", startingValues),
-		overviewNumberField("portfolio_value", "Ending portfolio value", "currencyUSD", values),
-		overviewNumberField("algorithm_period_return", "Algorithm period return", "percentunit", returns),
+		overviewNumberField("starting_portfolio_value", "Start", "currencyUSD", startingValues),
+		overviewNumberField("portfolio_value", "End", "currencyUSD", values),
+		overviewNumberField("algorithm_period_return", "Return", "percentunit", returns),
+		overviewTextField("benchmark", "Benchmark", benchmarkCells, false),
 		overviewNumberField("sharpe", "Sharpe", "none", sharpes),
 		overviewNumberField("sortino", "Sortino", "none", sortinos),
 		overviewNumberField("max_drawdown", "Max drawdown", "percentunit", drawdowns),

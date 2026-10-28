@@ -57,9 +57,19 @@ describe('backtest overview dashboard', () => {
     expect(overview.raw).toContain('percentunit');
     expect(overview.raw).toContain('currencyUSD');
     expect(overview.raw).toContain('starting_portfolio_value');
-    expect(overview.raw).toContain('Starting portfolio value');
+    expect(overview.raw).toContain('"value": "Start"');
+    expect(overview.raw).toContain('"value": "End"');
+    expect(overview.raw).toContain('"value": "Return"');
+    expect(overview.raw).toContain('"value": "Benchmark"');
+    expect(overview.raw).toContain('"value": "Sharpe"');
+    expect(overview.raw).toContain('"value": "Sortino"');
+    expect(overview.raw).toContain('"value": "Max drawdown"');
     expect(overview.raw).toContain('active_days');
-    expect(overview.raw).toContain('Active days');
+    expect(overview.raw).toContain('"value": "Active days"');
+    expect(overview.raw).not.toContain('Starting portfolio value');
+    expect(overview.raw).not.toContain('Ending portfolio value');
+    expect(overview.raw).not.toContain('Algorithm period return');
+    expect(overview.raw).not.toContain('Total return');
     const targets = (overview.json.panels ?? []).flatMap((panel) => panel.targets ?? []);
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {
