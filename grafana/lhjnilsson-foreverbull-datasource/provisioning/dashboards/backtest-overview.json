@@ -1,7 +1,7 @@
 {
   "uid": "fb-backtest-overview",
   "title": "Backtest overview",
-  "description": "Leaderboard of executions whose start_date..end_date overlaps the time picker. Saved time is the last two years, so older runs stay hidden until the range is widened. Headers for the compare columns are Start, End, Return, Benchmark, Sharpe, Sortino, Max drawdown, and Active days. Start and End are portfolio value (currencyUSD): Start is the earliest session's starting cash plus starting positions value, End is the last period's portfolio_value. Return, Max drawdown, Sharpe, and Sortino are that last period and are not rescaled. Benchmark is not set, not available, or the signed percent. Active days is N of M. A missing ratio stays empty. Calendar columns are Start date and End date. A row opens /d/ee9ep4jxtwkcgf?var-execution={uuid} and adds var-backtest when the name is known. That execution page still works with only var-execution.",
+  "description": "Leaderboard of executions whose start_date..end_date overlaps the time picker. Saved time is the last two years, so older runs stay hidden until the range is widened. Date columns are Start and End. Portfolio columns are Start value and End value (currencyUSD): Start value is the earliest session's starting cash plus starting positions value, End value is the last period's portfolio_value. Return, Max drawdown, Sharpe, and Sortino are that last period and are not rescaled. Benchmark is not set, not available, or the signed percent. Active days is N of M. A missing ratio stays empty. A row opens /d/ee9ep4jxtwkcgf?var-execution={uuid} and adds var-backtest when the name is known. That execution page still works with only var-execution.",
   "tags": ["foreverbull", "backtest"],
   "schemaVersion": 40,
   "refresh": "",
@@ -177,7 +177,7 @@
       "id": 4,
       "type": "table",
       "title": "Executions",
-      "description": "One row per execution that overlaps the picker. Compare headers are Start, End, Return, Benchmark, Sharpe, Sortino, Max drawdown, and Active days. Start and End are currencyUSD portfolio values. Return and Max drawdown are percentunit. Sharpe and Sortino are none; a missing ratio stays empty. Benchmark is not set, not available, or a signed percent. Active days is N of M. Calendar columns are Start date and End date. The row links to /d/ee9ep4jxtwkcgf?var-execution={uuid}&var-backtest={name}.",
+      "description": "One row per execution that overlaps the picker. Date columns are Start and End. Portfolio columns are Start value and End value (currencyUSD). Return and Max drawdown are percentunit. Sharpe and Sortino are none; a missing ratio stays empty. Benchmark is not set, not available, or a signed percent. Active days is N of M. The row links to /d/ee9ep4jxtwkcgf?var-execution={uuid}&var-backtest={name}.",
       "gridPos": { "h": 16, "w": 24, "x": 0, "y": 4 },
       "datasource": { "type": "lhjnilsson-foreverbull-datasource", "uid": "foreverbull" },
       "fieldConfig": {
@@ -211,7 +211,7 @@
           {
             "matcher": { "id": "byName", "options": "start" },
             "properties": [
-              { "id": "displayName", "value": "Start date" },
+              { "id": "displayName", "value": "Start" },
               {
                 "id": "links",
                 "value": [
@@ -227,7 +227,7 @@
           {
             "matcher": { "id": "byName", "options": "end" },
             "properties": [
-              { "id": "displayName", "value": "End date" },
+              { "id": "displayName", "value": "End" },
               {
                 "id": "links",
                 "value": [
@@ -259,7 +259,7 @@
           {
             "matcher": { "id": "byName", "options": "starting_portfolio_value" },
             "properties": [
-              { "id": "displayName", "value": "Start" },
+              { "id": "displayName", "value": "Start value" },
               { "id": "unit", "value": "currencyUSD" },
               { "id": "decimals", "value": 2 }
             ]
@@ -267,7 +267,7 @@
           {
             "matcher": { "id": "byName", "options": "portfolio_value" },
             "properties": [
-              { "id": "displayName", "value": "End" },
+              { "id": "displayName", "value": "End value" },
               { "id": "unit", "value": "currencyUSD" },
               { "id": "decimals", "value": 2 }
             ]

@@ -337,15 +337,15 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		activeDays[i] = row.activeDays
 	}
 
-	// Calendar columns are "Start date" and "End date" so the locked
-	// headers Start and End are the portfolio values, not the dates.
+	// Dates keep Start and End. Portfolio columns are Start value and End
+	// value so the two pairs do not share a header.
 	frame := data.NewFrame("Executions",
 		overviewTextField("backtest", "Backtest", backtests, true),
-		overviewTextField("start", "Start date", starts, true),
-		overviewTextField("end", "End date", ends, true),
+		overviewTextField("start", "Start", starts, true),
+		overviewTextField("end", "End", ends, true),
 		overviewTextField("id", "ID", ids, true),
-		overviewNumberField("starting_portfolio_value", "Start", "currencyUSD", startingValues),
-		overviewNumberField("portfolio_value", "End", "currencyUSD", values),
+		overviewNumberField("starting_portfolio_value", "Start value", "currencyUSD", startingValues),
+		overviewNumberField("portfolio_value", "End value", "currencyUSD", values),
 		overviewNumberField("algorithm_period_return", "Return", "percentunit", returns),
 		overviewTextField("benchmark", "Benchmark", benchmarkCells, false),
 		overviewNumberField("sharpe", "Sharpe", "none", sharpes),

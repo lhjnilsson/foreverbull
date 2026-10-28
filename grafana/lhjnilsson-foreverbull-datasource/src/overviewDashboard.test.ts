@@ -59,6 +59,8 @@ describe('backtest overview dashboard', () => {
     expect(overview.raw).toContain('starting_portfolio_value');
     expect(overview.raw).toContain('"value": "Start"');
     expect(overview.raw).toContain('"value": "End"');
+    expect(overview.raw).toContain('"value": "Start value"');
+    expect(overview.raw).toContain('"value": "End value"');
     expect(overview.raw).toContain('"value": "Return"');
     expect(overview.raw).toContain('"value": "Benchmark"');
     expect(overview.raw).toContain('"value": "Sharpe"');
@@ -68,6 +70,8 @@ describe('backtest overview dashboard', () => {
     expect(overview.raw).toContain('"value": "Active days"');
     expect(overview.raw).not.toContain('Starting portfolio value');
     expect(overview.raw).not.toContain('Ending portfolio value');
+    expect(overview.raw).not.toContain('Start date');
+    expect(overview.raw).not.toContain('End date');
     expect(overview.raw).not.toContain('Algorithm period return');
     expect(overview.raw).not.toContain('Total return');
     const targets = (overview.json.panels ?? []).flatMap((panel) => panel.targets ?? []);
