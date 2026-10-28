@@ -56,6 +56,10 @@ describe('backtest overview dashboard', () => {
     expect(overview.raw).toContain('var-backtest=${__data.fields.backtest}');
     expect(overview.raw).toContain('percentunit');
     expect(overview.raw).toContain('currencyUSD');
+    expect(overview.raw).toContain('starting_portfolio_value');
+    expect(overview.raw).toContain('Starting portfolio value');
+    expect(overview.raw).toContain('active_days');
+    expect(overview.raw).toContain('Active days');
     const targets = (overview.json.panels ?? []).flatMap((panel) => panel.targets ?? []);
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {
