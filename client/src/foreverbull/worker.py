@@ -76,7 +76,9 @@ class WorkerInstance(Worker):
             raise exceptions.ConfigurationError("Unable to connect to namespace") from e
 
         # databaseURL stays on the wire for old brokers. The worker does not
-        # open it: bars arrive on each WorkerRequest.
+        # open it, and a URL left in the process environment is removed.
+        # Bars arrive on each WorkerRequest.
+        os.environ.pop("DATABASE_URL", None)
         for function in req.functions:
             for parameter in function.parameters:
                 self._algo.configure(function.name, parameter.key, parameter.value)

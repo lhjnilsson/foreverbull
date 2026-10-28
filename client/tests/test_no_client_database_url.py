@@ -47,6 +47,9 @@ def test_client_package_does_not_depend_on_a_database_driver():
 def test_worker_configure_ignores_a_database_url(caplog, monkeypatch):
     """A URL on ExecutionConfiguration is not a connection string the worker opens."""
     monkeypatch.setenv("BROKER_HOSTNAME", "127.0.0.1")
+    # A Postgres fixture can leave this set for the whole session. Configure
+    # must remove it, not keep it for the worker.
+    monkeypatch.setenv("DATABASE_URL", _DATABASE_URL)
     namespace = pynng.Rep0(listen="tcp://127.0.0.1:0")
     namespace.recv_timeout = 500
     namespace.send_timeout = 500
