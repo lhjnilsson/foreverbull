@@ -33,7 +33,7 @@ def _parse_bool(val: str) -> bool:
         return True
     if normalized in _FALSE_VALUES:
         return False
-    raise ValueError(f"Invalid bool parameter value: {val!r}")
+    raise ValueError(f"Couldn't parse bool: use true/false (got {val!r})")
 
 
 def _eval_param(type: str, val: str):

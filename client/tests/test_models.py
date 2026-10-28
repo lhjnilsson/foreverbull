@@ -325,7 +325,7 @@ def test_algorithm_parameter_parsing():
     assert configured.keywords == {"threshold": 2.5, "enabled": False, "name": "hello"}
     with pytest.raises(TypeError, match="Unknown parameter: missing"):
         algo.configure("handle", "missing", "1")
-    with pytest.raises(ValueError, match="Invalid bool parameter value"):
+    with pytest.raises(ValueError, match="Couldn't parse bool: use true/false"):
         algo.configure("handle", "enabled", "maybe")
 
 
