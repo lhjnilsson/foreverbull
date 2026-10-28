@@ -161,7 +161,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           file: ./docker/Dockerfile
-          tags: lhjnilsson/foreverbull:on_commit
+          tags: ghcr.io/lhjnilsson/foreverbull:on_commit
           outputs: type=docker,dest=/tmp/foreverbull.tar
       - name: Upload foreverbull
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -186,7 +186,7 @@ jobs:
           # COPY --from=foreverbull is the repo root (go.mod and pkg/), not an image.
           build-contexts: |
             foreverbull=${{ github.workspace }}
-          tags: lhjnilsson/fb-grafana:on_commit
+          tags: ghcr.io/lhjnilsson/fb-grafana:on_commit
           outputs: type=docker,dest=/tmp/fb_grafana.tar
       - name: Upload Grafana
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -243,7 +243,7 @@ jobs:
         with:
           context: client
           file: ./client/zipline/Dockerfile
-          tags: lhjnilsson/zipline:on_commit
+          tags: ghcr.io/lhjnilsson/zipline:on_commit
           build-args: |
             FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
@@ -297,9 +297,9 @@ jobs:
           docker load -i /tmp/images/foreverbull.tar
           docker load -i /tmp/images/zipline.tar
           docker load -i /tmp/images/fb_grafana.tar
-          docker tag lhjnilsson/foreverbull:on_commit lhjnilsson/foreverbull:local
-          docker tag lhjnilsson/zipline:on_commit lhjnilsson/zipline:local
-          docker tag lhjnilsson/fb-grafana:on_commit lhjnilsson/fb-grafana:local
+          docker tag ghcr.io/lhjnilsson/foreverbull:on_commit ghcr.io/lhjnilsson/foreverbull:local
+          docker tag ghcr.io/lhjnilsson/zipline:on_commit ghcr.io/lhjnilsson/zipline:local
+          docker tag ghcr.io/lhjnilsson/fb-grafana:on_commit ghcr.io/lhjnilsson/fb-grafana:local
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
@@ -340,7 +340,7 @@ jobs:
         if: failure()
         run: |
           set +e
-          docker image ls 'lhjnilsson/*'
+          docker image ls 'ghcr.io/lhjnilsson/*'
           kubectl --context kind-foreverbull -n foreverbull get pods,deploy,svc,pvc -o wide
           for name in postgres nats minio zipline foreverbull grafana; do
             kubectl --context kind-foreverbull -n foreverbull describe "deployment/${name}"

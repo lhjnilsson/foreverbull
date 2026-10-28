@@ -10,6 +10,7 @@ from typing import Literal, TYPE_CHECKING, TypeAlias
 
 from protobuf import Enum, Message
 from protobuf._codegen import file_desc
+from protobuf.wkt.google.protobuf import timestamp_pb
 
 from .... import common_pb
 from .....buf.validate import validate_pb
@@ -17,9 +18,10 @@ from ...v1 import marketdata_pb
 
 if TYPE_CHECKING:
     from protobuf import DescFile, Oneof
+    from protobuf.wkt.google.protobuf.timestamp_pb import Timestamp
 
     from ....common_pb import Date
-    from ...v1.marketdata_pb import Asset
+    from ...v1.marketdata_pb import Asset, OHLC
 
 
 _GetAssetRequestFields: TypeAlias = Literal["symbol", "isin"]
@@ -255,13 +257,101 @@ class DownloadHistoricalDataResponse(Message[_DownloadHistoricalDataResponseFiel
         OK = 1
         ERROR = 2
 
+_GetOHLCRequestFields: TypeAlias = Literal["symbols", "as_of", "provider", "limit"]
+
+class GetOHLCRequest(Message[_GetOHLCRequestFields]):
+    """
+    GetOHLC reads bars already stored in the broker database.
+    It does not download from Yahoo, Stooq, or Alpaca.
+    Empty provider means yahoo. limit 0 means 252 (one trading year).
+    limit is capped at 2520. symbols must be non-empty and is capped at 500.
+
+    ```proto
+    message foreverbull.finance.service.v1.GetOHLCRequest
+    ```
+
+    Attributes:
+        symbols:
+            ```proto
+            repeated string symbols = 1;
+            ```
+        as_of:
+            Inclusive upper bound on bar time. Required.
+
+            ```proto
+            optional google.protobuf.Timestamp as_of = 2;
+            ```
+        provider:
+            yahoo, stooq, or alpaca. Empty means yahoo.
+
+            ```proto
+            string provider = 3;
+            ```
+        limit:
+            Per-symbol bar cap. 0 means 252. Values above 2520 are rejected.
+
+            ```proto
+            uint32 limit = 4;
+            ```
+    """
+
+    __slots__ = ("symbols", "as_of", "provider", "limit")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            symbols: list[str] | None = None,
+            as_of: Timestamp | None = None,
+            provider: str = "",
+            limit: int = 0,
+        ) -> None:
+            pass
+
+        symbols: list[str]
+        as_of: Timestamp | None
+        provider: str
+        limit: int
+
+_GetOHLCResponseFields: TypeAlias = Literal["bars"]
+
+class GetOHLCResponse(Message[_GetOHLCResponseFields]):
+    """
+    ```proto
+    message foreverbull.finance.service.v1.GetOHLCResponse
+    ```
+
+    Attributes:
+        bars:
+            Bars ordered by symbol ascending, then time ascending.
+
+            ```proto
+            repeated foreverbull.finance.v1.OHLC bars = 1;
+            ```
+    """
+
+    __slots__ = ("bars",)
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            bars: list[OHLC] | None = None,
+        ) -> None:
+            pass
+
+        bars: list[OHLC]
+
 
 _DESC = file_desc(
-    b'\n/foreverbull/finance/service/v1/marketdata.proto\x12\x1eforeverbull.finance.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\x18foreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto"O\n\x0fGetAssetRequest\x12\x18\n\x06symbol\x18\x01 \x01(\tH\x00R\x06symbol\x12\x14\n\x04isin\x18\x02 \x01(\tH\x00R\x04isinB\x0c\n\nidentifier"G\n\x10GetAssetResponse\x123\n\x05asset\x18\x01 \x01(\x0b2\x1d.foreverbull.finance.v1.AssetR\x05asset"Q\n\x0fGetIndexRequest\x12>\n\x06symbol\x18\x01 \x01(\tR\x06symbolB&\xbaH#\xba\x01\x1d\n\x0fsymbol_required\x1a\nthis != \'\'\xc8\x01\x01"I\n\x10GetIndexResponse\x125\n\x06assets\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.AssetR\x06assets"\x85\x02\n\x1dDownloadHistoricalDataRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols\x12_\n\nstart_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDateB&\xbaH#\xba\x01\x1d\n\rdate_required\x1a\x0cthis != null\xc8\x01\x01\x123\n\x08end_date\x18\x03 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12\x1a\n\x08provider\x18\x04 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x05 \x01(\tR\x07profile"\xf0\x01\n\x1eDownloadHistoricalDataResponse\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12]\n\x06status\x18\x02 \x01(\x0e2E.foreverbull.finance.service.v1.DownloadHistoricalDataResponse.StatusR\x06status\x12\x14\n\x05error\x18\x03 \x01(\tR\x05error"A\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\r\n\tSTATUS_OK\x10\x01\x12\x10\n\x0cSTATUS_ERROR\x10\x022\x8c\x03\n\nMarketdata\x12o\n\x08GetAsset\x12/.foreverbull.finance.service.v1.GetAssetRequest\x1a0.foreverbull.finance.service.v1.GetAssetResponse"\x00\x12o\n\x08GetIndex\x12/.foreverbull.finance.service.v1.GetIndexRequest\x1a0.foreverbull.finance.service.v1.GetIndexResponse"\x00\x12\x9b\x01\n\x16DownloadHistoricalData\x12=.foreverbull.finance.service.v1.DownloadHistoricalDataRequest\x1a>.foreverbull.finance.service.v1.DownloadHistoricalDataResponse"\x000\x01B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3',
+    b'\n/foreverbull/finance/service/v1/marketdata.proto\x12\x1eforeverbull.finance.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\x18foreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a\x1fgoogle/protobuf/timestamp.proto"O\n\x0fGetAssetRequest\x12\x18\n\x06symbol\x18\x01 \x01(\tH\x00R\x06symbol\x12\x14\n\x04isin\x18\x02 \x01(\tH\x00R\x04isinB\x0c\n\nidentifier"G\n\x10GetAssetResponse\x123\n\x05asset\x18\x01 \x01(\x0b2\x1d.foreverbull.finance.v1.AssetR\x05asset"Q\n\x0fGetIndexRequest\x12>\n\x06symbol\x18\x01 \x01(\tR\x06symbolB&\xbaH#\xba\x01\x1d\n\x0fsymbol_required\x1a\nthis != \'\'\xc8\x01\x01"I\n\x10GetIndexResponse\x125\n\x06assets\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.AssetR\x06assets"\x85\x02\n\x1dDownloadHistoricalDataRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols\x12_\n\nstart_date\x18\x02 \x01(\x0b2\x18.foreverbull.common.DateR\tstartDateB&\xbaH#\xba\x01\x1d\n\rdate_required\x1a\x0cthis != null\xc8\x01\x01\x123\n\x08end_date\x18\x03 \x01(\x0b2\x18.foreverbull.common.DateR\x07endDate\x12\x1a\n\x08provider\x18\x04 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x05 \x01(\tR\x07profile"\xf0\x01\n\x1eDownloadHistoricalDataResponse\x12\x16\n\x06symbol\x18\x01 \x01(\tR\x06symbol\x12]\n\x06status\x18\x02 \x01(\x0e2E.foreverbull.finance.service.v1.DownloadHistoricalDataResponse.StatusR\x06status\x12\x14\n\x05error\x18\x03 \x01(\tR\x05error"A\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\r\n\tSTATUS_OK\x10\x01\x12\x10\n\x0cSTATUS_ERROR\x10\x02"\xe3\x01\n\x0eGetOHLCRequest\x12E\n\x07symbols\x18\x01 \x03(\tR\x07symbolsB+\xbaH(\xba\x01"\n\x10symbols_required\x1a\x0esize(this) > 0\xc8\x01\x01\x12X\n\x05as_of\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\x04asOfB\'\xbaH$\xba\x01\x1e\n\x0eas_of_required\x1a\x0cthis != null\xc8\x01\x01\x12\x1a\n\x08provider\x18\x03 \x01(\tR\x08provider\x12\x14\n\x05limit\x18\x04 \x01(\rR\x05limit"C\n\x0fGetOHLCResponse\x120\n\x04bars\x18\x01 \x03(\x0b2\x1c.foreverbull.finance.v1.OHLCR\x04bars2\xfa\x03\n\nMarketdata\x12o\n\x08GetAsset\x12/.foreverbull.finance.service.v1.GetAssetRequest\x1a0.foreverbull.finance.service.v1.GetAssetResponse"\x00\x12o\n\x08GetIndex\x12/.foreverbull.finance.service.v1.GetIndexRequest\x1a0.foreverbull.finance.service.v1.GetIndexResponse"\x00\x12\x9b\x01\n\x16DownloadHistoricalData\x12=.foreverbull.finance.service.v1.DownloadHistoricalDataRequest\x1a>.foreverbull.finance.service.v1.DownloadHistoricalDataResponse"\x000\x01\x12l\n\x07GetOHLC\x12..foreverbull.finance.service.v1.GetOHLCRequest\x1a/.foreverbull.finance.service.v1.GetOHLCResponse"\x00B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3',
     [
         validate_pb.desc(),
         common_pb.desc(),
         marketdata_pb.desc(),
+        timestamp_pb.desc(),
     ],
     {
         "GetAssetRequest": GetAssetRequest,
@@ -271,6 +361,8 @@ _DESC = file_desc(
         "DownloadHistoricalDataRequest": DownloadHistoricalDataRequest,
         "DownloadHistoricalDataResponse": DownloadHistoricalDataResponse,
         "DownloadHistoricalDataResponse.Status": DownloadHistoricalDataResponse.Status,
+        "GetOHLCRequest": GetOHLCRequest,
+        "GetOHLCResponse": GetOHLCResponse,
     },
 )
 

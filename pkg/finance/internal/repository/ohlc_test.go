@@ -356,3 +356,41 @@ func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
 	test.Equal("yahoo", provider)
 	test.Equal(supplier.DefaultProvider, provider)
 }
+
+func (test *OHLCTests) TestListRespectsAsOfLimitAndProvider() {
+	ctx := context.Background()
+	day := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		err := test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 1, 2, 0.5, float64(10+i), 100)
+		test.Require().NoError(err)
+		err = test.ohlcStorage.Store(ctx, "stooq", "ABC", day.AddDate(0, 0, i), 1, 2, 0.5, float64(20+i), 100)
+		test.Require().NoError(err)
+	}
+
+	asOf := day.AddDate(0, 0, 3) // includes days 0..3
+	bars, err := test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 2)
+	test.Require().NoError(err)
+	test.Require().Len(bars, 2)
+	test.Equal("ABC", bars[0].Symbol)
+	test.InDelta(12, bars[0].Close, 0.0001) // day+2
+	test.InDelta(13, bars[1].Close, 0.0001) // day+3
+	test.True(bars[0].Timestamp.AsTime().Before(bars[1].Timestamp.AsTime()) || bars[0].Timestamp.AsTime().Equal(bars[1].Timestamp.AsTime()))
+
+	stooq, err := test.ohlcStorage.List(ctx, "stooq", []string{"ABC"}, asOf, 1)
+	test.Require().NoError(err)
+	test.Require().Len(stooq, 1)
+	test.InDelta(23, stooq[0].Close, 0.0001)
+
+	missing, err := test.ohlcStorage.List(ctx, "yahoo", []string{"NOPE"}, asOf, 10)
+	test.Require().NoError(err)
+	test.Empty(missing)
+}
+
+func (test *OHLCTests) TestListRejectsBadInput() {
+	ctx := context.Background()
+	asOf := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err := test.ohlcStorage.List(ctx, "yahoo", nil, asOf, 1)
+	test.Require().ErrorContains(err, "symbols")
+	_, err = test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 3000)
+	test.Require().ErrorContains(err, "limit")
+}

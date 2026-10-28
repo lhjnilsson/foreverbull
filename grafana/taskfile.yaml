@@ -15,4 +15,4 @@ tasks:
       - ../go.sum
       - ../pkg/**/*.go
     cmds:
-      - docker build -t lhjnilsson/fb-grafana:local -f Dockerfile --build-context foreverbull=.. .
+      - docker build -t ghcr.io/lhjnilsson/fb-grafana:local -f Dockerfile --build-context foreverbull=.. .

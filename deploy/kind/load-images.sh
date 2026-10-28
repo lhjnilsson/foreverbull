@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Load lhjnilsson/foreverbull, zipline, and fb-grafana into Kind. Safe to re-run.
+# Load ghcr.io/lhjnilsson/foreverbull, zipline, and fb-grafana into Kind. Safe to re-run.
 # Tag is VERSION (default: local). Cluster name is KIND_CLUSTER (default: foreverbull).
 set -euo pipefail
 
@@ -7,9 +7,9 @@ CLUSTER_NAME="${KIND_CLUSTER:-foreverbull}"
 VERSION="${VERSION:-local}"
 
 IMAGES=(
-  "lhjnilsson/foreverbull:${VERSION}"
-  "lhjnilsson/zipline:${VERSION}"
-  "lhjnilsson/fb-grafana:${VERSION}"
+  "ghcr.io/lhjnilsson/foreverbull:${VERSION}"
+  "ghcr.io/lhjnilsson/zipline:${VERSION}"
+  "ghcr.io/lhjnilsson/fb-grafana:${VERSION}"
 )
 
 if ! command -v kind >/dev/null 2>&1; then
@@ -43,9 +43,9 @@ if ((${#missing[@]} > 0)); then
       echo "  ${img}" >&2
     done
     echo "Build them first:" >&2
-    echo "  task build:docker            # lhjnilsson/foreverbull:local" >&2
-    echo "  task client:docker:zipline   # lhjnilsson/zipline:local" >&2
-    echo "  task grafana:build:docker    # lhjnilsson/fb-grafana:local" >&2
+    echo "  task build:docker            # ghcr.io/lhjnilsson/foreverbull:local" >&2
+    echo "  task client:docker:zipline   # ghcr.io/lhjnilsson/zipline:local" >&2
+    echo "  task grafana:build:docker    # ghcr.io/lhjnilsson/fb-grafana:local" >&2
     exit 1
   fi
   echo "Pulling missing images for VERSION=${VERSION}:"

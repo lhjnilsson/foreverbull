@@ -37,7 +37,7 @@ tasks:
     sources:
       - zipline/src/foreverbull_zipline/**/*.py
     cmds:
-      - docker build -t lhjnilsson/zipline:local -f zipline/Dockerfile .
+      - docker build -t ghcr.io/lhjnilsson/zipline:local -f zipline/Dockerfile .
 
   proto:generate:
     desc: Generate Python protobuf code

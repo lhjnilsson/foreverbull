@@ -126,6 +126,44 @@ func (_m *MockMarketdataClient) GetIndex(ctx context.Context, in *GetIndexReques
 	return r0, r1
 }
 
+// GetOHLC provides a mock function with given fields: ctx, in, opts
+func (_m *MockMarketdataClient) GetOHLC(ctx context.Context, in *GetOHLCRequest, opts ...grpc.CallOption) (*GetOHLCResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOHLC")
+	}
+
+	var r0 *GetOHLCResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *GetOHLCRequest, ...grpc.CallOption) (*GetOHLCResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *GetOHLCRequest, ...grpc.CallOption) *GetOHLCResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*GetOHLCResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *GetOHLCRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+
 // NewMockMarketdataClient creates a new instance of MockMarketdataClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockMarketdataClient(t interface {

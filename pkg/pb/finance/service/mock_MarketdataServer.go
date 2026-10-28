@@ -93,6 +93,37 @@ func (_m *MockMarketdataServer) GetIndex(_a0 context.Context, _a1 *GetIndexReque
 	return r0, r1
 }
 
+
+// GetOHLC provides a mock function with given fields: _a0, _a1
+func (_m *MockMarketdataServer) GetOHLC(_a0 context.Context, _a1 *GetOHLCRequest) (*GetOHLCResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOHLC")
+	}
+
+	var r0 *GetOHLCResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *GetOHLCRequest) (*GetOHLCResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *GetOHLCRequest) *GetOHLCResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*GetOHLCResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *GetOHLCRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // mustEmbedUnimplementedMarketdataServer provides a mock function with no fields
 func (_m *MockMarketdataServer) mustEmbedUnimplementedMarketdataServer() {
 	_m.Called()

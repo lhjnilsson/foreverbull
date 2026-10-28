@@ -31,7 +31,7 @@ func TestPgxErrorToStatus(t *testing.T) {
 		{"42703", codes.Internal, "Invalid field reference"},
 		{"53300", codes.ResourceExhausted, "Database connection limit reached"},
 		{"57014", codes.DeadlineExceeded, "Query timeout"},
-		{"XXXXX", codes.Internal, "Internal database error"},
+		{"XXXXX", codes.Internal, clientInternalDatabase},
 	}
 
 	for _, tc := range cases {

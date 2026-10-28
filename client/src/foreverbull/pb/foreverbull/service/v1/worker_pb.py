@@ -171,6 +171,10 @@ class ExecutionConfiguration(Message[_ExecutionConfigurationFields]):
             int32 namespacePort = 2;
             ```
         databaseURL:
+            Deprecated for client use. Hands the Postgres URL (password included) to
+            the worker. Removed once workers use WorkerRequest.bars / Marketdata.GetOHLC
+            instead of a direct DB connection. Field number kept for wire compatibility.
+
             ```proto
             string databaseURL = 3;
             ```

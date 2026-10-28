@@ -343,3 +343,34 @@ func mustTime(day string) time.Time {
 	}
 	return t
 }
+
+func (suite *MarketdataTest) TestGetOHLCReadsStoredBars() {
+	ctx := context.Background()
+	assetRepo := repository.Asset{Conn: suite.pgx}
+	suite.Require().NoError(assetRepo.Store(ctx, "AAPL", "Apple"))
+	ohlcRepo := repository.OHLC{Conn: suite.pgx}
+	day := time.Date(2021, 3, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		suite.Require().NoError(ohlcRepo.Store(ctx, "yahoo", "AAPL", day.AddDate(0, 0, i), 1, 2, 0.5, float64(100+i), 10))
+	}
+
+	rsp, err := suite.client.GetOHLC(ctx, &servicePb.GetOHLCRequest{
+		Symbols: []string{"AAPL"},
+		AsOf:    timestamppb.New(day.AddDate(0, 0, 2)),
+		Limit:   2,
+	})
+	suite.Require().NoError(err)
+	suite.Require().Len(rsp.Bars, 2)
+	suite.InDelta(101, rsp.Bars[0].Close, 0.0001)
+	suite.InDelta(102, rsp.Bars[1].Close, 0.0001)
+}
+
+func (suite *MarketdataTest) TestGetOHLCRejectsEmptySymbols() {
+	_, err := suite.client.GetOHLC(context.Background(), &servicePb.GetOHLCRequest{
+		AsOf: timestamppb.Now(),
+	})
+	suite.Require().Error(err)
+	st, ok := status.FromError(err)
+	suite.Require().True(ok)
+	suite.Equal(codes.InvalidArgument, st.Code())
+}

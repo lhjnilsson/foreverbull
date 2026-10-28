@@ -2,10 +2,10 @@ name: Kind/Helm e2e
 
 # Push to main, and workflow_dispatch. Not on every feature-branch push.
 #
-# Builds lhjnilsson/{foreverbull,zipline,fb-grafana}:on_commit from this
+# Builds ghcr.io/lhjnilsson/{foreverbull,zipline,fb-grafana}:on_commit from this
 # checkout, loads them into Kind, then installs the chart with that tag.
-# Docker Hub has no :latest for these images, and the release workflow that
-# would publish it is separate. imagePullPolicy is IfNotPresent, so the
+# Images are built as :on_commit and loaded into Kind. product-e2e retags to
+# :local; fbenv sets appImagePullPolicy=IfNotPresent for VERSION=local so the
 # loaded images are used. Postgres, NATS, and Minio stay on their chart tags.
 # Trading stays off; no Alpaca secrets.
 on:
@@ -30,7 +30,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           file: ./docker/Dockerfile
-          tags: lhjnilsson/foreverbull:on_commit
+          tags: ghcr.io/lhjnilsson/foreverbull:on_commit
           outputs: type=docker,dest=/tmp/foreverbull.tar
       - name: Upload foreverbull
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -54,7 +54,7 @@ jobs:
           # COPY --from=foreverbull is the repo root (go.mod and pkg/), not an image.
           build-contexts: |
             foreverbull=${{ github.workspace }}
-          tags: lhjnilsson/fb-grafana:on_commit
+          tags: ghcr.io/lhjnilsson/fb-grafana:on_commit
           outputs: type=docker,dest=/tmp/fb_grafana.tar
       - name: Upload Grafana
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -109,7 +109,7 @@ jobs:
         with:
           context: client
           file: ./client/zipline/Dockerfile
-          tags: lhjnilsson/zipline:on_commit
+          tags: ghcr.io/lhjnilsson/zipline:on_commit
           build-args: |
             FB_WHEEL=foreverbull-0.0.0-py3-none-any.whl
           outputs: type=docker,dest=/tmp/zipline.tar
@@ -163,9 +163,9 @@ jobs:
           docker load -i /tmp/images/zipline.tar
           docker load -i /tmp/images/fb_grafana.tar
           kind load docker-image \
-            lhjnilsson/foreverbull:on_commit \
-            lhjnilsson/zipline:on_commit \
-            lhjnilsson/fb-grafana:on_commit \
+            ghcr.io/lhjnilsson/foreverbull:on_commit \
+            ghcr.io/lhjnilsson/zipline:on_commit \
+            ghcr.io/lhjnilsson/fb-grafana:on_commit \
             --name foreverbull
       - name: Install chart and wait for workloads
         run: bash deploy/kind/e2e.sh

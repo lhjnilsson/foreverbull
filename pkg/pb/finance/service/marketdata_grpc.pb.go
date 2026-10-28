@@ -22,6 +22,7 @@ const (
 	Marketdata_GetAsset_FullMethodName               = "/foreverbull.finance.service.v1.Marketdata/GetAsset"
 	Marketdata_GetIndex_FullMethodName               = "/foreverbull.finance.service.v1.Marketdata/GetIndex"
 	Marketdata_DownloadHistoricalData_FullMethodName = "/foreverbull.finance.service.v1.Marketdata/DownloadHistoricalData"
+	Marketdata_GetOHLC_FullMethodName                = "/foreverbull.finance.service.v1.Marketdata/GetOHLC"
 )
 
 // MarketdataClient is the client API for Marketdata service.
@@ -31,6 +32,7 @@ type MarketdataClient interface {
 	GetAsset(ctx context.Context, in *GetAssetRequest, opts ...grpc.CallOption) (*GetAssetResponse, error)
 	GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*GetIndexResponse, error)
 	DownloadHistoricalData(ctx context.Context, in *DownloadHistoricalDataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadHistoricalDataResponse], error)
+	GetOHLC(ctx context.Context, in *GetOHLCRequest, opts ...grpc.CallOption) (*GetOHLCResponse, error)
 }
 
 type marketdataClient struct {
@@ -80,6 +82,16 @@ func (c *marketdataClient) DownloadHistoricalData(ctx context.Context, in *Downl
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Marketdata_DownloadHistoricalDataClient = grpc.ServerStreamingClient[DownloadHistoricalDataResponse]
 
+func (c *marketdataClient) GetOHLC(ctx context.Context, in *GetOHLCRequest, opts ...grpc.CallOption) (*GetOHLCResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOHLCResponse)
+	err := c.cc.Invoke(ctx, Marketdata_GetOHLC_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MarketdataServer is the server API for Marketdata service.
 // All implementations must embed UnimplementedMarketdataServer
 // for forward compatibility.
@@ -87,6 +99,7 @@ type MarketdataServer interface {
 	GetAsset(context.Context, *GetAssetRequest) (*GetAssetResponse, error)
 	GetIndex(context.Context, *GetIndexRequest) (*GetIndexResponse, error)
 	DownloadHistoricalData(*DownloadHistoricalDataRequest, grpc.ServerStreamingServer[DownloadHistoricalDataResponse]) error
+	GetOHLC(context.Context, *GetOHLCRequest) (*GetOHLCResponse, error)
 	mustEmbedUnimplementedMarketdataServer()
 }
 
@@ -105,6 +118,9 @@ func (UnimplementedMarketdataServer) GetIndex(context.Context, *GetIndexRequest)
 }
 func (UnimplementedMarketdataServer) DownloadHistoricalData(*DownloadHistoricalDataRequest, grpc.ServerStreamingServer[DownloadHistoricalDataResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method DownloadHistoricalData not implemented")
+}
+func (UnimplementedMarketdataServer) GetOHLC(context.Context, *GetOHLCRequest) (*GetOHLCResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOHLC not implemented")
 }
 func (UnimplementedMarketdataServer) mustEmbedUnimplementedMarketdataServer() {}
 func (UnimplementedMarketdataServer) testEmbeddedByValue()                    {}
@@ -174,6 +190,24 @@ func _Marketdata_DownloadHistoricalData_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Marketdata_DownloadHistoricalDataServer = grpc.ServerStreamingServer[DownloadHistoricalDataResponse]
 
+func _Marketdata_GetOHLC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOHLCRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketdataServer).GetOHLC(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Marketdata_GetOHLC_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketdataServer).GetOHLC(ctx, req.(*GetOHLCRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Marketdata_ServiceDesc is the grpc.ServiceDesc for Marketdata service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -188,6 +222,10 @@ var Marketdata_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetIndex",
 			Handler:    _Marketdata_GetIndex_Handler,
+		},
+		{
+			MethodName: "GetOHLC",
+			Handler:    _Marketdata_GetOHLC_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
