@@ -1,15 +1,18 @@
 import { NavLink } from "react-router-dom";
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { Boxes, FlaskConical, LogOut, Plus, Target, X } from "lucide-react";
+import { BookOpen, Boxes, FlaskConical, LayoutDashboard, LogOut, Plus, Target, X } from "lucide-react";
 import { useAuth } from "../auth-context";
+import { shellNav } from "../shell";
 import type { DateParts } from "../types";
 import { postJson, useJson } from "../useJson";
 
-const nav = [
-  { to: "/services", label: "Services", icon: Boxes },
-  { to: "/backtests", label: "Backtests", icon: FlaskConical },
-  { to: "/strategies", label: "Strategies", icon: Target },
-] as const;
+const navIcon = {
+  "/overview": LayoutDashboard,
+  "/docs": BookOpen,
+  "/services": Boxes,
+  "/backtests": FlaskConical,
+  "/strategies": Target,
+} as const;
 
 export function Sidebar() {
   const health = useJson<{ ok?: boolean }>("/api/health");
@@ -28,20 +31,23 @@ export function Sidebar() {
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card">
       <div className="px-5 py-6 text-lg font-semibold text-foreground">Foreverbull</div>
       <nav className="flex flex-col px-2">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-sm px-3 py-2.5 transition-colors duration-150 hover:text-foreground ${
-                isActive ? "bg-primary-soft font-medium !text-primary" : "text-muted-foreground"
-              }`
-            }
-          >
-            <item.icon size={16} aria-hidden />
-            {item.label}
-          </NavLink>
-        ))}
+        {shellNav.map((item) => {
+          const Icon = navIcon[item.to];
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-sm px-3 py-2.5 transition-colors duration-150 hover:text-foreground ${
+                  isActive ? "bg-primary-soft font-medium !text-primary" : "text-muted-foreground"
+                }`
+              }
+            >
+              <Icon size={16} aria-hidden />
+              {item.label}
+            </NavLink>
+          );
+        })}
       </nav>
       <div className="mt-auto flex flex-col items-start gap-2 px-5 py-4 text-xs text-muted-foreground">
         {state.status === "in" ? (
