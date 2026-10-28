@@ -25,16 +25,18 @@ type overviewQuery struct {
 }
 
 type overviewRow struct {
-	executionID           string
-	backtest              string
-	start                 string
-	end                   string
-	shortID               string
-	algorithmPeriodReturn *float64
-	maxDrawdown           *float64
-	sharpe                *float64
-	sortino               *float64
-	portfolioValue        *float64
+	executionID            string
+	backtest               string
+	start                  string
+	end                    string
+	shortID                string
+	algorithmPeriodReturn  *float64
+	maxDrawdown            *float64
+	sharpe                 *float64
+	sortino                *float64
+	startingPortfolioValue *float64
+	portfolioValue         *float64
+	activeDays             string
 }
 
 func (d *Datasource) HandleListExecutionOverview(ctx context.Context, req *grafana.QueryDataRequest) (*grafana.QueryDataResponse, error) {
@@ -161,6 +163,52 @@ func lastStoredPeriod(periods []*backtestpb.Period) *backtestpb.Period {
 	return best
 }
 
+// firstStoredPeriod is the period with the earliest date.
+// An equal date keeps the earlier slice entry. A later session is not the open.
+func firstStoredPeriod(periods []*backtestpb.Period) *backtestpb.Period {
+	var best *backtestpb.Period
+	var bestAt time.Time
+	for _, period := range periods {
+		if period == nil {
+			continue
+		}
+		at := periodTime(period)
+		if best == nil || at.Before(bestAt) {
+			best = period
+			bestAt = at
+		}
+	}
+	return best
+}
+
+// startingPortfolioValue is cash plus positions value at the session open.
+// Zipline's starting_value is positions value, not the account. The earliest
+// session's pair is the capital the run opened with.
+func startingPortfolioValue(period *backtestpb.Period) float64 {
+	return period.GetStartingCash() + period.GetStartingValue()
+}
+
+// activityLabel is "N of M": sessions that closed with a long or a short,
+// of the stored sessions. Zipline fills a daily order on the next bar, so a
+// fill shows up in those counts. Nil periods are not sessions.
+func activityLabel(periods []*backtestpb.Period) string {
+	total := 0
+	active := 0
+	for _, period := range periods {
+		if period == nil {
+			continue
+		}
+		total++
+		if period.GetLongsCount() != 0 || period.GetShortsCount() != 0 {
+			active++
+		}
+	}
+	if total == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d of %d", active, total)
+}
+
 func overviewRowFrom(execution *backtestpb.Execution, periods []*backtestpb.Period) overviewRow {
 	row := overviewRow{
 		executionID: execution.GetId(),
@@ -169,16 +217,19 @@ func overviewRowFrom(execution *backtestpb.Execution, periods []*backtestpb.Peri
 		end:         formatDate(execution.GetEndDate()),
 		shortID:     shortExecutionID(execution.GetId()),
 	}
-	period := lastStoredPeriod(periods)
-	if period == nil {
-		return row
+	// Return, drawdown, ratios, and ending value stay on the last stored period.
+	// A nil Sharpe or Sortino is not replaced with 0 or with an earlier day.
+	if last := lastStoredPeriod(periods); last != nil {
+		row.algorithmPeriodReturn = newFloat(last.GetAlgorithmPeriodReturn())
+		row.maxDrawdown = newFloat(last.GetMaxDrawdown())
+		row.portfolioValue = newFloat(last.GetPortfolioValue())
+		row.sharpe = cloneFloat(last.Sharpe)
+		row.sortino = cloneFloat(last.Sortino)
 	}
-	// Stored numbers. percentunit / currencyUSD / none are display units only.
-	row.algorithmPeriodReturn = newFloat(period.GetAlgorithmPeriodReturn())
-	row.maxDrawdown = newFloat(period.GetMaxDrawdown())
-	row.portfolioValue = newFloat(period.GetPortfolioValue())
-	row.sharpe = cloneFloat(period.Sharpe)
-	row.sortino = cloneFloat(period.Sortino)
+	if first := firstStoredPeriod(periods); first != nil {
+		row.startingPortfolioValue = newFloat(startingPortfolioValue(first))
+	}
+	row.activeDays = activityLabel(periods)
 	return row
 }
 
@@ -230,7 +281,9 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 	drawdowns := make([]*float64, n)
 	sharpes := make([]*float64, n)
 	sortinos := make([]*float64, n)
+	startingValues := make([]*float64, n)
 	values := make([]*float64, n)
+	activeDays := make([]string, n)
 	for i, row := range rows {
 		backtests[i] = row.backtest
 		starts[i] = row.start
@@ -241,7 +294,9 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		drawdowns[i] = row.maxDrawdown
 		sharpes[i] = row.sharpe
 		sortinos[i] = row.sortino
+		startingValues[i] = row.startingPortfolioValue
 		values[i] = row.portfolioValue
+		activeDays[i] = row.activeDays
 	}
 
 	frame := data.NewFrame("Executions",
@@ -249,11 +304,13 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		overviewTextField("start", "Start", starts, true),
 		overviewTextField("end", "End", ends, true),
 		overviewTextField("id", "ID", ids, true),
+		overviewNumberField("starting_portfolio_value", "Starting portfolio value", "currencyUSD", startingValues),
+		overviewNumberField("portfolio_value", "Ending portfolio value", "currencyUSD", values),
 		overviewNumberField("algorithm_period_return", "Algorithm period return", "percentunit", returns),
-		overviewNumberField("max_drawdown", "Max drawdown", "percentunit", drawdowns),
 		overviewNumberField("sharpe", "Sharpe", "none", sharpes),
 		overviewNumberField("sortino", "Sortino", "none", sortinos),
-		overviewNumberField("portfolio_value", "Ending portfolio value", "currencyUSD", values),
+		overviewNumberField("max_drawdown", "Max drawdown", "percentunit", drawdowns),
+		overviewTextField("active_days", "Active days", activeDays, false),
 		overviewHiddenText("execution", "Execution", executions),
 	)
 	frame.RefID = refID
