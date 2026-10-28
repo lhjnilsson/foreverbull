@@ -6,8 +6,10 @@ export function OverviewPage() {
   const links = shellNav.filter((item) => item.to !== homePath);
   return (
     <Detail k="overview">
-      <DetailHeading title="Overview" subtitle="Home" />
-      <p className="max-w-xl">This installation is open. Pick a section to continue.</p>
+      <DetailHeading title="Overview" mono={false} />
+      <p className="max-w-xl">
+        Welcome. Use the sidebar or the links below — overview details come in a later update.
+      </p>
       <ul className="mt-6 flex flex-col gap-2">
         {links.map((item) => (
           <li key={item.to}>

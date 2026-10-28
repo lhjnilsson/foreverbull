@@ -201,15 +201,22 @@ export function DetailHeading({
   title,
   subtitle,
   children,
+  mono = true,
 }: {
   title: string;
   subtitle?: ReactNode;
   children?: ReactNode;
+  /** Entity names stay mono; section titles (Overview/Docs) pass false. */
+  mono?: boolean;
 }) {
   return (
     <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b pb-6">
       <div className="min-w-0">
-        <h1 className="break-all font-mono text-2xl font-medium leading-snug">{title}</h1>
+        <h1
+          className={`break-all text-2xl font-medium leading-snug ${mono ? "font-mono" : ""}`}
+        >
+          {title}
+        </h1>
         {subtitle ? <div className="mt-2 text-sm text-muted-foreground">{subtitle}</div> : null}
       </div>
       {children}
