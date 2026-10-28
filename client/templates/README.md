@@ -22,7 +22,7 @@ uv run cookiecutter templates/advanced
 
 Keep cookiecutter `{{ }}` path names intact when editing the templates.
 
-## Sizing contract
+## 📝 Sizing contract
 
 Every generated `handle_data` / `place_orders` (or equivalent) must:
 
@@ -106,14 +106,11 @@ contract above. Do not describe or implement a buy as a magic share count.
 
 Pandas SMA crossover (no TA-Lib). Long when the short window is above the long
 window; drop the name when it is not. Size with `order_target_percent` from
-`equal_weight_percent`, leave `cash_reserve`, cap at `max_positions`, rebalance
-keepers every bar, and flatten leavers with `order_target(symbol, 0)`. Lookbacks
-(`short_window` / `long_window`) and the risk knobs are `Function` parameters.
-
-The checked-in file still uses `order_target(symbol, 10)` instead of that
-contract: no percent targets, no rebalance of keepers, hardcoded `tail(10)` /
-`tail(30)`, no `cash_reserve` or `max_positions`. Generated `tests/capital_test.py`
-fails until `crossover.py` is sized. Keep this template pandas-only.
+`equal_weight_percent`, leave `cash_reserve` (default `0.05`), cap at
+`max_positions` (default `10`), rebalance keepers every bar, and flatten leavers
+with `order_target(symbol, 0)`. Lookbacks (`short_window` / `long_window`,
+defaults `10` and `30`) and the risk knobs are `Function` parameters on
+`handle_data`. Meets the contract above. Keep this template pandas-only.
 
 ### Advanced — `macd.py` and `rsi.py`
 
