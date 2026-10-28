@@ -9,6 +9,7 @@ from datetime import timedelta
 import pandas
 
 from pandas import DataFrame
+from pandas import Index
 from protobuf import merge_from_binary
 from protobuf.wkt import Struct
 
@@ -152,7 +153,7 @@ def _frame_for_symbol(bars: list[marketdata_pb.OHLC], symbol: str, as_of: dateti
         rows = rows[-_STOCK_DATA_LOOKBACK:]
     if not rows:
         return _empty_stock_frame()
-    return DataFrame(rows, columns=_STOCK_DATA_COLUMNS)
+    return DataFrame(rows, columns=Index(_STOCK_DATA_COLUMNS))
 
 
 def _close_on_day(bars: list[marketdata_pb.OHLC], symbol: str, day: date) -> float | None:

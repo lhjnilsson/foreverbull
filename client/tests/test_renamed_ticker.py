@@ -70,8 +70,8 @@ def test_bars_labeled_fb_are_fb_stock_data():
 
 def test_meta_stock_data_ignores_bars_labeled_fb():
     frame = _yahoo_meta()
-    fb = frame[frame["time"].dt.date < RENAME]
-    meta = frame[frame["time"].dt.date >= RENAME]
+    fb = pandas.DataFrame(frame.loc[frame["time"].dt.date < RENAME])
+    meta = pandas.DataFrame(frame.loc[frame["time"].dt.date >= RENAME])
     bars = _labeled("FB", fb) + _labeled("META", meta)
     direct = Asset(AFTER, "META", bars).stock_data
     assert direct["close"].tolist() == pytest.approx(_expected(meta, AFTER))
