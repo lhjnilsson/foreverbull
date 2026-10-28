@@ -1,4 +1,4 @@
-# Grafana analysis — implementation contract
+# 📝 Grafana analysis — implementation contract
 
 This document is the implementation contract for how users **analyze** backtests and strategies in Grafana. It is not code. Read it before changing the datasource plugin (`grafana/lhjnilsson-foreverbull-datasource`), the provisioned dashboards, `GetExperiment.grafana_path`, or CLI `execution_link` / `GRAFANA_URL`. **Status** at the end records what landed.
 
@@ -150,7 +150,11 @@ An execution is included when its `start_date`..`end_date` overlaps the picker f
 
 Query type `ListExecutionOverview` returns one table row per included execution. It is not `GetExecutionMetric` and it is not a time series. Optional JSON `backtest` limits `ListExecutions` to that name. Empty, `*`, `$__all`, or an uninterpolated `$backtest` means every backtest in the window. The dashboard variable `backtest` defaults to All (`allValue` is `*`, because an empty allValue is ignored by Grafana).
 
-Figures are the last stored period from `GetExecution` (latest period date), not `Execution.Result` and not rescaled. A nil Sharpe or Sortino on that period stays empty; earlier periods are not borrowed.
+Return, max drawdown, Sharpe, and Sortino are the last stored period from `GetExecution` (latest period date), not `Execution.Result` and not rescaled. A nil Sharpe or Sortino on that period stays empty; earlier periods are not borrowed and a missing ratio is not stored as 0.
+
+Start value is the earliest stored period's `starting_cash + starting_value` (`currencyUSD`). Zipline's `starting_value` is positions value, not the account, and the last session's `starting_cash` is only that morning. End value is that last period's `portfolio_value`. Date columns stay Start and End.
+
+Benchmark is `not set` when the backtest has no benchmark (a failed `GetBacktest` counts as unset), `not available` when the ticker is set and the last period left `benchmark_period_return` empty, and otherwise the signed percent (`+3.1%`). Active days counts stored sessions whose `longs_count` or `shorts_count` is non-zero, and the cell is `N of M`. A nil period is not a session.
 
 | Column | Field | Unit |
 | --- | --- | --- |
@@ -158,11 +162,14 @@ Figures are the last stored period from `GetExecution` (latest period date), not
 | Start | `start` | `YYYY-MM-DD` |
 | End | `end` | `YYYY-MM-DD` |
 | ID | `id` | short id, first 8 characters of the UUID |
-| Algorithm period return | `algorithm_period_return` | `percentunit` |
-| Max drawdown | `max_drawdown` | `percentunit` |
+| Start value | `starting_portfolio_value` | `currencyUSD` |
+| End value | `portfolio_value` | `currencyUSD` |
+| Return | `algorithm_period_return` | `percentunit` |
+| Benchmark | `benchmark` | `not set`, `not available`, or a signed percent |
 | Sharpe | `sharpe` | `none` |
 | Sortino | `sortino` | `none` |
-| Ending portfolio value | `portfolio_value` | `currencyUSD` |
+| Max drawdown | `max_drawdown` | `percentunit` |
+| Active days | `active_days` | `N of M` |
 
 The full UUID is field `execution` (hidden). No positions column. No database URL, broker port, or namespace port.
 
@@ -299,7 +306,7 @@ Rebuild: `grafana/lhjnilsson-foreverbull-datasource` `npm run build` + `mage -v`
 Landed. Grafana is the analysis surface for backtests and strategy experiments. CLI compare stays the non-Grafana table.
 
 - **Inspect one run.** Dashboard `ee9ep4jxtwkcgf` (`Backtest execution`) binds `?var-execution=` onto `GetExecutionMetric` with `execution: { "id": "$execution" }` and `metrics`. Selectors are backtest name, then that backtest’s executions (`{start}–{end} {short id}`; value stays the UUID). A link with only `var-execution` sets the backtest selector from the run and keeps that execution selected. Changing the backtest refreshes the execution list. Changing the execution still sets the time axis to that run’s exact min and max. A stat row shows the latest portfolio value (`currencyUSD`), return (`percentunit`), max drawdown (`percentunit`), and Sharpe (`none`). Portfolio value is a full-width equity curve (thicker line, light fill, `currencyUSD`). Drawdown is its own underwater panel (filled to zero, red below zero, `percentunit`), not on the portfolio axis. Returns are a bar chart (`percentunit`, green when positive, red when negative), not a line. Benchmark return and alpha each stay on their own `percentunit` panel. Cash, PnL, capital used, long/short value, and exposure are grouped as dollars (`currencyUSD`) and are not full-width copies of the equity curve. Sharpe, Sortino, beta, and leverage are grouped as ratios (unit `none`). `positions` is not plotted. There is no candlestick panel. The time axis is that execution’s exact minimum and maximum timestamps (no pad): `ListExecutions` start and end as soon as the run is known, then the period series min and max if they differ. A new execution replaces both ends. The same execution keeps a later zoom. Saved `time` of `now`/`now` is not kept once the execution is known, and it is not `now-30y`. Datasource uid is `foreverbull`. Variable current is empty. Panels are the Grafana 11.3.2 stat, timeseries, barchart, table, and row panels. Business Charts is not installed. The dashboard links to `/d/fb-backtest-overview` and to strategy compare.
-- **Overview.** Dashboard `fb-backtest-overview` (`Backtest overview`, `provisioning/dashboards/backtest-overview.json`) is a leaderboard. It does not replace `ee9ep4jxtwkcgf` or `fb-strategy-compare`. Saved time is `now-2y` to `now` (not `now-30y`). An execution is included when `start_date`..`end_date` overlaps the picker as inclusive UTC calendar dates; a run that ends before the from date is excluded, and widening the picker brings it back. Optional backtest filter defaults to all backtests in the window (`allValue` `*`). Query type `ListExecutionOverview` returns one table row per run (not `GetExecutionMetric`). Columns: backtest, start, end, short id, algorithm period return (`percentunit`), max drawdown (`percentunit`), Sharpe (`none`), Sortino (`none`), ending portfolio value (`currencyUSD`). Figures are the last stored `GetExecution` period and are not rescaled. Stats above the table: run count, best Sharpe, worst (most negative) drawdown. A row links to `/d/ee9ep4jxtwkcgf?var-execution={uuid}` and adds `var-backtest` when the name is known. The execution dashboard still works with only `var-execution`. This query does not move the execution time axis.
+- **Overview.** Dashboard `fb-backtest-overview` (`Backtest overview`, `provisioning/dashboards/backtest-overview.json`) is a leaderboard. It does not replace `ee9ep4jxtwkcgf` or `fb-strategy-compare`. Saved time is `now-2y` to `now` (not `now-30y`). An execution is included when `start_date`..`end_date` overlaps the picker as inclusive UTC calendar dates; a run that ends before the from date is excluded, and widening the picker brings it back. Optional backtest filter defaults to all backtests in the window (`allValue` `*`). Query type `ListExecutionOverview` returns one table row per run (not `GetExecutionMetric`). Date columns are Start and End. Portfolio columns are Start value and End value (`currencyUSD`): Start value is the earliest session's `starting_cash + starting_value`, End value is the last period's `portfolio_value`. Return and max drawdown are `percentunit`. Sharpe and Sortino are `none` and stay empty when unset. Benchmark is `not set`, `not available`, or a signed percent. Active days is `N of M`. Return, drawdown, ratios, and End value are the last stored `GetExecution` period and are not rescaled. Stats above the table: run count, best Sharpe, worst (most negative) drawdown. A row links to `/d/ee9ep4jxtwkcgf?var-execution={uuid}` and adds `var-backtest` when the name is known. The execution dashboard still works with only `var-execution`. This query does not move the execution time axis.
 - **Overlay.** `fb-strategy-compare` overlays left/right `GetExecutionMetric` queries (refId A/B). Series names are `{backtest} {start}–{end} {short id}`, not a bare metric twice. The time axis is the union of the selected runs’ exact minimum and maximum timestamps (earliest through latest, no pad), with the same replace-on-new-id and keep-zoom rules as `ee9ep4jxtwkcgf`, not `now`/`now` and not `now-30y`. Portfolio value stays a `currencyUSD` timeseries (thicker line, light fill) and is not on one axis with a return series. Drawdown stays its own underwater panel (`percentunit`, filled to zero); the two runs keep distinct series colors. Sharpe stays a ratio (`none`). The last-value table keeps those units per field. Query editor can also add a second query on `ee9ep4jxtwkcgf`. UID stays `fb-strategy-compare` and does not replace `ee9ep4jxtwkcgf`.
 - **Strategy dimension.** Datasource dials `StrategyServicer`. Variables cascade strategy → version → executions. Resource routes `/strategies`, `/versions`, `/experiments`. Experiment values are execution UUIDs.
 - **Labels and health.** `ListExecutions` labels are human; values stay UUIDs. `CheckHealth` calls `ListBacktests` on `BROKER_URL`.

@@ -927,6 +927,10 @@ def _final_period(**overrides) -> execution_pb.Period:
     fields = {
         "date": from_pydate_to_proto_date(END),
         "portfolio_value": 104200.0,
+        "starting_cash": 100_000.0,
+        "starting_value": 0.0,
+        # ending_value is positions only. The summary must not print it as End.
+        "ending_value": 90_000.0,
         "algorithm_period_return": 0.042,
         "max_drawdown": -0.068,
         "sharpe": 1.35,
@@ -961,13 +965,29 @@ def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
 def test_backtest_run_prints_results_summary(runner):
     mock_backtest_session = _run_session_mocks()
     result, get_execution = _invoke_run(
-        runner, mock_backtest_session, [_final_period(algorithm_period_return=0.01), _final_period()]
+        runner,
+        mock_backtest_session,
+        [
+            _final_period(
+                algorithm_period_return=0.01,
+                portfolio_value=101_000.0,
+                starting_cash=100_000.0,
+                starting_value=0.0,
+                longs_count=0,
+            ),
+            # Last morning's cash plus positions is 102_000. Start stays the first open.
+            _final_period(starting_cash=40_000.0, starting_value=62_000.0),
+        ],
     )
     assert result.exit_code == 0
     get_execution.assert_called_once_with("exec-1")
     mock_backtest_session.run_execution.assert_called_once()
     assert "Backtest finished: test_name · 2020-01-01 → 2020-01-31 · provider: yahoo" in result.stdout
     # The last period holds the cumulative numbers for the whole run.
+    assert "$100,000.00" in result.stdout
+    assert "$104,200.00" in result.stdout
+    assert "$102,000.00" not in result.stdout
+    assert "$90,000.00" not in result.stdout
     assert "+4.2%" in result.stdout
     assert "+1.0%" not in result.stdout
     assert "Benchmark (SPY)" in result.stdout
@@ -975,6 +995,18 @@ def test_backtest_run_prints_results_summary(runner):
     assert "1.35" in result.stdout
     assert "1.10" in result.stdout
     assert "-6.8%" in result.stdout
+    assert "1 of 2" in result.stdout
+    drawdown_line = next(line for line in result.stdout.splitlines() if "Max drawdown" in line)
+    assert "Active days" in drawdown_line
+    assert "1 of 2" in drawdown_line
+    summary = result.stdout
+    assert (
+        summary.index("Start")
+        < summary.index("Return")
+        < summary.index("Sharpe")
+        < summary.index("Max drawdown")
+        < summary.index("Active days")
+    )
     assert "Details: uv run fbull backtest execution exec-1" in result.stdout
     assert f"Charts:  {execution_link('exec-1')}" in result.stdout
 
@@ -1030,7 +1062,18 @@ def test_backtest_run_says_plainly_when_no_trades_were_placed(runner):
     result, _ = _invoke_run(runner, _run_session_mocks(), flat)
     assert result.exit_code == 0
     assert "No trades: the strategy held no position on any of the 250 trading days." in result.stdout
+    assert "Return and drawdown stay at 0 and Sharpe and Sortino are not defined." in result.stdout
+    assert "+0.0%" in result.stdout
     assert "+24.8%" in result.stdout
+    assert "0 of 250" in result.stdout
+    sharpe_line = next(line for line in result.stdout.splitlines() if line.strip().startswith("Sharpe"))
+    assert "-" in sharpe_line
+    assert "0.00" not in sharpe_line
+    drawdown_line = next(line for line in result.stdout.splitlines() if "Max drawdown" in line)
+    assert "0.0%" in drawdown_line
+    assert "+0.0%" not in drawdown_line
+    assert "Active days" in drawdown_line
+    assert "0 of 250" in drawdown_line
 
 
 def test_backtest_run_with_a_held_position_has_no_no_trades_line(runner):
@@ -1038,6 +1081,9 @@ def test_backtest_run_with_a_held_position_has_no_no_trades_line(runner):
     result, _ = _invoke_run(runner, _run_session_mocks(), periods)
     assert result.exit_code == 0
     assert "No trades" not in result.stdout
+    drawdown_line = next(line for line in result.stdout.splitlines() if "Max drawdown" in line)
+    assert "Active days" in drawdown_line
+    assert "1 of 3" in drawdown_line
 
 
 def test_backtest_run_without_stored_periods_says_so(runner):

@@ -52,7 +52,29 @@ def format_drawdown(fraction: float) -> str:
     return f"{percent:.1f}%"
 
 
+def format_usd(amount: float) -> str:
+    """Portfolio dollars: two decimals and thousands separators. A minus sits before the dollar sign."""
+    if amount < 0:
+        return f"-${abs(amount):,.2f}"
+    return f"${amount:,.2f}"
+
+
+def format_active_days(active: int, total: int) -> str:
+    return f"{active} of {total}"
+
+
+def starting_portfolio_value(period: execution_pb.Period) -> float:
+    """Open account is cash plus positions value.
+
+    Zipline stores those as starting_cash and starting_value. The first
+    session's pair is the capital the run opened with. The last session's
+    starting_cash is only that morning's cash.
+    """
+    return period.starting_cash + period.starting_value
+
+
 def _ratio(period: execution_pb.Period, field: Literal["sharpe", "sortino"]) -> str:
+    # A missing ratio stays a dash. A stored 0 is a real ratio and prints as 0.00.
     if not period.has_field(field):
         return "-"
     return f"{getattr(period, field):.2f}"
@@ -67,26 +89,51 @@ def _benchmark_cells(benchmark: str, period: execution_pb.Period) -> tuple[str, 
     return label, format_percent(period.benchmark_period_return)
 
 
-def held_no_position(periods: list[execution_pb.Period]) -> bool:
-    """No period closed with a long or a short.
+def position_held(period: execution_pb.Period) -> bool:
+    """A session is active when the close still holds a long or a short.
 
-    Zipline fills a daily order on the next bar, so any filled order shows up as a
+    Zipline fills a daily order on the next bar, so a fill shows up as a
     held position at some period close. Counts are integers, so no float compare.
     """
-    return all(period.longs_count == 0 and period.shorts_count == 0 for period in periods)
+    return period.longs_count != 0 or period.shorts_count != 0
 
 
-def metrics_table(benchmark: str, period: execution_pb.Period) -> Table:
-    """The last period carries the run's cumulative return, ratios, and drawdown."""
+def active_day_count(periods: list[execution_pb.Period]) -> int:
+    return sum(1 for period in periods if position_held(period))
+
+
+def held_no_position(periods: list[execution_pb.Period]) -> bool:
+    return active_day_count(periods) == 0
+
+
+def metrics_table(benchmark: str, periods: list[execution_pb.Period]) -> Table:
+    """Last-period scalars, the first session's open value, and days in a position.
+
+    Return, ratios, drawdown, and ending portfolio value come from the last
+    stored period. Sharpe and Sortino stay dashes when that period left them
+    unset. Start is the first session's open account, not the last morning.
+    """
+    last = periods[-1]
     table = Table.grid(padding=(0, 2))
     table.add_column(style="bold")
     table.add_column(justify="right")
     table.add_column(style="bold")
     table.add_column(justify="right")
-    benchmark_label, benchmark_value = _benchmark_cells(benchmark, period)
-    table.add_row("Return", format_percent(period.algorithm_period_return), benchmark_label, benchmark_value)
-    table.add_row("Sharpe", _ratio(period, "sharpe"), "Sortino", _ratio(period, "sortino"))
-    table.add_row("Max drawdown", format_drawdown(period.max_drawdown), "", "")
+    benchmark_label, benchmark_value = _benchmark_cells(benchmark, last)
+    table.add_row(
+        "Start",
+        format_usd(starting_portfolio_value(periods[0])),
+        "End",
+        format_usd(last.portfolio_value),
+    )
+    table.add_row("Return", format_percent(last.algorithm_period_return), benchmark_label, benchmark_value)
+    table.add_row("Sharpe", _ratio(last, "sharpe"), "Sortino", _ratio(last, "sortino"))
+    table.add_row(
+        "Max drawdown",
+        format_drawdown(last.max_drawdown),
+        "Active days",
+        format_active_days(active_day_count(periods), len(periods)),
+    )
     return table
 
 
@@ -108,7 +155,7 @@ def print_run_summary(
             f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"
         )
         console.print()
-        console.print(Padding(metrics_table(benchmark, periods[-1]), (0, 0, 0, 2), expand=False))
+        console.print(Padding(metrics_table(benchmark, periods), (0, 0, 0, 2), expand=False))
         console.print()
         if held_no_position(periods):
             # Without this line a tradeless run reads as a broken one: zeros and dashes, no reason.
