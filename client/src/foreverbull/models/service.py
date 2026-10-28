@@ -23,14 +23,27 @@ class Function:
         self.run_last = run_last
 
 
+_TRUE_VALUES = frozenset({"true", "1", "yes", "y", "on"})
+_FALSE_VALUES = frozenset({"false", "0", "no", "n", "off"})
+
+
+def _parse_bool(val: str) -> bool:
+    normalized = val.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ValueError(f"Invalid bool parameter value: {val!r}")
+
+
 def _eval_param(type: str, val: str):
     if type == "int":
         return int(val)
     elif type == "float":
         return float(val)
     elif type == "bool":
-        return bool(val)
-    elif type == "str":
+        return _parse_bool(val)
+    elif type in ("string", "str"):
         return val
     else:
         raise TypeError(f"Unknown parameter type: {type}")

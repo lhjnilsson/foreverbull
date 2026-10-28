@@ -21,6 +21,7 @@ from foreverbull.models import Portfolio
 from foreverbull.models import deployable_value
 from foreverbull.models import equal_weight_percent
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
+from foreverbull.models.service import _eval_param
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.service.v1 import worker_pb
@@ -319,10 +320,37 @@ def test_algorithm_parameter_parsing():
 
     algo.configure("handle", "threshold", "2.5")
     algo.configure("handle", "enabled", "false")
+    algo.configure("handle", "name", "hello")
+    configured = algo._functions["handle"]["callable"]
+    assert configured.keywords == {"threshold": 2.5, "enabled": False, "name": "hello"}
     with pytest.raises(TypeError, match="Unknown parameter: missing"):
         algo.configure("handle", "missing", "1")
-    with pytest.raises(TypeError, match="Unknown parameter type: string"):
-        algo.configure("handle", "name", "hello")
+    with pytest.raises(ValueError, match="Invalid bool parameter value"):
+        algo.configure("handle", "enabled", "maybe")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("True", True),
+        ("true", True),
+        ("1", True),
+        (" yes ", True),
+        ("False", False),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+    ],
+)
+def test_eval_param_bool_parses_strings(raw: str, expected: bool):
+    assert _eval_param("bool", raw) is expected
+
+
+def test_eval_param_string_accepts_wire_and_python_labels():
+    assert _eval_param("string", "hello") == "hello"
+    assert _eval_param("str", "hello") == "hello"
+    with pytest.raises(TypeError, match="Unknown parameter type: list"):
+        _eval_param("list", "x")
 
 
 def test_algorithm_definition_wire_contract():
