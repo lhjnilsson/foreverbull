@@ -12,6 +12,8 @@ dependencies = [
     "grpcio-health-checking",
     "zipline-reloaded",
     "empyrical-reloaded>=0.5.12",
+    "sqlalchemy",
+    "psycopg[binary]",
 ]
 
 [build-system]

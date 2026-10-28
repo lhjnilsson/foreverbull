@@ -14,7 +14,7 @@ class TestWorkerInstance:
         with pytest.raises(exceptions.ConfigurationError):
             w.configure_execution(worker_pb.ExecutionConfiguration())
 
-    def test_configure_execution(self, fb_env, fb_database, parallel_algo_file, namespace_server):
+    def test_configure_execution(self, fb_env, parallel_algo_file, namespace_server):
         algorithm, request, _ = parallel_algo_file
         w = worker.WorkerInstance(algorithm._file_path)
         w.configure_execution(request)
@@ -24,7 +24,6 @@ class TestWorkerInstance:
         [
             (["brokerPort", 1234], "Unable to connect to broker"),
             (["namespacePort", 1234], "Unable to connect to namespace"),
-            (["databaseURL", "bad_url"], "Unable to connect to database"),
         ],
     )
     def test_configure_execution_error(self, fb_env, parallel_algo_file, namespace_server, new_attr, exc_msg):
@@ -34,7 +33,7 @@ class TestWorkerInstance:
         with pytest.raises(exceptions.ConfigurationError, match=exc_msg):
             w.configure_execution(request)
 
-    def test_run_execution(self, fb_env, fb_database, namespace_server, non_parallel_algo_file):
+    def test_run_execution(self, fb_env, namespace_server, non_parallel_algo_file):
         algorithm, request, process_symbols = non_parallel_algo_file
         event = Event()
 
@@ -63,7 +62,7 @@ class TestWorkerPool:
         with pytest.raises(RuntimeError):
             pool.configure_execution(worker_pb.ExecutionConfiguration())
 
-    def test_configure(self, fb_env, fb_database, namespace_server, parallel_algo_file):
+    def test_configure(self, fb_env, namespace_server, parallel_algo_file):
         algorithm, request, _ = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path, executors=1)
         with pool:
@@ -74,7 +73,6 @@ class TestWorkerPool:
         [
             (["brokerPort", 1234], "Unable to connect to broker"),
             (["namespacePort", 1234], "Unable to connect to namespace"),
-            (["databaseURL", "bad_url"], "Unable to connect to database"),
         ],
     )
     def test_configure_error(self, fb_env, namespace_server, parallel_algo_file, new_attr, exc_msg):
@@ -96,7 +94,7 @@ class TestWorkerPool:
         with pool, pytest.raises(exceptions.ConfigurationError):
             pool.run_execution(Event())
 
-    def test_run_stop_before_process(self, fb_env, fb_database, namespace_server, parallel_algo_file):
+    def test_run_stop_before_process(self, fb_env, namespace_server, parallel_algo_file):
         algorithm, request, _process_symbols = parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pool:
@@ -105,7 +103,7 @@ class TestWorkerPool:
             pool.run_execution(stop_event)
             stop_event.set()
 
-    def test_run(self, fb_env, fb_database, namespace_server, non_parallel_algo_file):
+    def test_run(self, fb_env, namespace_server, non_parallel_algo_file):
         algorithm, request, process_symbols = non_parallel_algo_file
         pool = worker.WorkerPool(algorithm._file_path)
         with pool:

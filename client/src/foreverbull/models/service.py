@@ -7,8 +7,6 @@ from inspect import getabsfile
 from inspect import isfunction
 from inspect import signature
 
-from sqlalchemy import Connection
-
 from foreverbull.exceptions import ConfigurationError
 from foreverbull.models.finance import Asset
 from foreverbull.models.finance import Assets
@@ -155,21 +153,22 @@ class Algorithm:
     def process(
         self,
         function_name: str,
-        db: Connection,
         portfolio: marketdata_pb.Portfolio,
         symbols: list[str],
+        bars: list[marketdata_pb.OHLC] | None = None,
     ) -> list[marketdata_pb.Order]:
         function = self._functions[function_name]
-        p = Portfolio(portfolio, db)
+        delivered = [] if bars is None else list(bars)
+        p = Portfolio(portfolio, delivered)
         as_of = pb_utils.from_proto_timestamp(portfolio.timestamp)
         if function["definition"].parallelExecution:
             for symbol in symbols:
-                asset = Asset(as_of, db, symbol)
+                asset = Asset(as_of, symbol, delivered)
                 function["callable"](
                     asset=asset,
                     portfolio=p,
                 )
         else:
-            assets = Assets(as_of, db, symbols)
+            assets = Assets(as_of, symbols, delivered)
             function["callable"](assets=assets, portfolio=p)
         return p.pending_orders

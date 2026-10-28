@@ -12,6 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	financebars "github.com/lhjnilsson/foreverbull/pkg/finance/bars"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -147,7 +148,11 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 		return nil, fmt.Errorf("error creating execution: %w", err)
 	}
 
-	s.wp, err = worker.NewPool(ctx, req.GetAlgorithm())
+	var poolOpts []worker.Option
+	if s.db != nil {
+		poolOpts = append(poolOpts, worker.WithBars(financebars.New(s.db), stored.GetProvider()))
+	}
+	s.wp, err = worker.NewPool(ctx, req.GetAlgorithm(), poolOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("error creating worker pool")
 		return nil, fmt.Errorf("error creating worker pool: %w", err)

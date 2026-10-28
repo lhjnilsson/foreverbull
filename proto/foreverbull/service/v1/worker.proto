@@ -34,9 +34,8 @@ message ExecutionConfiguration {
   }
   int32 brokerPort = 1;
   int32 namespacePort = 2;
-  // Deprecated for client use. Hands the Postgres URL (password included) to
-  // the worker. Removed once workers use WorkerRequest.bars / Marketdata.GetOHLC
-  // instead of a direct DB connection. Field number kept for wire compatibility.
+  // Deprecated. The broker leaves this empty. Workers read WorkerRequest.bars
+  // and do not open Postgres. Field number kept for wire compatibility.
   string databaseURL = 3;
   repeated Function functions = 4;
 }

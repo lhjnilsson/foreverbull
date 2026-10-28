@@ -1,5 +1,3 @@
-from sqlalchemy.exc import ProgrammingError
-
 from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
 from foreverbull.models.finance import market_data_denied_line
 from foreverbull.models.finance import present_market_data_failure
@@ -13,10 +11,16 @@ class _DatabaseError(Exception):
         self.pgcode = pgcode
 
 
+class _Wrapped(Exception):
+    def __init__(self, message: str, orig: BaseException):
+        super().__init__(message)
+        self.orig = orig
+
+
 def test_permission_denied_is_one_sentence_without_the_statement():
     statement = "SELECT symbol FROM asset_symbol WHERE symbol IN ('AAPL')"
     orig = _DatabaseError("permission denied for table asset_symbol", sqlstate="42501")
-    err = ProgrammingError(statement, {}, orig)
+    err = _Wrapped(statement, orig)
     text = worker_request_error(err)
     assert text == WORKER_MARKET_DATA_DENIED
     assert text == market_data_denied_line(None)
@@ -31,7 +35,7 @@ def test_permission_denied_is_one_sentence_without_the_statement():
 
 def test_pgcode_permission_denied_uses_the_same_sentence():
     orig = _DatabaseError("permission denied for table asset_symbol", pgcode="42501")
-    err = ProgrammingError("SELECT 1 FROM asset_symbol", {}, orig)
+    err = _Wrapped("SELECT 1 FROM asset_symbol", orig)
     assert worker_request_error(err) == WORKER_MARKET_DATA_DENIED
 
 

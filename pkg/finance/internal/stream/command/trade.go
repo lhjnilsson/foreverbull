@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	financebars "github.com/lhjnilsson/foreverbull/pkg/finance/bars"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
@@ -44,14 +45,15 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		server   *grpc.Server
 		activity <-chan bool
 	)
+	bars := financebars.New(db)
 	if environment.GetAuthEnabled() {
 		secret, ok := auth.LookupTradingSecret(cmd.Id)
 		if !ok {
 			return fmt.Errorf("%s is missing", auth.SessionMetadata())
 		}
-		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret)
+		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret, api.WithBars(bars, supplier.DefaultProvider))
 	} else {
-		server, activity, err = api.NewGRPCSessionServer(trading)
+		server, activity, err = api.NewGRPCSessionServer(trading, api.WithBars(bars, supplier.DefaultProvider))
 	}
 	if err != nil {
 		return fmt.Errorf("error creating grpc session server: %w", err)

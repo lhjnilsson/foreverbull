@@ -25,17 +25,6 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_se
 from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
-# Worker configure/run tests that execute SQL must also request fb_database.
-_PLACEHOLDER_DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused"
-
-
-def _execution_database_url(request: pytest.FixtureRequest) -> str:
-    if "fb_database" in request.fixturenames:
-        request.getfixturevalue("fb_database")
-        return os.environ["DATABASE_URL"]
-    return _PLACEHOLDER_DATABASE_URL
-
-
 def _namespace_port(namespace_server: dict) -> int:
     """Port the in-process namespace fake bound. Configurations dial this, not 7878.
 
@@ -194,7 +183,7 @@ def backtest_date_range(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file(backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict):
+def parallel_algo_file(backtest_entity: backtest_pb.Backtest, namespace_server: dict):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb.Portfolio(
             cash=0,
@@ -228,7 +217,6 @@ def parallel_algo_file(backtest_entity: backtest_pb.Backtest, request: pytest.Fi
     configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5656,
         namespacePort=_namespace_port(namespace_server),
-        databaseURL=_execution_database_url(request),
         functions=[],
     )
 
@@ -264,9 +252,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file(
-    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
-):
+def non_parallel_algo_file(backtest_entity: backtest_pb.Backtest, namespace_server: dict):
     def _process_symbols(server_socket: pynng.Socket) -> list[Order]:
         portfolio = marketdata_pb.Portfolio(
             cash=0,
@@ -299,7 +285,6 @@ def non_parallel_algo_file(
     configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5657,
         namespacePort=_namespace_port(namespace_server),
-        databaseURL=_execution_database_url(request),
         functions=[],
     )
 
@@ -336,9 +321,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def parallel_algo_file_with_parameters(
-    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
-):
+def parallel_algo_file_with_parameters(backtest_entity: backtest_pb.Backtest, namespace_server: dict):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb.Portfolio(
             cash=0,
@@ -372,7 +355,6 @@ def parallel_algo_file_with_parameters(
     configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5658,
         namespacePort=_namespace_port(namespace_server),
-        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb.ExecutionConfiguration.Function(
                 name="parallel_algo_with_parameters",
@@ -416,9 +398,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def non_parallel_algo_file_with_parameters(
-    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server: dict
-):
+def non_parallel_algo_file_with_parameters(backtest_entity: backtest_pb.Backtest, namespace_server: dict):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb.Portfolio(
             cash=0,
@@ -451,7 +431,6 @@ def non_parallel_algo_file_with_parameters(
     configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5659,
         namespacePort=_namespace_port(namespace_server),
-        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb.ExecutionConfiguration.Function(
                 name="non_parallel_algo_with_parameters",
@@ -496,9 +475,7 @@ algo = Algorithm(
 
 
 @pytest.fixture(scope="function")
-def multistep_algo_with_namespace(
-    backtest_entity: backtest_pb.Backtest, request: pytest.FixtureRequest, namespace_server
-):
+def multistep_algo_with_namespace(backtest_entity: backtest_pb.Backtest, namespace_server):
     def _process_symbols(server_socket) -> list[Order]:
         portfolio = marketdata_pb.Portfolio(
             cash=0,
@@ -548,7 +525,6 @@ def multistep_algo_with_namespace(
     configuration = worker_pb.ExecutionConfiguration(
         brokerPort=5660,
         namespacePort=_namespace_port(namespace_server),
-        databaseURL=_execution_database_url(request),
         functions=[
             worker_pb.ExecutionConfiguration.Function(
                 name="measure_assets",

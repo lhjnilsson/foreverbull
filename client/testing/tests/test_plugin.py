@@ -3,14 +3,12 @@ import os
 from datetime import UTC
 from datetime import datetime
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
 from foreverbull_testing.environment import setup_env
 from foreverbull_testing.models import Backtest
 from foreverbull_testing.plugin import _backtest
-from sqlalchemy import Connection
 
 from foreverbull.models.finance import Assets
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
@@ -37,7 +35,7 @@ def test_namespace_server(namespace_server):
 
 
 def test_namespace_server_round_trip(fb_env, namespace_server):
-    assets = Assets(datetime.now(UTC), cast(Connection, None), [])
+    assets = Assets(datetime.now(UTC), [])
     assets.set_metrics("rsi", {"VZ": 5.0, "MCD": 15.0})
     assert namespace_server["rsi"] == {"VZ": 5.0, "MCD": 15.0}
     assert assets.get_metrics("rsi").to_dict() == {"VZ": 5.0, "MCD": 15.0}

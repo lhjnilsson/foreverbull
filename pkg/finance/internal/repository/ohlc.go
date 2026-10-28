@@ -303,10 +303,113 @@ func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asO
 	out := make([]*financepb.OHLC, 0)
 	for rows.Next() {
 		var (
-			symbol       string
-			t            time.Time
-			o, h, l, c   float64
-			volume       int64
+			symbol     string
+			t          time.Time
+			o, h, l, c float64
+			volume     int64
+		)
+		if err := rows.Scan(&symbol, &t, &o, &h, &l, &c, &volume); err != nil {
+			return nil, fmt.Errorf("failed to scan ohlc: %w", err)
+		}
+		if volume < 0 {
+			return nil, fmt.Errorf("ohlc volume negative for %s", symbol)
+		}
+		out = append(out, &financepb.OHLC{
+			Symbol:    symbol,
+			Timestamp: timestamppb.New(t.UTC()),
+			Open:      o,
+			High:      h,
+			Low:       l,
+			Close:     c,
+			Volume:    uint64(volume),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate ohlc: %w", err)
+	}
+	return out, nil
+}
+
+// stockDataWindow matches the client's exclusive lookback: 252 trading days
+// span about a year, and twice that plus a month covers holidays and halts.
+const stockDataWindow = time.Duration(defaultOHLCListLimit*2+30) * 24 * time.Hour
+
+// ListResolved returns stored bars for the tickers the algorithm asked for.
+// A renamed ticker (FB then META, one ISIN) is labeled with the asked symbol.
+// time is inside (asOf-window, asOf], at most limit bars per symbol. limit 0
+// means 252. An empty symbol list returns no bars. Errors do not include a
+// database URL.
+func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+	if limit < 0 {
+		return nil, fmt.Errorf("limit: negative")
+	}
+	if limit == 0 {
+		limit = defaultOHLCListLimit
+	}
+	if limit > maxOHLCListLimit {
+		return nil, fmt.Errorf("limit: at most %d", maxOHLCListLimit)
+	}
+	provider = priceProvider(provider)
+	asOf = asOf.UTC()
+	since := asOf.Add(-stockDataWindow)
+
+	rows, err := db.Conn.Query(ctx, `
+		WITH owner AS (
+			SELECT DISTINCT ON (a.symbol) a.symbol AS wanted, a.isin
+			FROM asset_symbol a
+			WHERE a.symbol = ANY($1::text[])
+			ORDER BY a.symbol,
+			         (a.from_date <= $5::date AND (a.to_date IS NULL OR a.to_date > $5::date)) DESC,
+			         (a.from_date <= $5::date) DESC,
+			         a.from_date DESC
+		),
+		candidate AS (
+			SELECT o.symbol AS wanted, o.symbol AS ticker, NULL::date AS from_date, NULL::date AS to_date,
+			       o.time, o.high, o.low, o.open, o.close, o.volume
+			FROM ohlc o
+			WHERE o.symbol = ANY($1::text[]) AND o.provider = $2 AND o.time > $3 AND o.time <= $4
+			UNION ALL
+			SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
+			FROM owner w
+			JOIN asset_symbol s ON s.isin = w.isin
+			JOIN ohlc o ON o.symbol = s.symbol
+			WHERE o.provider = $2 AND o.time > $3 AND o.time <= $4
+		),
+		chosen AS (
+			SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume
+			FROM candidate
+			ORDER BY wanted, time,
+			         CASE
+			             WHEN from_date <= time::date AND (to_date IS NULL OR time::date < to_date) THEN 0
+			             WHEN ticker = wanted THEN 1
+			             ELSE 2
+			         END
+		)
+		SELECT symbol, time, open::float8, high::float8, low::float8, close::float8, volume
+		FROM (
+			SELECT symbol, time, open, high, low, close, volume,
+			       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
+			FROM chosen
+		) bounded
+		WHERE rn <= $6
+		ORDER BY symbol ASC, time ASC`,
+		symbols, provider, since, asOf, asOf, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list resolved ohlc: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*financepb.OHLC, 0)
+	for rows.Next() {
+		var (
+			symbol     string
+			t          time.Time
+			o, h, l, c float64
+			volume     int64
 		)
 		if err := rows.Scan(&symbol, &t, &o, &h, &l, &c, &volume); err != nil {
 			return nil, fmt.Errorf("failed to scan ohlc: %w", err)

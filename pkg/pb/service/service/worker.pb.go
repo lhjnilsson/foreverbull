@@ -324,10 +324,9 @@ type WorkerRequest struct {
 	Task      string             `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
 	Symbols   []string           `protobuf:"bytes,2,rep,name=symbols,proto3" json:"symbols,omitempty"`
 	Portfolio *finance.Portfolio `protobuf:"bytes,3,opt,name=portfolio,proto3" json:"portfolio,omitempty"`
-	// Optional lookback bars for symbols as of the portfolio timestamp.
-	// When non-empty, the worker must not open a database connection for OHLC.
-	// Broker fills these from stored bars (same shape as Marketdata.GetOHLC).
-	// Empty keeps today's direct-DB path until that path is removed.
+	// Lookback bars for symbols as of the portfolio timestamp. The broker
+	// fills these from stored bars (alias-resolved). The worker does not open
+	// a database connection. Empty means the step has no stored bars.
 	Bars []*finance.OHLC `protobuf:"bytes,4,rep,name=bars,proto3" json:"bars,omitempty"`
 }
 

@@ -2,6 +2,7 @@ import tempfile
 
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 from typing import Any
 from typing import cast
 from unittest import mock
@@ -10,112 +11,36 @@ import pandas
 import pytest
 
 from protobuf import merge_from_binary
-from sqlalchemy import event
-from sqlalchemy import text
-from sqlalchemy.engine import Connection
-from sqlalchemy.exc import IntegrityError
 
-from foreverbull.broker.utils import database_url_for_host
 from foreverbull.exceptions import ConfigurationError
-from foreverbull.exceptions import ConnectionError
 from foreverbull.models import Algorithm
 from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models import Function
 from foreverbull.models import Portfolio
-from foreverbull.models import _get_postgres_urls
 from foreverbull.models import deployable_value
 from foreverbull.models import equal_weight_percent
-from foreverbull.models import get_engine
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
-from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
-from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
-@pytest.mark.parametrize(
-    "input,expected_output",
-    [
-        (
-            "postgres://user:password@127.0.0.1:5656/demo",
-            ["postgresql://user:password@127.0.0.1:5656/demo"],
-        ),
-        (
-            "postgresql://user:password@db.internal:5433/demo",
-            ["postgresql://user:password@db.internal:5433/demo"],
-        ),
-        (
-            "postgres://user:password@postgres:5432/demo",
-            ["postgresql://user:password@postgres:5432/demo"],
-        ),
-    ],
-)
-def test_get_postgres_urls(input, expected_output):
-    assert [u for u in _get_postgres_urls(input)] == expected_output
-
-
-def test_database_url_for_host_uses_kind_localhost(monkeypatch):
-    monkeypatch.delenv("BROKER_HOSTNAME", raising=False)
-    monkeypatch.setattr(
-        "foreverbull.broker.utils.load_cluster_config",
-        lambda **kwargs: {"cluster": "local"},
+def _bar(symbol: str, when: datetime, close: float, *, volume: int = 100) -> marketdata_pb.OHLC:
+    return marketdata_pb.OHLC(
+        symbol=symbol,
+        timestamp=pb_utils.to_proto_timestamp(when),
+        open=close,
+        high=close + 1,
+        low=close - 1,
+        close=close,
+        volume=volume,
     )
-    url = database_url_for_host("postgres://foreverbull:foreverbull@postgres:5432/foreverbull")
-    assert url == "postgresql://foreverbull:foreverbull@127.0.0.1:5432/foreverbull"
-
-
-def test_database_url_for_host_keeps_remote_and_incluster_urls(monkeypatch):
-    monkeypatch.setattr(
-        "foreverbull.broker.utils.load_cluster_config",
-        lambda **kwargs: {"cluster": "remote"},
-    )
-    remote = "postgres://foreverbull:foreverbull@postgres:5432/foreverbull"
-    assert database_url_for_host(remote) == remote
-
-    monkeypatch.setenv("BROKER_HOSTNAME", "foreverbull")
-    monkeypatch.setattr(
-        "foreverbull.broker.utils.load_cluster_config",
-        lambda **kwargs: {"cluster": "local"},
-    )
-    assert database_url_for_host(remote) == remote
-    assert (
-        database_url_for_host("postgres://foreverbull:foreverbull@127.0.0.1:5432/foreverbull")
-        == "postgres://foreverbull:foreverbull@127.0.0.1:5432/foreverbull"
-    )
-
-
-def test_get_engine_uses_provided_url_only(monkeypatch):
-    attempted = []
-
-    def fake_create_engine(url):
-        attempted.append(url)
-        raise OSError("refused")
-
-    monkeypatch.setattr("foreverbull.broker.utils.create_engine", fake_create_engine)
-    with pytest.raises(
-        ConnectionError,
-        match=r"Could not connect to database at postgresql://user:\*\*\*@db.internal:5656/demo",
-    ):
-        get_engine("postgres://user:password@db.internal:5656/demo")
-    assert attempted == ["postgresql://user:password@db.internal:5656/demo"]
-
-
-def _period_end(backtest: backtest_pb.Backtest) -> datetime:
-    """Read bars as of the last session the fixture stores, not today.
-
-    stock_data scans only _STOCK_DATA_WINDOW before as_of, and the fixture's
-    bars end years before datetime.now().
-    """
-    end = backtest.periods[0].end_date
-    assert end is not None
-    return datetime(end.year, end.month, end.day, 23, 59, tzinfo=UTC)
 
 
 class TestAsset:
     def test_asset_getattr_setattr(self, fb_env, namespace_server):
-        asset = Asset(datetime.now(), cast(Connection, None), "AAPL")
+        asset = Asset(datetime.now(), "AAPL")
         assert asset is not None
         asset.set_metric("rsi", 56.4)
 
@@ -125,42 +50,21 @@ class TestAsset:
         namespace_server["pe"] = {"AAPL": 12.3}
         assert asset.get_metric("pe") == 12.3
 
-    def test_assets(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        with database.connect() as conn:
-            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assets = Assets(_period_end(backtest_entity), conn, symbols)
-            for asset in assets:
-                assert asset is not None
-                assert asset.symbol is not None
-                stock_data = asset.stock_data
-                assert stock_data is not None
-                assert isinstance(stock_data, pandas.DataFrame)
-                assert len(stock_data) > 0
-                assert "open" in stock_data.columns
-                assert "high" in stock_data.columns
-                assert "low" in stock_data.columns
-                assert "close" in stock_data.columns
-                assert "volume" in stock_data.columns
-                assert len(stock_data) <= _STOCK_DATA_LOOKBACK
-
-    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        with database.connect() as conn:
-            before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            asset = Asset(_period_end(backtest_entity), conn, "AAPL'; DROP TABLE ohlc; --")
-            stock_data = asset.stock_data
-            assert isinstance(stock_data, pandas.DataFrame)
-            assert len(stock_data) == 0
-            after = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            assert after == before
+    def test_stock_data_uses_bars_for_the_symbol(self):
+        as_of = datetime(2024, 6, 3, tzinfo=UTC)
+        bars = [_bar("AAPL", as_of - timedelta(days=i), 100 + i) for i in range(3)]
+        bars.append(_bar("MSFT", as_of, 50))
+        asset = Asset(as_of, "AAPL", bars)
+        stock_data = asset.stock_data
+        assert list(stock_data.columns) == ["symbol", "time", "high", "low", "open", "close", "volume"]
+        assert stock_data["symbol"].tolist() == ["AAPL", "AAPL", "AAPL"]
+        assert stock_data["close"].tolist() == [102, 101, 100]
+        assert len(stock_data) <= _STOCK_DATA_LOOKBACK
 
 
 class TestAssets:
     def test_assets_getattr_setattr(self, fb_env, namespace_server):
-        assets = Assets(datetime.now(), cast(Connection, None), [])
+        assets = Assets(datetime.now(), [])
         assert assets is not None
         assets.set_metrics("holdings", {"AAPL": True, "MSFT": False})
 
@@ -170,150 +74,52 @@ class TestAssets:
         namespace_server["pe"] = {"AAPL": 12.3, "MSFT": 23.4}
         assert assets.get_metrics("pe").to_dict() == {"AAPL": 12.3, "MSFT": 23.4}
 
-    def test_stock_data(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        with database.connect() as conn:
-            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assets = Assets(_period_end(backtest_entity), conn, symbols)
-            stock_data = assets.stock_data
-            assert stock_data is not None
-            assert isinstance(stock_data, pandas.DataFrame)
-            assert len(stock_data) > 0
-            assert list(stock_data.index.names) == ["symbol", "time"]
-            assert "open" in stock_data.columns
-            assert "high" in stock_data.columns
-            assert "low" in stock_data.columns
-            assert "close" in stock_data.columns
-            assert "volume" in stock_data.columns
-            counts = stock_data.groupby(level="symbol").size()
-            assert (counts <= _STOCK_DATA_LOOKBACK).all()
+    def test_stock_data(self):
+        as_of = datetime(2024, 6, 3, tzinfo=UTC)
+        bars = [
+            _bar("AAPL", as_of - timedelta(days=1), 10),
+            _bar("MSFT", as_of, 20),
+            _bar("AAPL", as_of, 11),
+        ]
+        stock_data = Assets(as_of, ["AAPL", "MSFT"], bars).stock_data
+        assert list(stock_data.index.names) == ["symbol", "time"]
+        assert set(stock_data.columns) == {"high", "low", "open", "close", "volume"}
+        counts = stock_data.groupby(level="symbol").size()
+        assert counts.to_dict() == {"AAPL": 2, "MSFT": 1}
+        assert (counts <= _STOCK_DATA_LOOKBACK).all()
 
-    def test_stock_data_uses_bound_parameters(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        with database.connect() as conn:
-            before = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            assets = Assets(_period_end(backtest_entity), conn, ["AAPL'; DROP TABLE ohlc; --", "MSFT"])
-            stock_data = assets.stock_data
-            assert isinstance(stock_data, pandas.DataFrame)
-            after = conn.execute(text("SELECT COUNT(*) FROM ohlc")).scalar()
-            assert after == before
-            assert "AAPL'; DROP TABLE ohlc; --" not in (
-                stock_data.index.get_level_values("symbol") if not stock_data.empty else []
-            )
+    def test_iterated_stock_data_matches_direct_asset(self):
+        as_of = datetime(2024, 6, 3, tzinfo=UTC)
+        symbols = ["AAPL", "MSFT"]
+        bars = [_bar(symbol, as_of, close) for symbol, close in (("AAPL", 10), ("MSFT", 20))]
+        assets = Assets(as_of, symbols, bars)
+        for asset in assets:
+            direct = Asset(as_of, asset.symbol, bars).stock_data
+            pandas.testing.assert_frame_equal(asset.stock_data, direct, check_dtype=True)
+            pandas.testing.assert_frame_equal(asset.stock_data, direct, check_dtype=True)
 
-    def test_ohlc_rejects_a_second_bar_at_the_same_time(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        with database.connect() as conn:
-            row = conn.execute(text("SELECT provider, symbol, time FROM ohlc LIMIT 1")).one()
-            with pytest.raises(IntegrityError):
-                conn.execute(
-                    text(
-                        """INSERT INTO ohlc (provider, symbol, time, open, high, low, close, volume)
-                        VALUES (:provider, :symbol, :time, 1, 1, 1, 1, 1)"""
-                    ),
-                    {"provider": row.provider, "symbol": row.symbol, "time": row.time},
-                )
-            conn.rollback()
+    def test_assets_stock_data_one_symbol_matches_asset(self):
+        as_of = datetime(2024, 6, 3, tzinfo=UTC)
+        symbols = ["AAPL", "MSFT"]
+        bars = [_bar("AAPL", as_of, 10), _bar("MSFT", as_of, 20)]
+        batched = Assets(as_of, symbols, bars).stock_data
+        direct = Asset(as_of, "AAPL", bars).stock_data
+        one = batched.loc[["AAPL"]].reset_index()
+        pandas.testing.assert_frame_equal(one, direct, check_dtype=True)
 
-    def test_iterated_stock_data_matches_direct_asset(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        as_of = _period_end(backtest_entity)
-        with database.connect() as conn:
-            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assert symbols
-            assets = Assets(as_of, conn, symbols)
-            for asset in assets:
-                direct = Asset(as_of, conn, asset.symbol).stock_data
-                pandas.testing.assert_frame_equal(asset.stock_data, direct, check_dtype=True)
 
-    def test_assets_stock_data_one_symbol_matches_asset_query(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        as_of = _period_end(backtest_entity)
-        with database.connect() as conn:
-            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            symbol = symbols[0]
-            batched = Assets(as_of, conn, symbols).stock_data
-            direct = Asset(as_of, conn, symbol).stock_data
-            # symbol, time are the index on the batched frame; Asset keeps them as columns.
-            one = batched.loc[[symbol]].reset_index()
-            pandas.testing.assert_frame_equal(one, direct, check_dtype=True)
-
-    def test_iterated_stock_data_is_one_statement(self, fb_database, backtest_entity: backtest_pb.Backtest):
-        database, ensure_data = fb_database
-        ensure_data(backtest_entity)
-        as_of = _period_end(backtest_entity)
-        with database.connect() as conn:
-            symbols = [asset.symbol for asset in backtest_entity.periods[0].assets if asset.enabled]
-            assert len(symbols) >= 2
-            executions: list[str] = []
-
-            def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-                executions.append(statement)
-
-            event.listen(conn, "before_cursor_execute", before_cursor_execute)
-            try:
-                assets = Assets(as_of, conn, symbols)
-                frames = []
-                for asset in assets:
-                    frames.append(asset.stock_data)
-                    frames.append(asset.stock_data)
-                assert len(frames) == len(symbols) * 2
-                assert len(executions) == 1
-                assert "row_number" in executions[0].lower()
-
-                direct = Asset(as_of, conn, symbols[0]).stock_data
-                assert isinstance(direct, pandas.DataFrame)
-                assert len(executions) == 2
-                assert "row_number" not in executions[1].lower()
-            finally:
-                event.remove(conn, "before_cursor_execute", before_cursor_execute)
+_PORTFOLIO_DAY = datetime(2023, 12, 29, tzinfo=UTC)
+_PORTFOLIO_CLOSE = 193
 
 
 class TestPortfolio:
-    @pytest.fixture(scope="session")
-    def db(self, fb_database):
-        database, _ = fb_database
-        with database.connect() as conn:
-            conn.execute(
-                text(
-                    """INSERT INTO asset (symbol, name)
-                    VALUES (:symbol, :name) ON CONFLICT DO NOTHING"""
-                ),
-                {"symbol": "ptest", "name": "PortFolio Test"},
-            )
-            conn.execute(
-                text(
-                    """INSERT INTO ohlc (provider, symbol, open, high, low, close, volume, time)
-                    VALUES (:provider, :symbol, :open, :high, :low, :close, :volume, :time) ON CONFLICT DO NOTHING"""
-                ),
-                {
-                    "provider": ohlc_provider(),
-                    "symbol": "ptest",
-                    "open": 10,
-                    "high": 20,
-                    "low": 5,
-                    "close": 193,  # We should use Close when calculating order value
-                    "volume": 100,
-                    "time": datetime(2023, 12, 29, tzinfo=UTC),
-                },
-            )
-            conn.commit()
-        yield database
-
-    @pytest.fixture(scope="function")
-    def uut(self, db):
-        with db.connect() as conn:
-            pb = marketdata_pb.Portfolio(
-                timestamp=pb_utils.to_proto_timestamp(datetime(2023, 12, 29, tzinfo=UTC)),
-                portfolio_value=1000000,
-            )
-            portfolio = Portfolio(pb, conn)
-            yield portfolio
+    @pytest.fixture
+    def uut(self):
+        pb = marketdata_pb.Portfolio(
+            timestamp=pb_utils.to_proto_timestamp(_PORTFOLIO_DAY),
+            portfolio_value=1000000,
+        )
+        return Portfolio(pb, [_bar("ptest", _PORTFOLIO_DAY, _PORTFOLIO_CLOSE)])
 
     def test_calculate_order_value_amount(self, uut: Portfolio):
         close = uut._calculate_order_value_amount("ptest", 100000)
@@ -321,10 +127,6 @@ class TestPortfolio:
         assert close == 518
 
     def test_calculate_order_value_amount_refuses_negative_value_and_negative_close(self, uut: Portfolio):
-        uut._db.execute(
-            text("UPDATE ohlc SET close=:close WHERE symbol=:symbol"),
-            {"close": 100, "symbol": "ptest"},
-        )
         with pytest.raises(ConfigurationError, match="order value is negative"):
             uut._calculate_order_value_amount("ptest", -190)
         with pytest.raises(ConfigurationError, match="order value is negative"):
@@ -333,11 +135,8 @@ class TestPortfolio:
             uut.order_target_value("ptest", -190)
         assert uut.pending_orders == []
 
+        uut._bars = [_bar("ptest", _PORTFOLIO_DAY, -50)]
         uut._close_by_symbol_day.clear()
-        uut._db.execute(
-            text("UPDATE ohlc SET close=:close WHERE symbol=:symbol"),
-            {"close": -50, "symbol": "ptest"},
-        )
         with pytest.raises(ConfigurationError, match="close is negative"):
             uut.order_value("ptest", 190)
         with pytest.raises(ConfigurationError, match="close is negative"):
@@ -432,13 +231,7 @@ class TestPortfolio:
 
     @pytest.mark.parametrize("percent", [0.10, 0.5, 1.0])
     def test_order_share_counts_follow_portfolio_value_percent_over_close(self, uut: Portfolio, percent: float):
-        timestamp = uut._pb.timestamp
-        assert timestamp is not None
-        close = uut._db.execute(
-            text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
-            {"symbol": "ptest", "dt": timestamp.to_datetime().strftime("%Y-%m-%d")},
-        ).scalar()
-        assert close is not None
+        close = _PORTFOLIO_CLOSE
         expected = int(uut._pb.portfolio_value * percent / float(close))
 
         by_value = uut.order_value("ptest", uut._pb.portfolio_value * percent)
@@ -452,30 +245,14 @@ class TestPortfolio:
         assert by_target_again.amount == expected
 
     def test_repeated_order_value_reuses_close(self, uut: Portfolio):
-        timestamp = uut._pb.timestamp
-        assert timestamp is not None
-        day = timestamp.to_datetime().strftime("%Y-%m-%d")
-        close = uut._db.execute(
-            text("SELECT close FROM ohlc WHERE symbol=:symbol and time::DATE=:dt"),
-            {"symbol": "ptest", "dt": day},
-        ).scalar()
-        assert close is not None
-        executions: list[str] = []
-
-        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-            executions.append(statement)
-
-        event.listen(uut._db, "before_cursor_execute", before_cursor_execute)
-        try:
-            first = uut.order_value("ptest", 50000)
-            second = uut.order_value("ptest", 50000)
-            other = uut.order_value("ptest", 100000)
-        finally:
-            event.remove(uut._db, "before_cursor_execute", before_cursor_execute)
-
-        assert first.amount == second.amount == int(50000 / float(close))
-        assert other.amount == int(100000 / float(close))
-        assert len(executions) == 1
+        assert uut._close_by_symbol_day == {}
+        first = uut.order_value("ptest", 50000)
+        assert len(uut._close_by_symbol_day) == 1
+        second = uut.order_value("ptest", 50000)
+        other = uut.order_value("ptest", 100000)
+        assert first.amount == second.amount == int(50000 / _PORTFOLIO_CLOSE)
+        assert other.amount == int(100000 / _PORTFOLIO_CLOSE)
+        assert len(uut._close_by_symbol_day) == 1
 
 
 class TestAllocation:
@@ -502,7 +279,7 @@ class TestAllocation:
     def test_equal_weight_percent_rejects_cash_reserve_outside_unit_interval(self, cash_reserve):
         with pytest.raises(ConfigurationError, match="cash reserve outside"):
             equal_weight_percent(1, cash_reserve, 1)
-        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=100_000), cast(Connection, None))
+        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=100_000))
         with pytest.raises(ConfigurationError, match="cash reserve outside"):
             portfolio.equal_weight_percent(1, cash_reserve, 1)
 
@@ -512,7 +289,7 @@ class TestAllocation:
         assert deployable_value(100_000, 1.0) == 0.0
 
     def test_portfolio_helpers_match_module(self):
-        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=200_000), cast(Connection, None))
+        portfolio = Portfolio(marketdata_pb.Portfolio(portfolio_value=200_000))
         assert portfolio.deployable_value(0.10) == deployable_value(200_000, 0.10)
         assert portfolio.equal_weight_percent(10, 0.10, 10) == equal_weight_percent(10, 0.10, 10)
         assert portfolio.equal_weight_percent(0, 0.05, 10) == 0.0
@@ -596,10 +373,10 @@ def test_algorithm_process_maps_worker_request_to_orders():
         cash=1000,
     )
 
-    batched = sequential.process("handle_data", cast(Connection, None), portfolio, ["AAPL", "MSFT"])
+    batched = sequential.process("handle_data", portfolio, ["AAPL", "MSFT"])
     assert [(order.symbol, order.amount) for order in batched] == [("AAPL", 7), ("MSFT", 7)]
 
-    per_symbol = parallel.process("measure_assets", cast(Connection, None), portfolio, ["AAPL", "MSFT"])
+    per_symbol = parallel.process("measure_assets", portfolio, ["AAPL", "MSFT"])
     assert [(order.symbol, order.amount) for order in per_symbol] == [("AAPL", 3), ("MSFT", 3)]
 
 

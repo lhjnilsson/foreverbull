@@ -1,11 +1,13 @@
 import os
 
 from collections.abc import Generator
+from datetime import UTC
 
 import pynng
 
 from protobuf import merge_from_binary
 
+from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
@@ -13,6 +15,7 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import session_pb as session
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull.pb.foreverbull.backtest.v1 import session_pb
+from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
 from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
@@ -90,7 +93,6 @@ class Broker:
             configuration=worker_pb.ExecutionConfiguration(
                 brokerPort=self._broker_port,
                 namespacePort=self._namespace_port,
-                databaseURL=os.getenv("DATABASE_URL") or "",
                 functions=[],
             ),
         )
@@ -110,11 +112,13 @@ class Broker:
             if self._backtest is None:
                 raise RuntimeError("Backtest not set")
             symbols = [a.symbol for period in self._backtest.periods for a in period.assets if a.enabled]
+            bars = _bars_from_database(symbols, rsp.portfolio)
             for symbol in symbols:
                 worker_request = worker_service_pb.WorkerRequest(
                     task="handle_data",
                     symbols=[symbol],
                     portfolio=rsp.portfolio,
+                    bars=[bar for bar in bars if bar.symbol == symbol],
                 )
                 self._worker_socket.send(worker_request.to_binary())
                 worker_response = worker_service_pb.WorkerResponse()
@@ -134,3 +138,56 @@ class Broker:
         self, request: session_service_pb.StopServerRequest, context
     ) -> session_service_pb.StopServerResponse:
         return session_service_pb.StopServerResponse()
+
+
+def _bars_from_database(symbols: list[str], portfolio) -> list[marketdata_pb.OHLC]:
+    """Symbol-exact bars for the integration fake broker.
+
+    The client package does not import a database driver. This test helper
+    does, and only when DATABASE_URL is set.
+    """
+    url = os.getenv("DATABASE_URL")
+    if not url or not symbols or portfolio is None or portfolio.timestamp is None:
+        return []
+    from sqlalchemy import bindparam
+    from sqlalchemy import create_engine
+    from sqlalchemy import text
+
+    as_of = pb_utils.from_proto_timestamp(portfolio.timestamp)
+    if as_of.tzinfo is not None:
+        as_of = as_of.astimezone(UTC).replace(tzinfo=None)
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    engine = create_engine(url)
+    statement = text(
+        """
+        SELECT symbol, time, open, high, low, close, volume
+        FROM (
+            SELECT symbol, time, open, high, low, close, volume,
+                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) AS rn
+            FROM ohlc
+            WHERE symbol IN :symbols AND time <= :as_of
+        ) bounded
+        WHERE rn <= 252
+        ORDER BY symbol ASC, time ASC
+        """
+    ).bindparams(bindparam("symbols", expanding=True))
+    with engine.connect() as conn:
+        rows = conn.execute(statement, {"symbols": symbols, "as_of": as_of})
+        bars = []
+        for row in rows:
+            when = row.time
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=UTC)
+            bars.append(
+                marketdata_pb.OHLC(
+                    symbol=str(row.symbol),
+                    timestamp=pb_utils.to_proto_timestamp(when),
+                    open=float(row.open),
+                    high=float(row.high),
+                    low=float(row.low),
+                    close=float(row.close),
+                    volume=int(row.volume),
+                )
+            )
+        return bars

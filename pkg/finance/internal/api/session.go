@@ -24,14 +24,31 @@ type grpcSessionServer struct {
 	orders []*pb.Order
 
 	activity chan bool
+
+	bars     worker.BarSource
+	provider string
 }
 
-func NewGRPCSessionServer(trading supplier.Trading) (*grpc.Server, <-chan bool, error) {
+type sessionOption func(*grpcSessionServer)
+
+// WithBars fills WorkerRequest.bars from source during paper runs.
+// provider is the price source. An empty provider is yahoo.
+func WithBars(source worker.BarSource, provider string) sessionOption {
+	return func(gs *grpcSessionServer) {
+		gs.bars = source
+		gs.provider = provider
+	}
+}
+
+func NewGRPCSessionServer(trading supplier.Trading, opts ...sessionOption) (*grpc.Server, <-chan bool, error) {
 	grpcServer := grpc.NewServer()
 	activity := make(chan bool)
 	server := &grpcSessionServer{
 		trading:  trading,
 		activity: activity,
+	}
+	for _, opt := range opts {
+		opt(server)
 	}
 	servicePb.RegisterSessionServicerServer(grpcServer, server)
 
@@ -39,7 +56,7 @@ func NewGRPCSessionServer(trading supplier.Trading) (*grpc.Server, <-chan bool, 
 }
 
 // NewSecuredGRPCSessionServer requires x-foreverbull-session on every call.
-func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string) (*grpc.Server, <-chan bool, error) {
+func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string, opts ...sessionOption) (*grpc.Server, <-chan bool, error) {
 	if secret == "" {
 		return nil, nil, fmt.Errorf("%s is missing", auth.SessionMetadata())
 	}
@@ -49,13 +66,20 @@ func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string) (*grpc
 		trading:  trading,
 		activity: activity,
 	}
+	for _, opt := range opts {
+		opt(server)
+	}
 	servicePb.RegisterSessionServicerServer(grpcServer, server)
 	return grpcServer, activity, nil
 }
 
 func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.ConfigureRequest) (*servicePb.ConfigureResponse, error) {
+	var poolOpts []worker.Option
+	if gs.bars != nil {
+		poolOpts = append(poolOpts, worker.WithBars(gs.bars, gs.provider))
+	}
 	var err error
-	gs.wp, err = worker.NewPool(ctx, req.GetAlgorithm())
+	gs.wp, err = worker.NewPool(ctx, req.GetAlgorithm(), poolOpts...)
 	if err != nil {
 		return nil, err
 	}
