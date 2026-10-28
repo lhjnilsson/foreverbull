@@ -53,10 +53,10 @@ def format_drawdown(fraction: float) -> str:
 
 
 def format_usd(amount: float) -> str:
-    """Portfolio dollars: two decimals and thousands separators, no currency sign."""
+    """Portfolio dollars: two decimals and thousands separators. A minus sits before the dollar sign."""
     if amount < 0:
-        return f"-{abs(amount):,.2f}"
-    return f"{amount:,.2f}"
+        return f"-${abs(amount):,.2f}"
+    return f"${amount:,.2f}"
 
 
 def format_active_days(active: int, total: int) -> str:
