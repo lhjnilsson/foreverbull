@@ -174,10 +174,9 @@ class WorkerRequest(Message[_WorkerRequestFields]):
             optional foreverbull.finance.v1.Portfolio portfolio = 3;
             ```
         bars:
-            Optional lookback bars for symbols as of the portfolio timestamp.
-            When non-empty, the worker must not open a database connection for OHLC.
-            Broker fills these from stored bars (same shape as Marketdata.GetOHLC).
-            Empty keeps today's direct-DB path until that path is removed.
+            Lookback bars for symbols as of the portfolio timestamp. The broker
+            fills these from stored bars (alias-resolved). The worker does not open
+            a database connection. Empty means the step has no stored bars.
 
             ```proto
             repeated foreverbull.finance.v1.OHLC bars = 4;
