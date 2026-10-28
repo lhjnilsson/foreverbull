@@ -167,7 +167,7 @@ Without `VERSION`, `fbenv create` pulls the published images `ghcr.io/lhjnilsson
 
 `fbenv create` (cluster `local`, the default) creates the Kind cluster if needed, loads images, and `helm upgrade --install`s `deploy/helm/foreverbull` at `replicaCount=0`. Workloads: Postgres, NATS JetStream, Minio, Zipline, the Foreverbull broker, and Grafana.
 
-Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, broker HTTP `8080`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055`. Override with `FOREVERBULL_BROKER_ADDRESS`.
+Host ports (Kind `extraPortMappings`): Postgres `5432`, NATS `4222`, Minio `9000`, broker gRPC `50055`, broker HTTP `8080`, backtest NNG `27000`–`27015`, Grafana `3000`. Python `fbull` talks to `localhost:50055`. Override with `FOREVERBULL_BROKER_ADDRESS`. After `fbenv start`, the page is [http://localhost:8080](http://localhost:8080). With authentication off it opens on Overview. With authentication on, sign-in comes first.
 
 Remote cluster (writes `.foreverbull/config.yaml`, then installs the same chart):
 

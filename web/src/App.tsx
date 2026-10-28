@@ -3,8 +3,11 @@ import { AccountPage, Locked, LoginPage } from "./auth";
 import { AuthProvider, useAuth } from "./auth-context";
 import { Sidebar } from "./components/fb";
 import { BacktestDetail, BacktestIndex, BacktestsLayout } from "./routes/backtests";
+import { DocsPage } from "./routes/docs";
+import { OverviewPage } from "./routes/overview";
 import { ServicesPage } from "./routes/services";
 import { StrategiesLayout, StrategyDetail, StrategyIndex } from "./routes/strategies";
+import { backtestsPath, docsPath, homePath, overviewPath, servicesPath, strategiesPath } from "./shell";
 
 function Shell() {
   const { state } = useAuth();
@@ -29,18 +32,20 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<Shell />}>
-          <Route path="/" element={<Navigate to="/services" replace />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/backtests" element={<BacktestsLayout />}>
+          <Route path="/" element={<Navigate to={homePath} replace />} />
+          <Route path={overviewPath} element={<OverviewPage />} />
+          <Route path={docsPath} element={<DocsPage />} />
+          <Route path={servicesPath} element={<ServicesPage />} />
+          <Route path={backtestsPath} element={<BacktestsLayout />}>
             <Route index element={<BacktestIndex />} />
             <Route path=":name" element={<BacktestDetail />} />
           </Route>
-          <Route path="/strategies" element={<StrategiesLayout />}>
+          <Route path={strategiesPath} element={<StrategiesLayout />}>
             <Route index element={<StrategyIndex />} />
             <Route path=":name" element={<StrategyDetail />} />
           </Route>
           <Route path="/account" element={<AccountPage />} />
-          <Route path="*" element={<Navigate to="/services" replace />} />
+          <Route path="*" element={<Navigate to={homePath} replace />} />
         </Route>
       </Routes>
     </AuthProvider>

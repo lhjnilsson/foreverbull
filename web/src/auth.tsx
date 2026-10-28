@@ -111,8 +111,8 @@ function LoginForm() {
 export function Locked({ account }: { account: Me }) {
   const line =
     account.role === "pending"
-      ? "This account is not approved. It cannot open services, strategies, or backtests."
-      : "Access is revoked. This account cannot open services, strategies, or backtests.";
+      ? "This account is not approved. It cannot open this installation."
+      : "Access is revoked. This account cannot open this installation.";
   return (
     <div className="flex h-screen items-center justify-center">
       <div className="max-w-md">
