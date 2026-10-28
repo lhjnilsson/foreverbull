@@ -124,7 +124,7 @@ func TestOverviewRowUsesFirstOpenAndLastClose(t *testing.T) {
 		AlgorithmPeriodReturn: 0.5,
 		Sharpe:                &earlierSharpe,
 	}
-	row := overviewRowFrom(&backtestpb.Execution{Id: "abc", Backtest: "spy"}, []*backtestpb.Period{later, nil, earlier})
+	row := overviewRowFrom(&backtestpb.Execution{Id: "abc", Backtest: "spy"}, []*backtestpb.Period{later, nil, earlier}, "SPY")
 	if row.startingPortfolioValue == nil || *row.startingPortfolioValue != 1050 {
 		t.Fatalf("start = %v", row.startingPortfolioValue)
 	}
@@ -146,6 +146,9 @@ func TestOverviewRowUsesFirstOpenAndLastClose(t *testing.T) {
 	if row.activeDays != "1 of 2" {
 		t.Fatalf("activity = %q", row.activeDays)
 	}
+	if row.benchmark != "not available" {
+		t.Fatalf("benchmark = %q", row.benchmark)
+	}
 }
 
 func TestOverviewRowTradelessKeepsZeroReturnAndAbsentRatios(t *testing.T) {
@@ -157,7 +160,7 @@ func TestOverviewRowTradelessKeepsZeroReturnAndAbsentRatios(t *testing.T) {
 		AlgorithmPeriodReturn: 0,
 		MaxDrawdown:           0,
 	}
-	row := overviewRowFrom(&backtestpb.Execution{Id: "flat"}, []*backtestpb.Period{flat, flat})
+	row := overviewRowFrom(&backtestpb.Execution{Id: "flat"}, []*backtestpb.Period{flat, flat}, "")
 	if row.sharpe != nil || row.sortino != nil {
 		t.Fatal("tradeless sharpe and sortino stay absent")
 	}
@@ -175,6 +178,26 @@ func TestOverviewRowTradelessKeepsZeroReturnAndAbsentRatios(t *testing.T) {
 	}
 	if row.activeDays != "0 of 2" {
 		t.Fatalf("activity = %q", row.activeDays)
+	}
+	if row.benchmark != "not set" {
+		t.Fatalf("benchmark = %q", row.benchmark)
+	}
+}
+
+func TestBenchmarkCell(t *testing.T) {
+	if benchmarkCell("", nil) != "not set" {
+		t.Fatalf("empty ticker = %q", benchmarkCell("", nil))
+	}
+	if benchmarkCell("SPY", &backtestpb.Period{}) != "not available" {
+		t.Fatal("missing return must stay not available")
+	}
+	ret := 0.031
+	if got := benchmarkCell("SPY", &backtestpb.Period{BenchmarkPeriodReturn: &ret}); got != "+3.1%" {
+		t.Fatalf("benchmark = %q", got)
+	}
+	zero := 0.0
+	if got := benchmarkCell("SPY", &backtestpb.Period{BenchmarkPeriodReturn: &zero}); got != "+0.0%" {
+		t.Fatalf("zero benchmark = %q", got)
 	}
 }
 
@@ -257,9 +280,15 @@ func (test *DatasouceTest) TestOverviewExcludesExecutionEndingBeforePicker() {
 				StartingValue:         800,
 				Sharpe:                floatPtr(1.4),
 				Sortino:               floatPtr(1.8),
+				BenchmarkPeriodReturn: floatPtr(0.031),
 				LongsCount:            3,
 			},
 		},
+	}, nil).Once()
+	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+		return req.GetName() == "eu-small"
+	})).Return(&backtestsvc.GetBacktestResponse{
+		Backtest: &backtestpb.Backtest{Benchmark: "SPY"},
 	}, nil).Once()
 
 	resp, err := test.uut.QueryData(context.Background(), &grafana.QueryDataRequest{
@@ -305,6 +334,7 @@ func (test *DatasouceTest) TestOverviewExcludesExecutionEndingBeforePicker() {
 	test.InDelta(1120, test.overviewFloat(frame, "portfolio_value", 0), 1e-9)
 	test.InDelta(1050, test.overviewFloat(frame, "starting_portfolio_value", 0), 1e-9)
 	test.Equal("1 of 2", test.overviewString(frame, "active_days", 0))
+	test.Equal("+3.1%", test.overviewString(frame, "benchmark", 0))
 
 	test.Equal("percentunit", overviewUnit(frame, "algorithm_period_return"))
 	test.Equal("percentunit", overviewUnit(frame, "max_drawdown"))
@@ -312,9 +342,16 @@ func (test *DatasouceTest) TestOverviewExcludesExecutionEndingBeforePicker() {
 	test.Equal("none", overviewUnit(frame, "sortino"))
 	test.Equal("currencyUSD", overviewUnit(frame, "portfolio_value"))
 	test.Equal("currencyUSD", overviewUnit(frame, "starting_portfolio_value"))
-	test.Equal("Starting portfolio value", overviewField(frame, "starting_portfolio_value").Config.DisplayNameFromDS)
-	test.Equal("Ending portfolio value", overviewField(frame, "portfolio_value").Config.DisplayNameFromDS)
+	test.Equal("Start", overviewField(frame, "starting_portfolio_value").Config.DisplayNameFromDS)
+	test.Equal("End", overviewField(frame, "portfolio_value").Config.DisplayNameFromDS)
+	test.Equal("Return", overviewField(frame, "algorithm_period_return").Config.DisplayNameFromDS)
+	test.Equal("Benchmark", overviewField(frame, "benchmark").Config.DisplayNameFromDS)
+	test.Equal("Sharpe", overviewField(frame, "sharpe").Config.DisplayNameFromDS)
+	test.Equal("Sortino", overviewField(frame, "sortino").Config.DisplayNameFromDS)
+	test.Equal("Max drawdown", overviewField(frame, "max_drawdown").Config.DisplayNameFromDS)
 	test.Equal("Active days", overviewField(frame, "active_days").Config.DisplayNameFromDS)
+	test.Equal("Start date", overviewField(frame, "start").Config.DisplayNameFromDS)
+	test.Equal("End date", overviewField(frame, "end").Config.DisplayNameFromDS)
 	test.Equal(executionLinkURL, overviewField(frame, "backtest").Config.Links[0].URL)
 	test.Contains(executionLinkURL, "/d/ee9ep4jxtwkcgf?var-execution=")
 	test.Contains(executionLinkURL, "var-backtest=")
@@ -355,6 +392,11 @@ func (test *DatasouceTest) TestOverviewFiltersByBacktestName() {
 			Sharpe:                floatPtr(0.7),
 		}},
 	}, nil).Once()
+	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+		return req.GetName() == "spy"
+	})).Return(&backtestsvc.GetBacktestResponse{
+		Backtest: &backtestpb.Backtest{Benchmark: "SPY"},
+	}, nil).Once()
 
 	resp, err := test.uut.QueryData(context.Background(), &grafana.QueryDataRequest{
 		Queries: []grafana.DataQuery{{
@@ -370,6 +412,7 @@ func (test *DatasouceTest) TestOverviewFiltersByBacktestName() {
 	test.Equal(1, frame.Fields[0].Len())
 	test.Equal("spy", test.overviewString(frame, "backtest", 0))
 	test.Nil(test.overviewFloatPtr(frame, "sortino", 0))
+	test.Equal("not available", test.overviewString(frame, "benchmark", 0))
 }
 
 func overviewField(frame *data.Frame, name string) *data.Field {
