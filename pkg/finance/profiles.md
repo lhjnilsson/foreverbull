@@ -85,15 +85,7 @@ Stored bars are adjusted per provider as follows. A split never shows as a one-d
 | `alpaca` | adjusted (`adjustment=split`, sent explicitly; the SDK default is `raw`) | not adjusted | price return |
 | `stooq` | adjusted | adjusted | close to total return |
 
-Bars already stored are not replaced on a later download (`ON CONFLICT DO NOTHING`). Alpaca bars downloaded before this change stay raw. Delete them from the broker's Postgres, then run `fbull backtest delete <name>` and `fbull backtest create` for each Alpaca backtest to fetch them again:
-
-```bash
-kubectl exec -n <namespace> deploy/postgres -- \
-  psql -U foreverbull -d foreverbull \
-  -c "DELETE FROM ohlc WHERE provider = 'alpaca'"
-```
-
-No `fbull` or `fbenv` command clears stored bars yet; a fix for replacing stored bars is planned.
+Bars already stored are not replaced on a later download (`ON CONFLICT DO NOTHING`). Alpaca bars downloaded before this change stay unadjusted. A way to fetch them again is planned.
 
 `ohlc` is unique on `(provider, symbol, time)`. Existing tables gain `provider text NOT NULL DEFAULT 'yahoo'` and replace `UNIQUE (symbol, time)` with `UNIQUE (provider, symbol, time)`. The migration is idempotent and does not delete bars. `CREATE TABLE IF NOT EXISTS` alone is not a migration.
 
