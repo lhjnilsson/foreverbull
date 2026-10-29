@@ -100,6 +100,16 @@ The worker pod gets `OHLC_PROVIDER` from the backtest when the pod is created. P
 
 Changing `provider` on an existing backtest does not relabel old rows. The next ingest writes the new provider's rows. The run reads the provider stored on the backtest.
 
+Ingest keeps one scale per provider and symbol. A bar is bad when its open, high, low, or close is 0 or below, NaN, or infinite.
+
+- With nothing stored, ingest fetches the requested range and inserts it.
+- `OHLC.Store` upserts. A refetched bar replaces the stored one, but a bad bar never replaces a stored row.
+- When the stored history starts on or before the requested start, ingest fetches from the last stored day, so the fetch overlaps one stored day. If that day comes back with a good close within 0.5% of the stored close, the new days are upserted.
+- Otherwise the scale of the stored history can't be trusted: the close moved (for example after a split), the overlap day is missing from the fetch, or either close is bad. Ingest then fetches again from the first stored day and replaces that range in one transaction (`OHLC.ReplaceRange`).
+- When the requested start is before the stored history, ingest fetches from the start through the last stored day and replaces that range the same way.
+- Inside a replace, a stored day the provider no longer returns is removed, and so is a day whose new bar is bad. The old row is on the old scale, so it is not kept. The read and bundle side fill that gap.
+- A requested range that is already stored is not fetched.
+
 ## CLI
 
 `fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is stored as `yahoo`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest shows the provider. An unknown name fails with the valid list.
