@@ -136,6 +136,38 @@ def test_backtest_create(runner):
         assert "SPY" in result.stdout
 
 
+def test_backtest_create_prints_table_from_the_broker_stream(runner):
+    """The broker sends the stored backtest in one last frame after ingest."""
+    unset = common_pb.State.UNSPECIFIED
+    done = common_pb.State.COMPLETED
+
+    def frame(creating, downloading, ingesting, storing, stored=None):
+        return backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=creating),
+            DOWNLOADING=common_pb.Step(state=downloading),
+            INGESTING=common_pb.Step(state=ingesting),
+            STORING=common_pb.Step(state=storing),
+            backtest=stored,
+        )
+
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = iter(
+            [
+                frame(unset, unset, unset, unset),
+                frame(done, unset, unset, unset),
+                frame(done, done, unset, unset),
+                frame(done, done, done, unset),
+                frame(done, done, done, done, _sample_backtest()),
+            ]
+        )
+        result = runner(backtest, ["create"], input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n")
+
+    assert result.exit_code == 0, result.stdout
+    assert "Created Backtest" in result.stdout
+    assert "test_name" in result.stdout
+    assert "AAPL" in result.stdout
+
+
 _STOOQ_BLOCKED = (
     "Stooq blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider yahoo."
 )
