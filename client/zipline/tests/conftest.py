@@ -74,6 +74,9 @@ TESTDATA = Path(__file__).parent / "testdata"
 
 # Yahoo daily bars recorded on 2026-10-29 for the symbols backtest_entity uses.
 # The zipline tests read these instead of calling Yahoo, so they run offline.
+# Prices are Yahoo's dividend-adjusted values (AAPL closes at 177.79 on 2022-01-03,
+# the raw close was 182.01), not the split-only basis production stores. They are
+# fine as test input but are not a golden for Yahoo's `close` basis.
 RECORDED_RANGE = "2022-01-01_2023-12-31"
 
 
