@@ -8,6 +8,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -171,6 +172,102 @@ func TestWithoutEndedPricesLeavesNothingOutWhenEveryBarEndsTogether(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, []string{"AAPL", "MSFT"}, symbols)
 	require.Empty(t, left.notices())
+}
+
+func periodHolding(t time.Time, symbols ...string) *servicePb.GetCurrentPeriodResponse {
+	period := periodAt(t)
+	for _, symbol := range symbols {
+		period.Portfolio.Positions = append(period.Portfolio.Positions, &finance.Position{Symbol: symbol, Amount: 100})
+	}
+	return period
+}
+
+// ABC was held on the session it was left out, so Zipline sold it at its
+// last close at the end of that session: its line says so. XYZ was never
+// held, so its line does not.
+func TestRunBacktestNoticeSaysHeldSharesWereSold(t *testing.T) {
+	t.Parallel()
+
+	abcLast := time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC)
+	xyzLast := time.Date(2026, 4, 1, 13, 30, 0, 0, time.UTC)
+	later := time.Date(2026, 4, 2, 13, 30, 0, 0, time.UTC)
+
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 3}, nil).Once()
+	// Zipline auto-closes ABC at the end of 04-01, so that portfolio still
+	// holds it and 04-02's does not.
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodHolding(abcLast, "AAPL", "ABC"), nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodHolding(xyzLast, "AAPL", "ABC"), nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodHolding(later, "AAPL"), nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(&servicePb.GetCurrentPeriodResponse{IsRunning: false}, nil).Once()
+	client.On("PlaceOrdersAndContinue", mock.Anything, mock.Anything).
+		Return(&servicePb.PlaceOrdersAndContinueResponse{}, nil).Times(3)
+
+	pool.On("Process", mock.Anything, abcLast, []string{"AAPL", "ABC", "XYZ"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, xyzLast, []string{"AAPL", "XYZ"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, later, []string{"AAPL"}, mock.Anything).Return(nil, nil).Once()
+
+	members := []string{"AAPL", "ABC", "XYZ"}
+	provider := ""
+	end := time.Time{}
+	session := &ZipelineSession{
+		client: client,
+		symbolsAt: fakeMembersWithBars{
+			fakeMemberSymbols: fakeMemberSymbols{byDate: map[string][]string{
+				"2026-03-31": members, "2026-04-01": members, "2026-04-02": members,
+			}, intervals: etfMembership},
+			aliases: []repository.AliasLastBar{
+				{Symbol: "AAPL", FromDate: day(2026, 1, 1), LastBar: ptr(time.Date(2026, 4, 30, 13, 30, 0, 0, time.UTC))},
+				{Symbol: "ABC", FromDate: day(2026, 1, 1), LastBar: ptr(abcLast)},
+				{Symbol: "XYZ", FromDate: day(2026, 1, 1), LastBar: ptr(xyzLast)},
+			},
+			provider: &provider,
+			end:      &end,
+		},
+		backtests: fakeBacktests{backtest: &pb.Backtest{
+			Name: "sp100", Benchmark: "OEF",
+			Periods: []*pb.Backtest_Period{{StartDate: date(2026, 1, 1), EndDate: date(2026, 4, 30)}},
+		}},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "sp100"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.NoError(t, session.RunFailure())
+
+	require.Equal(t, []string{
+		"1 symbol had no prices after 2026-03-31 and was left out: ABC. Shares held were sold at the last price on 2026-03-31.",
+		"1 symbol had no prices after 2026-04-01 and was left out: XYZ.",
+	}, session.RunNotices())
+}
+
+func TestLeftOutNoticesSaySoldOnlyOnLinesWithAHeldSymbol(t *testing.T) {
+	t.Parallel()
+
+	left := newLeftOut()
+	left.lastBar["ABC"] = day(2026, 3, 31)
+	left.lastBar["DEF"] = day(2026, 3, 31)
+	left.lastBar["XYZ"] = day(2026, 4, 15)
+	left.held["DEF"] = true
+
+	require.Equal(t, []string{
+		"2 symbols had no prices after 2026-03-31 and were left out: ABC, DEF. Shares held were sold at the last price on 2026-03-31.",
+		"1 symbol had no prices after 2026-04-15 and was left out: XYZ.",
+	}, left.notices())
+}
+
+func TestSawPortfolioKeepsOnlyThisSessionsOpenPositions(t *testing.T) {
+	t.Parallel()
+
+	left := newLeftOut()
+	left.sawPortfolio(&finance.Portfolio{Positions: []*finance.Position{{Symbol: "ABC", Amount: 10}, {Symbol: "SHORT", Amount: -5}, {Symbol: "FLAT"}}})
+	require.Equal(t, map[string]bool{"ABC": true, "SHORT": true}, left.holding)
+	left.sawPortfolio(&finance.Portfolio{})
+	require.Empty(t, left.holding)
+	(*leftOut)(nil).sawPortfolio(&finance.Portfolio{})
 }
 
 func TestRunNoticesEmptyWhenNothingWasLeftOut(t *testing.T) {

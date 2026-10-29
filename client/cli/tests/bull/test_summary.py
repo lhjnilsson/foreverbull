@@ -172,3 +172,18 @@ def test_run_notice_lines_names_five_symbols_then_the_rest_as_a_count():
 def test_run_notice_lines_prints_other_notices_as_stored():
     other = "Something else the broker said."
     assert run_notice_lines([other], verbose=False) == [other]
+
+
+def test_run_notice_lines_keep_the_held_sentence_per_line_and_fold_it():
+    held = (
+        "1 symbol had no prices after 2023-01-13 and was left out: XYZ. "
+        "Shares held were sold at the last price on 2023-01-13."
+    )
+    plain = "1 symbol had no prices after 2023-01-20 and was left out: ABC."
+    assert run_notice_lines([held, plain], verbose=False) == [held, plain]
+    third = "1 symbol had no prices after 2023-01-27 and was left out: DEF."
+    summary = (
+        "3 symbols had no prices before the run ended and were left out. Shares held were sold at their last price."
+    )
+    assert run_notice_lines([held, plain, third], verbose=False) == [f"{summary} Run with --verbose for the list."]
+    assert run_notice_lines([held, plain, third], verbose=True) == [summary, held, plain, third]

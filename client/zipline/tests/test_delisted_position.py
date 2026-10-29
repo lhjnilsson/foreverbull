@@ -108,7 +108,14 @@ def _ingester(sessions: pd.DatetimeIndex, member_sessions: pd.DatetimeIndex | No
     return SQLIngester(backtest, engine=engine, aliases=aliases)
 
 
-def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
+def _run(sessions: pd.DatetimeIndex) -> tuple[pd.DataFrame, dict[pd.Timestamp, set[str]]]:
+    """The daily results, and the symbols the portfolio held in handle_data.
+
+    The broker reads trading_algorithm.portfolio in handle_data each
+    session, and names a left-out member as held when the session before
+    held it.
+    """
+    seen: dict[pd.Timestamp, set[str]] = {}
     bundle = bundles.load(BUNDLE, os.environ, None)
     calendar = get_calendar("XNYS")
     data_portal = DataPortal(
@@ -129,6 +136,8 @@ def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
         context.ordered = False
 
     def handle_data(context, data):
+        day = cast(pd.Timestamp, pd.Timestamp(context.get_datetime().date()))
+        seen[day] = {asset.symbol for asset, position in context.portfolio.positions.items() if position.amount}
         if not context.ordered:
             context.order(context.aapl, AAPL_SHARES)
             context.order(context.xyz, XYZ_SHARES)
@@ -151,7 +160,7 @@ def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
         initialize=initialize,
         handle_data=handle_data,
     )
-    return algorithm.run()
+    return algorithm.run(), seen
 
 
 def _held(row) -> dict[str, int]:
@@ -170,10 +179,10 @@ def _ingest_and_run(sessions: pd.DatetimeIndex, member_sessions: pd.DatetimeInde
     bundles.register(BUNDLE, ingester, calendar_name="XNYS")
     try:
         bundles.ingest(BUNDLE, os.environ, pd.Timestamp("2023-02-01", tz="UTC"), [], False)
-        result = _run(sessions)
+        result, seen = _run(sessions)
         # Daily results are stamped at the UTC market close; key them by session.
         result.index = pd.DatetimeIndex([pd.Timestamp(stamp.date()) for stamp in pd.DatetimeIndex(result.index)])
-        return pd.DataFrame(ingester._df_metadata), result
+        return pd.DataFrame(ingester._df_metadata), result, seen
     finally:
         bundles.unregister(BUNDLE)
 
@@ -182,12 +191,12 @@ def _ingest_and_run(sessions: pd.DatetimeIndex, member_sessions: pd.DatetimeInde
 def delisted_run(tmp_path, monkeypatch):
     monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
     sessions = _sessions("2023-01-03", "2023-01-31")
-    metadata, result = _ingest_and_run(sessions)
-    return sessions, metadata, result
+    metadata, result, seen = _ingest_and_run(sessions)
+    return sessions, metadata, result, seen
 
 
 def test_delisted_member_auto_closes_on_the_session_after_its_last_bar(delisted_run):
-    _, metadata, _ = delisted_run
+    _, metadata, _, _ = delisted_run
     xyz = metadata.loc[metadata["symbol"] == "XYZ"].iloc[0]
     assert pd.Timestamp(xyz["end_date"]) == XYZ_LAST_BAR
     # The day after the last bar, not the month-end drop on the 31st.
@@ -195,7 +204,7 @@ def test_delisted_member_auto_closes_on_the_session_after_its_last_bar(delisted_
 
 
 def test_held_delisted_member_is_sold_at_its_last_close(delisted_run):
-    sessions, _, result = delisted_run
+    sessions, _, result, _ = delisted_run
     xyz_closes = _closes(pd.DatetimeIndex(sessions[sessions <= XYZ_LAST_BAR]), 20.0, 0.25)
     aapl_closes = pd.Series(_closes(sessions, 50.0, 0.5), index=sessions)
     last_bar = result.loc[XYZ_LAST_BAR]
@@ -226,7 +235,7 @@ def test_members_at_the_newest_bar_stay_held_on_a_benchmark_only_session(tmp_pat
     monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
     sessions = _sessions("2023-01-03", str(LEFT_OUT_SESSION.date()))
     member_sessions = pd.DatetimeIndex(sessions[sessions <= XYZ_LAST_BAR])
-    metadata, result = _ingest_and_run(sessions, member_sessions)
+    metadata, result, _ = _ingest_and_run(sessions, member_sessions)
 
     for symbol in ("AAPL", "XYZ"):
         row = metadata.loc[metadata["symbol"] == symbol].iloc[0]
@@ -242,3 +251,15 @@ def test_members_at_the_newest_bar_stay_held_on_a_benchmark_only_session(tmp_pat
     held_value = XYZ_SHARES * xyz_close + AAPL_SHARES * aapl_close
     assert extra["portfolio_value"] == pytest.approx(extra["ending_cash"] + held_value)
     assert extra["portfolio_value"] == pytest.approx(last_bar["portfolio_value"])
+
+
+def test_the_broker_sees_the_held_member_on_the_session_it_is_left_out(delisted_run):
+    # The broker marks a left-out member as held when the portfolio it reads
+    # on the session it leaves the member out holds it ("Shares held were
+    # sold at the last price on 2023-01-13."). Zipline auto-closes at the end
+    # of that session, so the position is still there in handle_data and
+    # gone the session after.
+    sessions, _, _, seen = delisted_run
+    after = sessions[sessions > LEFT_OUT_SESSION][0]
+    assert seen[LEFT_OUT_SESSION] == {"AAPL", "XYZ"}
+    assert seen[after] == {"AAPL"}

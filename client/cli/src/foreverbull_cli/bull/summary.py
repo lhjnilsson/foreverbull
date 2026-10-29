@@ -13,11 +13,13 @@ from foreverbull_cli.output import execution_link
 
 # The broker stores one complete line per last-price date in
 # Execution.notices, e.g. "3 symbols had no prices after 2026-03-31 and were
-# left out: ABC, DEF, GHI." The web UI reads the same lines, so the CLI folds
-# them only when it prints.
+# left out: ABC, DEF, GHI.", ending "Shares held were sold at the last price
+# on 2026-03-31." when the run held one of them. The web UI reads the same
+# lines, so the CLI folds them only when it prints.
 _LEFT_OUT_LINE = re.compile(
     r"^(?P<count>\d+) symbols? had no prices after (?P<date>\d{4}-\d{2}-\d{2}) "
-    r"and (?:was|were) left out: (?P<symbols>.+)\.$"
+    r"and (?:was|were) left out: (?P<symbols>.+?)\."
+    r"(?P<held> Shares held were sold at the last price on \d{4}-\d{2}-\d{2}\.)?$"
 )
 # One line names at most this many symbols, then "and N more".
 LEFT_OUT_SYMBOLS_SHOWN = 5
@@ -26,14 +28,14 @@ LEFT_OUT_DATES_SHOWN = 2
 NOTICE_PREFIX = "⚠ "
 
 
-def _left_out_line(count: int, last_date: str, symbols: list[str]) -> str:
+def _left_out_line(count: int, last_date: str, symbols: list[str], held: str) -> str:
     shown = ", ".join(symbols[:LEFT_OUT_SYMBOLS_SHOWN])
     hidden = len(symbols) - LEFT_OUT_SYMBOLS_SHOWN
     if hidden > 0:
         shown = f"{shown} and {hidden} more"
     if count == 1:
-        return f"1 symbol had no prices after {last_date} and was left out: {shown}."
-    return f"{count} symbols had no prices after {last_date} and were left out: {shown}."
+        return f"1 symbol had no prices after {last_date} and was left out: {shown}.{held}"
+    return f"{count} symbols had no prices after {last_date} and were left out: {shown}.{held}"
 
 
 def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
@@ -41,8 +43,10 @@ def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
 
     One or two last-price dates print one line each, naming at most five
     symbols. Three or more fold into one line with the total; --verbose
-    adds every stored per-date line, with every symbol, under it. A notice
-    that is not a left-out line prints as stored.
+    adds every stored per-date line, with every symbol, under it. A line
+    whose symbols were held keeps its "Shares held were sold" sentence, and
+    the folded line says so when any line does. A notice that is not a
+    left-out line prints as stored.
     """
     left_out: list[re.Match[str]] = []
     other: list[str] = []
@@ -53,10 +57,16 @@ def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
         else:
             left_out.append(match)
     if len(left_out) <= LEFT_OUT_DATES_SHOWN:
-        shown = [_left_out_line(int(match["count"]), match["date"], match["symbols"].split(", ")) for match in left_out]
+        shown = [
+            _left_out_line(int(match["count"]), match["date"], match["symbols"].split(", "), match["held"] or "")
+            for match in left_out
+        ]
         return [*shown, *other]
     total = sum(int(match["count"]) for match in left_out)
     summary = f"{total} symbols had no prices before the run ended and were left out."
+    if any(match["held"] for match in left_out):
+        # A position Zipline auto-closed is a sale the strategy never placed.
+        summary = f"{summary} Shares held were sold at their last price."
     if verbose:
         return [summary, *(match.string for match in left_out), *other]
     return [f"{summary} Run with --verbose for the list.", *other]

@@ -1116,6 +1116,53 @@ def test_backtest_run_summary_names_at_most_five_symbols_per_line(runner, monkey
     ]
 
 
+def test_backtest_run_summary_says_held_shares_were_sold_only_on_their_line(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    held = (
+        "1 symbol had no prices after 2023-01-13 and was left out: XYZ. "
+        "Shares held were sold at the last price on 2023-01-13."
+    )
+    result, _ = _run_with_notices(runner, [held, _LEFT_OUT_XYZ])
+    assert result.exit_code == 0
+    assert _warnings(result) == [f"⚠ {held}", f"⚠ {_LEFT_OUT_XYZ}"]
+
+
+def test_backtest_run_summary_held_line_keeps_its_sentence_after_five_symbols(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    held = (
+        "7 symbols had no prices after 2023-01-13 and were left out: A, B, C, D, E, F, G. "
+        "Shares held were sold at the last price on 2023-01-13."
+    )
+    result, _ = _run_with_notices(runner, [held])
+    assert _warnings(result) == [
+        (
+            "⚠ 7 symbols had no prices after 2023-01-13 and were left out: A, B, C, D, E and 2 more. "
+            "Shares held were sold at the last price on 2023-01-13."
+        )
+    ]
+
+
+def test_backtest_run_summary_folded_line_says_held_shares_were_sold(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    held = (
+        "2 symbols had no prices after 2026-05-29 and were left out: JKL, MNO. "
+        "Shares held were sold at the last price on 2026-05-29."
+    )
+    result, _ = _run_with_notices(runner, [_LEFT_OUT, _LEFT_OUT_XYZ, held])
+    assert _warnings(result) == [
+        (
+            "⚠ 6 symbols had no prices before the run ended and were left out. "
+            "Shares held were sold at their last price. Run with --verbose for the list."
+        )
+    ]
+
+
+def test_backtest_run_summary_folded_line_without_held_shares_says_nothing_of_a_sale(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result, _ = _run_with_notices(runner, [_LEFT_OUT, _LEFT_OUT_XYZ, _LEFT_OUT_THIRD])
+    assert "Shares held" not in result.stdout
+
+
 def test_backtest_run_summary_prefixes_each_notice_with_the_create_warning_sign(runner, monkeypatch):
     # The same "⚠ " the create notices print, inside the summary's indent.
     monkeypatch.delenv("LOGGING_LEVEL", raising=False)

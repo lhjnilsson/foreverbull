@@ -11,6 +11,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
 // lastBarsByName is the membership lookup that also reads each member's last
@@ -28,12 +29,38 @@ type lastBarsByID interface {
 // month-end holdings list drops it, but it has no bar to trade on. Each
 // symbol keeps the date of its last bar. The runner goroutine writes it and
 // RunNotices reads it after the period channel has closed.
+//
+// held names the left-out symbols the portfolio held on the session they
+// were left out. Zipline auto-closes such a position at the end of that
+// session at the last close (universe.md §8), so the notice explains a
+// sale the strategy never placed.
 type leftOut struct {
 	lastBar map[string]time.Time
+	held    map[string]bool
+	holding map[string]bool
 }
 
 func newLeftOut() *leftOut {
-	return &leftOut{lastBar: make(map[string]time.Time)}
+	return &leftOut{
+		lastBar: make(map[string]time.Time),
+		held:    make(map[string]bool),
+		holding: make(map[string]bool),
+	}
+}
+
+// sawPortfolio records the open positions of the session about to be
+// filtered. Zipline auto-closes at the end of a session, so the session a
+// member is left out still holds its position. The universe bounds the map.
+func (l *leftOut) sawPortfolio(portfolio *finance.Portfolio) {
+	if l == nil {
+		return
+	}
+	clear(l.holding)
+	for _, position := range portfolio.GetPositions() {
+		if position.GetAmount() != 0 {
+			l.holding[position.GetSymbol()] = true
+		}
+	}
 }
 
 // barsEnd is the exclusive upper bound on the bars the bundle holds: the day
@@ -75,6 +102,9 @@ func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, 
 			if ok && last.Before(day) && last.Before(newest) {
 				if previous, seen := left.lastBar[symbol]; !seen || last.After(previous) {
 					left.lastBar[symbol] = last
+				}
+				if left.holding[symbol] {
+					left.held[symbol] = true
 				}
 				continue
 			}
@@ -125,13 +155,18 @@ func dayOf(t time.Time) time.Time {
 
 // notices is one line per last-bar date, oldest first, with the symbols
 // sorted: "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
+// A line with a held symbol ends "Shares held were sold at the last price on 2026-03-31."
 func (l *leftOut) notices() []string {
 	if l == nil || len(l.lastBar) == 0 {
 		return nil
 	}
 	byDate := make(map[time.Time][]string)
+	heldOn := make(map[time.Time]bool)
 	for symbol, last := range l.lastBar {
 		byDate[last] = append(byDate[last], symbol)
+		if l.held[symbol] {
+			heldOn[last] = true
+		}
 	}
 	dates := make([]time.Time, 0, len(byDate))
 	for day := range byDate {
@@ -140,16 +175,23 @@ func (l *leftOut) notices() []string {
 	slices.SortFunc(dates, func(a, b time.Time) int { return a.Compare(b) })
 	lines := make([]string, 0, len(dates))
 	for _, day := range dates {
-		lines = append(lines, leftOutLine(day, byDate[day]))
+		lines = append(lines, leftOutLine(day, byDate[day], heldOn[day]))
 	}
 	return lines
 }
 
-func leftOutLine(last time.Time, symbols []string) string {
+// leftOutLine names every symbol whose prices ended on last. When any of
+// them was held, the line says the shares were sold at that day's price.
+func leftOutLine(last time.Time, symbols []string, held bool) string {
 	slices.Sort(symbols)
 	names := strings.Join(symbols, ", ")
+	date := last.Format(time.DateOnly)
+	line := fmt.Sprintf("%d symbols had no prices after %s and were left out: %s.", len(symbols), date, names)
 	if len(symbols) == 1 {
-		return fmt.Sprintf("1 symbol had no prices after %s and was left out: %s.", last.Format(time.DateOnly), names)
+		line = fmt.Sprintf("1 symbol had no prices after %s and was left out: %s.", date, names)
 	}
-	return fmt.Sprintf("%d symbols had no prices after %s and were left out: %s.", len(symbols), last.Format(time.DateOnly), names)
+	if held {
+		line += fmt.Sprintf(" Shares held were sold at the last price on %s.", date)
+	}
+	return line
 }

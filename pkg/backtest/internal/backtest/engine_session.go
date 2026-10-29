@@ -140,6 +140,8 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 			default:
 			}
 			t := period.Portfolio.Timestamp.AsTime()
+			// The filter names a left-out member held in this portfolio.
+			left.sawPortfolio(period.Portfolio)
 			symbols, err := symbolsAt(ctx, t)
 			if err != nil {
 				log.Error().Err(err).Msg("error listing members at timestamp")
