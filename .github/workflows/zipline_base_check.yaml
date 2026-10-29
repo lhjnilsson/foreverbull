@@ -45,7 +45,7 @@ permissions:
 
 jobs:
   # Each architecture builds natively on its own runner; QEMU would compile
-  # TA-Lib, bcolz, and wheels without a 3.14 build under emulation.
+  # bcolz and wheels without a 3.14 build under emulation.
   build-zipline-base:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     name: build-zipline-base (${{ matrix.arch }})

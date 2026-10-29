@@ -13,7 +13,7 @@ It is a uv workspace member (`foreverbull-zipline`). Do not run it as a host pro
 | `src/foreverbull_zipline/engine.py` | Zipline `TradingAlgorithm` process |
 | `src/foreverbull_zipline/data_bundles/foreverbull.py` | SQL ingest from Foreverbull Postgres |
 | `Dockerfile` | Image used by `task client:docker:zipline` |
-| `base.Dockerfile` | `lhjnilsson/zipline_base` (Zipline-Reloaded + TA-Lib) |
+| `base.Dockerfile` | `lhjnilsson/zipline_base` (Zipline-Reloaded, bcolz-zipline, psycopg) |
 
 Entry point: `python -m foreverbull_zipline` (`__main__.py`). The image health check probes gRPC `:50055`.
 
