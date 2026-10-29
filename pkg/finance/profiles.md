@@ -77,6 +77,16 @@ Remove these environment variables and the Helm values that set them: `TRADING_P
 - Zero Alpaca profiles, or more than one with `profile` empty, fails ingest before any download.
 - `profile` on a `yahoo` or `stooq` backtest is ignored.
 
+Stored bars are adjusted per provider as follows. A split never shows as a one-day move:
+
+| Provider | Splits | Dividends | Return basis |
+| --- | --- | --- | --- |
+| `yahoo` | adjusted (chart `close`) | not adjusted | price return |
+| `alpaca` | adjusted (`adjustment=split`, sent explicitly; the SDK default is `raw`) | not adjusted | price return |
+| `stooq` | adjusted | adjusted | close to total return |
+
+Bars already stored are not replaced on a later download (`ON CONFLICT DO NOTHING`), so Alpaca bars stored raw before `adjustment=split` stay raw until they are deleted.
+
 `ohlc` is unique on `(provider, symbol, time)`. Existing tables gain `provider text NOT NULL DEFAULT 'yahoo'` and replace `UNIQUE (symbol, time)` with `UNIQUE (provider, symbol, time)`. The migration is idempotent and does not delete bars. `CREATE TABLE IF NOT EXISTS` alone is not a migration.
 
 Every read that decides which bars a backtest or a worker sees filters on that provider:
