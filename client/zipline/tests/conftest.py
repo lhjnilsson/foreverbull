@@ -109,7 +109,7 @@ def fb_database(fb_database):
         with engine.begin() as conn:
             for symbol in _symbols(entity):
                 bars = _recorded_bars(symbol)
-                bars = bars[(bars.date.dt.date >= start) & (bars.date.dt.date <= end)]
+                bars = bars.loc[(bars.date.dt.date >= start) & (bars.date.dt.date <= end)]
                 if bars.empty:
                     raise LookupError(f"Recorded Yahoo bars for {symbol} do not cover {start} to {end}")
                 conn.execute(
@@ -128,14 +128,14 @@ def fb_database(fb_database):
                         {
                             "provider": provider,
                             "symbol": symbol,
-                            "open": row.open,
-                            "high": row.high,
-                            "low": row.low,
-                            "close": row.close,
-                            "volume": int(row.volume),
-                            "time": datetime(row.date.year, row.date.month, row.date.day),
+                            "open": row["open"],
+                            "high": row["high"],
+                            "low": row["low"],
+                            "close": row["close"],
+                            "volume": int(row["volume"]),
+                            "time": datetime(row["date"].year, row["date"].month, row["date"].day),
                         }
-                        for row in bars.itertuples()
+                        for row in bars.to_dict("records")
                     ],
                 )
 

@@ -103,7 +103,7 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
             tar.extractall(data_root())
         return engine_service_pb.DownloadIngestionResponse()
 
-    def ingest(self, request: engine_service_pb.IngestRequest, context):
+    def ingest(self, request: engine_service_pb.IngestRequest, context: grpc.ServicerContext | None):
         backtest = request.backtest
         if backtest is None:
             raise ValueError("ingest request has no backtest")
