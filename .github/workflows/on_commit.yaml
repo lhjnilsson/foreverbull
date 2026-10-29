@@ -64,16 +64,6 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install system dependencies (for TA-Lib(zipline))
-        working-directory: .
-        run: |
-          curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
-          tar -xzf ta-lib-0.6.4-src.tar.gz
-          cd ta-lib-0.6.4/
-          ./configure
-          sudo make &&
-          sudo make install &&
-          sudo ldconfig
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - name: Sync dependencies
@@ -319,17 +309,6 @@ jobs:
           python-version: "3.12"
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-      # zipline-reloaded, pulled in by uv sync --all-packages, builds against this library.
-      - name: Install TA-Lib
-        run: |
-          set -euo pipefail
-          curl -fsSL -o /tmp/ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
-          tar -xzf /tmp/ta-lib-0.6.4-src.tar.gz -C /tmp
-          cd /tmp/ta-lib-0.6.4
-          ./configure
-          sudo make
-          sudo make install
-          sudo ldconfig
       - name: Sync the client workspace
         working-directory: ./client
         run: uv sync --all-packages --all-extras
