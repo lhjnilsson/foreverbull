@@ -167,6 +167,20 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 		test.Require().NoError(err)
 		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.CREATING.State)
 	})
+	test.Run("mark as completed with a notice", func() {
+		step := &pb.Orchestration_Step{
+			Num:   3,
+			State: commonPb.State_STATE_COMPLETED,
+			Error: func() *string {
+				s := "Missing prices for XYZ on 2026-05-05, filled with the previous close."
+				return &s
+			}(),
+		}
+		err := UpdateOrchestration(test.msg, step)
+		test.Require().NoError(err)
+		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.INGESTING.State)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close.", test.msg.INGESTING.Message)
+	})
 	test.Run("mark as failed", func() {
 		step := &pb.Orchestration_Step{
 			Num:   1,

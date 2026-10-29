@@ -47,6 +47,9 @@ func WaitForCompletion() PublishOpt {
 			}
 
 			if state.State == pb.State_STATE_COMPLETED {
+				if state.GetError() != "" {
+					return &Notice{Text: state.GetError()}
+				}
 				return nil
 			}
 
