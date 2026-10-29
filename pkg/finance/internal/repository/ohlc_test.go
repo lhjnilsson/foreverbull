@@ -405,6 +405,37 @@ func (test *OHLCTests) TestStoreReplacesBarsOnReingest() {
 	test.Equal(len(adjusted), got)
 }
 
+// A re-fetched bar with a bad price never replaces a good stored bar.
+func (test *OHLCTests) TestStoreKeepsGoodBarOverBadRefetch() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, 125, 126, 124, 125.5, 400))
+
+	bad := map[string][4]float64{
+		"zero open":     {0, 126, 124, 125},
+		"negative high": {125, -1, 124, 125},
+		"zero low":      {125, 126, 0, 125},
+		"zero close":    {125, 126, 124, 0},
+		"NaN open":      {math.NaN(), 126, 124, 125},
+		"NaN low":       {125, 126, math.NaN(), 125},
+		"Inf high":      {125, math.Inf(1), 124, 125},
+	}
+	for name, p := range bad {
+		_ = test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, p[0], p[1], p[2], p[3], 1)
+
+		var o, h, l, c float64
+		var v int
+		test.Require().NoError(test.conn.QueryRow(ctx,
+			`SELECT open::float8, high::float8, low::float8, close::float8, volume FROM ohlc
+			 WHERE provider = 'yahoo' AND symbol = 'ABC' AND time = $1`, day).Scan(&o, &h, &l, &c, &v), name)
+		test.InDelta(125, o, 0.0001, name)
+		test.InDelta(126, h, 0.0001, name)
+		test.InDelta(124, l, 0.0001, name)
+		test.InDelta(125.5, c, 0.0001, name)
+		test.Equal(400, v, name)
+	}
+}
+
 // A bar stored without a provider is written as supplier.DefaultProvider.
 func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
 	ctx := context.Background()
