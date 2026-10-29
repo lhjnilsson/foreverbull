@@ -65,6 +65,8 @@ func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]
 	if end != nil {
 		endAt = *end
 	}
+	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
+	symbol = alpacaSymbol(symbol)
 	bars, err := a.md.GetBars(symbol, alpacaDailyBars(start, endAt))
 	if err != nil {
 		var apiErr *alpaca.APIError

@@ -190,6 +190,9 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 	if mapped, ok := c.toStooq[upper]; ok {
 		return mapped, upper, nil
 	}
+	if code, ok := stooqShareClassCode(symbol); ok {
+		return code, upper, nil
+	}
 	if i := strings.IndexByte(symbol, '.'); i > 0 {
 		return lower, strings.ToUpper(symbol[:i]), nil
 	}
