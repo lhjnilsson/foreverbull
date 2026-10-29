@@ -21,6 +21,7 @@ from foreverbull import models
 from foreverbull.broker.utils import redact_text
 from foreverbull.foreverbull import Foreverbull
 from foreverbull.models.finance import DEFAULT_PROVIDER
+from foreverbull.models.finance import missing_prices_summary
 from foreverbull.models.finance import present_market_data_failure
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb
@@ -471,6 +472,13 @@ def create(
 
     if failure is not None:
         _fail(failure)
+
+    notices = missing_prices_summary(progress.notices, verbose=_verbose())
+    if notices and not console.is_terminal:
+        # Live ends its last progress row with a newline only on a terminal.
+        console.line()
+    for line in notices:
+        console.print(f"⚠ {line}", markup=False, highlight=False, soft_wrap=True)
 
     if created is None:
         return

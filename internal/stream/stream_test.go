@@ -25,6 +25,10 @@ func ReturnErr(ctx context.Context, message stream.Message) error {
 	return errors.New("test error")
 }
 
+func ReturnNotice(ctx context.Context, message stream.Message) error {
+	return &stream.Notice{Text: "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}
+}
+
 func Timeout(ctx context.Context, message stream.Message) error {
 	done := make(chan bool)
 	go func() {
@@ -72,6 +76,7 @@ func (test *StreamTest) SetupTest() {
 	test.Require().NoError(test.subscriber.Subscribe("return", "nil", ReturnNil))
 	test.Require().NoError(test.subscriber.Subscribe("return", "err", ReturnErr))
 	test.Require().NoError(test.subscriber.Subscribe("return", "timeout", Timeout))
+	test.Require().NoError(test.subscriber.Subscribe("return", "notice", ReturnNotice))
 }
 
 func (test *StreamTest) TearDownTest() {
@@ -115,6 +120,14 @@ func TestStream(t *testing.T) {
 }
 
 func (test *StreamTest) TestPublish() {
+	test.Run("WaitForCompletion returns a notice as a Notice", func() {
+		msg, err := stream.NewMessage("test", "return", "notice", struct{}{})
+		test.Require().NoError(err)
+		err = test.uut.Publish(context.Background(), msg, stream.WaitForCompletion())
+		var notice *stream.Notice
+		test.Require().ErrorAs(err, &notice)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", notice.Text)
+	})
 	test.Run("WaitForCompletion", func() {
 		msg, err := stream.NewMessage("test", "return", "nil", struct{}{})
 		test.Require().NoError(err)
@@ -180,6 +193,27 @@ func (test *StreamTest) TestRunOrchestration() {
 		test.Require().Len(steps, 2)
 		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
+	})
+	test.Run("Notice completes the step and carries the text", func() {
+		noticeMsg, err := stream.NewMessage("test", "return", "notice", struct{}{})
+		test.Require().NoError(err)
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{Num: int32(1), Messages: []*pb.Message{noticeMsg.GetMsg(), successfulMsg.GetMsg()}},
+				{Num: int32(2), Messages: []*pb.Message{successfulMsg.GetMsg()}},
+			},
+		}
+
+		steps := []*pb.Orchestration_Step{}
+		for st := range test.uut.RunOrchestration(context.Background(), &o) {
+			steps = append(steps, st)
+		}
+		test.Require().Len(steps, 4)
+		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
+		test.Require().NotNil(steps[1].Error)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", *steps[1].Error)
+		test.Require().Equal(common.State_STATE_COMPLETED, steps[3].State)
+		test.Nil(steps[3].Error)
 	})
 	test.Run("Error", func() {
 		o := pb.Orchestration{

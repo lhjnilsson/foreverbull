@@ -90,12 +90,15 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		[]*pb.OHLC{
 			{
 				Timestamp: timestamppb.New(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 100,
 			},
 			{
 				Timestamp: timestamppb.New(time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)),
+				Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 100,
 			},
 			{
 				Timestamp: timestamppb.New(time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC)),
+				Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 100,
 			},
 		},
 		nil,

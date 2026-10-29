@@ -98,14 +98,14 @@ func (l *LazyEngine) release(inner *Zipline, err error) {
 	inner.Close() //nolint: errcheck
 }
 
-func (l *LazyEngine) Ingest(ctx context.Context, bt *pb.Backtest, object *storage.Object) error {
+func (l *LazyEngine) Ingest(ctx context.Context, bt *pb.Backtest, object *storage.Object) ([]string, error) {
 	inner, err := l.get(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = inner.Ingest(ctx, bt, object)
+	notices, err := inner.Ingest(ctx, bt, object)
 	l.release(inner, err)
-	return err
+	return notices, err
 }
 
 func (l *LazyEngine) DownloadIngestion(ctx context.Context, object *storage.Object) error {

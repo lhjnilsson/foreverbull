@@ -64,6 +64,7 @@ func TestStoreRejectsNaNOrNegativeClose(t *testing.T) {
 		closePx float64
 	}{
 		{name: "nan", closePx: math.NaN()},
+		{name: "zero", closePx: 0},
 		{name: "negative", closePx: -1},
 		{name: "negative infinity", closePx: math.Inf(-1)},
 		{name: "positive infinity", closePx: math.Inf(1)},
@@ -72,6 +73,31 @@ func TestStoreRejectsNaNOrNegativeClose(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := db.Store(context.Background(), "yahoo", "ABC", day, 1.2, 1.3, 1.1, tc.closePx, 1000)
 			require.ErrorIs(t, err, supplier.ErrRejected)
+		})
+	}
+}
+
+// A missing provider bar used to arrive as 0 in every price column. No
+// price column may be stored as 0, negative, or non-finite.
+func TestStoreRejectsNonPositiveOpenHighLow(t *testing.T) {
+	db := repository.OHLC{}
+	day := time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name            string
+		open, high, low float64
+		wantErrorPrefix string
+	}{
+		{name: "zero open", open: 0, high: 1.3, low: 1.1, wantErrorPrefix: "open"},
+		{name: "zero high", open: 1.2, high: 0, low: 1.1, wantErrorPrefix: "high"},
+		{name: "zero low", open: 1.2, high: 1.3, low: 0, wantErrorPrefix: "low"},
+		{name: "nan open", open: math.NaN(), high: 1.3, low: 1.1, wantErrorPrefix: "open"},
+		{name: "negative low", open: 1.2, high: 1.3, low: -1, wantErrorPrefix: "low"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := db.Store(context.Background(), "yahoo", "ABC", day, tc.open, tc.high, tc.low, 1.2, 1000)
+			require.ErrorIs(t, err, supplier.ErrRejected)
+			require.ErrorContains(t, err, tc.wantErrorPrefix+":")
 		})
 	}
 }

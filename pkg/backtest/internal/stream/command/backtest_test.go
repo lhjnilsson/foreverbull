@@ -792,6 +792,23 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 // An ingest error reported by the data service removes the backtest, its
 // periods and its assets, so the same create works again without a delete.
 // The step message is the user-facing copy and carries no password.
+// Filled sessions do not fail the ingest. The handler completes with a
+// notice so the CLI shows which prices were filled, and the backtest stays.
+func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
+	backtests := repository.Backtest{Conn: test.db}
+	line := "Missing prices for AAPL on 2022-03-02, filled with the previous close. No trades on those days."
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return([]string{line}, nil)
+
+	err := command.Ingest(context.TODO(), test.ingestMessage("test-backtest", ziplineEngine))
+	var notice *stream.Notice
+	test.Require().ErrorAs(err, &notice)
+	test.Equal(line, notice.Text)
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+}
+
 func (test *BacktestCommandTest) TestIngestErrorRemovesBacktest() {
 	backtests := repository.Backtest{Conn: test.db}
 	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
@@ -802,7 +819,7 @@ func (test *BacktestCommandTest) TestIngestErrorRemovesBacktest() {
 	test.Require().NoError(err)
 
 	ziplineEngine := new(engine.MockEngine)
-	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("error ingesting: %w",
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error ingesting: %w",
 		status.Error(codes.FailedPrecondition, "the data service is missing its database driver (psycopg)"+
 			"\nDetails: ModuleNotFoundError: No module named 'psycopg' (postgresql://foreverbull:s3cr3t@postgres/x)")))
 

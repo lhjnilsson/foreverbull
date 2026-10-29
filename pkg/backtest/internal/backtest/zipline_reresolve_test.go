@@ -101,13 +101,13 @@ func TestLazyEngineResolvesAgainAfterUnavailable(t *testing.T) {
 	lazy := NewLazyEngine(ce)
 	lazy.port = port
 
-	err := lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
+	_, err := lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
 	require.Equal(t, codes.Unavailable, status.Code(err))
 
 	// The failed engine is gone, so this call looks Zipline up again.
-	require.NoError(t, lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject()))
+	requireIngestOK(t, lazy)
 	// And the new one is cached.
-	require.NoError(t, lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject()))
+	requireIngestOK(t, lazy)
 	require.Equal(t, 3, fake.ingestCalls)
 }
 
@@ -124,10 +124,10 @@ func TestLazyEngineResolvesAgainAfterConnectionRefused(t *testing.T) {
 	lazy := NewLazyEngine(ce)
 	lazy.port = port
 
-	err = lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
+	_, err = lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
 	require.Equal(t, codes.Unavailable, status.Code(err))
 
-	err = lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
+	_, err = lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
 	require.Equal(t, codes.Unavailable, status.Code(err))
 }
 
@@ -142,9 +142,9 @@ func TestLazyEngineKeepsEngineWhenZiplineAnswers(t *testing.T) {
 	lazy := NewLazyEngine(ce)
 	lazy.port = port
 
-	err := lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
+	_, err := lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
 	require.Equal(t, codes.Internal, status.Code(err))
-	require.NoError(t, lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject()))
+	requireIngestOK(t, lazy)
 }
 
 func TestZiplineNewSessionFollowsTheCurrentPod(t *testing.T) {
@@ -229,4 +229,10 @@ func TestZiplineNewSessionRefusesPortOutOfRange(t *testing.T) {
 			require.ErrorContains(t, err, "outside 1-65535")
 		})
 	}
+}
+
+func requireIngestOK(t *testing.T, lazy *LazyEngine) {
+	t.Helper()
+	_, err := lazy.Ingest(context.Background(), &pb.Backtest{Name: "demo"}, ingestObject())
+	require.NoError(t, err)
 }

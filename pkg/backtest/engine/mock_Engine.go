@@ -36,21 +36,33 @@ func (_m *MockEngine) DownloadIngestion(ctx context.Context, object *storage.Obj
 }
 
 // Ingest provides a mock function with given fields: ctx, _a1, object
-func (_m *MockEngine) Ingest(ctx context.Context, _a1 *backtest.Backtest, object *storage.Object) error {
+func (_m *MockEngine) Ingest(ctx context.Context, _a1 *backtest.Backtest, object *storage.Object) ([]string, error) {
 	ret := _m.Called(ctx, _a1, object)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Ingest")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, *storage.Object) error); ok {
+	var r0 []string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, *storage.Object) ([]string, error)); ok {
+		return rf(ctx, _a1, object)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *backtest.Backtest, *storage.Object) []string); ok {
 		r0 = rf(ctx, _a1, object)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, *backtest.Backtest, *storage.Object) error); ok {
+		r1 = rf(ctx, _a1, object)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // NewSession provides a mock function with given fields: ctx, session

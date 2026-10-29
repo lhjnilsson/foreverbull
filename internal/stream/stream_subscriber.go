@@ -90,6 +90,18 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 			}
 		}()
 		err = cb(ctx, msg)
+		var notice *Notice
+		if errors.As(err, &notice) {
+			// A notice is a completed command; its text rides on the state.
+			if err := publishState(msg, pb.State_STATE_COMPLETED, notice); err != nil {
+				log.Err(err).Msg("error publishing state")
+			}
+			err = nil
+		} else if err == nil {
+			if err := publishState(msg, pb.State_STATE_COMPLETED, nil); err != nil {
+				log.Err(err).Msg("error publishing state")
+			}
+		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				log.Info().Msg("command canceled")
@@ -103,9 +115,6 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 				log.Err(err).Msg("error publishing state")
 			}
 			return
-		}
-		if err := publishState(msg, pb.State_STATE_COMPLETED, nil); err != nil {
-			log.Err(err).Msg("error publishing state")
 		}
 		log.Info().Msg("command completed successfully")
 		payload, err := proto.Marshal(msg.msg)

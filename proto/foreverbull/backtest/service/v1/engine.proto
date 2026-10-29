@@ -21,7 +21,12 @@ message IngestRequest {
   optional string object = 3;
 }
 
-message IngestResponse {}
+message IngestResponse {
+  // One line per symbol whose bars missed a trading session. The ingest
+  // filled those sessions with the previous close; the client shows these
+  // lines, so a filled price is never silent.
+  repeated string notices = 1;
+}
 
 message NewSessionRequest {
   string id = 1;

@@ -74,7 +74,7 @@ func (z *Zipline) Close() error {
 	return z.conn.Close()
 }
 
-func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *storage.Object) error {
+func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *storage.Object) ([]string, error) {
 	bucket := string(object.Bucket)
 	req := servicePb.IngestRequest{
 		Backtest: backtest,
@@ -82,12 +82,12 @@ func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *sto
 		Object:   &object.Name,
 	}
 
-	_, err := z.client.Ingest(ctx, &req)
+	rsp, err := z.client.Ingest(ctx, &req)
 	if err != nil {
-		return fmt.Errorf("error ingesting: %w", err)
+		return nil, fmt.Errorf("error ingesting: %w", err)
 	}
 
-	return nil
+	return rsp.GetNotices(), nil
 }
 
 func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object) error {
