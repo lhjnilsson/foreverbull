@@ -314,6 +314,14 @@ Bars stay on the ticker the provider stores them under, and the reader picks the
 - **Positions.** A held position is named by the ticker that started last on or before the session, so it reads FB before the rename and META from it, as the universe does. Zipline itself names an asset by its latest ticker.
 - **Orders.** An order placed by ticker resolves to the ISIN that holds that ticker on the session the order is placed in, not on the backtest's last session. A ticker later reused by another ISIN still fills on the earlier asset.
 
+### 7.5 Missing prices
+
+A provider can have no price for a session a stock traded. Yahoo sends `null` in its price arrays for such a session.
+
+- **Download.** A bar with any of open, high, low, or close missing, zero, negative, or non-finite is left out; it is never stored as `0`. `ohlc` refuses a non-positive or non-finite open, high, low, or close (`supplier.ErrRejected`), so a provider adapter that misses one fails the symbol's download instead of storing a `-100%` day.
+- **Zipline bundle.** `SQLIngester` fills each session between a sid's first and last bar that has no bar, so Zipline's daily bar writer does not refuse the sid. A filled session takes the previous close as open, high, low, and close, and volume `0`: a held position keeps its value, and an order placed on that session does not fill under volume slippage. A stored row with a non-positive price (written before `ohlc` refused them) is treated as missing. Nothing before a sid's first bar is filled.
+- **User.** The ingest returns one line per ticker in `IngestResponse.notices`; the `INGESTING` step completes with those lines as its message, and `fbull backtest create` prints them: `Missing prices for XYZ on 2026-05-02, filled with the previous close.` or `Missing prices for XYZ on 4 days (2026-05-02 to 2026-05-07), filled with the previous close.` Three or more tickers print one line, `Missing prices for 12 symbols, filled with the previous close. Run with --verbose for the list.`, and `--verbose` lists each ticker.
+
 ## 8. Zipline `auto_close_date`
 
 `SQLIngester.create_metadata` already declares `("auto_close_date", "datetime64[ns]")`. The writer builds `autoclose_date = end_date + pd.Timedelta(days=1)` then sets it to `None`.
