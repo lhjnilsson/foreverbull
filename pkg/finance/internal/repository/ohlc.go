@@ -173,8 +173,20 @@ type OHLC struct {
 	Conn postgres.Query
 }
 
+// Store writes one bar. Every price must be a real positive number: a 0
+// price is how a missing provider bar used to arrive, and it reads as a
+// -100% day, so it is refused here as well as in the provider adapter.
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
-	if c < 0 || math.IsNaN(c) || math.IsInf(c, 0) {
+	if !positivePrice(o) {
+		return fmt.Errorf("open: %w", supplier.ErrRejected)
+	}
+	if !positivePrice(h) {
+		return fmt.Errorf("high: %w", supplier.ErrRejected)
+	}
+	if !positivePrice(l) {
+		return fmt.Errorf("low: %w", supplier.ErrRejected)
+	}
+	if !positivePrice(c) {
 		return fmt.Errorf("close: %w", supplier.ErrRejected)
 	}
 
@@ -188,6 +200,10 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 	}
 
 	return nil
+}
+
+func positivePrice(price float64) bool {
+	return price > 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
 }
 
 // Close is the close stored for provider, symbol, and calendar day.
