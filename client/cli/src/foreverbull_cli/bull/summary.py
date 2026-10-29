@@ -146,6 +146,7 @@ def print_run_summary(
     end_iso: str,
     execution_id: str,
     periods: list[execution_pb.Period],
+    notices: list[str] | None = None,
 ) -> None:
     if not periods:
         console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
@@ -168,6 +169,12 @@ def print_run_summary(
                 highlight=False,
             )
             console.print()
+    if notices:
+        # The broker left these members out of the run, e.g. after a delisting.
+        # Never silent: each line names the symbols and the date their prices ended.
+        for line in notices:
+            console.print(f"  ⚠ {line}", markup=False, highlight=False, soft_wrap=True)
+        console.print()
     # soft_wrap leaves wrapping to the terminal, so a pasted command or URL has no inserted newline.
     console.print(
         f"  Details: uv run fbull backtest execution {short_execution_id(execution_id)}",

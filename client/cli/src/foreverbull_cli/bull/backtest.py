@@ -752,7 +752,7 @@ def run(
         _fail(present_market_data_failure(rejected, name))
     if execution_id is None:
         _fail(progress.failure or "The backtest session ended before an execution started.")
-    _, periods, _, _ = broker.backtest.get_execution(execution_id)
+    stored, periods, _, _ = broker.backtest.get_execution(execution_id)
     print_run_summary(
         backtest_name=entity.name,
         benchmark=entity.benchmark,
@@ -761,6 +761,7 @@ def run(
         end_iso=end_iso,
         execution_id=execution_id,
         periods=list(periods),
+        notices=list(stored.notices),
     )
 
 

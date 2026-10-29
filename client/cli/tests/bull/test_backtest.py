@@ -1020,7 +1020,7 @@ def _final_period(**overrides) -> execution_pb.Period:
     return execution_pb.Period(**fields)
 
 
-def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
+def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None, execution_entity=None):
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
@@ -1033,11 +1033,35 @@ def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None):
         create_session.return_value = iter(
             [backtest_service_pb.CreateSessionResponse(session=session_pb.Session(port=7878))]
         )
-        get_execution.return_value = (_sample_execution(), periods, [], "yahoo")
+        get_execution.return_value = (execution_entity or _sample_execution(), periods, [], "yahoo")
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
         result = runner(backtest, ["run", "test_name", "demo.py"])
         create_session.assert_called_once()
         return result, get_execution
+
+
+_LEFT_OUT = "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
+
+
+def test_backtest_run_summary_names_members_left_out(runner):
+    # The broker stores one line per date the prices ended. The summary prints
+    # each, so a delisted member is never dropped silently.
+    execution = _sample_execution()
+    execution.notices = [_LEFT_OUT, "1 symbol had no prices after 2026-04-15 and was left out: XYZ."]
+    result, _ = _invoke_run(runner, _run_session_mocks(), [_final_period()], execution_entity=execution)
+    assert result.exit_code == 0
+    shown = [line.strip() for line in result.stdout.splitlines() if "⚠" in line]
+    assert shown == [
+        f"⚠ {_LEFT_OUT}",
+        "⚠ 1 symbol had no prices after 2026-04-15 and was left out: XYZ.",
+    ]
+    assert result.stdout.index("Active days") < result.stdout.index(_LEFT_OUT) < result.stdout.index("Details:")
+
+
+def test_backtest_run_summary_without_notices_prints_no_warning(runner):
+    result, _ = _invoke_run(runner, _run_session_mocks(), [_final_period()])
+    assert result.exit_code == 0
+    assert "⚠" not in result.stdout
 
 
 def test_backtest_run_prints_results_summary(runner):
