@@ -485,12 +485,13 @@ func (test *OHLCTests) TestReadsSkipStoredNonPositiveBars() {
 	for i := 0; i < 3; i++ {
 		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 1, 2, 0.5, float64(10+i), 100))
 	}
-	// Days 3 to 6 are bad rows stored before Store refused them.
+	// Days 3 to 7 are bad rows stored before Store refused them.
 	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 3), "0", "0", "0", "0")
 	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 4), "1", "2", "0.5", "-1")
 	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 5), "0", "2", "0.5", "11")
 	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 6), "1", "2", "0.5", "NaN")
-	asOf := day.AddDate(0, 0, 6)
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 7), "1", "Infinity", "0.5", "11")
+	asOf := day.AddDate(0, 0, 7)
 
 	bars, err := test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 10)
 	test.Require().NoError(err)
@@ -522,7 +523,7 @@ func (test *OHLCTests) TestReadsSkipStoredNonPositiveBars() {
 	// The rows are still stored. The filter is on read only.
 	var stored int
 	test.Require().NoError(test.conn.QueryRow(ctx, `SELECT count(*) FROM ohlc WHERE symbol = 'ABC'`).Scan(&stored))
-	test.Equal(7, stored)
+	test.Equal(8, stored)
 }
 
 // A renamed ticker with a bad row under the asked symbol falls back to the

@@ -209,7 +209,8 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 // sent, and leave the rows themselves alone.
 func positiveBar(table string) string {
 	return fmt.Sprintf(`%[1]s.open > 0 AND %[1]s.high > 0 AND %[1]s.low > 0 AND %[1]s.close > 0
-	AND 'NaN' NOT IN (%[1]s.open, %[1]s.high, %[1]s.low, %[1]s.close)`, table)
+	AND 'NaN' NOT IN (%[1]s.open, %[1]s.high, %[1]s.low, %[1]s.close)
+	AND 'Infinity' NOT IN (%[1]s.open, %[1]s.high, %[1]s.low, %[1]s.close)`, table)
 }
 
 func positivePrice(price float64) bool {
