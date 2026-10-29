@@ -173,9 +173,11 @@ type OHLC struct {
 	Conn postgres.Query
 }
 
-// Store writes one bar. Every price must be a real positive number: a 0
+// Store upserts one bar. Every price must be a real positive number: a 0
 // price is how a missing provider bar used to arrive, and it reads as a
-// -100% day, so it is refused here as well as in the provider adapter.
+// -100% day, so it is refused here as well as in the provider adapter. A
+// re-fetched bar replaces the stored one, so prices adjusted after a split
+// never sit next to rows on the old scale.
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
 	if !positivePrice(o) {
 		return fmt.Errorf("open: %w", supplier.ErrRejected)
@@ -193,7 +195,10 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 	_, err := db.Conn.Exec(
 		ctx,
 		`INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)
-		values ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (provider, symbol, time) DO NOTHING`,
+		values ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (provider, symbol, time) DO UPDATE SET
+			open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+			close = EXCLUDED.close, volume = EXCLUDED.volume`,
 		priceProvider(provider), symbol, t, o, h, l, c, v)
 	if err != nil {
 		return fmt.Errorf("failed to store ohlc: %w", err)
