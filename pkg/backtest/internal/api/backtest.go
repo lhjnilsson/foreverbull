@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -134,7 +135,9 @@ func sendStoredBacktest(rsp *servicePb.CreateBacktestResponse,
 	}
 	stored, err := load()
 	if err != nil {
-		return fmt.Errorf("error loading created backtest: %w", err)
+		// The database error stays in the log; the client gets fixed text.
+		log.Error().Err(err).Str("backtest", rsp.GetBacktest().GetName()).Msg("error loading created backtest")
+		return status.Error(codes.Internal, "backtest created but could not be loaded")
 	}
 	rsp.Backtest = stored
 	rsp.STORING.State = pb.State_STATE_COMPLETED
