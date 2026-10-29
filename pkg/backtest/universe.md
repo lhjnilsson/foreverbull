@@ -332,7 +332,7 @@ Contract:
 
 - One Zipline sid per ISIN. Each ticker of the ISIN is a symbol mapping of that sid (FB then META).
 - A ticker's `start_date` / `end_date` = first and last bar the sid has inside that ticker's `asset_symbol` dates (§7.4), not the bars stored under the ticker.
-- `auto_close_date` = session after the last bar (`end_date + 1 day`), i.e. the value already computed. Do not overwrite with `None`.
+- `auto_close_date` = the day after the sid's last bar (`end_date + 1 day`), or the membership drop when that is earlier. Do not overwrite with `None`. A member delisted mid-month has its last bar before the month-end drop, so Zipline closes a held position on the first session after that bar, the session the broker leaves the member out of `Process` (§7.2), at the last close, and credits the cash. The portfolio value does not jump, and the position does not sit at a stale price until the drop.
 - Write the column as `auto_close_date` to match the metadata dtype, not `autoclose_date`.
 - A drop closes membership in `universe_member` and, once bars end, auto-closes the Zipline equity. A rename does not auto-close the sid: a held position carries over and changes name on the rename date; the ISIN remains a member.
 

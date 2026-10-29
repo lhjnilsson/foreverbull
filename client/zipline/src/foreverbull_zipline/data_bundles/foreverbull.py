@@ -45,10 +45,20 @@ class InstrumentGroup:
 
 
 def membership_auto_close_date(end_date, membership_to: date | None):
-    """Close positions on a drop. Rename does not auto-close the sid."""
+    """Close positions on a drop, or on the session after the last bar.
+
+    A member delisted mid-month keeps its membership until the next
+    month-end list drops it, but the broker leaves it out of the run from
+    the session after its last bar. Zipline closes a held position on its
+    auto_close_date at the last close, so the cash is credited on the day
+    the member is left out rather than the position sitting at a stale
+    price until the drop. A rename does not auto-close the sid: end_date
+    is the ISIN's last bar under any ticker.
+    """
+    after_last_bar = pd.Timestamp(end_date) + pd.Timedelta(days=1)
     if membership_to is not None:
-        return pd.Timestamp(membership_to)
-    return pd.Timestamp(end_date) + pd.Timedelta(days=1)
+        return min(pd.Timestamp(membership_to), after_last_bar)
+    return after_last_bar
 
 
 def bundle_provider(backtest: backtest_pb.Backtest) -> str:

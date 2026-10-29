@@ -104,10 +104,14 @@ def test_sql_ingester_threads_backtest_provider(monkeypatch):
     assert engine.provider == "yahoo"
 
 
-def test_membership_auto_close_date_uses_drop_not_last_bar():
+def test_membership_auto_close_date_is_the_drop_or_the_day_after_the_last_bar():
     end = pd.Timestamp("2023-12-29")
     assert membership_auto_close_date(end, None) == pd.Timestamp("2023-12-30")
     assert membership_auto_close_date(end, date(2023, 2, 28)) == pd.Timestamp("2023-02-28")
+    # Delisted mid-month: the bars end before the month-end list drops it,
+    # so the position closes the day after the last bar, when the broker
+    # leaves the member out.
+    assert membership_auto_close_date(pd.Timestamp("2023-02-10"), date(2023, 2, 28)) == pd.Timestamp("2023-02-11")
 
 
 def test_group_symbols_by_instrument_keeps_rename_on_one_sid():
