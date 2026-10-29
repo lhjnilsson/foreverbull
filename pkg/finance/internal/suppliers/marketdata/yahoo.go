@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -291,6 +292,16 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	return assets, nil
 }
 
+// yahooQuote holds pointers because Yahoo sends null for a session it has
+// no price for, and a float64 would decode that null as a 0 price.
+type yahooQuote struct {
+	Open   []*float64 `json:"open"`
+	High   []*float64 `json:"high"`
+	Low    []*float64 `json:"low"`
+	Close  []*float64 `json:"close"`
+	Volume []*uint64  `json:"volume"`
+}
+
 type OHLCResponse struct {
 	Chart struct {
 		Result []struct {
@@ -300,13 +311,7 @@ type OHLCResponse struct {
 			} `json:"meta"`
 			Timestamp  []int64 `json:"timestamp"`
 			Indicators struct {
-				Quote []struct {
-					Open   []float64 `json:"open"`
-					High   []float64 `json:"high"`
-					Low    []float64 `json:"low"`
-					Close  []float64 `json:"close"`
-					Volume []uint64  `json:"volume"`
-				} `json:"quote"`
+				Quote []yahooQuote `json:"quote"`
 			} `json:"indicators"`
 		} `json:"result"`
 		Error struct {
@@ -335,7 +340,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 
 	resp, err := y.doRequest(url, params...)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
 	}
 
 	defer resp.Body.Close()
@@ -358,17 +363,78 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %v", symbol, data.Chart.Error.Description)
 	}
 
-	ohlcs := make([]*pb.OHLC, 0)
-	for index, ts := range data.Chart.Result[0].Timestamp {
-		ohlcs = append(ohlcs, &pb.OHLC{
-			Timestamp: timestamppb.New(time.Unix(ts, 0)),
-			Open:      data.Chart.Result[0].Indicators.Quote[0].Open[index],
-			High:      data.Chart.Result[0].Indicators.Quote[0].High[index],
-			Low:       data.Chart.Result[0].Indicators.Quote[0].Low[index],
-			Close:     data.Chart.Result[0].Indicators.Quote[0].Close[index],
-			Volume:    data.Chart.Result[0].Indicators.Quote[0].Volume[index],
-		})
+	if len(data.Chart.Result) == 0 {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: no result", symbol)
+	}
+	ohlcs, missing, err := yahooBars(data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote)
+	if err != nil {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
+	}
+	for _, day := range missing {
+		// The bar is left out, not stored as 0. The ingest fills the session
+		// and tells the user (pkg/backtest/universe.md §7.5).
+		log.Warn().Str("provider", "yahoo").Str("symbol", strings.ToUpper(symbol)).
+			Str("day", day.UTC().Format("2006-01-02")).Msg("missing price from provider, bar not stored")
+	}
+	return ohlcs, nil
+}
+
+// yahooBars turns Yahoo's column arrays into bars. A session where any of
+// open, high, low, or close is null, non-finite, or not positive is a
+// missing bar: it is returned in missing and left out of the bars, so no
+// 0 price reaches storage. A null volume on a priced session is 0 shares.
+// Arrays of different lengths are refused rather than read out of range.
+func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, []time.Time, error) {
+	if len(timestamps) == 0 {
+		return []*pb.OHLC{}, nil, nil
+	}
+	if len(quotes) == 0 {
+		return nil, nil, fmt.Errorf("no quote for %d timestamps", len(timestamps))
+	}
+	quote := quotes[0]
+	barCount := len(timestamps)
+	columns := []struct {
+		name  string
+		count int
+	}{
+		{"open", len(quote.Open)}, {"high", len(quote.High)}, {"low", len(quote.Low)},
+		{"close", len(quote.Close)}, {"volume", len(quote.Volume)},
+	}
+	for _, column := range columns {
+		if column.count != barCount {
+			return nil, nil, fmt.Errorf("%s has %d values for %d timestamps", column.name, column.count, barCount)
+		}
 	}
 
-	return ohlcs, nil
+	ohlcs := make([]*pb.OHLC, 0, barCount)
+	missing := make([]time.Time, 0)
+	for index, ts := range timestamps {
+		day := time.Unix(ts, 0)
+		open, high, low, closePx := quote.Open[index], quote.High[index], quote.Low[index], quote.Close[index]
+		if !yahooPrice(open) || !yahooPrice(high) || !yahooPrice(low) || !yahooPrice(closePx) {
+			missing = append(missing, day)
+			continue
+		}
+		var volume uint64
+		if quote.Volume[index] != nil {
+			volume = *quote.Volume[index]
+		}
+		ohlcs = append(ohlcs, &pb.OHLC{
+			Timestamp: timestamppb.New(day),
+			Open:      *open,
+			High:      *high,
+			Low:       *low,
+			Close:     *closePx,
+			Volume:    volume,
+		})
+	}
+	return ohlcs, missing, nil
+}
+
+// yahooPrice is true for a real positive price.
+func yahooPrice(price *float64) bool {
+	if price == nil {
+		return false
+	}
+	return *price > 0 && !math.IsNaN(*price) && !math.IsInf(*price, 0)
 }
