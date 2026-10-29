@@ -308,3 +308,111 @@ func (test *UniverseMemberTest) TestDeleteBacktestCascadesMembers() {
 	test.Require().NoError(err)
 	test.Empty(listed)
 }
+
+// financeBars creates the finance asset and ohlc tables the broker shares
+// with the backtest domain (same columns as pkg/finance) and stores one bar
+// per given UTC time for symbol under provider.
+// resetFinanceBars drops the bars an earlier test stored; Recreate only
+// rebuilds the backtest tables.
+func (test *UniverseMemberTest) resetFinanceBars() {
+	_, err := test.conn.Exec(context.Background(), `DROP TABLE IF EXISTS ohlc; DROP TABLE IF EXISTS asset`)
+	test.Require().NoError(err)
+}
+
+func (test *UniverseMemberTest) financeBars(provider, symbol string, times ...time.Time) {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS asset (symbol text primary key, name text);
+		CREATE TABLE IF NOT EXISTS ohlc (
+			symbol TEXT references asset(symbol),
+			open numeric NOT NULL, high numeric NOT NULL, low numeric NOT NULL, close numeric NOT NULL,
+			volume bigint NOT NULL,
+			time timestamp,
+			provider text NOT NULL,
+			UNIQUE (provider, symbol, time));`)
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `INSERT INTO asset (symbol, name) VALUES ($1, $1) ON CONFLICT DO NOTHING`, symbol)
+	test.Require().NoError(err)
+	for _, at := range times {
+		_, err = test.conn.Exec(ctx, `
+			INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
+			VALUES ($1, 10, 11, 9, 10, 100, $2, $3) ON CONFLICT DO NOTHING`, symbol, at, provider)
+		test.Require().NoError(err)
+	}
+}
+
+// A member delisted mid-month keeps its membership until the next list drops
+// it. LastBars gives each of its ticker intervals the ISIN's last bar, so the
+// session can leave it out after that day. A renamed ticker reads the bars
+// its ISIN has under the other ticker.
+func (test *UniverseMemberTest) TestLastBarsGivesEachAliasItsISINsLastBar() {
+	ctx := context.Background()
+	test.resetFinanceBars()
+	test.createBacktest("sp100")
+	test.Require().NoError(test.members.Replace(ctx, "sp100", []repository.MemberInterval{
+		{ISIN: aaplISIN, FromDate: test.date("2026-01-01")},
+		{ISIN: metaISIN, FromDate: test.date("2026-01-01")},
+		{ISIN: msftISIN, FromDate: test.date("2026-01-01"), ToDate: test.toPtr("2026-04-30")},
+	}))
+	instruments := repository.Instrument{Conn: test.conn}
+	for _, alias := range []repository.AliasInterval{
+		{ISIN: aaplISIN, Symbol: "AAPL", FromDate: test.date("2026-01-01")},
+		{ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2026-01-01"), ToDate: test.toPtr("2026-02-01")},
+		{ISIN: metaISIN, Symbol: "META", FromDate: test.date("2026-02-01")},
+		{ISIN: msftISIN, Symbol: "MSFT", FromDate: test.date("2026-01-01")},
+	} {
+		test.Require().NoError(instruments.StoreAlias(ctx, alias))
+	}
+
+	open := func(s string) time.Time { return test.date(s).Add(13*time.Hour + 30*time.Minute) }
+	test.financeBars("yahoo", "AAPL", open("2026-03-30"), open("2026-03-31"), open("2026-04-30"))
+	// Yahoo stores the whole history of the renamed ISIN under META.
+	test.financeBars("yahoo", "META", open("2026-01-05"), open("2026-04-29"))
+	// MSFT was delisted on 2026-03-31; the 2026-04-30 list drops it.
+	test.financeBars("yahoo", "MSFT", open("2026-03-30"), open("2026-03-31"))
+	// Another provider and bars past the backtest end are not this bundle's.
+	test.financeBars("stooq", "MSFT", open("2026-04-15"))
+	test.financeBars("yahoo", "AAPL", open("2026-05-04"))
+
+	aliases, err := test.members.LastBars(ctx, "sp100", "yahoo", test.date("2026-05-01"))
+	test.Require().NoError(err)
+
+	got := make(map[string]string, len(aliases))
+	for _, alias := range aliases {
+		test.Require().NotNil(alias.LastBar, alias.Symbol)
+		got[alias.Symbol] = alias.LastBar.UTC().Format(time.DateOnly)
+	}
+	test.Equal(map[string]string{
+		"AAPL": "2026-04-30",
+		"FB":   "2026-04-29",
+		"META": "2026-04-29",
+		"MSFT": "2026-03-31",
+	}, got)
+	for _, alias := range aliases {
+		if alias.Symbol == "FB" {
+			test.Equal(test.date("2026-01-01"), alias.FromDate)
+			test.Require().NotNil(alias.ToDate)
+			test.Equal(test.date("2026-02-01"), *alias.ToDate)
+		}
+	}
+}
+
+func (test *UniverseMemberTest) TestLastBarsLeavesAnISINWithoutBarsNil() {
+	ctx := context.Background()
+	test.resetFinanceBars()
+	test.createBacktest("sp100")
+	test.Require().NoError(test.members.Replace(ctx, "sp100", []repository.MemberInterval{
+		{ISIN: aaplISIN, FromDate: test.date("2026-01-01")},
+	}))
+	instruments := repository.Instrument{Conn: test.conn}
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: aaplISIN, Symbol: "AAPL", FromDate: test.date("2026-01-01"),
+	}))
+	test.financeBars("yahoo", "OTHER", test.date("2026-01-05"))
+
+	aliases, err := test.members.LastBars(ctx, "sp100", "yahoo", test.date("2026-05-01"))
+	test.Require().NoError(err)
+	test.Require().Len(aliases, 1)
+	test.Equal("AAPL", aliases[0].Symbol)
+	test.Nil(aliases[0].LastBar)
+}

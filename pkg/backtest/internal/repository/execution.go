@@ -23,9 +23,11 @@ start_date date NOT NULL,
 end_date date NOT NULL,
 function_arguments jsonb,
 provider text NOT NULL,
+notices text[],
 CONSTRAINT backtest_execution_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca')));
 
 ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS function_arguments jsonb;
+ALTER TABLE backtest_execution ADD COLUMN IF NOT EXISTS notices text[];
 
 
 CREATE TABLE IF NOT EXISTS backtest_execution_period (
@@ -294,6 +296,38 @@ func (db *Execution) GetProvider(ctx context.Context, executionID string) (strin
 		return "", nil
 	}
 	return provider.String, nil
+}
+
+// SetNotices stores the lines the run summary shows, such as members left
+// out after their last price. An empty list clears them.
+func (db *Execution) SetNotices(ctx context.Context, executionID string, notices []string) error {
+	if notices == nil {
+		notices = []string{}
+	}
+	tag, err := db.Conn.Exec(ctx,
+		`UPDATE backtest_execution SET notices=$2 WHERE id=$1`, executionID, notices)
+	if err != nil {
+		return fmt.Errorf("failed to store execution notices: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("failed to store execution notices: %w", pgx.ErrNoRows)
+	}
+	return nil
+}
+
+// GetNotices returns the stored run notices. A run stored before notices
+// existed, or one with nothing to report, returns an empty list.
+func (db *Execution) GetNotices(ctx context.Context, executionID string) ([]string, error) {
+	var notices []string
+	err := db.Conn.QueryRow(ctx,
+		`SELECT COALESCE(notices, '{}') FROM backtest_execution WHERE id=$1`, executionID).Scan(&notices)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution notices: %w", err)
+	}
+	if notices == nil {
+		return []string{}, nil
+	}
+	return notices, nil
 }
 
 func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*backtest.Period) error {

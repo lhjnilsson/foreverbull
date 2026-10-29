@@ -14,6 +14,9 @@ message Execution {
   foreverbull.common.Date start_date = 4;
   foreverbull.common.Date end_date = 5;
   optional Period result = 7;
+  // Lines the user must read about how the run went although it finished,
+  // such as members left out after their last price. Set when the run ends.
+  repeated string notices = 8;
 }
 
 // ExecutionFunction is one worker function stored when an execution is created.

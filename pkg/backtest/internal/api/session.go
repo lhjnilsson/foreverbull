@@ -197,6 +197,15 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 			return status.Error(codes.FailedPrecondition, "The backtest run stopped early. Try again, or run `fbenv status`.")
 		}
 	}
+	if noticed, ok := s.backtestSession.(interface{ RunNotices() []string }); ok {
+		// Stored before the stream ends, so the summary the client reads
+		// next names the members the run left out.
+		executions := repository.Execution{Conn: s.db}
+		if err := executions.SetNotices(ctx, execution.GetId(), noticed.RunNotices()); err != nil {
+			log.Error().Err(err).Str("execution_id", execution.GetId()).Msg("error storing run notices")
+			return status.Error(codes.Internal, "The backtest finished, but its notices couldn't be saved. Run it again.")
+		}
+	}
 	return nil
 }
 
