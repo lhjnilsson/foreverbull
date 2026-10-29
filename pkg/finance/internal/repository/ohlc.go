@@ -309,6 +309,16 @@ func positivePrice(price float64) bool {
 	return price > 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
 }
 
+// positivePrices reports whether every price is a positive finite number.
+func positivePrices(prices ...float64) bool {
+	for _, p := range prices {
+		if !positivePrice(p) {
+			return false
+		}
+	}
+	return true
+}
+
 // Range returns the first and last stored bar times for provider and symbol.
 // ok is false when nothing is stored.
 func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last time.Time, ok bool, err error) {
@@ -329,8 +339,11 @@ func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last
 
 // ReplaceRange makes bars the whole stored history of provider and symbol from
 // the first to the last bar. Stored days inside that span that bars leave out
-// are removed. A bar with a non-positive or non-finite price still never
-// replaces a stored one, so a bad day keeps its stored row.
+// are removed. A bar with a non-positive or non-finite price is not written
+// and its day is removed too: once the provider re-scaled its history, the
+// stored row is on the old scale, so keeping it would put a seam inside the
+// replaced span. The read and bundle side fill that gap. This differs from
+// Store, where a bad bar never replaces a stored one.
 func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
 	if len(bars) == 0 {
 		return nil
@@ -356,10 +369,13 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars 
 		if t.After(last) {
 			last = t
 		}
+		if !positivePrices(b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose()) {
+			// Left out of times, so the DELETE below drops the stored row.
+			continue
+		}
 		times = append(times, t)
-		// A refused bar is skipped like a bad bar: the stored row stays.
 		err := inTx.Store(ctx, provider, symbol, t, b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose(), b.GetVolume())
-		if err != nil && !errors.Is(err, ErrInvalidPrice) {
+		if err != nil {
 			return fmt.Errorf("failed to replace ohlc: %w", err)
 		}
 	}

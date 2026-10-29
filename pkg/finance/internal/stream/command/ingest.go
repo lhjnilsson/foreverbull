@@ -100,11 +100,20 @@ func Ingest(ctx context.Context, message stream.Message) error {
 // for example after a split.
 const rescaleTolerance = 0.005
 
-// ingestSymbol stores bars for one symbol. When the stored history already
-// covers start, it fetches from the last stored day, so every incremental
-// fetch overlaps one stored day. If that day's close moved by more than
-// rescaleTolerance, the provider re-scaled its history, and the whole stored
-// range is fetched again and replaced.
+// ingestSymbol stores bars for one symbol.
+//
+// Nothing stored yet: the requested range is fetched and inserted.
+//
+// Stored history that starts on or before start: the fetch begins on the last
+// stored day, so it overlaps one stored day. When that day comes back with a
+// close within rescaleTolerance of the stored one, the new days are upserted.
+// Otherwise (the close moved, the day is missing from the fetch, or either
+// close is not a positive finite price) the scale of the stored history can
+// not be trusted, so the whole range from the first stored day is fetched
+// again and replaced.
+//
+// Stored history that starts after start: the fetch covers start through the
+// last stored day and replaces it, so no stored day is left on an old scale.
 func ingestSymbol(ctx context.Context, ohlc *repository.OHLC, bars supplier.Marketdata,
 	provider, symbol string, start time.Time, end *time.Time,
 ) error {
@@ -113,33 +122,60 @@ func ingestSymbol(ctx context.Context, ohlc *repository.OHLC, bars supplier.Mark
 		return err
 	}
 
-	fetchStart := start
-	incremental := stored && !first.After(start) && !last.Before(start)
-	if incremental {
-		if end != nil && !end.After(last) {
-			// The requested range is already stored.
-			return nil
+	if !stored {
+		fetched, err := getOHLC(bars, symbol, start, end)
+		if err != nil {
+			return err
 		}
-		fetchStart = last
+		return storeBars(ctx, ohlc, provider, symbol, fetched)
 	}
 
-	fetched, err := getOHLC(bars, symbol, fetchStart, end)
+	if start.Before(first) {
+		spanEnd := end
+		if end != nil && end.Before(last) {
+			spanEnd = &last
+		}
+		return replaceRange(ctx, ohlc, bars, provider, symbol, start, spanEnd)
+	}
+
+	if end != nil && !end.After(last) {
+		// The requested range is already stored.
+		return nil
+	}
+
+	fetched, err := getOHLC(bars, symbol, last, end)
 	if err != nil {
 		return err
 	}
 
-	if incremental && rescaled(ctx, ohlc, provider, symbol, last, fetched) {
-		full, err := getOHLC(bars, symbol, first, end)
-		if err != nil {
-			return err
-		}
-		if err := ohlc.ReplaceRange(ctx, provider, symbol, full); err != nil {
-			return fmt.Errorf("error replacing OHLC: %w", err)
-		}
-		return nil
+	matches, err := overlapMatches(ctx, ohlc, provider, symbol, last, fetched)
+	if err != nil {
+		return err
 	}
+	if !matches {
+		return replaceRange(ctx, ohlc, bars, provider, symbol, first, end)
+	}
+	return storeBars(ctx, ohlc, provider, symbol, fetched)
+}
 
-	// One transaction per symbol: a refused bar or a DB error stores none of them.
+// replaceRange fetches start through end and makes it the stored history for
+// that span in one transaction.
+func replaceRange(ctx context.Context, ohlc *repository.OHLC, bars supplier.Marketdata,
+	provider, symbol string, start time.Time, end *time.Time,
+) error {
+	full, err := getOHLC(bars, symbol, start, end)
+	if err != nil {
+		return err
+	}
+	if err := ohlc.ReplaceRange(ctx, provider, symbol, full); err != nil {
+		return fmt.Errorf("error replacing OHLC: %w", err)
+	}
+	return nil
+}
+
+// storeBars stores fetched in one transaction: a refused bar or a DB error
+// stores none of them.
+func storeBars(ctx context.Context, ohlc *repository.OHLC, provider, symbol string, fetched []*pb.OHLC) error {
 	if err := ohlc.StoreBars(ctx, provider, symbol, fetched); err != nil {
 		var invalid *repository.InvalidPriceError
 		if errors.As(err, &invalid) {
@@ -162,10 +198,11 @@ func getOHLC(bars supplier.Marketdata, symbol string, start time.Time, end *time
 	return ohlcs, nil
 }
 
-// rescaled reports whether the fetched close for the overlap day differs from
-// the stored one by more than rescaleTolerance. A bad fetched close (zero or
-// below, NaN or infinite) never counts as a re-scale.
-func rescaled(ctx context.Context, ohlc *repository.OHLC, provider, symbol string, day time.Time, fetched []*pb.OHLC) bool {
+// overlapMatches reports whether the fetched close for the overlap day is a
+// positive finite price within rescaleTolerance of the stored close. A missing
+// overlap day or a bad close on either side is not a match, so the caller
+// replaces the stored history instead of appending next to it.
+func overlapMatches(ctx context.Context, ohlc *repository.OHLC, provider, symbol string, day time.Time, fetched []*pb.OHLC) (bool, error) {
 	want := day.UTC().Format("2006-01-02")
 	for _, o := range fetched {
 		if o.GetTimestamp().AsTime().UTC().Format("2006-01-02") != want {
@@ -173,13 +210,16 @@ func rescaled(ctx context.Context, ohlc *repository.OHLC, provider, symbol strin
 		}
 		c := o.GetClose()
 		if !(c > 0) || math.IsInf(c, 0) {
-			return false
+			return false, nil
 		}
 		storedClose, err := ohlc.Close(ctx, provider, symbol, day)
-		if err != nil || !(storedClose > 0) {
-			return false
+		if err != nil {
+			return false, fmt.Errorf("error reading stored close: %w", err)
 		}
-		return math.Abs(c-storedClose)/storedClose > rescaleTolerance
+		if !(storedClose > 0) || math.IsInf(storedClose, 0) {
+			return false, nil
+		}
+		return math.Abs(c-storedClose)/storedClose <= rescaleTolerance, nil
 	}
-	return false
+	return false, nil
 }

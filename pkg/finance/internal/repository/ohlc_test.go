@@ -582,7 +582,7 @@ func (test *OHLCTests) TestListRejectsBadInput() {
 }
 
 // ReplaceRange drops stored days the new bars leave out, and a bad new bar
-// keeps the stored row.
+// drops the stored row too, so no old-scale row survives the replace.
 func (test *OHLCTests) TestReplaceRange() {
 	ctx := context.Background()
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
@@ -608,5 +608,5 @@ func (test *OHLCTests) TestReplaceRange() {
 		got[t.Format("2006-01-02")] = c
 	}
 	test.Require().NoError(rows.Err())
-	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-28": 500, "2020-08-29": 126}, got)
+	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-29": 126}, got)
 }
