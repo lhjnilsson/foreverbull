@@ -12,7 +12,7 @@ One linear path: write a strategy file, check it locally, run it as a backtest a
 
 You need:
 
-- Python 3.12 and [uv](https://docs.astral.sh/uv/). On Python 3.14, `uv sync` can fail building the `tables` dependency from source (`H5public.h: No such file or directory`). Pass `--python 3.12` to `uv sync` or `uv venv`.
+- Python 3.12+ (tested on 3.12 and 3.14) and [uv](https://docs.astral.sh/uv/).
 - A running Foreverbull environment (local via `fbenv`, or a remote install). To create one, follow [Your first backtest](../README.md#your-first-backtest) in the root README up to and including `fbenv start`, then come back here.
 
 Check that the environment is up and the broker answers:
@@ -20,7 +20,7 @@ Check that the environment is up and the broker answers:
 ```bash
 # clone: from the repository root. With your own virtualenv, skip these two lines and drop `uv run`.
 cd client
-uv sync --python 3.12
+uv sync
 
 uv run fbenv status
 uv run fbull backtest list
