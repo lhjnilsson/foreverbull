@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -183,4 +184,111 @@ func (test *IngestCommandTest) TestAlpacaFailsBeforeDownload() {
 	test.Require().Error(err)
 	test.marketdata.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
 	test.marketdata.AssertNotCalled(test.T(), "GetAsset", mock.Anything)
+}
+
+// aaplAdjusted is Yahoo's split-adjusted AAPL around the 4:1 split on
+// 2020-08-31 (recorded chart response, as in yahoo_split_test.go).
+func aaplAdjusted() []*pb.OHLC {
+	bar := func(day int, month time.Month, o, h, l, c float64, v uint64) *pb.OHLC {
+		return &pb.OHLC{
+			Timestamp: timestamppb.New(time.Date(2020, month, day, 0, 0, 0, 0, time.UTC)),
+			Open:      o, High: h, Low: l, Close: c, Volume: v,
+		}
+	}
+	return []*pb.OHLC{
+		bar(27, time.August, 127.1425, 127.485, 123.8325, 125.01, 155552400),
+		bar(28, time.August, 126.0125, 126.4425, 124.5775, 124.8075, 187630000),
+		bar(31, time.August, 127.58, 131.0, 126.0, 129.04, 225702700),
+		bar(1, time.September, 132.76, 134.8, 130.53, 134.18, 151948100),
+	}
+}
+
+func sameDay(want time.Time) interface{} {
+	return mock.MatchedBy(func(got time.Time) bool {
+		return got.UTC().Format("2006-01-02") == want.Format("2006-01-02")
+	})
+}
+
+func (test *IngestCommandTest) ingestAAPL(start, end string) error {
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Provider = "yahoo"
+		command.Symbols = []string{"AAPL"}
+		command.Start = start
+		command.End = &end
+	})
+	return command.Ingest(context.Background(), message)
+}
+
+// An incremental fetch after a split sees the overlap day re-scaled and
+// replaces the whole stored range, so no day jumps by the split ratio.
+func (test *IngestCommandTest) TestIncrementalFetchRescalesAfterSplit() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	adjusted := aaplAdjusted()
+	// Stored before the split, on the old scale.
+	for _, b := range adjusted[:2] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open*4, b.High*4, b.Low*4, b.Close*4, b.Volume/4))
+	}
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	// The incremental fetch starts on the last stored day.
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+
+	bars, err := test.ohlc.List(ctx, "yahoo", []string{"AAPL"}, time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC), 0)
+	test.Require().NoError(err)
+	test.Require().Len(bars, len(adjusted))
+	for i := 1; i < len(bars); i++ {
+		move := math.Abs(bars[i].Close/bars[i-1].Close - 1)
+		test.LessOrEqual(move, 0.20, "%s", bars[i].Timestamp.AsTime().Format("2006-01-02"))
+	}
+	closeAug28, err := test.ohlc.Close(ctx, "yahoo", "AAPL", aug28)
+	test.Require().NoError(err)
+	test.InDelta(124.8075, closeAug28, 0.0001)
+}
+
+// When the overlap day matches, only the new days are fetched and stored.
+func (test *IngestCommandTest) TestIncrementalFetchAppendsWhenOverlapMatches() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	adjusted := aaplAdjusted()
+	for _, b := range adjusted[:2] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open, b.High, b.Low, b.Close, b.Volume))
+	}
+
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+	test.marketdata.AssertNumberOfCalls(test.T(), "GetOHLC", 1)
+
+	first, last, ok, err := test.ohlc.Range(ctx, "yahoo", "AAPL")
+	test.Require().NoError(err)
+	test.True(ok)
+	test.Equal("2020-08-27", first.Format("2006-01-02"))
+	test.Equal("2020-09-01", last.Format("2006-01-02"))
+}
+
+// A requested range that is already stored is not fetched again.
+func (test *IngestCommandTest) TestIngestSkipsStoredRange() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	for _, b := range aaplAdjusted() {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open, b.High, b.Low, b.Close, b.Volume))
+	}
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-08-31"))
+	test.marketdata.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
 }

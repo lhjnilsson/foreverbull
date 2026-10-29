@@ -309,6 +309,73 @@ func positivePrice(price float64) bool {
 	return price > 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
 }
 
+// Range returns the first and last stored bar times for provider and symbol.
+// ok is false when nothing is stored.
+func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last time.Time, ok bool, err error) {
+	var minTime, maxTime *time.Time
+	err = db.Conn.QueryRow(
+		ctx,
+		`SELECT MIN(time), MAX(time) FROM ohlc WHERE provider = $1 AND symbol = $2`,
+		priceProvider(provider), symbol,
+	).Scan(&minTime, &maxTime)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("failed to read ohlc range: %w", err)
+	}
+	if minTime == nil || maxTime == nil {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	return *minTime, *maxTime, true, nil
+}
+
+// ReplaceRange makes bars the whole stored history of provider and symbol from
+// the first to the last bar. Stored days inside that span that bars leave out
+// are removed. A bar with a non-positive or non-finite price still never
+// replaces a stored one, so a bad day keeps its stored row.
+func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
+	if len(bars) == 0 {
+		return nil
+	}
+	begin, ok := db.Conn.(txBeginner)
+	if !ok {
+		return fmt.Errorf("failed to replace ohlc: connection cannot begin a transaction")
+	}
+	tx, err := begin.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+
+	inTx := &OHLC{Conn: tx}
+	first, last := bars[0].GetTimestamp().AsTime(), bars[0].GetTimestamp().AsTime()
+	times := make([]time.Time, 0, len(bars))
+	for _, b := range bars {
+		t := b.GetTimestamp().AsTime()
+		if t.Before(first) {
+			first = t
+		}
+		if t.After(last) {
+			last = t
+		}
+		times = append(times, t)
+		// A refused bar is skipped like a bad bar: the stored row stays.
+		err := inTx.Store(ctx, provider, symbol, t, b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose(), b.GetVolume())
+		if err != nil && !errors.Is(err, ErrInvalidPrice) {
+			return fmt.Errorf("failed to replace ohlc: %w", err)
+		}
+	}
+	_, err = tx.Exec(ctx,
+		`DELETE FROM ohlc WHERE provider = $1 AND symbol = $2
+		 AND time BETWEEN $3 AND $4 AND NOT (time = ANY($5))`,
+		priceProvider(provider), symbol, first, last, times)
+	if err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	return nil
+}
+
 // Close is the close stored for provider, symbol, and calendar day.
 func (db *OHLC) Close(ctx context.Context, provider, symbol string, day time.Time) (float64, error) {
 	var closePx float64
