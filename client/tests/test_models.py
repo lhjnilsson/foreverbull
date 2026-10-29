@@ -654,3 +654,34 @@ algo = Algorithm(
         ]
         multistep_algo_with_namespace.configure("measure_assets", "low", "5")
         multistep_algo_with_namespace.configure("measure_assets", "high", "10")
+
+
+def test_missing_prices_line_names_the_day_or_the_span():
+    from datetime import date
+
+    from foreverbull.models.finance import missing_prices_line
+
+    assert (
+        missing_prices_line("XYZ", [date(2026, 5, 2)])
+        == "Missing prices for XYZ on 2026-05-02, filled with the previous close."
+    )
+    days = [date(2026, 5, 7), date(2026, 5, 4), date(2026, 5, 5), date(2026, 5, 6)]
+    assert (
+        missing_prices_line("XYZ", days)
+        == "Missing prices for XYZ on 4 days (2026-05-04 to 2026-05-07), filled with the previous close."
+    )
+
+
+def test_missing_prices_summary_folds_three_or_more_symbols():
+    from foreverbull.models.finance import missing_prices_summary
+
+    two = ["a", "b"]
+    assert missing_prices_summary(two, verbose=False) == two
+    many = [f"line {index}" for index in range(12)]
+    assert missing_prices_summary(many, verbose=False) == [
+        "Missing prices for 12 symbols, filled with the previous close. Run with --verbose for the list."
+    ]
+    assert missing_prices_summary(many, verbose=True) == [
+        "Missing prices for 12 symbols, filled with the previous close.",
+        *many,
+    ]

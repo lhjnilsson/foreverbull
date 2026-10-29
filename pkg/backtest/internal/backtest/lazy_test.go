@@ -87,7 +87,7 @@ func TestLazyEngineMethodsInitOnUse(t *testing.T) {
 
 	engine := NewLazyEngine(ce)
 
-	err := engine.Ingest(context.Background(), nil, nil)
+	_, err := engine.Ingest(context.Background(), nil, nil)
 	require.ErrorContains(t, err, "failed to get container for zipline")
 
 	err = engine.DownloadIngestion(context.Background(), nil)

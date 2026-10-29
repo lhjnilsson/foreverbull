@@ -10,7 +10,9 @@ import (
 )
 
 type Engine interface {
-	Ingest(ctx context.Context, backtest *backtest.Backtest, object *storage.Object) error
+	// Ingest builds the bundle. notices are lines the user must read even
+	// though the ingest worked, such as sessions filled with the previous close.
+	Ingest(ctx context.Context, backtest *backtest.Backtest, object *storage.Object) (notices []string, err error)
 	DownloadIngestion(ctx context.Context, object *storage.Object) error
 	NewSession(ctx context.Context, session *backtest.Session) (EngineSession, error)
 }

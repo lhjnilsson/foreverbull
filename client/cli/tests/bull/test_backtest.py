@@ -189,6 +189,74 @@ def test_backtest_create_blocked_provider_prints_one_error_line(provider, messag
     assert result.output == f"Using provider: {provider} (from --provider)\n✖ {message}\n"
 
 
+def _filled_prices_stream(lines: list[str]):
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            INGESTING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+            STORING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
+        )
+        # The orchestrator copies the ingest's notice into the completed step.
+        completed = backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED, message="\n".join(lines)),
+        )
+        yield completed
+        yield completed
+
+    return stream
+
+
+def _create_with_filled_prices(monkeypatch, lines: list[str]):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_filled_prices_stream(lines)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", "yahoo"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    return result
+
+
+_FILLED_XYZ = "Missing prices for XYZ on 4 days (2026-05-04 to 2026-05-07), filled with the previous close."
+_FILLED_ABC = "Missing prices for ABC on 2026-05-05, filled with the previous close."
+
+
+def test_backtest_create_prints_each_filled_symbol(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result = _create_with_filled_prices(monkeypatch, [_FILLED_ABC, _FILLED_XYZ])
+    assert result.exit_code == 0
+    # Printed once although the completed step arrives twice, each on its own line.
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == [f"⚠ {_FILLED_ABC}", f"⚠ {_FILLED_XYZ}"]
+    assert "skipped" not in result.output
+
+
+def test_backtest_create_folds_three_filled_symbols_into_one_line(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    lines = [_FILLED_ABC, _FILLED_XYZ, "Missing prices for DEF on 2026-05-06, filled with the previous close."]
+    result = _create_with_filled_prices(monkeypatch, lines)
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == ["⚠ Missing prices for 3 symbols, filled with the previous close. Run with --verbose for the list."]
+
+
+def test_backtest_create_verbose_lists_every_filled_symbol(monkeypatch):
+    monkeypatch.setenv("LOGGING_LEVEL", "INFO")
+    lines = [_FILLED_ABC, _FILLED_XYZ, "Missing prices for DEF on 2026-05-06, filled with the previous close."]
+    result = _create_with_filled_prices(monkeypatch, lines)
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if line.startswith("⚠")]
+    assert shown == [
+        "⚠ Missing prices for 3 symbols, filled with the previous close.",
+        *[f"⚠ {line}" for line in lines],
+    ]
+
+
 def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
 

@@ -108,7 +108,8 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
         if backtest is None:
             raise ValueError("ingest request has no backtest")
         try:
-            bundles.register(backtest.name, SQLIngester(backtest), calendar_name="XNYS")
+            ingester = SQLIngester(backtest)
+            bundles.register(backtest.name, ingester, calendar_name="XNYS")
             bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
         except Exception as exc:  # noqa: BLE001 - every failure becomes a redacted gRPC status, never a traceback
             code, details = ingest_failure(exc)
@@ -124,7 +125,10 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
             storage = Storage.from_environment()
             storage.upload_object(request.bucket, request.object, f"/tmp/{backtest.name}.tar.gz")
             self.logger.debug("Ingestion uploaded")
-        return engine_service_pb.IngestResponse()
+        notices = ingester.missing_price_notices()
+        for notice in notices:
+            self.logger.warning("%s: %s", backtest.name, notice)
+        return engine_service_pb.IngestResponse(notices=notices)
 
     def new_session(self, request: engine_service_pb.NewSessionRequest, context):
         engine = Engine(
