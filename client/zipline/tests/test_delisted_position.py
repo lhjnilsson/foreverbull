@@ -10,6 +10,7 @@ import os
 
 from datetime import date
 from datetime import datetime
+from typing import cast
 
 import pandas as pd
 import pytest
@@ -60,13 +61,23 @@ def _bars(sessions: pd.DatetimeIndex, closes: list[float]) -> pd.DataFrame:
     )
 
 
-def _ingester(sessions: pd.DatetimeIndex) -> SQLIngester:
+def _closes(sessions: pd.DatetimeIndex, first: float, step: float) -> list[float]:
+    return [first + step * index for index in range(len(sessions))]
+
+
+def _ingester(sessions: pd.DatetimeIndex, member_sessions: pd.DatetimeIndex | None = None) -> SQLIngester:
+    """AAPL and XYZ held, OEF the benchmark on every session.
+
+    XYZ's bars end on XYZ_LAST_BAR. AAPL's bars run on every session unless
+    member_sessions limits them, as stale data limits every member.
+    """
     xyz_sessions = pd.DatetimeIndex(sessions[sessions <= XYZ_LAST_BAR])
+    aapl_sessions = sessions if member_sessions is None else member_sessions
     engine = _FakeEngine(
         {
-            "AAPL": _bars(sessions, [50.0 + 0.5 * index for index in range(len(sessions))]),
-            "XYZ": _bars(xyz_sessions, [20.0 + 0.25 * index for index in range(len(xyz_sessions))]),
-            "OEF": _bars(sessions, [100.0 + index for index in range(len(sessions))]),
+            "AAPL": _bars(aapl_sessions, _closes(aapl_sessions, 50.0, 0.5)),
+            "XYZ": _bars(xyz_sessions, _closes(xyz_sessions, 20.0, 0.25)),
+            "OEF": _bars(sessions, _closes(sessions, 100.0, 1.0)),
         }
     )
     # XYZ stays a member until the month-end list drops it on the 31st.
@@ -79,13 +90,14 @@ def _ingester(sessions: pd.DatetimeIndex) -> SQLIngester:
             "member_to": [None, date(2023, 1, 31)],
         }
     )
+    last = cast(pd.Timestamp, sessions[-1])
     backtest = backtest_pb.Backtest(
         name="sp100",
         benchmark="OEF",
         periods=[
             backtest_pb.Backtest.Period(
                 start_date=common_pb.Date(year=2023, month=1, day=3),
-                end_date=common_pb.Date(year=2023, month=1, day=31),
+                end_date=common_pb.Date(year=last.year, month=last.month, day=last.day),
                 assets=[
                     backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True),
                     backtest_pb.Backtest.Period.Asset(symbol="XYZ", enabled=True),
@@ -146,21 +158,32 @@ def _held(row) -> dict[str, int]:
     return {position["sid"].symbol: position["amount"] for position in row["positions"]}
 
 
-@pytest.fixture
-def delisted_run(tmp_path, monkeypatch):
-    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
-    sessions = get_calendar("XNYS").sessions_in_range(
-        pd.Timestamp("2023-01-03"),  # type: ignore[arg-type]
-        pd.Timestamp("2023-01-31"),  # type: ignore[arg-type]
+def _sessions(start: str, end: str) -> pd.DatetimeIndex:
+    return get_calendar("XNYS").sessions_in_range(
+        pd.Timestamp(start),  # type: ignore[arg-type]
+        pd.Timestamp(end),  # type: ignore[arg-type]
     )
-    ingester = _ingester(sessions)
+
+
+def _ingest_and_run(sessions: pd.DatetimeIndex, member_sessions: pd.DatetimeIndex | None = None):
+    ingester = _ingester(sessions, member_sessions)
     bundles.register(BUNDLE, ingester, calendar_name="XNYS")
     try:
         bundles.ingest(BUNDLE, os.environ, pd.Timestamp("2023-02-01", tz="UTC"), [], False)
-        metadata = pd.DataFrame(ingester._df_metadata)
-        yield sessions, metadata, _run(sessions)
+        result = _run(sessions)
+        # Daily results are stamped at the UTC market close; key them by session.
+        result.index = pd.DatetimeIndex([pd.Timestamp(stamp.date()) for stamp in pd.DatetimeIndex(result.index)])
+        return pd.DataFrame(ingester._df_metadata), result
     finally:
         bundles.unregister(BUNDLE)
+
+
+@pytest.fixture
+def delisted_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    sessions = _sessions("2023-01-03", "2023-01-31")
+    metadata, result = _ingest_and_run(sessions)
+    return sessions, metadata, result
 
 
 def test_delisted_member_auto_closes_on_the_session_after_its_last_bar(delisted_run):
@@ -173,9 +196,8 @@ def test_delisted_member_auto_closes_on_the_session_after_its_last_bar(delisted_
 
 def test_held_delisted_member_is_sold_at_its_last_close(delisted_run):
     sessions, _, result = delisted_run
-    result.index = result.index.tz_localize(None).normalize()
-    xyz_closes = [20.0 + 0.25 * index for index in range(len(sessions[sessions <= XYZ_LAST_BAR]))]
-    aapl_closes = pd.Series([50.0 + 0.5 * index for index in range(len(sessions))], index=sessions)
+    xyz_closes = _closes(pd.DatetimeIndex(sessions[sessions <= XYZ_LAST_BAR]), 20.0, 0.25)
+    aapl_closes = pd.Series(_closes(sessions, 50.0, 0.5), index=sessions)
     last_bar = result.loc[XYZ_LAST_BAR]
     left_out = result.loc[LEFT_OUT_SESSION]
 
@@ -194,3 +216,29 @@ def test_held_delisted_member_is_sold_at_its_last_close(delisted_run):
     end = result.iloc[-1]
     assert _held(end) == {"AAPL": AAPL_SHARES}
     assert end["portfolio_value"] == pytest.approx(end["ending_cash"] + AAPL_SHARES * aapl_closes.iloc[-1])
+
+
+def test_members_at_the_newest_bar_stay_held_on_a_benchmark_only_session(tmp_path, monkeypatch):
+    # Stale data, not a delisting: every member's bars end on 01-13 and the
+    # benchmark has one more session, 01-17. The broker keeps both members
+    # and names none, so Zipline must not sell them either: no cash jump,
+    # and both positions are valued at the 01-13 close.
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    sessions = _sessions("2023-01-03", str(LEFT_OUT_SESSION.date()))
+    member_sessions = pd.DatetimeIndex(sessions[sessions <= XYZ_LAST_BAR])
+    metadata, result = _ingest_and_run(sessions, member_sessions)
+
+    for symbol in ("AAPL", "XYZ"):
+        row = metadata.loc[metadata["symbol"] == symbol].iloc[0]
+        assert cast(pd.Timestamp, pd.Timestamp(row["auto_close_date"])) > LEFT_OUT_SESSION
+
+    last_bar = result.loc[XYZ_LAST_BAR]
+    extra = result.loc[LEFT_OUT_SESSION]
+    assert _held(extra) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
+    assert extra["ending_cash"] == pytest.approx(last_bar["ending_cash"])
+
+    xyz_close = _closes(member_sessions, 20.0, 0.25)[-1]
+    aapl_close = _closes(member_sessions, 50.0, 0.5)[-1]
+    held_value = XYZ_SHARES * xyz_close + AAPL_SHARES * aapl_close
+    assert extra["portfolio_value"] == pytest.approx(extra["ending_cash"] + held_value)
+    assert extra["portfolio_value"] == pytest.approx(last_bar["portfolio_value"])
