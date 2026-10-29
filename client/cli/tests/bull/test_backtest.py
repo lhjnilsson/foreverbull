@@ -222,8 +222,8 @@ def _create_with_filled_prices(monkeypatch, lines: list[str]):
     return result
 
 
-_FILLED_XYZ = "Missing prices for XYZ on 4 days (2026-05-04 to 2026-05-07), filled with the previous close."
-_FILLED_ABC = "Missing prices for ABC on 2026-05-05, filled with the previous close."
+_FILLED_XYZ = "Missing prices for XYZ on 4 days (2026-05-04 to 2026-05-07), filled with the previous close. No trades on those days."
+_FILLED_ABC = "Missing prices for ABC on 2026-05-05, filled with the previous close. No trades on those days."
 
 
 def test_backtest_create_prints_each_filled_symbol(monkeypatch):
@@ -238,21 +238,31 @@ def test_backtest_create_prints_each_filled_symbol(monkeypatch):
 
 def test_backtest_create_folds_three_filled_symbols_into_one_line(monkeypatch):
     monkeypatch.delenv("LOGGING_LEVEL", raising=False)
-    lines = [_FILLED_ABC, _FILLED_XYZ, "Missing prices for DEF on 2026-05-06, filled with the previous close."]
+    lines = [
+        _FILLED_ABC,
+        _FILLED_XYZ,
+        "Missing prices for DEF on 2026-05-06, filled with the previous close. No trades on those days.",
+    ]
     result = _create_with_filled_prices(monkeypatch, lines)
     assert result.exit_code == 0
     shown = [line for line in result.output.splitlines() if "⚠" in line]
-    assert shown == ["⚠ Missing prices for 3 symbols, filled with the previous close. Run with --verbose for the list."]
+    assert shown == [
+        "⚠ Missing prices for 3 symbols, filled with the previous close. No trades on those days. Run with --verbose for the list."
+    ]
 
 
 def test_backtest_create_verbose_lists_every_filled_symbol(monkeypatch):
     monkeypatch.setenv("LOGGING_LEVEL", "INFO")
-    lines = [_FILLED_ABC, _FILLED_XYZ, "Missing prices for DEF on 2026-05-06, filled with the previous close."]
+    lines = [
+        _FILLED_ABC,
+        _FILLED_XYZ,
+        "Missing prices for DEF on 2026-05-06, filled with the previous close. No trades on those days.",
+    ]
     result = _create_with_filled_prices(monkeypatch, lines)
     assert result.exit_code == 0
     shown = [line for line in result.output.splitlines() if line.startswith("⚠")]
     assert shown == [
-        "⚠ Missing prices for 3 symbols, filled with the previous close.",
+        "⚠ Missing prices for 3 symbols, filled with the previous close. No trades on those days.",
         *[f"⚠ {line}" for line in lines],
     ]
 

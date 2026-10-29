@@ -796,7 +796,7 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 // notice so the CLI shows which prices were filled, and the backtest stays.
 func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
 	backtests := repository.Backtest{Conn: test.db}
-	line := "Missing prices for AAPL on 2022-03-02, filled with the previous close."
+	line := "Missing prices for AAPL on 2022-03-02, filled with the previous close. No trades on those days."
 	ziplineEngine := new(engine.MockEngine)
 	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return([]string{line}, nil)
 

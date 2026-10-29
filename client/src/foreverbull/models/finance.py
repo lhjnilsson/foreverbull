@@ -30,7 +30,7 @@ DEFAULT_PROVIDER = "yahoo"
 # bar for with the previous close and writes one line per symbol; the CLI
 # shows up to MISSING_PRICES_LINES_SHOWN of them and folds more into one line.
 MISSING_PRICES_LINES_SHOWN = 2
-_FILLED_WITH_PREVIOUS_CLOSE = "filled with the previous close."
+_FILLED_WITH_PREVIOUS_CLOSE = "filled with the previous close. No trades on those days."
 
 
 def missing_prices_line(symbol: str, days: list[date]) -> str:

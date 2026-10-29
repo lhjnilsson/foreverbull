@@ -193,7 +193,7 @@ def test_gap_ingests_and_matches_the_no_gap_baseline():
 
     # The notice names the ticker and the span; 0-priced rows count as missing.
     assert ingester.missing_price_notices() == [
-        "Missing prices for META on 4 days (2021-10-20 to 2021-11-16), filled with the previous close."
+        "Missing prices for META on 4 days (2021-10-20 to 2021-11-16), filled with the previous close. No trades on those days."
     ]
 
     # Every session has a positive close: no 0 price reaches the backtest.

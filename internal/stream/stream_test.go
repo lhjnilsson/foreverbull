@@ -26,7 +26,7 @@ func ReturnErr(ctx context.Context, message stream.Message) error {
 }
 
 func ReturnNotice(ctx context.Context, message stream.Message) error {
-	return &stream.Notice{Text: "Missing prices for XYZ on 2026-05-05, filled with the previous close."}
+	return &stream.Notice{Text: "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}
 }
 
 func Timeout(ctx context.Context, message stream.Message) error {
@@ -126,7 +126,7 @@ func (test *StreamTest) TestPublish() {
 		err = test.uut.Publish(context.Background(), msg, stream.WaitForCompletion())
 		var notice *stream.Notice
 		test.Require().ErrorAs(err, &notice)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close.", notice.Text)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", notice.Text)
 	})
 	test.Run("WaitForCompletion", func() {
 		msg, err := stream.NewMessage("test", "return", "nil", struct{}{})
@@ -211,7 +211,7 @@ func (test *StreamTest) TestRunOrchestration() {
 		test.Require().Len(steps, 4)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
 		test.Require().NotNil(steps[1].Error)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close.", *steps[1].Error)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", *steps[1].Error)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[3].State)
 		test.Nil(steps[3].Error)
 	})

@@ -172,14 +172,14 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 			Num:   3,
 			State: commonPb.State_STATE_COMPLETED,
 			Error: func() *string {
-				s := "Missing prices for XYZ on 2026-05-05, filled with the previous close."
+				s := "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."
 				return &s
 			}(),
 		}
 		err := UpdateOrchestration(test.msg, step)
 		test.Require().NoError(err)
 		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.INGESTING.State)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close.", test.msg.INGESTING.Message)
+		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", test.msg.INGESTING.Message)
 	})
 	test.Run("mark as failed", func() {
 		step := &pb.Orchestration_Step{
