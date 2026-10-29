@@ -1,3 +1,4 @@
+import itertools
 import os
 import tempfile
 import time
@@ -128,12 +129,12 @@ def test_backtest_create(runner):
 
         if result.exit_code != 0:
             traceback.print_exception(*result.exc_info)  # type: ignore
-        assert "test_name" in result.stdout
-        assert "2020-01-01" in result.stdout
-        assert "2020-01-31" in result.stdout
-        assert "AAPL" in result.stdout
-        assert "MSFT" in result.stdout
-        assert "SPY" in result.stdout
+        assert "  Name       test_name" in result.stdout
+        assert "  Start      2020-01-01" in result.stdout
+        assert "  End        2020-01-31" in result.stdout
+        # IBM is disabled, so only the enabled symbols are listed.
+        assert "  Symbols    AAPL, MSFT\n" in result.stdout
+        assert "  Benchmark  SPY" in result.stdout
 
 
 def test_backtest_create_prints_table_from_the_broker_stream(runner):
@@ -163,9 +164,116 @@ def test_backtest_create_prints_table_from_the_broker_stream(runner):
         result = runner(backtest, ["create"], input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n")
 
     assert result.exit_code == 0, result.stdout
-    assert "Created Backtest" in result.stdout
-    assert "test_name" in result.stdout
-    assert "AAPL" in result.stdout
+    lines = result.stdout.splitlines()
+    record = lines[lines.index("Created Backtest") :]
+    assert record == [
+        "Created Backtest",
+        "  Name       test_name",
+        "  Start      2020-01-01",
+        "  End        2020-01-31",
+        "  Symbols    AAPL, MSFT",
+        "  Benchmark  SPY",
+        "  Provider   yahoo",
+    ]
+
+
+# The 99 iShares S&P 100 members a 2024 Q1 backtest stores (BK and BRKB left out).
+# fmt: off
+_OEF_2024Q1 = [
+    "AAPL", "ABBV", "ABT", "ACN", "ADBE", "AIG", "AMD", "AMGN", "AMT", "AMZN", "AVGO", "AXP", "BA", "BAC", "BKNG",
+    "BLK", "BMY", "C", "CAT", "CHTR", "CL", "CMCSA", "COF", "COP", "COST", "CRM", "CSCO", "CVS", "CVX", "DE", "DHR",
+    "DIS", "DOW", "DUK", "EMR", "EXC", "F", "FDX", "GD", "GE", "GILD", "GM", "GOOG", "GOOGL", "GS", "HD", "HON",
+    "IBM", "INTC", "JNJ", "JPM", "KHC", "KO", "LIN", "LLY", "LMT", "LOW", "MA", "MCD", "MDLZ", "MDT", "MET", "META",
+    "MMM", "MO", "MRK", "MS", "MSFT", "NEE", "NFLX", "NKE", "NVDA", "ORCL", "PEP", "PFE", "PG", "PM", "PYPL", "QCOM",
+    "RTX", "SBUX", "SCHW", "SO", "SPG", "T", "TGT", "TMO", "TMUS", "TSLA", "TXN", "UNH", "UNP", "UPS", "USB", "V",
+    "VZ", "WFC", "WMT", "XOM",
+]
+# fmt: on
+
+
+def _created_record(monkeypatch, symbols: list[str], *, columns: int, verbose: bool = False) -> list[str]:
+    """The lines from "Created Backtest" on, printed at the given terminal width."""
+    monkeypatch.setenv("COLUMNS", str(columns))
+    # Rich reads COLUMNS when the console is built, and reports 80 on a dumb
+    # terminal unless both dimensions are pinned.
+    monkeypatch.setattr(backtest_cli.console, "_width", columns)
+    monkeypatch.setattr(backtest_cli.console, "_height", 25)
+    if verbose:
+        monkeypatch.setenv("LOGGING_LEVEL", "INFO")
+    else:
+        monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    stored = backtest_pb.Backtest(
+        name="oef-2024q1",
+        benchmark="OEF",
+        provider="yahoo",
+        periods=[
+            backtest_pb.Backtest.Period(
+                start_date=from_pydate_to_proto_date(date(2024, 1, 2)),
+                end_date=from_pydate_to_proto_date(date(2024, 3, 28)),
+                # The broker sent the members Z to A.
+                assets=[backtest_pb.Backtest.Period.Asset(symbol=symbol, enabled=True) for symbol in symbols],
+            )
+        ],
+    )
+    done = common_pb.Step(state=common_pb.State.COMPLETED)
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    CREATING=done, DOWNLOADING=done, INGESTING=done, STORING=done, backtest=stored
+                )
+            ]
+        )
+        result = CliRunner().invoke(backtest, ["create"], input="demo\niShares S&P 100\n2024-01-02\n2024-03-28\n")
+    assert result.exit_code == 0, result.stdout
+    lines = result.stdout.splitlines()
+    return lines[lines.index("Created Backtest") :]
+
+
+@pytest.mark.parametrize("columns", [80, 120])
+def test_backtest_create_shows_a_large_backtest_as_one_line_per_field(monkeypatch, columns):
+    record = _created_record(monkeypatch, list(reversed(_OEF_2024Q1)), columns=columns)
+    assert record == [
+        "Created Backtest",
+        "  Name       oef-2024q1",
+        "  Start      2024-01-02",
+        "  End        2024-03-28",
+        "  Symbols    99: AAPL, ABBV, ABT, ACN, ADBE and 94 more",
+        "  Benchmark  OEF",
+        "  Provider   yahoo",
+    ]
+    assert not any(line.lstrip().startswith(",") for line in record)
+
+
+def test_backtest_create_lists_a_few_symbols_without_a_count(monkeypatch):
+    record = _created_record(monkeypatch, ["NVDA", "MSFT", "AAPL"], columns=80)
+    assert "  Symbols    AAPL, MSFT, NVDA" in record
+    assert not any("3:" in line for line in record)
+
+
+@pytest.mark.parametrize("columns", [80, 120])
+def test_backtest_create_verbose_lists_every_symbol_breaking_between_tickers(monkeypatch, columns):
+    record = _created_record(monkeypatch, list(reversed(_OEF_2024Q1)), columns=columns, verbose=True)
+    start = record.index(next(line for line in record if line.startswith("  Symbols    ")))
+    end = record.index("  Benchmark  OEF")
+    symbol_lines = record[start:end]
+    assert len(symbol_lines) > 1
+    assert all(len(line) <= columns for line in symbol_lines)
+    # Lines fill the width: the next ticker would not have fit on any of them.
+    assert all(len(line) + 1 + len(nxt.split()[0]) > columns for line, nxt in itertools.pairwise(symbol_lines))
+    # Continuation lines hang under the value column.
+    assert all(line.startswith(" " * 13) and line[13] != " " for line in symbol_lines[1:])
+    assert not any(line.lstrip().startswith(",") for line in symbol_lines)
+    # Every line but the last ends on a comma, so no ticker is split across lines.
+    assert all(line.endswith(",") for line in symbol_lines[:-1])
+    shown = " ".join(line.strip() for line in symbol_lines).removeprefix("Symbols").strip()
+    assert shown == "99: " + ", ".join(_OEF_2024Q1)
+    assert record[0:4] == [
+        "Created Backtest",
+        "  Name       oef-2024q1",
+        "  Start      2024-01-02",
+        "  End        2024-03-28",
+    ]
 
 
 _STOOQ_BLOCKED = (

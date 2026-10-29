@@ -50,6 +50,9 @@ _PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
 _PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
 _FULL_EXECUTION_ID_LENGTH = 36  # a UUID with hyphens
 _AMBIGUOUS_MATCHES_SHOWN = 5
+# The created backtest names at most this many symbols, then "and N more",
+# the same cap as the run's left-out notices. --verbose lists them all.
+_CREATED_SYMBOLS_SHOWN = 5
 # The broker appends the redacted cause of a failed step after this marker.
 _DETAILS_MARKER = "\nDetails: "
 _VERBOSE_LEVELS = frozenset({"WARNING", "INFO", "DEBUG"})
@@ -249,7 +252,7 @@ def _ask_backtest_dates(etf: str) -> tuple[date, date] | None:
             return start, end
 
 
-def _enabled_symbols(entity: backtest_pb.Backtest) -> str:
+def _enabled_symbol_list(entity: backtest_pb.Backtest) -> list[str]:
     symbols: list[str] = []
     seen: set[str] = set()
     for current in entity.periods:
@@ -257,7 +260,68 @@ def _enabled_symbols(entity: backtest_pb.Backtest) -> str:
             if asset.enabled and asset.symbol not in seen:
                 seen.add(asset.symbol)
                 symbols.append(asset.symbol)
-    return ",".join(symbols)
+    return symbols
+
+
+def _enabled_symbols(entity: backtest_pb.Backtest) -> str:
+    return ",".join(_enabled_symbol_list(entity))
+
+
+def _created_symbol_items(symbols: list[str], *, verbose: bool) -> list[str]:
+    """A to Z, as the items of one ", " list: the count and first five, or all with --verbose.
+
+    Five or fewer symbols are all listed without a count.
+    """
+    ordered = sorted(symbols)
+    if len(ordered) <= _CREATED_SYMBOLS_SHOWN:
+        return ordered
+    items = ordered if verbose else ordered[:_CREATED_SYMBOLS_SHOWN]
+    items = [f"{len(ordered)}: {items[0]}", *items[1:]]
+    hidden = len(ordered) - len(items)
+    if hidden > 0:
+        items[-1] = f"{items[-1]} and {hidden} more"
+    return items
+
+
+def _wrap_items(items: list[str], first_prefix: str, indent: str, width: int) -> list[str]:
+    """Join items with ", " and break lines only after a comma, never inside an item.
+
+    An item longer than the line still gets a line of its own, so a name is never cut.
+    """
+    lines: list[str] = []
+    line = first_prefix
+    line_has_item = False
+    for index, item in enumerate(items):
+        piece = item + ("," if index < len(items) - 1 else "")
+        candidate = f"{line} {piece}" if line_has_item else line + piece
+        if line_has_item and len(candidate) > width:
+            lines.append(line)
+            line = indent + piece
+        else:
+            line = candidate
+        line_has_item = True
+    lines.append(line)
+    return lines
+
+
+def _print_created_backtest(entity: backtest_pb.Backtest) -> None:
+    """One record as label/value rows; only the value column wraps, between symbols."""
+    start, end = _backtest_range(entity)
+    rows: list[tuple[str, list[str]]] = [
+        ("Name", [entity.name]),
+        ("Start", [start]),
+        ("End", [end]),
+        ("Symbols", _created_symbol_items(_enabled_symbol_list(entity), verbose=_verbose())),
+        ("Benchmark", [entity.benchmark]),
+        ("Provider", [_shown_provider(entity)]),
+    ]
+    label_width = max(len(label) for label, _ in rows)
+    indent = " " * (2 + label_width + 2)
+    console.print("Created Backtest", markup=False, highlight=False)
+    for label, items in rows:
+        # soft_wrap keeps Rich from re-wrapping the lines built here.
+        for line in _wrap_items(items, f"  {label.ljust(label_width)}  ", indent, console.width):
+            console.print(line.rstrip(), markup=False, highlight=False, soft_wrap=True)
 
 
 def _backtest_range(entity: backtest_pb.Backtest) -> tuple[str, str]:
@@ -488,23 +552,7 @@ def create(
     if created is None:
         return
 
-    start, end = _backtest_range(created)
-    table = Table(title="Created Backtest", expand=True)
-    table.add_column("Name")
-    table.add_column("Start")
-    table.add_column("End")
-    table.add_column("Symbols", overflow="fold")
-    table.add_column("Benchmark")
-    table.add_column("Provider")
-    table.add_row(
-        created.name,
-        start,
-        end,
-        _enabled_symbols(created),
-        created.benchmark,
-        _shown_provider(created),
-    )
-    console.print(table)
+    _print_created_backtest(created)
 
 
 class OutputFormat(str, Enum):
