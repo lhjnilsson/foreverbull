@@ -145,3 +145,17 @@ class TestIngestFailure:
         assert details == (
             "the data service failed while ingesting prices\nDetails: ValueError: bad bundle at postgresql://u:***@h/db"
         )
+
+
+class TestIngestWithoutContext:
+    def test_failed_ingest_raises_the_original_error(self, monkeypatch):
+        """In-process callers pass no gRPC context; they must see the ingest error, not None.abort."""
+
+        def failing_ingest(*args, **kwargs):
+            raise RuntimeError("no bars for BRKB")
+
+        monkeypatch.setattr(service.bundles, "ingest", failing_ingest)
+        backtest = backtest_pb.Backtest(name="no-context")
+
+        with pytest.raises(RuntimeError, match="no bars for BRKB"):
+            service.BacktestService().ingest(engine_service_pb.IngestRequest(backtest=backtest), None)
