@@ -543,8 +543,9 @@ def create(
         _fail(failure)
 
     notices = missing_prices_summary(progress.notices, verbose=_verbose())
-    if notices and not console.is_terminal:
-        # Live ends its last progress row with a newline only on a terminal.
+    if (notices or created is not None) and not console.is_terminal:
+        # Live ends its last progress row with a newline only on a terminal,
+        # so piped output would join "Storing" and the next line.
         console.line()
     for line in notices:
         console.print(f"⚠ {line}", markup=False, highlight=False, soft_wrap=True)
