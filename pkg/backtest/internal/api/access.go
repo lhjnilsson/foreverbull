@@ -98,7 +98,7 @@ func (bs *BacktestServer) createBacktestAuthed(req *servicePb.CreateBacktestRequ
 		}
 	}
 	backtests := repository.Backtest{Conn: bs.pgx}
-	return sendStoredBacktest(rsp, serverStream, func() (*backtest.Backtest, error) {
+	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
 		id, err := backtests.IDByOwnerAndName(ctx, account.ID, createdName(req))
 		if err != nil {
 			return nil, err

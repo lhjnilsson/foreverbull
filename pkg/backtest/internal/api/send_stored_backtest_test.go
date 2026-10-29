@@ -21,9 +21,9 @@ func TestSendStoredBacktestHidesLoadError(t *testing.T) {
 		return nil, errors.New(`ERROR: relation "backtest" does not exist (SQLSTATE 42P01)`)
 	}
 
-	err := sendStoredBacktest(rsp, nil, load)
+	err := sendStoredBacktest(rsp, nil, "demo", load)
 
 	require.Equal(t, codes.Internal, status.Code(err))
-	require.Equal(t, "backtest created but could not be loaded", status.Convert(err).Message())
+	require.Equal(t, "Backtest demo was created, but its details couldn't be loaded. Run `fbull backtest get demo` to see it.", status.Convert(err).Message())
 	require.NotContains(t, err.Error(), "SQLSTATE")
 }

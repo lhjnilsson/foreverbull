@@ -559,6 +559,34 @@ def test_backtest_create_ingest_failure_never_prints_the_password(level, monkeyp
     assert "postgresql://foreverbull:***@postgres:5432/foreverbull" in result.output
 
 
+_LOAD_FAILED_COPY = (
+    "Backtest from_file was created, but its details couldn't be loaded. Run `fbull backtest get from_file` to see it."
+)
+
+
+def _stream_failing_after_ingest(**_kwargs):
+    done = common_pb.State.COMPLETED
+    yield backtest_service_pb.CreateBacktestResponse(
+        CREATING=common_pb.Step(state=done),
+        DOWNLOADING=common_pb.Step(state=done),
+        INGESTING=common_pb.Step(state=done),
+    )
+    raise _BrokenStream(_LOAD_FAILED_COPY, grpc.StatusCode.INTERNAL)
+
+
+def test_backtest_create_keeps_the_backtest_when_only_loading_it_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_stream_failing_after_ingest),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert _LOAD_FAILED_COPY in " ".join(result.output.split())
+
+
 def test_backtest_create_broken_stream_removes_the_backtest(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with (

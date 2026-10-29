@@ -448,6 +448,7 @@ def create(
 
     created: backtest_pb.Backtest | None = None
     stored = False
+    ingested = False
     failure: str | None = None
     with LiveProgress() as progress:
         try:
@@ -456,13 +457,17 @@ def create(
                 creating = backtest_rsp.CREATING
                 if creating is not None and creating.state == common_pb.State.COMPLETED:
                     stored = True
+                ingesting = backtest_rsp.INGESTING
+                if ingesting is not None and ingesting.state == common_pb.State.COMPLETED:
+                    ingested = True
                 storing = backtest_rsp.STORING
                 if storing is not None and storing.state == common_pb.State.COMPLETED:
                     created = backtest_rsp.backtest
         except grpc.RpcError as exc:
             failure = _rpc_details(exc)
             name = _entity_name(entity)
-            if stored and created is None and name != "":
+            # After ingest the backtest is complete; only loading it back failed.
+            if stored and not ingested and created is None and name != "":
                 failure = _discard_partial_backtest(name, failure)
         failure = failure or progress.failure
         if failure is not None:

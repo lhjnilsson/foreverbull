@@ -111,7 +111,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		}
 	}
 	backtests := repository.Backtest{Conn: bs.pgx}
-	return sendStoredBacktest(rsp, serverStream, func() (*backtest.Backtest, error) {
+	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
 		return backtests.Get(ctx, createdName(req))
 	})
 }
@@ -128,7 +128,8 @@ func createdName(req *servicePb.CreateBacktestRequest) string {
 // client can print what was created. The orchestration has no STORING step, so
 // it is marked here.
 func sendStoredBacktest(rsp *servicePb.CreateBacktestResponse,
-	serverStream servicePb.BacktestServicer_CreateBacktestServer, load func() (*backtest.Backtest, error),
+	serverStream servicePb.BacktestServicer_CreateBacktestServer, name string,
+	load func() (*backtest.Backtest, error),
 ) error {
 	if rsp.GetINGESTING().GetState() != pb.State_STATE_COMPLETED {
 		return nil
@@ -136,8 +137,10 @@ func sendStoredBacktest(rsp *servicePb.CreateBacktestResponse,
 	stored, err := load()
 	if err != nil {
 		// The database error stays in the log; the client gets fixed text.
-		log.Error().Err(err).Str("backtest", rsp.GetBacktest().GetName()).Msg("error loading created backtest")
-		return status.Error(codes.Internal, "backtest created but could not be loaded")
+		log.Error().Err(err).Str("backtest", name).Msg("error loading created backtest")
+		return status.Errorf(codes.Internal,
+			"Backtest %s was created, but its details couldn't be loaded. Run `fbull backtest get %s` to see it.",
+			name, name)
 	}
 	rsp.Backtest = stored
 	rsp.STORING.State = pb.State_STATE_COMPLETED
