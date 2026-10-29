@@ -370,6 +370,41 @@ func (test *OHLCTests) TestMinMax() {
 	test.Equal(end, storedMax)
 }
 
+// Re-ingesting adjusted bars over stored ones leaves only the new scale.
+func (test *OHLCTests) TestStoreReplacesBarsOnReingest() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	// Unadjusted, before a 4:1 split.
+	for i, c := range []float64{500, 499.3} {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), c, c, c, c, 100))
+	}
+	// Re-fetch after the split: same days on the new scale plus one new day.
+	adjusted := []float64{125, 124.825, 129.04}
+	for i, c := range adjusted {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), c, c+1, c-1, c, 400))
+	}
+
+	rows, err := test.conn.Query(ctx,
+		`SELECT open::float8, high::float8, low::float8, close::float8, volume FROM ohlc
+		 WHERE provider = 'yahoo' AND symbol = 'ABC' ORDER BY time`)
+	test.Require().NoError(err)
+	defer rows.Close()
+	var got int
+	for rows.Next() {
+		var o, h, l, c float64
+		var v int
+		test.Require().NoError(rows.Scan(&o, &h, &l, &c, &v))
+		test.InDelta(adjusted[got], o, 0.0001)
+		test.InDelta(adjusted[got]+1, h, 0.0001)
+		test.InDelta(adjusted[got]-1, l, 0.0001)
+		test.InDelta(adjusted[got], c, 0.0001)
+		test.Equal(400, v)
+		got++
+	}
+	test.Require().NoError(rows.Err())
+	test.Equal(len(adjusted), got)
+}
+
 // A bar stored without a provider is written as supplier.DefaultProvider.
 func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
 	ctx := context.Background()
