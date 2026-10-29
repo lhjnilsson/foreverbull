@@ -224,6 +224,47 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		}
 		test.Require().Len(responses, 3)
 	})
+	test.Run("Ingest notices reach the client in INGESTING.notices", func() {
+		lines := []string{"Missing prices for XYZ on 2022-03-02, filled with the previous close. No trades on those days."}
+		statuses := []*streamPb.Orchestration_Step{
+			{Num: 3, State: pb.State_STATE_RUNNING},
+			{Num: 3, State: pb.State_STATE_COMPLETED, Notices: lines},
+		}
+
+		statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
+		for _, status := range statuses {
+			statusCh <- status
+		}
+		close(statusCh)
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+		req := &servicePb.CreateBacktestRequest{
+			Create: &servicePb.CreateBacktestRequest_Backtest{
+				Backtest: &servicePb.CreateBacktestRequest_CreateFromBacktest{
+					Backtest: &backtest.Backtest{},
+				},
+			},
+		}
+
+		resp, err := test.client.CreateBacktest(context.TODO(), req)
+		test.Require().NoError(err)
+
+		var last *servicePb.CreateBacktestResponse
+		for {
+			msg, err := resp.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			test.Require().NoError(err)
+			last = msg
+		}
+		test.Require().NotNil(last)
+		test.Equal(pb.State_STATE_COMPLETED, last.GetINGESTING().GetState())
+		test.Equal(lines, last.GetINGESTING().GetNotices())
+		// message is the failure text; an older client that reads it sees
+		// a completed step with no message.
+		test.Empty(last.GetINGESTING().GetMessage())
+	})
 }
 
 func (test *BacktestServerTest) createStream(name string, statuses []*streamPb.Orchestration_Step) []*servicePb.CreateBacktestResponse {

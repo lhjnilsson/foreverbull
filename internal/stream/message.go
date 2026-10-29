@@ -117,6 +117,17 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 		if step.Error != nil {
 			stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(*step.Error))
 		}
+		if len(step.Notices) > 0 {
+			noticesField := stepMsg.Descriptor().Fields().ByName("notices")
+			if noticesField == nil || !noticesField.IsList() || noticesField.Kind() != protoreflect.StringKind {
+				return fmt.Errorf("notices field not found in step message")
+			}
+			notices := stepMsg.Mutable(noticesField).List()
+			notices.Truncate(0)
+			for _, line := range step.Notices {
+				notices.Append(protoreflect.ValueOfString(line))
+			}
+		}
 	} else {
 		return fmt.Errorf("step message not found")
 	}

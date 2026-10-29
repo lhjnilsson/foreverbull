@@ -803,7 +803,7 @@ func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
 	err := command.Ingest(context.TODO(), test.ingestMessage("test-backtest", ziplineEngine))
 	var notice *stream.Notice
 	test.Require().ErrorAs(err, &notice)
-	test.Equal(line, notice.Text)
+	test.Equal([]string{line}, notice.Lines)
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().NoError(err)

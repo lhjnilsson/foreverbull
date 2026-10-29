@@ -32,8 +32,13 @@ message State {
     STATE_CANCELED = 6;
   }
   State state = 1;
+  // Set only when the command failed (STATE_ERROR). A completed command
+  // never carries an error.
   optional string error = 2;
   google.protobuf.Timestamp occurred_at = 3;
+  // Lines the user must read although the command completed, such as
+  // sessions the ingest filled with the previous close.
+  repeated string notices = 4;
 }
 
 message Orchestration {
@@ -41,7 +46,10 @@ message Orchestration {
     int32 num = 1;
     repeated Message messages = 2;
     foreverbull.common.State state = 3;
+    // Set only when the step failed.
     optional string error = 4;
+    // Notices of the step's commands that completed with one.
+    repeated string notices = 5;
   }
   repeated Step steps = 1;
 }

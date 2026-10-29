@@ -337,11 +337,12 @@ def _filled_prices_stream(lines: list[str]):
             INGESTING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
             STORING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
         )
-        # The orchestrator copies the ingest's notice into the completed step.
+        # The orchestrator copies the ingest's notices into the completed
+        # step's notices field; message stays empty on success.
         completed = backtest_service_pb.CreateBacktestResponse(
             CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
             DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
-            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED, message="\n".join(lines)),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED, notices=lines),
         )
         yield completed
         yield completed
@@ -405,6 +406,28 @@ def test_backtest_create_verbose_lists_every_filled_symbol(monkeypatch):
         "⚠ Missing prices for 3 symbols, filled with the previous close. No trades on those days.",
         *[f"⚠ {line}" for line in lines],
     ]
+
+
+def test_backtest_create_without_notices_prints_no_warning(monkeypatch):
+    # A broker without the notices field, or an ingest with nothing filled,
+    # sends a completed step with empty notices and an empty message.
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result = _create_with_filled_prices(monkeypatch, [])
+    assert result.exit_code == 0
+    assert "⚠" not in result.output
+    assert "✖" not in result.output
+
+
+def test_step_notices_round_trip_and_leave_message_empty():
+    # notices is its own field, so the failure text in message stays empty
+    # and a client built before notices existed skips the field.
+    step = common_pb.Step(state=common_pb.State.COMPLETED, notices=[_FILLED_ABC, _FILLED_XYZ])
+    decoded = common_pb.Step.from_binary(step.to_binary())
+    assert list(decoded.notices) == [_FILLED_ABC, _FILLED_XYZ]
+    assert decoded.message == ""
+    # A step from a broker without notices decodes to an empty list.
+    legacy = common_pb.Step.from_binary(common_pb.Step(state=common_pb.State.COMPLETED).to_binary())
+    assert list(legacy.notices) == []
 
 
 def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
