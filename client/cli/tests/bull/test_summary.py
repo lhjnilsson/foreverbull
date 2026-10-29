@@ -5,6 +5,7 @@ from foreverbull_cli.bull.summary import format_active_days
 from foreverbull_cli.bull.summary import format_usd
 from foreverbull_cli.bull.summary import held_no_position
 from foreverbull_cli.bull.summary import metrics_table
+from foreverbull_cli.bull.summary import run_notice_lines
 from foreverbull_cli.bull.summary import starting_portfolio_value
 from rich.console import Console
 
@@ -141,3 +142,46 @@ def test_tradeless_periods_keep_zero_return_and_leave_ratios_unset():
     sharpe_line = next(line for line in rendered.splitlines() if "Sharpe" in line)
     assert "-" in sharpe_line
     assert "0.00" not in sharpe_line
+
+
+def test_run_notice_lines_keeps_one_or_two_dates_as_lines():
+    one = "1 symbol had no prices after 2026-03-31 and was left out: ABC."
+    two = "2 symbols had no prices after 2026-04-30 and were left out: DEF, GHI."
+    assert run_notice_lines([one], verbose=False) == [one]
+    assert run_notice_lines([one, two], verbose=False) == [one, two]
+
+
+def test_run_notice_lines_folds_three_dates_and_verbose_lists_them():
+    lines = [
+        "1 symbol had no prices after 2026-03-31 and was left out: ABC.",
+        "2 symbols had no prices after 2026-04-30 and were left out: DEF, GHI.",
+        "9 symbols had no prices after 2026-05-29 and were left out: A, B, C, D, E, F, G, H, I.",
+    ]
+    summary = "12 symbols had no prices before the run ended and were left out."
+    assert run_notice_lines(lines, verbose=False) == [f"{summary} Run with --verbose for the list."]
+    assert run_notice_lines(lines, verbose=True) == [summary, *lines]
+
+
+def test_run_notice_lines_names_five_symbols_then_the_rest_as_a_count():
+    line = "7 symbols had no prices after 2026-03-31 and were left out: A, B, C, D, E, F, G."
+    assert run_notice_lines([line], verbose=False) == [
+        "7 symbols had no prices after 2026-03-31 and were left out: A, B, C, D, E and 2 more."
+    ]
+
+
+def test_run_notice_lines_prints_other_notices_as_stored():
+    other = "Something else the broker said."
+    assert run_notice_lines([other], verbose=False) == [other]
+
+
+def test_run_notice_lines_keep_the_held_sentence_per_line_and_fold_it():
+    held = (
+        "1 symbol had no prices after 2023-01-13 and was left out: XYZ. "
+        "Positions held were closed at the last price on 2023-01-13."
+    )
+    plain = "1 symbol had no prices after 2023-01-20 and was left out: ABC."
+    assert run_notice_lines([held, plain], verbose=False) == [held, plain]
+    third = "1 symbol had no prices after 2023-01-27 and was left out: DEF."
+    summary = "3 symbols had no prices before the run ended and were left out. Positions held were closed at their last price."
+    assert run_notice_lines([held, plain, third], verbose=False) == [f"{summary} Run with --verbose for the list."]
+    assert run_notice_lines([held, plain, third], verbose=True) == [summary, held, plain, third]

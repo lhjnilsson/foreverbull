@@ -268,6 +268,69 @@ func (s *SessionTest) TestRunExecution() {
 	s.Require().Equal(5, entries)
 }
 
+// noticingSession is an engine session that reports run notices, as
+// the Zipline session does when it left a member out after its last price.
+type noticingSession struct {
+	*engine.MockEngineSession
+	notices []string
+}
+
+func (n noticingSession) RunNotices() []string { return n.notices }
+
+// The run's notices are stored on the execution before the stream ends, so
+// the summary the CLI reads right after names the members left out.
+func (s *SessionTest) TestRunExecutionStoresRunNotices() {
+	line := "1 symbol had no prices after 2024-03-28 and was left out: ABC."
+	session := noticingSession{MockEngineSession: new(engine.MockEngineSession), notices: []string{line}}
+	ch := make(chan *servicePb.RunExecutionResponse, 1)
+	ch <- &servicePb.RunExecutionResponse{}
+	close(ch)
+	session.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).Return(ch, nil)
+	mockEngine := new(engine.MockEngine)
+	mockEngine.On("NewSession", mock.Anything, mock.Anything).Return(session, nil)
+
+	server, _, err := api.NewGRPCSessionServer(s.session, s.conn, mockEngine)
+	s.Require().NoError(err)
+	listener := bufconn.Listen(1024 * 1024)
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Printf("error serving server: %v", err)
+		}
+	}()
+	defer server.Stop()
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	)
+	s.Require().NoError(err)
+	defer conn.Close() //nolint: errcheck
+	client := servicePb.NewSessionServicerClient(conn)
+
+	executions := repository.Execution{Conn: s.conn}
+	execution, err := executions.Create(context.Background(), &backtest.Execution{
+		Session:   s.session.Id,
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+	}, nil)
+	s.Require().NoError(err)
+
+	stream, err := client.RunExecution(context.Background(), &servicePb.RunExecutionRequest{ExecutionId: execution.Id})
+	s.Require().NoError(err)
+	for {
+		_, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		s.Require().NoError(err)
+	}
+
+	notices, err := executions.GetNotices(context.Background(), execution.Id)
+	s.Require().NoError(err)
+	s.Equal([]string{line}, notices)
+}
+
 func (s *SessionTest) TestStopServer() {
 	rsp, err := s.client.StopServer(context.Background(), &servicePb.StopServerRequest{})
 	s.Require().NoError(err)

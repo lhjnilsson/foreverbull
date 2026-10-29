@@ -404,6 +404,18 @@ func (test *BacktestServerTest) TestGetExecution() {
 		test.Empty(resp.GetFunctions())
 		test.Equal("yahoo", resp.GetProvider())
 	})
+	test.Run("stored notices", func() {
+		backtest := test.createBacktest("test_1")
+		session := test.createSession(backtest.Name)
+		execution := test.createExecution(session.Id)
+		line := "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
+		executions := repository.Execution{Conn: test.pgx}
+		test.Require().NoError(executions.SetNotices(context.TODO(), execution.Id, []string{line}))
+
+		resp, err := test.client.GetExecution(context.Background(), &servicePb.GetExecutionRequest{ExecutionId: execution.Id})
+		test.Require().NoError(err)
+		test.Equal([]string{line}, resp.GetExecution().GetNotices())
+	})
 	test.Run("stored arguments", func() {
 		backtestRow := test.createBacktest("test_1")
 		session := test.createSession(backtestRow.Name)

@@ -319,6 +319,11 @@ func (bs *BacktestServer) getExecutionAuthed(ctx context.Context, req *servicePb
 	if err != nil {
 		return nil, fmt.Errorf("error getting execution provider: %w", err)
 	}
+	notices, err := storage.GetNotices(ctx, req.GetExecutionId())
+	if err != nil {
+		return nil, fmt.Errorf("error getting execution notices: %w", err)
+	}
+	execution.Notices = notices
 	return &servicePb.GetExecutionResponse{
 		Execution: execution,
 		Periods:   periods,

@@ -44,11 +44,33 @@ class InstrumentGroup:
     member_to: date | None = None
 
 
-def membership_auto_close_date(end_date, membership_to: date | None):
-    """Close positions on a drop. Rename does not auto-close the sid."""
-    if membership_to is not None:
-        return pd.Timestamp(membership_to)
-    return pd.Timestamp(end_date) + pd.Timedelta(days=1)
+def membership_auto_close_date(
+    end_date,
+    membership_to: date | None,
+    *,
+    newest_member_end,
+    bundle_end,
+):
+    """When Zipline closes a held position in this sid at its last close.
+
+    The broker leaves a member out of the run from the session after its
+    last bar only when that bar is before the newest bar of any member
+    (§7.2). Zipline must agree: a delisted member auto-closes the day after
+    its last bar, or on its drop when that is earlier, so the cash is
+    credited the session it is left out. A member whose last bar is the
+    newest member bar is where the stored data ends, not a delisting: it
+    closes only on its drop, otherwise the day after the bundle ends, so a
+    benchmark session no member has does not sell it. A rename does not
+    auto-close the sid: end_date is the ISIN's last bar under any ticker.
+    """
+    dropped = None if membership_to is None else pd.Timestamp(membership_to)
+    last_bar = cast(pd.Timestamp, pd.Timestamp(end_date))
+    if last_bar < cast(pd.Timestamp, pd.Timestamp(newest_member_end)):
+        after_last_bar = last_bar + pd.Timedelta(days=1)
+        return after_last_bar if dropped is None else min(dropped, after_last_bar)
+    if dropped is not None:
+        return dropped
+    return pd.Timestamp(bundle_end) + pd.Timedelta(days=1)
 
 
 def bundle_provider(backtest: backtest_pb.Backtest) -> str:
@@ -346,6 +368,9 @@ class SQLIngester:
         calendar = calendar if calendar is not None else get_calendar("XNYS")
         sessions = calendar.sessions_in_range(from_date, to_date)
 
+        # The auto-close of a sid depends on the newest bar of every member,
+        # so the rows are written once every sid's bars are read.
+        ends: list[tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
             for index, group in enumerate(groups):
                 frames = {
@@ -360,20 +385,29 @@ class SQLIngester:
                 for day in filled_sessions:
                     symbol = symbol_on_day(mapping_rows, day)
                     self.missing_prices.setdefault(symbol, []).append(day.date())
-                auto_close = membership_auto_close_date(combined.index[-1], group.member_to)
-                for symbol, start_date, end_date in mapping_rows:
-                    asset_row = pd.DataFrame(
-                        {
-                            "sid": [index],
-                            "start_date": [start_date],
-                            "end_date": [end_date],
-                            "auto_close_date": [auto_close],
-                            "symbol": [symbol],
-                            "exchange": ["NASDAQ"],
-                        }
-                    )
-                    self._df_metadata = pd.concat([self._df_metadata, asset_row], ignore_index=True)
+                is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
+                ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
                 yield index, combined
+        member_ends = [last for _, last, _, is_benchmark, _ in ends if not is_benchmark] or [
+            last for _, last, *_ in ends
+        ]
+        newest_member_end = max(member_ends)
+        for index, last, member_to, _, mapping_rows in ends:
+            auto_close = membership_auto_close_date(
+                last, member_to, newest_member_end=newest_member_end, bundle_end=to_date
+            )
+            for symbol, start_date, end_date in mapping_rows:
+                asset_row = pd.DataFrame(
+                    {
+                        "sid": [index],
+                        "start_date": [start_date],
+                        "end_date": [end_date],
+                        "auto_close_date": [auto_close],
+                        "symbol": [symbol],
+                        "exchange": ["NASDAQ"],
+                    }
+                )
+                self._df_metadata = pd.concat([self._df_metadata, asset_row], ignore_index=True)
 
     def _bars(self, symbol: str, from_date: date, to_date: date) -> pd.DataFrame:
         data = self.get_stock_data(symbol, from_date, to_date)

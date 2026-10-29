@@ -429,3 +429,30 @@ func (test *ExecutionTest) TestMigrateExecutionPeriodLeavesOrphans() {
 	test.Require().NoError(err)
 	test.Equal("missing-execution", execution)
 }
+
+func (test *ExecutionTest) TestNoticesRoundTrip() {
+	ctx := context.Background()
+	execution, err := test.uut.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+
+	// A run stored before notices existed, or with nothing to report, reads empty.
+	notices, err := test.uut.GetNotices(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.Empty(notices)
+
+	line := "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
+	test.Require().NoError(test.uut.SetNotices(ctx, execution.Id, []string{line}))
+	notices, err = test.uut.GetNotices(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.Equal([]string{line}, notices)
+
+	test.Require().NoError(test.uut.SetNotices(ctx, execution.Id, nil))
+	notices, err = test.uut.GetNotices(ctx, execution.Id)
+	test.Require().NoError(err)
+	test.Empty(notices)
+}
+
+func (test *ExecutionTest) TestSetNoticesUnknownExecution() {
+	err := test.uut.SetNotices(context.Background(), "00000000-0000-0000-0000-000000000000", []string{"x"})
+	test.Require().Error(err)
+}

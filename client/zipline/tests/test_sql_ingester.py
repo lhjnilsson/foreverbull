@@ -104,10 +104,22 @@ def test_sql_ingester_threads_backtest_provider(monkeypatch):
     assert engine.provider == "yahoo"
 
 
-def test_membership_auto_close_date_uses_drop_not_last_bar():
-    end = pd.Timestamp("2023-12-29")
-    assert membership_auto_close_date(end, None) == pd.Timestamp("2023-12-30")
-    assert membership_auto_close_date(end, date(2023, 2, 28)) == pd.Timestamp("2023-02-28")
+def test_membership_auto_close_date_is_the_drop_or_the_day_after_the_last_bar():
+    newest = pd.Timestamp("2023-12-29")
+    bundle_end = date(2023, 12, 31)
+
+    def close(end, dropped):
+        return membership_auto_close_date(end, dropped, newest_member_end=newest, bundle_end=bundle_end)
+
+    # The stored data ends here: no early close, only a drop closes it.
+    assert close(newest, None) == pd.Timestamp("2024-01-01")
+    assert close(newest, date(2023, 2, 28)) == pd.Timestamp("2023-02-28")
+    # Delisted mid-month: the bars end before the newest member bar and
+    # before the month-end drop, so the position closes the day after the
+    # last bar, when the broker leaves the member out.
+    assert close(pd.Timestamp("2023-02-10"), date(2023, 2, 28)) == pd.Timestamp("2023-02-11")
+    assert close(pd.Timestamp("2023-02-10"), None) == pd.Timestamp("2023-02-11")
+    assert close(pd.Timestamp("2023-02-10"), date(2023, 2, 5)) == pd.Timestamp("2023-02-05")
 
 
 def test_group_symbols_by_instrument_keeps_rename_on_one_sid():
@@ -161,7 +173,10 @@ def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
     assert sorted(meta_rows["symbol"].tolist()) == ["FB", "META"]
     assert int(meta_rows["sid"].nunique()) == 1
     assert int(meta_rows["auto_close_date"].nunique()) == 1
-    assert pd.Timestamp(meta_rows["auto_close_date"].iloc[0]) == pd.Timestamp("2023-02-28")
+    # Every member's bars end 2023-02-27, the newest member bar: the data
+    # ends there, so META is not closed on the 02-28 session, only after
+    # the bundle ends.
+    assert pd.Timestamp(meta_rows["auto_close_date"].iloc[0]) == pd.Timestamp("2023-03-01")
 
     aapl_rows = metadata.loc[metadata["symbol"] == "AAPL"]
     assert len(aapl_rows) == 1
