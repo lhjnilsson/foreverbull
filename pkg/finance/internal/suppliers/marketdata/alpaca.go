@@ -42,22 +42,34 @@ func (a *AlpacaBars) GetIndex(string) ([]*pb.Asset, error) {
 	return nil, errors.New("alpaca price source does not serve index membership")
 }
 
+// alpacaAdjustment is the corporate-action basis of stored Alpaca bars.
+// The SDK sends adjustment=raw when the field is empty, so a 4:1 split
+// shows as a -75% day. Split-adjusted matches Yahoo's close (split, no
+// dividends), the default provider; dividends are not adjusted, so a run
+// stays a price return as on Yahoo (pkg/finance/profiles.md, adjustment).
+const alpacaAdjustment = marketdata.AdjustmentSplit
+
+// alpacaDailyBars names every field that changes a stored price: daily
+// bars and the split adjustment. Neither is left to an SDK default.
+func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
+	return marketdata.GetBarsRequest{
+		TimeFrame:  marketdata.OneDay,
+		Adjustment: alpacaAdjustment,
+		Start:      start,
+		End:        end,
+	}
+}
+
 func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	endAt := time.Now().UTC()
 	if end != nil {
 		endAt = *end
 	}
-	bars, err := a.md.GetBars(symbol, marketdata.GetBarsRequest{
-		Start: start,
-		End:   endAt,
-	})
+	bars, err := a.md.GetBars(symbol, alpacaDailyBars(start, endAt))
 	if err != nil {
 		var apiErr *alpaca.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnprocessableEntity {
-			bars, err = a.md.GetBars(symbol, marketdata.GetBarsRequest{
-				Start: start,
-				End:   endAt.Add(-15 * time.Minute),
-			})
+			bars, err = a.md.GetBars(symbol, alpacaDailyBars(start, endAt.Add(-15*time.Minute)))
 			if err != nil {
 				return nil, fmt.Errorf("error getting bars: %w", err)
 			}
