@@ -96,6 +96,83 @@ func TestRunBacktestLeavesOutMemberAfterItsLastBar(t *testing.T) {
 	require.Equal(t, []string{"1 symbol had no prices after 2026-03-31 and was left out: ABC."}, session.RunNotices())
 }
 
+// The run asks for sessions past the newest stored bar, e.g. a provider that
+// has not published the last day yet. Members whose last bar is that newest
+// bar are not delisted and stay; only a member whose bars end before it is
+// left out and named.
+func TestRunBacktestKeepsMembersWhoseLastBarIsTheNewestData(t *testing.T) {
+	t.Parallel()
+
+	early := time.Date(2026, 4, 28, 13, 30, 0, 0, time.UTC)
+	newest := time.Date(2026, 4, 29, 13, 30, 0, 0, time.UTC)
+	past := time.Date(2026, 4, 30, 13, 30, 0, 0, time.UTC)
+
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 3}, nil).Once()
+	for _, at := range []time.Time{early, newest, past} {
+		client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodAt(at), nil).Once()
+	}
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(&servicePb.GetCurrentPeriodResponse{IsRunning: false}, nil).Once()
+	client.On("PlaceOrdersAndContinue", mock.Anything, mock.Anything).
+		Return(&servicePb.PlaceOrdersAndContinueResponse{}, nil).Times(3)
+
+	pool.On("Process", mock.Anything, early, []string{"AAPL", "ABC", "MSFT"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, newest, []string{"AAPL", "MSFT"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, past, []string{"AAPL", "MSFT"}, mock.Anything).Return(nil, nil).Once()
+
+	members := []string{"AAPL", "ABC", "MSFT"}
+	provider := ""
+	end := time.Time{}
+	session := &ZipelineSession{
+		client: client,
+		symbolsAt: fakeMembersWithBars{
+			fakeMemberSymbols: fakeMemberSymbols{byDate: map[string][]string{
+				"2026-04-28": members, "2026-04-29": members, "2026-04-30": members,
+			}, intervals: etfMembership},
+			aliases: []repository.AliasLastBar{
+				{Symbol: "AAPL", FromDate: day(2026, 1, 1), LastBar: ptr(newest)},
+				{Symbol: "ABC", FromDate: day(2026, 1, 1), LastBar: ptr(early)},
+				{Symbol: "MSFT", FromDate: day(2026, 1, 1), LastBar: ptr(newest)},
+			},
+			provider: &provider,
+			end:      &end,
+		},
+		backtests: fakeBacktests{backtest: &pb.Backtest{
+			Name: "sp100", Benchmark: "OEF",
+			Periods: []*pb.Backtest_Period{{StartDate: date(2026, 1, 1), EndDate: date(2026, 4, 30)}},
+		}},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "sp100"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.NoError(t, session.RunFailure())
+
+	require.Equal(t, []string{"1 symbol had no prices after 2026-04-28 and was left out: ABC."}, session.RunNotices())
+}
+
+func TestWithoutEndedPricesLeavesNothingOutWhenEveryBarEndsTogether(t *testing.T) {
+	t.Parallel()
+
+	last := day(2026, 4, 29)
+	aliases := []repository.AliasLastBar{
+		{Symbol: "AAPL", FromDate: day(2026, 1, 1), LastBar: ptr(last)},
+		{Symbol: "MSFT", FromDate: day(2026, 1, 1), LastBar: ptr(last)},
+	}
+	left := newLeftOut()
+	source := withoutEndedPrices(func(context.Context, time.Time) ([]string, error) {
+		return []string{"AAPL", "MSFT"}, nil
+	}, aliases, left)
+
+	symbols, err := source(context.Background(), day(2026, 4, 30))
+	require.NoError(t, err)
+	require.Equal(t, []string{"AAPL", "MSFT"}, symbols)
+	require.Empty(t, left.notices())
+}
+
 func TestRunNoticesEmptyWhenNothingWasLeftOut(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, (&ZipelineSession{}).RunNotices())

@@ -58,8 +58,11 @@ func barsProvider(stored *pb.Backtest) string {
 // withoutEndedPrices wraps a member source so a ticker whose ISIN has no bar
 // on or after the UTC date of t is not passed to Process. A member with no
 // bar at all is left as it is: the ingest refuses such a backtest, so it
-// cannot reach a run.
+// cannot reach a run. A member whose last bar is the newest bar of any
+// member is not left out either: its prices did not end, the stored data
+// does, and a run past that date has no newer price for any name.
 func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, left *leftOut) symbolSource {
+	newest := newestBar(aliases)
 	return func(ctx context.Context, t time.Time) ([]string, error) {
 		symbols, err := source(ctx, t)
 		if err != nil {
@@ -69,7 +72,7 @@ func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, 
 		kept := make([]string, 0, len(symbols))
 		for _, symbol := range symbols {
 			last, ok := lastBarAt(aliases, symbol, day)
-			if ok && last.Before(day) {
+			if ok && last.Before(day) && last.Before(newest) {
 				if previous, seen := left.lastBar[symbol]; !seen || last.After(previous) {
 					left.lastBar[symbol] = last
 				}
@@ -79,6 +82,21 @@ func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, 
 		}
 		return kept, nil
 	}
+}
+
+// newestBar is the UTC date of the newest bar any member alias has: the
+// last session the stored prices reach.
+func newestBar(aliases []repository.AliasLastBar) time.Time {
+	var newest time.Time
+	for _, alias := range aliases {
+		if alias.LastBar == nil {
+			continue
+		}
+		if last := dayOf(*alias.LastBar); last.After(newest) {
+			newest = last
+		}
+	}
+	return newest
 }
 
 // lastBarAt returns the UTC date of the last bar of the ISIN that holds
