@@ -88,7 +88,7 @@ func TestHTTP(t *testing.T) {
 
 	t.Run("page", func(t *testing.T) {
 		mux := NewMux()
-		for _, path := range []string{"/", "/index.html", "/services", "/backtests/nasdaq100", "/strategies/mean-rev"} {
+		for _, path := range []string{"/", "/index.html", "/overview", "/docs", "/services", "/backtests/nasdaq100", "/strategies/mean-rev"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
