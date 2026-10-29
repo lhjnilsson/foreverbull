@@ -255,8 +255,8 @@ def test_members_at_the_newest_bar_stay_held_on_a_benchmark_only_session(tmp_pat
 
 def test_the_broker_sees_the_held_member_on_the_session_it_is_left_out(delisted_run):
     # The broker marks a left-out member as held when the portfolio it reads
-    # on the session it leaves the member out holds it ("Shares held were
-    # sold at the last price on 2023-01-13."). Zipline auto-closes at the end
+    # on the session it leaves the member out holds it ("Positions held were
+    # closed at the last price on 2023-01-13."). Zipline auto-closes at the end
     # of that session, so the position is still there in handle_data and
     # gone the session after.
     sessions, _, _, seen = delisted_run

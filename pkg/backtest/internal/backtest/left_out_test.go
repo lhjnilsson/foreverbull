@@ -182,10 +182,10 @@ func periodHolding(t time.Time, symbols ...string) *servicePb.GetCurrentPeriodRe
 	return period
 }
 
-// ABC was held on the session it was left out, so Zipline sold it at its
+// ABC was held on the session it was left out, so Zipline closed it at its
 // last close at the end of that session: its line says so. XYZ was never
 // held, so its line does not.
-func TestRunBacktestNoticeSaysHeldSharesWereSold(t *testing.T) {
+func TestRunBacktestNoticeSaysHeldPositionsWereClosed(t *testing.T) {
 	t.Parallel()
 
 	abcLast := time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC)
@@ -239,12 +239,12 @@ func TestRunBacktestNoticeSaysHeldSharesWereSold(t *testing.T) {
 	require.NoError(t, session.RunFailure())
 
 	require.Equal(t, []string{
-		"1 symbol had no prices after 2026-03-31 and was left out: ABC. Shares held were sold at the last price on 2026-03-31.",
+		"1 symbol had no prices after 2026-03-31 and was left out: ABC. Positions held were closed at the last price on 2026-03-31.",
 		"1 symbol had no prices after 2026-04-01 and was left out: XYZ.",
 	}, session.RunNotices())
 }
 
-func TestLeftOutNoticesSaySoldOnlyOnLinesWithAHeldSymbol(t *testing.T) {
+func TestLeftOutNoticesSayClosedOnlyOnLinesWithAHeldSymbol(t *testing.T) {
 	t.Parallel()
 
 	left := newLeftOut()
@@ -254,7 +254,7 @@ func TestLeftOutNoticesSaySoldOnlyOnLinesWithAHeldSymbol(t *testing.T) {
 	left.held["DEF"] = true
 
 	require.Equal(t, []string{
-		"2 symbols had no prices after 2026-03-31 and were left out: ABC, DEF. Shares held were sold at the last price on 2026-03-31.",
+		"2 symbols had no prices after 2026-03-31 and were left out: ABC, DEF. Positions held were closed at the last price on 2026-03-31.",
 		"1 symbol had no prices after 2026-04-15 and was left out: XYZ.",
 	}, left.notices())
 }

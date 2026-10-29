@@ -33,7 +33,7 @@ type lastBarsByID interface {
 // held names the left-out symbols the portfolio held on the session they
 // were left out. Zipline auto-closes such a position at the end of that
 // session at the last close (universe.md §8), so the notice explains a
-// sale the strategy never placed.
+// trade the strategy never placed.
 type leftOut struct {
 	lastBar map[string]time.Time
 	held    map[string]bool
@@ -155,7 +155,7 @@ func dayOf(t time.Time) time.Time {
 
 // notices is one line per last-bar date, oldest first, with the symbols
 // sorted: "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
-// A line with a held symbol ends "Shares held were sold at the last price on 2026-03-31."
+// A line with a held symbol ends "Positions held were closed at the last price on 2026-03-31."
 func (l *leftOut) notices() []string {
 	if l == nil || len(l.lastBar) == 0 {
 		return nil
@@ -181,7 +181,7 @@ func (l *leftOut) notices() []string {
 }
 
 // leftOutLine names every symbol whose prices ended on last. When any of
-// them was held, the line says the shares were sold at that day's price.
+// them was held, the line says the positions were closed at that day's price.
 func leftOutLine(last time.Time, symbols []string, held bool) string {
 	slices.Sort(symbols)
 	names := strings.Join(symbols, ", ")
@@ -191,7 +191,7 @@ func leftOutLine(last time.Time, symbols []string, held bool) string {
 		line = fmt.Sprintf("1 symbol had no prices after %s and was left out: %s.", date, names)
 	}
 	if held {
-		line += fmt.Sprintf(" Shares held were sold at the last price on %s.", date)
+		line += fmt.Sprintf(" Positions held were closed at the last price on %s.", date)
 	}
 	return line
 }
