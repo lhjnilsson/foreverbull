@@ -287,19 +287,20 @@ type AliasLastBar struct {
 // ISIN's last provider bar before end. A renamed ticker shares the bars of
 // its ISIN, so FB is not read as delisted when Yahoo stores them under META.
 func (db *UniverseMember) LastBars(ctx context.Context, backtestName, provider string, end time.Time) ([]AliasLastBar, error) {
-	return db.lastBars(ctx, "backtest_name", backtestName, provider, end)
+	return db.lastBars(ctx, lastBarsQueryByName, backtestName, provider, end)
 }
 
 // LastBarsByID is LastBars for one backtest id.
 func (db *UniverseMember) LastBarsByID(ctx context.Context, backtestID, provider string, end time.Time) ([]AliasLastBar, error) {
-	return db.lastBars(ctx, "backtest_id", backtestID, provider, end)
+	return db.lastBars(ctx, lastBarsQueryByID, backtestID, provider, end)
 }
 
-func (db *UniverseMember) lastBars(ctx context.Context, column, key, provider string, end time.Time) ([]AliasLastBar, error) {
-	rows, err := db.Conn.Query(ctx, `
+const (
+	// Fixed queries, so no caller can put its own text into the SQL.
+	lastBarsQueryByName = `
 		SELECT s.symbol, s.from_date, s.to_date, last.bar
 		  FROM asset_symbol s
-		  JOIN (SELECT DISTINCT isin FROM universe_member WHERE `+column+` = $1) m ON m.isin = s.isin
+		  JOIN (SELECT DISTINCT isin FROM universe_member WHERE backtest_name = $1) m ON m.isin = s.isin
 		  LEFT JOIN LATERAL (
 			SELECT max(o.time) AS bar
 			  FROM asset_symbol a
@@ -308,7 +309,24 @@ func (db *UniverseMember) lastBars(ctx context.Context, column, key, provider st
 			   AND o.provider = $2
 			   AND o.time < $3::date
 		  ) last ON true
-		 ORDER BY s.symbol, s.from_date`,
+		 ORDER BY s.symbol, s.from_date`
+	lastBarsQueryByID = `
+		SELECT s.symbol, s.from_date, s.to_date, last.bar
+		  FROM asset_symbol s
+		  JOIN (SELECT DISTINCT isin FROM universe_member WHERE backtest_id = $1) m ON m.isin = s.isin
+		  LEFT JOIN LATERAL (
+			SELECT max(o.time) AS bar
+			  FROM asset_symbol a
+			  JOIN ohlc o ON o.symbol = a.symbol
+			 WHERE a.isin = s.isin
+			   AND o.provider = $2
+			   AND o.time < $3::date
+		  ) last ON true
+		 ORDER BY s.symbol, s.from_date`
+)
+
+func (db *UniverseMember) lastBars(ctx context.Context, query, key, provider string, end time.Time) ([]AliasLastBar, error) {
+	rows, err := db.Conn.Query(ctx, query,
 		key, provider, dateString(end))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query member last bars: %w", err)
