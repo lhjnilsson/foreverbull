@@ -762,6 +762,7 @@ def run(
         execution_id=execution_id,
         periods=list(periods),
         notices=list(stored.notices),
+        verbose=_verbose(),
     )
 
 

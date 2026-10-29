@@ -1020,7 +1020,9 @@ def _final_period(**overrides) -> execution_pb.Period:
     return execution_pb.Period(**fields)
 
 
-def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None, execution_entity=None):
+def _invoke_run(
+    runner, mock_backtest_session, periods, backtest_entity=None, execution_entity=None, args=None, app=None
+):
     with (
         patch("foreverbull_cli.bull.backtest.Foreverbull") as mock_foreverbull,
         patch("foreverbull.models.Algorithm.from_file_path") as from_file_path,
@@ -1035,27 +1037,91 @@ def _invoke_run(runner, mock_backtest_session, periods, backtest_entity=None, ex
         )
         get_execution.return_value = (execution_entity or _sample_execution(), periods, [], "yahoo")
         mock_foreverbull.return_value.backtest_session.return_value.__enter__.return_value = mock_backtest_session
-        result = runner(backtest, ["run", "test_name", "demo.py"])
+        result = runner(app or backtest, args or ["run", "test_name", "demo.py"])
         create_session.assert_called_once()
         return result, get_execution
 
 
 _LEFT_OUT = "3 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI."
+_LEFT_OUT_XYZ = "1 symbol had no prices after 2026-04-15 and was left out: XYZ."
+_LEFT_OUT_THIRD = "2 symbols had no prices after 2026-05-29 and were left out: JKL, MNO."
 
 
-def test_backtest_run_summary_names_members_left_out(runner):
-    # The broker stores one line per date the prices ended. The summary prints
-    # each, so a delisted member is never dropped silently.
+def _run_with_notices(runner, notices, args=None, app=None):
     execution = _sample_execution()
-    execution.notices = [_LEFT_OUT, "1 symbol had no prices after 2026-04-15 and was left out: XYZ."]
-    result, _ = _invoke_run(runner, _run_session_mocks(), [_final_period()], execution_entity=execution)
+    execution.notices = notices
+    return _invoke_run(runner, _run_session_mocks(), [_final_period()], execution_entity=execution, args=args, app=app)
+
+
+def _warnings(result) -> list[str]:
+    return [line.strip() for line in result.stdout.splitlines() if "⚠" in line]
+
+
+def test_backtest_run_summary_names_members_left_out_on_one_date(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result, _ = _run_with_notices(runner, [_LEFT_OUT])
     assert result.exit_code == 0
-    shown = [line.strip() for line in result.stdout.splitlines() if "⚠" in line]
-    assert shown == [
-        f"⚠ {_LEFT_OUT}",
-        "⚠ 1 symbol had no prices after 2026-04-15 and was left out: XYZ.",
-    ]
+    assert _warnings(result) == [f"⚠ {_LEFT_OUT}"]
     assert result.stdout.index("Active days") < result.stdout.index(_LEFT_OUT) < result.stdout.index("Details:")
+
+
+def test_backtest_run_summary_prints_one_line_per_date_for_two_dates(runner, monkeypatch):
+    # The broker stores one line per date the prices ended. With two dates
+    # the summary prints each, so a delisted member is never dropped silently.
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result, _ = _run_with_notices(runner, [_LEFT_OUT, _LEFT_OUT_XYZ])
+    assert result.exit_code == 0
+    assert _warnings(result) == [f"⚠ {_LEFT_OUT}", f"⚠ {_LEFT_OUT_XYZ}"]
+
+
+def test_backtest_run_summary_folds_three_dates_into_one_line(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result, _ = _run_with_notices(runner, [_LEFT_OUT, _LEFT_OUT_XYZ, _LEFT_OUT_THIRD])
+    assert result.exit_code == 0
+    assert _warnings(result) == [
+        "⚠ 6 symbols had no prices before the run ended and were left out. Run with --verbose for the list."
+    ]
+    assert "ABC" not in result.stdout
+
+
+def test_backtest_run_summary_verbose_lists_every_date(runner, monkeypatch):
+    # The global flag, as `fbull --verbose backtest create` reads it.
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    many = "7 symbols had no prices after 2026-06-30 and were left out: A, B, C, D, E, F, G."
+    result, _ = _run_with_notices(
+        runner,
+        [_LEFT_OUT, _LEFT_OUT_XYZ, _LEFT_OUT_THIRD, many],
+        args=["--verbose", "backtest", "run", "test_name", "demo.py"],
+        app=cli,
+    )
+    assert result.exit_code == 0
+    assert _warnings(result) == [
+        "⚠ 13 symbols had no prices before the run ended and were left out.",
+        f"⚠ {_LEFT_OUT}",
+        f"⚠ {_LEFT_OUT_XYZ}",
+        f"⚠ {_LEFT_OUT_THIRD}",
+        f"⚠ {many}",
+    ]
+
+
+def test_backtest_run_summary_names_at_most_five_symbols_per_line(runner, monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    nine = "9 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI, JKL, MNO, PQR, STU, VWX, YZA."
+    five = "5 symbols had no prices after 2026-04-30 and were left out: A, B, C, D, E."
+    result, _ = _run_with_notices(runner, [nine, five])
+    assert result.exit_code == 0
+    assert _warnings(result) == [
+        "⚠ 9 symbols had no prices after 2026-03-31 and were left out: ABC, DEF, GHI, JKL, MNO and 4 more.",
+        f"⚠ {five}",
+    ]
+
+
+def test_backtest_run_summary_prefixes_each_notice_with_the_create_warning_sign(runner, monkeypatch):
+    # The same "⚠ " the create notices print, inside the summary's indent.
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result, _ = _run_with_notices(runner, [_LEFT_OUT, _LEFT_OUT_XYZ])
+    shown = [line for line in result.stdout.splitlines() if "⚠" in line]
+    assert shown == [f"  ⚠ {_LEFT_OUT}", f"  ⚠ {_LEFT_OUT_XYZ}"]
 
 
 def test_backtest_run_summary_without_notices_prints_no_warning(runner):

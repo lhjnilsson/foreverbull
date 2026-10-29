@@ -1,3 +1,5 @@
+import re
+
 from typing import Literal
 
 from rich.markup import escape
@@ -7,6 +9,57 @@ from rich.table import Table
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
+
+
+# The broker stores one complete line per last-price date in
+# Execution.notices, e.g. "3 symbols had no prices after 2026-03-31 and were
+# left out: ABC, DEF, GHI." The web UI reads the same lines, so the CLI folds
+# them only when it prints.
+_LEFT_OUT_LINE = re.compile(
+    r"^(?P<count>\d+) symbols? had no prices after (?P<date>\d{4}-\d{2}-\d{2}) "
+    r"and (?:was|were) left out: (?P<symbols>.+)\.$"
+)
+# One line names at most this many symbols, then "and N more".
+LEFT_OUT_SYMBOLS_SHOWN = 5
+# Up to this many last-price dates print one line each; more fold into one line.
+LEFT_OUT_DATES_SHOWN = 2
+NOTICE_PREFIX = "⚠ "
+
+
+def _left_out_line(count: int, last_date: str, symbols: list[str]) -> str:
+    shown = ", ".join(symbols[:LEFT_OUT_SYMBOLS_SHOWN])
+    hidden = len(symbols) - LEFT_OUT_SYMBOLS_SHOWN
+    if hidden > 0:
+        shown = f"{shown} and {hidden} more"
+    if count == 1:
+        return f"1 symbol had no prices after {last_date} and was left out: {shown}."
+    return f"{count} symbols had no prices after {last_date} and were left out: {shown}."
+
+
+def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
+    """The notice lines `fbull backtest run` prints, without the ⚠ prefix.
+
+    One or two last-price dates print one line each, naming at most five
+    symbols. Three or more fold into one line with the total; --verbose
+    adds every stored per-date line, with every symbol, under it. A notice
+    that is not a left-out line prints as stored.
+    """
+    left_out: list[re.Match[str]] = []
+    other: list[str] = []
+    for line in notices:
+        match = _LEFT_OUT_LINE.match(line)
+        if match is None:
+            other.append(line)
+        else:
+            left_out.append(match)
+    if len(left_out) <= LEFT_OUT_DATES_SHOWN:
+        shown = [_left_out_line(int(match["count"]), match["date"], match["symbols"].split(", ")) for match in left_out]
+        return [*shown, *other]
+    total = sum(int(match["count"]) for match in left_out)
+    summary = f"{total} symbols had no prices before the run ended and were left out."
+    if verbose:
+        return [summary, *(match.string for match in left_out), *other]
+    return [f"{summary} Run with --verbose for the list.", *other]
 
 
 # Eight hex characters of a UUID are enough to tell a user's executions apart;
@@ -147,6 +200,7 @@ def print_run_summary(
     execution_id: str,
     periods: list[execution_pb.Period],
     notices: list[str] | None = None,
+    verbose: bool = False,
 ) -> None:
     if not periods:
         console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
@@ -171,9 +225,10 @@ def print_run_summary(
             console.print()
     if notices:
         # The broker left these members out of the run, e.g. after a delisting.
-        # Never silent: each line names the symbols and the date their prices ended.
-        for line in notices:
-            console.print(f"  ⚠ {line}", markup=False, highlight=False, soft_wrap=True)
+        # Never silent: the lines name the symbols and the date their prices
+        # ended, folded like the create notices once there are three dates.
+        for line in run_notice_lines(notices, verbose=verbose):
+            console.print(f"  {NOTICE_PREFIX}{line}", markup=False, highlight=False, soft_wrap=True)
         console.print()
     # soft_wrap leaves wrapping to the terminal, so a pasted command or URL has no inserted newline.
     console.print(
