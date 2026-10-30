@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
@@ -105,6 +108,13 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	if !ok {
 		return &StoreError{Symbol: symbol, Err: ErrNoTransaction}
 	}
+	if pool, ok := db.Conn.(*pgxpool.Pool); ok {
+		release, err := acquireSyncSlot(ctx, pool)
+		if err != nil {
+			return &StoreError{Symbol: symbol, Err: err}
+		}
+		defer release()
+	}
 	tx, err := begin.Begin(ctx)
 	if err != nil {
 		return &StoreError{Symbol: symbol, Err: err}
@@ -131,6 +141,37 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 		return &StoreError{Symbol: symbol, Err: err}
 	}
 	return nil
+}
+
+// syncSlots holds one semaphore per pool. Each Sync keeps a pooled
+// connection for its whole transaction, fetch included, so without a cap a
+// burst of downloads (10 RPC workers plus ingest) could take every connection
+// and starve the server's health Ping.
+var syncSlots sync.Map // *pgxpool.Pool -> chan struct{}
+
+// syncSlotsFor is the semaphore for pool: MaxConns-1 slots, so one
+// connection always stays free, and at least 1.
+func syncSlotsFor(pool *pgxpool.Pool) chan struct{} {
+	if slots, ok := syncSlots.Load(pool); ok {
+		return slots.(chan struct{}) //nolint:forcetypeassert // only chan struct{} is stored
+	}
+	n := int(pool.Config().MaxConns) - 1
+	if n < 1 {
+		n = 1
+	}
+	slots, _ := syncSlots.LoadOrStore(pool, make(chan struct{}, n))
+	return slots.(chan struct{}) //nolint:forcetypeassert // only chan struct{} is stored
+}
+
+// acquireSyncSlot waits for a free Sync slot on pool or for ctx to end.
+func acquireSyncSlot(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
+	slots := syncSlotsFor(pool)
+	select {
+	case slots <- struct{}{}:
+		return func() { <-slots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // fetchError marks an error that came from fetch, so Sync returns it as is.
