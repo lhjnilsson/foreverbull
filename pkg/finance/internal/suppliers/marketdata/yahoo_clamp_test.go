@@ -176,3 +176,43 @@ func TestCompletedFetchEnd(t *testing.T) {
 	_, ok = completedFetchEnd(midnight.Add(time.Hour), far, now)
 	require.False(t, ok)
 }
+
+// liveBarServer answers like Yahoo's chart API at its worst: yesterday's
+// priced bar and today's live bar whatever period2 says. Today's close is
+// the given value, null while the session is open on a bad day.
+func liveBarServer(t *testing.T, yesterday, today time.Time, todayClose string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"chart":{"result":[{"meta":{"currency":"USD","symbol":"XYZ"},"timestamp":[` +
+			strconv.FormatInt(yesterday.Unix(), 10) + "," + strconv.FormatInt(today.Unix(), 10) +
+			`],"indicators":{"quote":[{"open":[10.0,10.3],"high":[10.5,10.6],"low":[9.5,10.1],` +
+			`"close":[10.2,` + todayClose + `],"volume":[100,50]}]}}],"error":null}}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/"
+}
+
+// Today's live bar sent past period2 is dropped before its prices are
+// read, so a priced one is not stored as final and a null one does not
+// fail the download.
+func TestYahooGetOHLCDropsABarAfterTheLastCompletedSession(t *testing.T) {
+	t.Parallel()
+	yesterday := newYork(t, "2026-10-29 09:30")
+	today := newYork(t, "2026-10-30 09:30")
+	now := newYork(t, "2026-10-30 11:00")
+	start := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	tomorrow := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	for _, todayClose := range []string{"10.4", "null"} {
+		client := &YahooClient{
+			chartURL: liveBarServer(t, yesterday, today, todayClose),
+			now:      func() time.Time { return now },
+		}
+		for _, end := range []*time.Time{&tomorrow, nil} {
+			bars, err := client.GetOHLC("xyz", start, end)
+			require.NoError(t, err, todayClose)
+			require.Len(t, bars, 1, todayClose)
+			require.Equal(t, yesterday.Unix(), bars[0].GetTimestamp().AsTime().Unix(), todayClose)
+		}
+	}
+}

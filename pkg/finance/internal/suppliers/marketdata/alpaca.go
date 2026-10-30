@@ -94,8 +94,13 @@ func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]
 		}
 	}
 
+	last := lastCompletedSession(now)
 	ohlcs := make([]*pb.OHLC, 0, len(bars))
 	for _, bar := range bars {
+		// Alpaca could send today's live bar even past the clamped end.
+		if afterLastSession("alpaca", symbol, bar.Timestamp.In(xnysZone), last) {
+			continue
+		}
 		ohlcs = append(ohlcs, &pb.OHLC{
 			Open:      bar.Open,
 			High:      bar.High,
