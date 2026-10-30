@@ -441,7 +441,7 @@ func parseStooqRow(canonical string, rec []string, start, end time.Time) (*pb.OH
 		return nil, fmt.Errorf("date: %w", err)
 	}
 	day := dateOnly(ts)
-	if day.Before(start) || day.After(end) {
+	if day.Before(start) || afterLastSession("stooq", canonical, day, end) {
 		return nil, nil
 	}
 	open, err := parsePrice(rec[1], "open")

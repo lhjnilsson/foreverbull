@@ -4,6 +4,8 @@ import (
 	"time"
 	// The broker image may have no zoneinfo; embed America/New_York.
 	_ "time/tzdata"
+
+	"github.com/rs/zerolog/log"
 )
 
 // xnysZone is the exchange's time zone. LoadLocation cannot fail with the
@@ -68,4 +70,37 @@ func lastCompletedSessionEnd(end, now time.Time) time.Time {
 func completedFetchEnd(start, end, now time.Time) (time.Time, bool) {
 	until := lastCompletedSessionEnd(end, now)
 	return until, until.After(start)
+}
+
+// lastCompletedSession is a time on the New York date of the last
+// completed XNYS session as of now: today from 16:30 New York
+// (sessionFinalAt), yesterday before. A weekend or holiday date has no
+// session, so no bar is on it.
+func lastCompletedSession(now time.Time) time.Time {
+	return lastCompletedSessionEnd(now, now).Add(-time.Nanosecond).In(xnysZone)
+}
+
+// afterLastSession is true for a bar whose session date comes after last,
+// the date of the last session the fetch may return, and logs the drop at
+// debug level. Each date is read in its own location: Stooq's rows are
+// dates at midnight UTC, Yahoo's and Alpaca's bars are read in New York.
+// Asking a provider for completed sessions only is not enough: Stooq can
+// send rows past d2, Yahoo's chart API sometimes sends today's live bar
+// when period2 is earlier, and Alpaca could too. Every provider drops such
+// a bar with it rather than store an unfinished session as final.
+func afterLastSession(provider, symbol string, session, last time.Time) bool {
+	sessionYear, sessionMonth, sessionDay := session.Date()
+	lastYear, lastMonth, lastDay := last.Date()
+	sessionDate := time.Date(sessionYear, sessionMonth, sessionDay, 0, 0, 0, 0, time.UTC)
+	lastDate := time.Date(lastYear, lastMonth, lastDay, 0, 0, 0, 0, time.UTC)
+	if !sessionDate.After(lastDate) {
+		return false
+	}
+	log.Debug().
+		Str("provider", provider).
+		Str("symbol", symbol).
+		Str("session", sessionDate.Format(time.DateOnly)).
+		Str("last_session", lastDate.Format(time.DateOnly)).
+		Msg("dropped a bar after the last completed session")
+	return true
 }

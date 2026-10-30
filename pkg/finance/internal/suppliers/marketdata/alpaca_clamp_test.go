@@ -120,3 +120,33 @@ func TestAlpacaGetOHLCKeepsAPastEnd(t *testing.T) {
 		alpacaDays(t, bars, time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC), &end))
 	require.Equal(t, []time.Time{end}, *ends)
 }
+
+// Alpaca could send today's bar whatever the end asked for. Before 16:30
+// New York it is unfinished and dropped.
+func TestAlpacaGetOHLCDropsABarAfterTheLastCompletedSession(t *testing.T) {
+	t.Parallel()
+	yesterday := newYork(t, "2026-10-29 00:00")
+	today := newYork(t, "2026-10-30 00:00")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"bars":{"XYZ":[{"t":"` + yesterday.UTC().Format(time.RFC3339) +
+			`","o":10,"h":10.5,"l":9.5,"c":10.2,"v":100,"n":1,"vw":10.1},{"t":"` +
+			today.UTC().Format(time.RFC3339) +
+			`","o":10.3,"h":10.6,"l":10.1,"c":10.4,"v":50,"n":1,"vw":10.3}]},"next_page_token":null}`))
+	}))
+	t.Cleanup(srv.Close)
+	bars := &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1,
+	})}
+	start := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	tomorrow := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+
+	now := newYork(t, "2026-10-30 11:00")
+	bars.now = func() time.Time { return now }
+	require.Equal(t, []string{"2026-10-29"}, alpacaDays(t, bars, start, &tomorrow))
+	require.Equal(t, []string{"2026-10-29"}, alpacaDays(t, bars, start, nil))
+
+	// From 16:30 New York today's session is completed, and its bar is kept.
+	now = newYork(t, "2026-10-30 16:35")
+	require.Equal(t, []string{"2026-10-29", "2026-10-30"}, alpacaDays(t, bars, start, nil))
+}

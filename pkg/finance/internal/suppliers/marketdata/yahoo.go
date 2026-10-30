@@ -493,7 +493,9 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if len(data.Chart.Result) == 0 {
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: no result", symbol)
 	}
-	ohlcs, err := yahooBars(data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote)
+	timestamps, quotes := yahooThrough(strings.ToUpper(symbol),
+		data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote, lastCompletedSession(now))
+	ohlcs, err := yahooBars(timestamps, quotes)
 	if err != nil {
 		var missing *MissingPriceError
 		if errors.As(err, &missing) {
@@ -511,7 +513,8 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 // missing bar, wherever it is in the answer: it fails with a
 // MissingPriceError naming every such day, so no 0 price reaches storage
 // and the stored bars have no gap. GetOHLC never asks for today's unfinished
-// session, so it is not one. A null volume on a priced session is 0 shares.
+// session and drops it if Yahoo sends it anyway, so it is not one. A null
+// volume on a priced session is 0 shares.
 // Arrays of different lengths are refused rather than read out of range.
 func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, error) {
 	if len(timestamps) == 0 {
@@ -561,6 +564,44 @@ func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, error) {
 		return nil, &MissingPriceError{Days: missing}
 	}
 	return ohlcs, nil
+}
+
+// yahooThrough drops every session Yahoo sent after last, the last
+// completed session, before any price is checked. Yahoo's chart API
+// sometimes sends today's live bar even when period2 is earlier; it is
+// unfinished, so it is neither stored nor, with its null close, a missing
+// price. Columns of a length other than the timestamps' are left to
+// yahooBars to refuse.
+func yahooThrough(symbol string, timestamps []int64, quotes []yahooQuote, last time.Time) ([]int64, []yahooQuote) {
+	if len(quotes) == 0 {
+		return timestamps, quotes
+	}
+	quote := quotes[0]
+	count := len(timestamps)
+	if len(quote.Open) != count || len(quote.High) != count || len(quote.Low) != count ||
+		len(quote.Close) != count || len(quote.Volume) != count {
+		return timestamps, quotes
+	}
+	kept := make([]int64, 0, count)
+	trimmed := yahooQuote{
+		Open:   make([]*float64, 0, count),
+		High:   make([]*float64, 0, count),
+		Low:    make([]*float64, 0, count),
+		Close:  make([]*float64, 0, count),
+		Volume: make([]*uint64, 0, count),
+	}
+	for index, ts := range timestamps {
+		if afterLastSession("yahoo", symbol, time.Unix(ts, 0).In(xnysZone), last) {
+			continue
+		}
+		kept = append(kept, ts)
+		trimmed.Open = append(trimmed.Open, quote.Open[index])
+		trimmed.High = append(trimmed.High, quote.High[index])
+		trimmed.Low = append(trimmed.Low, quote.Low[index])
+		trimmed.Close = append(trimmed.Close, quote.Close[index])
+		trimmed.Volume = append(trimmed.Volume, quote.Volume[index])
+	}
+	return kept, []yahooQuote{trimmed}
 }
 
 // yahooPrice is true for a real positive price.
