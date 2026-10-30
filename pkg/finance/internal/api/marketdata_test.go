@@ -632,6 +632,33 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSkipsInvalidLaterTicker()
 	suite.Zero(bars)
 }
 
+// A DB error while looking for a later ticker is not "no price data": the
+// user gets the generic download sentence and the DB text stays in the log.
+func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerDBErrorAsDownloadFailure() {
+	ctx := context.Background()
+	// Resolve reads asset_symbol; without it every lookup is a DB error.
+	// SetupTest's Recreate creates the table again for the next test.
+	_, err := suite.pgx.Exec(ctx, `DROP TABLE asset_symbol`)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("couldn't download prices for FB. Try again in a few minutes, or use another provider with --provider.", msgs[0].GetError())
+	suite.NotContains(msgs[0].GetError(), "asset_symbol")
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
