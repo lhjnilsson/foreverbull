@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,31 +91,66 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 
 const downloadWorkers = 10
 
-// maxDownloadSymbols is how many distinct symbols one DownloadHistoricalData
-// request may carry. It is well above the largest index universe a backtest
-// asks for in one request, and bounds how much provider and database work one
-// call can start.
-const maxDownloadSymbols = 2000
-
 // downloadSymbols returns the request's symbols with repeats left out, in
-// request order, so each symbol is fetched, stored and reported once. More
-// than maxDownloadSymbols distinct symbols is InvalidArgument.
+// request order, so each symbol is fetched, stored and reported once.
+//
+// A blank symbol is InvalidArgument, named by its position in the request,
+// before any provider call. More than marketdata.MaxDownloadSymbols distinct
+// symbols is InvalidArgument too; counting stops at the first symbol over
+// the cap. Nothing is fetched or stored then.
 func downloadSymbols(symbols []string) ([]string, error) {
-	seen := make(map[string]struct{}, len(symbols))
-	out := make([]string, 0, len(symbols))
+	for index, symbol := range symbols {
+		if strings.TrimSpace(symbol) == "" {
+			return nil, status.Error(codes.InvalidArgument, invalidTickerMessage(index+1, len(symbols)))
+		}
+	}
+	// Distinct strings as typed, the count marketdata.DownloadSymbolCount
+	// gives backtest create. Switches to StoredSymbol when
+	// lhjnilsson/foreverbull#223 lands.
+	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
+	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
 	for _, symbol := range symbols {
 		if _, ok := seen[symbol]; ok {
 			continue
 		}
+		if len(out) == marketdata.MaxDownloadSymbols {
+			return nil, status.Error(codes.InvalidArgument, tooManySymbolsMessage)
+		}
 		seen[symbol] = struct{}{}
 		out = append(out, symbol)
 	}
-	if len(out) > maxDownloadSymbols {
-		return nil, status.Errorf(codes.InvalidArgument,
-			"one download can carry at most %d symbols, and this one has %d. Split it into smaller downloads.",
-			maxDownloadSymbols, len(out))
-	}
 	return out, nil
+}
+
+// invalidTickerMessage refuses a request whose symbol at the 1-based
+// position isn't a ticker. It names the position and the request's symbol
+// count, never the symbol. Backtest create matches this exact shape to build
+// its sentence.
+func invalidTickerMessage(position, total int) string {
+	return fmt.Sprintf("symbol %d of %d isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", position, total)
+}
+
+// tooManySymbolsMessage refuses a request over the per-request cap. Backtest
+// create counts the same way before it stores a backtest and shows its own
+// sentence with the count; this one is for other callers of the RPC.
+var tooManySymbolsMessage = fmt.Sprintf(
+	"one download can carry at most %s distinct symbols, and this one has more. Split it into smaller downloads.",
+	groupThousands(marketdata.MaxDownloadSymbols))
+
+// groupThousands writes n with a comma between each group of three digits.
+func groupThousands(n int) string {
+	if n < 0 {
+		return "-" + groupThousands(-n)
+	}
+	digits := strconv.Itoa(n)
+	var b strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(d)
+	}
+	return b.String()
 }
 
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
