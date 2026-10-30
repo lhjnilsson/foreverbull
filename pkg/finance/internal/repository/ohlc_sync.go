@@ -98,7 +98,10 @@ const rescaleTolerance = 0.005
 // Nothing stored yet: start through end is fetched and inserted.
 //
 // Stored history that starts on or before start: the fetch begins on the last
-// stored day, so it overlaps one stored day. When that day comes back with a
+// stored day, or on the first weekday from start that has no stored bar when
+// there is a gap inside the stored range, so it overlaps the last stored day.
+// Bars for gap days are inserted; days already stored before the last one are
+// left as they are. When that day comes back with a
 // close within rescaleTolerance of the stored one, the new days are upserted.
 // Otherwise (the close moved, the day is missing from the fetch, or either
 // close is not a positive finite price) the scale of the stored history can't
@@ -314,7 +317,19 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		return nil
 	}
 
-	bars, err := fetch(last, end)
+	// A day missing inside the stored range (a provider gap on an earlier
+	// fetch) would never be asked for again if the fetch began on the last
+	// stored day, so it begins on the first missing weekday instead. Still
+	// one provider call, and the overlap day is in it.
+	storedDays, err := db.storedDays(ctx, provider, symbol, start, last)
+	if err != nil {
+		return err
+	}
+	from := last
+	if missing, ok := firstMissingWeekday(start, last, storedDays); ok {
+		from = missing
+	}
+	bars, err := fetch(from, end)
 	if err != nil {
 		return &fetchError{err: err}
 	}
@@ -325,7 +340,68 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 	if !matches {
 		return refetchAndReplace(first, end)
 	}
-	return storeBars(bars)
+	return storeBars(fillOnly(bars, last, storedDays))
+}
+
+// storedDays is the set of trading days stored for provider and symbol from
+// the day of from up to, but not including, the day of to.
+func (db *OHLC) storedDays(ctx context.Context, provider, symbol string, from, to time.Time) (map[string]bool, error) {
+	spanStart, _ := dayBounds(from)
+	spanEnd, _ := dayBounds(to)
+	rows, err := db.Conn.Query(ctx,
+		`SELECT time FROM ohlc WHERE provider = $1 AND symbol = $2 AND time >= $3 AND time < $4`,
+		priceProvider(provider), symbol, spanStart, spanEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+	}
+	defer rows.Close()
+	days := map[string]bool{}
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+		}
+		days[tradingDay(t)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+	}
+	return days, nil
+}
+
+// firstMissingWeekday is the first Monday-to-Friday day from the day of from
+// up to, but not including, the day of to that has no stored bar. Exchange
+// holidays count as missing too: there is no holiday calendar here, and the
+// provider simply returns no bar for them, so the cost is a longer span in the
+// one fetch Sync makes anyway, never an extra call.
+func firstMissingWeekday(from, to time.Time, stored map[string]bool) (time.Time, bool) {
+	day, _ := dayBounds(from)
+	stop, _ := dayBounds(to)
+	for ; day.Before(stop); day = day.AddDate(0, 0, 1) {
+		if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			continue
+		}
+		if !stored[tradingDay(day)] {
+			return day, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// fillOnly drops the fetched bars for days before last that are already
+// stored, so filling a gap never rewrites a good row. Bars on or after last
+// are kept: the overlap day matched, and later days are new.
+func fillOnly(bars []*financepb.OHLC, last time.Time, stored map[string]bool) []*financepb.OHLC {
+	lastDay := tradingDay(last)
+	kept := make([]*financepb.OHLC, 0, len(bars))
+	for _, b := range bars {
+		day := tradingDay(b.GetTimestamp().AsTime())
+		if day < lastDay && stored[day] {
+			continue
+		}
+		kept = append(kept, b)
+	}
+	return kept
 }
 
 // overlapMatches reports whether the fetched close for the overlap day is a
