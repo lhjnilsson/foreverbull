@@ -47,12 +47,12 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	case *servicePb.GetAssetRequest_Symbol:
 		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
 		if err != nil {
-			return nil, fmt.Errorf("error getting asset: %w", err)
+			return nil, fmt.Errorf("error getting asset: %w", redactURLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
 		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
 		if err != nil {
-			return nil, fmt.Errorf("error getting asset: %w", err)
+			return nil, fmt.Errorf("error getting asset: %w", redactURLError(err))
 		}
 		if len(assets) == 0 {
 			return nil, fmt.Errorf("asset not found by isin: %s", identifier.Isin)
@@ -78,7 +78,7 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
-		return nil, fmt.Errorf("error getting index: %w", err)
+		return nil, fmt.Errorf("error getting index: %w", redactURLError(err))
 	}
 
 	return &servicePb.GetIndexResponse{
@@ -107,12 +107,13 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 // details (DB, driver or provider text) must stay in the log. The RPC is
 // reachable by editors, so raw internal errors don't go out.
 func downloadFailedError(symbol string) error {
-	return fmt.Errorf("couldn't download prices for %s", symbol)
+	return fmt.Errorf("couldn't download prices for %s. Try again in a few minutes, "+ //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+		"or use another provider with --provider.", symbol)
 }
 
 // internalDownloadError logs err with context and returns the generic text.
 func internalDownloadError(symbol, step string, err error) error {
-	log.Error().Err(err).Str("symbol", symbol).Str("step", step).Msg("historical data download failed")
+	log.Error().Err(redactURLError(err)).Str("symbol", symbol).Str("step", step).Msg("historical data download failed")
 	return downloadFailedError(symbol)
 }
 
@@ -199,7 +200,7 @@ func (fs *MarketdataServer) downloadSymbol(
 			// no-bars sentinel; create fails on any STATUS_ERROR, and this
 			// prefix selects the "no price data for … between …" sentence.
 			if ctx.Err() == nil && !errors.Is(fetchErr, errNoPriceData) {
-				log.Error().Err(fetchErr).Str("symbol", symbol).Msg("looking up a later ticker failed")
+				log.Error().Err(redactURLError(fetchErr)).Str("symbol", symbol).Msg("looking up a later ticker failed")
 			}
 			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
 			return nil
@@ -339,7 +340,7 @@ func laterTickerCandidates(
 
 	found, err := md.SearchAsset(isin)
 	if err != nil {
-		log.Info().Err(err).Str("isin", isin).Msg("search for current ticker failed")
+		log.Info().Err(redactURLError(err)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
 		for _, a := range found {
 			symbol := strings.TrimSpace(a.Symbol)

@@ -238,8 +238,8 @@ CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTI
 		suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus(), msg.GetSymbol())
 		errs[msg.GetSymbol()] = msg.GetError()
 	}
-	suite.Equal("couldn't download prices for XYZ", errs["XYZ"])
-	suite.Equal("couldn't download prices for LEAK", errs["LEAK"])
+	suite.Equal("couldn't download prices for XYZ. Try again in a few minutes, or use another provider with --provider.", errs["XYZ"])
+	suite.Equal("couldn't download prices for LEAK. Try again in a few minutes, or use another provider with --provider.", errs["LEAK"])
 	for symbol, text := range errs {
 		suite.NotContains(text, "hunter2", symbol)
 		suite.NotContains(text, "INSERT", symbol)
