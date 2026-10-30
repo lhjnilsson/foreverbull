@@ -117,5 +117,10 @@ func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
 	test.Zero(xyz)
 
 	release()
-	test.Require().NoError(<-done)
+	select {
+	case err := <-done:
+		test.Require().NoError(err)
+	case <-time.After(10 * time.Second):
+		test.FailNow("the sync holding the slot did not finish")
+	}
 }

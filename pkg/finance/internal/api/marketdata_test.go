@@ -70,8 +70,11 @@ func (suite *MarketdataTest) SetupTest() {
 	server := api.NewMarketdataServer(suite.pgx, suite.marketdata)
 	servicePb.RegisterMarketdataServer(suite.server, server)
 
+	// Serve gets this test's server and listener, not the suite fields the
+	// next SetupTest overwrites while this goroutine may still be starting.
+	grpcServer, listener := suite.server, suite.listener
 	go func() {
-		suite.NoError(suite.server.Serve(suite.listener))
+		_ = grpcServer.Serve(listener)
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
