@@ -428,11 +428,21 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSendsProviderRefusalWitho
 	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
 	suite.Require().NoError(err)
 
-	msg, err := rsp.Recv()
-	suite.Require().NoError(err)
-	suite.Equal("SHOP.TO", msg.GetSymbol())
-	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
-	suite.Equal("stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.", msg.GetError())
+	// Read to the end of the stream before asserting, so the download has
+	// finished and no mock call can land after the test returns.
+	var msgs []*servicePb.DownloadHistoricalDataResponse
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		msgs = append(msgs, msg)
+	}
+	suite.Require().Len(msgs, 1)
+	suite.Equal("SHOP.TO", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.", msgs[0].GetError())
 	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
 }
 
