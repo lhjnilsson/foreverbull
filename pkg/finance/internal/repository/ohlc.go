@@ -176,22 +176,28 @@ type OHLC struct {
 }
 
 // ErrInvalidPrice is a bar Store refuses because a price is 0, negative, or
-// not a real number. The error text names the provider, symbol and day.
+// not a real number, or because its volume doesn't fit ohlc.volume. The error
+// text names the provider, symbol and day.
 var ErrInvalidPrice = errors.New("invalid price")
 
 // InvalidPriceError is the user-facing refusal for one bar. The provider sent
-// it, so the sentence says so rather than blaming the user.
+// it, so the sentence says so rather than blaming the user. A refused volume
+// has its own sentence; both match ErrInvalidPrice.
 type InvalidPriceError struct {
 	Provider string
 	Symbol   string
 	Day      time.Time
-	// Field is the first refused column: open, high, low, or close.
+	// Field is the first refused column: open, high, low, close, or volume.
 	Field string
 }
 
 func (e *InvalidPriceError) Error() string {
+	day := e.Day.UTC().Format("2006-01-02")
+	if e.Field == "volume" {
+		return fmt.Sprintf("%s sent an invalid volume for %s on %s (out of range)", e.Provider, e.Symbol, day)
+	}
 	return fmt.Sprintf("%s sent an invalid price for %s on %s (0, negative or not a number)",
-		e.Provider, e.Symbol, e.Day.UTC().Format("2006-01-02"))
+		e.Provider, e.Symbol, day)
 }
 
 func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
@@ -200,11 +206,17 @@ func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
 // price is how a missing provider bar used to arrive, and it reads as a
 // -100% day, so it is refused here as well as in the provider adapter. A
 // re-fetched bar replaces the stored one, so prices adjusted after a split
-// never sit next to rows on the old scale.
-func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
-	if err := validateBar(provider, symbol, t, o, h, l, c); err != nil {
+// never sit next to rows on the old scale. The volume must fit ohlc.volume.
+func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v uint64) error {
+	if err := validateBar(provider, symbol, t, o, h, l, c, v); err != nil {
 		return err
 	}
+	// validateBar refused this already; the bound stays next to the
+	// conversion so it is visibly in range.
+	if v > maxVolume {
+		return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: "volume"}
+	}
+	volume := int64(v)
 
 	_, err := db.Conn.Exec(
 		ctx,
@@ -213,7 +225,7 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		ON CONFLICT (provider, symbol, time) DO UPDATE SET
 			open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
 			close = EXCLUDED.close, volume = EXCLUDED.volume`,
-		priceProvider(provider), symbol, t, o, h, l, c, v)
+		priceProvider(provider), symbol, t, o, h, l, c, volume)
 	if err != nil {
 		return fmt.Errorf("failed to store ohlc: %w", err)
 	}
@@ -247,7 +259,7 @@ func (db *OHLC) StoreBars(ctx context.Context, provider, symbol string, bars []*
 func (db *OHLC) storeEach(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
 	for _, bar := range bars {
 		if err := db.Store(ctx, provider, symbol, bar.GetTimestamp().AsTime(),
-			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose(), int(bar.GetVolume())); err != nil {
+			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose(), bar.GetVolume()); err != nil {
 			return err
 		}
 	}
@@ -261,7 +273,7 @@ func (db *OHLC) storeEach(ctx context.Context, provider, symbol string, bars []*
 func ValidateBars(provider, symbol string, bars []*financepb.OHLC) error {
 	for _, bar := range bars {
 		err := validateBar(provider, symbol, bar.GetTimestamp().AsTime(),
-			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose())
+			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose(), bar.GetVolume())
 		if err != nil {
 			return err
 		}
@@ -269,7 +281,10 @@ func ValidateBars(provider, symbol string, bars []*financepb.OHLC) error {
 	return nil
 }
 
-func validateBar(provider, symbol string, t time.Time, o, h, l, c float64) error {
+// maxVolume is the largest volume ohlc.volume (bigint) holds.
+const maxVolume = math.MaxInt64
+
+func validateBar(provider, symbol string, t time.Time, o, h, l, c float64, volume uint64) error {
 	for _, price := range []struct {
 		field string
 		value float64
@@ -277,6 +292,9 @@ func validateBar(provider, symbol string, t time.Time, o, h, l, c float64) error
 		if !positivePrice(price.value) {
 			return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: price.field}
 		}
+	}
+	if volume > maxVolume {
+		return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: "volume"}
 	}
 	return nil
 }
