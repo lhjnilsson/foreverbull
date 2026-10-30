@@ -436,6 +436,45 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSendsProviderRefusalWitho
 	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
 }
 
+// Stooq refuses an invalid ticker without echoing it. Download sends that
+// symbol's STATUS_ERROR once, naming its 1-based position in the request and
+// the symbol count instead of the symbol.
+func (suite *MarketdataTest) TestDownloadHistoricalDataNamesStooqInvalidTickerByPosition() {
+	ctx := context.Background()
+	exchange := &refusalErr{
+		msg: "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.",
+	}
+	for _, symbol := range []string{"SHOP.TO", "BAD.L", "RY.TO"} {
+		suite.marketdata.On("GetAsset", symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil)
+	}
+	suite.marketdata.On("GetOHLC", "SHOP.TO", mock.Anything, mock.Anything).Return(nil, exchange).Once()
+	suite.marketdata.On("GetOHLC", "BAD.L", mock.Anything, mock.Anything).Return(nil, marketdata.ErrStooqInvalidTicker).Once()
+	suite.marketdata.On("GetOHLC", "RY.TO", mock.Anything, mock.Anything).Return(nil, exchange).Once()
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"SHOP.TO", "BAD.L", "RY.TO"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	errorsBySymbol := map[string]string{}
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+		errorsBySymbol[msg.GetSymbol()] = msg.GetError()
+	}
+	suite.Equal("stooq can't use symbol 2 of 3 because it isn't a valid ticker. "+
+		"Check the spelling, for example VOD.L or AAPL.", errorsBySymbol["BAD.L"])
+	suite.NotContains(errorsBySymbol["BAD.L"], "BAD")
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 3)
+}
+
 // refusalErr stands in for the Stooq client's refusal: it matches
 // marketdata.ErrStooqExchange with errors.Is.
 type refusalErr struct{ msg string }

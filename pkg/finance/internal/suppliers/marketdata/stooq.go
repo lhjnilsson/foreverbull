@@ -84,8 +84,10 @@ type stooqRefusal struct{ msg string }
 func (e *stooqRefusal) Error() string { return e.msg }
 func (e *stooqRefusal) Unwrap() error { return ErrStooqExchange }
 
-// errStooqInvalidTicker never echoes the symbol: it failed the bound check.
-var errStooqInvalidTicker = &stooqRefusal{
+// ErrStooqInvalidTicker is the refusal for a suffixed symbol outside the
+// ticker bound. It never echoes the symbol: it failed the bound check. It
+// matches ErrStooqExchange with errors.Is too.
+var ErrStooqInvalidTicker error = &stooqRefusal{
 	msg: "stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.",
 }
 
@@ -265,7 +267,7 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	upper := strings.ToUpper(ticker + "." + suffix)
 	if !stooqTicker.MatchString(upper) {
-		return "", "", errStooqInvalidTicker
+		return "", "", ErrStooqInvalidTicker
 	}
 	stooqSuffix, ok := stooqSuffixFor(suffix)
 	if !ok {

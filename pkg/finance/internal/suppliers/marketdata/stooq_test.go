@@ -420,6 +420,7 @@ func TestGetOHLCRefusesUnboundedSuffixedSymbolWithoutEchoingIt(t *testing.T) {
 	} {
 		_, err := client.GetOHLC(symbol, start, &end)
 		require.ErrorIs(t, err, marketdata.ErrStooqExchange, name)
+		require.ErrorIs(t, err, marketdata.ErrStooqInvalidTicker, name)
 		require.EqualError(t, err,
 			"stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.", name)
 	}

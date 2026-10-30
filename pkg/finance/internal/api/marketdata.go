@@ -119,10 +119,28 @@ func failSymbol(ctx context.Context, serverStream servicePb.Marketdata_DownloadH
 	sendDownloadResponse(serverStream, rsp)
 }
 
+// requestSymbol is one symbol of a download request with its 1-based
+// position and the request's symbol count. A refusal that must not repeat
+// the symbol names it by position.
+type requestSymbol struct {
+	symbol   string
+	position int
+	total    int
+}
+
+// stooqInvalidTickerMessage is the STATUS_ERROR text for a symbol Stooq
+// refused as an invalid ticker. It names the symbol's position in the
+// request and the count, never the symbol, because that is the text that
+// failed the check. The backtest service matches this exact shape.
+func stooqInvalidTickerMessage(position, total int) string {
+	return fmt.Sprintf("stooq can't use symbol %d of %d because it isn't a valid ticker. "+
+		"Check the spelling, for example VOD.L or AAPL.", position, total)
+}
+
 func (fs *MarketdataServer) downloadSymbol(
 	ctx context.Context,
 	serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
-	symbol string,
+	asked requestSymbol,
 	start time.Time,
 	end *time.Time,
 	provider string,
@@ -130,6 +148,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	ohlcRepo repository.OHLC,
 	bars supplier.Marketdata,
 ) *marketdata.BlockedError {
+	symbol := asked.symbol
 	rsp := &servicePb.DownloadHistoricalDataResponse{
 		Symbol: symbol,
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
@@ -156,6 +175,11 @@ func (fs *MarketdataServer) downloadSymbol(
 		// The provider refused the symbol itself (Stooq has no code for its
 		// exchange suffix). Asking again or under a later ticker can't help,
 		// and the refusal names the symbol, provider and supported suffixes.
+		// An invalid ticker is named by its position in the request.
+		if errors.Is(err, marketdata.ErrStooqInvalidTicker) {
+			failSymbol(ctx, serverStream, rsp, errors.New(stooqInvalidTickerMessage(asked.position, asked.total)))
+			return nil
+		}
 		if errors.Is(err, marketdata.ErrStooqExchange) {
 			failSymbol(ctx, serverStream, rsp, err)
 			return nil
@@ -373,16 +397,16 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	var blocked *marketdata.BlockedError
 
 	var wg sync.WaitGroup
-	assetCh := make(chan string, downloadWorkers)
+	assetCh := make(chan requestSymbol, downloadWorkers)
 	for range downloadWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for symbol := range assetCh {
+			for asked := range assetCh {
 				if ctx.Err() != nil {
 					continue
 				}
-				if err := fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
+				if err := fs.downloadSymbol(ctx, serverStream, asked, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
 					blockedOnce.Do(func() {
 						blocked = err
 						cancel()
@@ -392,10 +416,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		}()
 	}
 
+	requested := req.GetSymbols()
 feed:
-	for _, symbol := range req.GetSymbols() {
+	for index, symbol := range requested {
 		select {
-		case assetCh <- symbol:
+		case assetCh <- requestSymbol{symbol: symbol, position: index + 1, total: len(requested)}:
 		case <-ctx.Done():
 			break feed
 		}
