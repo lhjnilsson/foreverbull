@@ -184,6 +184,20 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 		// Message is the failure text; a completed step leaves it empty.
 		test.Empty(test.msg.INGESTING.Message)
 	})
+	test.Run("completing after progress clears the progress text", func() {
+		progress := "Downloading prices: 1,240 of 10,000 symbols"
+		test.Require().NoError(UpdateOrchestration(test.msg, &pb.Orchestration_Step{
+			Num: 2, State: commonPb.State_STATE_RUNNING, Error: &progress,
+		}))
+		test.Equal(commonPb.State_STATE_RUNNING, test.msg.DOWNLOADING.State)
+		test.Equal(progress, test.msg.DOWNLOADING.Message)
+
+		test.Require().NoError(UpdateOrchestration(test.msg, &pb.Orchestration_Step{
+			Num: 2, State: commonPb.State_STATE_COMPLETED,
+		}))
+		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.DOWNLOADING.State)
+		test.Empty(test.msg.DOWNLOADING.Message, "a leftover progress text would print as a notice")
+	})
 	test.Run("mark as failed", func() {
 		step := &pb.Orchestration_Step{
 			Num:   1,

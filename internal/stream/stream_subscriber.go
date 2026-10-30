@@ -89,6 +89,13 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 				}
 			}
 		}()
+		// Progress rides on a RECEIVED state with text, so a waiter that
+		// doesn't read it still sees the task as received and running.
+		ctx = WithProgress(ctx, func(text string) {
+			if err := publishState(msg, pb.State_STATE_RECEIVED, &Notice{Lines: []string{text}}); err != nil {
+				log.Err(err).Msg("error publishing progress")
+			}
+		})
 		err = cb(ctx, msg)
 		var notice *Notice
 		if errors.As(err, &notice) {

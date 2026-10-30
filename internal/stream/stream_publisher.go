@@ -14,7 +14,9 @@ import (
 
 type PublishOpt func(ctx context.Context, nn *NATSStream, msg *message) error
 
-func WaitForCompletion() PublishOpt {
+// WaitForCompletion waits for the task's final state. Each onProgress gets
+// the text of every progress report the command sends meanwhile.
+func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 	return func(ctx context.Context, nn *NATSStream, msg *message) error {
 		sub, err := nn.jt.SubscribeSync(msg.TaskStateTopic())
 		if err != nil {
@@ -44,6 +46,13 @@ func WaitForCompletion() PublishOpt {
 			}
 			if err := stateMsg.Ack(); err != nil {
 				return fmt.Errorf("error acking message: %w", err)
+			}
+
+			if state.State == pb.State_STATE_RECEIVED && state.GetError() != "" {
+				for _, report := range onProgress {
+					report(state.GetError())
+				}
+				continue
 			}
 
 			if state.State == pb.State_STATE_COMPLETED {

@@ -114,9 +114,13 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 			return fmt.Errorf("state field not found in message")
 		}
 		stepMsg.Set(stateField, protoreflect.ValueOfEnum(step.State.Enum().Number()))
+		// The message is replaced on every update, so a progress text on a
+		// RUNNING step doesn't stay on the step once it completes.
+		message := ""
 		if step.Error != nil {
-			stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(*step.Error))
+			message = *step.Error
 		}
+		stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(message))
 		if len(step.Notices) > 0 {
 			noticesField := stepMsg.Descriptor().Fields().ByName("notices")
 			if noticesField == nil || !noticesField.IsList() || noticesField.Kind() != protoreflect.StringKind {

@@ -29,6 +29,12 @@ func ReturnNotice(ctx context.Context, message stream.Message) error {
 	return &stream.Notice{Lines: []string{"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}}
 }
 
+func ReturnProgress(ctx context.Context, message stream.Message) error {
+	stream.ReportProgress(ctx, "Downloading prices: 0 of 2 symbols")
+	stream.ReportProgress(ctx, "Downloading prices: 1 of 2 symbols")
+	return nil
+}
+
 func Timeout(ctx context.Context, message stream.Message) error {
 	done := make(chan bool)
 	go func() {
@@ -77,6 +83,7 @@ func (test *StreamTest) SetupTest() {
 	test.Require().NoError(test.subscriber.Subscribe("return", "err", ReturnErr))
 	test.Require().NoError(test.subscriber.Subscribe("return", "timeout", Timeout))
 	test.Require().NoError(test.subscriber.Subscribe("return", "notice", ReturnNotice))
+	test.Require().NoError(test.subscriber.Subscribe("return", "progress", ReturnProgress))
 }
 
 func (test *StreamTest) TearDownTest() {
@@ -226,6 +233,31 @@ func (test *StreamTest) TestRunOrchestration() {
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[3].State)
 		test.Nil(steps[3].Error)
 		test.Empty(steps[3].Notices)
+	})
+	test.Run("Progress is a running step with the text, in order", func() {
+		progressMsg, err := stream.NewMessage("test", "return", "progress", struct{}{})
+		test.Require().NoError(err)
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{Num: int32(2), Messages: []*pb.Message{progressMsg.GetMsg()}},
+			},
+		}
+
+		steps := []*pb.Orchestration_Step{}
+		for st := range test.uut.RunOrchestration(context.Background(), &o) {
+			steps = append(steps, st)
+		}
+		test.Require().Len(steps, 4)
+		test.Equal(common.State_STATE_RUNNING, steps[0].State)
+		test.Nil(steps[0].Error)
+		for index, want := range []string{"Downloading prices: 0 of 2 symbols", "Downloading prices: 1 of 2 symbols"} {
+			test.Equal(int32(2), steps[index+1].Num)
+			test.Equal(common.State_STATE_RUNNING, steps[index+1].State)
+			test.Require().NotNil(steps[index+1].Error)
+			test.Equal(want, *steps[index+1].Error)
+		}
+		test.Equal(common.State_STATE_COMPLETED, steps[3].State)
+		test.Nil(steps[3].Error, "progress is not a notice")
 	})
 	test.Run("Error", func() {
 		o := pb.Orchestration{
