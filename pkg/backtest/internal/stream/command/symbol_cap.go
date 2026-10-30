@@ -80,6 +80,6 @@ func discardOversizedBacktest(ctx context.Context, backtests repository.Backtest
 }
 
 func tooManySymbolsLead(count int) string {
-	return fmt.Sprintf("it has %s symbols, and the limit is %s.",
+	return fmt.Sprintf("it has %s different symbols, and the limit is %s.",
 		numfmt.Thousands(count), numfmt.Thousands(finance.MaxDownloadSymbols))
 }

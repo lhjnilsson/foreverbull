@@ -590,7 +590,7 @@ def test_backtest_create_ambiguous_symbol_prints_exact_copy_and_exits_1(monkeypa
 
 
 _OVER_SYMBOL_LIMIT_COPY = (
-    "Couldn't load data for backtest 'oef-2024q1': it has 10,001 symbols, and the limit is 10,000. "
+    "Couldn't load data for backtest 'oef-2024q1': it has 10,001 different symbols, and the limit is 10,000. "
     "The backtest wasn't saved. Remove symbols or split them across several backtests, "
     "then run `fbull backtest create` again."
 )

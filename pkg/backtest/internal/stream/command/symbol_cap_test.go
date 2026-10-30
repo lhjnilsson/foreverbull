@@ -23,7 +23,7 @@ import (
 
 // overCapCopy is the create sentence for a backtest over the download cap.
 func overCapCopy(name, count string) string {
-	return "Couldn't load data for backtest '" + name + "': it has " + count + " symbols, and the limit is 10,000. " +
+	return "Couldn't load data for backtest '" + name + "': it has " + count + " different symbols, and the limit is 10,000. " +
 		"The backtest wasn't saved. Remove symbols or split them across several backtests, " +
 		"then run `fbull backtest create` again."
 }
@@ -162,7 +162,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataOverCapCountsShareClas
 	}))
 
 	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
-	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': it has 10,002 symbols, "+
+	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': it has 10,002 different symbols, "+
 		"and the limit is 10,000. The backtest wasn't saved. Remove symbols or split them across several "+
 		"backtests, then run `fbull backtest create` again.")
 	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
