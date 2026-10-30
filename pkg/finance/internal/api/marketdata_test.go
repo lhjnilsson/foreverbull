@@ -660,6 +660,37 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerDBError
 	suite.NotContains(msgs[0].GetError(), "asset_symbol")
 }
 
+// A ticker that maps to two instruments is refused with the provider and
+// the ticker, not guessed and not reported as missing prices.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesAmbiguousSymbol() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	for _, isin := range []string{"GB00BH4HKS39", "US92857W3088"} {
+		_, err := instruments.Store(ctx, isin, "Vodafone")
+		suite.Require().NoError(err)
+		_, err = suite.pgx.Exec(ctx, `
+			INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+			VALUES ($1, 'VOD', '2019-01-01'::date, NULL)`, isin)
+		suite.Require().NoError(err)
+	}
+	suite.marketdata.On("GetAsset", "VOD").Return(&pb.Asset{Symbol: "VOD", Name: "Vodafone"}, nil)
+	suite.marketdata.On("GetOHLC", "VOD", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"VOD"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 31},
+		Provider:  "YAHOO",
+	})
+	suite.Require().NoError(err)
+
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal("VOD", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("yahoo has more than one instrument for VOD", msgs[0].GetError())
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {

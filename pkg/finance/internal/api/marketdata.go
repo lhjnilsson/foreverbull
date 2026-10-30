@@ -143,6 +143,13 @@ func noPriceDataError(symbol string) error {
 
 var errNoPriceData = errors.New("no price data")
 
+// ambiguousSymbolError is the STATUS_ERROR text when the asked ticker maps to
+// more than one instrument. provider is the normalised provider and symbol
+// passed the ticker check; the backtest service matches this exact shape.
+func ambiguousSymbolError(provider, symbol string) error {
+	return fmt.Errorf("%s has more than one instrument for %s", provider, symbol)
+}
+
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
 	rsp.Error = err.Error()
@@ -228,6 +235,10 @@ func (fs *MarketdataServer) downloadSymbol(
 			// the generic download failure.
 			if errors.Is(fetchErr, errNoPriceData) {
 				failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
+				return nil
+			}
+			if errors.Is(fetchErr, repository.ErrAmbiguousSymbol) {
+				failSymbol(ctx, sender, rsp, ambiguousSymbolError(provider, symbol))
 				return nil
 			}
 			if ctx.Err() != nil {
