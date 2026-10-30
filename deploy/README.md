@@ -82,6 +82,7 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `HTTP_PORT` | `8080` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
+| `FINANCE_TASK_TIME_LIMIT` | unset (`2h`). Go duration, such as `90m`, that bounds one price download for `fbull backtest create` and one finance ingest. Symbols stored before the limit are kept. The broker refuses to start when it isn't a duration or isn't above zero |
 | `TRADING_ENABLED` | `false` |
 | `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |

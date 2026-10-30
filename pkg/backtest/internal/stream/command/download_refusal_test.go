@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -105,25 +106,36 @@ func TestProviderTimeoutProviderOnlyMatchesTheSentence(t *testing.T) {
 }
 
 // Only the finance service's DeadlineExceeded time-limit text counts as the
-// 2-hour limit. A provider timeout or the client's own deadline doesn't.
-func TestTimeLimitReachedOnlyMatchesTheLimit(t *testing.T) {
-	require.True(t, timeLimitReached(status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L")))
+// limit, and its limit is read back. A provider timeout or the client's own
+// deadline doesn't count.
+func TestDownloadTimeLimitOnlyMatchesTheLimit(t *testing.T) {
+	limit, ok := downloadTimeLimit(status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at VOD.L"))
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, limit)
 	for name, err := range map[string]error{
 		"provider timeout": status.Error(codes.DeadlineExceeded, "stooq took too long to respond for VOD.L"),
-		"other code":       status.Error(codes.Internal, "the download hit its time limit at VOD.L"),
+		"other code":       status.Error(codes.Internal, "the download hit its time limit of 2h0m0s at VOD.L"),
 		"client deadline":  status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
-		"not a status":     errors.New("the download hit its time limit at VOD.L"),
-		"symbol too long":  status.Error(codes.DeadlineExceeded, "the download hit its time limit at "+strings.Repeat("A", 33)),
-		"trailing text":    status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L: boom"),
+		"rate limiter":     status.Error(codes.DeadlineExceeded, "rate: Wait(n=1) would exceed context deadline"),
+		"not a status":     errors.New("the download hit its time limit of 2h0m0s at VOD.L"),
+		"no limit":         status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L"),
+		"zero limit":       status.Error(codes.DeadlineExceeded, "the download hit its time limit of 0s at VOD.L"),
+		"symbol too long":  status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at "+strings.Repeat("A", 33)),
+		"trailing text":    status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at VOD.L: boom"),
 		"nil":              nil,
 	} {
-		require.False(t, timeLimitReached(err), name)
+		_, ok := downloadTimeLimit(err)
+		require.False(t, ok, name)
 	}
 }
 
-// The 2-hour limit sentence counts symbols like the progress line, word for word.
+// The time-limit sentence counts symbols like the progress line, word for
+// word, and names the configured limit.
 func TestTimeLimitCopy(t *testing.T) {
 	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "+
 		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
-		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 6212, 10000))
+		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 2*time.Hour, 6212, 10000))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 90-minute limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 90*time.Minute, 6212, 10000))
 }

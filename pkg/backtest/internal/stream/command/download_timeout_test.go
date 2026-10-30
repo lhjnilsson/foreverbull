@@ -39,7 +39,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNamesProviderTimeout()
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
-// The finance service's 2-hour limit gets its own sentence, not the provider
+// The finance service's time limit gets its own sentence, not the provider
 // timeout one. It counts the symbols answered so far out of the distinct
 // total, and the backtest is removed.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNamesTheTimeLimit() {
@@ -52,7 +52,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNamesTheTimeLimit() {
 		}, nil).Once()
 	}
 	clientStream.On("Recv", mock.Anything).
-		Return(nil, status.Error(codes.DeadlineExceeded, "the download hit its time limit at S03")).Once()
+		Return(nil, status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at S03")).Once()
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
 
 	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))

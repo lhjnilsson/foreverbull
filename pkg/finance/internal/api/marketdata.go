@@ -91,13 +91,12 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 
 const downloadWorkers = 10
 
-// downloadTimeLimit bounds one DownloadHistoricalData. At the shared provider
-// rates a 10,000-symbol download takes about an hour on Yahoo or Alpaca and
-// about 85 minutes on Stooq, so this leaves room for 429 backoffs while a
-// hung provider still can't hold the request and its workers forever.
-// Symbols stored before the limit stay stored. Backtest create names it as
-// the 2-hour limit, so change that copy with it. Tests shorten it.
-var downloadTimeLimit = 2 * time.Hour
+// One DownloadHistoricalData stops after FINANCE_TASK_TIME_LIMIT (2h by
+// default). At the shared provider rates a 10,000-symbol download takes
+// about an hour on Yahoo or Alpaca and about 85 minutes on Stooq, so 2h
+// leaves room for 429 backoffs while a hung provider still can't hold the
+// request and its workers forever. Symbols stored before the limit stay
+// stored.
 
 // errDownloadTimeLimit is the ctx cause when downloadTimeLimit ends a
 // download, so it is told apart from the client's own deadline or cancel.
@@ -627,7 +626,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 
 	// The time limit ends the whole download. A symbol stored before it stays
 	// stored; one still in flight rolls back and is named in the timeout.
-	ctx, stopAtLimit := context.WithTimeoutCause(ctx, downloadTimeLimit, errDownloadTimeLimit)
+	limit, err := environment.GetFinanceTaskTimeLimit()
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	ctx, stopAtLimit := marketdata.WithTaskLimit(ctx, limit, errDownloadTimeLimit)
 	defer stopAtLimit()
 	// The first blocked symbol or failed Send cancels the rest. Workers that
 	// already started finish their symbol, so the error is still returned once.
@@ -676,9 +679,9 @@ feed:
 	}
 	if errors.Is(context.Cause(ctx), errDownloadTimeLimit) {
 		if symbol := sender.firstUnreported(symbols); symbol != "" {
-			log.Warn().Str("provider", provider).Str("symbol", symbol).Dur("limit", downloadTimeLimit).
+			log.Warn().Str("provider", provider).Str("symbol", symbol).Dur("limit", limit).
 				Msg("download stopped at its time limit")
-			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeLimitError{Symbol: symbol}).Error())
+			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeLimitError{Symbol: symbol, Limit: limit}).Error())
 		}
 		return nil
 	}

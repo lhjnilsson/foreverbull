@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/command"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/mock"
@@ -23,7 +23,7 @@ func may2026Bar() []*pb.OHLC {
 // answers. The task state names it, the symbol before it stays stored, and
 // the symbol after it is never asked for.
 func (test *IngestCommandTest) TestIngestStopsAtItsTimeLimit() {
-	defer command.SetIngestTimeLimit(time.Second)()
+	test.T().Setenv(environment.FinanceTaskTimeLimit, "1s")
 	md := supplier.NewMockMarketdata(test.T())
 	for _, symbol := range []string{"AAPL", "SLOW"} {
 		md.On("GetAsset", mock.Anything, symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil)
@@ -38,7 +38,7 @@ func (test *IngestCommandTest) TestIngestStopsAtItsTimeLimit() {
 	began := time.Now()
 	err := test.ingestSymbols(md, "AAPL", "SLOW", "LATER")
 	test.Less(time.Since(began), 10*time.Second, "the limit must end the ingest")
-	test.Require().EqualError(err, "The price import hit the 2-hour limit at SLOW. Prices imported before SLOW were kept. "+
+	test.Require().EqualError(err, "The price import hit the 1-second limit at SLOW. Prices imported before SLOW were kept. "+
 		"Import fewer symbols at a time, or try again later.")
 
 	kept, err := test.ohlc.List(context.Background(), "yahoo", []string{"AAPL"}, time.Now(), 0)

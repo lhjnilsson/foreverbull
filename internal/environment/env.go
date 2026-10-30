@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -63,6 +64,11 @@ const (
 	MinioAccessKeyDefault = "minioadmin"
 	MinioSecretKey        = "MINIO_SECRET"
 	MinioSecretKeyDefault = "minioadmin"
+
+	// FinanceTaskTimeLimit bounds one price download (DownloadHistoricalData)
+	// and one finance ingest, as a Go duration such as 2h or 90m.
+	FinanceTaskTimeLimit        = "FINANCE_TASK_TIME_LIMIT"
+	FinanceTaskTimeLimitDefault = "2h"
 
 	TradingEnabled        = "TRADING_ENABLED"
 	TradingEnabledDefault = "false"
@@ -135,6 +141,7 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{MinioURL, func() (string, error) { return MinioURLDefault, nil }},
 	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
 	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
+	{FinanceTaskTimeLimit, func() (string, error) { return FinanceTaskTimeLimitDefault, nil }},
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
 	{TradingProfilesFile, func() (string, error) { return "", nil }},
 	{TradingListingsFile, func() (string, error) { return "", nil }},
@@ -171,6 +178,10 @@ func applyEnvDefaults(setenv func(name, value string) error) error {
 	configureLogging()
 
 	if _, err := GetBacktestPortRange(); err != nil {
+		return err
+	}
+
+	if _, err := GetFinanceTaskTimeLimit(); err != nil {
 		return err
 	}
 
@@ -292,6 +303,24 @@ func parsePort(name string) (int, error) {
 	}
 
 	return port, nil
+}
+
+// GetFinanceTaskTimeLimit reads FINANCE_TASK_TIME_LIMIT. Unset is the 2h
+// default. A value that is not a Go duration, or is 0 or negative, is an
+// error that names the variable, so it fails at startup.
+func GetFinanceTaskTimeLimit() (time.Duration, error) {
+	value := strings.TrimSpace(os.Getenv(FinanceTaskTimeLimit))
+	if value == "" {
+		value = FinanceTaskTimeLimitDefault
+	}
+	limit, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q is not a duration; set it to a Go duration such as 2h or 90m", FinanceTaskTimeLimit, value)
+	}
+	if limit <= 0 {
+		return 0, fmt.Errorf("%s=%q must be above zero; set it to a Go duration such as 2h or 90m", FinanceTaskTimeLimit, value)
+	}
+	return limit, nil
 }
 
 func GetLogLevel() string {

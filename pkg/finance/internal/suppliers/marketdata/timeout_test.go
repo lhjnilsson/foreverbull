@@ -23,7 +23,8 @@ func TestTimeoutErrorSentence(t *testing.T) {
 // differs from the provider-timeout sentence.
 func TestTimeLimitErrorText(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "the download hit its time limit at AAPL", (&TimeLimitError{Symbol: "AAPL"}).Error())
+	require.Equal(t, "the download hit its time limit of 2h0m0s at AAPL",
+		(&TimeLimitError{Symbol: "AAPL", Limit: 2 * time.Hour}).Error())
 }
 
 func TestIsProviderTimeout(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -40,7 +40,7 @@ func june2024Request(symbols ...string) *servicePb.DownloadHistoricalDataRequest
 // time-limit text, and the symbol
 // that finished before the limit is reported and stays stored.
 func (suite *MarketdataTest) TestDownloadHistoricalDataStopsAtItsTimeLimit() {
-	defer api.SetDownloadTimeLimit(2 * time.Second)()
+	suite.T().Setenv(environment.FinanceTaskTimeLimit, "2s")
 	ctx := context.Background()
 	for _, symbol := range []string{"AAPL", "SLOW"} {
 		suite.marketdata.On("GetAsset", mock.Anything, symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil)
@@ -76,7 +76,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStopsAtItsTimeLimit() {
 	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
 	suite.Equal(codes.DeadlineExceeded, st.Code())
 	// The limit has its own text, not the provider-timeout sentence.
-	suite.Equal("the download hit its time limit at SLOW", st.Message())
+	suite.Equal("the download hit its time limit of 2s at SLOW", st.Message())
 
 	ohlc := repository.OHLC{Conn: suite.pgx}
 	kept, err := ohlc.List(ctx, "yahoo", []string{"AAPL"}, mustTime("2024-06-07"), 0)
