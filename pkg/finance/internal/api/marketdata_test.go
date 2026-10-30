@@ -537,6 +537,101 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProvi
 	suite.Equal([]string{"VOD.L"}, symbols)
 }
 
+// A request symbol outside the ticker pattern refuses the whole download
+// before any provider call, and the refusal does not repeat the symbol.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidRequestSymbol() {
+	for _, bad := range []string{"", "AA PL", "AAPL\n", "<b>x</b>", strings.Repeat("A", 33)} {
+		rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+			Symbols:   []string{"AAPL", bad},
+			StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+			EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 3},
+			Provider:  "yahoo",
+		})
+		suite.Require().NoError(err)
+		_, err = rsp.Recv()
+		st, ok := status.FromError(err)
+		suite.Require().True(ok, "%q: %v", bad, err)
+		suite.Equal(codes.InvalidArgument, st.Code(), "%q", bad)
+		suite.Equal("a symbol isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", st.Message(), "%q", bad)
+	}
+	// The strict mock fails the test on any GetAsset or GetOHLC call.
+	suite.marketdata.AssertNotCalled(suite.T(), "GetAsset", mock.Anything)
+}
+
+// The provider's ticker is stored and named in a refused-bar sentence, so one
+// outside the pattern fails the symbol with the generic sentence, stores no
+// asset, and fetches no bars.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidProviderSymbol() {
+	const providerSymbol = "XYZ\x1b[31m <b>"
+	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetOHLC", providerSymbol, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 0, High: 11, Low: 9, Close: 10.5, Volume: 100},
+	}, nil).Maybe()
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"XYZ"},
+		StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 3},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal("XYZ", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("couldn't download prices for XYZ. Try again in a few minutes, or use another provider with --provider.", msgs[0].GetError())
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", providerSymbol, mock.Anything, mock.Anything)
+
+	var assets int
+	suite.Require().NoError(suite.pgx.QueryRow(context.Background(),
+		`SELECT count(*) FROM asset WHERE symbol = $1`, providerSymbol).Scan(&assets))
+	suite.Zero(assets, "a refused provider ticker must not be stored")
+}
+
+// A later-ticker candidate from the search outside the pattern is never
+// fetched or stored; with no other candidate the symbol has no price data.
+func (suite *MarketdataTest) TestDownloadHistoricalDataSkipsInvalidLaterTicker() {
+	ctx := context.Background()
+	const badTicker = "META\nX"
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetAsset", badTicker).Return(&pb.Asset{Symbol: badTicker, Name: "Meta"}, nil).Maybe()
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+	suite.marketdata.On("GetOHLC", badTicker, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2019-06-03")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 1000},
+	}, nil).Maybe()
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: badTicker, Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("no price data for FB", msgs[0].GetError())
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", badTicker, mock.Anything, mock.Anything)
+
+	var bars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE symbol = $1`, badTicker).Scan(&bars))
+	suite.Zero(bars)
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
