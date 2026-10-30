@@ -340,8 +340,24 @@ func (db *Instruments) ListAliases(ctx context.Context, isin string) ([]AliasInt
 
 // EnsureLaterAlias records later as a ticker of isin that starts on laterFrom,
 // closing an open current alias at that day when needed. When later is already
-// stored for the ISIN, it is a no-op.
+// stored for the ISIN, it is a no-op. Both writes run in one transaction, so a
+// failed insert doesn't leave the current alias closed with no later one.
 func (db *Instruments) EnsureLaterAlias(ctx context.Context, isin, current, later string, laterFrom time.Time) error {
+	conn, ok := db.Conn.(txBeginner)
+	if !ok {
+		return errInstrumentsNoTransaction
+	}
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		inTx := Instruments{Conn: tx}
+		return inTx.ensureLaterAlias(ctx, isin, current, later, laterFrom)
+	})
+}
+
+// errInstrumentsNoTransaction is returned when the connection can't open a
+// transaction; nothing is written.
+var errInstrumentsNoTransaction = errors.New("instruments: connection can't open a transaction")
+
+func (db *Instruments) ensureLaterAlias(ctx context.Context, isin, current, later string, laterFrom time.Time) error {
 	isin = normalizeISIN(isin)
 	current = strings.TrimSpace(current)
 	later = strings.TrimSpace(later)
