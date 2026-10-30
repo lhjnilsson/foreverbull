@@ -57,6 +57,15 @@ func (e *StoreError) Unwrap() error { return e.Err }
 // (nil end: through today).
 type FetchBars func(start time.Time, end *time.Time) ([]*financepb.OHLC, error)
 
+// syncLockTimeout is how long Sync waits for the symbol lock before it fails.
+// syncIdleTimeout is how long its transaction may stay idle, for example while
+// fetch waits on a provider (Yahoo requests time out after 30s). Both are
+// Postgres interval strings; tests shorten them.
+var (
+	syncLockTimeout = "60s"
+	syncIdleTimeout = "90s"
+)
+
 // rescaleTolerance is how far the stored and fetched close of the overlap day
 // may differ before the stored history is treated as being on another scale,
 // for example after a split.
@@ -102,6 +111,15 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
+	// Bound how long this transaction waits for the symbol lock, and how long
+	// it may sit idle (fetch runs while it is open), so a stuck sync gives the
+	// lock and its connection back. set_config(..., true) is SET LOCAL: both
+	// reset when the transaction ends.
+	if _, err := tx.Exec(ctx,
+		`SELECT set_config('lock_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $2, true)`,
+		syncLockTimeout, syncIdleTimeout); err != nil {
+		return &StoreError{Symbol: symbol, Err: err}
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ohlc:' || $1))`, symbol); err != nil {
 		return &StoreError{Symbol: symbol, Err: err}
 	}
