@@ -256,7 +256,9 @@ var ErrNoTransaction = errors.New("ohlc: connection can't open a transaction")
 
 // StoreBars validates and stores one symbol's batch in a single transaction,
 // so a DB error on any row leaves none of the batch behind. A connection that
-// can't open a transaction is an error; nothing is stored.
+// can't open a transaction is an error; nothing is stored. The transaction
+// covers ohlc rows only: callers write the asset and asset_symbol rows
+// before it, and those stay when the bars roll back.
 func (db *OHLC) StoreBars(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
 	if err := ValidateBars(provider, symbol, bars); err != nil {
 		return err
