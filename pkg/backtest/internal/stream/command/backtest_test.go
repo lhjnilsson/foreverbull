@@ -993,6 +993,112 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenLeftOutRowsDo
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// downloadWithUnpriced lists symbols on the fixture backtest and streams
+// STATUS_OK for each one except those in unpriced, which get no price data.
+func (test *BacktestCommandTest) downloadWithUnpriced(symbols, unpriced []string) error {
+	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	test.Require().NoError(backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	}))
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range symbols {
+		rsp := &financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}
+		if slices.Contains(unpriced, symbol) {
+			rsp.Status = financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR
+			rsp.Error = "no price data for " + symbol
+		}
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient = new(financeServicePB.MockMarketdataClient)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+	return command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+}
+
+func symbolRange(prefix string, n int) []string {
+	symbols := make([]string, 0, n)
+	for i := range n {
+		symbols = append(symbols, fmt.Sprintf("%s%02d", prefix, i))
+	}
+	return symbols
+}
+
+// A symbol-list create leaves out at most max(1, floor(20% of listed))
+// symbols with no prices (MaxLeftOutPercent). Past that it fails, and
+// nothing is left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
+	const noneSaved = "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	for _, tc := range []struct {
+		listed, unpriced int
+		wantErr          string // "" keeps the backtest with a left-out notice
+	}{
+		// 1/1: the cap alone allows 1, but no listed symbol has prices.
+		{listed: 1, unpriced: 1, wantErr: "Couldn't load data for backtest 'test-backtest': no price data for S00 " +
+			"between 2022-01-01 and 2023-12-31. " + noneSaved},
+		{listed: 2, unpriced: 1},
+		{listed: 5, unpriced: 1},
+		{listed: 10, unpriced: 2},
+		{listed: 10, unpriced: 3, wantErr: "Couldn't load data for backtest 'test-backtest': 3 of 10 listed symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02), more than the 2 that can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider."},
+	} {
+		test.Run(fmt.Sprintf("%d of %d", tc.unpriced, tc.listed), func() {
+			test.SetupTest()
+			symbols := symbolRange("S", tc.listed)
+			err := test.downloadWithUnpriced(symbols, symbols[:tc.unpriced])
+
+			backtests := repository.Backtest{Conn: test.db}
+			if tc.wantErr != "" {
+				var notice *stream.Notice
+				test.Require().False(errors.As(err, &notice), "nothing may be left out: %v", err)
+				test.Require().EqualError(err, tc.wantErr)
+				_, err = backtests.Get(context.TODO(), "test-backtest")
+				test.Require().ErrorIs(err, pgx.ErrNoRows)
+				return
+			}
+			var notice *stream.Notice
+			test.Require().ErrorAs(err, &notice)
+			test.Len(notice.Lines, tc.unpriced)
+			b, err := backtests.Get(context.TODO(), "test-backtest")
+			test.Require().NoError(err)
+			disabled := 0
+			for _, period := range b.GetPeriods() {
+				for _, asset := range period.GetAssets() {
+					if !asset.GetEnabled() {
+						disabled++
+					}
+				}
+			}
+			test.Equal(tc.unpriced, disabled)
+		})
+	}
+}
+
+// The benchmark SPY is also listed and is the only symbol with prices. It
+// isn't traded, so there is nothing to trade and create fails.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenOnlyListedBenchmarkHasPrices() {
+	test.Require().Equal("SPY", test.backtest.GetBenchmark())
+	err := test.downloadWithUnpriced([]string{"SPY", "XYZ"}, []string{"XYZ"})
+	var notice *stream.Notice
+	test.Require().False(errors.As(err, &notice), "XYZ must not be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': no price data for XYZ "+
+		"between 2022-01-01 and 2023-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A symbol delisted partway through has prices for part of the period, so
 // its download is STATUS_OK. It stays in the backtest, no notice names it,
 // and Zipline auto-closes a held position after its last bar (universe.md §8).

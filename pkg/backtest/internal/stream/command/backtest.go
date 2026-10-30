@@ -657,6 +657,10 @@ func leaveOutUnpriced(ctx context.Context, backtests repository.Backtest, b *bac
 		return discardSymbolDownloadError(ctx, backtests, b.GetName(), backtestID,
 			named, start, end, noPriceDataPrefix+named)
 	}
+	listed := len(listedSymbols(b))
+	if limit := maxLeftOut(listed); len(unpriced) > limit {
+		return discardTooManyUnpriced(ctx, backtests, b.GetName(), backtestID, unpriced, listed, limit, start, end)
+	}
 	if err := disableUnpriced(ctx, backtests, b, backtestID, unpriced); err != nil {
 		return discardFailedBacktest(ctx, backtests, b.GetName(), backtestID, err)
 	}
@@ -709,16 +713,67 @@ func nameSymbols(symbols []string) string {
 	return fmt.Sprintf("%s and %d more", strings.Join(symbols[:namedSymbolsShown], ", "), len(symbols)-namedSymbolsShown)
 }
 
-// hasPricedAsset reports whether an enabled period asset is not in unpriced.
-func hasPricedAsset(b *backtest.Backtest, unpriced []string) bool {
+// MaxLeftOutPercent caps how many listed symbols a symbol-list create may
+// leave out for having no prices: at most max(1, floor(20% of listed)).
+// Past that the list or the dates are likely wrong, so create fails rather
+// than run a backtest on what is left.
+const MaxLeftOutPercent = 20
+
+// maxLeftOut is how many of listed symbols may be left out.
+func maxLeftOut(listed int) int {
+	return max(1, listed*MaxLeftOutPercent/100)
+}
+
+// listedSymbols returns the distinct enabled period-asset symbols of b,
+// without the benchmark. The benchmark is downloaded but not traded.
+func listedSymbols(b *backtest.Backtest) []string {
+	listed := make([]string, 0)
 	for _, period := range b.GetPeriods() {
 		for _, asset := range period.GetAssets() {
-			if asset.GetEnabled() && asset.GetSymbol() != "" && !slices.Contains(unpriced, asset.GetSymbol()) {
-				return true
+			symbol := asset.GetSymbol()
+			if !asset.GetEnabled() || symbol == "" || symbol == b.GetBenchmark() || slices.Contains(listed, symbol) {
+				continue
 			}
+			listed = append(listed, symbol)
+		}
+	}
+	return listed
+}
+
+// hasPricedAsset reports whether a listed symbol (enabled, not the
+// benchmark) is not in unpriced. A backtest where only the benchmark has
+// prices has nothing to trade.
+func hasPricedAsset(b *backtest.Backtest, unpriced []string) bool {
+	for _, symbol := range listedSymbols(b) {
+		if !slices.Contains(unpriced, symbol) {
+			return true
 		}
 	}
 	return false
+}
+
+// tooManyUnpricedCopy is the create failure when more listed symbols have no
+// prices than MaxLeftOutPercent allows. Arguments: backtest name, symbols
+// named by nameSymbols, unpriced count, listed count, start, end, limit.
+// Placeholder wording until UX sends the final copy.
+const tooManyUnpricedCopy = "Couldn't load data for backtest '%[1]s': %[3]d of %[4]d listed symbols have no prices " +
+	"between %[5]s and %[6]s (%[2]s), more than the %[7]d that can be left out. The backtest wasn't saved. " +
+	"Check the symbols and dates, or use another provider with --provider."
+
+// discardTooManyUnpriced deletes the backtest and returns tooManyUnpricedCopy.
+func discardTooManyUnpriced(ctx context.Context, backtests repository.Backtest, name, id string,
+	unpriced []string, listed, limit int, start, end *pb.Date,
+) error {
+	err := deleteStoredBacktest(ctx, backtests, name, id)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after too many symbols had no prices")
+		return plainSentence(fmt.Sprintf(
+			"Couldn't load data for backtest '%s': %d of %d listed symbols have no prices between %s and %s (%s). "+
+				"The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
+			name, len(unpriced), listed, pb.DateToDateString(start), pb.DateToDateString(end), nameSymbols(unpriced), name))
+	}
+	return plainSentence(fmt.Sprintf(tooManyUnpricedCopy, name, nameSymbols(unpriced), len(unpriced), listed,
+		pb.DateToDateString(start), pb.DateToDateString(end), limit))
 }
 
 // leftOutUnpricedLine is the notice for one left-out symbol, e.g.
