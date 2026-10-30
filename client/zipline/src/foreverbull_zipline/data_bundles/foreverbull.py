@@ -1,3 +1,4 @@
+import logging
 import os
 import warnings
 
@@ -19,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.cli import maybe_show_progress
 
+from foreverbull.broker.utils import describe_exception
 from foreverbull.models.finance import missing_prices_line
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
@@ -27,6 +29,8 @@ from foreverbull_zipline.database import get_engine
 
 
 warnings.filterwarnings("ignore")
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,15 @@ def no_stored_prices_line(backtest: str, groups: list[InstrumentGroup], first, l
     lines.extend(f"  {group_label(group)}: no prices {span}." for group in groups)
     lines.append(next_step)
     return "\n".join(lines)
+
+
+def ticker_history_line(backtest: str) -> str:
+    """Ingest's failure when the record of ticker changes can't be read."""
+    return (
+        f"Couldn't load data for backtest '{backtest}': foreverbull couldn't read its record of ticker changes, "
+        "so renamed symbols can't be followed. The backtest wasn't saved. "
+        "Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+    )
 
 
 def membership_auto_close_date(
@@ -379,8 +392,15 @@ class SQLIngester:
             WHERE m.backtest_name = '{self.backtest.name}'
             ORDER BY s.isin, s.from_date"""
             return read_sql_query(query, self.engine._engine)
-        except SQLAlchemyError:
-            return None
+        except SQLAlchemyError as exc:
+            # The cause can quote the database URL, so it is logged redacted
+            # and kept out of the message and the exception chain.
+            _logger.error(
+                "Couldn't read the ticker history of backtest %r from the database: %s",
+                self.backtest.name,
+                describe_exception(exc),
+            )
+            raise RuntimeError(ticker_history_line(self.backtest.name)) from None
 
     def ingest_groups(self) -> list[InstrumentGroup]:
         return group_symbols_by_instrument(ingest_symbols(self.backtest), self.load_aliases())

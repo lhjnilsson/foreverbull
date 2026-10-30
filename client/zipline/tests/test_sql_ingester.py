@@ -10,6 +10,7 @@ from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 from foreverbull_zipline.data_bundles.foreverbull import session_labels
+from sqlalchemy import create_engine
 
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.models.finance import ohlc_provider
@@ -363,3 +364,41 @@ def test_sql_ingester_lists_a_renamed_symbol_in_the_block():
         "  OEF: no prices between 2024-01-02 and 2024-03-28.\n"
         "Try another provider with --provider, then run `fbull backtest create` again."
     )
+
+
+class _BrokenDatabase:
+    def __init__(self):
+        self._engine = create_engine("sqlite://")
+
+
+def test_sql_ingester_fails_when_the_ticker_history_cant_be_read(caplog):
+    ingester = SQLIngester(_quarter_backtest(), engine=_BrokenDatabase())
+
+    with pytest.raises(RuntimeError) as error:
+        ingester.load_aliases()
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'oef-2024q1': foreverbull couldn't read its record of ticker changes, "
+        "so renamed symbols can't be followed. The backtest wasn't saved. "
+        "Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+    )
+    assert error.value.__cause__ is None
+    assert "sqlite3.OperationalError" not in str(error.value)
+    assert "Couldn't read the ticker history of backtest 'oef-2024q1'" in caplog.text
+    assert "(sqlite3.OperationalError) no such table: universe_member" in caplog.text
+
+
+def test_sql_ingester_logs_the_ticker_history_cause_redacted(caplog, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    def broken_query(*_args, **_kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("connect to postgresql://fb:hunter2@db.invalid:5432 failed"))
+
+    monkeypatch.setattr("foreverbull_zipline.data_bundles.foreverbull.read_sql_query", broken_query)
+    ingester = SQLIngester(_quarter_backtest(), engine=_BrokenDatabase())
+
+    with pytest.raises(RuntimeError):
+        ingester.load_aliases()
+
+    assert "postgresql://fb:***@db.invalid:5432" in caplog.text
+    assert "hunter2" not in caplog.text

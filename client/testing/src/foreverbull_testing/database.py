@@ -59,6 +59,20 @@ class AssetSymbol(Base):
     to_date = Column(Date())
 
 
+class UniverseMember(Base):
+    """A backtest's dated index membership (pkg/backtest/universe.md §6.1), without its constraints.
+
+    Ingest reads the ticker history through this table and fails when it
+    can't, so a test database needs it even when it holds no rows.
+    """
+
+    __tablename__ = "universe_member"
+    backtest_name = Column(String(), primary_key=True)
+    isin = Column(String(), primary_key=True)
+    from_date = Column(Date(), primary_key=True)
+    to_date = Column(Date())
+
+
 _OHLC_PROVIDER_COLUMN = text("ALTER TABLE ohlc ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'yahoo'")
 
 _OHLC_PROVIDER_KEY = text(
