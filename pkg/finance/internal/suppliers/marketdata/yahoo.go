@@ -98,7 +98,11 @@ func NewYahooClient() (supplier.Marketdata, error) {
 func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
 	// supplier.Marketdata carries no context, so there is no request ctx to
 	// pass here; the client timeout bounds the request instead.
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
+	reqURL, err := requestURL(rawURL, y.crumb, params...)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -274,10 +278,16 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 // requestURL adds params (already encoded "k=v" pairs) and the crumb to the
 // query of rawURL, keeping any query it already has. Appending "?crumb=" to a
 // URL that already had a query hid the crumb inside the previous value.
-func requestURL(rawURL, crumb string, params ...string) string {
+// An unparsable rawURL is an error. It names only the parse failure, never
+// the URL, so no query value (or crumb) reaches an error or a log line.
+func requestURL(rawURL, crumb string, params ...string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return rawURL
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		return "", fmt.Errorf("invalid request URL: %w", err)
 	}
 	parts := make([]string, 0, len(params)+2)
 	if u.RawQuery != "" {
@@ -288,7 +298,7 @@ func requestURL(rawURL, crumb string, params ...string) string {
 	}
 	parts = append(parts, params...)
 	u.RawQuery = strings.Join(parts, "&")
-	return u.String()
+	return u.String(), nil
 }
 
 // searchRequestURL is the search URL with q escaped as one query value, so

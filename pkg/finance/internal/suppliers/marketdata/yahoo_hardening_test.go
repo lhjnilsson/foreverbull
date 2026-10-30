@@ -198,10 +198,34 @@ func TestYahooSearchEscapesQuery(t *testing.T) {
 
 func TestYahooRequestURLKeepsEveryParameter(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "https://y.example/q/AAPL?modules=quoteType",
-		requestURL("https://y.example/q/AAPL", "", "modules=quoteType"))
-	require.Equal(t, "https://y.example/q/AAPL?crumb=ab%2Fc%3D&modules=quoteType",
-		requestURL("https://y.example/q/AAPL", "ab/c=", "modules=quoteType"))
-	require.Equal(t, "https://y.example/s?q=A%26B&region=US&crumb=x",
-		requestURL("https://y.example/s?q=A%26B&region=US", "x"))
+	for _, tc := range []struct{ raw, crumb, param, want string }{
+		{"https://y.example/q/AAPL", "", "modules=quoteType", "https://y.example/q/AAPL?modules=quoteType"},
+		{"https://y.example/q/AAPL", "ab/c=", "modules=quoteType", "https://y.example/q/AAPL?crumb=ab%2Fc%3D&modules=quoteType"},
+		{"https://y.example/s?q=A%26B&region=US", "x", "", "https://y.example/s?q=A%26B&region=US&crumb=x"},
+	} {
+		var params []string
+		if tc.param != "" {
+			params = append(params, tc.param)
+		}
+		got, err := requestURL(tc.raw, tc.crumb, params...)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, got)
+	}
+}
+
+// An unparsable URL fails the request instead of being sent as is, and the
+// error names neither the URL nor any of its query values.
+func TestYahooRequestURLRefusesAnUnparsableURL(t *testing.T) {
+	t.Parallel()
+	got, err := requestURL("https://y.example/q/\x7fAAPL?crumb=s3cr3tcrumb", "s3cr3tcrumb", "modules=quoteType")
+	require.Empty(t, got)
+	require.EqualError(t, err, "invalid request URL: net/url: invalid control character in URL")
+
+	client := &YahooClient{crumb: "s3cr3tcrumb", quoteURL: "https://y.example/q/\x7f?crumb=s3cr3tcrumb&"}
+	asset, err := client.GetAsset("AAPL")
+	require.Nil(t, asset)
+	require.EqualError(t, err, "error: invalid request URL: net/url: invalid control character in URL")
+	for _, leak := range []string{"s3cr3tcrumb", "y.example", "crumb"} {
+		require.NotContains(t, err.Error(), leak)
+	}
 }
