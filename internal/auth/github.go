@@ -41,6 +41,9 @@ type githubIdentity struct {
 var (
 	githubExchange = exchangeGitHub
 	githubMember   = githubOrgMember
+	// githubMembershipAPI is the org membership endpoint prefix. Tests point
+	// it at a fake server.
+	githubMembershipAPI = "https://api.github.com/user/memberships/orgs/" //nolint: gochecknoglobals
 )
 
 func (h *handlers) githubStart(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +104,20 @@ func (h *handlers) githubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, err := githubExchange(r.Context(), r.URL.Query().Get("code"), verifier)
-	if err != nil || identity.Subject == "" || identity.Login == "" || !githubOrgAllowed(r.Context(), identity) {
+	if err != nil || identity.Subject == "" || identity.Login == "" {
+		h.logf("github callback result=unauthorized")
+		web.Unauthorized(w)
+		return
+	}
+	allowed, err := githubOrgAllowed(r.Context(), identity)
+	if err != nil {
+		// Access stays denied. The status says GitHub could not be asked,
+		// not that the account is outside the allowed orgs.
+		h.logf("github callback result=org_check_failed login=%s: %v", identity.Login, err)
+		web.StatusJSON(w, http.StatusBadGateway, `{"error":"github organization membership could not be checked"}`)
+		return
+	}
+	if !allowed {
 		h.logf("github callback result=unauthorized")
 		web.Unauthorized(w)
 		return
@@ -192,17 +208,26 @@ func oauthConfig() *oauth2.Config {
 	}
 }
 
-func githubOrgAllowed(ctx context.Context, identity githubIdentity) bool {
+// githubOrgAllowed reports whether the identity is an active member of one
+// allowed org. An error means GitHub could not answer for some org and no
+// other org admitted the identity; the caller still denies access.
+func githubOrgAllowed(ctx context.Context, identity githubIdentity) (bool, error) {
 	orgs := allowedOrgs()
 	if len(orgs) == 0 {
-		return true
+		return true, nil
 	}
+	var errs []error
 	for _, org := range orgs {
-		if githubMember(ctx, identity.token, org) {
-			return true
+		member, err := githubMember(ctx, identity.token, org)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if member {
+			return true, nil
 		}
 	}
-	return false
+	return false, errors.Join(errs...)
 }
 
 func allowedOrgs() []string {
@@ -220,33 +245,47 @@ func allowedOrgs() []string {
 	return orgs
 }
 
-func githubOrgMember(ctx context.Context, tok *oauth2.Token, org string) bool {
-	if tok == nil || org == "" || strings.ContainsAny(org, "/?#") {
-		return false
+// githubOrgMember asks GitHub for the caller's membership in org. 200 with
+// state active is a member. 200 with another state and 404 are answers: not
+// a member. Every other outcome (network error, 5xx, 401, 403, an unreadable
+// body) is an error, because GitHub did not say.
+func githubOrgMember(ctx context.Context, tok *oauth2.Token, org string) (bool, error) {
+	if tok == nil {
+		return false, errors.New("github token is missing")
+	}
+	if org == "" || strings.ContainsAny(org, "/?#") {
+		return false, fmt.Errorf("github org %q is not a valid org name", org)
 	}
 	ctx, cancel := context.WithTimeout(ctx, githubTimeout)
 	defer cancel()
-	endpoint := "https://api.github.com/user/memberships/orgs/" + url.PathEscape(org)
+	endpoint := githubMembershipAPI + url.PathEscape(org)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("github org %s membership request: %w", org, err)
 	}
 	resp, err := oauthConfig().Client(ctx, tok).Do(req)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("github org %s membership: %w", org, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return false
+	if err != nil {
+		return false, fmt.Errorf("github org %s membership body: %w", org, err)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("github org %s membership status %d", org, resp.StatusCode)
 	}
 	var payload struct {
 		State string `json:"state"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return false
+		return false, fmt.Errorf("github org %s membership body is not JSON: %w", org, err)
 	}
-	return payload.State == "active"
+	return payload.State == "active", nil
 }
 
 func exchangeGitHub(ctx context.Context, code, verifier string) (githubIdentity, error) {
