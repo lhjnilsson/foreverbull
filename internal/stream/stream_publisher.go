@@ -21,9 +21,11 @@ import (
 // setup error stops the publish.
 type PublishOpt func(nn *NATSStream, msg *message) (wait func(ctx context.Context) error, stop func(), err error)
 
-// progressBuffer is how many progress texts can queue for a waiter before
-// NATS drops the oldest for that waiter; progress is only ever the latest
-// count, so a drop loses nothing that matters.
+// progressBuffer is how many progress texts can queue for a waiter. With
+// ChanSubscribe a full channel makes NATS drop the new messages for that
+// waiter and flag it as a slow consumer; the queued, older texts stay. The
+// next report after the waiter catches up carries the current count again,
+// so a drop only delays the line.
 const progressBuffer = 64
 
 // WaitForCompletion waits for the task's final state. Each onProgress gets
