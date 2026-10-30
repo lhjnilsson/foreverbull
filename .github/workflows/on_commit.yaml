@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test ./pkg/... ./internal/... -coverprofile=coverage.txt -covermode=atomic -timeout 180s
+        run: go test -race ./pkg/... ./internal/... -coverprofile=coverage.txt -covermode=atomic -timeout 180s
         env:
           DISABLE_LOKI_LOGGING: true
       - name: Archive code coverage results
