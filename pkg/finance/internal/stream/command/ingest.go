@@ -80,7 +80,18 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		}
 	}
 
+	// The time limit ends the whole ingest. Each symbol commits on its own,
+	// so the ones before the cut stay stored.
+	ctx, stopAtLimit := context.WithTimeoutCause(ctx, ingestTimeLimit, errIngestTimeLimit)
+	defer stopAtLimit()
+
 	for _, symbol := range command.Symbols {
+		if err := ctx.Err(); err != nil {
+			if stopped := ingestStopped(ctx, provider, symbol, err); stopped != nil {
+				return stopped
+			}
+			return err
+		}
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
@@ -89,6 +100,9 @@ func Ingest(ctx context.Context, message stream.Message) error {
 
 			a, err := yahoo.GetAsset(ctx, symbol)
 			if err != nil {
+				if stopped := ingestStopped(ctx, assetProvider, symbol, err); stopped != nil {
+					return stopped
+				}
 				return fmt.Errorf("error getting asset: %w", redact.URLError(err))
 			}
 			if !ticker.Valid(a.GetSymbol()) {
@@ -105,11 +119,41 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		}
 
 		if err := ingestSymbol(ctx, &ohlc, bars, provider, symbol, start, end); err != nil {
+			if stopped := ingestStopped(ctx, provider, symbol, err); stopped != nil {
+				return stopped
+			}
 			return err
 		}
 	}
 
 	return nil
+}
+
+// ingestTimeLimit bounds one ingest command. The ingest fetches one symbol
+// at a time, and at the shared provider rates 10,000 symbols take about an
+// hour and a half; past this a hung provider can't hold the task forever.
+// Tests shorten it.
+var ingestTimeLimit = 2 * time.Hour
+
+// errIngestTimeLimit is the ctx cause when ingestTimeLimit ends an ingest,
+// so an abort (a cancel) is still told apart from the limit.
+var errIngestTimeLimit = errors.New("ingest time limit reached")
+
+// ingestStopped is the task-state text when symbol didn't finish because the
+// ingest's time limit ended or its provider call timed out, or nil for any
+// other failure. A database error is a timeout only once the limit ended.
+func ingestStopped(ctx context.Context, provider, symbol string, err error) error {
+	limitReached := errors.Is(context.Cause(ctx), errIngestTimeLimit)
+	var stored *repository.StoreError
+	providerTimeout := ctx.Err() == nil && !errors.As(err, &stored) && marketdata.IsProviderTimeout(err)
+	if !limitReached && !providerTimeout {
+		return nil
+	}
+	log.Warn().Err(redact.URLError(err)).Str("provider", provider).Str("symbol", symbol).
+		Bool("time_limit", limitReached).Msg("ingest stopped: provider took too long")
+	return fmt.Errorf("%w, so the price import stopped. Prices imported before it were kept. "+ //nolint:staticcheck // ST1005: user-facing copy ends with a period
+		"Try again later, or use another provider with --provider.",
+		&marketdata.TimeoutError{Provider: provider, Symbol: symbol})
 }
 
 // assetProvider is the provider GetAsset asks. The marketdata dependency is
