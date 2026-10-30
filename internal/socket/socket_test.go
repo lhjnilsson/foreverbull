@@ -2,7 +2,9 @@ package socket
 
 import (
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	common_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -60,14 +62,22 @@ func (test *SocketTest) TestRequesterReplier() {
 
 	for _, testCase := range testCases {
 		test.Run(testCase.Task, func() {
+			// The replier reports on a channel: the suite's T changes with
+			// each subtest, so the goroutine must not assert through it.
+			replied := make(chan error, 1)
 			go func() {
 				request := common_pb.Request{Task: testCase.Task, Data: testCase.Data}
 				sock, err := replier.Receive(&request)
-				test.NoError(err, "failed to receive")
-
+				if err != nil {
+					replied <- fmt.Errorf("failed to receive: %w", err)
+					return
+				}
 				response := common_pb.Response{Task: request.Task, Data: request.Data}
-				err = sock.Reply(&response)
-				test.NoError(err, "failed to send")
+				if err := sock.Reply(&response); err != nil {
+					replied <- fmt.Errorf("failed to send: %w", err)
+					return
+				}
+				replied <- nil
 			}()
 
 			request := common_pb.Request{Task: testCase.Task}
@@ -80,6 +90,12 @@ func (test *SocketTest) TestRequesterReplier() {
 			test.Require().NoError(err, "failed to request")
 			test.Equal(request.Task, response.Task, "task mismatch")
 			test.Equal(request.Data, response.Data, "data mismatch")
+			select {
+			case err := <-replied:
+				test.Require().NoError(err)
+			case <-time.After(5 * time.Second):
+				test.FailNow("replier did not finish")
+			}
 		})
 	}
 
