@@ -151,6 +151,8 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 		{name: "header only", status: http.StatusOK, fixture: "header_only.csv", wantSubstr: "empty response", noBars: true},
 		{name: "no data", status: http.StatusOK, fixture: "no_data.txt", wantSubstr: "missing file", noBars: true},
 		{name: "malformed", status: http.StatusOK, fixture: "malformed.csv", wantSubstr: "unparsable CSV"},
+		{name: "daily limit", status: http.StatusOK, body: "Exceeded the daily hits limit", wantSubstr: "daily hits limit"},
+		{name: "no data and daily limit", status: http.StatusOK, body: "No data\nExceeded the daily hits limit", wantSubstr: "daily hits limit"},
 		{name: "http 404", status: http.StatusNotFound, body: "not found", wantSubstr: "missing file"},
 		{name: "http 500", status: http.StatusInternalServerError, body: "oops", wantSubstr: "missing file"},
 	}
