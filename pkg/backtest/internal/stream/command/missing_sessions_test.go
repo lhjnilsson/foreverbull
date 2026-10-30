@@ -120,8 +120,11 @@ func (test *BacktestCommandTest) downloadQuarter() (*engine.MockEngine, error) {
 	return test.download(quarterEnd)
 }
 
-func (test *BacktestCommandTest) download(end time.Time) (*engine.MockEngine, error) {
+func (test *BacktestCommandTest) download(end time.Time, answers ...*financeServicePB.DownloadHistoricalDataResponse) (*engine.MockEngine, error) {
 	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, answer := range answers {
+		clientStream.On("Recv", mock.Anything).Return(answer, nil).Once()
+	}
 	clientStream.On("Recv", mock.Anything).Return(nil, io.EOF)
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil)
 
@@ -276,6 +279,81 @@ func (test *BacktestCommandTest) TestMissingSessionsNoBarsSkipsTheCalendar() {
 	ziplineEngine, err := test.downloadQuarter()
 	test.Require().NoError(err)
 	ziplineEngine.AssertNotCalled(test.T(), "Sessions", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A provider that sent a bar with no price fails that
+// symbol's download with the days. They join the stored-bar check, so the
+// create still fails once, naming every symbol: here BBB from the provider
+// (no bars stored) and AAA from its stored bars.
+func (test *BacktestCommandTest) TestMissingSessionsJoinTheProviderReport() {
+	test.createQuarter("AAA", "BBB")
+	test.storeBars("AAA", "2024-01-01", "2024-03-31", "2024-02-14")
+
+	_, err := test.download(quarterEnd, &financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "BBB",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent no price for BBB on 2024-02-20, 2024-02-21, 2024-03-05",
+	})
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 2 symbols. The backtest wasn't saved.\n"+
+		"  AAA: 2024-02-14\n"+
+		"  BBB: 2024-02-20 to 2024-02-21, 2024-03-05\n"+
+		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// The provider names the stored ticker; the message names the request
+// symbol the finance service answered for.
+func (test *BacktestCommandTest) TestMissingSessionFromTheProviderAlone() {
+	test.createQuarter("XYZ")
+
+	_, err := test.download(quarterEnd, &financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent no price for XYZ on 2024-02-14",
+	})
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on "+
+		"2024-02-14, a trading day. The backtest wasn't saved. Try another provider with --provider, or change the "+
+		"backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// A provider that reported no price on a day that isn't a session (Good
+// Friday, here) failed that symbol's download, so create fails naming the
+// day rather than ingesting without the symbol. It isn't called a trading
+// day.
+func (test *BacktestCommandTest) TestMissingSessionReportedOnAHolidayFails() {
+	test.createQuarter("XYZ")
+	test.storeBars("XYZ", "2024-01-01", "2024-03-31")
+
+	_, err := test.download(quarterEnd, &financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent no price for XYZ on 2024-03-29",
+	})
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on "+
+		"2024-03-29. The backtest wasn't saved. Try another provider with --provider, or change the "+
+		"backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// A reported holiday next to a reported session reads as one run, and with
+// a second symbol the lead doesn't say trading days.
+func (test *BacktestCommandTest) TestMissingSessionsReportedAroundAHoliday() {
+	test.createQuarter("AAA", "XYZ")
+	test.storeBars("AAA", "2024-01-01", "2024-03-31", "2024-02-14")
+
+	_, err := test.download(quarterEnd, &financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent no price for XYZ on 2024-03-28, 2024-03-29",
+	})
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for "+
+		"2 symbols. The backtest wasn't saved.\n"+
+		"  AAA: 2024-02-14\n"+
+		"  XYZ: 2024-03-28 to 2024-03-29\n"+
+		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
 }
 
 // storeBarsOn stores a yahoo bar for symbol on each day, at 14:30 UTC.

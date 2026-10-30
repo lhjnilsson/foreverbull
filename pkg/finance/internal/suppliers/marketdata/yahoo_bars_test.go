@@ -22,50 +22,98 @@ func yahooFixtureServer(t *testing.T, path string) *YahooClient {
 	return &YahooClient{chartURL: srv.URL + "/"}
 }
 
-// A null in Yahoo's price arrays is a missing session. It must not decode
-// to a 0 price, which reads as a -100% day in every metric.
-func TestYahooGetOHLCLeavesNullBarsOut(t *testing.T) {
+// A null in Yahoo's price arrays is a missing session. Between two priced
+// sessions it fails GetOHLC with the symbol and every such day, rather
+// than leave a gap in the stored bars.
+func TestYahooGetOHLCFailsOnANullBarInsideTheRange(t *testing.T) {
 	t.Parallel()
 	client := yahooFixtureServer(t, "testdata/yahoo_chart_null_bars.json")
 	start := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
 
 	bars, err := client.GetOHLC("xyz", start, &end)
-	require.NoError(t, err)
-
-	days := make([]string, 0, len(bars))
-	for _, bar := range bars {
-		days = append(days, bar.Timestamp.AsTime().UTC().Format("2006-01-02"))
-		require.Positive(t, bar.Open)
-		require.Positive(t, bar.High)
-		require.Positive(t, bar.Low)
-		require.Positive(t, bar.Close)
-	}
+	require.Nil(t, bars)
 	// 2026-05-05 is all null; 2026-05-07 has a null open only.
-	require.Equal(t, []string{"2026-05-04", "2026-05-06", "2026-05-08"}, days)
-	require.InDelta(t, 10.7, bars[1].Close, 1e-9)
-	// A null volume on a priced session is no shares traded, not a missing bar.
-	require.Equal(t, uint64(0), bars[2].Volume)
+	require.EqualError(t, err, "yahoo sent no price for XYZ on 2026-05-05, 2026-05-07")
+	var missing *MissingPriceError
+	require.ErrorAs(t, err, &missing)
+	require.Equal(t, "XYZ", missing.Symbol)
+	require.Len(t, missing.Days, 2)
 }
 
-func TestYahooBarsReportsMissingSessions(t *testing.T) {
+// A null at the start or the end of the answer fails too, naming the day:
+// the bars would otherwise start late or end early with no word to the user.
+func TestYahooGetOHLCFailsOnANullBarAtEitherEdge(t *testing.T) {
+	t.Parallel()
+	client := yahooFixtureServer(t, "testdata/yahoo_chart_null_edges.json")
+	start := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
+
+	bars, err := client.GetOHLC("xyz", start, &end)
+	require.Nil(t, bars)
+	// 2026-05-04 is the leading null and 2026-05-08 the trailing one.
+	require.EqualError(t, err, "yahoo sent no price for XYZ on 2026-05-04, 2026-05-08")
+}
+
+func TestYahooBarsFailsOnALeadingNull(t *testing.T) {
+	t.Parallel()
+	_, err := yahooBars(threeSessions(), []yahooQuote{quoteWithNullAt(3, 0)})
+	var missing *MissingPriceError
+	require.ErrorAs(t, err, &missing)
+	require.Equal(t, "2026-05-04", MissingPriceDays(missing.Days))
+}
+
+// An old trailing null is a missing price, not today's unfinished session,
+// which GetOHLC never asks for.
+func TestYahooBarsFailsOnATrailingNull(t *testing.T) {
+	t.Parallel()
+	_, err := yahooBars(threeSessions(), []yahooQuote{quoteWithNullAt(3, 2)})
+	var missing *MissingPriceError
+	require.ErrorAs(t, err, &missing)
+	require.Equal(t, "2026-05-06", MissingPriceDays(missing.Days))
+}
+
+// 2026-05-04, 05 and 06 at the 09:30 New York open.
+func threeSessions() []int64 {
+	return []int64{1777901400, 1777987800, 1778074200}
+}
+
+func quoteWithNullAt(count, index int) yahooQuote {
+	price := func(v float64) *float64 { return &v }
+	quote := yahooQuote{}
+	for i := 0; i < count; i++ {
+		value := price(10)
+		if i == index {
+			value = nil
+		}
+		quote.Open = append(quote.Open, value)
+		quote.High = append(quote.High, value)
+		quote.Low = append(quote.Low, value)
+		quote.Close = append(quote.Close, value)
+		quote.Volume = append(quote.Volume, nil)
+	}
+	return quote
+}
+
+func TestYahooBarsFailsOnZeroAndNegativePrices(t *testing.T) {
 	t.Parallel()
 	price := func(v float64) *float64 { return &v }
 	volume := uint64(5)
 	quote := yahooQuote{
-		Open:   []*float64{price(1), nil, price(0), price(1)},
-		High:   []*float64{price(1), nil, price(1), price(1)},
-		Low:    []*float64{price(1), nil, price(1), price(-1)},
-		Close:  []*float64{price(1), nil, price(1), price(1)},
-		Volume: []*uint64{&volume, nil, &volume, &volume},
+		Open:   []*float64{price(1), nil, price(0), price(1), price(1)},
+		High:   []*float64{price(1), nil, price(1), price(1), price(1)},
+		Low:    []*float64{price(1), nil, price(1), price(-1), price(1)},
+		Close:  []*float64{price(1), nil, price(1), price(1), price(1)},
+		Volume: []*uint64{&volume, nil, &volume, &volume, &volume},
 	}
-	timestamps := []int64{1777901400, 1777987800, 1778074200, 1778160600}
+	timestamps := []int64{1777901400, 1777987800, 1778074200, 1778160600, 1778247000}
 
-	bars, missing, err := yahooBars(timestamps, []yahooQuote{quote})
-	require.NoError(t, err)
-	require.Len(t, bars, 1)
-	require.Len(t, missing, 3, "null, zero, and negative prices are all missing bars")
-	require.Equal(t, "2026-05-05", missing[0].UTC().Format("2006-01-02"))
+	bars, err := yahooBars(timestamps, []yahooQuote{quote})
+	require.Nil(t, bars)
+	var missing *MissingPriceError
+	require.ErrorAs(t, err, &missing)
+	require.Equal(t, "2026-05-05, 2026-05-06, 2026-05-07", MissingPriceDays(missing.Days),
+		"null, zero, and negative prices are all missing bars")
 }
 
 func TestYahooBarsRefusesColumnsOfDifferentLength(t *testing.T) {
@@ -78,7 +126,7 @@ func TestYahooBarsRefusesColumnsOfDifferentLength(t *testing.T) {
 		Close:  []*float64{&price},
 		Volume: []*uint64{nil, nil},
 	}
-	_, _, err := yahooBars([]int64{1777901400, 1777987800}, []yahooQuote{quote})
+	_, err := yahooBars([]int64{1777901400, 1777987800}, []yahooQuote{quote})
 	require.EqualError(t, err, "close has 1 values for 2 timestamps")
 }
 
