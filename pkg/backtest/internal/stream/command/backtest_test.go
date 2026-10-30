@@ -862,10 +862,10 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOth
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
-// A provider refusal (Stooq has no code for the .TO exchange) fails create
-// with the refusal itself as the lead, so the user sees which suffix is
-// unsupported and to try --provider, not a generic download failure.
-func (test *BacktestCommandTest) TestDownloadFinancialDataShowsProviderRefusal() {
+// Stooq has no code for the .TO exchange. Create fails with UX's exact
+// sentence: the suffix, the symbol and the supported suffixes from the
+// refusal, then its own advice to try --provider. The backtest is removed.
+func (test *BacktestCommandTest) TestDownloadFinancialDataShowsStooqExchangeRefusal() {
 	backtests := repository.Backtest{Conn: test.db}
 	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -887,10 +887,61 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataShowsProviderRefusal()
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'test-backtest': stooq doesn't support the .TO exchange (SHOP.TO). "+
-			"Supported suffixes: .DE, .L, .US. Try another provider with --provider. "+
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+			"Supported suffixes: .DE, .L, .US. The backtest wasn't saved. "+
+			"Try another provider with --provider, then run `fbull backtest create` again.")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// createStooqBacktest stores backtest name whose download request has the
+// SPY benchmark plus assetCount assets.
+func (test *BacktestCommandTest) createStooqBacktest(name string, assetCount int) {
+	b := proto.Clone(test.backtest).(*backtest.Backtest)
+	b.Name = name
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), b)
+	test.Require().NoError(err)
+	assets := make([]*backtest.Backtest_Period_Asset, 0, assetCount)
+	for i := range assetCount {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: fmt.Sprintf("S%02d.L", i+1), Enabled: true})
+	}
+	test.Require().NoError(backtests.UpdatePeriod(context.TODO(), name, &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	}))
+}
+
+// Stooq refused symbol 7 of the 99 this create sent as an invalid ticker.
+// Create fails with UX's exact sentence: the position and the count, never
+// the symbol, then its own advice to check the spelling. The backtest is
+// removed.
+func (test *BacktestCommandTest) TestDownloadFinancialDataShowsStooqInvalidTickerByPosition() {
+	test.createStooqBacktest("oef-2024q1", 98)
+	var sent []string
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(func() (*financeServicePB.DownloadHistoricalDataResponse, error) {
+		return &financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: sent[6],
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+			Error: "stooq can't use symbol 7 of 99 because it isn't a valid ticker. " +
+				"Check the spelling, for example VOD.L or AAPL.",
+		}, nil
+	}).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		sent = args.Get(1).(*financeServicePB.DownloadHistoricalDataRequest).GetSymbols()
+	}).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+	test.Require().Len(sent, 99)
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'oef-2024q1': stooq can't use symbol 7 of 99 because it isn't a valid ticker. "+
+			"The backtest wasn't saved. Check the spelling, for example VOD.L or AAPL, then run `fbull backtest create` again.")
+	test.NotContains(err.Error(), sent[6])
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 

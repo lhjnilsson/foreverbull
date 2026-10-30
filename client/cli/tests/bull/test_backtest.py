@@ -383,6 +383,48 @@ def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monk
     assert "grpc" not in result.output.lower()
 
 
+_STOOQ_EXCHANGE_COPY = (
+    "Couldn't load data for backtest 'from_file': stooq doesn't support the .TO exchange (SHOP.TO). "
+    "Supported suffixes: .DE, .L, .US. The backtest wasn't saved. "
+    "Try another provider with --provider, then run `fbull backtest create` again."
+)
+
+
+def test_backtest_create_stooq_exchange_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_STOOQ_EXCHANGE_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file("stooq")
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: stooq (from --provider)\n✖ {_STOOQ_EXCHANGE_COPY}\n"
+
+
+_STOOQ_INVALID_TICKER_COPY = (
+    "Couldn't load data for backtest 'from_file': stooq can't use symbol 7 of 99 because it isn't a valid ticker. "
+    "The backtest wasn't saved. Check the spelling, for example VOD.L or AAPL, "
+    "then run `fbull backtest create` again."
+)
+
+
+def test_backtest_create_stooq_invalid_ticker_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_STOOQ_INVALID_TICKER_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file("stooq")
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: stooq (from --provider)\n✖ {_STOOQ_INVALID_TICKER_COPY}\n"
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "

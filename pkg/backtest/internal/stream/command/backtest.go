@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -619,7 +620,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			// Any per-symbol download failure must fail create. Disabling the
 			// member and exiting 0 left an incomplete universe with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
-				msg.Symbol, startDate, endDate, msg.GetError())
+				msg.GetSymbol(), symbols, startDate, endDate, msg.GetError())
 		}
 	}
 	return nil
@@ -630,38 +631,74 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
-// providerRefusalPrefixes start the finance service's STATUS_ERROR text when
-// the provider refused the symbol itself (Stooq has no code for its exchange
-// suffix, or the ticker isn't valid). That text already names the symbol,
-// the provider and what to do, so create shows it as the lead.
-var providerRefusalPrefixes = []string{
-	"stooq doesn't support the .",
-	"stooq can't use this symbol ",
+// stooqExchangeRefusal matches the finance service's STATUS_ERROR when Stooq
+// has no code for a symbol's exchange suffix. Only the suffix, the symbol and
+// the supported suffixes are taken from it; create writes its own advice.
+var stooqExchangeRefusal = regexp.MustCompile(`^stooq doesn't support the (\.[A-Z]{1,8}) exchange ` +
+	`\(([A-Z0-9^=_-]{1,32}(\.[A-Z]{1,8}))\)\. ` +
+	`Supported suffixes: (\.[A-Z]{1,8}(?:, \.[A-Z]{1,8}){0,15})\. Try another provider with --provider\.$`)
+
+// stooqExchangeLead returns the lead for that refusal when it is about this
+// symbol: "stooq doesn't support the .TO exchange (SHOP.TO). Supported
+// suffixes: .DE, .L, .US." Anything else is not shown this way.
+func stooqExchangeLead(text, symbol string) (string, bool) {
+	match := stooqExchangeRefusal.FindStringSubmatch(text)
+	if match == nil || match[1] != match[3] || match[2] != strings.ToUpper(symbol) {
+		return "", false
+	}
+	return fmt.Sprintf("stooq doesn't support the %s exchange (%s). Supported suffixes: %s.",
+		match[1], match[2], match[4]), true
 }
 
-// isProviderRefusal reports the finance service's refusal STATUS_ERROR.
-func isProviderRefusal(text string) bool {
-	for _, prefix := range providerRefusalPrefixes {
-		if strings.HasPrefix(text, prefix) {
-			return true
-		}
+// stooqInvalidTickerRefusal matches the finance service's STATUS_ERROR when
+// Stooq refused a symbol as an invalid ticker. It names the symbol by its
+// 1-based position in the request and the count, never the symbol.
+var stooqInvalidTickerRefusal = regexp.MustCompile(`^stooq can't use symbol ([1-9][0-9]{0,5}) of ([1-9][0-9]{0,5}) ` +
+	`because it isn't a valid ticker\. Check the spelling, for example VOD\.L or AAPL\.$`)
+
+// stooqInvalidTickerPosition returns the refused symbol's 1-based position
+// when text is that refusal for this request: the count this create sent, a
+// position inside it, and the symbol the response is for at that position.
+func stooqInvalidTickerPosition(text, symbol string, sent []string) (int, bool) {
+	match := stooqInvalidTickerRefusal.FindStringSubmatch(text)
+	if match == nil {
+		return 0, false
 	}
-	return false
+	position, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false
+	}
+	total, err := strconv.Atoi(match[2])
+	if err != nil {
+		return 0, false
+	}
+	if total != len(sent) || position > total || sent[position-1] != symbol {
+		return 0, false
+	}
+	return position, true
 }
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
-// omits a member. The lead names the symbol; raw finance/gRPC text stays out
-// of the user sentence. "Nothing was saved" only when the delete worked.
-func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
+// omits a member. The lead names the symbol (or, for an invalid ticker, its
+// position); raw finance/gRPC text stays out of the user sentence. "Nothing
+// was saved" or "The backtest wasn't saved" only when the delete worked.
+func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string,
+	sent []string, start, end *pb.Date, errText string,
+) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after download error")
 	}
 	var lead string
-	if isProviderRefusal(errText) {
-		lead = errText
+	next := "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	if exchangeLead, ok := stooqExchangeLead(errText, symbol); ok {
+		lead = exchangeLead
+		next = "The backtest wasn't saved. Try another provider with --provider, then run `fbull backtest create` again."
+	} else if position, ok := stooqInvalidTickerPosition(errText, symbol, sent); ok {
+		lead = fmt.Sprintf("stooq can't use symbol %d of %d because it isn't a valid ticker.", position, len(sent))
+		next = "The backtest wasn't saved. Check the spelling, for example VOD.L or AAPL, then run `fbull backtest create` again."
 	} else if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
@@ -670,9 +707,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
 	}
 	if removed {
-		return plainSentence(fmt.Sprintf(
-			"Couldn't load data for backtest '%s': %s Nothing was saved, so run `fbull backtest create` again once it's fixed.",
-			name, lead))
+		return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s", name, lead, next))
 	}
 	return plainSentence(fmt.Sprintf(
 		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
