@@ -39,6 +39,21 @@ var defaultStooqUS = map[string]string{
 	"NVDA":  "nvda.us",
 }
 
+// stooqExchangeSuffix maps an exchange suffix, as written in a stored symbol
+// (Yahoo style, such as VOD.L), to Stooq's suffix for the same exchange.
+// Stooq's own suffix is accepted too. A suffix that is not listed is refused
+// with ErrStooqExchange instead of guessing a code.
+var stooqExchangeSuffix = map[string]string{
+	"L":  "uk", // London Stock Exchange
+	"UK": "uk",
+	"DE": "de", // Xetra
+	"US": "us",
+}
+
+// ErrStooqExchange is returned by GetOHLC for a symbol whose exchange suffix
+// has no known Stooq code.
+var ErrStooqExchange = errors.New("stooq has no code for this exchange")
+
 var _ supplier.Marketdata = (*StooqClient)(nil)
 
 // StooqClient fetches daily OHLC from Stooq CSV. Metadata methods do not scrape Stooq.
@@ -176,7 +191,8 @@ func splitMapLine(line string) []string {
 
 // resolveSymbol maps a caller ticker to (Stooq code, canonical Yahoo-style ticker).
 // Lookup is case-insensitive. A Stooq code (aapl.us) maps back to AAPL.
-// Unknown symbols without a '.' suffix use lower(symbol)+".us".
+// Unknown symbols without a '.' suffix use lower(symbol)+".us"; a symbol with
+// an exchange suffix goes through exchangeCode.
 func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" {
@@ -193,10 +209,27 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 	if code, ok := stooqShareClassCode(symbol); ok {
 		return code, upper, nil
 	}
-	if i := strings.IndexByte(symbol, '.'); i > 0 {
-		return lower, strings.ToUpper(symbol[:i]), nil
+	if i := strings.LastIndexByte(symbol, '.'); i > 0 {
+		return exchangeCode(symbol[:i], symbol[i+1:])
 	}
 	return lower + ".us", upper, nil
+}
+
+// exchangeCode maps a ticker with an exchange suffix (VOD.L) to its Stooq
+// code (vod.uk). Bars keep the symbol as asked (VOD.L), so they are stored
+// under the name the caller stores. A US code (xyz.us) is labelled XYZ, the
+// form US tickers are stored under.
+func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
+	upper := strings.ToUpper(ticker + "." + suffix)
+	stooqSuffix, ok := stooqExchangeSuffix[strings.ToUpper(suffix)]
+	if !ok {
+		return "", "", fmt.Errorf("stooq GetOHLC %s: %w (exchange suffix .%s)", upper, ErrStooqExchange, suffix)
+	}
+	code = strings.ToLower(ticker) + "." + stooqSuffix
+	if stooqSuffix == "us" {
+		return code, strings.ToUpper(ticker), nil
+	}
+	return code, upper, nil
 }
 
 func (c *StooqClient) GetAsset(string) (*pb.Asset, error) {

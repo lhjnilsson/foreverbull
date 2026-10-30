@@ -354,3 +354,47 @@ func date(t *testing.T, s string) time.Time {
 	require.NoError(t, err)
 	return d
 }
+
+// A symbol with an exchange suffix is asked for by Stooq's code for that
+// exchange, and its bars keep the symbol as asked, so they are stored under it.
+func TestGetOHLCExchangeSuffixMapsToStooqCode(t *testing.T) {
+	t.Parallel()
+	for asked, want := range map[string]struct{ code, label string }{
+		"VOD.L":  {"vod.uk", "VOD.L"},
+		"vod.l":  {"vod.uk", "VOD.L"},
+		"VOD.UK": {"vod.uk", "VOD.UK"},
+		"SAP.DE": {"sap.de", "SAP.DE"},
+		"xyz.us": {"xyz.us", "XYZ"},
+	} {
+		var got stooqReq
+		srv := serveStooq(t, readFixture(t, "aapl.us.csv"), http.StatusOK, &got)
+		client := newStooqClient(t, srv.URL)
+		start := date(t, "2021-01-04")
+		end := date(t, "2021-01-06")
+		bars, err := client.GetOHLC(asked, start, &end)
+		require.NoError(t, err, asked)
+		require.Equal(t, want.code, got.s, asked)
+		require.NotEmpty(t, bars, asked)
+		for _, bar := range bars {
+			require.Equal(t, want.label, bar.Symbol, asked)
+		}
+	}
+}
+
+// An exchange suffix Stooq has no known code for is refused before any
+// request, instead of being sent as written and labelled without its suffix.
+func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
+	t.Parallel()
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	t.Cleanup(srv.Close)
+	client := newStooqClient(t, srv.URL)
+	start := date(t, "2021-01-04")
+	end := date(t, "2021-01-06")
+	_, err := client.GetOHLC("SHOP.TO", start, &end)
+	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
+	require.Contains(t, err.Error(), "SHOP.TO")
+	require.False(t, called)
+}
