@@ -38,8 +38,8 @@ func (test *IngestCommandTest) TestIngestStopsAtItsTimeLimit() {
 	began := time.Now()
 	err := test.ingestSymbols(md, "AAPL", "SLOW", "LATER")
 	test.Less(time.Since(began), 10*time.Second, "the limit must end the ingest")
-	test.Require().EqualError(err, "yahoo took too long to respond for SLOW, so the price import stopped. "+
-		"Prices imported before it were kept. Try again later, or use another provider with --provider.")
+	test.Require().EqualError(err, "The price import hit the 2-hour limit at SLOW. Prices imported before SLOW were kept. "+
+		"Import fewer symbols at a time, or try again later.")
 
 	kept, err := test.ohlc.List(context.Background(), "yahoo", []string{"AAPL"}, time.Now(), 0)
 	test.Require().NoError(err)
@@ -55,5 +55,5 @@ func (test *IngestCommandTest) TestIngestReportsAProviderTimeout() {
 
 	err := test.ingestSymbols(md, "AAPL")
 	test.Require().EqualError(err, "yahoo took too long to respond for AAPL, so the price import stopped. "+
-		"Prices imported before it were kept. Try again later, or use another provider with --provider.")
+		"Prices imported before AAPL were kept. Try again later.")
 }

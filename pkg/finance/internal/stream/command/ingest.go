@@ -132,6 +132,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 // ingestTimeLimit bounds one ingest command. The ingest fetches one symbol
 // at a time, and at the shared provider rates 10,000 symbols take about an
 // hour and a half; past this a hung provider can't hold the task forever.
+// ingestStopped names it as the 2-hour limit, so change that copy with it.
 // Tests shorten it.
 var ingestTimeLimit = 2 * time.Hour
 
@@ -141,7 +142,7 @@ var errIngestTimeLimit = errors.New("ingest time limit reached")
 
 // ingestStopped is the task-state text when symbol didn't finish because the
 // ingest's time limit ended or its provider call timed out, or nil for any
-// other failure. A database error is a timeout only once the limit ended.
+// other failure. The limit and a slow provider have different sentences. A database error is a timeout only once the limit ended.
 func ingestStopped(ctx context.Context, provider, symbol string, err error) error {
 	limitReached := errors.Is(context.Cause(ctx), errIngestTimeLimit)
 	var stored *repository.StoreError
@@ -151,9 +152,12 @@ func ingestStopped(ctx context.Context, provider, symbol string, err error) erro
 	}
 	log.Warn().Err(redact.URLError(err)).Str("provider", provider).Str("symbol", symbol).
 		Bool("time_limit", limitReached).Msg("ingest stopped: provider took too long")
-	return fmt.Errorf("%w, so the price import stopped. Prices imported before it were kept. "+ //nolint:staticcheck // ST1005: user-facing copy ends with a period
-		"Try again later, or use another provider with --provider.",
-		&marketdata.TimeoutError{Provider: provider, Symbol: symbol})
+	if limitReached {
+		return fmt.Errorf("The price import hit the 2-hour limit at %s. Prices imported before %s were kept. "+ //nolint:staticcheck // ST1005: agreed user-facing copy
+			"Import fewer symbols at a time, or try again later.", symbol, symbol)
+	}
+	return fmt.Errorf("%w, so the price import stopped. Prices imported before %s were kept. Try again later.", //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+		&marketdata.TimeoutError{Provider: provider, Symbol: symbol}, symbol)
 }
 
 // assetProvider is the provider GetAsset asks. The marketdata dependency is
