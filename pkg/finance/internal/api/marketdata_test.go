@@ -399,6 +399,25 @@ func (suite *MarketdataTest) TestGetOHLCReadsStoredBars() {
 	suite.InDelta(102, rsp.Bars[1].Close, 0.0001)
 }
 
+// GetOHLC for BRK.B reads the bars stored as BRKB.
+func (suite *MarketdataTest) TestGetOHLCReadsShareClassUnderStoredName() {
+	ctx := context.Background()
+	assetRepo := repository.Asset{Conn: suite.pgx}
+	suite.Require().NoError(assetRepo.Store(ctx, "BRKB", "Berkshire Hathaway B"))
+	ohlcRepo := repository.OHLC{Conn: suite.pgx}
+	day := time.Date(2021, 3, 1, 0, 0, 0, 0, time.UTC)
+	suite.Require().NoError(ohlcRepo.Store(ctx, "yahoo", "BRKB", day, 1, 2, 0.5, 250, 10))
+
+	rsp, err := suite.client.GetOHLC(ctx, &servicePb.GetOHLCRequest{
+		Symbols: []string{"BRK.B"},
+		AsOf:    timestamppb.New(day),
+	})
+	suite.Require().NoError(err)
+	suite.Require().Len(rsp.Bars, 1)
+	suite.Equal("BRKB", rsp.Bars[0].GetSymbol())
+	suite.InDelta(250, rsp.Bars[0].GetClose(), 0.0001)
+}
+
 func (suite *MarketdataTest) TestGetOHLCRejectsEmptySymbols() {
 	_, err := suite.client.GetOHLC(context.Background(), &servicePb.GetOHLCRequest{
 		AsOf: timestamppb.Now(),

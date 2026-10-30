@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -278,9 +279,27 @@ const (
 	defaultOHLCListLimit = 252
 )
 
+// storedSymbols maps each asked symbol to the name its bars are stored
+// under (BRK.B and BRK-B read BRKB), once each. Bars come back under the
+// stored name.
+func storedSymbols(symbols []string) []string {
+	out := make([]string, 0, len(symbols))
+	seen := make(map[string]struct{}, len(symbols))
+	for _, symbol := range symbols {
+		name := marketdata.StoredSymbol(symbol)
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
 // List returns stored bars for provider and symbols with time <= asOf,
 // at most limit bars per symbol (newest first in the window, returned oldest
-// first). limit 0 means 252. Symbols with no bars are omitted.
+// first). limit 0 means 252. Symbols with no bars are omitted. A listed
+// share class is read under its stored name (BRK.B reads BRKB).
 func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("symbols: empty")
@@ -297,6 +316,7 @@ func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asO
 	if limit > maxOHLCListLimit {
 		return nil, fmt.Errorf("limit: at most %d", maxOHLCListLimit)
 	}
+	symbols = storedSymbols(symbols)
 	provider = priceProvider(provider)
 
 	rows, err := db.Conn.Query(ctx, `
@@ -353,7 +373,8 @@ const stockDataWindow = time.Duration(defaultOHLCListLimit*2+30) * 24 * time.Hou
 // ListResolved returns stored bars for the tickers the algorithm asked for.
 // A renamed ticker (FB then META, one ISIN) is labeled with the asked symbol.
 // time is inside (asOf-window, asOf], at most limit bars per symbol. limit 0
-// means 252. An empty symbol list returns no bars. Errors do not include a
+// means 252. An empty symbol list returns no bars. A listed share class is
+// read under its stored name (BRK.B reads BRKB). Errors do not include a
 // database URL.
 func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
@@ -368,6 +389,7 @@ func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []str
 	if limit > maxOHLCListLimit {
 		return nil, fmt.Errorf("limit: at most %d", maxOHLCListLimit)
 	}
+	symbols = storedSymbols(symbols)
 	provider = priceProvider(provider)
 	asOf = asOf.UTC()
 	since := asOf.Add(-stockDataWindow)

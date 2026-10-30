@@ -44,13 +44,23 @@ func parseShareClass(symbol string) (shareClass, bool) {
 	return shareClass{}, false
 }
 
-// StoredSymbol is the one name a share class is stored under, however the
-// universe file spells it: BRK.B, BRK-B, BRK/B, BRK B and BRKB all store as
-// BRKB, so two files that spell a class differently are the same universe.
-// Every other symbol is returned unchanged.
+// StoredSymbol is the one name a listed share class is stored under,
+// however the universe file spells it: BRK.B, BRK-B, BRK/B, BRK B and BRKB
+// all store as BRKB. Only names in shareClassTickers are normalised. Any
+// other symbol, including one with an exchange suffix such as VOD.L, is
+// returned exactly as typed.
+//
+// It does not use parseShareClass, which reads every one-letter suffix as a
+// class when it builds the provider request.
 func StoredSymbol(symbol string) string {
-	if sc, ok := parseShareClass(symbol); ok {
-		return sc.company + sc.class
+	upper := strings.ToUpper(strings.TrimSpace(symbol))
+	if _, ok := shareClassTickers[upper]; ok {
+		return upper
+	}
+	if m := separatedShareClass.FindStringSubmatch(upper); m != nil {
+		if _, ok := shareClassTickers[m[1]+m[2]]; ok {
+			return m[1] + m[2]
+		}
 	}
 	return symbol
 }

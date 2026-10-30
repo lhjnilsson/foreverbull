@@ -300,6 +300,8 @@ Empty universe → empty slice (algorithm sees no names). That is different from
 
 A backtest created from a symbol list (`fbull backtest create --file`, for example `examples/demo.yaml`) has no `universe_member` rows. Its universe is the enabled `backtest_period_asset` rows of the period whose `[start_date, end_date]` holds the UTC date of `t`, sorted, each symbol once. That is the set `DownloadFinancialData` and `SQLIngester` put in the bundle. A disabled asset has no bars, so it is not passed.
 
+A share class is stored under one name. `BRK.B`, `BRK-B`, `BRK/B` and `BRKB` in the file are all stored, downloaded and read as `BRKB` (`finance.StoredSymbol`). Only the classes listed in `shareClassTickers` (`pkg/finance/internal/suppliers/marketdata/symbol.go`, e.g. `BRKA`, `BRKB`, `BFB`) are renamed. Any other symbol, such as `VOD.L`, is stored exactly as typed. A bar read (`GetOHLC`, the session's bar lookup) for `BRK.B` returns the `BRKB` bars, labelled `BRKB`.
+
 The session decides once, before the first bar: any `universe_member` row for the backtest means §7.2, and an empty universe at `t` stays `[]`. No rows means this section. A failed read of the backtest or its membership fails the run before Zipline starts.
 
 `RunBacktestRequest.benchmark` is the stored `backtest.benchmark` for both kinds. An empty benchmark makes Zipline use a flat zero series, so `benchmark_period_return` would be stored as `0`.

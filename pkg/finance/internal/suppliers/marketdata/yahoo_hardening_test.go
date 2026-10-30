@@ -68,6 +68,21 @@ func TestYahooEscapesSymbolInEveryURL(t *testing.T) {
 	}
 }
 
+// An index symbol keeps its caret, escaped, on the chart request.
+func TestYahooChartEscapesIndexCaret(t *testing.T) {
+	t.Parallel()
+	chartSrv, chartURIs := uriServer(t, `{"chart":{"result":[{"meta":{"currency":"USD","symbol":"^DJI"},
+"timestamp":[1704205800],"indicators":{"quote":[{"open":[1.0],"high":[1.0],"low":[1.0],"close":[1.0],"volume":[1]}]}}]}}`)
+	client := &YahooClient{crumb: "test", chartURL: chartSrv.URL + "/"}
+
+	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
+	_, err := client.GetOHLC("^DJI", start, &end)
+	require.NoError(t, err)
+	require.Len(t, chartURIs(), 1)
+	require.True(t, strings.HasPrefix(chartURIs()[0], "/%5EDJI?crumb=test&period1="), chartURIs()[0])
+}
+
 // getISIN uses the client's timeout; a server that never answers fails the
 // lookup instead of hanging the download.
 func TestGetISINTimesOutOnSlowServer(t *testing.T) {

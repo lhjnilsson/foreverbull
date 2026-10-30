@@ -412,6 +412,43 @@ func (test *OHLCTests) TestListRespectsAsOfLimitAndProvider() {
 	test.Empty(missing)
 }
 
+// A share class is stored as BRKB; a read for BRK.B or BRK-B finds those
+// rows. VOD.L is not a listed class and is read exactly as typed.
+func (test *OHLCTests) TestListReadsShareClassUnderStoredName() {
+	ctx := context.Background()
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "BRKB", "Berkshire Hathaway B"))
+	test.Require().NoError(assets.Store(ctx, "VOD.L", "Vodafone"))
+	day := time.Date(2021, 3, 1, 21, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "BRKB", day, 1, 2, 0.5, 250, 10))
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "VOD.L", day, 1, 2, 0.5, 90, 10))
+
+	for _, asked := range []string{"BRK.B", "BRK-B", "BRKB"} {
+		bars, err := test.ohlcStorage.List(ctx, "yahoo", []string{asked}, day, 10)
+		test.Require().NoError(err, asked)
+		test.Require().Len(bars, 1, asked)
+		test.Equal("BRKB", bars[0].GetSymbol(), asked)
+		test.InDelta(250, bars[0].GetClose(), 0.0001, asked)
+
+		resolved, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{asked}, day, 10)
+		test.Require().NoError(err, asked)
+		test.Require().Len(resolved, 1, asked)
+		test.Equal("BRKB", resolved[0].GetSymbol(), asked)
+	}
+
+	both, err := test.ohlcStorage.List(ctx, "yahoo", []string{"BRK.B", "BRKB"}, day, 10)
+	test.Require().NoError(err)
+	test.Len(both, 1)
+
+	vod, err := test.ohlcStorage.List(ctx, "yahoo", []string{"VOD.L"}, day, 10)
+	test.Require().NoError(err)
+	test.Require().Len(vod, 1)
+	test.Equal("VOD.L", vod[0].GetSymbol())
+	none, err := test.ohlcStorage.List(ctx, "yahoo", []string{"VODL"}, day, 10)
+	test.Require().NoError(err)
+	test.Empty(none)
+}
+
 func (test *OHLCTests) TestListResolvedFollowsTickerAliases() {
 	ctx := context.Background()
 	instruments := repository.Instruments{Conn: test.conn}
