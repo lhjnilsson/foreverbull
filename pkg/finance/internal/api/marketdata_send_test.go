@@ -38,7 +38,7 @@ func (s *countingStream) Send(rsp *servicePb.DownloadHistoricalDataResponse) err
 
 func TestDownloadSenderSerialisesSend(t *testing.T) {
 	stream := &countingStream{}
-	sender := &downloadSender{stream: stream, stop: func() {}}
+	sender := newDownloadSender(stream, func() {})
 
 	const workers, perWorker = downloadWorkers, 50
 	var wg sync.WaitGroup
@@ -99,4 +99,31 @@ func TestDownloadHistoricalDataStopsAfterSendFails(t *testing.T) {
 	require.ErrorIs(t, err, errClientGone)
 	assert.Equal(t, int32(1), stream.sends.Load(), "nothing is sent after the failed Send")
 	assert.LessOrEqual(t, lookups.Load(), int32(downloadWorkers), "no symbol starts after the failed Send")
+}
+
+// A sender with no stop (built without newDownloadSender) must not panic on
+// its first failed Send; it records the error and sends nothing more.
+func TestDownloadSenderWithoutStopDoesNotPanic(t *testing.T) {
+	stream := &failingStream{}
+	sender := &downloadSender{stream: stream}
+
+	require.NotPanics(t, func() {
+		sender.send(&servicePb.DownloadHistoricalDataResponse{Symbol: "X"})
+		sender.send(&servicePb.DownloadHistoricalDataResponse{Symbol: "Y"})
+	})
+	require.ErrorIs(t, sender.sendErr(), errClientGone)
+	assert.Equal(t, int32(1), stream.sends.Load())
+}
+
+// newDownloadSender wires stop: the first failed Send calls it once.
+func TestNewDownloadSenderStopsOnFailedSend(t *testing.T) {
+	var stops atomic.Int32
+	stream := &failingStream{}
+	sender := newDownloadSender(stream, func() { stops.Add(1) })
+
+	sender.send(&servicePb.DownloadHistoricalDataResponse{Symbol: "X"})
+	sender.send(&servicePb.DownloadHistoricalDataResponse{Symbol: "Y"})
+
+	require.ErrorIs(t, sender.sendErr(), errClientGone)
+	assert.Equal(t, int32(1), stops.Load())
 }
