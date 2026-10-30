@@ -32,7 +32,7 @@ This complements [Programmer errors and operating errors](style.md#programmer-er
 
 ## Commits
 
-Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you create a commit. **The subject starts with one gitmoji**, then `type(scope): outcome` in the imperative. The emoji is the intent (✨ `feat`, 🐛 `fix`, ⚡️ `perf`, 📝 `docs`, ✅ `test`; a narrower match such as 💚 `fix(ci)` or 🚨 for a linter beats the generic one). The body says why. One logical change per commit. Leave generated cookiecutter project trees out.
+Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you create a commit. **The subject starts with one gitmoji**, then `type(scope): outcome` in the imperative. The emoji is the intent (✨ `feat`, 🐛 `fix`, ⚡️ `perf`, 📝 `docs`, ✅ `test`; a narrower match such as 💚 `fix(ci)` or 🚨 for a linter beats the generic one). The body says why. One logical change per commit. Every commit lands on `main` as written (Rebase and merge only), so autosquash `fixup!` and `squash!` commits before a PR leaves draft. Leave generated cookiecutter project trees out.
 
 📝 Documentation uses that same emoji, once per page, on the heading or callout a reader would be wrong to skip. The rest of the page stays plain. See [In documentation](style.md#in-documentation).
 
