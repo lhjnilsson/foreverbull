@@ -200,7 +200,7 @@ func (fs *MarketdataServer) downloadSymbol(
 			if !noBarsAnswer(err) {
 				// The request failed; we don't know whether the symbol has
 				// prices, so report the failure, not "no price data".
-				failSymbol(ctx, sender, rsp, err)
+				failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get ohlc", err))
 				return nil
 			}
 			ohlcs = nil
@@ -215,7 +215,11 @@ func (fs *MarketdataServer) downloadSymbol(
 			}
 			// Only noPriceDataError selects the "no price data for … between …"
 			// sentence (and leave-out in a symbol-list backtest). A failed
-			// lookup or GetOHLC under another ticker keeps its own text.
+			// lookup, search or GetOHLC under another ticker is a failed
+			// download.
+			if !errors.Is(fetchErr, errNoPriceData) {
+				fetchErr = internalDownloadError(symbol, "later ticker", fetchErr)
+			}
 			failSymbol(ctx, sender, rsp, fetchErr)
 			return nil
 		}

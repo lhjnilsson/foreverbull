@@ -465,6 +465,12 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 	suite.True(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
 }
 
+// downloadFailedText is the STATUS_ERROR text for a failed price request
+// or ticker search. The raw cause is logged, not sent.
+func downloadFailedText(symbol string) string {
+	return "couldn't download prices for " + symbol + ". Try again in a few minutes, or use another provider with --provider."
+}
+
 // yahooNotFound is Yahoo's answer for a ticker it has no chart for. It is
 // an answer, not a failure, so the download may try another ticker or
 // report no price data.
@@ -474,7 +480,7 @@ func yahooNotFound(symbol string) error {
 }
 
 // A GetOHLC failure (5xx, network, timeout) says nothing about whether the
-// symbol has prices. It must be reported with its own text, not as "no
+// symbol has prices. It must be reported as a failed download, not as "no
 // price data", so a symbol-list create fails instead of leaving it out. No
 // other ticker is tried.
 func (suite *MarketdataTest) TestDownloadHistoricalDataReportsGetOHLCFailure() {
@@ -495,8 +501,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsGetOHLCFailure() {
 	suite.Require().NoError(err)
 	suite.Equal("AAPL", msg.GetSymbol())
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
-	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
-	suite.Contains(msg.GetError(), "context deadline exceeded")
+	suite.Equal(downloadFailedText("AAPL"), msg.GetError())
+	suite.NotContains(msg.GetError(), "deadline")
 	_, err = rsp.Recv()
 	suite.Require().ErrorIs(err, io.EOF)
 	suite.marketdata.AssertNotCalled(suite.T(), "SearchAsset", mock.Anything)
@@ -536,8 +542,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerGetOHLC
 	suite.Require().NoError(err)
 	suite.Equal("FB", msg.GetSymbol())
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
-	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
-	suite.Contains(msg.GetError(), "503 Service Unavailable")
+	suite.Equal(downloadFailedText("FB"), msg.GetError())
+	suite.NotContains(msg.GetError(), "503")
 }
 
 // Yahoo sometimes answers a listed symbol (BK) with no data. Download must
@@ -642,8 +648,9 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsSearchFailureWhenN
 	suite.Require().NoError(err)
 	suite.Equal("FB", msg.GetSymbol())
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
-	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
-	suite.Contains(msg.GetError(), "503 Service Unavailable")
+	suite.Equal(downloadFailedText("FB"), msg.GetError())
+	suite.NotContains(msg.GetError(), "search for the current ticker")
+	suite.NotContains(msg.GetError(), "503")
 	_, err = rsp.Recv()
 	suite.Require().ErrorIs(err, io.EOF)
 }

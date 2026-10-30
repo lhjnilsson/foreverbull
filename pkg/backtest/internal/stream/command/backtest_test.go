@@ -902,8 +902,9 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenPriceRequestF
 	var notice *stream.Notice
 	test.Require().False(errors.As(err, &notice), "a failed price request must not leave the symbol out: %v", err)
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'test-backtest': couldn't download prices for XYZ. "+
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+		"Couldn't load data for backtest 'test-backtest': the price download failed for XYZ. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
+	test.NotContains(err.Error(), "deadline")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -941,8 +942,12 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenTickerSearchF
 	var notice *stream.Notice
 	test.Require().False(errors.As(err, &notice), "a failed ticker search must not leave the symbol out: %v", err)
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'test-backtest': couldn't download prices for FB. "+
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+		"Couldn't load data for backtest 'test-backtest': the price download failed for FB. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
+	// The raw cause stays in the finance log, never in the step message.
+	test.NotContains(err.Error(), "search for the current ticker")
+	test.NotContains(err.Error(), "503")
+	test.NotContains(err.Error(), "US30303M1027")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)

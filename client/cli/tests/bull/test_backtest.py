@@ -596,6 +596,31 @@ def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monk
     assert "grpc" not in result.output.lower()
 
 
+_SEARCH_FAILED_COPY = (
+    "Couldn't load data for backtest 'from_file': the price download failed for FB. The backtest wasn't saved. "
+    "Try again in a few minutes, or use another provider with --provider."
+)
+
+
+def test_backtest_create_ticker_search_failure_prints_exact_copy_and_exits_1(monkeypatch):
+    """FB had no bars and the search for its current ticker failed: create fails, nothing is left out."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_SEARCH_FAILED_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_SEARCH_FAILED_COPY}\n"
+    assert "couldn't download prices" not in result.output.lower()
+    assert "search for the current ticker" not in result.output.lower()
+    assert "503" not in result.output
+    assert "left out" not in result.output.lower()
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "
