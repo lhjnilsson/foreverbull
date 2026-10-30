@@ -653,8 +653,9 @@ func leaveOutUnpriced(ctx context.Context, backtests repository.Backtest, b *bac
 ) error {
 	slices.Sort(unpriced)
 	if !hasPricedAsset(b, unpriced) {
+		named := nameSymbols(unpriced)
 		return discardSymbolDownloadError(ctx, backtests, b.GetName(), backtestID,
-			strings.Join(unpriced, ", "), start, end, noPriceDataPrefix+strings.Join(unpriced, ", "))
+			named, start, end, noPriceDataPrefix+named)
 	}
 	if err := disableUnpriced(ctx, backtests, b, backtestID, unpriced); err != nil {
 		return discardFailedBacktest(ctx, backtests, b.GetName(), backtestID, err)
@@ -693,6 +694,19 @@ func disableUnpriced(ctx context.Context, backtests repository.Backtest, b *back
 		return fmt.Errorf("disabling the symbols left out changed %d period assets, want %d", got, want)
 	}
 	return nil
+}
+
+// namedSymbolsShown is how many symbols a failure names before "and N more",
+// the same cap as the CLI's folded left-out line.
+const namedSymbolsShown = 5
+
+// nameSymbols joins symbols with ", ", naming at most namedSymbolsShown,
+// e.g. "AAA, BBB, CCC, DDD, EEE and 2 more".
+func nameSymbols(symbols []string) string {
+	if len(symbols) <= namedSymbolsShown {
+		return strings.Join(symbols, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(symbols[:namedSymbolsShown], ", "), len(symbols)-namedSymbolsShown)
 }
 
 // hasPricedAsset reports whether an enabled period asset is not in unpriced.
