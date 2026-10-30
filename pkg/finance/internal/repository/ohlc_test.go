@@ -639,6 +639,51 @@ func (test *OHLCTests) TestReplaceRange() {
 	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-28": 125.5, "2020-08-29": 126}, test.storedCloses())
 }
 
+// A database error part way through ReplaceRange rolls the whole replace back,
+// so a failed re-scale never leaves some days on the new scale, some on the
+// old, or a day missing. A test-only trigger raises once earlier statements of
+// the replace have already run: on the upsert of the last day, or on the
+// DELETE of a day the new bars leave out, which runs after every upsert.
+func (test *OHLCTests) TestReplaceRangeRollsBackOnDBFailure() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	oldRows := map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}
+	cases := map[string]string{
+		"upsert of the last day": `CREATE TRIGGER fail_replace BEFORE INSERT OR UPDATE ON ohlc
+			FOR EACH ROW WHEN (NEW.time = '2020-08-29' AND NEW.close < 500)
+			EXECUTE FUNCTION fail_replace()`,
+		"delete after every upsert": `CREATE TRIGGER fail_replace BEFORE DELETE ON ohlc
+			FOR EACH ROW EXECUTE FUNCTION fail_replace()`,
+	}
+	for name, trigger := range cases {
+		_, err := test.conn.Exec(ctx, `DROP TRIGGER IF EXISTS fail_replace ON ohlc; DELETE FROM ohlc`)
+		test.Require().NoError(err, name)
+		for i := 0; i < 4; i++ {
+			test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100), name)
+		}
+		_, err = test.conn.Exec(ctx, `CREATE OR REPLACE FUNCTION fail_replace() RETURNS trigger AS $$
+			BEGIN RAISE EXCEPTION 'forced failure inside ReplaceRange'; END;
+			$$ LANGUAGE plpgsql`)
+		test.Require().NoError(err, name)
+		_, err = test.conn.Exec(ctx, trigger)
+		test.Require().NoError(err, name)
+
+		// Day 1 is left out, so the DELETE has a row to remove.
+		err = test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+			[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
+		test.Require().ErrorContains(err, "forced failure inside ReplaceRange", name)
+
+		_, err = test.conn.Exec(ctx, `DROP TRIGGER fail_replace ON ohlc`)
+		test.Require().NoError(err, name)
+		test.Equal(oldRows, test.storedCloses(), name)
+	}
+}
+
 // A bad bar anywhere in the batch refuses the whole replace: no stored row is
 // changed or removed, and the InvalidPriceError comes back.
 func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {
