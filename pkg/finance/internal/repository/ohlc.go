@@ -239,16 +239,21 @@ type txBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
+// ErrNoTransaction is returned by StoreBars when its connection can't open a
+// transaction. Bars are never stored row by row outside one, because a DB
+// error part way through would leave a gap in the cached history.
+var ErrNoTransaction = errors.New("ohlc: connection can't open a transaction")
+
 // StoreBars validates and stores one symbol's batch in a single transaction,
 // so a DB error on any row leaves none of the batch behind. A connection that
-// can't open a transaction stores row by row.
+// can't open a transaction is an error; nothing is stored.
 func (db *OHLC) StoreBars(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
 	if err := ValidateBars(provider, symbol, bars); err != nil {
 		return err
 	}
 	conn, ok := db.Conn.(txBeginner)
 	if !ok {
-		return db.storeEach(ctx, provider, symbol, bars)
+		return ErrNoTransaction
 	}
 	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
 		inTx := OHLC{Conn: tx}
