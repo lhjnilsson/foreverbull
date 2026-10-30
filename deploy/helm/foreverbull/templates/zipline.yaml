@@ -55,6 +55,22 @@ spec:
                   key: postgres-password
             - name: DATABASE_URL
               value: {{ include "foreverbull.postgresURL" . | quote }}
+            {{- /* Zipline uploads ingestions and results to MinIO. The client has
+            no default endpoint or keys, so every one is set here. */}}
+            - name: STORAGE_ENDPOINT
+              value: {{ printf "minio:%v" .Values.minio.port | quote }}
+            - name: STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-accessKey
+            - name: STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "foreverbull.credentialsSecretName" . }}
+                  key: minio-secretKey
+            - name: STORAGE_SECURE
+              value: "false"
           startupProbe:
             exec:
               command: ["grpc_health_probe", {{ printf "-addr=:%v" .Values.zipline.grpcPort | quote }}]
