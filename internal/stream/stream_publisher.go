@@ -136,6 +136,9 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 					return errors.New(state.GetError())
 				case pb.State_STATE_CANCELED:
 					return fmt.Errorf("canceled")
+				default:
+					// PUBLISHED, RECEIVED and any other state: the task is
+					// not done yet, so keep waiting.
 				}
 			}
 		}, stop, nil
