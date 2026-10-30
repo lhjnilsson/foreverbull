@@ -253,6 +253,27 @@ func (test *OHLCTests) TestSyncRefusesAGapFillOnAnotherScale() {
 	}
 }
 
+// Only the check day next to the gap moved: the stored day before the gap
+// (08-25) comes back more than rescaleTolerance off while the last stored day
+// (08-28) still matches. That alone must replace the whole history, so the
+// filled 08-26 can't be put next to rows on another scale.
+func (test *OHLCTests) TestSyncGapFillReplacesWhenOnlyTheDayBeforeTheGapMoved() {
+	test.storedAAPLWithoutAug26()
+
+	provider := map[string]float64{
+		"2020-08-24": 125.8575, "2020-08-25": 126.10, "2020-08-26": 126.5225,
+		"2020-08-27": 125.01, "2020-08-28": 124.8075, "2020-08-31": 129.04,
+	}
+	var spans [][2]string
+	err := test.ohlcStorage.Sync(context.Background(), "yahoo", "ABC", gapDay(24), endDay(gapDay(31), 0),
+		fetchCloses(provider, &spans))
+	test.Require().NoError(err)
+
+	test.Equal([][2]string{{"2020-08-25", "2020-08-31"}, {"2020-08-24", "2020-08-31"}}, spans,
+		"the gap fetch, then the full refetch")
+	test.Equal(provider, test.storedCloses())
+}
+
 // A gap fill never rewrites a stored row before the last stored day: the
 // provider sends 08-27 slightly off (within rescaleTolerance), the checks
 // pass, 08-26 is filled and 08-27 stays 125.01. The last stored day (08-28)
