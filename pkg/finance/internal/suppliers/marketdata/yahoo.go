@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -30,6 +31,16 @@ const defaultYahooQuoteURL = "https://query2.finance.yahoo.com/v10/finance/quote
 // defaultISINSearchURL is the ISIN lookup; the symbol is appended to it.
 const defaultISINSearchURL = "https://markets.businessinsider.com/ajax/markets-insider/search/"
 
+// yahooHTTPTimeout bounds every Yahoo and ISIN request, so a provider that
+// stops answering fails the symbol instead of hanging the download.
+const yahooHTTPTimeout = 30 * time.Second
+
+// isinBodyLimit caps the ISIN search answer read into memory.
+const isinBodyLimit = 1 << 20
+
+// yahooHTTPClient is shared by every YahooClient that does not set its own.
+var yahooHTTPClient = &http.Client{Timeout: yahooHTTPTimeout}
+
 type YahooClient struct {
 	cookie string
 	crumb  string
@@ -38,6 +49,15 @@ type YahooClient struct {
 	chartURL string
 	quoteURL string
 	isinURL  string
+	// httpClient replaces the shared client, so tests can use a short timeout.
+	httpClient *http.Client
+}
+
+func (y *YahooClient) client() *http.Client {
+	if y.httpClient != nil {
+		return y.httpClient
+	}
+	return yahooHTTPClient
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
@@ -90,7 +110,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 		req.Header.Add("Cookie", y.cookie)
 	}
 
-	rsp, err := http.DefaultClient.Do(req)
+	rsp, err := y.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
@@ -121,8 +141,11 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 	if isinURL == "" {
 		isinURL = defaultISINSearchURL
 	}
-	url := isinURL + symbol
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, isinURL+url.PathEscape(symbol), nil)
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %w", err)
+	}
+	resp, err := y.client().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
 	}
@@ -133,7 +156,7 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 	}
 
 	var data map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, isinBodyLimit)).Decode(&data); err != nil {
 		return "", fmt.Errorf("error decoding response: %w", err)
 	}
 
@@ -175,9 +198,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	if quoteURL == "" {
 		quoteURL = defaultYahooQuoteURL
 	}
-	url := quoteURL + yahooSymbol(symbol)
-
-	resp, err := y.doRequest(url, "modules=quoteType")
+	resp, err := y.doRequest(quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -349,7 +370,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if chartURL == "" {
 		chartURL = defaultYahooChartURL
 	}
-	url := chartURL + yahooSymbol(symbol)
+	chart := chartURL + url.PathEscape(yahooSymbol(symbol))
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
@@ -361,7 +382,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 
 	params = append(params, "interval=1d")
 
-	resp, err := y.doRequest(url, params...)
+	resp, err := y.doRequest(chart, params...)
 	if err != nil {
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
 	}
