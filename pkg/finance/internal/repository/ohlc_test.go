@@ -684,6 +684,26 @@ func (test *OHLCTests) TestReplaceRangeRollsBackOnDBFailure() {
 	}
 }
 
+// ReplaceRange never writes outside a transaction: a connection that can't
+// open one returns ErrNoTransaction and leaves every stored row as it was.
+func (test *OHLCTests) TestReplaceRangeErrorsWithoutTransaction() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	db := repository.OHLC{Conn: noBegin{conn: test.conn}}
+	err := db.ReplaceRange(ctx, "yahoo", "ABC", []*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
+	test.Require().ErrorIs(err, repository.ErrNoTransaction)
+
+	test.Equal(map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}, test.storedCloses())
+}
+
 // A bad bar anywhere in the batch refuses the whole replace: no stored row is
 // changed or removed, and the InvalidPriceError comes back.
 func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {

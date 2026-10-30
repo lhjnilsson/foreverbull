@@ -240,8 +240,8 @@ type txBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
-// ErrNoTransaction is returned by StoreBars when its connection can't open a
-// transaction. Bars are never stored row by row outside one, because a DB
+// ErrNoTransaction is returned by StoreBars and ReplaceRange when their
+// connection can't open a transaction. Bars are never stored row by row outside one, because a DB
 // error part way through would leave a gap in the cached history.
 var ErrNoTransaction = errors.New("ohlc: connection can't open a transaction")
 
@@ -332,7 +332,8 @@ func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last
 // that bars leave out are removed. Every bar must pass ValidateBars; callers
 // validate the batch before calling, and ReplaceRange checks it again before
 // it opens the transaction, so a refused bar leaves every stored row as it was
-// and the InvalidPriceError is returned.
+// and the InvalidPriceError is returned. A connection that can't open a
+// transaction returns ErrNoTransaction and nothing is written or removed.
 func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
 	if len(bars) == 0 {
 		return nil
@@ -342,7 +343,7 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars 
 	}
 	begin, ok := db.Conn.(txBeginner)
 	if !ok {
-		return fmt.Errorf("failed to replace ohlc: connection cannot begin a transaction")
+		return ErrNoTransaction
 	}
 	tx, err := begin.Begin(ctx)
 	if err != nil {

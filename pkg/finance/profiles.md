@@ -109,6 +109,7 @@ Ingest keeps one scale per provider and symbol. A bar is bad when its open, high
 - When the requested start is before the stored history, ingest fetches from the start through the last stored day and replaces that range the same way.
 - Every batch is checked with `repository.ValidateBars` before anything is written, for an upsert and for a replace. If one bar is bad, ingest writes nothing for that symbol, leaves every stored row as it was, and returns the `InvalidPriceError` naming the provider, symbol, and day. A bad bar never turns into a missing day.
 - Inside a replace, a stored day the provider no longer returns is removed.
+- Ingest writes bars only inside a transaction: new days go through `OHLC.StoreBars` and replaced ranges through `OHLC.ReplaceRange`. A connection that can't open a transaction gets `ErrNoTransaction`, and nothing is written or removed.
 - A requested range that is already stored is not fetched.
 
 ## CLI
