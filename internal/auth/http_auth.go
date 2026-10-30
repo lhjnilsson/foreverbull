@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
@@ -185,17 +187,41 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 		web.Unauthorized(w)
 		return
 	}
+	// The cookie is cleared on both paths so the browser stops sending it even
+	// when the server-side revoke failed.
+	ClearSessionCookie(w, r)
 	cookie, err := r.Cookie(sessionCookieName(r))
 	if err == nil {
 		id, _, splitErr := splitCookie(cookie.Value)
 		if splitErr == nil {
-			_, _ = h.db.Exec(r.Context(), `
+			_, revokeErr := h.db.Exec(r.Context(), `
 				UPDATE browser_session SET revoked_at = $2
 				WHERE id = $1 AND account_id = $3 AND revoked_at IS NULL`, id, h.now(), account.ID)
+			if revokeErr != nil {
+				h.logf("logout account=%s result=revoke_failed err=%s", account.ID, revokeErrClass(revokeErr))
+				web.StatusJSON(w, http.StatusInternalServerError, `{"error":"internal"}`)
+				return
+			}
 		}
 	}
-	ClearSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// revokeErrClass names a failed session revoke without the error text: a
+// Postgres message can quote the session id from the cookie, and a connection
+// error can carry the database URL and its password.
+func revokeErrClass(err error) string {
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr):
+		return "sqlstate=" + pgErr.Code
+	case errors.Is(err, context.Canceled):
+		return "context_canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	default:
+		return fmt.Sprintf("%T", err)
+	}
 }
 
 func (h *handlers) me(w http.ResponseWriter, r *http.Request) {
