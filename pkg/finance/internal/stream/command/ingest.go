@@ -159,12 +159,17 @@ func ingestSymbol(ctx context.Context, ohlc *repository.OHLC, bars supplier.Mark
 }
 
 // replaceRange fetches start through end and makes it the stored history for
-// that span in one transaction.
+// that span in one transaction. The refetched batch is validated first: if any
+// bar is refused, the stored rows are left as they are and the
+// InvalidPriceError is returned, so a bad bar never turns into a missing day.
 func replaceRange(ctx context.Context, ohlc *repository.OHLC, bars supplier.Marketdata,
 	provider, symbol string, start time.Time, end *time.Time,
 ) error {
 	full, err := getOHLC(bars, symbol, start, end)
 	if err != nil {
+		return err
+	}
+	if err := repository.ValidateBars(provider, symbol, full); err != nil {
 		return err
 	}
 	if err := ohlc.ReplaceRange(ctx, provider, symbol, full); err != nil {
@@ -173,8 +178,9 @@ func replaceRange(ctx context.Context, ohlc *repository.OHLC, bars supplier.Mark
 	return nil
 }
 
-// storeBars stores fetched in one transaction: a refused bar or a DB error
-// stores none of them.
+// storeBars stores fetched in one transaction. StoreBars checks the whole
+// batch with ValidateBars first, so a refused bar or a DB error stores none
+// of them.
 func storeBars(ctx context.Context, ohlc *repository.OHLC, provider, symbol string, fetched []*pb.OHLC) error {
 	if err := ohlc.StoreBars(ctx, provider, symbol, fetched); err != nil {
 		var invalid *repository.InvalidPriceError

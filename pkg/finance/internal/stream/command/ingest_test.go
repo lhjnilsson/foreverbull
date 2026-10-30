@@ -356,6 +356,63 @@ func (test *IngestCommandTest) TestIncrementalFetchWithBadOverlapCloseReplaces()
 	test.requireNoSplitSeam()
 }
 
+// A split refetch with one bad bar is refused before ReplaceRange runs: the
+// stored old-scale rows stay exactly as they were, no day goes missing, and
+// the InvalidPriceError names the provider, symbol and day.
+func (test *IngestCommandTest) TestRescaleWithBadRefetchedBarKeepsStoredRows() {
+	ctx := context.Background()
+	test.storeAAPLPreSplit(2)
+	adjusted := aaplAdjusted()
+
+	type row struct{ o, h, l, c float64 }
+	readRows := func() map[string]row {
+		rows, err := test.db.Query(ctx,
+			`SELECT time, open::float8, high::float8, low::float8, close::float8 FROM ohlc
+			 WHERE provider = 'yahoo' AND symbol = 'AAPL' ORDER BY time`)
+		test.Require().NoError(err)
+		defer rows.Close()
+		got := map[string]row{}
+		for rows.Next() {
+			var t time.Time
+			var r row
+			test.Require().NoError(rows.Scan(&t, &r.o, &r.h, &r.l, &r.c))
+			got[t.UTC().Format("2006-01-02")] = r
+		}
+		test.Require().NoError(rows.Err())
+		return got
+	}
+	before := readRows()
+	test.Require().Len(before, 2)
+
+	// The full refetch is split-adjusted but 2020-08-28 comes back with close 0.
+	refetch := make([]*pb.OHLC, len(adjusted))
+	for i, b := range adjusted {
+		refetch[i] = proto.Clone(b).(*pb.OHLC)
+	}
+	refetch[1].Close = 0
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	// The overlap close moved by the split ratio, so ingest refetches the range.
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(refetch, nil).Once()
+
+	err := test.ingestAAPL("2020-08-27", "2020-09-01")
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	var refused *repository.InvalidPriceError
+	test.Require().ErrorAs(err, &refused)
+	test.Equal("close", refused.Field)
+	test.Require().EqualError(err, "yahoo sent an invalid price for AAPL on 2020-08-28 (0, negative or not a number)")
+	test.marketdata.AssertExpectations(test.T())
+
+	after := readRows()
+	test.Equal(before, after, "stored rows must keep their old values")
+	for _, day := range []string{"2020-08-27", "2020-08-28"} {
+		test.Contains(after, day, "no stored day may go missing")
+	}
+	test.InDelta(adjusted[1].Close*4, after["2020-08-28"].c, 0.0001)
+}
+
 // A first ingest has nothing to re-scale: one fetch from start, inserted.
 func (test *IngestCommandTest) TestFirstIngestInserts() {
 	test.Require().NoError(test.assets.Store(context.Background(), "AAPL", "Apple Inc."))

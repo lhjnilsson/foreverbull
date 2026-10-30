@@ -605,22 +605,9 @@ func (test *OHLCTests) TestListRejectsBadInput() {
 	test.Require().ErrorContains(err, "limit")
 }
 
-// ReplaceRange drops stored days the new bars leave out, and a bad new bar
-// drops the stored row too, so no old-scale row survives the replace.
-func (test *OHLCTests) TestReplaceRange() {
-	ctx := context.Background()
-	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 4; i++ {
-		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
-	}
-	bar := func(i int, c float64) *pb.OHLC {
-		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
-	}
-	// Day 1 is gone from the new history; day 2 came back bad.
-	test.Require().NoError(test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
-		[]*pb.OHLC{bar(0, 125), bar(2, 0), bar(3, 126)}))
-
-	rows, err := test.conn.Query(ctx,
+// storedCloses is every stored close for yahoo ABC, keyed by day.
+func (test *OHLCTests) storedCloses() map[string]float64 {
+	rows, err := test.conn.Query(context.Background(),
 		`SELECT time, close::float8 FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC' ORDER BY time`)
 	test.Require().NoError(err)
 	defer rows.Close()
@@ -632,5 +619,43 @@ func (test *OHLCTests) TestReplaceRange() {
 		got[t.Format("2006-01-02")] = c
 	}
 	test.Require().NoError(rows.Err())
-	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-29": 126}, got)
+	return got
+}
+
+// ReplaceRange drops stored days the new bars leave out.
+func (test *OHLCTests) TestReplaceRange() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	// Day 1 is gone from the new history.
+	test.Require().NoError(test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+		[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)}))
+
+	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-28": 125.5, "2020-08-29": 126}, test.storedCloses())
+}
+
+// A bad bar anywhere in the batch refuses the whole replace: no stored row is
+// changed or removed, and the InvalidPriceError comes back.
+func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	err := test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+		[]*pb.OHLC{bar(0, 125), bar(1, 125.2), bar(2, 0), bar(3, 126)})
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	test.Require().EqualError(err, "yahoo sent an invalid price for ABC on 2020-08-28 (0, negative or not a number)")
+
+	test.Equal(map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}, test.storedCloses())
 }
