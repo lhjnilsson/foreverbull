@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -329,10 +329,15 @@ type IndexResponse struct {
 	} `json:"quoteSummary"`
 }
 
+// GetIndex returns the index's member assets followed by the index asset.
+// Every member is looked up; if any lookup fails the index fails, and the
+// error names each member that failed.
 func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
-
-	resp, err := y.doRequest(url, "modules=components%2CsummaryDetail")
+	quoteURL := y.quoteURL
+	if quoteURL == "" {
+		quoteURL = defaultYahooQuoteURL
+	}
+	resp, err := y.doRequest(quoteURL+url.PathEscape(strings.ToUpper(symbol)), "modules=components%2CsummaryDetail")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -348,43 +353,39 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
-
-	assets := make([]*pb.Asset, 0)
-	assetChan := make(chan *pb.Asset)
-
-	group, _ := errgroup.WithContext(context.Background())
-	for _, component := range result.Summary.Result[0].Components.Components {
-		group.Go(func() error {
-			a, err := y.GetAsset(component)
-			if err != nil {
-				return fmt.Errorf("error getting asset: %w", err)
-			}
-			assetChan <- a
-
-			return nil
-		})
+	if len(result.Summary.Result) == 0 {
+		return nil, fmt.Errorf("fail to get index data for symbol %s: no result", symbol)
 	}
 
-	group.Go(func() error {
-		a, err := y.GetAsset(symbol)
+	components := result.Summary.Result[0].Components.Components
+	// Each lookup writes only its own slot, so all results are in once
+	// Wait returns and no slot is shared between goroutines.
+	assets := make([]*pb.Asset, len(components)+1)
+	errs := make([]error, len(components)+1)
+	var wg sync.WaitGroup
+	lookup := func(i int, name, kind string) {
+		defer wg.Done()
+		a, err := y.GetAsset(name)
+		if err == nil && a == nil {
+			err = errors.New("no asset returned")
+		}
 		if err != nil {
-			return fmt.Errorf("error getting asset: %w", err)
+			errs[i] = fmt.Errorf("%s %s: %w", kind, name, err)
+			return
 		}
-		assetChan <- a
+		assets[i] = a
+	}
+	for i, component := range components {
+		wg.Add(1)
+		go lookup(i, component, "component")
+	}
+	wg.Add(1)
+	go lookup(len(components), symbol, "index")
+	wg.Wait()
 
-		return nil
-	})
-
-	go func() {
-		for a := range assetChan {
-			assets = append(assets, a)
-		}
-	}()
-
-	if err := group.Wait(); err != nil {
+	if err := errors.Join(errs...); err != nil {
 		return nil, fmt.Errorf("error getting assets: %w", err)
 	}
-
 	return assets, nil
 }
 
