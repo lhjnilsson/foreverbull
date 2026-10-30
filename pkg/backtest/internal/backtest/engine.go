@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	financeServicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -88,6 +91,29 @@ func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *sto
 	}
 
 	return rsp.GetNotices(), nil
+}
+
+// sessionCalendar is the exchange the bundle is written for.
+const sessionCalendar = "XNYS"
+
+// Sessions asks Zipline's calendar service, on the control connection, for
+// the XNYS sessions. It is the exchange_calendars calendar the ingester
+// writes the bundle with, so both sides agree on which days are sessions.
+func (z *Zipline) Sessions(ctx context.Context, start, end time.Time) ([]time.Time, error) {
+	rsp, err := financeServicePb.NewCalendarClient(z.conn).ListCalendarDates(ctx, &financeServicePb.ListCalendarDatesRequest{
+		Code:  sessionCalendar,
+		Start: commonPb.GoTimeToDate(start),
+		End:   commonPb.GoTimeToDate(end),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error listing %s sessions: %w", sessionCalendar, err)
+	}
+
+	sessions := make([]time.Time, 0, len(rsp.GetDates()))
+	for _, day := range rsp.GetDates() {
+		sessions = append(sessions, commonPb.DateToTime(day.GetDate()))
+	}
+	return sessions, nil
 }
 
 func (z *Zipline) DownloadIngestion(ctx context.Context, object *storage.Object) error {

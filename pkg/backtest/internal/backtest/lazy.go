@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/container"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -106,6 +107,16 @@ func (l *LazyEngine) Ingest(ctx context.Context, bt *pb.Backtest, object *storag
 	notices, err := inner.Ingest(ctx, bt, object)
 	l.release(inner, err)
 	return notices, err
+}
+
+func (l *LazyEngine) Sessions(ctx context.Context, start, end time.Time) ([]time.Time, error) {
+	inner, err := l.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := inner.Sessions(ctx, start, end)
+	l.release(inner, err)
+	return sessions, err
 }
 
 func (l *LazyEngine) DownloadIngestion(ctx context.Context, object *storage.Object) error {
