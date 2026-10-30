@@ -164,15 +164,15 @@ func (l *requestLimiter) pause(backoff time.Duration) {
 }
 
 // rateLimitBackoff is the wait after the attempt-th 429 in a row (0-based).
+// Retry-After is checked as a number of seconds before it becomes a
+// duration, so a huge value can't overflow into a short wait.
 func rateLimitBackoff(header http.Header, attempt int) time.Duration {
-	if seconds, err := strconv.Atoi(header.Get("Retry-After")); err == nil {
-		retryAfter := time.Duration(seconds) * time.Second
-		if retryAfter > 0 && retryAfter <= maxRateLimitBackoff {
-			return retryAfter
-		}
+	if seconds, err := strconv.ParseInt(header.Get("Retry-After"), 10, 64); err == nil &&
+		seconds > 0 && seconds <= int64(maxRateLimitBackoff/time.Second) {
+		return time.Duration(seconds) * time.Second
 	}
 	backoff := firstRateLimitBackoff << attempt
-	if backoff > maxRateLimitBackoff {
+	if backoff > maxRateLimitBackoff || backoff <= 0 {
 		return maxRateLimitBackoff
 	}
 	return backoff

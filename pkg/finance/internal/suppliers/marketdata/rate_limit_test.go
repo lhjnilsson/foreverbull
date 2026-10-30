@@ -210,6 +210,10 @@ func TestRateLimitBackoff(t *testing.T) {
 		{"retry-after over the cap doubles instead", "3600", 1, 4 * time.Second},
 		{"retry-after zero doubles instead", "0", 0, 2 * time.Second},
 		{"retry-after date doubles instead", "Wed, 21 Oct 2026 07:28:00 GMT", 0, 2 * time.Second},
+		// 18446744074 s overflows to about 0.3 s once multiplied into a
+		// time.Duration, so it must be refused as seconds first.
+		{"retry-after overflow doubles instead", "18446744074", 2, 8 * time.Second},
+		{"retry-after negative doubles instead", "-5", 0, 2 * time.Second},
 		{"first 429", "", 0, 2 * time.Second},
 		{"third 429", "", 2, 8 * time.Second},
 		{"capped", "", 6, 30 * time.Second},
