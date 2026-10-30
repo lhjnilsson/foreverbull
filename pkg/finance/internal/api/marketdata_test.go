@@ -603,6 +603,30 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataIgnoresSearchHitWithoutIS
 	suite.Zero(bars, "a search hit without the ISIN must not store bars")
 }
 
+// The asked symbol is an equity the provider has no ISIN for. A retry
+// can't help, so the symbol fails with the no-ISIN text, not the
+// download-failed sentence, and no bars are fetched.
+func (suite *MarketdataTest) TestDownloadHistoricalDataReportsAskedSymbolWithoutISIN() {
+	suite.marketdata.On("GetAsset", "XYZ").Return(nil, fmt.Errorf("error getting isin for symbol XYZ: %w",
+		fmt.Errorf("ISIN not found for symbol XYZ: %w", marketdata.ErrNoISIN)))
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"XYZ"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.requireOnlyText(msg, "XYZ", "no ISIN for XYZ")
+	suite.NotContains(msg.GetError(), "not found")
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A provider call that returns context.Canceled while the download itself
 // is still running is a failed request, not "no price data".
 func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerCanceledRequest() {
