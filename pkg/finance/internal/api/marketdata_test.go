@@ -594,3 +594,61 @@ func (suite *MarketdataTest) TestGetOHLCRejectsEmptySymbols() {
 	suite.Require().True(ok)
 	suite.Equal(codes.InvalidArgument, st.Code())
 }
+
+// aaplAdjusted is Yahoo's split-adjusted AAPL around the 4:1 split on
+// 2020-08-31 (recorded chart response, as in yahoo_split_test.go).
+func aaplAdjusted() []*pb.OHLC {
+	bar := func(day string, o, h, l, c float64, v uint64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(mustTime(day)), Open: o, High: h, Low: l, Close: c, Volume: v}
+	}
+	return []*pb.OHLC{
+		bar("2020-08-27", 127.1425, 127.485, 123.8325, 125.01, 155552400),
+		bar("2020-08-28", 126.0125, 126.4425, 124.5775, 124.8075, 187630000),
+		bar("2020-08-31", 127.58, 131.0, 126.0, 129.04, 225702700),
+		bar("2020-09-01", 132.76, 134.8, 130.53, 134.18, 151948100),
+	}
+}
+
+// The download path re-scales after a split the same way ingest does. With
+// 08-27 and 08-28 stored on the pre-split scale, a download from 08-28 sees
+// the overlap close moved, refetches from the first stored day, and replaces
+// it, so 08-27 is not left on the old scale and 08-28 reads 124.8075.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRescalesAfterSplit() {
+	ctx := context.Background()
+	adjusted := aaplAdjusted()
+	assets := repository.Asset{Conn: suite.pgx}
+	ohlc := repository.OHLC{Conn: suite.pgx}
+	suite.Require().NoError(assets.Store(ctx, "AAPL", "Apple Inc."))
+	for _, b := range adjusted[:2] {
+		suite.Require().NoError(ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open*4, b.High*4, b.Low*4, b.Close*4, b.Volume/4))
+	}
+
+	onDay := func(day string) interface{} {
+		return mock.MatchedBy(func(t time.Time) bool { return t.UTC().Format(time.DateOnly) == day })
+	}
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "AAPL", onDay("2020-08-28"), mock.Anything).Return(adjusted[1:], nil).Once()
+	suite.marketdata.On("GetOHLC", "AAPL", onDay("2020-08-27"), mock.Anything).Return(adjusted, nil).Once()
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &internal_pb.Date{Year: 2020, Month: 8, Day: 28},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 9, Day: 1},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msgs[0].GetStatus(), msgs[0].GetError())
+
+	bars, err := ohlc.List(ctx, "yahoo", []string{"AAPL"}, mustTime("2020-09-01"), 0)
+	suite.Require().NoError(err)
+	suite.Require().Len(bars, len(adjusted))
+	for i, b := range bars {
+		suite.InDelta(adjusted[i].Close, b.Close, 0.0001, b.Timestamp.AsTime().Format(time.DateOnly))
+	}
+	closeAug28, err := ohlc.Close(ctx, "yahoo", "AAPL", mustTime("2020-08-28"))
+	suite.Require().NoError(err)
+	suite.InDelta(124.8075, closeAug28, 0.0001)
+}

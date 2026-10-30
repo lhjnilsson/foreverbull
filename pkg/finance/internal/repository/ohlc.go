@@ -219,10 +219,18 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 	}
 	volume := int64(v)
 
+	// One row per trading day: a bar for a day already stored at another time
+	// of day (00:00Z before, 05:00Z now) replaces that row instead of sitting
+	// next to it on another scale. One statement, so it is atomic on its own.
 	_, err := db.Conn.Exec(
 		ctx,
-		`INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)
+		`WITH same_day AS (
+			DELETE FROM ohlc
+			WHERE provider = $1 AND symbol = $2
+			  AND time::date = $3::timestamp::date AND time <> $3::timestamp
+		)
+		INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)
+		values ($1, $2, $3::timestamp, $4, $5, $6, $7, $8)
 		ON CONFLICT (provider, symbol, time) DO UPDATE SET
 			open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
 			close = EXCLUDED.close, volume = EXCLUDED.volume`,
@@ -327,16 +335,23 @@ func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last
 	return *minTime, *maxTime, true, nil
 }
 
-// ReplaceRange makes bars the whole stored history of provider and symbol from
-// the first to the last bar, in one transaction. Stored days inside that span
-// that bars leave out are removed. Every bar must pass ValidateBars; callers
-// validate the batch before calling, and ReplaceRange checks it again before
-// it opens the transaction, so a refused bar leaves every stored row as it was
-// and the InvalidPriceError is returned. A connection that can't open a
-// transaction returns ErrNoTransaction and nothing is written or removed.
-func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
+// ReplaceRange makes bars the whole stored history of provider and symbol
+// for the requested trading days start through end (nil end: every stored day
+// from start on), in one transaction. The span comes from the request, not
+// from the bars, so a stored day after the provider's last bar is removed too
+// and can't stay on an old scale. Days are compared by trading date, the same
+// key Store upserts on, so a row stored at another time of day is replaced.
+//
+// A refetch that returns no bars is a NoBarsError, never a silent success.
+// Every bar must pass ValidateBars; ReplaceRange checks the batch before it
+// opens the transaction, so a refused bar leaves every stored row as it was.
+// A connection that can't open a transaction returns ErrNoTransaction and
+// nothing is written or removed.
+func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
+	bars []*financepb.OHLC,
+) error {
 	if len(bars) == 0 {
-		return nil
+		return &NoBarsError{Symbol: symbol, Start: start, End: end}
 	}
 	if err := ValidateBars(provider, symbol, bars); err != nil {
 		return err
@@ -351,34 +366,35 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
-	inTx := &OHLC{Conn: tx}
-	first, last := bars[0].GetTimestamp().AsTime(), bars[0].GetTimestamp().AsTime()
-	times := make([]time.Time, 0, len(bars))
-	for _, b := range bars {
-		t := b.GetTimestamp().AsTime()
-		if t.Before(first) {
-			first = t
-		}
-		if t.After(last) {
-			last = t
-		}
-		times = append(times, t)
-		err := inTx.Store(ctx, provider, symbol, t, b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose(), b.GetVolume())
-		if err != nil {
-			return fmt.Errorf("failed to replace ohlc: %w", err)
-		}
+	var endDay *string
+	if end != nil {
+		d := tradingDay(*end)
+		endDay = &d
 	}
 	_, err = tx.Exec(ctx,
 		`DELETE FROM ohlc WHERE provider = $1 AND symbol = $2
-		 AND time BETWEEN $3 AND $4 AND NOT (time = ANY($5))`,
-		priceProvider(provider), symbol, first, last, times)
+		 AND time::date >= $3::date AND ($4::date IS NULL OR time::date <= $4::date)`,
+		priceProvider(provider), symbol, tradingDay(start), endDay)
 	if err != nil {
 		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	inTx := &OHLC{Conn: tx}
+	for _, b := range bars {
+		err := inTx.Store(ctx, provider, symbol, b.GetTimestamp().AsTime(),
+			b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose(), b.GetVolume())
+		if err != nil {
+			return fmt.Errorf("failed to replace ohlc: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to replace ohlc: %w", err)
 	}
 	return nil
+}
+
+// tradingDay is the UTC calendar day of t, the key ohlc rows are compared on.
+func tradingDay(t time.Time) string {
+	return t.UTC().Format("2006-01-02")
 }
 
 // Close is the close stored for provider, symbol, and calendar day.
@@ -388,7 +404,7 @@ func (db *OHLC) Close(ctx context.Context, provider, symbol string, day time.Tim
 		ctx,
 		`SELECT close::float8 FROM ohlc
 		 WHERE provider = $1 AND symbol = $2 AND time::date = $3::date`,
-		priceProvider(provider), symbol, day.UTC().Format("2006-01-02"),
+		priceProvider(provider), symbol, tradingDay(day),
 	).Scan(&closePx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read ohlc close: %w", err)

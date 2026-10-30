@@ -633,7 +633,7 @@ func (test *OHLCTests) TestReplaceRange() {
 		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
 	}
 	// Day 1 is gone from the new history.
-	test.Require().NoError(test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+	test.Require().NoError(test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC", day, endDay(day, 3),
 		[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)}))
 
 	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-28": 125.5, "2020-08-29": 126}, test.storedCloses())
@@ -674,7 +674,7 @@ func (test *OHLCTests) TestReplaceRangeRollsBackOnDBFailure() {
 		test.Require().NoError(err, name)
 
 		// Day 1 is left out, so the DELETE has a row to remove.
-		err = test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+		err = test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC", day, endDay(day, 3),
 			[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
 		test.Require().ErrorContains(err, "forced failure inside ReplaceRange", name)
 
@@ -696,7 +696,7 @@ func (test *OHLCTests) TestReplaceRangeErrorsWithoutTransaction() {
 		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
 	}
 	db := repository.OHLC{Conn: noBegin{conn: test.conn}}
-	err := db.ReplaceRange(ctx, "yahoo", "ABC", []*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
+	err := db.ReplaceRange(ctx, "yahoo", "ABC", day, endDay(day, 3), []*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
 	test.Require().ErrorIs(err, repository.ErrNoTransaction)
 
 	test.Equal(map[string]float64{
@@ -715,7 +715,7 @@ func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {
 	bar := func(i int, c float64) *pb.OHLC {
 		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
 	}
-	err := test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+	err := test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC", day, endDay(day, 3),
 		[]*pb.OHLC{bar(0, 125), bar(1, 125.2), bar(2, 0), bar(3, 126)})
 	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
 	test.Require().EqualError(err, "yahoo sent an invalid price for ABC on 2020-08-28 (0, negative or not a number)")
@@ -723,4 +723,10 @@ func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {
 	test.Equal(map[string]float64{
 		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
 	}, test.storedCloses())
+}
+
+// endDay is day plus n days, as the *time.Time end ReplaceRange takes.
+func endDay(day time.Time, n int) *time.Time {
+	end := day.AddDate(0, 0, n)
+	return &end
 }
