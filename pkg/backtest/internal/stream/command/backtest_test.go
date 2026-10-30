@@ -818,7 +818,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'test-backtest': yahoo returned no prices for FB between 2022-01-01 and 2023-12-31. "+
-			"Nothing was saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
+			"The backtest wasn't saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -853,7 +853,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataNamesProvid
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("stooq-backtest"))
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'stooq-backtest': stooq returned no prices for FB between 2022-01-01 and 2023-12-31. "+
-			"Nothing was saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
+			"The backtest wasn't saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
 }
 
 // A bar the finance storage refused is named as a refusal, not hidden behind

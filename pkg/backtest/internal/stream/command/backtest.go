@@ -652,7 +652,7 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 // noPriceDataNextStep ends the sentence when a provider returned no bars. The
 // finance service already retried an empty download once, so a result that is
 // still empty is most often a wrong or delisted symbol; checking it comes first.
-const noPriceDataNextStep = "Nothing was saved. Check that %s traded between those dates, try again later, " +
+const noPriceDataNextStep = "The backtest wasn't saved. Check that %s traded between those dates, try again later, " +
 	"or use another provider with --provider."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
