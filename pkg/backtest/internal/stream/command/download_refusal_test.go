@@ -129,12 +129,15 @@ func TestDownloadTimeLimitOnlyMatchesTheLimit(t *testing.T) {
 	}
 }
 
-// The time-limit sentence counts symbols like the progress line, word for
-// word, and names the configured limit.
+// The time-limit sentence counts symbols like the progress line and names
+// whole hours in hours and anything else in minutes, word for word.
 func TestTimeLimitCopy(t *testing.T) {
 	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "+
 		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
 		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 2*time.Hour, 6212, 10000))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 1-hour limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", time.Hour, 6212, 10000))
 	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 90-minute limit after "+
 		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
 		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 90*time.Minute, 6212, 10000))

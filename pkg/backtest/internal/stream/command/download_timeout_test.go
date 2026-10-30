@@ -43,27 +43,31 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNamesProviderTimeout()
 // timeout one. It counts the symbols answered so far out of the distinct
 // total, and the backtest is removed.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNamesTheTimeLimit() {
-	test.createOEF(98)
-	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
-	for _, symbol := range []string{"S01", "S02"} {
-		clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
-			Symbol: symbol,
-			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
-		}, nil).Once()
+	for limit, span := range map[string]string{"2h0m0s": "2-hour", "1h0m0s": "1-hour", "1h30m0s": "90-minute"} {
+		test.Run(limit, func() {
+			test.createOEF(98)
+			clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+			for _, symbol := range []string{"S01", "S02"} {
+				clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+					Symbol: symbol,
+					Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+				}, nil).Once()
+			}
+			clientStream.On("Recv", mock.Anything).
+				Return(nil, status.Error(codes.DeadlineExceeded, "the download hit its time limit of "+limit+" at S03")).Once()
+			test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
+
+			err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+			// 98 members and the benchmark.
+			test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': the download hit the "+span+" limit "+
+				"after 2 of 99 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+				"then run `fbull backtest create` again.")
+			backtests := repository.Backtest{Conn: test.db}
+			_, err = backtests.Get(context.TODO(), "oef-2024q1")
+			test.Require().ErrorIs(err, pgx.ErrNoRows)
+		})
 	}
-	clientStream.On("Recv", mock.Anything).
-		Return(nil, status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at S03")).Once()
-	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
-
-	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
-
-	// 98 members and the benchmark.
-	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit "+
-		"after 2 of 99 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
-		"then run `fbull backtest create` again.")
-	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Get(context.TODO(), "oef-2024q1")
-	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
 // The client's own deadline is not the provider's fault: it carries other

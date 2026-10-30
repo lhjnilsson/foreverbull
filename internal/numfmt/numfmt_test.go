@@ -21,8 +21,11 @@ func TestThousands(t *testing.T) {
 func TestLimitSpan(t *testing.T) {
 	t.Parallel()
 	for d, want := range map[time.Duration]string{
-		2 * time.Hour: "2-hour", 90 * time.Minute: "90-minute", 3 * time.Hour: "3-hour",
-		time.Second: "1-second", 1500 * time.Millisecond: "1.5s",
+		2 * time.Hour: "2-hour", time.Hour: "1-hour", 90 * time.Minute: "90-minute",
+		3 * time.Hour: "3-hour", 45 * time.Minute: "45-minute", 150 * time.Minute: "150-minute",
+		// Not a whole number of minutes: rounded up, at least 1.
+		90*time.Minute + 30*time.Second: "91-minute", time.Second: "1-minute",
+		30 * time.Second: "1-minute", time.Minute + time.Nanosecond: "2-minute",
 	} {
 		require.Equal(t, want, numfmt.LimitSpan(d), d.String())
 	}

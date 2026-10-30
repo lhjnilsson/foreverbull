@@ -40,7 +40,7 @@ func (test *IngestCommandTest) TestIngestStopsAtItsTimeLimit() {
 	began := time.Now()
 	err := test.ingestSymbols(md, "AAPL", "SLOW", "LATER")
 	test.Less(time.Since(began), 10*time.Second, "the limit must end the ingest")
-	test.Require().EqualError(err, "The price import hit the 1-second limit at SLOW. Prices imported before SLOW were kept. "+
+	test.Require().EqualError(err, "The price import hit the 1-minute limit at SLOW. Prices imported before SLOW were kept. "+
 		"Import fewer symbols at a time, or try again later.")
 
 	kept, err := test.ohlc.List(context.Background(), "yahoo", []string{"AAPL"}, time.Now(), 0)
@@ -115,6 +115,6 @@ func (test *IngestCommandTest) TestIngestTellsALockWaitAtTheLimitAsTheLimit() {
 	md.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(may2026Bar(), nil)
 
 	err = test.ingestSymbols(md, "AAPL")
-	test.Require().EqualError(err, "The price import hit the 1-second limit at AAPL. Prices imported before AAPL were kept. "+
+	test.Require().EqualError(err, "The price import hit the 1-minute limit at AAPL. Prices imported before AAPL were kept. "+
 		"Import fewer symbols at a time, or try again later.")
 }

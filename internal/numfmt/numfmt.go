@@ -24,18 +24,18 @@ func Thousands(n int) string {
 	return b.String()
 }
 
-// LimitSpan writes d as the adjective before "limit": 2-hour, 90-minute or
-// 1-second. A duration that isn't a whole number of seconds keeps Go's
-// form, such as 1.5s.
+// LimitSpan writes d as the adjective before "limit". A whole number of
+// hours reads in hours (1-hour, 2-hour); anything else reads in whole
+// minutes (90-minute), never in Go's mixed form such as 1h30m. A duration
+// that isn't a whole number of minutes rounds up, with at least 1, so a
+// 30 s or 1 s test limit reads 1-minute and 90.5 minutes reads 91-minute.
 func LimitSpan(d time.Duration) string {
-	switch {
-	case d > 0 && d%time.Hour == 0:
+	if d > 0 && d%time.Hour == 0 {
 		return Thousands(int(d/time.Hour)) + "-hour"
-	case d > 0 && d%time.Minute == 0:
-		return Thousands(int(d/time.Minute)) + "-minute"
-	case d > 0 && d%time.Second == 0:
-		return Thousands(int(d/time.Second)) + "-second"
-	default:
-		return d.String()
 	}
+	minutes := (d + time.Minute - 1) / time.Minute
+	if minutes < 1 {
+		minutes = 1
+	}
+	return Thousands(int(minutes)) + "-minute"
 }

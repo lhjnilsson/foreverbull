@@ -159,11 +159,17 @@ func ingestStopped(ctx context.Context, provider, symbol string, limit time.Dura
 	log.Warn().Err(redact.URLError(err)).Str("provider", provider).Str("symbol", symbol).
 		Bool("time_limit", limitReached).Msg("ingest stopped: provider took too long")
 	if limitReached {
-		return fmt.Errorf("The price import hit the %s limit at %s. Prices imported before %s were kept. "+ //nolint:staticcheck // ST1005: agreed user-facing copy
-			"Import fewer symbols at a time, or try again later.", numfmt.LimitSpan(limit), symbol, symbol)
+		return ingestTimeLimitError(limit, symbol)
 	}
 	return fmt.Errorf("%w, so the price import stopped. Prices imported before %s were kept. Try again later.", //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
 		&marketdata.TimeoutError{Provider: provider, Symbol: symbol}, symbol)
+}
+
+// ingestTimeLimitError is the agreed task-state text when the ingest's time
+// limit stopped it at symbol, word for word.
+func ingestTimeLimitError(limit time.Duration, symbol string) error {
+	return fmt.Errorf("The price import hit the %s limit at %s. Prices imported before %s were kept. "+ //nolint:staticcheck // ST1005: agreed user-facing copy
+		"Import fewer symbols at a time, or try again later.", numfmt.LimitSpan(limit), symbol, symbol)
 }
 
 // assetProvider is the provider GetAsset asks. The marketdata dependency is

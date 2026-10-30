@@ -2175,14 +2175,28 @@ def test_backtest_create_provider_timeout_prints_exact_copy_and_exits_1(monkeypa
     assert result.output == f"Using provider: alpaca (from --provider)\n✖ {_PROVIDER_TIMEOUT_COPY}\n"
 
 
-_TIME_LIMIT_COPY = (
-    "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "
-    "6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "
-    "then run `fbull backtest create` again."
+@pytest.mark.parametrize(
+    "copy",
+    [
+        (
+            "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "
+            "6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "
+            "then run `fbull backtest create` again."
+        ),
+        (
+            "Couldn't load data for backtest 'oef-2024q1': the download hit the 1-hour limit after "
+            "6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "
+            "then run `fbull backtest create` again."
+        ),
+        (
+            "Couldn't load data for backtest 'oef-2024q1': the download hit the 90-minute limit after "
+            "6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "
+            "then run `fbull backtest create` again."
+        ),
+    ],
+    ids=["2h", "1h", "90m"],
 )
-
-
-def test_backtest_create_time_limit_prints_exact_copy_and_exits_1(monkeypatch):
+def test_backtest_create_time_limit_prints_exact_copy_and_exits_1(monkeypatch, copy):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
 
@@ -2195,7 +2209,7 @@ def test_backtest_create_time_limit_prints_exact_copy_and_exits_1(monkeypatch):
         )
         yield backtest_service_pb.CreateBacktestResponse(
             CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
-            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=_TIME_LIMIT_COPY),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=copy),
         )
 
     with (
@@ -2206,4 +2220,4 @@ def test_backtest_create_time_limit_prints_exact_copy_and_exits_1(monkeypatch):
 
     mock_delete.assert_not_called()
     assert result.exit_code == 1
-    assert result.output == f"Using provider: alpaca (from --provider)\n✖ {_TIME_LIMIT_COPY}\n"
+    assert result.output == f"Using provider: alpaca (from --provider)\n✖ {copy}\n"
