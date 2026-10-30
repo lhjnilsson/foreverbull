@@ -546,6 +546,28 @@ def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monk
     assert "grpc" not in result.output.lower()
 
 
+_INVALID_TICKER_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': symbol 7 of 99 isn't a valid ticker. "
+    "Use 1 to 32 letters, digits, or . ^ = _ -. The backtest wasn't saved. "
+    "Fix that symbol and run `fbull backtest create` again."
+)
+
+
+def test_backtest_create_invalid_ticker_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_INVALID_TICKER_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_INVALID_TICKER_COPY}\n"
+    assert "Downloading prices failed" not in result.output
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "

@@ -957,6 +957,77 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOth
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+const invalidTickerCopy = "Couldn't load data for backtest 'oef-2024q1': symbol 7 of 99 isn't a valid ticker. " +
+	"Use 1 to 32 letters, digits, or . ^ = _ -. The backtest wasn't saved. " +
+	"Fix that symbol and run `fbull backtest create` again."
+
+// createOEF stores backtest oef-2024q1 whose download request has the SPY
+// benchmark plus assetCount assets.
+func (test *BacktestCommandTest) createOEF(assetCount int) {
+	b := proto.Clone(test.backtest).(*backtest.Backtest)
+	b.Name = "oef-2024q1"
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), b)
+	test.Require().NoError(err)
+	assets := make([]*backtest.Backtest_Period_Asset, 0, assetCount)
+	for i := range assetCount {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: fmt.Sprintf("S%02d", i+1), Enabled: true})
+	}
+	test.Require().NoError(backtests.UpdatePeriod(context.TODO(), b.Name, &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	}))
+}
+
+// The finance service refuses symbol 7 of the 99 this create sent. Create
+// names the position and the count, never the symbol, and drops the
+// "Downloading prices failed" wrapper. The refusal can arrive on the call or
+// on the first Recv of the stream.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNamesInvalidTickerByPosition() {
+	refusal := status.Error(codes.InvalidArgument,
+		"symbol 7 of 99 isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)")
+	for name, onCall := range map[string]bool{"on call": true, "on recv": false} {
+		test.Run(name, func() {
+			test.SetupTest()
+			test.createOEF(98)
+			var sent int
+			call := test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+				sent = len(args.Get(1).(*financeServicePB.DownloadHistoricalDataRequest).GetSymbols())
+			})
+			if onCall {
+				call.Return(nil, refusal)
+			} else {
+				clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+				clientStreamMock.On("Recv", mock.Anything).Return(nil, refusal)
+				call.Return(clientStreamMock, nil)
+			}
+
+			err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+			test.Equal(99, sent)
+			test.Require().EqualError(err, invalidTickerCopy)
+			backtests := repository.Backtest{Conn: test.db}
+			_, err = backtests.Get(context.TODO(), "oef-2024q1")
+			test.Require().ErrorIs(err, pgx.ErrNoRows)
+		})
+	}
+}
+
+// A refusal that doesn't fit this request (another count) is not shown as an
+// invalid ticker.
+func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresInvalidTickerForAnotherCount() {
+	test.createOEF(98)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(nil,
+		status.Error(codes.InvalidArgument, "symbol 7 of 98 isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)"))
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+	test.Require().Error(err)
+	test.NotContains(err.Error(), "Fix that symbol")
+	test.NotContains(err.Error(), "symbol 7 of 99")
+}
+
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
