@@ -282,7 +282,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	test.etfscraper.On("GetBenchmark", "iShares S&P 100").Return("OEF", nil)
 
 	test.mockGetAsset("AAPL", nil)
-	test.mockGetAsset("FB", errors.New("unknown ticker"))
+	test.mockGetAsset("FB", nil)
 	test.mockGetAsset("META", nil)
 	test.mockGetAsset("MSFT", nil)
 
@@ -300,13 +300,13 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	test.Equal(&pb.Date{Year: 2022, Month: 1, Day: 1}, stored.Periods[0].StartDate)
 	test.Equal(&pb.Date{Year: 2022, Month: 12, Day: 31}, stored.Periods[0].EndDate)
 	test.Equal([]*backtest.Backtest_Period_Asset{
-		{Symbol: "FB", Enabled: false},
+		{Symbol: "FB", Enabled: true},
 		{Symbol: "AAPL", Enabled: true},
 	}, stored.Periods[0].Assets)
 	test.Equal([]*backtest.Backtest_Period_Asset{
 		{Symbol: "MSFT", Enabled: true},
 		{Symbol: "META", Enabled: true},
-		{Symbol: "FB", Enabled: false},
+		{Symbol: "FB", Enabled: true},
 		{Symbol: "AAPL", Enabled: true},
 	}, stored.Periods[1].Assets)
 
@@ -498,6 +498,18 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 // createETFBacktest runs CreateBacktestFromETF for name over [start, end]
 // against fixture lists keyed by as-of date.
 func (test *BacktestCommandTest) createETFBacktest(name, start, end string, listings map[time.Time][]dependency.Asset) error {
+	mdclient := new(financeServicePB.MockMarketdataClient)
+	mdclient.On("GetAsset", mock.Anything, mock.Anything).Return(&financeServicePB.GetAssetResponse{
+		Asset: &finance.Asset{Symbol: "ANY"},
+	}, nil)
+	return test.createETFBacktestWith(context.TODO(), mdclient, name, start, end, listings)
+}
+
+// createETFBacktestWith is createETFBacktest with the caller's marketdata
+// client and context.
+func (test *BacktestCommandTest) createETFBacktestWith(ctx context.Context, mdclient financeServicePB.MarketdataClient,
+	name, start, end string, listings map[time.Time][]dependency.Asset,
+) error {
 	const etf = "iShares S&P 100"
 	from, to := test.date(start), test.date(end)
 	lookback := time.Date(from.Year(), from.Month()-3, 1, 0, 0, 0, 0, time.UTC)
@@ -521,16 +533,12 @@ func (test *BacktestCommandTest) createETFBacktest(name, start, end string, list
 		scraper.On("GetSnapshot", etf, asOf).Return(assets, nil)
 	}
 	scraper.On("GetBenchmark", etf).Return("OEF", nil)
-	mdclient := new(financeServicePB.MockMarketdataClient)
-	mdclient.On("GetAsset", mock.Anything, mock.Anything).Return(&financeServicePB.GetAssetResponse{
-		Asset: &finance.Asset{Symbol: "ANY"},
-	}, nil)
 
 	message := etfCreateMessage(test.T(), name, etf, start, end)
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(mdclient)
 	message.On("MustGet", dependency.GetETFScraper).Return(scraper)
-	return command.CreateBacktestFromETF(context.TODO(), message)
+	return command.CreateBacktestFromETF(ctx, message)
 }
 
 // renameListings are month-end S&P 100 lists where FB becomes META in the

@@ -100,8 +100,15 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting marketdata client")
 	}
 
-	symbols := uniqueAliasSymbols(result.Aliases)
-	hasData := vendorHasData(ctx, marketdataClient, symbols)
+	// Every member must resolve before anything is stored. A member that
+	// is left out instead changes the universe without a word.
+	failures, err := lookupMemberAssets(ctx, marketdataClient, uniqueAliasSymbols(result.Aliases))
+	if err != nil {
+		return err
+	}
+	if len(failures) > 0 {
+		return memberLookupError(command.BacktestName, failures)
+	}
 
 	b := backtest.Backtest{
 		Name:      command.BacktestName,
@@ -110,7 +117,7 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		Profile:   command.Profile,
 		Periods:   calendarYearPeriods(start, end),
 	}
-	fillPeriodAssets(b.Periods, result.Aliases, hasData)
+	fillPeriodAssets(b.Periods, result.Aliases)
 
 	if err := requireStoredOwner(command.OwnerID, ""); err != nil {
 		return err
@@ -391,23 +398,132 @@ func uniqueAliasSymbols(aliases []universe.Alias) []string {
 	return symbols
 }
 
-func vendorHasData(ctx context.Context, client financeServicePB.MarketdataClient, symbols []string) map[string]bool {
-	hasData := make(map[string]bool, len(symbols))
+// noISINLookupPrefix starts the message of the NotFound GetAsset status for
+// an equity the provider has no ISIN for (lhjnilsson/foreverbull#240).
+// Without an ISIN the member can't be followed across ticker changes.
+const noISINLookupPrefix = "no ISIN for "
+
+// memberLookupProvider is the provider every member lookup goes through.
+// GetAsset is Yahoo for every backtest provider, so the copy names it.
+const memberLookupProvider = "yahoo"
+
+// memberLookupFailure is a member symbol whose GetAsset failed. noISIN is
+// set only when the provider answered that the equity has no ISIN; any
+// other error is a failed lookup.
+type memberLookupFailure struct {
+	symbol string
+	noISIN bool
+}
+
+// lookupMemberAssets asks the finance service for every member symbol and
+// returns each one that failed, in the order of symbols. The loop is
+// bounded by symbols. A canceled context returns ctx.Err(). The cause is
+// logged with any URL query removed; it never reaches the user.
+func lookupMemberAssets(ctx context.Context, client financeServicePB.MarketdataClient, symbols []string) ([]memberLookupFailure, error) {
+	failures := make([]memberLookupFailure, 0)
 	for _, symbol := range symbols {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		_, err := client.GetAsset(ctx, &financeServicePB.GetAssetRequest{
 			Identifier: &financeServicePB.GetAssetRequest_Symbol{Symbol: symbol},
 		})
-		if err != nil {
-			log.Warn().Err(err).Str("symbol", symbol).Msg("error getting asset, marking as no data")
-			hasData[symbol] = false
+		if err == nil {
 			continue
 		}
-		hasData[symbol] = true
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		log.Error().Str("symbol", symbol).Str("code", status.Code(err).String()).
+			Str("error", redactURLQuery(rpcErrorText(err))).Msg("member asset lookup failed")
+		failures = append(failures, memberLookupFailure{symbol: symbol, noISIN: isNoISINLookupError(err)})
 	}
-	return hasData
+	return failures, nil
 }
 
-func fillPeriodAssets(periods []*backtest.Backtest_Period, aliases []universe.Alias, hasData map[string]bool) {
+// isNoISINLookupError reports whether a GetAsset error is the provider's
+// answer that the equity has no ISIN: a NotFound status whose message
+// starts with "no ISIN for ". Anything else is a failed lookup.
+func isNoISINLookupError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return st.Code() == codes.NotFound && strings.HasPrefix(st.Message(), noISINLookupPrefix)
+}
+
+// rpcErrorText is the gRPC status message, or the error text when err
+// carries no status.
+func rpcErrorText(err error) string {
+	if st, ok := status.FromError(err); ok {
+		return st.Message()
+	}
+	return err.Error()
+}
+
+// urlQuery matches the query and fragment of a URL in error text. Yahoo
+// requests carry the session crumb as ?crumb=.
+var urlQuery = regexp.MustCompile(`(https?://[^\s?#"']+)[?#][^\s"']*`)
+
+// redactURLQuery keeps scheme, host and path of every URL in text.
+func redactURLQuery(text string) string {
+	return urlQuery.ReplaceAllString(text, "$1")
+}
+
+// memberLookupError is the create error for members whose asset lookup
+// failed. One symbol gets one sentence. Several get a header, one line per
+// cause with its symbols A-Z, and the next step, so every symbol is named.
+// Nothing was stored yet, so the backtest wasn't saved. The lookup is
+// always Yahoo, so another --provider is not offered.
+func memberLookupError(name string, failures []memberLookupFailure) error {
+	if len(failures) == 1 {
+		symbol := failures[0].symbol
+		if failures[0].noISIN {
+			return plainSentence(fmt.Sprintf(
+				"Couldn't load data for backtest '%s': %s doesn't identify %s well enough to follow ticker changes, "+
+					"so it can't be used. The backtest wasn't saved. Remove %s, then run `fbull backtest create` again.",
+				name, memberLookupProvider, symbol, symbol))
+		}
+		return plainSentence(fmt.Sprintf(
+			"Couldn't load data for backtest '%s': %s didn't respond when looking up %s. The backtest wasn't saved. "+
+				"Wait a few minutes, then run `fbull backtest create` again.",
+			name, memberLookupProvider, symbol))
+	}
+	failed := make([]string, 0, len(failures))
+	noISIN := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		if failure.noISIN {
+			noISIN = append(noISIN, failure.symbol)
+		} else {
+			failed = append(failed, failure.symbol)
+		}
+	}
+	sort.Strings(failed)
+	sort.Strings(noISIN)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Couldn't load data for backtest '%s': %d symbols couldn't be used. The backtest wasn't saved.\n",
+		name, len(failures))
+	if len(failed) == 1 {
+		fmt.Fprintf(&b, "  %s: %s didn't respond when looking it up. Try again in a few minutes.\n",
+			failed[0], memberLookupProvider)
+	} else if len(failed) > 1 {
+		fmt.Fprintf(&b, "  %s: %s didn't respond when looking them up. Try again in a few minutes.\n",
+			strings.Join(failed, ", "), memberLookupProvider)
+	}
+	if len(noISIN) == 1 {
+		fmt.Fprintf(&b, "  %s: %s doesn't identify it well enough to follow ticker changes. Remove it.\n",
+			noISIN[0], memberLookupProvider)
+	} else if len(noISIN) > 1 {
+		fmt.Fprintf(&b, "  %s: %s doesn't identify them well enough to follow ticker changes. Remove them.\n",
+			strings.Join(noISIN, ", "), memberLookupProvider)
+	}
+	b.WriteString("Then run `fbull backtest create` again.")
+	return plainSentence(b.String())
+}
+
+// fillPeriodAssets lists each member symbol in the periods it overlaps. Every
+// symbol already resolved (lookupMemberAssets), so each one is enabled.
+func fillPeriodAssets(periods []*backtest.Backtest_Period, aliases []universe.Alias) {
 	for _, period := range periods {
 		start := pb.DateToTime(period.StartDate)
 		end := pb.DateToTime(period.EndDate)
@@ -423,7 +539,7 @@ func fillPeriodAssets(periods []*backtest.Backtest_Period, aliases []universe.Al
 			seen[alias.Symbol] = struct{}{}
 			assets = append(assets, &backtest.Backtest_Period_Asset{
 				Symbol:  alias.Symbol,
-				Enabled: hasData[alias.Symbol],
+				Enabled: true,
 			})
 		}
 		sort.Slice(assets, func(i, j int) bool { return assets[i].Symbol < assets[j].Symbol })
