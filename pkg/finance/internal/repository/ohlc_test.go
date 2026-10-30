@@ -74,7 +74,7 @@ func TestStoreRejectsNaNOrNegativeClose(t *testing.T) {
 			err := db.Store(context.Background(), "yahoo", "ABC", day, 1.2, 1.3, 1.1, tc.closePx, 1000)
 			require.ErrorIs(t, err, repository.ErrInvalidPrice)
 			require.NotErrorIs(t, err, supplier.ErrRejected)
-			require.EqualError(t, err, "couldn't save prices for ABC on 2020-01-02: prices must be above 0")
+			require.EqualError(t, err, "yahoo sent an invalid price for ABC on 2020-01-02 (0, negative or not a number)")
 		})
 	}
 }
@@ -99,7 +99,7 @@ func TestStoreRejectsNonPositiveOpenHighLow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := db.Store(context.Background(), "yahoo", "ABC", day, tc.open, tc.high, tc.low, 1.2, 1000)
 			require.ErrorIs(t, err, repository.ErrInvalidPrice)
-			require.EqualError(t, err, "couldn't save prices for ABC on 2020-01-02: prices must be above 0")
+			require.EqualError(t, err, "yahoo sent an invalid price for ABC on 2020-01-02 (0, negative or not a number)")
 			var refused *repository.InvalidPriceError
 			require.ErrorAs(t, err, &refused)
 			require.Equal(t, tc.wantField, refused.Field)

@@ -626,7 +626,13 @@ func isNoPriceDataError(text string) bool {
 
 // refusedPriceError matches the finance service's sentence for a bar its
 // storage refused. Only this exact shape is shown; other raw text is not.
-var refusedPriceError = regexp.MustCompile(`^couldn't save prices for \S+ on \d{4}-\d{2}-\d{2}: prices must be above 0$`)
+var refusedPriceError = regexp.MustCompile(`^\S+ sent an invalid price for \S+ on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+
+// providerFaultNextStep ends a sentence about bad provider data. Since #209 a
+// bad bar is normally dropped and filled, so reaching this means an adapter
+// missed one; a plain retry won't help.
+const providerFaultNextStep = "Nothing was saved. Try another provider with --provider, " +
+	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
@@ -639,19 +645,21 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after download error")
 	}
 	var lead string
+	nextStep := "Nothing was saved, so run `fbull backtest create` again once it's fixed."
 	if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
 	} else if refusedPriceError.MatchString(errText) {
 		lead = errText + "."
+		nextStep = providerFaultNextStep
 	} else {
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
 	}
 	if removed {
 		return plainSentence(fmt.Sprintf(
-			"Couldn't load data for backtest '%s': %s Nothing was saved, so run `fbull backtest create` again once it's fixed.",
-			name, lead))
+			"Couldn't load data for backtest '%s': %s %s",
+			name, lead, nextStep))
 	}
 	return plainSentence(fmt.Sprintf(
 		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",

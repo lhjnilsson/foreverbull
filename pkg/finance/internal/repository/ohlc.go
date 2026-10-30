@@ -175,20 +175,22 @@ type OHLC struct {
 }
 
 // ErrInvalidPrice is a bar Store refuses because a price is 0, negative, or
-// not a real number. The error text names the symbol and day.
-var ErrInvalidPrice = errors.New("prices must be above 0")
+// not a real number. The error text names the provider, symbol and day.
+var ErrInvalidPrice = errors.New("invalid price")
 
-// InvalidPriceError is the user-facing refusal for one bar.
+// InvalidPriceError is the user-facing refusal for one bar. The provider sent
+// it, so the sentence says so rather than blaming the user.
 type InvalidPriceError struct {
-	Symbol string
-	Day    time.Time
+	Provider string
+	Symbol   string
+	Day      time.Time
 	// Field is the first refused column: open, high, low, or close.
 	Field string
 }
 
 func (e *InvalidPriceError) Error() string {
-	return fmt.Sprintf("couldn't save prices for %s on %s: %s",
-		e.Symbol, e.Day.UTC().Format("2006-01-02"), ErrInvalidPrice)
+	return fmt.Sprintf("%s sent an invalid price for %s on %s (0, negative or not a number)",
+		e.Provider, e.Symbol, e.Day.UTC().Format("2006-01-02"))
 }
 
 func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
@@ -204,7 +206,7 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		value float64
 	}{{"open", o}, {"high", h}, {"low", l}, {"close", c}} {
 		if !positivePrice(price.value) {
-			return &InvalidPriceError{Symbol: symbol, Day: t, Field: price.field}
+			return &InvalidPriceError{Provider: provider, Symbol: symbol, Day: t, Field: price.field}
 		}
 	}
 
