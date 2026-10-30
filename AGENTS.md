@@ -18,6 +18,18 @@ Go and Python follow [style.md](style.md). The order there is safety, then perfo
 
 Lockfiles (`client/uv.lock`, `requirements*.lock`) are for development and CI only. They are not a constraint on users.
 
+## Fail, don't recover
+
+📝 Foreverbull prefers failing to recovering. When something is missing, unexpected, or failed (a symbol with no prices, a failed download, an unmapped position, an invalid config), stop the operation, save nothing, and return an error that names every cause found. Do not silently skip, substitute, fall back to a default, swallow an error or only log it, save partial results, or continue with partial data.
+
+- **Collect, then fail.** Gather every failure of the same kind before failing, so the user can fix them in one pass.
+- **Recovery is opt-in.** Continuing past a failure is only allowed behind an explicit user choice, such as a `--skip-missing` flag. It is never the default, and the result records and shows what was left out.
+- **No hidden retries.** Only the bounded retries a supplier already documents. A retry that still fails is a failure.
+- **Ask first.** If a design seems to need a recovery path, raise it before building it.
+- **Named exceptions.** These are deliberate and must not be "fixed": a symbol the provider confirms as delisted is closed at its last price (see [`universe.md` §8](pkg/backtest/universe.md#8-zipline-auto_close_date)), and per-symbol bars that were validated and stored before a price import failed are kept as a cache. The import still fails, and nothing runs on the partial set. Best-effort progress messages are also exempt: they are display only and never touch data, so a failed progress update does not fail the operation.
+
+This complements [Programmer errors and operating errors](style.md#programmer-errors-and-operating-errors): an operating error is returned to the caller, not absorbed.
+
 ## Commits
 
 Follow [Commit messages](style.md#commit-messages) in `style.md` whenever you create a commit. **The subject starts with one gitmoji**, then `type(scope): outcome` in the imperative. The emoji is the intent (✨ `feat`, 🐛 `fix`, ⚡️ `perf`, 📝 `docs`, ✅ `test`; a narrower match such as 💚 `fix(ci)` or 🚨 for a linter beats the generic one). The body says why. One logical change per commit. Leave generated cookiecutter project trees out.
