@@ -21,6 +21,23 @@ func NormalizeProvider(provider string) (string, error) {
 	}
 }
 
+// UnknownProviderName stands in for a provider ShownProvider can't name.
+const UnknownProviderName = "The price provider"
+
+// ShownProvider is the provider name for user-facing text: yahoo, stooq or
+// alpaca from the NormalizeProvider allowlist, else UnknownProviderName. An
+// empty name is unknown too, so the text never names a default it guessed.
+func ShownProvider(provider string) string {
+	if strings.TrimSpace(provider) == "" {
+		return UnknownProviderName
+	}
+	name, err := NormalizeProvider(provider)
+	if err != nil {
+		return UnknownProviderName
+	}
+	return name
+}
+
 // ValidatePriceSource checks the name and, for alpaca, that a profile can be chosen.
 // It does not construct a Yahoo client and does not download bars.
 func ValidatePriceSource(provider, profile, profilesFile string) error {

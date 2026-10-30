@@ -603,12 +603,16 @@ func (test *IngestCommandTest) TestIngestKeepsCrumbOutOfTaskState() {
 
 // ingestSymbols runs Ingest for symbols with the mock supplier.
 func (test *IngestCommandTest) ingestSymbols(md *supplier.MockMarketdata, symbols ...string) error {
+	return test.ingestSymbolsVia("yahoo", md, symbols...)
+}
+
+func (test *IngestCommandTest) ingestSymbolsVia(provider string, md *supplier.MockMarketdata, symbols ...string) error {
 	message := new(stream.MockMessage)
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.MarketDataDep).Return(md)
 	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
 		command := args.Get(0).(*fs.IngestCommand)
-		command.Provider = "yahoo"
+		command.Provider = provider
 		command.Symbols = symbols
 		command.Start = "2026-05-01"
 	})
@@ -632,17 +636,23 @@ func (test *IngestCommandTest) TestIngestRefusesInvalidRequestSymbol() {
 
 // A provider ticker outside the pattern is refused before the asset row or
 // any bar is stored, with a sentence that names only the requested symbol.
+//
+// The asset lookup is always Yahoo, so the text names yahoo even when the
+// bars come from stooq, and it is the whole error with no prefix.
 func (test *IngestCommandTest) TestIngestRefusesInvalidProviderSymbol() {
 	const providerSymbol = "XYZ\x1b[31m <b>"
-	md := supplier.NewMockMarketdata(test.T())
-	md.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
+	for _, provider := range []string{"yahoo", "stooq"} {
+		md := supplier.NewMockMarketdata(test.T())
+		md.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
 
-	err := test.ingestSymbols(md, "XYZ")
+		err := test.ingestSymbolsVia(provider, md, "XYZ")
 
-	test.Require().EqualError(err, "error getting asset: the price provider returned an invalid ticker for XYZ")
-	md.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
-	var assets int
-	test.Require().NoError(test.db.QueryRow(context.Background(),
-		`SELECT count(*) FROM asset WHERE symbol = $1`, providerSymbol).Scan(&assets))
-	test.Zero(assets, "a refused provider ticker must not be stored")
+		test.Require().EqualError(err, "yahoo returned an invalid ticker for XYZ, so its prices weren't imported. "+
+			"Check the symbol or leave it out, and report it at https://github.com/lhjnilsson/foreverbull/issues.", provider)
+		md.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+		var assets int
+		test.Require().NoError(test.db.QueryRow(context.Background(),
+			`SELECT count(*) FROM asset WHERE symbol = $1`, providerSymbol).Scan(&assets))
+		test.Zero(assets, "a refused provider ticker must not be stored")
+	}
 }

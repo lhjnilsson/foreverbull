@@ -94,7 +94,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			if !ticker.Valid(a.GetSymbol()) {
 				log.Warn().Str("symbol", symbol).Str("provider_symbol", ticker.Logged(a.GetSymbol())).
 					Msg("provider returned a ticker outside the symbol pattern")
-				return fmt.Errorf("error getting asset: the price provider returned an invalid ticker for %s", symbol)
+				return invalidProviderTickerError(assetProvider, symbol)
 			}
 
 			// Outside the bars transaction: the asset row stays if the bars roll back.
@@ -110,6 +110,21 @@ func Ingest(ctx context.Context, message stream.Message) error {
 	}
 
 	return nil
+}
+
+// assetProvider is the provider GetAsset asks. The marketdata dependency is
+// the Yahoo client whatever the command's provider: Search, GetAsset, and
+// GetIndex stay on Yahoo (see the finance module).
+const assetProvider = "yahoo"
+
+// invalidProviderTickerError is the whole task-state text when the asset
+// lookup returns a ticker outside the pattern. It names the provider through
+// the allowlist and the requested symbol, which has passed ticker.Valid,
+// never the provider's value. Nothing wraps it on the way to the task state.
+func invalidProviderTickerError(provider, symbol string) error {
+	return fmt.Errorf("%s returned an invalid ticker for %s, so its prices weren't imported. "+ //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+		"Check the symbol or leave it out, and report it at %s.",
+		marketdata.ShownProvider(provider), symbol, repository.IssuesURL)
 }
 
 // ingestSymbol stores bars for one symbol through OHLC.Sync, the overlap and
