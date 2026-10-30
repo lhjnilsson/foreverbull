@@ -68,7 +68,10 @@ func (test *OHLCTests) TestSyncLeavesAConnectionFree() {
 	test.Equal(2, rows)
 }
 
-// A sync waiting for a slot gives up when its context ends.
+// A sync waiting for a slot gives up when its context ends. The waiting sync
+// is for another symbol (XYZ) than the one holding the slot (ABC), so it waits
+// on the semaphore and not on ABC's advisory lock: without the cap it would get
+// the pool's second connection and call fetch.
 func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
 	ctx := context.Background()
 	cfg, err := pgxpool.ParseConfig(environment.GetPostgresURL())
@@ -77,6 +80,7 @@ func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	test.Require().NoError(err)
 	defer pool.Close()
+	test.Require().NoError((&repository.Asset{Conn: pool}).Store(ctx, "XYZ", "Company XYZ"))
 	db := repository.OHLC{Conn: pool}
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
 
@@ -98,7 +102,7 @@ func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
 
 	waitCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer cancel()
-	err = db.Sync(waitCtx, "yahoo", "ABC", day, endDay(day, 0),
+	err = db.Sync(waitCtx, "yahoo", "XYZ", day, endDay(day, 0),
 		func(time.Time, *time.Time) ([]*pb.OHLC, error) {
 			test.FailNow("fetch must not run without a slot")
 			return nil, nil

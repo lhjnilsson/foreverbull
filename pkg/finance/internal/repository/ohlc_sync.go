@@ -154,8 +154,12 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 // and starve the server's health Ping.
 var syncSlots sync.Map // *pgxpool.Pool -> chan struct{}
 
-// syncSlotsFor is the semaphore for pool: MaxConns-1 slots, so one
-// connection always stays free, and at least 1.
+// syncSlotsFor is the semaphore for pool: MaxConns-1 slots, clamped to at
+// least 1. From MaxConns 2 up, one connection always stays free for Ping and
+// other callers. With MaxConns 2 that means one Sync at a time and one free
+// connection. With MaxConns 1 the clamp still allows one Sync, which then
+// holds the pool's only connection, so no connection is kept free: a Ping or
+// any other query on that pool waits until the Sync's transaction ends.
 func syncSlotsFor(pool *pgxpool.Pool) chan struct{} {
 	if slots, ok := syncSlots.Load(pool); ok {
 		return slots.(chan struct{}) //nolint:forcetypeassert // only chan struct{} is stored

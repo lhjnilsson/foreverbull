@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
@@ -64,4 +66,39 @@ func (test *OHLCTests) TestSyncIdleInTransactionTimeout() {
 			return []*pb.OHLC{closeBar(day, 125)}, nil
 		}))
 	test.Equal(1, test.countRows())
+}
+
+// The lock and idle timeouts are transaction-local (SET LOCAL): after a sync
+// commits, the same connection is back on the server defaults. The pool has
+// one connection, so the SHOWs run on the session the sync used.
+func (test *OHLCTests) TestSyncTimeoutsAreTransactionLocal() {
+	ctx := context.Background()
+	cfg, err := pgxpool.ParseConfig(environment.GetPostgresURL())
+	test.Require().NoError(err)
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	show := func() (string, string) {
+		var lockTimeout, idleTimeout string
+		test.Require().NoError(pool.QueryRow(ctx, `SHOW lock_timeout`).Scan(&lockTimeout))
+		test.Require().NoError(pool.QueryRow(ctx, `SHOW idle_in_transaction_session_timeout`).Scan(&idleTimeout))
+		return lockTimeout, idleTimeout
+	}
+	defaultLock, defaultIdle := show()
+	test.Require().NotEqual("1min", defaultLock, "the default must differ from Sync's value")
+	test.Require().NotEqual("90s", defaultIdle, "the default must differ from Sync's value")
+
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	db := repository.OHLC{Conn: pool}
+	test.Require().NoError(db.Sync(ctx, "yahoo", "ABC", day, endDay(day, 0),
+		func(time.Time, *time.Time) ([]*pb.OHLC, error) {
+			return []*pb.OHLC{closeBar(day, 125)}, nil
+		}))
+	test.Equal(1, test.countRows())
+
+	lockTimeout, idleTimeout := show()
+	test.Equal(defaultLock, lockTimeout)
+	test.Equal(defaultIdle, idleTimeout)
 }
