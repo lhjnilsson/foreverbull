@@ -490,3 +490,54 @@ CREATE TRIGGER fail_ingest BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION f
 	test.Require().ErrorAs(err, &stored)
 	test.Contains(stored.Err.Error(), "hunter2", "the cause is kept for the log")
 }
+
+// A DB error on one row rolls the symbol's whole batch back, as it does on
+// the download RPC: no gap is left in the shared price cache. The asset row
+// is written before the bars transaction and stays.
+func (test *IngestCommandTest) TestIngestRollsBackSymbolOnDBError() {
+	ctx := context.Background()
+	_, err := test.db.Exec(ctx, `
+CREATE OR REPLACE FUNCTION fail_on_bad_row() RETURNS trigger AS $$
+BEGIN
+	IF NEW.close = 13.37 THEN
+		RAISE EXCEPTION 'forced failure on the second row';
+	END IF;
+	RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_on_bad_row();`)
+	test.Require().NoError(err)
+
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	test.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	test.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return(
+		[]*pb.OHLC{
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)), Open: 10, High: 14, Low: 9, Close: 13.37, Volume: 100},
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC)), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
+		},
+		nil,
+	)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Provider = "yahoo"
+		command.Symbols = []string{"XYZ"}
+		command.Start = "2026-05-01"
+		end := "2026-05-03"
+		command.End = &end
+	})
+
+	err = command.Ingest(ctx, message)
+	test.Require().EqualError(err, "Couldn't store prices for XYZ. Try again in a few minutes. "+
+		"If it keeps failing, report it at https://github.com/lhjnilsson/foreverbull/issues.")
+	test.NotContains(err.Error(), "forced failure", "the DB text stays in the log")
+
+	var rows int
+	test.Require().NoError(test.db.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE symbol = 'XYZ'`).Scan(&rows))
+	test.Zero(rows, "a DB error on one row must leave none of the symbol's bars")
+
+	_, err = test.assets.Get(ctx, "XYZ")
+	test.Require().NoError(err, "the asset row is outside the bars transaction")
+}
