@@ -46,6 +46,12 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error unmarshalling backtest: %w", err)
 	}
 
+	// A universe file may spell a share class BRK.B, BRK-B or BRKB; all are
+	// stored as BRKB. ETF holdings keep their own names (aliases).
+	if err = storeShareClassesOnce(&b); err != nil {
+		return fmt.Errorf("error creating backtest: %w", err)
+	}
+
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {

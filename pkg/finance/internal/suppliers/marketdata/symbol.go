@@ -44,6 +44,18 @@ func parseShareClass(symbol string) (shareClass, bool) {
 	return shareClass{}, false
 }
 
+// StoredSymbol is the one name a listed share class is stored under,
+// however the universe file spells it: BRK.B, BRK-B, BRK/B, BRK B and BRKB
+// all store as BRKB. It uses parseShareClass, so only names in
+// shareClassTickers are normalised. Any other symbol, including one with an
+// exchange suffix such as VOD.L, is returned exactly as typed.
+func StoredSymbol(symbol string) string {
+	if sc, ok := parseShareClass(symbol); ok {
+		return sc.company + sc.class
+	}
+	return symbol
+}
+
 // yahooSymbol is the ticker Yahoo knows the symbol by: share classes use a
 // dash (BRK-B). Other tickers are only upper-cased.
 func yahooSymbol(symbol string) string {
