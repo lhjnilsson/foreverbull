@@ -1076,9 +1076,15 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
 		{listed: 2, unpriced: 1},
 		{listed: 5, unpriced: 1},
 		{listed: 10, unpriced: 2},
-		{listed: 10, unpriced: 3, wantErr: "Couldn't load data for backtest 'test-backtest': 3 of 10 listed symbols have no " +
-			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02), more than the 2 that can be left out. " +
-			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider."},
+		{listed: 10, unpriced: 3, wantErr: "Couldn't load data for backtest 'test-backtest': 3 of 10 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02), and at most 2 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
+		// 9 of 40 is past the cap of 8; the brackets name five and count the rest.
+		{listed: 40, unpriced: 9, wantErr: "Couldn't load data for backtest 'test-backtest': 9 of 40 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02, S03, S04 and 4 more), and at most 8 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
 	} {
 		test.Run(fmt.Sprintf("%d of %d", tc.unpriced, tc.listed), func() {
 			test.SetupTest()
@@ -1110,6 +1116,52 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
 			test.Equal(tc.unpriced, disabled)
 		})
 	}
+}
+
+// UX's exact cap copy, on a backtest named and dated as in the agreed
+// example: 3 of 10 symbols have no prices and at most 2 can be left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataCapFailureMatchesUXCopy() {
+	symbols := []string{"AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH", "III", "JJJ"}
+	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), &backtest.Backtest{
+		Name:      "oef-2024q1",
+		Benchmark: "OEF",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+			EndDate:   &pb.Date{Year: 2024, Month: 3, Day: 28},
+			Assets:    assets,
+		}},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range append([]string{"OEF"}, symbols...) {
+		rsp := &financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}
+		if symbol == "AAA" || symbol == "BBB" || symbol == "CCC" {
+			rsp.Status = financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR
+			rsp.Error = "no price data for " + symbol
+		}
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "nothing may be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': 3 of 10 symbols have no prices "+
+		"between 2024-01-02 and 2024-03-28 (AAA, BBB, CCC), and at most 2 can be left out. The backtest wasn't saved. "+
+		"Check the symbols and dates, or use another provider with --provider, then run `fbull backtest create` again.")
+
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
 // The benchmark SPY is also listed and is the only symbol with prices. It

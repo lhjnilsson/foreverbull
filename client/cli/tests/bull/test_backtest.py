@@ -596,6 +596,44 @@ def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monk
     assert "grpc" not in result.output.lower()
 
 
+_LEFT_OUT_CAP_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': 3 of 10 symbols have no prices between 2024-01-02 and 2024-03-28 "
+    "(AAA, BBB, CCC), and at most 2 can be left out. The backtest wasn't saved. Check the symbols and dates, or use "
+    "another provider with --provider, then run `fbull backtest create` again."
+)
+
+_LEFT_OUT_CAP_FOLDED_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': 9 of 40 symbols have no prices between 2024-01-02 and 2024-03-28 "
+    "(AAA, BBB, CCC, DDD, EEE and 4 more), and at most 8 can be left out. The backtest wasn't saved. Check the "
+    "symbols and dates, or use another provider with --provider, then run `fbull backtest create` again."
+)
+
+
+def _assert_create_prints_exactly(monkeypatch, message: str):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(message)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {message}\n"
+    assert "⚠" not in result.output
+
+
+def test_backtest_create_left_out_cap_prints_exact_copy_and_exits_1(monkeypatch):
+    """3 of 10 symbols have no prices, past the cap of 2: create fails and nothing is left out."""
+    _assert_create_prints_exactly(monkeypatch, _LEFT_OUT_CAP_COPY)
+
+
+def test_backtest_create_left_out_cap_folded_prints_exact_copy_and_exits_1(monkeypatch):
+    """9 of 40 past the cap of 8: the brackets name five symbols, then "and 4 more"."""
+    _assert_create_prints_exactly(monkeypatch, _LEFT_OUT_CAP_FOLDED_COPY)
+
+
 _SEARCH_FAILED_COPY = (
     "Couldn't load data for backtest 'from_file': the price download failed for FB. The backtest wasn't saved. "
     "Try again in a few minutes, or use another provider with --provider."

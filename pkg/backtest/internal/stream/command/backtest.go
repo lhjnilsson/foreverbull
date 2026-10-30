@@ -755,10 +755,10 @@ func hasPricedAsset(b *backtest.Backtest, unpriced []string) bool {
 // tooManyUnpricedCopy is the create failure when more listed symbols have no
 // prices than MaxLeftOutPercent allows. Arguments: backtest name, symbols
 // named by nameSymbols, unpriced count, listed count, start, end, limit.
-// Placeholder wording until UX sends the final copy.
-const tooManyUnpricedCopy = "Couldn't load data for backtest '%[1]s': %[3]d of %[4]d listed symbols have no prices " +
-	"between %[5]s and %[6]s (%[2]s), more than the %[7]d that can be left out. The backtest wasn't saved. " +
-	"Check the symbols and dates, or use another provider with --provider."
+// The cap only fails at 2 or more, so "symbols have" is always plural.
+const tooManyUnpricedCopy = "Couldn't load data for backtest '%[1]s': %[3]d of %[4]d symbols have no prices " +
+	"between %[5]s and %[6]s (%[2]s), and at most %[7]d can be left out. The backtest wasn't saved. " +
+	"Check the symbols and dates, or use another provider with --provider, then run `fbull backtest create` again."
 
 // discardTooManyUnpriced deletes the backtest and returns tooManyUnpricedCopy.
 func discardTooManyUnpriced(ctx context.Context, backtests repository.Backtest, name, id string,
