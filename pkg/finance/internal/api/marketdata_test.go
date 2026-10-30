@@ -407,6 +407,44 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce(
 	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 2)
 }
 
+// A London listing is stored under the symbol the user asked for. Stooq
+// fetches VOD.L as vod.uk, and a bar labelled with the provider's ticker must
+// not end up stored under that ticker.
+func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProviderTicker() {
+	ctx := context.Background()
+	suite.marketdata.On("GetAsset", "VOD.L").Return(&pb.Asset{Symbol: "VOD.L", Name: "Vodafone Group Plc"}, nil)
+	suite.marketdata.On("GetOHLC", "VOD.L", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Symbol:    "vod.uk",
+			Timestamp: timestamppb.New(mustTime("2024-01-02")),
+			Open:      69.1, High: 70.2, Low: 68.9, Close: 69.8, Volume: 51000000,
+		},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"VOD.L"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 1, Day: 3},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetError())
+
+	var symbols []string
+	rows, err := suite.pgx.Query(ctx, `SELECT DISTINCT symbol FROM ohlc WHERE provider='yahoo'`)
+	suite.Require().NoError(err)
+	for rows.Next() {
+		var symbol string
+		suite.Require().NoError(rows.Scan(&symbol))
+		symbols = append(symbols, symbol)
+	}
+	suite.Require().NoError(rows.Err())
+	suite.Equal([]string{"VOD.L"}, symbols)
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
