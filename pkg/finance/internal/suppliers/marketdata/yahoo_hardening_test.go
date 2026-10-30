@@ -115,3 +115,42 @@ func TestYahooClientDefaultsToSharedClientWithTimeout(t *testing.T) {
 	require.Equal(t, yahooHTTPTimeout, client.client().Timeout)
 	require.Positive(t, client.client().Timeout)
 }
+
+// A search query is one q value: `&`, `?`, `#` and a space in it must not add
+// parameters or cut the URL short.
+func TestYahooSearchEscapesQuery(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var queries []map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		queries = append(queries, r.URL.Query())
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"quotes":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	client := &YahooClient{searchURL: srv.URL + "/v1/finance/search", crumb: "ab/c="}
+
+	q := "A&B=1?C#D E"
+	assets, err := client.SearchAsset(q)
+	require.NoError(t, err)
+	require.Empty(t, assets)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, queries, 1)
+	require.Equal(t, []string{q}, queries[0]["q"])
+	require.NotContains(t, queries[0], "B")
+	require.Equal(t, []string{"US"}, queries[0]["region"])
+	require.Equal(t, []string{"ab/c="}, queries[0]["crumb"], "the crumb is its own parameter")
+}
+
+func TestYahooRequestURLKeepsEveryParameter(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://y.example/q/AAPL?modules=quoteType",
+		requestURL("https://y.example/q/AAPL", "", "modules=quoteType"))
+	require.Equal(t, "https://y.example/q/AAPL?crumb=ab%2Fc%3D&modules=quoteType",
+		requestURL("https://y.example/q/AAPL", "ab/c=", "modules=quoteType"))
+	require.Equal(t, "https://y.example/s?q=A%26B&region=US&crumb=x",
+		requestURL("https://y.example/s?q=A%26B&region=US", "x"))
+}

@@ -28,6 +28,9 @@ const defaultYahooChartURL = "https://query2.finance.yahoo.com/v8/finance/chart/
 // defaultYahooQuoteURL is the quote summary endpoint; the symbol is appended to it.
 const defaultYahooQuoteURL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/"
 
+// defaultYahooSearchURL is the asset search endpoint; the query goes in q.
+const defaultYahooSearchURL = "https://query2.finance.yahoo.com/v1/finance/search"
+
 // defaultISINSearchURL is the ISIN lookup; the symbol is appended to it.
 const defaultISINSearchURL = "https://markets.businessinsider.com/ajax/markets-insider/search/"
 
@@ -44,11 +47,12 @@ var yahooHTTPClient = &http.Client{Timeout: yahooHTTPTimeout}
 type YahooClient struct {
 	cookie string
 	crumb  string
-	// chartURL, quoteURL and isinURL replace the defaults so unit tests stay
-	// off the network.
-	chartURL string
-	quoteURL string
-	isinURL  string
+	// chartURL, quoteURL, isinURL and searchURL replace the defaults so unit
+	// tests stay off the network.
+	chartURL  string
+	quoteURL  string
+	isinURL   string
+	searchURL string
 	// httpClient replaces the shared client, so tests can use a short timeout.
 	httpClient *http.Client
 }
@@ -90,16 +94,8 @@ func NewYahooClient() (supplier.Marketdata, error) {
 	return yahoo, nil
 }
 
-func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, error) {
-	if y.crumb != "" {
-		url += "?crumb=" + y.crumb
-	}
-
-	for _, param := range params {
-		url += "&" + param
-	}
-
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, url, nil)
+func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -239,8 +235,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 }
 
 func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v1/finance/search?q=" + q + "&lang=en-US&region=US&quotesCount=6&newsCount=0&listsCount=0&quotesQueryId=tss_match_phrase_query"
-	resp, err := m.doRequest(url)
+	resp, err := m.doRequest(m.searchRequestURL(q))
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -265,6 +260,44 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 		assets = append(assets, a)
 	}
 	return assets, nil
+}
+
+// requestURL adds params (already encoded "k=v" pairs) and the crumb to the
+// query of rawURL, keeping any query it already has. Appending "?crumb=" to a
+// URL that already had a query hid the crumb inside the previous value.
+func requestURL(rawURL, crumb string, params ...string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parts := make([]string, 0, len(params)+2)
+	if u.RawQuery != "" {
+		parts = append(parts, u.RawQuery)
+	}
+	if crumb != "" {
+		parts = append(parts, "crumb="+url.QueryEscape(crumb))
+	}
+	parts = append(parts, params...)
+	u.RawQuery = strings.Join(parts, "&")
+	return u.String()
+}
+
+// searchRequestURL is the search URL with q escaped as one query value, so
+// `&`, `?`, `#` or a space in q cannot add parameters or cut the URL short.
+func (m *YahooClient) searchRequestURL(q string) string {
+	base := m.searchURL
+	if base == "" {
+		base = defaultYahooSearchURL
+	}
+	params := url.Values{}
+	params.Set("q", q)
+	params.Set("lang", "en-US")
+	params.Set("region", "US")
+	params.Set("quotesCount", "6")
+	params.Set("newsCount", "0")
+	params.Set("listsCount", "0")
+	params.Set("quotesQueryId", "tss_match_phrase_query")
+	return base + "?" + params.Encode()
 }
 
 type IndexResponse struct {
