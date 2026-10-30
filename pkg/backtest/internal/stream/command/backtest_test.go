@@ -825,8 +825,9 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	// Periods on the fixture span 2022-01-01 .. 2023-12-31.
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'test-backtest': yahoo returned no prices for FB between 2022-01-01 and 2023-12-31. "+
-			"The backtest wasn't saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
+		"Couldn't load data for backtest 'test-backtest': yahoo has no prices for FB between 2022-01-01 and 2023-12-31. "+
+			"The backtest wasn't saved. Check the symbol and dates, or try another provider with --provider, "+
+			"then run `fbull backtest create` again.")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -860,8 +861,44 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataNamesProvid
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("stooq-backtest"))
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'stooq-backtest': stooq returned no prices for FB between 2022-01-01 and 2023-12-31. "+
-			"The backtest wasn't saved. Check that FB traded between those dates, try again later, or use another provider with --provider.")
+		"Couldn't load data for backtest 'stooq-backtest': stooq has no prices for FB between 2022-01-01 and 2023-12-31. "+
+			"The backtest wasn't saved. Check the symbol and dates, or try another provider with --provider, "+
+			"then run `fbull backtest create` again.")
+}
+
+// The exact no-price sentence, with the period, backtest and symbol from
+// real values: no "try again later" and no other options.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataExactSentence() {
+	oef, ok := proto.Clone(test.backtest).(*backtest.Backtest)
+	test.Require().True(ok)
+	oef.Name = "oef-2024q1"
+	oef.Periods = []*backtest.Backtest_Period{{
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 3, Day: 28},
+		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "XYZ", Enabled: true}},
+	}}
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), oef)
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for XYZ",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for XYZ between 2024-01-02 and 2024-03-28. "+
+			"The backtest wasn't saved. Check the symbol and dates, or try another provider with --provider, "+
+			"then run `fbull backtest create` again.")
+	test.NotContains(err.Error(), "later")
+	test.NotContains(err.Error(), "--skip-missing")
+
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
 // A bar the finance storage refused is named as a refusal, not hidden behind
