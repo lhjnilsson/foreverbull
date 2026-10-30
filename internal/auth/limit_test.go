@@ -76,3 +76,13 @@ func TestFloodOfNewNamesDoesNotClearABackoff(t *testing.T) {
 	require.False(t, limiter.Begin("admin", home, now))
 	require.True(t, limiter.Begin("admin", "203.0.113.9", now))
 }
+
+func TestClientAddrPanicsWhenTheProxyListIsInvalid(t *testing.T) {
+	t.Setenv(environment.AuthTrustProxy, "true")
+	t.Setenv(environment.AuthTrustedProxies, "10.0.0.0/8, not-a-cidr")
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	request.RemoteAddr = "10.0.0.1:1234"
+	request.Header.Set("X-Forwarded-For", "1.1.1.1, 10.0.0.5")
+	require.PanicsWithError(t, "AUTH_TRUSTED_PROXIES must be a comma-separated list of IP addresses or "+
+		"CIDR ranges, but 'not-a-cidr' isn't one.", func() { clientAddr(request) })
+}
