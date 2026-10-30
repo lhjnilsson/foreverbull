@@ -2,8 +2,10 @@ package command_test
 
 import (
 	"context"
+	"io"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
 	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -64,4 +66,19 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsOtherDeadlinesGen
 	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
 
 	test.Require().EqualError(err, "Downloading prices failed: context deadline exceeded. Nothing was changed. Run the same create again.")
+}
+
+// Create reports download progress on the command's ctx before the first
+// symbol is answered, counting the distinct symbols it asks for.
+func (test *BacktestCommandTest) TestDownloadFinancialDataReportsProgress() {
+	test.createOEF(98)
+	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStream.On("Recv", mock.Anything).Return(nil, io.EOF).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil)
+
+	reports := make([]string, 0)
+	ctx := stream.WithProgress(context.TODO(), func(text string) { reports = append(reports, text) })
+	test.Require().NoError(command.DownloadFinancialData(ctx, test.downloadMessage("oef-2024q1")))
+	// 98 members and the benchmark.
+	test.Equal([]string{"Downloading prices: 0 of 99 symbols"}, reports)
 }

@@ -723,6 +723,8 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 
 	startDate := b.Periods[0].StartDate
 	endDate := b.Periods[len(b.Periods)-1].EndDate
+	progress := newDownloadProgress(ctx, finance.DownloadSymbolCount(symbols))
+	progress.start()
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: startDate,
@@ -767,6 +769,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
+		progress.symbolDone()
 	}
 	return nil
 }
