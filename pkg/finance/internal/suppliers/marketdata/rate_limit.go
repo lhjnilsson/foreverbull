@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/time/rate"
 )
 
 // Request rates per provider, shared by every download and ingest in the
@@ -37,16 +38,24 @@ const (
 const rateLimitRetries = 3
 
 // requestLimiter spaces requests to one provider at least interval apart,
-// across every goroutine that holds it. A 429 pushes the next slot back for
-// everyone, not only for the request that got it.
+// across every goroutine that holds it. A 429 pauses the provider for
+// everyone: callers already waiting for a slot check the pause again when
+// their slot comes, and wait it out before they send.
 type requestLimiter struct {
-	mu       sync.Mutex
 	interval time.Duration
-	next     time.Time
+	slots    *rate.Limiter
+
+	mu          sync.Mutex
+	pausedUntil time.Time
 }
 
 func newRequestLimiter(requestsPerSecond int) *requestLimiter {
-	return &requestLimiter{interval: time.Second / time.Duration(requestsPerSecond)}
+	return newRequestLimiterEvery(time.Second / time.Duration(requestsPerSecond))
+}
+
+// newRequestLimiterEvery allows one request per interval, with no burst.
+func newRequestLimiterEvery(interval time.Duration) *requestLimiter {
+	return &requestLimiter{interval: interval, slots: rate.NewLimiter(rate.Every(interval), 1)}
 }
 
 // providerLimiters holds one limiter per provider for the life of the
@@ -67,42 +76,90 @@ func limiterFor(provider string) *requestLimiter {
 	return limiter
 }
 
-// wait blocks until the caller's slot, or until ctx ends. The slot is taken
-// when wait is called, so callers are served in arrival order.
-func (l *requestLimiter) wait(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	l.mu.Lock()
-	now := time.Now()
-	slot := l.next
-	if slot.Before(now) {
-		slot = now
-	}
-	l.next = slot.Add(l.interval)
-	l.mu.Unlock()
+// WaitRefusedError is a wait for a request slot that was refused because
+// the slot, or the end of a 429 pause, comes after the ctx deadline.
+// Nothing was sent and the slot was given back. It is a DeadlineExceeded,
+// so callers read it as the provider taking too long, or as the task's own
+// time limit when Deadline is that limit. Its text is for the server log
+// only; user-facing copy never shows it.
+type WaitRefusedError struct {
+	Deadline time.Time
+}
 
-	delay := time.Until(slot)
-	if delay <= 0 {
+func (e *WaitRefusedError) Error() string {
+	return "the next request slot comes after the deadline"
+}
+
+func (e *WaitRefusedError) Unwrap() error {
+	return context.DeadlineExceeded
+}
+
+// paused is the end of the current 429 pause, or zero.
+func (l *requestLimiter) paused() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.pausedUntil
+}
+
+// wait blocks until the caller's slot, or until ctx ends. Callers reserve
+// slots in arrival order. A wait that would end after ctx's deadline is
+// refused at once with a WaitRefusedError, and a wait that ends early
+// (cancel or deadline) gives its slot back, so the next caller isn't held
+// behind slots nobody uses.
+func (l *requestLimiter) wait(ctx context.Context) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		now := time.Now()
+		if until := l.paused(); until.After(now) {
+			if err := sleepUntil(ctx, now, until); err != nil {
+				return err
+			}
+			continue
+		}
+		reservation := l.slots.ReserveN(now, 1)
+		slot := now.Add(reservation.DelayFrom(now))
+		if err := sleepUntil(ctx, now, slot); err != nil {
+			reservation.Cancel()
+			return err
+		}
+		// A 429 while this caller waited pauses it too: it waits out the
+		// pause and takes a new slot after it.
+		if l.paused().After(time.Now()) {
+			continue
+		}
 		return nil
 	}
-	timer := time.NewTimer(delay)
+}
+
+// sleepUntil waits until at, or refuses at once when at is after ctx's
+// deadline. It returns ctx's error when ctx ends first.
+func sleepUntil(ctx context.Context, now, at time.Time) error {
+	if !at.After(now) {
+		return nil
+	}
+	if deadline, ok := ctx.Deadline(); ok && at.After(deadline) {
+		return &WaitRefusedError{Deadline: deadline}
+	}
+	timer := time.NewTimer(at.Sub(now))
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return ctx.Err() //nolint:wrapcheck // the caller reads the ctx error as is
 	case <-timer.C:
 		return nil
 	}
 }
 
-// pause keeps every caller from sending before now plus backoff.
+// pause keeps every caller, including those already waiting, from sending
+// before now plus backoff.
 func (l *requestLimiter) pause(backoff time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	until := time.Now().Add(backoff)
-	if l.next.Before(until) {
-		l.next = until
+	if l.pausedUntil.Before(until) {
+		l.pausedUntil = until
 	}
 }
 

@@ -97,7 +97,7 @@ func TestRateLimitIsSharedAcrossConcurrentDownloads(t *testing.T) {
 			t.Parallel()
 			seen := &arrivals{}
 			srv := fakeProvider(t, tc.body, tc.mime, seen)
-			limiter := &requestLimiter{interval: testRequestInterval}
+			limiter := newRequestLimiterEvery(testRequestInterval)
 
 			// Each download builds its own client, as DownloadHistoricalData
 			// does per request; only the limiter is shared.
@@ -158,7 +158,7 @@ func TestRateLimit429BacksOffEveryDownload(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	limiter := &requestLimiter{interval: 10 * time.Millisecond}
+	limiter := newRequestLimiterEvery(10 * time.Millisecond)
 	start := time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2021, 1, 8, 0, 0, 0, 0, time.UTC)
 	first, err := NewStooqClient(WithStooqBaseURL(srv.URL))
@@ -230,7 +230,7 @@ func TestRateLimitBackoff(t *testing.T) {
 // or timed-out download doesn't sit in the queue.
 func TestRateLimitWaitStopsWithTheContext(t *testing.T) {
 	t.Parallel()
-	limiter := &requestLimiter{interval: time.Hour}
+	limiter := newRequestLimiterEvery(time.Hour)
 	require.NoError(t, limiter.wait(context.Background()))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -238,6 +238,91 @@ func TestRateLimitWaitStopsWithTheContext(t *testing.T) {
 	began := time.Now()
 	require.ErrorIs(t, limiter.wait(ctx), context.DeadlineExceeded)
 	require.Less(t, time.Since(began), time.Second)
+}
+
+// A wait whose slot comes after the ctx deadline is refused at once, not
+// slept on, and the refusal is a DeadlineExceeded that keeps its deadline.
+func TestRateLimitWaitRefusesASlotPastTheDeadline(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiterEvery(time.Hour)
+	require.NoError(t, limiter.wait(context.Background()))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	began := time.Now()
+	err := limiter.wait(ctx)
+	require.Less(t, time.Since(began), 100*time.Millisecond, "refused up front")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	var refused *WaitRefusedError
+	require.ErrorAs(t, err, &refused)
+	require.Equal(t, deadline, refused.Deadline)
+}
+
+// Waits that time out or are cancelled give their slots back: after 100 of
+// them at the Stooq rate, the next real fetch still gets the next slot, not
+// one 50 s away.
+func TestRateLimitCancelledWaitsGiveTheirSlotsBack(t *testing.T) {
+	t.Parallel()
+	for name, endWait := range map[string]func() (context.Context, context.CancelFunc){
+		"timed out": func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), time.Millisecond)
+		},
+		"cancelled": func() (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(context.Background())
+			time.AfterFunc(time.Millisecond, cancel)
+			return ctx, cancel
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			limiter := newRequestLimiter(stooqRequestsPerSecond)
+			require.NoError(t, limiter.wait(context.Background()))
+			for range 100 {
+				ctx, cancel := endWait()
+				require.Error(t, limiter.wait(ctx))
+				cancel()
+			}
+			began := time.Now()
+			require.NoError(t, limiter.wait(context.Background()))
+			require.Less(t, time.Since(began), 2*limiter.interval, "the next fetch waits one slot at most")
+		})
+	}
+}
+
+// A 429 pause also holds callers that were already waiting for a slot:
+// none of them sends before the pause ends.
+func TestRateLimitPauseHoldsCallersAlreadyWaiting(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiter(yahooRequestsPerSecond)
+	pauseFor := time.Second
+	var mu sync.Mutex
+	sent := make([]time.Time, 0, 10)
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, limiter.wait(context.Background()))
+			mu.Lock()
+			sent = append(sent, time.Now())
+			mu.Unlock()
+		}()
+	}
+	time.Sleep(50 * time.Millisecond)
+	limiter.pause(pauseFor) // a 429 seen while nine callers still wait
+	pausedAt := time.Now()
+	wg.Wait()
+
+	beforePause := 0
+	for _, at := range sent {
+		if at.Before(pausedAt) {
+			beforePause++
+			continue
+		}
+		require.GreaterOrEqual(t, at.Sub(pausedAt), pauseFor-arrivalTolerance, "a waiting caller sent during the pause")
+	}
+	require.Equal(t, 1, beforePause, "only the slot taken before the 429 went out")
 }
 
 // Every client of a provider uses that provider's one limiter, whichever

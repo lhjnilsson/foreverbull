@@ -10,8 +10,8 @@ import (
 // the fixtures don't wait out the production rates. Tests of the rate itself
 // build their own limiter.
 func TestMain(m *testing.M) {
-	for _, limiter := range providerLimiters {
-		limiter.interval = time.Millisecond
+	for provider := range providerLimiters {
+		providerLimiters[provider] = newRequestLimiterEvery(time.Millisecond)
 	}
 	os.Exit(m.Run())
 }
