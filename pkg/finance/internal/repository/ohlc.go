@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -217,6 +218,39 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		return fmt.Errorf("failed to store ohlc: %w", err)
 	}
 
+	return nil
+}
+
+// txBeginner is a connection that can open a transaction: a pool, a
+// connection, or a transaction (which opens a savepoint).
+type txBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// StoreBars validates and stores one symbol's batch in a single transaction,
+// so a DB error on any row leaves none of the batch behind. A connection that
+// can't open a transaction stores row by row.
+func (db *OHLC) StoreBars(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
+	if err := ValidateBars(provider, symbol, bars); err != nil {
+		return err
+	}
+	conn, ok := db.Conn.(txBeginner)
+	if !ok {
+		return db.storeEach(ctx, provider, symbol, bars)
+	}
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		inTx := OHLC{Conn: tx}
+		return inTx.storeEach(ctx, provider, symbol, bars)
+	})
+}
+
+func (db *OHLC) storeEach(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
+	for _, bar := range bars {
+		if err := db.Store(ctx, provider, symbol, bar.GetTimestamp().AsTime(),
+			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose(), int(bar.GetVolume())); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

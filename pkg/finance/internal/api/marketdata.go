@@ -88,18 +88,42 @@ func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexR
 
 const downloadWorkers = 10
 
-func sendDownloadResponse(serverStream servicePb.Marketdata_DownloadHistoricalDataServer, rsp *servicePb.DownloadHistoricalDataResponse) {
-	if err := serverStream.Send(rsp); err != nil {
+// downloadSender serialises Send on the download stream. gRPC doesn't allow
+// concurrent SendMsg on one stream, and every download worker reports here.
+type downloadSender struct {
+	mu     sync.Mutex
+	stream servicePb.Marketdata_DownloadHistoricalDataServer
+}
+
+func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.stream.Send(rsp); err != nil {
 		log.Err(err).Msg("error sending response")
 	}
+}
+
+// downloadFailedError is the generic STATUS_ERROR text for a failure whose
+// details (DB, driver or provider text) must stay in the log. The RPC is
+// reachable by editors, so raw internal errors don't go out.
+func downloadFailedError(symbol string) error {
+	return fmt.Errorf("couldn't download prices for %s", symbol)
+}
+
+// internalDownloadError logs err with context and returns the generic text.
+func internalDownloadError(symbol, step string, err error) error {
+	log.Error().Err(err).Str("symbol", symbol).Str("step", step).Msg("historical data download failed")
+	return downloadFailedError(symbol)
 }
 
 // noPriceDataError is the STATUS_ERROR text when no ticker of the instrument
 // has bars. DownloadFinancialData uses this prefix for the no-bars sentence;
 // any STATUS_ERROR fails create.
 func noPriceDataError(symbol string) error {
-	return fmt.Errorf("no price data for %s", symbol)
+	return fmt.Errorf("%w for %s", errNoPriceData, symbol)
 }
+
+var errNoPriceData = errors.New("no price data")
 
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
@@ -109,19 +133,19 @@ func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 // failSymbol reports a symbol as STATUS_ERROR. Create fails on that status.
 // After a block cancels the download, an in-flight symbol fails only because
 // of that cancel, so it is not reported and stays enabled for the retry.
-func failSymbol(ctx context.Context, serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
+func failSymbol(ctx context.Context, sender *downloadSender,
 	rsp *servicePb.DownloadHistoricalDataResponse, err error,
 ) {
 	if ctx.Err() != nil {
 		return
 	}
 	failDownload(rsp, err)
-	sendDownloadResponse(serverStream, rsp)
+	sender.send(rsp)
 }
 
 func (fs *MarketdataServer) downloadSymbol(
 	ctx context.Context,
-	serverStream servicePb.Marketdata_DownloadHistoricalDataServer,
+	sender *downloadSender,
 	symbol string,
 	start time.Time,
 	end *time.Time,
@@ -137,12 +161,12 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	asset, err := fs.marketdata.GetAsset(symbol)
 	if err != nil {
-		failSymbol(ctx, serverStream, rsp, err)
+		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
 	}
 
 	if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
-		failSymbol(ctx, serverStream, rsp, err)
+		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "store asset", err))
 		return nil
 	}
 
@@ -174,27 +198,28 @@ func (fs *MarketdataServer) downloadSymbol(
 			}
 			// no-bars sentinel; create fails on any STATUS_ERROR, and this
 			// prefix selects the "no price data for … between …" sentence.
-			failSymbol(ctx, serverStream, rsp, noPriceDataError(symbol))
+			if ctx.Err() == nil && !errors.Is(fetchErr, errNoPriceData) {
+				log.Error().Err(fetchErr).Str("symbol", symbol).Msg("looking up a later ticker failed")
+			}
+			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
 			return nil
 		}
 		storeSymbol = fetched.symbol
 		ohlcs = fetched.bars
 	}
 
-	// Check the whole batch first, so a refused bar stores none of them.
-	if err := repository.ValidateBars(provider, storeSymbol, ohlcs); err != nil {
-		failSymbol(ctx, serverStream, rsp, err)
+	// One transaction per symbol: a refused bar or a DB error stores none of
+	// them. Only the refused-bar sentence goes to the client as is.
+	if err := ohlcRepo.StoreBars(ctx, provider, storeSymbol, ohlcs); err != nil {
+		var invalid *repository.InvalidPriceError
+		if !errors.As(err, &invalid) {
+			err = internalDownloadError(symbol, "store bars", err)
+		}
+		failSymbol(ctx, sender, rsp, err)
 		return nil
 	}
-	for _, ohlc := range ohlcs {
-		if err := ohlcRepo.Store(ctx, provider, storeSymbol, ohlc.Timestamp.AsTime(),
-			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
-			failSymbol(ctx, serverStream, rsp, err)
-			return nil
-		}
-	}
 
-	sendDownloadResponse(serverStream, rsp)
+	sender.send(rsp)
 	return nil
 }
 
@@ -370,6 +395,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	var blockedOnce sync.Once
 	var blocked *marketdata.BlockedError
 
+	sender := &downloadSender{stream: serverStream}
 	var wg sync.WaitGroup
 	assetCh := make(chan string, downloadWorkers)
 	for range downloadWorkers {
@@ -380,7 +406,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 				if ctx.Err() != nil {
 					continue
 				}
-				if err := fs.downloadSymbol(ctx, serverStream, symbol, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
+				if err := fs.downloadSymbol(ctx, sender, symbol, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
 					blockedOnce.Do(func() {
 						blocked = err
 						cancel()
