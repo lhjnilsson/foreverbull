@@ -55,13 +55,32 @@ type YahooClient struct {
 	searchURL string
 	// httpClient replaces the shared client, so tests can use a short timeout.
 	httpClient *http.Client
+	// limiter spaces the Yahoo requests. Nil means the process-wide Yahoo
+	// limiter; tests set their own.
+	limiter *requestLimiter
 }
 
-func (y *YahooClient) client() *http.Client {
+// baseClient sends without the Yahoo limiter. The ISIN lookup goes to
+// another site, so it doesn't use Yahoo's request budget.
+func (y *YahooClient) baseClient() *http.Client {
 	if y.httpClient != nil {
 		return y.httpClient
 	}
 	return yahooHTTPClient
+}
+
+// client sends through the Yahoo limiter, shared by every download and
+// ingest, with the base client's timeout and transport.
+func (y *YahooClient) client() *http.Client {
+	base := y.baseClient()
+	limiter := y.limiter
+	if limiter == nil {
+		limiter = limiterFor("yahoo")
+	}
+	return &http.Client{
+		Timeout:   base.Timeout,
+		Transport: newLimitedTransport("yahoo", limiter, base.Transport, rateLimitRetries),
+	}
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
@@ -146,7 +165,7 @@ func (y *YahooClient) getISIN(ctx context.Context, symbol string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("error creating request: %w", err)
 	}
-	resp, err := y.client().Do(req)
+	resp, err := y.baseClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
 	}

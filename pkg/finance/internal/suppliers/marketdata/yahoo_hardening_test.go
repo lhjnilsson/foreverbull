@@ -112,7 +112,7 @@ func TestGetISINTimesOutOnSlowServer(t *testing.T) {
 func TestYahooClientDefaultsToSharedClientWithTimeout(t *testing.T) {
 	t.Parallel()
 	client := &YahooClient{}
-	require.Same(t, yahooHTTPClient, client.client())
+	require.Same(t, yahooHTTPClient, client.baseClient())
 	require.Equal(t, yahooHTTPTimeout, client.client().Timeout)
 	require.Positive(t, client.client().Timeout)
 }
