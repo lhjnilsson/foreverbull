@@ -155,6 +155,11 @@ func tableConstraintExists(ctx context.Context, conn postgres.Query, table, name
 // Holdings rows with an empty ISIN are skipped; ticker and name are not identity.
 var ErrMissingISIN = errors.New("missing ISIN")
 
+// ErrAmbiguousSymbol is returned by Resolve when a ticker maps to more than
+// one instrument on the asked day. Guessing one would store or serve another
+// company's prices, so callers refuse it.
+var ErrAmbiguousSymbol = errors.New("symbol maps to more than one instrument")
+
 // Instrument is a stable economic asset. ID equals ISIN when iShares supplies one.
 type Instrument struct {
 	ID   string
@@ -249,7 +254,8 @@ func (db *Instruments) Resolve(ctx context.Context, symbol string, t time.Time) 
 		return nil, fmt.Errorf("failed to resolve symbol: %w", pgx.ErrNoRows)
 	}
 	if len(found) > 1 {
-		return nil, fmt.Errorf("symbol %s maps to %d instruments at %s", symbol, len(found), t.Format("2006-01-02"))
+		return nil, fmt.Errorf("symbol %s maps to %d instruments at %s: %w",
+			symbol, len(found), t.Format("2006-01-02"), ErrAmbiguousSymbol)
 	}
 
 	inst := found[0]
