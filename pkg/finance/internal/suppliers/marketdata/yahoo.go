@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,11 +25,43 @@ const (
 // defaultYahooChartURL is the chart endpoint; the symbol is appended to it.
 const defaultYahooChartURL = "https://query2.finance.yahoo.com/v8/finance/chart/"
 
+// defaultYahooQuoteURL is the quote summary endpoint; the symbol is appended to it.
+const defaultYahooQuoteURL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/"
+
+// defaultYahooSearchURL is the asset search endpoint; the query goes in q.
+const defaultYahooSearchURL = "https://query2.finance.yahoo.com/v1/finance/search"
+
+// defaultISINSearchURL is the ISIN lookup; the symbol is appended to it.
+const defaultISINSearchURL = "https://markets.businessinsider.com/ajax/markets-insider/search/"
+
+// yahooHTTPTimeout bounds every Yahoo and ISIN request, so a provider that
+// stops answering fails the symbol instead of hanging the download.
+const yahooHTTPTimeout = 30 * time.Second
+
+// isinBodyLimit caps the ISIN search answer read into memory.
+const isinBodyLimit = 1 << 20
+
+// yahooHTTPClient is shared by every YahooClient that does not set its own.
+var yahooHTTPClient = &http.Client{Timeout: yahooHTTPTimeout}
+
 type YahooClient struct {
 	cookie string
 	crumb  string
-	// chartURL replaces defaultYahooChartURL so unit tests stay off the network.
-	chartURL string
+	// chartURL, quoteURL, isinURL and searchURL replace the defaults so unit
+	// tests stay off the network.
+	chartURL  string
+	quoteURL  string
+	isinURL   string
+	searchURL string
+	// httpClient replaces the shared client, so tests can use a short timeout.
+	httpClient *http.Client
+}
+
+func (y *YahooClient) client() *http.Client {
+	if y.httpClient != nil {
+		return y.httpClient
+	}
+	return yahooHTTPClient
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
@@ -61,16 +94,8 @@ func NewYahooClient() (supplier.Marketdata, error) {
 	return yahoo, nil
 }
 
-func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, error) {
-	if y.crumb != "" {
-		url += "?crumb=" + y.crumb
-	}
-
-	for _, param := range params {
-		url += "&" + param
-	}
-
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, url, nil)
+func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -81,7 +106,7 @@ func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, e
 		req.Header.Add("Cookie", y.cookie)
 	}
 
-	rsp, err := http.DefaultClient.Do(req)
+	rsp, err := y.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
@@ -108,8 +133,15 @@ type AssetResponse struct {
 }
 
 func (y *YahooClient) getISIN(symbol string) (string, error) {
-	url := "https://markets.businessinsider.com/ajax/markets-insider/search/" + symbol
-	resp, err := http.Get(url)
+	isinURL := y.isinURL
+	if isinURL == "" {
+		isinURL = defaultISINSearchURL
+	}
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, isinURL+url.PathEscape(symbol), nil)
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %w", err)
+	}
+	resp, err := y.client().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
 	}
@@ -120,7 +152,7 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 	}
 
 	var data map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, isinBodyLimit)).Decode(&data); err != nil {
 		return "", fmt.Errorf("error decoding response: %w", err)
 	}
 
@@ -154,10 +186,15 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 	return "", fmt.Errorf("ISIN not found for symbol %s", symbol)
 }
 
+// GetAsset looks the symbol up under Yahoo's ticker (BRK-B for BRKB). A
+// share class is returned under the asked ticker, so it is stored and
+// reported the way the universe names it.
 func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
-
-	resp, err := y.doRequest(url, "modules=quoteType")
+	quoteURL := y.quoteURL
+	if quoteURL == "" {
+		quoteURL = defaultYahooQuoteURL
+	}
+	resp, err := y.doRequest(quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -190,13 +227,15 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 			log.Info().Msgf("error getting isin for symbol %s: %v", asset.Symbol, err)
 		}
 	}
+	if _, ok := parseShareClass(symbol); ok {
+		asset.Symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	}
 
 	return &asset, nil
 }
 
 func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v1/finance/search?q=" + q + "&lang=en-US&region=US&quotesCount=6&newsCount=0&listsCount=0&quotesQueryId=tss_match_phrase_query"
-	resp, err := m.doRequest(url)
+	resp, err := m.doRequest(m.searchRequestURL(q))
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -221,6 +260,44 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 		assets = append(assets, a)
 	}
 	return assets, nil
+}
+
+// requestURL adds params (already encoded "k=v" pairs) and the crumb to the
+// query of rawURL, keeping any query it already has. Appending "?crumb=" to a
+// URL that already had a query hid the crumb inside the previous value.
+func requestURL(rawURL, crumb string, params ...string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parts := make([]string, 0, len(params)+2)
+	if u.RawQuery != "" {
+		parts = append(parts, u.RawQuery)
+	}
+	if crumb != "" {
+		parts = append(parts, "crumb="+url.QueryEscape(crumb))
+	}
+	parts = append(parts, params...)
+	u.RawQuery = strings.Join(parts, "&")
+	return u.String()
+}
+
+// searchRequestURL is the search URL with q escaped as one query value, so
+// `&`, `?`, `#` or a space in q cannot add parameters or cut the URL short.
+func (m *YahooClient) searchRequestURL(q string) string {
+	base := m.searchURL
+	if base == "" {
+		base = defaultYahooSearchURL
+	}
+	params := url.Values{}
+	params.Set("q", q)
+	params.Set("lang", "en-US")
+	params.Set("region", "US")
+	params.Set("quotesCount", "6")
+	params.Set("newsCount", "0")
+	params.Set("listsCount", "0")
+	params.Set("quotesQueryId", "tss_match_phrase_query")
+	return base + "?" + params.Encode()
 }
 
 type IndexResponse struct {
@@ -326,7 +403,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if chartURL == "" {
 		chartURL = defaultYahooChartURL
 	}
-	url := chartURL + strings.ToUpper(symbol)
+	chart := chartURL + url.PathEscape(yahooSymbol(symbol))
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
@@ -338,7 +415,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 
 	params = append(params, "interval=1d")
 
-	resp, err := y.doRequest(url, params...)
+	resp, err := y.doRequest(chart, params...)
 	if err != nil {
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
 	}

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +40,64 @@ var defaultStooqUS = map[string]string{
 	"GOOGL": "googl.us",
 	"NVDA":  "nvda.us",
 }
+
+// stooqExchangeSuffix maps an exchange suffix, as written in a stored symbol
+// (Yahoo style, such as VOD.L), to Stooq's suffix for the same exchange.
+// Stooq's own suffix (VOD.UK) is accepted too. A suffix that is in neither
+// form is refused with ErrStooqExchange instead of guessing a code. The keys
+// are the suffixes the refusal lists as supported.
+var stooqExchangeSuffix = map[string]string{
+	"L":  "uk", // London Stock Exchange
+	"DE": "de", // Xetra
+	"US": "us",
+}
+
+// stooqSuffixFor returns Stooq's suffix for a Yahoo-style or Stooq-native
+// exchange suffix.
+func stooqSuffixFor(suffix string) (string, bool) {
+	if code, ok := stooqExchangeSuffix[strings.ToUpper(suffix)]; ok {
+		return code, true
+	}
+	lower := strings.ToLower(suffix)
+	for _, code := range stooqExchangeSuffix {
+		if code == lower {
+			return code, true
+		}
+	}
+	return "", false
+}
+
+// stooqSupportedSuffixes lists the supported suffixes as ".DE, .L, .US".
+func stooqSupportedSuffixes() string {
+	suffixes := make([]string, 0, len(stooqExchangeSuffix))
+	for suffix := range stooqExchangeSuffix {
+		suffixes = append(suffixes, "."+suffix)
+	}
+	sort.Strings(suffixes)
+	return strings.Join(suffixes, ", ")
+}
+
+// stooqRefusal is the user-facing text for a symbol Stooq can't be asked
+// for. It matches ErrStooqExchange with errors.Is.
+type stooqRefusal struct{ msg string }
+
+func (e *stooqRefusal) Error() string { return e.msg }
+func (e *stooqRefusal) Unwrap() error { return ErrStooqExchange }
+
+// ErrStooqInvalidTicker is the refusal for a suffixed symbol outside the
+// ticker bound. It never echoes the symbol: it failed the bound check. It
+// matches ErrStooqExchange with errors.Is too.
+var ErrStooqInvalidTicker error = &stooqRefusal{
+	msg: "stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.",
+}
+
+// stooqTicker bounds a suffixed ticker before it is echoed in an error, so
+// a long or control-character symbol never reaches a log line or the CLI.
+var stooqTicker = regexp.MustCompile(`^[A-Z0-9^=_-]{1,32}\.[A-Z]{1,8}$`)
+
+// ErrStooqExchange is returned by GetOHLC for a symbol whose exchange suffix
+// has no known Stooq code.
+var ErrStooqExchange = errors.New("stooq has no code for this exchange")
 
 var _ supplier.Marketdata = (*StooqClient)(nil)
 
@@ -176,7 +236,8 @@ func splitMapLine(line string) []string {
 
 // resolveSymbol maps a caller ticker to (Stooq code, canonical Yahoo-style ticker).
 // Lookup is case-insensitive. A Stooq code (aapl.us) maps back to AAPL.
-// Unknown symbols without a '.' suffix use lower(symbol)+".us".
+// Unknown symbols without a '.' suffix use lower(symbol)+".us"; a symbol with
+// an exchange suffix goes through exchangeCode.
 func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" {
@@ -190,10 +251,35 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 	if mapped, ok := c.toStooq[upper]; ok {
 		return mapped, upper, nil
 	}
-	if i := strings.IndexByte(symbol, '.'); i > 0 {
-		return lower, strings.ToUpper(symbol[:i]), nil
+	if code, ok := stooqShareClassCode(symbol); ok {
+		return code, upper, nil
+	}
+	if i := strings.LastIndexByte(symbol, '.'); i > 0 {
+		return exchangeCode(symbol[:i], symbol[i+1:])
 	}
 	return lower + ".us", upper, nil
+}
+
+// exchangeCode maps a ticker with an exchange suffix (VOD.L) to its Stooq
+// code (vod.uk). Bars keep the symbol as asked (VOD.L), so they are stored
+// under the name the caller stores. A US code (xyz.us) is labelled XYZ, the
+// form US tickers are stored under.
+func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
+	upper := strings.ToUpper(ticker + "." + suffix)
+	if !stooqTicker.MatchString(upper) {
+		return "", "", ErrStooqInvalidTicker
+	}
+	stooqSuffix, ok := stooqSuffixFor(suffix)
+	if !ok {
+		return "", "", &stooqRefusal{msg: fmt.Sprintf(
+			"stooq doesn't support the .%s exchange (%s). Supported suffixes: %s. Try another provider with --provider.",
+			strings.ToUpper(suffix), upper, stooqSupportedSuffixes())}
+	}
+	code = strings.ToLower(ticker) + "." + stooqSuffix
+	if stooqSuffix == "us" {
+		return code, strings.ToUpper(ticker), nil
+	}
+	return code, upper, nil
 }
 
 func (c *StooqClient) GetAsset(string) (*pb.Asset, error) {

@@ -336,6 +336,162 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 	suite.True(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
 }
 
+// Yahoo sometimes answers a listed symbol (BK) with no data. Download must
+// ask once more and store the bars from the second answer.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce() {
+	ctx := context.Background()
+	suite.marketdata.On("GetAsset", "BK").Return(&pb.Asset{Symbol: "BK", Name: "The Bank of New York Mellon Corporation"}, nil)
+	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil).Once()
+	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2024-01-02")),
+			Open:      51.5, High: 52.4, Low: 51.2, Close: 52.1, Volume: 4200000,
+		},
+	}, nil).Once()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"BK"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("BK", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetError())
+
+	var bars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='BK'`).Scan(&bars))
+	suite.Equal(1, bars)
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 2)
+}
+
+// A London listing is stored under the symbol the user asked for. Stooq
+// fetches VOD.L as vod.uk, and a bar labelled with the provider's ticker must
+// not end up stored under that ticker.
+func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProviderTicker() {
+	ctx := context.Background()
+	suite.marketdata.On("GetAsset", "VOD.L").Return(&pb.Asset{Symbol: "VOD.L", Name: "Vodafone Group Plc"}, nil)
+	suite.marketdata.On("GetOHLC", "VOD.L", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Symbol:    "vod.uk",
+			Timestamp: timestamppb.New(mustTime("2024-01-02")),
+			Open:      69.1, High: 70.2, Low: 68.9, Close: 69.8, Volume: 51000000,
+		},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"VOD.L"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 1, Day: 3},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetError())
+
+	var symbols []string
+	rows, err := suite.pgx.Query(ctx, `SELECT DISTINCT symbol FROM ohlc WHERE provider='yahoo'`)
+	suite.Require().NoError(err)
+	for rows.Next() {
+		var symbol string
+		suite.Require().NoError(rows.Scan(&symbol))
+		symbols = append(symbols, symbol)
+	}
+	suite.Require().NoError(rows.Err())
+	suite.Equal([]string{"VOD.L"}, symbols)
+}
+
+// A symbol whose exchange suffix Stooq has no code for is refused once, by
+// name. Download must not retry it or look for a later ticker, because the
+// "no price data" sentence would hide the refusal.
+func (suite *MarketdataTest) TestDownloadHistoricalDataSendsProviderRefusalWithoutRetry() {
+	ctx := context.Background()
+	refusal := &refusalErr{
+		msg: "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.",
+	}
+	suite.marketdata.On("GetAsset", "SHOP.TO").Return(&pb.Asset{Symbol: "SHOP.TO", Name: "Shopify Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "SHOP.TO", mock.Anything, mock.Anything).Return(nil, refusal).Once()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"SHOP.TO"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	// Read to the end of the stream before asserting, so the download has
+	// finished and no mock call can land after the test returns.
+	var msgs []*servicePb.DownloadHistoricalDataResponse
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		msgs = append(msgs, msg)
+	}
+	suite.Require().Len(msgs, 1)
+	suite.Equal("SHOP.TO", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.", msgs[0].GetError())
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
+}
+
+// Stooq refuses an invalid ticker without echoing it. Download sends that
+// symbol's STATUS_ERROR once, naming its 1-based position in the request and
+// the symbol count instead of the symbol.
+func (suite *MarketdataTest) TestDownloadHistoricalDataNamesStooqInvalidTickerByPosition() {
+	ctx := context.Background()
+	exchange := &refusalErr{
+		msg: "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.",
+	}
+	for _, symbol := range []string{"SHOP.TO", "BAD.L", "RY.TO"} {
+		suite.marketdata.On("GetAsset", symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil)
+	}
+	suite.marketdata.On("GetOHLC", "SHOP.TO", mock.Anything, mock.Anything).Return(nil, exchange).Once()
+	suite.marketdata.On("GetOHLC", "BAD.L", mock.Anything, mock.Anything).Return(nil, marketdata.ErrStooqInvalidTicker).Once()
+	suite.marketdata.On("GetOHLC", "RY.TO", mock.Anything, mock.Anything).Return(nil, exchange).Once()
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"SHOP.TO", "BAD.L", "RY.TO"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	errorsBySymbol := map[string]string{}
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+		errorsBySymbol[msg.GetSymbol()] = msg.GetError()
+	}
+	suite.Equal("stooq can't use symbol 2 of 3 because it isn't a valid ticker. "+
+		"Check the spelling, for example VOD.L or AAPL.", errorsBySymbol["BAD.L"])
+	suite.NotContains(errorsBySymbol["BAD.L"], "BAD")
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 3)
+}
+
+// refusalErr stands in for the Stooq client's refusal: it matches
+// marketdata.ErrStooqExchange with errors.Is.
+type refusalErr struct{ msg string }
+
+func (e *refusalErr) Error() string { return e.msg }
+func (e *refusalErr) Unwrap() error { return marketdata.ErrStooqExchange }
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
@@ -363,6 +519,25 @@ func (suite *MarketdataTest) TestGetOHLCReadsStoredBars() {
 	suite.Require().Len(rsp.Bars, 2)
 	suite.InDelta(101, rsp.Bars[0].Close, 0.0001)
 	suite.InDelta(102, rsp.Bars[1].Close, 0.0001)
+}
+
+// GetOHLC for BRK.B reads the bars stored as BRKB.
+func (suite *MarketdataTest) TestGetOHLCReadsShareClassUnderStoredName() {
+	ctx := context.Background()
+	assetRepo := repository.Asset{Conn: suite.pgx}
+	suite.Require().NoError(assetRepo.Store(ctx, "BRKB", "Berkshire Hathaway B"))
+	ohlcRepo := repository.OHLC{Conn: suite.pgx}
+	day := time.Date(2021, 3, 1, 0, 0, 0, 0, time.UTC)
+	suite.Require().NoError(ohlcRepo.Store(ctx, "yahoo", "BRKB", day, 1, 2, 0.5, 250, 10))
+
+	rsp, err := suite.client.GetOHLC(ctx, &servicePb.GetOHLCRequest{
+		Symbols: []string{"BRK.B"},
+		AsOf:    timestamppb.New(day),
+	})
+	suite.Require().NoError(err)
+	suite.Require().Len(rsp.Bars, 1)
+	suite.Equal("BRKB", rsp.Bars[0].GetSymbol())
+	suite.InDelta(250, rsp.Bars[0].GetClose(), 0.0001)
 }
 
 func (suite *MarketdataTest) TestGetOHLCRejectsEmptySymbols() {
