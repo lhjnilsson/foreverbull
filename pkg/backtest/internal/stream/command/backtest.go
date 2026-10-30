@@ -792,8 +792,8 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 // noPriceDataNextStep ends the sentence when a provider returned no bars. The
 // finance service already retried an empty download once, so a result that is
 // still empty is most often a wrong or delisted symbol; checking it comes first.
-const noPriceDataNextStep = "The backtest wasn't saved. Check that %s traded between those dates, try again later, " +
-	"or use another provider with --provider."
+const noPriceDataNextStep = "The backtest wasn't saved. Check the symbol and dates, or try another provider " +
+	"with --provider, then run `fbull backtest create` again."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
@@ -812,8 +812,8 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
-		lead = fmt.Sprintf("%s returned no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
-		nextStep = fmt.Sprintf(noPriceDataNextStep, symbol)
+		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
+		nextStep = noPriceDataNextStep
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
