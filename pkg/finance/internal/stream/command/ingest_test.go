@@ -2,7 +2,10 @@ package command_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
+	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
@@ -540,4 +543,58 @@ CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTI
 
 	_, err = test.assets.Get(ctx, "XYZ")
 	test.Require().NoError(err, "the asset row is outside the bars transaction")
+}
+
+const crumbURL = "https://query2.finance.yahoo.com/v1/finance/chart/XYZ?crumb=s3cr3tCrumb#frag"
+
+func yahooURLError() error {
+	return fmt.Errorf("yahoo: %w", &url.Error{Op: "Get", URL: crumbURL, Err: errors.New("dial tcp: i/o timeout")})
+}
+
+// Ingest's error is published verbatim as the NATS task state and logged by
+// the orchestration, so a Yahoo URL in it must not carry the session crumb.
+func (test *IngestCommandTest) TestIngestKeepsCrumbOutOfTaskState() {
+	for _, tc := range []struct {
+		name   string
+		symbol string
+		setup  func(md *supplier.MockMarketdata)
+		prefix string
+	}{
+		{
+			name:   "get asset",
+			symbol: "XYZ",
+			setup: func(md *supplier.MockMarketdata) {
+				md.On("GetAsset", "XYZ").Return(nil, yahooURLError())
+			},
+			prefix: "error getting asset: ",
+		},
+		{
+			name:   "get ohlc",
+			symbol: test.storedAsset.Symbol,
+			setup: func(md *supplier.MockMarketdata) {
+				md.On("GetOHLC", test.storedAsset.Symbol, mock.Anything, mock.Anything).Return(nil, yahooURLError())
+			},
+			prefix: "error getting OHLC: ",
+		},
+	} {
+		test.Run(tc.name, func() {
+			md := supplier.NewMockMarketdata(test.T())
+			tc.setup(md)
+			message := new(stream.MockMessage)
+			message.On("MustGet", stream.DBDep).Return(test.db)
+			message.On("MustGet", dependency.MarketDataDep).Return(md)
+			message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+				command := args.Get(0).(*fs.IngestCommand)
+				command.Provider = "yahoo"
+				command.Symbols = []string{tc.symbol}
+				command.Start = "2026-05-01"
+			})
+
+			err := command.Ingest(context.Background(), message)
+
+			test.Require().EqualError(err, tc.prefix+
+				`yahoo: Get "https://query2.finance.yahoo.com/v1/finance/chart/XYZ": dial tcp: i/o timeout`)
+			test.NotContains(err.Error(), "s3cr3tCrumb")
+		})
+	}
 }

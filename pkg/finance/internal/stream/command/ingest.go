@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
@@ -78,7 +79,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 
 			a, err := yahoo.GetAsset(symbol)
 			if err != nil {
-				return fmt.Errorf("error getting asset: %w", err)
+				return fmt.Errorf("error getting asset: %w", redact.URLError(err))
 			}
 
 			// Outside the bars transaction: the asset row stays if the bars roll back.
@@ -124,10 +125,11 @@ func getOHLC(bars supplier.Marketdata, symbol string, start time.Time, end *time
 	ohlcs, err := bars.GetOHLC(symbol, start, end)
 	if err != nil {
 		// The blocked sentence already names the provider, symbol, and retry.
+		// It is checked before redact.URLError, which drops the chain.
 		if errors.Is(err, marketdata.ErrProviderBlocked) {
 			return nil, err
 		}
-		return nil, fmt.Errorf("error getting OHLC: %w", err)
+		return nil, fmt.Errorf("error getting OHLC: %w", redact.URLError(err))
 	}
 	return ohlcs, nil
 }
