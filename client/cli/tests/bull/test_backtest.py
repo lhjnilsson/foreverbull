@@ -497,7 +497,7 @@ def test_backtest_create_no_price_data_prints_exact_copy_and_exits_1(monkeypatch
 
 
 _DOWNLOAD_OTHER_ERROR_COPY = (
-    "Couldn't download prices for AAPL. The backtest wasn't saved. "
+    "Couldn't load data for backtest 'from_file': the price download failed for AAPL. The backtest wasn't saved. "
     "Try again in a few minutes, or use another provider with --provider."
 )
 

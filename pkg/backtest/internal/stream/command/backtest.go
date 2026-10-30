@@ -647,7 +647,7 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
 // of the user sentence. "Nothing was saved" or "wasn't saved" only when the
-// delete worked. A generic download failure is its own whole sentence.
+// delete worked.
 func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
@@ -670,8 +670,8 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	}
 	if removed && generic {
 		return plainSentence(fmt.Sprintf(
-			"Couldn't download prices for %s. The backtest wasn't saved. "+
-				"Try again in a few minutes, or use another provider with --provider.", symbol))
+			"Couldn't load data for backtest '%s': the price download failed for %s. The backtest wasn't saved. "+
+				"Try again in a few minutes, or use another provider with --provider.", name, symbol))
 	}
 	if removed {
 		return plainSentence(fmt.Sprintf(

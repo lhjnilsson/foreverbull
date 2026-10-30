@@ -827,7 +827,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOth
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
-		"Couldn't download prices for AAPL. The backtest wasn't saved. "+
+		"Couldn't load data for backtest 'test-backtest': the price download failed for AAPL. The backtest wasn't saved. "+
 			"Try again in a few minutes, or use another provider with --provider.")
 	test.Require().NotContains(err.Error(), "rpc error")
 	test.Require().NotContains(err.Error(), "Internal")
