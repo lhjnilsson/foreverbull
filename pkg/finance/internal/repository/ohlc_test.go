@@ -94,6 +94,9 @@ func TestStoreRejectsNonPositiveOpenHighLow(t *testing.T) {
 		{name: "zero low", open: 1.2, high: 1.3, low: 0, wantField: "low"},
 		{name: "nan open", open: math.NaN(), high: 1.3, low: 1.1, wantField: "open"},
 		{name: "negative low", open: 1.2, high: 1.3, low: -1, wantField: "low"},
+		{name: "infinite open", open: math.Inf(1), high: 1.3, low: 1.1, wantField: "open"},
+		{name: "infinite high", open: 1.2, high: math.Inf(1), low: 1.1, wantField: "high"},
+		{name: "negative infinite low", open: 1.2, high: 1.3, low: math.Inf(-1), wantField: "low"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

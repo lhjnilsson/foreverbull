@@ -170,11 +170,16 @@ func (fs *MarketdataServer) downloadSymbol(
 		ohlcs = fetched.bars
 	}
 
+	// Check the whole batch first, so a refused bar stores none of them.
+	if err := repository.ValidateBars(provider, storeSymbol, ohlcs); err != nil {
+		failSymbol(ctx, serverStream, rsp, err)
+		return nil
+	}
 	for _, ohlc := range ohlcs {
 		if err := ohlcRepo.Store(ctx, provider, storeSymbol, ohlc.Timestamp.AsTime(),
 			ohlc.Open, ohlc.High, ohlc.Low, ohlc.Close, int(ohlc.Volume)); err != nil {
 			failSymbol(ctx, serverStream, rsp, err)
-			continue
+			return nil
 		}
 	}
 

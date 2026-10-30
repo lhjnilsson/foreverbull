@@ -626,7 +626,7 @@ func isNoPriceDataError(text string) bool {
 
 // refusedPriceError matches the finance service's sentence for a bar its
 // storage refused. Only this exact shape is shown; other raw text is not.
-var refusedPriceError = regexp.MustCompile(`^\S+ sent an invalid price for \S+ on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+var refusedPriceError = regexp.MustCompile(`^[a-z]{1,16} sent an invalid price for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
 
 // providerFaultNextStep ends a sentence about bad provider data. Since #209 a
 // bad bar is normally dropped and filled, so reaching this means an adapter

@@ -152,6 +152,43 @@ func (suite *MarketdataTest) TestDownloadHistoricalData() {
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, result["NOCORP"])
 }
 
+// A refused bar fails the symbol once and stores none of its bars, so the
+// shared price cache never keeps a gap.
+func (suite *MarketdataTest) TestDownloadHistoricalDataStoresNothingWhenABarIsRefused() {
+	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
+		{Timestamp: timestamppb.New(mustTime("2026-05-02")), Open: 0, High: 11, Low: 9, Close: 10.5, Volume: 100},
+		{Timestamp: timestamppb.New(mustTime("2026-05-03")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
+	}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"XYZ"},
+		StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 3},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	var msgs []*servicePb.DownloadHistoricalDataResponse
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		msgs = append(msgs, msg)
+	}
+	suite.Require().Len(msgs, 1, "the symbol fails once")
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("yahoo sent an invalid price for XYZ on 2026-05-02 (0, negative or not a number)", msgs[0].GetError())
+
+	var rows int
+	suite.Require().NoError(suite.pgx.QueryRow(context.Background(),
+		`SELECT count(*) FROM ohlc WHERE symbol = 'XYZ'`).Scan(&rows))
+	suite.Zero(rows, "no bar of a refused batch may be stored")
+}
+
 func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
 	suite.marketdata.On("GetAsset", "NOCORP").Return(nil, errors.New("not found"))

@@ -201,13 +201,8 @@ func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
 // re-fetched bar replaces the stored one, so prices adjusted after a split
 // never sit next to rows on the old scale.
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
-	for _, price := range []struct {
-		field string
-		value float64
-	}{{"open", o}, {"high", h}, {"low", l}, {"close", c}} {
-		if !positivePrice(price.value) {
-			return &InvalidPriceError{Provider: provider, Symbol: symbol, Day: t, Field: price.field}
-		}
+	if err := validateBar(provider, symbol, t, o, h, l, c); err != nil {
+		return err
 	}
 
 	_, err := db.Conn.Exec(
@@ -222,6 +217,33 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		return fmt.Errorf("failed to store ohlc: %w", err)
 	}
 
+	return nil
+}
+
+// ValidateBars checks every bar a provider returned before any is stored.
+// Callers run it first so a refused bar leaves no partial history behind:
+// bars are cached per provider and symbol, and a gap there would be served to
+// every later backtest.
+func ValidateBars(provider, symbol string, bars []*financepb.OHLC) error {
+	for _, bar := range bars {
+		err := validateBar(provider, symbol, bar.GetTimestamp().AsTime(),
+			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateBar(provider, symbol string, t time.Time, o, h, l, c float64) error {
+	for _, price := range []struct {
+		field string
+		value float64
+	}{{"open", o}, {"high", h}, {"low", l}, {"close", c}} {
+		if !positivePrice(price.value) {
+			return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: price.field}
+		}
+	}
 	return nil
 }
 
