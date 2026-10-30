@@ -445,6 +445,30 @@ func (test *OHLCTests) TestStoreKeepsGoodBarOverBadRefetch() {
 	}
 }
 
+// A volume that does not fit the bigint column is refused with the volume
+// InvalidPriceError, not wrapped and not stored.
+func (test *OHLCTests) TestStoreRejectsVolumeAboveMaxInt64() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	err := test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, 125, 126, 124, 125.5, math.MaxInt64+1)
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	test.Require().NotErrorIs(err, supplier.ErrRejected)
+	var refused *repository.InvalidPriceError
+	test.Require().ErrorAs(err, &refused)
+	test.Equal("volume", refused.Field)
+	test.Require().EqualError(err, "yahoo sent an invalid volume for ABC on 2020-08-27 (out of range)")
+	var rows int
+	test.Require().NoError(test.conn.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC'`).Scan(&rows))
+	test.Zero(rows, "a refused volume stores nothing")
+
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, 125, 126, 124, 125.5, math.MaxInt64))
+	var v int64
+	test.Require().NoError(test.conn.QueryRow(ctx,
+		`SELECT volume FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC' AND time = $1`, day).Scan(&v))
+	test.Equal(int64(math.MaxInt64), v)
+}
+
 // A bar stored without a provider is written as supplier.DefaultProvider.
 func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
 	ctx := context.Background()
