@@ -94,16 +94,11 @@ const downloadWorkers = 10
 // downloadSymbols returns the request's symbols with repeats left out, in
 // request order, so each symbol is fetched, stored and reported once.
 //
-// A blank symbol is InvalidArgument, named by its position in the request,
-// before any provider call. More than marketdata.MaxDownloadSymbols distinct
-// symbols is InvalidArgument too; counting stops at the first symbol over
-// the cap. Nothing is fetched or stored then.
+// More than marketdata.MaxDownloadSymbols distinct symbols is
+// InvalidArgument; counting stops at the first symbol over the cap. Nothing
+// is fetched or stored then. The caller has already refused a symbol outside
+// the ticker pattern (blank included) by its position.
 func downloadSymbols(symbols []string) ([]string, error) {
-	for index, symbol := range symbols {
-		if strings.TrimSpace(symbol) == "" {
-			return nil, status.Error(codes.InvalidArgument, invalidTickerMessage(index+1, len(symbols)))
-		}
-	}
 	// Distinct strings as typed, the count marketdata.DownloadSymbolCount
 	// gives backtest create. Switches to StoredSymbol when
 	// lhjnilsson/foreverbull#223 lands.
@@ -120,14 +115,6 @@ func downloadSymbols(symbols []string) ([]string, error) {
 		out = append(out, symbol)
 	}
 	return out, nil
-}
-
-// invalidTickerMessage refuses a request whose symbol at the 1-based
-// position isn't a ticker. It names the position and the request's symbol
-// count, never the symbol. Backtest create matches this exact shape to build
-// its sentence.
-func invalidTickerMessage(position, total int) string {
-	return fmt.Sprintf("symbol %d of %d isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", position, total)
 }
 
 // tooManySymbolsMessage refuses a request over the per-request cap. Backtest
@@ -559,7 +546,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		}
 	}
 
-	symbols, err := downloadSymbols(req.GetSymbols())
+	symbols, err := downloadSymbols(symbols)
 	if err != nil {
 		return err
 	}
