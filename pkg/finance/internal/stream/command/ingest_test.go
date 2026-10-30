@@ -447,3 +447,46 @@ func (test *IngestCommandTest) TestIngestBeforeStoredHistoryReplaces() {
 	test.marketdata.AssertNumberOfCalls(test.T(), "GetOHLC", 1)
 	test.requireNoSplitSeam()
 }
+
+// A re-scale refetch that returns no bars fails and names the symbol, instead
+// of reporting success with the old-scale rows still stored.
+func (test *IngestCommandTest) TestRescaleRefetchWithNoBarsFails() {
+	test.storeAAPLPreSplit(2)
+	adjusted := aaplAdjusted()
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return([]*pb.OHLC{}, nil).Once()
+
+	err := test.ingestAAPL("2020-08-27", "2020-09-01")
+	test.Require().ErrorIs(err, repository.ErrNoBars)
+	test.Require().EqualError(err, "yahoo returned no prices for AAPL between 2020-08-27 and 2020-09-01. "+
+		"Check that AAPL traded between those dates, try again later, or use another provider with --provider.")
+	test.marketdata.AssertExpectations(test.T())
+
+	closeAug28, err := test.ohlc.Close(context.Background(), "yahoo", "AAPL", aug28)
+	test.Require().NoError(err)
+	test.InDelta(adjusted[1].Close*4, closeAug28, 0.0001, "stored rows stay as they were")
+}
+
+// A database error reaches the task state as a fixed sentence; the SQL and
+// driver text stay in the server log.
+func (test *IngestCommandTest) TestIngestStoreErrorIsAFixedSentence() {
+	ctx := context.Background()
+	const leak = "dial postgres://admin:hunter2@10.0.0.5:5432/prod: INSERT INTO ohlc"
+	_, err := test.db.Exec(ctx, `
+CREATE OR REPLACE FUNCTION fail_ingest() RETURNS trigger AS $$
+BEGIN RAISE EXCEPTION '`+leak+`'; END $$ LANGUAGE plpgsql;
+CREATE TRIGGER fail_ingest BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_ingest();`)
+	test.Require().NoError(err)
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	test.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return(aaplAdjusted(), nil).Once()
+
+	err = test.ingestAAPL("2020-08-27", "2020-09-01")
+	test.Require().EqualError(err, "Couldn't store prices for AAPL. Try again in a few minutes. "+
+		"If it keeps failing, report it at https://github.com/lhjnilsson/foreverbull/issues.")
+	var stored *repository.StoreError
+	test.Require().ErrorAs(err, &stored)
+	test.Contains(stored.Err.Error(), "hunter2", "the cause is kept for the log")
+}

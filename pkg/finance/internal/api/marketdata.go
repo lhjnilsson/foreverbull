@@ -209,12 +209,26 @@ func (fs *MarketdataServer) downloadSymbol(
 		ohlcs = fetched.bars
 	}
 
-	// One transaction per symbol: a refused bar or a DB error stores none of
-	// them. Only the refused-bar sentence goes to the client as is.
-	if err := ohlcRepo.StoreBars(ctx, provider, storeSymbol, ohlcs); err != nil {
+	// The same overlap and re-scale rule as ingest, in one locked transaction
+	// per symbol: a refused bar or a DB error stores none of them, and stored
+	// days after a split are re-scaled instead of left next to new ones. Only
+	// the refused-bar sentence goes to the client as is.
+	fetch := prefetchedBars(bars, storeSymbol, start, end, ohlcs)
+	if err := ohlcRepo.Sync(ctx, provider, storeSymbol, start, end, fetch); err != nil {
+		var blocked *marketdata.BlockedError
+		if errors.As(err, &blocked) {
+			return blocked
+		}
 		var invalid *repository.InvalidPriceError
-		if !errors.As(err, &invalid) {
-			err = internalDownloadError(symbol, "store bars", err)
+		var stored *repository.StoreError
+		switch {
+		case errors.As(err, &invalid):
+		case errors.Is(err, repository.ErrNoBars):
+			err = noPriceDataError(symbol)
+		case errors.As(err, &stored):
+			err = internalDownloadError(symbol, "store bars", stored.Err)
+		default:
+			err = internalDownloadError(symbol, "refetch bars", err)
 		}
 		failSymbol(ctx, sender, rsp, err)
 		return nil
@@ -238,6 +252,45 @@ func retryOHLC(ctx context.Context, bars supplier.Marketdata, symbol string,
 	case <-time.After(ohlcRetryDelay):
 	}
 	return bars.GetOHLC(symbol, start, end)
+}
+
+// prefetchedBars is the fetch Sync uses for one download. The bars already
+// fetched for start through end serve any request inside that span (Sync
+// asks from the last stored day for an incremental fetch); anything else,
+// such as a refetch from an earlier stored day, goes to the provider.
+func prefetchedBars(bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
+	fetched []*pb.OHLC,
+) repository.FetchBars {
+	return func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
+		if !withinSpan(start, end, from, to) {
+			return bars.GetOHLC(symbol, from, to)
+		}
+		out := make([]*pb.OHLC, 0, len(fetched))
+		for _, b := range fetched {
+			day := b.GetTimestamp().AsTime().UTC().Format(time.DateOnly)
+			if day < from.UTC().Format(time.DateOnly) {
+				continue
+			}
+			if to != nil && day > to.UTC().Format(time.DateOnly) {
+				continue
+			}
+			out = append(out, b)
+		}
+		return out, nil
+	}
+}
+
+// withinSpan reports whether the trading days from through to lie inside
+// start through end. A nil end is open (through today).
+func withinSpan(start time.Time, end *time.Time, from time.Time, to *time.Time) bool {
+	day := func(t time.Time) string { return t.UTC().Format(time.DateOnly) }
+	if day(from) < day(start) {
+		return false
+	}
+	if end == nil {
+		return true
+	}
+	return to != nil && day(*to) <= day(*end)
 }
 
 type fetchedBars struct {

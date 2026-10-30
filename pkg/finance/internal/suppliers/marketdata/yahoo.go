@@ -95,6 +95,8 @@ func NewYahooClient() (supplier.Marketdata, error) {
 }
 
 func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
+	// supplier.Marketdata carries no context, so there is no request ctx to
+	// pass here; the client timeout bounds the request instead.
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
