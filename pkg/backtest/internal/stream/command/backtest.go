@@ -646,7 +646,8 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
-// of the user sentence. "Nothing was saved" only when the delete worked.
+// of the user sentence. "Nothing was saved" or "wasn't saved" only when the
+// delete worked. A generic download failure is its own whole sentence.
 func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
@@ -655,6 +656,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	}
 	var lead string
 	nextStep := "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	generic := false
 	if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
@@ -663,7 +665,13 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		lead = errText + "."
 		nextStep = providerFaultNextStep
 	} else {
+		generic = true
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
+	}
+	if removed && generic {
+		return plainSentence(fmt.Sprintf(
+			"Couldn't download prices for %s. The backtest wasn't saved. "+
+				"Try again in a few minutes, or use another provider with --provider.", symbol))
 	}
 	if removed {
 		return plainSentence(fmt.Sprintf(
