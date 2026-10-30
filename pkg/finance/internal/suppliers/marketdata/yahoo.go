@@ -190,7 +190,7 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 			return parts[1], nil
 		}
 	}
-	return "", fmt.Errorf("ISIN not found for symbol %s", symbol)
+	return "", noISIN(fmt.Sprintf("ISIN not found for symbol %s", symbol))
 }
 
 // GetAsset looks the symbol up under Yahoo's ticker (BRK-B for BRKB). A
@@ -237,7 +237,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 			return nil, fmt.Errorf("error getting isin for symbol %s: %w", asset.Symbol, err)
 		}
 		if strings.TrimSpace(asset.ISIN) == "" {
-			return nil, fmt.Errorf("error getting isin for symbol %s: empty ISIN", asset.Symbol)
+			return nil, fmt.Errorf("error getting isin for symbol %s: %w", asset.Symbol, noISIN("empty ISIN"))
 		}
 	}
 	if _, ok := parseShareClass(symbol); ok {
@@ -267,6 +267,11 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 		quoteMap := quote.(map[string]interface{})
 		symbol := quoteMap["symbol"].(string)
 		a, err := m.GetAsset(symbol)
+		if errors.Is(err, ErrNoISIN) {
+			// An equity without an ISIN can't match the search by
+			// identity, so it is a known non-match, not a failure.
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", err)
 		}
