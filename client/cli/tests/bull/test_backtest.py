@@ -1391,24 +1391,52 @@ def test_backtest_get_verbose_lists_every_symbol_breaking_between_tickers(monkey
     assert shown == "99: " + ", ".join(_OEF_2024Q1)
 
 
-def test_backtest_get_shows_periods_with_disabled_symbols(monkeypatch):
+def test_backtest_get_shows_one_period_disabled_symbols_in_the_record(monkeypatch):
     lines = _get_lines(monkeypatch, _sample_backtest(), columns=80)
-    assert lines[:7] == [
+    assert lines[:8] == [
         "Backtest",
         "  Name       test_name",
         "  Start      2020-01-01",
         "  End        2020-01-31",
         "  Symbols    AAPL, MSFT",
+        "  Disabled   IBM",
         "  Benchmark  SPY",
         "  Provider   yahoo",
     ]
-    assert lines[7:12] == [
-        "Period 1",
-        "  Start     2020-01-01",
-        "  End       2020-01-31",
-        "  Enabled   AAPL, MSFT",
-        "  Disabled  IBM",
+    assert not any(line.startswith("Period") for line in lines)
+    assert lines[8] == "", "a blank line comes before the executions"
+
+
+def test_backtest_get_aligns_every_period_record(monkeypatch):
+    stored = _sample_backtest()
+    stored.periods.append(
+        backtest_pb.Backtest.Period(
+            start_date=from_pydate_to_proto_date(date(2020, 2, 1)),
+            end_date=from_pydate_to_proto_date(date(2020, 2, 28)),
+            assets=[
+                backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True),
+                backtest_pb.Backtest.Period.Asset(symbol="IBM", enabled=True),
+            ],
+        )
+    )
+    lines = _get_lines(monkeypatch, stored, columns=80)
+    assert "  Disabled   IBM" not in lines[:8], "two periods keep disabled symbols in their records"
+    p1 = lines.index("Period 1")
+    p2 = lines.index("Period 2")
+    assert lines[p1 - 1] == "" and lines[p2 - 1] == "", "records are separated by a blank line"
+    assert lines[p1 + 1 : p2 - 1] == [
+        "  Start      2020-01-01",
+        "  End        2020-01-31",
+        "  Enabled    AAPL, MSFT",
+        "  Disabled   IBM",
     ]
+    assert lines[p2 + 1 : p2 + 4] == [
+        "  Start      2020-02-01",
+        "  End        2020-02-28",
+        "  Enabled    AAPL, IBM",
+    ]
+    rows = [line for line in lines[: p2 + 4] if line.startswith("  ")]
+    assert rows and all(line[13] != " " and line[11:13] == "  " for line in rows), rows
 
 
 def test_backtest_create_and_get_share_the_symbol_cap():
