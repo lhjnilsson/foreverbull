@@ -100,6 +100,11 @@ type downloadSender struct {
 	err    error
 }
 
+// newDownloadSender wires stop, which cancels the download's workers.
+func newDownloadSender(stream servicePb.Marketdata_DownloadHistoricalDataServer, stop context.CancelFunc) *downloadSender {
+	return &downloadSender{stream: stream, stop: stop}
+}
+
 func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,7 +114,11 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 	if err := s.stream.Send(rsp); err != nil {
 		log.Err(err).Msg("error sending response, stopping the download")
 		s.err = err
-		s.stop()
+		// A sender built without newDownloadSender has no stop; it still
+		// records the failure and sends nothing more instead of panicking.
+		if s.stop != nil {
+			s.stop()
+		}
 	}
 }
 
@@ -516,7 +525,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	var blockedOnce sync.Once
 	var blocked *marketdata.BlockedError
 
-	sender := &downloadSender{stream: serverStream, stop: cancel}
+	sender := newDownloadSender(serverStream, cancel)
 	var wg sync.WaitGroup
 	assetCh := make(chan string, downloadWorkers)
 	for range downloadWorkers {
