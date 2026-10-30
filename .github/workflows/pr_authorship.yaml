@@ -3,7 +3,9 @@ name: pull request authorship
 # Flags a pull request whose author is not the author of its commits. A bot
 # must open its own pull requests: one opened under a person's account cannot
 # be edited by the bot that wrote the commits. Mixed authorship is a warning;
-# it fails only when a bot account is on one side of the mismatch.
+# it fails only when a bot account is on one side of the mismatch. A verified
+# "Update branch" merge committed by GitHub is skipped; see
+# .github/scripts/pr_authorship.sh.
 on:
   pull_request:
     types: [opened, reopened, synchronize]
@@ -17,6 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test authorship rules against fixtures
+        run: .github/scripts/test_pr_authorship.sh
       - name: Compare pull request and commit authors
         env:
           GH_TOKEN: ${{ github.token }}
@@ -26,24 +33,6 @@ jobs:
           BOT_LOGINS: lhjnilsson-bot
         run: |
           set -euo pipefail
-          # Commits with no linked GitHub account show their git author name.
-          authors="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
-            --jq '.[] | (.author.login // ("git:" + .commit.author.name))' | sort -u)"
-          others="$(grep -vxF "${PR_AUTHOR}" <<<"${authors}" || true)"
-          if [[ -z "${others}" ]]; then
-            echo "All commits are authored by ${PR_AUTHOR}."
-            exit 0
-          fi
-          others_list="$(paste -sd ',' <<<"${others}" | sed 's/,/, /g')"
-          message="Pull request author ${PR_AUTHOR} differs from commit author(s): ${others_list}."
-          bot_involved=false
-          for bot in ${BOT_LOGINS}; do
-            if [[ "${PR_AUTHOR}" == "${bot}" ]] || grep -qxF "${bot}" <<<"${others}"; then
-              bot_involved=true
-            fi
-          done
-          if [[ "${bot_involved}" == true ]]; then
-            echo "::error title=Pull request authorship::${message} A bot must open the pull requests for its own commits, from its own account."
-            exit 1
-          fi
-          echo "::warning title=Pull request authorship::${message}"
+          commits_json="${RUNNER_TEMP}/pr_commits.json"
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" > "${commits_json}"
+          .github/scripts/pr_authorship.sh "${commits_json}"
