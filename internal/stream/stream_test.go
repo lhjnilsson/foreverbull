@@ -276,17 +276,24 @@ func (test *StreamTest) TestRunOrchestration() {
 		ctx := context.Background()
 		ctx, cancel := context.WithCancel(ctx)
 
-		steps := []*pb.Orchestration_Step{}
-
+		// The collector hands the steps over once RunOrchestration closes
+		// its channel, so the test never reads the slice while it grows.
+		done := make(chan []*pb.Orchestration_Step, 1)
 		go func() {
-			statusCh := test.uut.RunOrchestration(ctx, &o)
-			for st := range statusCh {
+			steps := []*pb.Orchestration_Step{}
+			for st := range test.uut.RunOrchestration(ctx, &o) {
 				steps = append(steps, st)
 			}
+			done <- steps
 		}()
 		time.Sleep(time.Second)
 		cancel()
-		time.Sleep(time.Second / 2) // Wait for channel to retrieve status
+		var steps []*pb.Orchestration_Step
+		select {
+		case steps = <-done:
+		case <-time.After(5 * time.Second):
+			test.FailNow("orchestration did not stop after cancel")
+		}
 		test.Require().Len(steps, 2)
 		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
 		test.Require().Equal(common.State_STATE_FAILED, steps[1].State)
