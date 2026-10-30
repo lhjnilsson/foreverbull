@@ -90,17 +90,33 @@ const downloadWorkers = 10
 
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.
+// The first failed Send calls stop: the client can't get any later result,
+// so the workers must not keep fetching and storing for it.
 type downloadSender struct {
 	mu     sync.Mutex
 	stream servicePb.Marketdata_DownloadHistoricalDataServer
+	stop   context.CancelFunc
+	err    error
 }
 
 func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.stream.Send(rsp); err != nil {
-		log.Err(err).Msg("error sending response")
+	if s.err != nil {
+		return
 	}
+	if err := s.stream.Send(rsp); err != nil {
+		log.Err(err).Msg("error sending response, stopping the download")
+		s.err = err
+		s.stop()
+	}
+}
+
+// sendErr is the first failed Send, or nil.
+func (s *downloadSender) sendErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err
 }
 
 // downloadFailedError is the generic STATUS_ERROR text for a failure whose
@@ -477,14 +493,14 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	assetRepo := repository.Asset{Conn: fs.pgx}
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
-	// The first blocked symbol cancels the rest. Workers that already started
-	// finish their symbol, so the error is still returned once.
+	// The first blocked symbol or failed Send cancels the rest. Workers that
+	// already started finish their symbol, so the error is still returned once.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var blockedOnce sync.Once
 	var blocked *marketdata.BlockedError
 
-	sender := &downloadSender{stream: serverStream}
+	sender := &downloadSender{stream: serverStream, stop: cancel}
 	var wg sync.WaitGroup
 	assetCh := make(chan string, downloadWorkers)
 	for range downloadWorkers {
@@ -518,6 +534,9 @@ feed:
 
 	if blocked != nil {
 		return status.Error(codes.FailedPrecondition, blocked.Error())
+	}
+	if err := sender.sendErr(); err != nil {
+		return err
 	}
 	return ctx.Err()
 }
