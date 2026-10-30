@@ -240,3 +240,62 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataTellsALockWaitAtTheLimitA
 	suite.Equal("the download hit its time limit of 1s at AAPL", st.Message())
 }
 
+// A split moves the stored scale: 08-26 and 08-27 are stored at the
+// pre-split closes, the download's overlap day no longer matches, so Sync
+// refetches from 08-26. The time limit ends during that refetch. Nothing
+// changes: both rows keep their old closes, none is deleted, and 08-28 is
+// not added on the new scale next to them.
+func (suite *MarketdataTest) TestDownloadHistoricalDataLimitDuringASplitRefetchChangesNothing() {
+	suite.T().Setenv(environment.FinanceTaskTimeLimit, "2s")
+	ctx := context.Background()
+	assets := repository.Asset{Conn: suite.pgx}
+	ohlc := repository.OHLC{Conn: suite.pgx}
+	suite.Require().NoError(assets.Store(ctx, "AAPL", "Apple Inc."))
+	bar := func(day string, close float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(mustTime(day)), Open: close, High: close, Low: close, Close: close, Volume: 100}
+	}
+	suite.Require().NoError(ohlc.Store(ctx, "yahoo", "AAPL", mustTime("2020-08-26"), 506.09, 506.09, 506.09, 506.09, 100))
+	suite.Require().NoError(ohlc.Store(ctx, "yahoo", "AAPL", mustTime("2020-08-27"), 500.04, 500.04, 500.04, 500.04, 100))
+
+	onDay := func(day string) interface{} {
+		return mock.MatchedBy(func(t time.Time) bool { return t.UTC().Format(time.DateOnly) == day })
+	}
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", onDay("2020-08-27"), mock.Anything).
+		Return([]*pb.OHLC{bar("2020-08-27", 125.01), bar("2020-08-28", 124.8075)}, nil).Once()
+	refetched := make(chan struct{})
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", onDay("2020-08-26"), mock.Anything).Return(
+		func(ctx context.Context, _ string, _ time.Time, _ *time.Time) ([]*pb.OHLC, error) {
+			close(refetched)
+			<-ctx.Done()
+			return nil, fmt.Errorf("error getting bars: %w", ctx.Err())
+		}).Once()
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &internal_pb.Date{Year: 2020, Month: 8, Day: 27},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 8, Day: 28},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+	msgs, streamErr := suite.drain(rsp)
+	select {
+	case <-refetched:
+	default:
+		suite.Fail("the split refetch from 08-26 never ran")
+	}
+	suite.Empty(msgs)
+	st, ok := status.FromError(streamErr)
+	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
+	suite.Equal(codes.DeadlineExceeded, st.Code())
+	suite.Equal("the download hit its time limit of 2s at AAPL", st.Message())
+
+	bars, err := ohlc.List(ctx, "yahoo", []string{"AAPL"}, mustTime("2020-08-31"), 0)
+	suite.Require().NoError(err)
+	closes := map[string]float64{}
+	for _, b := range bars {
+		closes[b.GetTimestamp().AsTime().UTC().Format(time.DateOnly)] = b.GetClose()
+	}
+	suite.Equal(map[string]float64{"2020-08-26": 506.09, "2020-08-27": 500.04}, closes,
+		"both rows keep the old scale, none is deleted and 08-28 is not added")
+}
