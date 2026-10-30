@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -396,5 +397,31 @@ func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
 	_, err := client.GetOHLC("SHOP.TO", start, &end)
 	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
 	require.Contains(t, err.Error(), "SHOP.TO")
+	require.False(t, called)
+}
+
+// A suffixed symbol that is too long or carries control characters is refused
+// without echoing it, so it never reaches a log line or the CLI.
+func TestGetOHLCRefusesUnboundedSuffixedSymbolWithoutEchoingIt(t *testing.T) {
+	t.Parallel()
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	t.Cleanup(srv.Close)
+	client := newStooqClient(t, srv.URL)
+	start := date(t, "2021-01-04")
+	end := date(t, "2021-01-06")
+	for name, symbol := range map[string]string{
+		"long":    strings.Repeat("A", 5000) + ".L",
+		"newline": "VOD\nINJECTED.L",
+		"escape":  "VOD\x1b[2J.L",
+	} {
+		_, err := client.GetOHLC(symbol, start, &end)
+		require.ErrorIs(t, err, marketdata.ErrStooqExchange, name)
+		require.Less(t, len(err.Error()), 100, name)
+		require.NotContains(t, err.Error(), "\n", name)
+		require.NotContains(t, err.Error(), "\x1b", name)
+	}
 	require.False(t, called)
 }

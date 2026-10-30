@@ -130,7 +130,7 @@ func TestYahooSearchEscapesQuery(t *testing.T) {
 		_, _ = w.Write([]byte(`{"quotes":[]}`))
 	}))
 	t.Cleanup(srv.Close)
-	client := &YahooClient{searchURL: srv.URL + "/v1/finance/search"}
+	client := &YahooClient{searchURL: srv.URL + "/v1/finance/search", crumb: "ab/c="}
 
 	q := "A&B=1?C#D E"
 	assets, err := client.SearchAsset(q)
@@ -142,4 +142,15 @@ func TestYahooSearchEscapesQuery(t *testing.T) {
 	require.Equal(t, []string{q}, queries[0]["q"])
 	require.NotContains(t, queries[0], "B")
 	require.Equal(t, []string{"US"}, queries[0]["region"])
+	require.Equal(t, []string{"ab/c="}, queries[0]["crumb"], "the crumb is its own parameter")
+}
+
+func TestYahooRequestURLKeepsEveryParameter(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://y.example/q/AAPL?modules=quoteType",
+		requestURL("https://y.example/q/AAPL", "", "modules=quoteType"))
+	require.Equal(t, "https://y.example/q/AAPL?crumb=ab%2Fc%3D&modules=quoteType",
+		requestURL("https://y.example/q/AAPL", "ab/c=", "modules=quoteType"))
+	require.Equal(t, "https://y.example/s?q=A%26B&region=US&crumb=x",
+		requestURL("https://y.example/s?q=A%26B&region=US", "x"))
 }

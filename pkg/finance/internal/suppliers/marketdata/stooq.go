@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ var stooqExchangeSuffix = map[string]string{
 	"DE": "de", // Xetra
 	"US": "us",
 }
+
+// stooqTicker bounds a suffixed ticker before it is echoed in an error, so
+// a long or control-character symbol never reaches a log line or the CLI.
+var stooqTicker = regexp.MustCompile(`^[A-Z0-9^=_-]{1,32}\.[A-Z]{1,8}$`)
 
 // ErrStooqExchange is returned by GetOHLC for a symbol whose exchange suffix
 // has no known Stooq code.
@@ -221,6 +226,9 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 // form US tickers are stored under.
 func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	upper := strings.ToUpper(ticker + "." + suffix)
+	if !stooqTicker.MatchString(upper) {
+		return "", "", fmt.Errorf("stooq GetOHLC: %w (not a valid ticker)", ErrStooqExchange)
+	}
 	stooqSuffix, ok := stooqExchangeSuffix[strings.ToUpper(suffix)]
 	if !ok {
 		return "", "", fmt.Errorf("stooq GetOHLC %s: %w (exchange suffix .%s)", upper, ErrStooqExchange, suffix)

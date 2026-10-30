@@ -94,16 +94,8 @@ func NewYahooClient() (supplier.Marketdata, error) {
 	return yahoo, nil
 }
 
-func (y *YahooClient) doRequest(url string, params ...string) (*http.Response, error) {
-	if y.crumb != "" {
-		url += "?crumb=" + y.crumb
-	}
-
-	for _, param := range params {
-		url += "&" + param
-	}
-
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, url, nil)
+func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -268,6 +260,26 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 		assets = append(assets, a)
 	}
 	return assets, nil
+}
+
+// requestURL adds params (already encoded "k=v" pairs) and the crumb to the
+// query of rawURL, keeping any query it already has. Appending "?crumb=" to a
+// URL that already had a query hid the crumb inside the previous value.
+func requestURL(rawURL, crumb string, params ...string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parts := make([]string, 0, len(params)+2)
+	if u.RawQuery != "" {
+		parts = append(parts, u.RawQuery)
+	}
+	if crumb != "" {
+		parts = append(parts, "crumb="+url.QueryEscape(crumb))
+	}
+	parts = append(parts, params...)
+	u.RawQuery = strings.Join(parts, "&")
+	return u.String()
 }
 
 // searchRequestURL is the search URL with q escaped as one query value, so
