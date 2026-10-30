@@ -207,17 +207,30 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 	return nil
 }
 
+// positiveBar is a WHERE clause on table (a name or alias) that keeps
+// reads away from a stored row with a 0, negative, or NaN price. Store
+// refuses those now, but rows written before it did are still in the
+// table. Reads treat them as missing, the same as a day the provider never
+// sent, and leave the rows themselves alone.
+func positiveBar(table string) string {
+	return fmt.Sprintf(`%[1]s.open > 0 AND %[1]s.high > 0 AND %[1]s.low > 0 AND %[1]s.close > 0
+	AND 'NaN' NOT IN (%[1]s.open, %[1]s.high, %[1]s.low, %[1]s.close)
+	AND 'Infinity' NOT IN (%[1]s.open, %[1]s.high, %[1]s.low, %[1]s.close)`, table)
+}
+
 func positivePrice(price float64) bool {
 	return price > 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
 }
 
-// Close is the close stored for provider, symbol, and calendar day.
+// Close is the close stored for provider, symbol, and calendar day. A day
+// whose stored row has a non-positive price reads as no row.
 func (db *OHLC) Close(ctx context.Context, provider, symbol string, day time.Time) (float64, error) {
 	var closePx float64
 	err := db.Conn.QueryRow(
 		ctx,
 		`SELECT close::float8 FROM ohlc
-		 WHERE provider = $1 AND symbol = $2 AND time::date = $3::date`,
+		 WHERE provider = $1 AND symbol = $2 AND time::date = $3::date
+		   AND `+positiveBar("ohlc"),
 		priceProvider(provider), symbol, day.UTC().Format("2006-01-02"),
 	).Scan(&closePx)
 	if err != nil {
@@ -285,7 +298,8 @@ const (
 
 // List returns stored bars for provider and symbols with time <= asOf,
 // at most limit bars per symbol (newest first in the window, returned oldest
-// first). limit 0 means 252. Symbols with no bars are omitted.
+// first). limit 0 means 252. Symbols with no bars are omitted. A row with a
+// non-positive price is skipped, not returned.
 func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("symbols: empty")
@@ -311,6 +325,7 @@ func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asO
 			       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC, ctid DESC) AS rn
 			FROM ohlc
 			WHERE provider = $1 AND symbol = ANY($2) AND time <= $3
+			  AND `+positiveBar("ohlc")+`
 		) bounded
 		WHERE rn <= $4
 		ORDER BY symbol ASC, time ASC`,
@@ -358,8 +373,8 @@ const stockDataWindow = time.Duration(defaultOHLCListLimit*2+30) * 24 * time.Hou
 // ListResolved returns stored bars for the tickers the algorithm asked for.
 // A renamed ticker (FB then META, one ISIN) is labeled with the asked symbol.
 // time is inside (asOf-window, asOf], at most limit bars per symbol. limit 0
-// means 252. An empty symbol list returns no bars. Errors do not include a
-// database URL.
+// means 252. An empty symbol list returns no bars. A row with a
+// non-positive price is skipped. Errors do not include a database URL.
 func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -392,12 +407,14 @@ func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []str
 			       o.time, o.high, o.low, o.open, o.close, o.volume
 			FROM ohlc o
 			WHERE o.symbol = ANY($1::text[]) AND o.provider = $2 AND o.time > $3 AND o.time <= $4
+			  AND `+positiveBar("o")+`
 			UNION ALL
 			SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
 			FROM owner w
 			JOIN asset_symbol s ON s.isin = w.isin
 			JOIN ohlc o ON o.symbol = s.symbol
 			WHERE o.provider = $2 AND o.time > $3 AND o.time <= $4
+			  AND `+positiveBar("o")+`
 		),
 		chosen AS (
 			SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume

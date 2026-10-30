@@ -534,3 +534,87 @@ func (test *OHLCTests) TestListRejectsBadInput() {
 	_, err = test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 3000)
 	test.Require().ErrorContains(err, "limit")
 }
+
+// storeRawBar writes a row the way older ingests could, past Store's checks,
+// so reads can be tested against bad rows already in the table.
+func (test *OHLCTests) storeRawBar(provider, symbol string, t time.Time, o, h, l, c string) {
+	_, err := test.conn.Exec(context.Background(),
+		`INSERT INTO ohlc(provider, symbol, time, open, high, low, close, volume)
+		 VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7::numeric, 0)`,
+		provider, symbol, t, o, h, l, c)
+	test.Require().NoError(err)
+}
+
+func (test *OHLCTests) TestReadsSkipStoredNonPositiveBars() {
+	ctx := context.Background()
+	day := time.Date(2020, 1, 1, 21, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 1, 2, 0.5, float64(10+i), 100))
+	}
+	// Days 3 to 7 are bad rows stored before Store refused them.
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 3), "0", "0", "0", "0")
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 4), "1", "2", "0.5", "-1")
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 5), "0", "2", "0.5", "11")
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 6), "1", "2", "0.5", "NaN")
+	test.storeRawBar("yahoo", "ABC", day.AddDate(0, 0, 7), "1", "Infinity", "0.5", "11")
+	asOf := day.AddDate(0, 0, 7)
+
+	bars, err := test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 10)
+	test.Require().NoError(err)
+	test.Require().Len(bars, 3)
+	for i, bar := range bars {
+		test.InDelta(float64(10+i), bar.GetClose(), 0.0001)
+	}
+
+	// Bad rows do not use up the limit.
+	last, err := test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 1)
+	test.Require().NoError(err)
+	test.Require().Len(last, 1)
+	test.InDelta(12, last[0].GetClose(), 0.0001)
+
+	resolved, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"ABC"}, asOf, 10)
+	test.Require().NoError(err)
+	test.Require().Len(resolved, 3)
+	for i, bar := range resolved {
+		test.Greater(bar.GetClose(), 0.0)
+		test.InDelta(float64(10+i), bar.GetClose(), 0.0001)
+	}
+
+	closePx, err := test.ohlcStorage.Close(ctx, "yahoo", "ABC", day.AddDate(0, 0, 2))
+	test.Require().NoError(err)
+	test.InDelta(12, closePx, 0.0001)
+	_, err = test.ohlcStorage.Close(ctx, "yahoo", "ABC", day.AddDate(0, 0, 3))
+	test.Require().Error(err)
+
+	// The rows are still stored. The filter is on read only.
+	var stored int
+	test.Require().NoError(test.conn.QueryRow(ctx, `SELECT count(*) FROM ohlc WHERE symbol = 'ABC'`).Scan(&stored))
+	test.Equal(8, stored)
+}
+
+// A renamed ticker with a bad row under the asked symbol falls back to the
+// good row stored under the other ticker for the same day.
+func (test *OHLCTests) TestListResolvedSkipsBadRowForAlias() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: test.conn}
+	_, err := instruments.Store(ctx, "US30303M1027", "Meta Platforms")
+	test.Require().NoError(err)
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "FB", "Facebook"))
+	test.Require().NoError(assets.Store(ctx, "META", "Meta Platforms"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		($1, 'FB', '2021-07-01', '2021-10-31'),
+		($1, 'META', '2021-10-31', NULL)`, "US30303M1027")
+	test.Require().NoError(err)
+
+	oct := time.Date(2021, 10, 1, 21, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "META", oct, 1, 1, 1, 10, 1))
+	test.storeRawBar("yahoo", "FB", oct, "0", "0", "0", "0")
+
+	bars, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"FB"}, oct, 252)
+	test.Require().NoError(err)
+	test.Require().Len(bars, 1)
+	test.Equal("FB", bars[0].GetSymbol())
+	test.InDelta(10, bars[0].GetClose(), 0.0001)
+}
