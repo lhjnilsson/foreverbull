@@ -297,9 +297,17 @@ def _wrap_items(items: list[str], first_prefix: str, indent: str, width: int) ->
     return lines
 
 
+# Every label a backtest record can show, so all records `get` prints line up.
+_RECORD_LABELS = ("Name", "Start", "End", "Symbols", "Enabled", "Disabled", "Benchmark", "Provider")
+_RECORD_LABEL_WIDTH = max(len(label) for label in _RECORD_LABELS)
+
+
 def _print_record(title: str, rows: list[tuple[str, list[str]]]) -> None:
-    """One record as label/value rows; only the value column wraps, between items."""
-    label_width = max(len(label) for label, _ in rows)
+    """One record as label/value rows; only the value column wraps, between items.
+
+    Labels share one width, so values start in the same column in every record.
+    """
+    label_width = max(_RECORD_LABEL_WIDTH, *(len(label) for label, _ in rows))
     indent = " " * (2 + label_width + 2)
     console.print(title, markup=False, highlight=False)
     for label, items in rows:
@@ -308,30 +316,40 @@ def _print_record(title: str, rows: list[tuple[str, list[str]]]) -> None:
             console.print(line.rstrip(), markup=False, highlight=False, soft_wrap=True)
 
 
-def _print_backtest(title: str, entity: backtest_pb.Backtest) -> None:
-    """The backtest record `create` ends with and `get` starts with."""
+def _print_backtest(title: str, entity: backtest_pb.Backtest, *, show_disabled: bool = False) -> None:
+    """The backtest record `create` ends with and `get` starts with.
+
+    With show_disabled (`get`) and a single period, its disabled symbols are a
+    row here rather than a Period record that would repeat Start and End.
+    """
     start, end = _backtest_range(entity)
-    _print_record(
-        title,
+    verbose = _verbose()
+    rows: list[tuple[str, list[str]]] = [
+        ("Name", [entity.name]),
+        ("Start", [start]),
+        ("End", [end]),
+        ("Symbols", _symbol_items(_enabled_symbol_list(entity), verbose=verbose)),
+    ]
+    if show_disabled and len(entity.periods) == 1:
+        disabled = [a.symbol for a in entity.periods[0].assets if not a.enabled]
+        if disabled:
+            rows.append(("Disabled", _symbol_items(disabled, verbose=verbose)))
+    rows.extend(
         [
-            ("Name", [entity.name]),
-            ("Start", [start]),
-            ("End", [end]),
-            ("Symbols", _symbol_items(_enabled_symbol_list(entity), verbose=_verbose())),
             ("Benchmark", [entity.benchmark]),
             ("Provider", [_shown_provider(entity)]),
-        ],
+        ]
     )
+    _print_record(title, rows)
 
 
 def _print_periods(entity: backtest_pb.Backtest) -> None:
-    """Each period's own rows, only when they add something to the backtest record.
+    """Each period's own record, only when there are two or more periods.
 
-    One period with every symbol enabled is the record itself, so it is not repeated.
+    Records are separated by a blank line.
     """
     periods = list(entity.periods)
-    has_disabled = any(not asset.enabled for period in periods for asset in period.assets)
-    if len(periods) <= 1 and not has_disabled:
+    if len(periods) < 2:
         return
     verbose = _verbose()
     for number, period in enumerate(periods, start=1):
@@ -343,6 +361,7 @@ def _print_periods(entity: backtest_pb.Backtest) -> None:
         disabled = [a.symbol for a in period.assets if not a.enabled]
         if disabled:
             rows.append(("Disabled", _symbol_items(disabled, verbose=verbose)))
+        console.line()
         _print_record(f"Period {number}", rows)
 
 
@@ -618,8 +637,9 @@ def get(
 
     executions = broker.backtest.list_executions(name, None)
 
-    _print_backtest("Backtest", entity)
+    _print_backtest("Backtest", entity, show_disabled=True)
     _print_periods(entity)
+    console.line()
     _print_executions(executions)
 
 
