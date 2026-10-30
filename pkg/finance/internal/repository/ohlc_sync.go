@@ -103,7 +103,8 @@ const rescaleTolerance = 0.005
 // before the first missing weekday (or on that weekday when no earlier day
 // is stored from the scan start on). Only days from start, and no more than
 // gapScanDays before the last stored day, are looked at, so an older gap
-// stays as it is. Every check day, the last stored day and the stored day
+// stays as it is and backtest create fails on it (the missing-session check
+// from lhjnilsson/foreverbull-internal#123). Every check day, the last stored day and the stored day
 // next to the gap, is inside the fetched span. When each comes back with a
 // close within rescaleTolerance of the stored one, the bars for missing days
 // are inserted, the last stored day is upserted as before, and every other
@@ -358,8 +359,9 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 // never filled by the provider, so scanning the whole stored range would make
 // every daily sync fetch again from the first holiday in it (all of 2020
 // stored: from 2020-01-20, hundreds of bars instead of two). Two weeks covers
-// a provider gap from a recent fetch. Older gaps stay unfilled in storage;
-// the read-side fill from lhjnilsson/foreverbull#209 covers them. Real
+// a provider gap from a recent fetch. Older gaps stay unfilled in storage,
+// and backtest create fails on any of them that falls on a trading day
+// (lhjnilsson/foreverbull-internal#123); nothing fills them on read. Real
 // holiday handling is the trading calendar work in
 // lhjnilsson/foreverbull-internal#109.
 const gapScanDays = 14
