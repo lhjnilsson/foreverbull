@@ -17,6 +17,8 @@ import (
 // AlpacaBars downloads daily bars with a profile's key. Asset metadata stays on Yahoo.
 type AlpacaBars struct {
 	md *marketdata.Client
+	// now replaces the clock, so tests can fix today's session.
+	now func() time.Time
 }
 
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
@@ -61,9 +63,21 @@ func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
 }
 
 func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	endAt := time.Now().UTC()
+	now := clockNow(a.now)
+	endAt := now.UTC()
 	if end != nil {
 		endAt = *end
+	}
+	// Today's unfinished session is never asked for: while the market is
+	// open, Alpaca's bar for today has prices and would be stored as final.
+	// Alpaca's end is inclusive and a daily bar is stamped at midnight New
+	// York, so a clamped fetch stops just before the limit.
+	limit, ok := completedFetchEnd(start, endAt, now)
+	if !ok {
+		return []*pb.OHLC{}, nil
+	}
+	if limit.Before(endAt) {
+		endAt = limit.Add(-time.Nanosecond)
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
 	symbol = alpacaSymbol(symbol)

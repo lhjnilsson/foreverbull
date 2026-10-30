@@ -105,6 +105,8 @@ type StooqClient struct {
 	httpClient  *http.Client
 	toStooq     map[string]string // canonical upper → stooq code
 	toCanonical map[string]string // stooq code lower → canonical upper
+	// now replaces the clock, so tests can fix today's session.
+	now func() time.Time
 }
 
 // StooqOption configures a StooqClient.
@@ -298,7 +300,8 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, err
 	}
 
-	endTime := time.Now().UTC()
+	now := clockNow(c.now)
+	endTime := now.UTC()
 	if end != nil {
 		endTime = *end
 	}
@@ -306,6 +309,11 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	endDay := dateOnly(endTime)
 	if endDay.Before(startDay) {
 		return nil, fmt.Errorf("stooq GetOHLC %s: end before start", canonical)
+	}
+	endDay = stooqLastCompletedDay(endDay, now)
+	if endDay.Before(startDay) {
+		// Only today's unfinished session was asked for.
+		return []*pb.OHLC{}, nil
 	}
 
 	reqURL, err := c.ohlcURL(code, startDay, endDay)
@@ -489,6 +497,23 @@ func parseVolume(s string) (uint64, error) {
 		return 0, fmt.Errorf("volume: %w", err)
 	}
 	return v, nil
+}
+
+// stooqLastCompletedDay clamps Stooq's inclusive end day so that today's
+// unfinished XNYS session is never asked for. The day ends at midnight New
+// York after it; if lastCompletedSessionEnd stops the fetch before that,
+// the last day is the New York date just before the limit. A symbol on
+// another exchange is clamped by the XNYS close too, which can leave a
+// finished London or Xetra session out until 16:30 New York.
+func stooqLastCompletedDay(endDay, now time.Time) time.Time {
+	year, month, day := endDay.Date()
+	dayEnd := time.Date(year, month, day+1, 0, 0, 0, 0, xnysZone)
+	limit := lastCompletedSessionEnd(dayEnd, now)
+	if !limit.Before(dayEnd) {
+		return endDay
+	}
+	year, month, day = limit.Add(-time.Nanosecond).In(xnysZone).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
 func dateOnly(t time.Time) time.Time {
