@@ -90,6 +90,33 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 
 const downloadWorkers = 10
 
+// maxDownloadSymbols is how many distinct symbols one DownloadHistoricalData
+// request may carry. It is well above the largest index universe a backtest
+// asks for in one request, and bounds how much provider and database work one
+// call can start.
+const maxDownloadSymbols = 2000
+
+// downloadSymbols returns the request's symbols with repeats left out, in
+// request order, so each symbol is fetched, stored and reported once. More
+// than maxDownloadSymbols distinct symbols is InvalidArgument.
+func downloadSymbols(symbols []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(symbols))
+	out := make([]string, 0, len(symbols))
+	for _, symbol := range symbols {
+		if _, ok := seen[symbol]; ok {
+			continue
+		}
+		seen[symbol] = struct{}{}
+		out = append(out, symbol)
+	}
+	if len(out) > maxDownloadSymbols {
+		return nil, status.Errorf(codes.InvalidArgument,
+			"one download can carry at most %d symbols, and this one has %d. Split it into smaller downloads.",
+			maxDownloadSymbols, len(out))
+	}
+	return out, nil
+}
+
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.
 // The first failed Send calls stop: the client can't get any later result,
@@ -496,6 +523,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		}
 	}
 
+	symbols, err := downloadSymbols(req.GetSymbols())
+	if err != nil {
+		return err
+	}
+
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
 	if err != nil {
 		return err
@@ -548,7 +580,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	}
 
 feed:
-	for _, symbol := range req.GetSymbols() {
+	for _, symbol := range symbols {
 		select {
 		case assetCh <- symbol:
 		case <-ctx.Done():
