@@ -302,21 +302,27 @@ func TestRateLimitPauseHoldsCallersAlreadyWaiting(t *testing.T) {
 	pauseFor := time.Second
 	var mu sync.Mutex
 	sent := make([]time.Time, 0, 10)
+	errs := make([]error, 0, 10)
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, limiter.wait(context.Background()))
+			err := limiter.wait(context.Background())
 			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
 			sent = append(sent, time.Now())
-			mu.Unlock()
 		}()
 	}
 	time.Sleep(50 * time.Millisecond)
 	limiter.pause(pauseFor) // a 429 seen while nine callers still wait
 	pausedAt := time.Now()
 	wg.Wait()
+	require.Empty(t, errs)
 
 	beforePause := 0
 	for _, at := range sent {
