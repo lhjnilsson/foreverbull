@@ -656,20 +656,43 @@ func leaveOutUnpriced(ctx context.Context, backtests repository.Backtest, b *bac
 		return discardSymbolDownloadError(ctx, backtests, b.GetName(), backtestID,
 			strings.Join(unpriced, ", "), start, end, noPriceDataPrefix+strings.Join(unpriced, ", "))
 	}
+	if err := disableUnpriced(ctx, backtests, b, backtestID, unpriced); err != nil {
+		return discardFailedBacktest(ctx, backtests, b.GetName(), backtestID, err)
+	}
 	lines := make([]string, 0, len(unpriced))
 	for _, symbol := range unpriced {
-		var err error
-		if environment.GetAuthEnabled() {
-			err = backtests.UpdatePeriodAssetByID(ctx, backtestID, symbol, false)
-		} else {
-			err = backtests.UpdatePeriodAsset(ctx, b.GetName(), symbol, false)
-		}
-		if err != nil {
-			return discardFailedBacktest(ctx, backtests, b.GetName(), backtestID, err)
-		}
 		lines = append(lines, leftOutUnpricedLine(symbol, provider, start, end))
 	}
 	return &stream.Notice{Lines: lines}
+}
+
+// disableUnpriced disables the period assets of every symbol in unpriced in
+// one statement. It fails unless exactly the backtest's rows for those
+// symbols changed, so a symbol is never named as left out while it stays
+// enabled.
+func disableUnpriced(ctx context.Context, backtests repository.Backtest, b *backtest.Backtest, backtestID string, unpriced []string) error {
+	var want int64
+	for _, period := range b.GetPeriods() {
+		for _, asset := range period.GetAssets() {
+			if slices.Contains(unpriced, asset.GetSymbol()) {
+				want++
+			}
+		}
+	}
+	var got int64
+	var err error
+	if environment.GetAuthEnabled() {
+		got, err = backtests.DisablePeriodAssetsByID(ctx, backtestID, unpriced)
+	} else {
+		got, err = backtests.DisablePeriodAssets(ctx, b.GetName(), unpriced)
+	}
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("disabling the symbols left out changed %d period assets, want %d", got, want)
+	}
+	return nil
 }
 
 // hasPricedAsset reports whether an enabled period asset is not in unpriced.

@@ -233,6 +233,42 @@ func (test *BacktestTest) TestUpdatePeriodAsset() {
 	test.False(backtest.Periods[0].Assets[0].Enabled)
 }
 
+func (test *BacktestTest) TestDisablePeriodAssets() {
+	ctx := context.Background()
+
+	backtests := &repository.Backtest{Conn: test.conn}
+	assets := func() []*backtest.Backtest_Period_Asset {
+		return []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "ABC", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		}
+	}
+	test.backtest.Periods = []*backtest.Backtest_Period{
+		{StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1}, EndDate: &pb.Date{Year: 2024, Month: 12, Day: 31}, Assets: assets()},
+		{StartDate: &pb.Date{Year: 2025, Month: 1, Day: 1}, EndDate: &pb.Date{Year: 2025, Month: 12, Day: 31}, Assets: assets()},
+	}
+	_, err := backtests.Create(ctx, test.backtest)
+	test.Require().NoError(err)
+
+	// One statement disables both symbols in both periods.
+	changed, err := backtests.DisablePeriodAssets(ctx, test.backtest.Name, []string{"ABC", "XYZ"})
+	test.Require().NoError(err)
+	test.Equal(int64(4), changed)
+
+	stored, err := backtests.Get(ctx, test.backtest.Name)
+	test.Require().NoError(err)
+	for _, period := range stored.Periods {
+		for _, asset := range period.Assets {
+			test.Equal(asset.Symbol == "AAPL", asset.Enabled, asset.Symbol)
+		}
+	}
+
+	changed, err = backtests.DisablePeriodAssets(ctx, test.backtest.Name, []string{"NOPE"})
+	test.Require().NoError(err)
+	test.Zero(changed)
+}
+
 func (test *BacktestTest) TestList() {
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}

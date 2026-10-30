@@ -953,6 +953,46 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenTickerSearchF
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// The left-out symbols are disabled in one statement. If it doesn't change
+// exactly the backtest's rows for them, create fails rather than name a
+// symbol as left out that may still be enabled.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenLeftOutRowsDoNotMatch() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for XYZ",
+	}, nil).Once()
+	// XYZ's row goes away after the backtest was read, so the update
+	// changes 0 rows where 1 is expected.
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Run(func(mock.Arguments) {
+		_, err := test.db.Exec(context.TODO(),
+			`DELETE FROM backtest_period_asset WHERE backtest_name = 'test-backtest' AND symbol = 'XYZ'`)
+		test.Require().NoError(err)
+	}).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().False(errors.As(err, &notice), "no notice when the left-out rows don't match: %v", err)
+	test.Require().EqualError(err, "Downloading prices failed: disabling the symbols left out changed 0 period assets, want 1. "+
+		"Nothing was changed. Run the same create again.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A symbol delisted partway through has prices for part of the period, so
 // its download is STATUS_OK. It stays in the backtest, no notice names it,
 // and Zipline auto-closes a held position after its last bar (universe.md §8).
