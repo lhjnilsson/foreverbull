@@ -24,6 +24,14 @@ func mustLoadLocation(name string) *time.Location {
 	return location
 }
 
+// clockNow is now, or the time a test fixed.
+func clockNow(now func() time.Time) time.Time {
+	if now != nil {
+		return now()
+	}
+	return time.Now()
+}
+
 // lastCompletedSessionEnd clamps a fetch end so that today's unfinished
 // XNYS session is never asked for. A session counts as completed at
 // 16:30 America/New_York (sessionFinalAt), not at the 16:00 close. Before
@@ -33,6 +41,10 @@ func mustLoadLocation(name string) *time.Location {
 //   - On an early-close day (13:00), the session counts as completed only
 //     at 16:30. That leaves a finished session out for three and a half
 //     hours. It never lets an unfinished one in.
+//
+// Every provider clamps with it: Yahoo, Alpaca and Stooq. A provider whose
+// end is inclusive, or counted in days, stops just before the limit when it
+// applies, so a bar stamped at midnight New York today is left out too.
 func lastCompletedSessionEnd(end, now time.Time) time.Time {
 	local := now.In(xnysZone)
 	year, month, day := local.Date()

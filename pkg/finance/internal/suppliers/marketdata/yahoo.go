@@ -437,10 +437,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
-	now := time.Now()
-	if y.now != nil {
-		now = y.now()
-	}
+	now := clockNow(y.now)
 	until := now
 	if end != nil {
 		until = *end
