@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -139,3 +141,102 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsASyncRefetchTimeou
 	suite.Require().NoError(err)
 	suite.Len(kept, 1, "the stored day stays as it was")
 }
+
+// drain reads a download to its end: the responses, and the stream error
+// unless it ended with EOF.
+func (suite *MarketdataTest) drain(rsp servicePb.Marketdata_DownloadHistoricalDataClient) ([]*servicePb.DownloadHistoricalDataResponse, error) {
+	var msgs []*servicePb.DownloadHistoricalDataResponse
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			return msgs, nil
+		}
+		if err != nil {
+			return msgs, err
+		}
+		msgs = append(msgs, msg)
+	}
+}
+
+// refusedWait is a provider call whose request slot was refused against
+// deadline, wrapped the way net/http returns a transport error.
+func refusedWait(deadline time.Time) error {
+	return fmt.Errorf("error getting bars: %w", &url.Error{
+		Op: "Get", URL: "https://query2.finance.yahoo.com/v8/finance/chart/AAPL",
+		Err: &marketdata.WaitRefusedError{Deadline: deadline},
+	})
+}
+
+// requireNoLimiterText checks that no limiter or x/time/rate text reaches the
+// client, whatever sentence it gets instead.
+func (suite *MarketdataTest) requireNoLimiterText(text string) {
+	for _, raw := range []string{"rate:", "would exceed", "slot", "context deadline exceeded"} {
+		suite.NotContains(text, raw)
+	}
+}
+
+// A provider wait refused because its slot comes after the download's own
+// time limit is the limit: no STATUS_ERROR with the provider sentence, and
+// the stream ends with the time-limit text for that symbol.
+func (suite *MarketdataTest) TestDownloadHistoricalDataTellsAWaitRefusedAtTheLimitAsTheLimit() {
+	suite.T().Setenv(environment.FinanceTaskTimeLimit, "1s")
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, _ string, _ time.Time, _ *time.Time) ([]*pb.OHLC, error) {
+			deadline, ok := ctx.Deadline()
+			suite.Require().True(ok, "the download's ctx carries its limit")
+			return nil, refusedWait(deadline)
+		})
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), june2024Request("AAPL"))
+	suite.Require().NoError(err)
+	msgs, streamErr := suite.drain(rsp)
+	suite.Empty(msgs, "the symbol is not failed with the provider sentence")
+	st, ok := status.FromError(streamErr)
+	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
+	suite.Equal(codes.DeadlineExceeded, st.Code())
+	suite.Equal("the download hit its time limit of 1s at AAPL", st.Message())
+	suite.requireNoLimiterText(st.Message())
+}
+
+// A provider wait refused against a shorter deadline, such as the HTTP
+// client's 30 s, is the provider taking too long, with its own sentence.
+func (suite *MarketdataTest) TestDownloadHistoricalDataTellsAWaitRefusedEarlierAsAProviderTimeout() {
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).
+		Return(nil, refusedWait(time.Now().Add(30*time.Second)))
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), june2024Request("AAPL"))
+	suite.Require().NoError(err)
+	msgs, streamErr := suite.drain(rsp)
+	suite.Require().NoError(streamErr)
+	suite.Require().Len(msgs, 1)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("yahoo took too long to respond for AAPL", msgs[0].GetError())
+	suite.requireNoLimiterText(msgs[0].GetError())
+}
+
+// A symbol stuck on its symbol lock in the database when the time limit
+// ends is told as the limit, not as the provider or a store failure.
+func (suite *MarketdataTest) TestDownloadHistoricalDataTellsALockWaitAtTheLimitAsTheLimit() {
+	suite.T().Setenv(environment.FinanceTaskTimeLimit, "1s")
+	ctx := context.Background()
+	holder, err := suite.pgx.Begin(ctx)
+	suite.Require().NoError(err)
+	defer holder.Rollback(ctx) //nolint:errcheck
+	_, err = holder.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ohlc:' || 'AAPL'))`)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(june2024Bar(), nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(ctx, june2024Request("AAPL"))
+	suite.Require().NoError(err)
+	msgs, streamErr := suite.drain(rsp)
+	suite.Empty(msgs)
+	st, ok := status.FromError(streamErr)
+	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
+	suite.Equal(codes.DeadlineExceeded, st.Code())
+	suite.Equal("the download hit its time limit of 1s at AAPL", st.Message())
+}
+

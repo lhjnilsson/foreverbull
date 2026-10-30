@@ -234,7 +234,15 @@ func ambiguousSymbolError(provider, symbol string) error {
 // providerTimedOut reports a provider call that ran out of time while the
 // download itself still had time. A database error is never one, even when
 // its driver says timeout: that stays the store failure it is.
+//
+// A provider wait refused because its slot comes after the download's own
+// time limit is the limit, not the provider: this waits for the limit to
+// end ctx and reports false, so the symbol isn't failed and the download
+// ends with the time-limit text naming it.
 func providerTimedOut(ctx context.Context, err error) bool {
+	if ctx.Err() == nil && marketdata.AtTaskLimit(ctx, err, errDownloadTimeLimit) {
+		<-ctx.Done()
+	}
 	if ctx.Err() != nil {
 		return false
 	}

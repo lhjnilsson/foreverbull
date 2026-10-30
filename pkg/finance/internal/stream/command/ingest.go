@@ -146,9 +146,11 @@ var errIngestTimeLimit = errors.New("ingest time limit reached")
 // ingestStopped is the task-state text when symbol didn't finish because the
 // ingest's time limit ended or its provider call timed out, or nil for any
 // other failure. The limit and a slow provider have different sentences. A
-// database error is a timeout only once the limit ended.
+// provider wait refused because its slot comes after the limit is the
+// limit. A database error is a timeout only once the limit ended, so a
+// symbol stuck on its lock at the limit gets the limit's sentence.
 func ingestStopped(ctx context.Context, provider, symbol string, limit time.Duration, err error) error {
-	limitReached := errors.Is(context.Cause(ctx), errIngestTimeLimit)
+	limitReached := marketdata.AtTaskLimit(ctx, err, errIngestTimeLimit)
 	var stored *repository.StoreError
 	providerTimeout := ctx.Err() == nil && !errors.As(err, &stored) && marketdata.IsProviderTimeout(err)
 	if !limitReached && !providerTimeout {

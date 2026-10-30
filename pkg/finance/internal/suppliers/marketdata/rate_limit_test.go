@@ -350,3 +350,23 @@ func TestProviderClientsShareOneLimiter(t *testing.T) {
 	require.Equal(t, 333333333*time.Nanosecond, newRequestLimiter(alpacaRequestsPerSecond).interval)
 	require.Panics(t, func() { limiterFor("unknown") })
 }
+
+// A real Yahoo request whose slot comes after its deadline fails at once
+// with the refusal, read as a provider timeout; nothing is sent.
+func TestYahooRequestRefusedPastItsDeadlineIsAProviderTimeout(t *testing.T) {
+	t.Parallel()
+	seen := &arrivals{}
+	srv := fakeProvider(t, []byte(`{}`), "application/json", seen)
+	limiter := newRequestLimiterEvery(time.Hour)
+	require.NoError(t, limiter.wait(context.Background()))
+	client := &YahooClient{chartURL: srv.URL + "/", limiter: limiter}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	end := time.Date(2021, 1, 8, 0, 0, 0, 0, time.UTC)
+	_, err := client.GetOHLC(ctx, "AAPL", time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC), &end)
+	var refused *WaitRefusedError
+	require.ErrorAs(t, err, &refused)
+	require.True(t, IsProviderTimeout(err))
+	require.Empty(t, seen.sorted(), "nothing reaches the provider")
+}

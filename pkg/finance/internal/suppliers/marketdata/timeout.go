@@ -46,6 +46,19 @@ func WithTaskLimit(ctx context.Context, limit time.Duration, cause error) (conte
 	return context.WithDeadlineCause(ctx, at, cause)
 }
 
+// AtTaskLimit reports err as caused by the task's own time limit: ctx ended
+// with cause, or a provider wait was refused because its slot comes at or
+// after the limit. A refused wait under a shorter deadline, such as the HTTP
+// client's, is the provider taking too long instead.
+func AtTaskLimit(ctx context.Context, err, cause error) bool {
+	if errors.Is(context.Cause(ctx), cause) {
+		return true
+	}
+	at, ok := ctx.Value(taskLimitKey{}).(time.Time)
+	var refused *WaitRefusedError
+	return ok && errors.As(err, &refused) && !refused.Deadline.Before(at)
+}
+
 // IsProviderTimeout reports an error from a provider call that ran out of
 // time: a deadline on the call's ctx or a network timeout. The caller checks
 // its own ctx first, because a cancelled download is not the provider's fault.
