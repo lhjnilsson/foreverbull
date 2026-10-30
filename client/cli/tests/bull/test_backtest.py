@@ -484,8 +484,8 @@ def _create_from_file(provider: str = "yahoo"):
 
 
 _NO_PRICE_DATA_COPY = (
-    "Couldn't load data for backtest 'from_file': no price data for FB between 2019-01-01 and 2020-12-31. "
-    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+    "Couldn't load data for backtest 'from_file': yahoo returned no prices for FB between 2019-01-01 and 2020-12-31. "
+    "The backtest wasn't saved. Check that FB traded between those dates, try again later, or use another provider with --provider."
 )
 
 

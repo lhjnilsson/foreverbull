@@ -619,7 +619,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			// Any per-symbol download failure must fail create. Disabling the
 			// member and exiting 0 left an incomplete universe with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
-				msg.Symbol, startDate, endDate, msg.GetError())
+				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
 	return nil
@@ -649,12 +649,18 @@ func isRefusedBarError(text string) bool {
 const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
+// noPriceDataNextStep ends the sentence when a provider returned no bars. The
+// finance service already retried an empty download once, so a result that is
+// still empty is most often a wrong or delisted symbol; checking it comes first.
+const noPriceDataNextStep = "The backtest wasn't saved. Check that %s traded between those dates, try again later, " +
+	"or use another provider with --provider."
+
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
 // of the user sentence. "Nothing was saved" or "wasn't saved" only when the
 // delete worked.
-func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
+func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, provider, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
@@ -666,7 +672,8 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
-		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
+		lead = fmt.Sprintf("%s returned no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
+		nextStep = fmt.Sprintf(noPriceDataNextStep, symbol)
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
