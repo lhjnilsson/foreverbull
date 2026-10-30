@@ -13,6 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -96,7 +97,14 @@ func (bs *BacktestServer) createBacktestAuthed(req *servicePb.CreateBacktestRequ
 			return fmt.Errorf("error sending response: %w", err)
 		}
 	}
-	return nil
+	backtests := repository.Backtest{Conn: bs.pgx}
+	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
+		id, err := backtests.IDByOwnerAndName(ctx, account.ID, createdName(req))
+		if err != nil {
+			return nil, err
+		}
+		return backtests.GetByID(ctx, id)
+	})
 }
 
 func newCreateBacktestResponse() *servicePb.CreateBacktestResponse {

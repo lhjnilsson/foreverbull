@@ -15,10 +15,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
 	"github.com/stretchr/testify/mock"
@@ -260,4 +262,72 @@ func putGrant(handler http.Handler, cookie, name, login, level string) *httptest
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+type createCapture struct {
+	ctx    context.Context
+	frames []*servicePb.CreateBacktestResponse
+}
+
+func (s *createCapture) Context() context.Context { return s.ctx }
+func (s *createCapture) Send(msg *servicePb.CreateBacktestResponse) error {
+	cloned, ok := proto.Clone(msg).(*servicePb.CreateBacktestResponse)
+	if !ok {
+		return fmt.Errorf("clone create response")
+	}
+	s.frames = append(s.frames, cloned)
+	return nil
+}
+func (s *createCapture) SetHeader(metadata.MD) error  { return nil }
+func (s *createCapture) SendHeader(metadata.MD) error { return nil }
+func (s *createCapture) SetTrailer(metadata.MD)       {}
+func (s *createCapture) SendMsg(any) error            { return nil }
+func (s *createCapture) RecvMsg(any) error            { return io.EOF }
+
+func TestOwnedCreateSendsStoredBacktest(t *testing.T) {
+	t.Setenv(environment.AuthEnabled, "true")
+	test_helper.SetupEnvironment(t, &test_helper.Containers{Postgres: true})
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, environment.GetPostgresURL())
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	require.NoError(t, repository.Recreate(ctx, pool))
+	require.NoError(t, auth.Migrate(ctx, pool))
+
+	owner := insertAccount(t, pool, auth.RoleEditor, "owner")
+	other := insertAccount(t, pool, auth.RoleEditor, "other")
+	admin := insertAccount(t, pool, auth.RoleAdmin, "admin")
+	require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, admin.ID, quietCopier{}))
+	backtests := repository.Backtest{Conn: pool}
+	// The mocked orchestration stores nothing, so the rows the CREATING step
+	// would store are inserted here. Another owner's row of the same name must
+	// not be the one sent back.
+	createOwned(t, backtests, other.ID, "same")
+	_, err = backtests.CreateOwned(ctx, owner.ID, &backtest.Backtest{Name: "same", Benchmark: "SPY"})
+	require.NoError(t, err)
+
+	steps := make(chan *streamPb.Orchestration_Step, 3)
+	steps <- &streamPb.Orchestration_Step{Num: 1, State: commonPb.State_STATE_COMPLETED}
+	steps <- &streamPb.Orchestration_Step{Num: 2, State: commonPb.State_STATE_COMPLETED}
+	steps <- &streamPb.Orchestration_Step{Num: 3, State: commonPb.State_STATE_COMPLETED}
+	close(steps)
+	orchestrated := new(stream.MockStream)
+	orchestrated.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(steps))
+	server := api.NewBacktestServer(pool, orchestrated)
+
+	capture := &createCapture{ctx: auth.WithAccount(ctx, owner)}
+	err = server.CreateBacktest(&servicePb.CreateBacktestRequest{
+		Create: &servicePb.CreateBacktestRequest_Backtest{
+			Backtest: &servicePb.CreateBacktestRequest_CreateFromBacktest{
+				Backtest: &backtest.Backtest{Name: "same"},
+			},
+		},
+	}, capture)
+	require.NoError(t, err)
+	require.Len(t, capture.frames, 5)
+	last := capture.frames[len(capture.frames)-1]
+	require.Equal(t, commonPb.State_STATE_COMPLETED, last.GetSTORING().GetState())
+	require.Equal(t, "same", last.GetBacktest().GetName())
+	require.Equal(t, "SPY", last.GetBacktest().GetBenchmark())
+	require.Equal(t, "owner", last.GetBacktest().GetOwnerLogin())
 }

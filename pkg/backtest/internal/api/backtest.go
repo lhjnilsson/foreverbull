@@ -13,7 +13,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	backtestStream "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -107,6 +109,43 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		if err != nil {
 			return fmt.Errorf("error sending response: %w", err)
 		}
+	}
+	backtests := repository.Backtest{Conn: bs.pgx}
+	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
+		return backtests.Get(ctx, createdName(req))
+	})
+}
+
+// createdName is the backtest name a create request stores.
+func createdName(req *servicePb.CreateBacktestRequest) string {
+	if etf := req.GetEtf(); etf != nil {
+		return etf.GetName()
+	}
+	return req.GetBacktest().GetBacktest().GetName()
+}
+
+// sendStoredBacktest sends the stored backtest once every step completed, so the
+// client can print what was created. The orchestration has no STORING step, so
+// it is marked here.
+func sendStoredBacktest(rsp *servicePb.CreateBacktestResponse,
+	serverStream servicePb.BacktestServicer_CreateBacktestServer, name string,
+	load func() (*backtest.Backtest, error),
+) error {
+	if rsp.GetINGESTING().GetState() != pb.State_STATE_COMPLETED {
+		return nil
+	}
+	stored, err := load()
+	if err != nil {
+		// The database error stays in the log; the client gets fixed text.
+		log.Error().Err(err).Str("backtest", name).Msg("error loading created backtest")
+		return status.Errorf(codes.Internal,
+			"Backtest %s was created, but its details couldn't be loaded. Run `fbull backtest get %s` to see it.",
+			name, name)
+	}
+	rsp.Backtest = stored
+	rsp.STORING.State = pb.State_STATE_COMPLETED
+	if err := serverStream.Send(rsp); err != nil {
+		return fmt.Errorf("error sending response: %w", err)
 	}
 	return nil
 }

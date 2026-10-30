@@ -226,6 +226,71 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 	})
 }
 
+func (test *BacktestServerTest) createStream(name string, statuses []*streamPb.Orchestration_Step) []*servicePb.CreateBacktestResponse {
+	test.T().Helper()
+
+	statusCh := make(chan *streamPb.Orchestration_Step, len(statuses))
+	for _, status := range statuses {
+		statusCh <- status
+	}
+	close(statusCh)
+	test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+	req := &servicePb.CreateBacktestRequest{
+		Create: &servicePb.CreateBacktestRequest_Backtest{
+			Backtest: &servicePb.CreateBacktestRequest_CreateFromBacktest{
+				Backtest: &backtest.Backtest{Name: name},
+			},
+		},
+	}
+	resp, err := test.client.CreateBacktest(context.TODO(), req)
+	test.Require().NoError(err)
+
+	responses := []*servicePb.CreateBacktestResponse{}
+	for {
+		msg, err := resp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		test.Require().NoError(err)
+		responses = append(responses, msg)
+	}
+	return responses
+}
+
+func (test *BacktestServerTest) TestCreateBacktestSendsStoredBacktest() {
+	test.Run("completed ingest sends the backtest", func() {
+		test.createBacktest("created")
+		responses := test.createStream("created", []*streamPb.Orchestration_Step{
+			{Num: 1, State: pb.State_STATE_COMPLETED},
+			{Num: 2, State: pb.State_STATE_COMPLETED},
+			{Num: 3, State: pb.State_STATE_COMPLETED},
+		})
+		test.Require().Len(responses, 5)
+		last := responses[len(responses)-1]
+		test.Equal(pb.State_STATE_COMPLETED, last.GetSTORING().GetState())
+		test.Require().NotNil(last.GetBacktest())
+		test.Equal("created", last.GetBacktest().GetName())
+		for _, rsp := range responses[:len(responses)-1] {
+			test.Nil(rsp.GetBacktest())
+		}
+	})
+	test.Run("failed ingest sends no backtest", func() {
+		test.createBacktest("failed")
+		failure := "ingest failed"
+		responses := test.createStream("failed", []*streamPb.Orchestration_Step{
+			{Num: 1, State: pb.State_STATE_COMPLETED},
+			{Num: 2, State: pb.State_STATE_COMPLETED},
+			{Num: 3, State: pb.State_STATE_FAILED, Error: &failure},
+		})
+		test.Require().Len(responses, 4)
+		for _, rsp := range responses {
+			test.Nil(rsp.GetBacktest())
+			test.NotEqual(pb.State_STATE_COMPLETED, rsp.GetSTORING().GetState())
+		}
+	})
+}
+
 func (test *BacktestServerTest) TestGetBacktest() {
 	test.Run("not found", func() {
 		req := &servicePb.GetBacktestRequest{
