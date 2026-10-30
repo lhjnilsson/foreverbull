@@ -396,7 +396,8 @@ func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
 	end := date(t, "2021-01-06")
 	_, err := client.GetOHLC("SHOP.TO", start, &end)
 	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
-	require.Contains(t, err.Error(), "SHOP.TO")
+	require.EqualError(t, err, "stooq doesn't support the .TO exchange (SHOP.TO). "+
+		"Supported suffixes: .DE, .L, .US. Try another provider with --provider.")
 	require.False(t, called)
 }
 
@@ -419,9 +420,8 @@ func TestGetOHLCRefusesUnboundedSuffixedSymbolWithoutEchoingIt(t *testing.T) {
 	} {
 		_, err := client.GetOHLC(symbol, start, &end)
 		require.ErrorIs(t, err, marketdata.ErrStooqExchange, name)
-		require.Less(t, len(err.Error()), 100, name)
-		require.NotContains(t, err.Error(), "\n", name)
-		require.NotContains(t, err.Error(), "\x1b", name)
+		require.EqualError(t, err,
+			"stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.", name)
 	}
 	require.False(t, called)
 }
