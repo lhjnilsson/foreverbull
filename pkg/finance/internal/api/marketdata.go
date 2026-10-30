@@ -155,6 +155,17 @@ func (fs *MarketdataServer) downloadSymbol(
 		}
 	}
 	if err != nil || len(ohlcs) == 0 {
+		// Yahoo sometimes answers a listed symbol (BK) with no data. Ask once
+		// more before treating it as renamed or missing.
+		ohlcs, err = retryOHLC(ctx, bars, storeSymbol, start, end)
+		if err != nil {
+			var blocked *marketdata.BlockedError
+			if errors.As(err, &blocked) {
+				return blocked
+			}
+		}
+	}
+	if err != nil || len(ohlcs) == 0 {
 		fetched, fetchErr := fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
 		if fetchErr != nil {
 			var blocked *marketdata.BlockedError
@@ -185,6 +196,22 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	sendDownloadResponse(serverStream, rsp)
 	return nil
+}
+
+// ohlcRetryDelay is the pause before asking a provider again after it
+// returned no bars.
+const ohlcRetryDelay = 250 * time.Millisecond
+
+// retryOHLC asks for the bars a second time after a short pause.
+func retryOHLC(ctx context.Context, bars supplier.Marketdata, symbol string,
+	start time.Time, end *time.Time,
+) ([]*pb.OHLC, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(ohlcRetryDelay):
+	}
+	return bars.GetOHLC(symbol, start, end)
 }
 
 type fetchedBars struct {

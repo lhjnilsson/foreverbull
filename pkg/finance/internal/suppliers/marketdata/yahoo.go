@@ -24,11 +24,20 @@ const (
 // defaultYahooChartURL is the chart endpoint; the symbol is appended to it.
 const defaultYahooChartURL = "https://query2.finance.yahoo.com/v8/finance/chart/"
 
+// defaultYahooQuoteURL is the quote summary endpoint; the symbol is appended to it.
+const defaultYahooQuoteURL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/"
+
+// defaultISINSearchURL is the ISIN lookup; the symbol is appended to it.
+const defaultISINSearchURL = "https://markets.businessinsider.com/ajax/markets-insider/search/"
+
 type YahooClient struct {
 	cookie string
 	crumb  string
-	// chartURL replaces defaultYahooChartURL so unit tests stay off the network.
+	// chartURL, quoteURL and isinURL replace the defaults so unit tests stay
+	// off the network.
 	chartURL string
+	quoteURL string
+	isinURL  string
 }
 
 func NewYahooClient() (supplier.Marketdata, error) {
@@ -108,7 +117,11 @@ type AssetResponse struct {
 }
 
 func (y *YahooClient) getISIN(symbol string) (string, error) {
-	url := "https://markets.businessinsider.com/ajax/markets-insider/search/" + symbol
+	isinURL := y.isinURL
+	if isinURL == "" {
+		isinURL = defaultISINSearchURL
+	}
+	url := isinURL + symbol
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
@@ -154,8 +167,15 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 	return "", fmt.Errorf("ISIN not found for symbol %s", symbol)
 }
 
+// GetAsset looks the symbol up under Yahoo's ticker (BRK-B for BRKB). A
+// share class is returned under the asked ticker, so it is stored and
+// reported the way the universe names it.
 func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
-	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
+	quoteURL := y.quoteURL
+	if quoteURL == "" {
+		quoteURL = defaultYahooQuoteURL
+	}
+	url := quoteURL + yahooSymbol(symbol)
 
 	resp, err := y.doRequest(url, "modules=quoteType")
 	if err != nil {
@@ -189,6 +209,9 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 		if err != nil {
 			log.Info().Msgf("error getting isin for symbol %s: %v", asset.Symbol, err)
 		}
+	}
+	if _, ok := parseShareClass(symbol); ok {
+		asset.Symbol = strings.ToUpper(strings.TrimSpace(symbol))
 	}
 
 	return &asset, nil
@@ -326,7 +349,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if chartURL == "" {
 		chartURL = defaultYahooChartURL
 	}
-	url := chartURL + strings.ToUpper(symbol)
+	url := chartURL + yahooSymbol(symbol)
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 

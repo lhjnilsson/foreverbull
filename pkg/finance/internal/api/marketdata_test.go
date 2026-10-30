@@ -373,6 +373,40 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 	suite.True(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
 }
 
+// Yahoo sometimes answers a listed symbol (BK) with no data. Download must
+// ask once more and store the bars from the second answer.
+func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce() {
+	ctx := context.Background()
+	suite.marketdata.On("GetAsset", "BK").Return(&pb.Asset{Symbol: "BK", Name: "The Bank of New York Mellon Corporation"}, nil)
+	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil).Once()
+	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2024-01-02")),
+			Open:      51.5, High: 52.4, Low: 51.2, Close: 52.1, Volume: 4200000,
+		},
+	}, nil).Once()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"BK"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("BK", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetError())
+
+	var bars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='BK'`).Scan(&bars))
+	suite.Equal(1, bars)
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 2)
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
