@@ -119,13 +119,16 @@ func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
 		name, isinBody string
 		isinStatus     int
 		wantErr        string
+		// noISIN is true when the lookup answered that the equity has no
+		// ISIN, as opposed to a failed request.
+		noISIN bool
 	}{
 		{name: "isin service 503", isinStatus: http.StatusServiceUnavailable, isinBody: "Service Unavailable",
 			wantErr: "error getting isin for symbol META: failed to get index data for symbol META: status 503 Service Unavailable"},
 		{name: "isin not listed", isinStatus: http.StatusOK, isinBody: `{"stocks":[]}`,
-			wantErr: "error getting isin for symbol META: ISIN not found for symbol META"},
+			wantErr: "error getting isin for symbol META: ISIN not found for symbol META", noISIN: true},
 		{name: "empty isin", isinStatus: http.StatusOK, isinBody: `{"stocks":[{"keywords":"META|"}]}`,
-			wantErr: "error getting isin for symbol META: empty ISIN"},
+			wantErr: "error getting isin for symbol META: empty ISIN", noISIN: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,6 +144,11 @@ func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
 			asset, err := client.GetAsset("META")
 			require.Nil(t, asset)
 			require.EqualError(t, err, tc.wantErr)
+			if tc.noISIN {
+				require.ErrorIs(t, err, ErrNoISIN)
+			} else {
+				require.NotErrorIs(t, err, ErrNoISIN)
+			}
 		})
 	}
 
@@ -157,6 +165,68 @@ func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
 		require.Empty(t, asset.ISIN)
 		require.Empty(t, isinURIs())
 	})
+}
+
+// searchServers fakes Yahoo search (quotes), quoteSummary (every quote is
+// an EQUITY) and the ISIN lookup. isinBody maps a symbol to its ISIN
+// answer; a symbol missing from it gets HTTP 503.
+func searchServers(t *testing.T, quotes []string, isinBody map[string]string) *YahooClient {
+	t.Helper()
+	search := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		parts := make([]string, 0, len(quotes))
+		for _, q := range quotes {
+			parts = append(parts, `{"symbol":"`+q+`"}`)
+		}
+		_, _ = w.Write([]byte(`{"quotes":[` + strings.Join(parts, ",") + `]}`))
+	}))
+	t.Cleanup(search.Close)
+	quote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		symbol := strings.TrimPrefix(r.URL.Path, "/")
+		_, _ = w.Write([]byte(`{"quoteSummary":{"result":[{"quoteType":{"symbol":"` + symbol +
+			`","quoteType":"EQUITY","longName":"` + symbol + ` Inc."}}]}}`))
+	}))
+	t.Cleanup(quote.Close)
+	isin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := isinBody[strings.TrimPrefix(r.URL.Path, "/")]
+		if !ok {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(isin.Close)
+	return &YahooClient{crumb: "test", searchURL: search.URL + "/", quoteURL: quote.URL + "/", isinURL: isin.URL + "/"}
+}
+
+// A quote the ISIN lookup answers has no ISIN can't match the search by
+// identity, so it is left out; the other quotes are returned.
+func TestYahooSearchAssetSkipsQuoteWithNoISIN(t *testing.T) {
+	t.Parallel()
+	client := searchServers(t, []string{"META", "META.DE"}, map[string]string{
+		"META":    `{"stocks":[{"keywords":"META|US30303M1027"}]}`,
+		"META.DE": `{"stocks":[]}`,
+	})
+
+	assets, err := client.SearchAsset("US30303M1027")
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+	require.Equal(t, "META", assets[0].Symbol)
+	require.Equal(t, "US30303M1027", assets[0].ISIN)
+}
+
+// Any other GetAsset failure, here a failed ISIN request, fails the whole
+// search.
+func TestYahooSearchAssetFailsWhenAQuoteLookupFails(t *testing.T) {
+	t.Parallel()
+	client := searchServers(t, []string{"META", "META.DE"}, map[string]string{
+		"META": `{"stocks":[{"keywords":"META|US30303M1027"}]}`,
+	})
+
+	assets, err := client.SearchAsset("US30303M1027")
+	require.Nil(t, assets)
+	require.EqualError(t, err, "error getting asset: error getting isin for symbol META.DE: "+
+		"failed to get index data for symbol META.DE: status 503 Service Unavailable")
+	require.NotErrorIs(t, err, ErrNoISIN)
 }
 
 func TestYahooClientDefaultsToSharedClientWithTimeout(t *testing.T) {
