@@ -18,7 +18,8 @@ commits_json="${1:?usage: pr_authorship.sh COMMITS_JSON}"
 # A merge commit GitHub made for "Update branch" is authored by whoever
 # clicked, so it is skipped. Only a verified merge committed by web-flow
 # qualifies: a hand-made merge can carry arbitrary changes (an evil merge)
-# and is checked like any other commit.
+# and is checked like any other commit. A missing committer login does not
+# count as web-flow.
 # Commits with no linked GitHub account show their git author name.
 # shellcheck disable=SC2016 # $c is a jq variable.
 filter='
@@ -26,7 +27,7 @@ filter='
   | . as $c
   | if (($c.parents | length) > 1)
        and ($c.commit.committer.email == "noreply@github.com")
-       and (($c.committer.login // "web-flow") == "web-flow")
+       and ($c.committer.login == "web-flow")
        and ($c.commit.verification.verified == true)
     then empty
     else ($c.author.login // ("git:" + $c.commit.author.name))

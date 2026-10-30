@@ -27,6 +27,8 @@ expect 1 "${bot}" fail_hand_merge_not_web_flow.json
 expect 1 "${bot}" fail_hand_merge_unverified.json
 expect 1 "${bot}" fail_hand_merge_github_email_other_login.json
 expect 1 "${bot}" fail_hand_merge_unlinked_committer.json
+expect 1 "${bot}" fail_hand_merge_null_login_github_email.json
+expect 1 "${bot}" fail_hand_merge_web_flow_other_email.json
 expect 1 "${bot}" fail_non_merge_other_author.json
 expect 0 maintainer warn_human_mismatch.json
 
