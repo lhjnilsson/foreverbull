@@ -111,13 +111,22 @@ func (o *Object) SetMetadata(ctx context.Context, metadata map[string]string) er
 	return nil
 }
 
-func NewMinioStorage(ctx context.Context) (Storage, error) {
+// newMinioClient dials MINIO_URL over TLS when MINIO_SECURE is true.
+func newMinioClient() (*minio.Client, error) {
 	client, err := minio.New(environment.GetMinioURL(), &minio.Options{
 		Creds:  credentials.NewStaticV4(environment.GetMinioAccessKey(), environment.GetMinioSecretKey(), ""),
-		Secure: false,
+		Secure: environment.GetMinioSecure(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating minio client: %w", err)
+	}
+	return client, nil
+}
+
+func NewMinioStorage(ctx context.Context) (Storage, error) {
+	client, err := newMinioClient()
+	if err != nil {
+		return nil, err
 	}
 
 	storage := &MinioStorage{client: client}
