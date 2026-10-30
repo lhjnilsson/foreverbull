@@ -903,11 +903,13 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataExactSenten
 
 // An asked equity the provider has no ISIN for gets its own sentence: a
 // retry can't help, so it doesn't say "try again". The finance text is not
-// shown.
+// shown. The ISIN lookup is always Yahoo, so the sentence names yahoo even
+// for stooq bars and doesn't suggest another --provider.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNoISINExactSentence() {
 	oef, ok := proto.Clone(test.backtest).(*backtest.Backtest)
 	test.Require().True(ok)
 	oef.Name = "oef-2024q1"
+	oef.Provider = "stooq"
 	oef.Periods = []*backtest.Backtest_Period{{
 		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
 		EndDate:   &pb.Date{Year: 2024, Month: 3, Day: 28},
@@ -928,9 +930,10 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoISINExactSentence() 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'oef-2024q1': yahoo doesn't identify XYZ well enough to follow ticker changes, "+
-			"so it can't be used. The backtest wasn't saved. Use another provider with --provider, or remove XYZ, "+
-			"then run `fbull backtest create` again.")
+			"so it can't be used. The backtest wasn't saved. Remove XYZ, then run `fbull backtest create` again.")
 	test.NotContains(err.Error(), "no ISIN")
+	test.NotContains(err.Error(), "--provider")
+	test.NotContains(err.Error(), "stooq")
 	test.NotContains(err.Error(), "Try again")
 
 	_, err = backtests.Get(context.TODO(), "oef-2024q1")

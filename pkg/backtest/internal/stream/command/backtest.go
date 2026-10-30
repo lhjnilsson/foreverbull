@@ -400,7 +400,10 @@ func uniqueAliasSymbols(aliases []universe.Alias) []string {
 }
 
 // memberLookupProvider is the provider every member lookup goes through.
-// GetAsset is Yahoo for every backtest provider, so the copy names it.
+// GetAsset is Yahoo for every backtest provider, so the copy names it. A
+// download's asset and ISIN lookup is Yahoo too, whatever --provider
+// supplies the bars, so its no-ISIN sentence names it and another
+// --provider can't help.
 const memberLookupProvider = "yahoo"
 
 // memberLookupFailure is a member symbol whose GetAsset failed. noISIN is
@@ -477,10 +480,8 @@ func memberLookupError(name string, failures []memberLookupFailure) error {
 	if len(failures) == 1 {
 		symbol := failures[0].symbol
 		if failures[0].noISIN {
-			return plainSentence(fmt.Sprintf(
-				"Couldn't load data for backtest '%s': %s doesn't identify %s well enough to follow ticker changes, "+
-					"so it can't be used. The backtest wasn't saved. Remove %s, then run `fbull backtest create` again.",
-				name, memberLookupProvider, symbol, symbol))
+			return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s",
+				name, noISINLead(symbol), fmt.Sprintf(noISINNextStep, symbol)))
 		}
 		return plainSentence(fmt.Sprintf(
 			"Couldn't load data for backtest '%s': %s didn't respond when looking up %s. The backtest wasn't saved. "+
@@ -793,10 +794,17 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 const noPriceDataNextStep = "The backtest wasn't saved. Check the symbol and dates, or try another provider " +
 	"with --provider, then run `fbull backtest create` again."
 
-// noISINNextStep ends the sentence when the provider can't identify an asked
-// equity. A retry can't help; only another provider or leaving it out can.
-const noISINNextStep = "The backtest wasn't saved. Use another provider with --provider, or remove %s, " +
-	"then run `fbull backtest create` again."
+// noISINLead says that the asset lookup can't identify symbol, an asked
+// equity it has no ISIN for. A member lookup and a download share it.
+func noISINLead(symbol string) string {
+	return fmt.Sprintf("%s doesn't identify %s well enough to follow ticker changes, so it can't be used.",
+		memberLookupProvider, symbol)
+}
+
+// noISINNextStep ends the sentence when the asset lookup can't identify an
+// asked equity. A retry or another price provider can't help; only leaving
+// it out can.
+const noISINNextStep = "The backtest wasn't saved. Remove %s, then run `fbull backtest create` again."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
@@ -818,8 +826,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
 		nextStep = noPriceDataNextStep
 	} else if financeapi.IsNoISIN(errText) {
-		lead = fmt.Sprintf("%s doesn't identify %s well enough to follow ticker changes, so it can't be used.",
-			strings.ToLower(provider), symbol)
+		lead = noISINLead(symbol)
 		nextStep = fmt.Sprintf(noISINNextStep, symbol)
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
