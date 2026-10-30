@@ -478,6 +478,37 @@ for doc_path in "${deploy_docs}"/*; do
 done
 rm -rf "${deploy_docs}"
 
+# Zipline's Python storage client has no default endpoint or keys, so the
+# chart sets every one; the keys come from the credentials Secret.
+zipline_manifest="$(mktemp)"
+awk '
+  function flush() {
+    if (doc ~ /(^|\n)kind: Deployment(\n|$)/ && doc ~ /(^|\n)  name: zipline(\n|$)/) {
+      printf "%s", doc
+    }
+  }
+  $0 == "---" { flush(); doc = ""; next }
+  { doc = doc $0 "\n" }
+  END { flush() }
+' "${rendered}" > "${zipline_manifest}"
+for env_name in STORAGE_ENDPOINT STORAGE_ACCESS_KEY STORAGE_SECRET_KEY STORAGE_SECURE; do
+  if ! grep -qE "^ +- name: ${env_name}$" "${zipline_manifest}"; then
+    echo "zipline must set ${env_name}" >&2
+    exit 1
+  fi
+done
+for env_name in STORAGE_ACCESS_KEY STORAGE_SECRET_KEY; do
+  if grep -A1 -E "^ +- name: ${env_name}$" "${zipline_manifest}" | grep -qE '^ +value:'; then
+    echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
+    exit 1
+  fi
+done
+if ! grep -A1 -E '^ +- name: STORAGE_SECURE$' "${zipline_manifest}" | grep -qE '^ +value: "(true|false)"$'; then
+  echo "STORAGE_SECURE must render as \"true\" or \"false\"" >&2
+  exit 1
+fi
+rm -f "${zipline_manifest}"
+
 for pair in \
   "foreverbull:${app_seen_foreverbull}" \
   "zipline:${app_seen_zipline}" \
