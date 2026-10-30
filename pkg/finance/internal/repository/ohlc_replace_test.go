@@ -139,48 +139,87 @@ func (test *OHLCTests) TestSyncWaitsForTheSymbolLock() {
 	test.Equal(map[string]float64{"2020-08-26": 125}, test.storedCloses())
 }
 
-// Two concurrent syncs of one symbol, one on each scale, end with one row per
-// day and every row on one scale.
+// An append on the old scale racing a post-split replace of the same symbol
+// ends with every stored day on one scale. The interleave is forced: the
+// replace has decided to replace and is inside its refetch when the append
+// starts. Without the symbol lock the append reads the old-scale overlap,
+// appends 08-27..08-29 at 500 and commits, and the replace then rewrites only
+// 08-26..08-28 at 125, leaving 08-29 at 500. With the lock the append waits,
+// sees the replaced overlap, and replaces the whole range itself.
 func (test *OHLCTests) TestConcurrentSyncsLeaveOneScale() {
 	ctx := context.Background()
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
-	end := endDay(day, 3)
-	scaled := func(factor float64) repository.FetchBars {
-		return func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
-			// Widen the window in which both syncs could interleave.
-			time.Sleep(50 * time.Millisecond)
-			var bars []*pb.OHLC
-			for d := from; !d.After(*to); d = d.AddDate(0, 0, 1) {
-				bars = append(bars, closeBar(d, 100*factor))
-			}
-			return bars, nil
+	bars := func(from time.Time, to *time.Time, c float64) []*pb.OHLC {
+		var out []*pb.OHLC
+		for d := from; !d.After(*to); d = d.AddDate(0, 0, 1) {
+			out = append(out, closeBar(d, c))
+		}
+		return out
+	}
+
+	_, err := test.conn.Exec(ctx, `DELETE FROM ohlc`)
+	test.Require().NoError(err)
+	test.storeDays(day, 2, 500) // 08-26 and 08-27 on the old scale
+
+	atRefetch := make(chan struct{})
+	releaseReplace := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseReplace) }) }
+	defer release()
+
+	var replaceCalls atomic.Int32
+	replaceDone := make(chan error, 1)
+	go func() {
+		replaceDone <- test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, endDay(day, 2),
+			func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
+				if replaceCalls.Add(1) == 2 {
+					// Decided to replace; hold here while the append runs.
+					close(atRefetch)
+					<-releaseReplace
+				}
+				return bars(from, to, 125), nil
+			})
+	}()
+	select {
+	case <-atRefetch:
+	case err := <-replaceDone:
+		test.FailNow("the replace finished before its refetch", "%v", err)
+	case <-time.After(10 * time.Second):
+		test.FailNow("the replace never reached its refetch")
+	}
+
+	appendDone := make(chan error, 1)
+	go func() {
+		appendDone <- test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, endDay(day, 3),
+			func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
+				return bars(from, to, 500), nil
+			})
+	}()
+	// Without the lock the append finishes here; with it, it waits for the
+	// replace. Either way the replace is released next, so the outcome does
+	// not depend on this wait.
+	select {
+	case err := <-appendDone:
+		appendDone <- err
+	case <-time.After(500 * time.Millisecond):
+	}
+	release()
+
+	for _, done := range []chan error{replaceDone, appendDone} {
+		select {
+		case err := <-done:
+			test.Require().NoError(err)
+		case <-time.After(10 * time.Second):
+			test.FailNow("sync did not finish")
 		}
 	}
 
-	for round := 0; round < 5; round++ {
-		_, err := test.conn.Exec(ctx, `DELETE FROM ohlc`)
-		test.Require().NoError(err)
-
-		var wg sync.WaitGroup
-		errs := make([]error, 2)
-		for i, factor := range []float64{1, 4} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				errs[i] = test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, end, scaled(factor))
-			}()
-		}
-		wg.Wait()
-		test.Require().NoError(errs[0])
-		test.Require().NoError(errs[1])
-
-		closes := test.storedCloses()
-		test.Equal(4, test.countRows(), "one row per day")
-		test.Len(closes, 4)
-		scales := map[float64]struct{}{}
-		for _, c := range closes {
-			scales[c] = struct{}{}
-		}
-		test.Len(scales, 1, "every stored day on one scale: %v", closes)
+	closes := test.storedCloses()
+	test.Equal(4, test.countRows(), "one row per day")
+	test.Len(closes, 4)
+	scales := map[float64]struct{}{}
+	for _, c := range closes {
+		scales[c] = struct{}{}
 	}
+	test.Len(scales, 1, "every stored day on one scale: %v", closes)
 }
