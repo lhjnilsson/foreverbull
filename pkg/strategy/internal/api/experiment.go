@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
@@ -24,24 +22,18 @@ import (
 const grafanaDashboardUID = "ee9ep4jxtwkcgf"
 
 // GrafanaExecutionURL builds a Grafana inspect-one-run deep link.
-// grafanaURL is the Grafana origin (GRAFANA_URL); empty uses the Kind default.
-func GrafanaExecutionURL(grafanaURL, executionID string) string {
-	base := strings.TrimSpace(grafanaURL)
-	if base == "" {
-		base = environment.GrafanaURLDefault
-	}
-	u, err := url.Parse(base)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		u, err = url.Parse(environment.GrafanaURLDefault)
-		if err != nil {
-			u = &url.URL{Scheme: "http", Host: "localhost:3000"}
-		}
+// grafanaURL is the Grafana origin (GRAFANA_URL). Setup already refused an
+// empty or invalid origin, so an error here is returned, not replaced.
+func GrafanaExecutionURL(grafanaURL, executionID string) (string, error) {
+	u, err := environment.ParseGrafanaURL(grafanaURL)
+	if err != nil {
+		return "", err
 	}
 	built := u.JoinPath("d", grafanaDashboardUID)
 	q := built.Query()
 	q.Set("var-execution", executionID)
 	built.RawQuery = q.Encode()
-	return built.String()
+	return built.String(), nil
 }
 
 func (s *StrategyServer) CreateExperiment(
@@ -162,7 +154,10 @@ func (s *StrategyServer) GetExperiment(ctx context.Context, req *servicePb.GetEx
 
 	rsp := &servicePb.GetExperimentResponse{Experiment: experiment}
 	if experiment.GetExecutionId() != "" {
-		path := GrafanaExecutionURL(environment.GetGrafanaURL(), experiment.GetExecutionId())
+		path, err := GrafanaExecutionURL(environment.GetGrafanaURL(), experiment.GetExecutionId())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "grafana link: %v", err)
+		}
 		rsp.GrafanaPath = &path
 		lastPeriod, err := experiments.GetLastPeriod(ctx, experiment.GetExecutionId())
 		if err != nil {

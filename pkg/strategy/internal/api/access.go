@@ -194,7 +194,10 @@ func (s *StrategyServer) getExperimentAuthed(ctx context.Context, req *servicePb
 	if experiment.GetExecutionId() == "" {
 		return rsp, nil
 	}
-	path := GrafanaExecutionURL(environment.GetGrafanaURL(), experiment.GetExecutionId())
+	path, err := GrafanaExecutionURL(environment.GetGrafanaURL(), experiment.GetExecutionId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "grafana link: %v", err)
+	}
 	rsp.GrafanaPath = &path
 	if !s.executionBacktestVisible(ctx, account, experiment.GetExecutionId()) {
 		return rsp, nil
