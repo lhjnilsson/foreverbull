@@ -430,6 +430,56 @@ def test_step_notices_round_trip_and_leave_message_empty():
     assert list(legacy.notices) == []
 
 
+def _left_out_stream(lines: list[str]):
+    def stream(**_kwargs):
+        # The download step completes with the left-out lines as its notices.
+        completed = backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED, notices=lines),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+        )
+        yield completed
+        yield completed
+
+    return stream
+
+
+def _create_with_left_out(monkeypatch, lines: list[str]):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_left_out_stream(lines)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", "yahoo"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    return result
+
+
+def _left_out_line(symbol: str) -> str:
+    return f"Left out {symbol}: yahoo has no prices for it between 2024-01-02 and 2024-03-28."
+
+
+def test_backtest_create_prints_left_out_symbol(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result = _create_with_left_out(monkeypatch, [_left_out_line("XYZ")])
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == ["⚠ Left out XYZ: yahoo has no prices for it between 2024-01-02 and 2024-03-28."]
+
+
+def test_backtest_create_folds_left_out_symbols_into_one_line(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG"]
+    result = _create_with_left_out(monkeypatch, [_left_out_line(symbol) for symbol in symbols])
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == [
+        "⚠ Left out 7 symbols with no prices between 2024-01-02 and 2024-03-28: AAA, BBB, CCC, DDD, EEE and 2 more."
+    ]
+
+
 def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
 

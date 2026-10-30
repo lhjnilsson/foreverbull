@@ -1,5 +1,6 @@
 import math
 import os
+import re
 
 from datetime import UTC
 from datetime import date
@@ -57,6 +58,51 @@ def missing_prices_summary(lines: list[str], *, verbose: bool) -> list[str]:
     if verbose:
         return [summary, *lines]
     return [f"{summary} Run with --verbose for the list."]
+
+
+# Symbols a symbol-list create left out because the provider has no price for
+# them anywhere in the backtest period. The broker stores one line per symbol,
+# e.g. "Left out XYZ: yahoo has no prices for it between 2024-01-02 and
+# 2024-03-28."; the CLI prints up to LEFT_OUT_LINES_SHOWN of them and folds
+# more into one line naming at most LEFT_OUT_SYMBOLS_SHOWN symbols.
+LEFT_OUT_LINES_SHOWN = 2
+LEFT_OUT_SYMBOLS_SHOWN = 5
+_LEFT_OUT_UNPRICED = re.compile(
+    r"^Left out (?P<symbol>\S+): \S+ has no prices for it between "
+    r"(?P<start>\d{4}-\d{2}-\d{2}) and (?P<end>\d{4}-\d{2}-\d{2})\.$"
+)
+
+
+def left_out_summary(lines: list[str], *, verbose: bool) -> list[str]:
+    """The left-out lines to print: each line, or one line for 3+ symbols.
+
+    --verbose prints every symbol's line under the summary.
+    """
+    matches = [match for match in (_LEFT_OUT_UNPRICED.match(line) for line in lines) if match is not None]
+    if len(matches) <= LEFT_OUT_LINES_SHOWN:
+        return list(lines)
+    start = min(match["start"] for match in matches)
+    end = max(match["end"] for match in matches)
+    symbols = sorted(match["symbol"] for match in matches)
+    shown = ", ".join(symbols[:LEFT_OUT_SYMBOLS_SHOWN])
+    hidden = len(symbols) - LEFT_OUT_SYMBOLS_SHOWN
+    if hidden > 0:
+        shown = f"{shown} and {hidden} more"
+    summary = f"Left out {len(symbols)} symbols with no prices between {start} and {end}: {shown}."
+    if verbose:
+        return [summary, *lines]
+    return [summary]
+
+
+def create_notice_lines(lines: list[str], *, verbose: bool) -> list[str]:
+    """The notice lines `fbull backtest create` prints, without the ⚠ prefix.
+
+    Left-out symbols come first, then the missing-price lines; each kind
+    folds on its own.
+    """
+    left_out = [line for line in lines if _LEFT_OUT_UNPRICED.match(line)]
+    other = [line for line in lines if not _LEFT_OUT_UNPRICED.match(line)]
+    return [*left_out_summary(left_out, verbose=verbose), *missing_prices_summary(other, verbose=verbose)]
 
 
 # The clause after the colon. The SQL stays in the worker log.

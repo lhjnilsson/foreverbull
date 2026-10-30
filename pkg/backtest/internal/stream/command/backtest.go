@@ -504,13 +504,17 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, backtestID string) ([]string, error) {
-	symbols := []string{b.Benchmark}
+// ingestSymbols returns the symbols to download: the benchmark, then every
+// ticker of the backtest's universe members. symbolList is true when the
+// backtest has no members and was created from a symbol list, so the
+// symbols are its period assets.
+func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, backtestID string) (symbols []string, symbolList bool, err error) {
+	symbols = []string{b.Benchmark}
 	column := "m.backtest_name"
 	key := b.Name
 	if environment.GetAuthEnabled() {
 		if backtestID == "" {
-			return nil, errors.New("backtest id is empty")
+			return nil, false, errors.New("backtest id is empty")
 		}
 		column = "m.backtest_id"
 		key = backtestID
@@ -523,7 +527,7 @@ func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, 
 		 WHERE `+column+` = $1
 		 ORDER BY s.symbol`, key)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
@@ -531,12 +535,12 @@ func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, 
 	for rows.Next() {
 		var symbol string
 		if err := rows.Scan(&symbol); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		aliases = append(aliases, symbol)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(aliases) > 0 {
 		for _, symbol := range aliases {
@@ -545,7 +549,7 @@ func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, 
 			}
 			symbols = append(symbols, symbol)
 		}
-		return symbols, nil
+		return symbols, false, nil
 	}
 
 	for _, period := range b.Periods {
@@ -556,7 +560,7 @@ func ingestSymbols(ctx context.Context, db *pgxpool.Pool, b *backtest.Backtest, 
 			symbols = append(symbols, asset.Symbol)
 		}
 	}
-	return symbols, nil
+	return symbols, true, nil
 }
 
 func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
@@ -578,7 +582,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error getting backtest: %w", err)
 	}
 
-	symbols, err := ingestSymbols(ctx, db, b, backtestID)
+	symbols, symbolList, err := ingestSymbols(ctx, db, b, backtestID)
 	if err != nil {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
@@ -603,6 +607,11 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
+	// A symbol-list backtest leaves out a symbol with no prices anywhere in
+	// the period and names it. A symbol with prices for part of the period
+	// downloads with STATUS_OK and stays; Zipline auto-closes it after its
+	// last bar (universe.md §8).
+	var unpriced []string
 	for {
 		msg, err := rsp.Recv()
 		if err != nil {
@@ -616,18 +625,76 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
-			// Any per-symbol download failure must fail create. Disabling the
-			// member and exiting 0 left an incomplete universe with no warning.
+			if symbolList && msg.GetSymbol() != b.GetBenchmark() && isNoPriceDataError(msg.GetError()) {
+				if !slices.Contains(unpriced, msg.GetSymbol()) {
+					unpriced = append(unpriced, msg.GetSymbol())
+				}
+				continue
+			}
+			// Any other per-symbol download failure must fail create.
+			// Disabling the member and exiting 0 left an incomplete universe
+			// with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
-	return nil
+	if len(unpriced) == 0 {
+		return nil
+	}
+	return leaveOutUnpriced(ctx, backtests, b, backtestID, provider, unpriced, startDate, endDate)
+}
+
+// leaveOutUnpriced disables each symbol in unpriced, which had no prices
+// anywhere in the backtest period, and returns one notice line per symbol.
+// When no listed symbol has prices there is nothing to trade, so create
+// fails as it does for a single missing symbol.
+func leaveOutUnpriced(ctx context.Context, backtests repository.Backtest, b *backtest.Backtest, backtestID, provider string,
+	unpriced []string, start, end *pb.Date,
+) error {
+	slices.Sort(unpriced)
+	if !hasPricedAsset(b, unpriced) {
+		return discardSymbolDownloadError(ctx, backtests, b.GetName(), backtestID,
+			strings.Join(unpriced, ", "), start, end, noPriceDataPrefix+strings.Join(unpriced, ", "))
+	}
+	lines := make([]string, 0, len(unpriced))
+	for _, symbol := range unpriced {
+		var err error
+		if environment.GetAuthEnabled() {
+			err = backtests.UpdatePeriodAssetByID(ctx, backtestID, symbol, false)
+		} else {
+			err = backtests.UpdatePeriodAsset(ctx, b.GetName(), symbol, false)
+		}
+		if err != nil {
+			return discardFailedBacktest(ctx, backtests, b.GetName(), backtestID, err)
+		}
+		lines = append(lines, leftOutUnpricedLine(symbol, provider, start, end))
+	}
+	return &stream.Notice{Lines: lines}
+}
+
+// hasPricedAsset reports whether an enabled period asset is not in unpriced.
+func hasPricedAsset(b *backtest.Backtest, unpriced []string) bool {
+	for _, period := range b.GetPeriods() {
+		for _, asset := range period.GetAssets() {
+			if asset.GetEnabled() && asset.GetSymbol() != "" && !slices.Contains(unpriced, asset.GetSymbol()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// leftOutUnpricedLine is the notice for one left-out symbol, e.g.
+// "Left out XYZ: yahoo has no prices for it between 2024-01-02 and 2024-03-28."
+// The CLI adds the ⚠ prefix and folds three or more lines into one.
+func leftOutUnpricedLine(symbol, provider string, start, end *pb.Date) string {
+	return fmt.Sprintf("Left out %s: %s has no prices for it between %s and %s.",
+		symbol, provider, pb.DateToDateString(start), pb.DateToDateString(end))
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
 func isNoPriceDataError(text string) bool {
-	return strings.HasPrefix(text, "no price data for ")
+	return strings.HasPrefix(text, noPriceDataPrefix)
 }
 
 // refusedPriceError and refusedVolumeError match the finance service's
@@ -648,6 +715,7 @@ func isRefusedBarError(text string) bool {
 // missed one; a plain retry won't help.
 const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
+const noPriceDataPrefix = "no price data for "
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
