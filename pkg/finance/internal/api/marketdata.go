@@ -169,6 +169,8 @@ func (fs *MarketdataServer) downloadSymbol(
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
 
+	// Raw errors stay in the log: a GetAsset error can quote Yahoo's URL
+	// with its crumb, and a store error can quote the database.
 	asset, err := fs.marketdata.GetAsset(symbol)
 	if err != nil {
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))

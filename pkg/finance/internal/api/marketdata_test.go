@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -697,6 +698,77 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataUsesAliasWithBarsWhenSear
 	suite.Require().NoError(suite.pgx.QueryRow(ctx,
 		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='META'`).Scan(&metaBars))
 	suite.Equal(1, metaBars, "bars must be stored under META")
+}
+
+// A GetAsset error can quote Yahoo's request URL with its crumb. Only the
+// fixed sentence reaches the status; the raw error stays in the log.
+func (suite *MarketdataTest) TestDownloadHistoricalDataKeepsGetAssetErrorOutOfStatus() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(nil, fmt.Errorf("error: %w", &url.Error{
+		Op:  "Get",
+		URL: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/AAPL?crumb=s3cr3tcrumb&modules=quoteType",
+		Err: errors.New("connection reset by peer"),
+	}))
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.Equal(downloadFailedText("AAPL"), msg.GetError())
+	for _, raw := range []string{"crumb", "s3cr3tcrumb", "http", "yahoo.com", "connection reset"} {
+		suite.NotContains(msg.GetError(), raw)
+	}
+}
+
+// A store error can quote the database. Only the fixed sentence reaches
+// the status.
+func (suite *MarketdataTest) TestDownloadHistoricalDataKeepsStoreErrorOutOfStatus() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{{
+		Timestamp: timestamppb.New(mustTime("2019-06-03")),
+		Open:      1, High: 2, Low: 0.5, Close: 1.5, Volume: 100,
+	}}, nil)
+	_, err := suite.pgx.Exec(context.Background(), `
+		CREATE OR REPLACE FUNCTION fail_ohlc() RETURNS trigger AS $$
+		BEGIN RAISE EXCEPTION 'postgres://foreverbull:s3cr3t@db/x refused'; END $$ LANGUAGE plpgsql;
+		CREATE TRIGGER fail_ohlc BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_ohlc();`)
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() {
+		_, _ = suite.pgx.Exec(context.Background(),
+			`DROP TRIGGER IF EXISTS fail_ohlc ON ohlc; DROP FUNCTION IF EXISTS fail_ohlc();`)
+	})
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	sawError := false
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		if msg.GetStatus() == servicePb.DownloadHistoricalDataResponse_STATUS_ERROR {
+			sawError = true
+			suite.Equal(downloadFailedText("AAPL"), msg.GetError())
+		}
+		suite.NotContains(msg.GetError(), "s3cr3t")
+		suite.NotContains(msg.GetError(), "postgres")
+	}
+	suite.True(sawError, "the store failure must be reported")
 }
 
 func mustTime(day string) time.Time {
