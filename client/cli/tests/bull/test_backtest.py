@@ -589,6 +589,60 @@ def test_backtest_create_ambiguous_symbol_prints_exact_copy_and_exits_1(monkeypa
     assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_AMBIGUOUS_SYMBOL_COPY}\n"
 
 
+_OVER_SYMBOL_LIMIT_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': it has 10,001 symbols, and the limit is 10,000. "
+    "The backtest wasn't saved. Remove symbols or split them across several backtests, "
+    "then run `fbull backtest create` again."
+)
+
+
+def _create_failed_stream(message: str):
+    """The broker refused the create before storing anything (CREATING failed)."""
+
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.RUNNING),
+        )
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.FAILED, message=message),
+        )
+
+    return stream
+
+
+def test_backtest_create_over_symbol_limit_prints_exact_copy_and_exits_1(monkeypatch):
+    """The broker counts symbols before it stores the backtest; its sentence is printed as is."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_create_failed_stream(_OVER_SYMBOL_LIMIT_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_OVER_SYMBOL_LIMIT_COPY}\n"
+    assert "10,001" in result.output
+    assert "10,000" in result.output
+
+
+def test_backtest_create_over_symbol_limit_at_download_prints_exact_copy_and_exits_1(monkeypatch):
+    """The download step's own check removes the backtest and sends the same sentence."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_OVER_SYMBOL_LIMIT_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_OVER_SYMBOL_LIMIT_COPY}\n"
+    assert "Downloading prices failed" not in result.output
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "
