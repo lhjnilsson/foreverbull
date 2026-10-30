@@ -15,7 +15,6 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -56,6 +55,8 @@ type YahooClient struct {
 	searchURL string
 	// httpClient replaces the shared client, so tests can use a short timeout.
 	httpClient *http.Client
+	// now replaces the clock, so tests can fix today's session.
+	now func() time.Time
 }
 
 func (y *YahooClient) client() *http.Client {
@@ -436,11 +437,21 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
-	if end != nil {
-		params = append(params, fmt.Sprintf("period2=%d", end.Unix()))
-	} else {
-		params = append(params, fmt.Sprintf("period2=%d", time.Now().Unix()))
+	now := time.Now()
+	if y.now != nil {
+		now = y.now()
 	}
+	until := now
+	if end != nil {
+		until = *end
+	}
+	// Today's unfinished session is the only one left out, by not asking
+	// for it. Every bar in the answer must then have a price.
+	until, ok := completedFetchEnd(start, until, now)
+	if !ok {
+		return []*pb.OHLC{}, nil
+	}
+	params = append(params, fmt.Sprintf("period2=%d", until.Unix()))
 
 	params = append(params, "interval=1d")
 
@@ -485,30 +496,32 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if len(data.Chart.Result) == 0 {
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: no result", symbol)
 	}
-	ohlcs, missing, err := yahooBars(data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote)
+	ohlcs, err := yahooBars(data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote)
 	if err != nil {
+		var missing *MissingPriceError
+		if errors.As(err, &missing) {
+			missing.Provider = "yahoo"
+			missing.Symbol = strings.ToUpper(symbol)
+			return nil, missing
+		}
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
-	}
-	for _, day := range missing {
-		// The bar is left out, not stored as 0. The ingest fills the session
-		// and tells the user (pkg/backtest/universe.md §7.5).
-		log.Warn().Str("provider", "yahoo").Str("symbol", strings.ToUpper(symbol)).
-			Str("day", day.UTC().Format("2006-01-02")).Msg("missing price from provider, bar not stored")
 	}
 	return ohlcs, nil
 }
 
 // yahooBars turns Yahoo's column arrays into bars. A session where any of
 // open, high, low, or close is null, non-finite, or not positive is a
-// missing bar: it is returned in missing and left out of the bars, so no
-// 0 price reaches storage. A null volume on a priced session is 0 shares.
+// missing bar, wherever it is in the answer: it fails with a
+// MissingPriceError naming every such day, so no 0 price reaches storage
+// and the stored bars have no gap. GetOHLC never asks for today's unfinished
+// session, so it is not one. A null volume on a priced session is 0 shares.
 // Arrays of different lengths are refused rather than read out of range.
-func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, []time.Time, error) {
+func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, error) {
 	if len(timestamps) == 0 {
-		return []*pb.OHLC{}, nil, nil
+		return []*pb.OHLC{}, nil
 	}
 	if len(quotes) == 0 {
-		return nil, nil, fmt.Errorf("no quote for %d timestamps", len(timestamps))
+		return nil, fmt.Errorf("no quote for %d timestamps", len(timestamps))
 	}
 	quote := quotes[0]
 	barCount := len(timestamps)
@@ -521,12 +534,12 @@ func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, []time.Time
 	}
 	for _, column := range columns {
 		if column.count != barCount {
-			return nil, nil, fmt.Errorf("%s has %d values for %d timestamps", column.name, column.count, barCount)
+			return nil, fmt.Errorf("%s has %d values for %d timestamps", column.name, column.count, barCount)
 		}
 	}
 
 	ohlcs := make([]*pb.OHLC, 0, barCount)
-	missing := make([]time.Time, 0)
+	var missing []time.Time
 	for index, ts := range timestamps {
 		day := time.Unix(ts, 0)
 		open, high, low, closePx := quote.Open[index], quote.High[index], quote.Low[index], quote.Close[index]
@@ -547,7 +560,10 @@ func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, []time.Time
 			Volume:    volume,
 		})
 	}
-	return ohlcs, missing, nil
+	if len(missing) > 0 {
+		return nil, &MissingPriceError{Days: missing}
+	}
+	return ohlcs, nil
 }
 
 // yahooPrice is true for a real positive price.
