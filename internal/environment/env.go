@@ -1,7 +1,10 @@
 package environment
 
 import (
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -38,8 +41,8 @@ const (
 	LogLevel        = "LOG_LEVEL"
 	LogLevelDefault = "warning"
 
-	PostgresURL        = "POSTGRES_URL"
-	PostgresURLDefault = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
+	// PostgresURL is required. Setup refuses to start without it.
+	PostgresURL = "POSTGRES_URL"
 
 	// WorkerDatabaseURL is the reader role the broker hands to a service pod.
 	// Empty means the pod is not given a database URL while authentication is on.
@@ -48,8 +51,8 @@ const (
 	// the database owner password.
 	WorkerDBPassword = "WORKER_DB_PASSWORD"
 
+	// NatsURL is required. Setup refuses to start without it.
 	NatsURL                   = "NATS_URL"
-	NatsURLDefault            = "nats://localhost:4222"
 	NatsUser                  = "NATS_USER"
 	NatsPassword              = "NATS_PASSWORD"
 	NatsDurable               = "NATS_DURABLE"
@@ -57,12 +60,16 @@ const (
 	NatsDeliveryPolicy        = "NATS_DELIVERY_POLICY"
 	NatsDeliveryPolicyDefault = "all"
 
-	MinioURL              = "MINIO_URL"
-	MinioURLDefault       = "localhost:9000"
-	MinioAccessKey        = "MINIO_ACCESS_KEY"
-	MinioAccessKeyDefault = "minioadmin"
-	MinioSecretKey        = "MINIO_SECRET"
-	MinioSecretKeyDefault = "minioadmin"
+	// MinioURL, MinioAccessKey, and MinioSecretKey are required. Setup
+	// refuses to start without them.
+	MinioURL       = "MINIO_URL"
+	MinioAccessKey = "MINIO_ACCESS_KEY"
+	MinioSecretKey = "MINIO_SECRET"
+
+	// MinioSecure selects TLS to MinIO. The chart's in-cluster MinIO serves
+	// plain HTTP, so the default is false.
+	MinioSecure        = "MINIO_SECURE"
+	MinioSecureDefault = "false"
 
 	TradingEnabled        = "TRADING_ENABLED"
 	TradingEnabledDefault = "false"
@@ -75,7 +82,8 @@ const (
 	// does not set its own listings path.
 	TradingListingsFile = "TRADING_LISTINGS_FILE"
 
-	// AuthEnabled defaults false. Empty is false. Helm and fbenv leave it unset.
+	// AuthEnabled defaults false. Empty is false. Helm and fbenv leave it
+	// unset. Any value other than true, false, 1, or 0 stops startup.
 	AuthEnabled        = "AUTH_ENABLED"
 	AuthEnabledDefault = "false"
 
@@ -113,6 +121,18 @@ const (
 	AuthGitHubAllowedOrgs = "AUTH_GITHUB_ALLOWED_ORGS"
 )
 
+// Test-only connection values. SetupForTest fills them when the variable is
+// empty. Setup never does: a broker without its own Postgres, NATS, or MinIO
+// settings stops at startup instead of dialling localhost with public
+// credentials.
+const (
+	PostgresURLTestDefault    = "postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable"
+	NatsURLTestDefault        = "nats://localhost:4222"
+	MinioURLTestDefault       = "localhost:9000"
+	MinioAccessKeyTestDefault = "minioadmin"
+	MinioSecretKeyTestDefault = "minioadmin"
+)
+
 type envVar struct {
 	name       string
 	getDefault func() (string, error)
@@ -128,13 +148,9 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{BacktestPortRangeStart, func() (string, error) { return BacktestPortRangeStartDefault, nil }},
 	{BacktestPortRangeEnd, func() (string, error) { return BacktestPortRangeEndDefault, nil }},
 	{LogLevel, func() (string, error) { return LogLevelDefault, nil }},
-	{PostgresURL, func() (string, error) { return PostgresURLDefault, nil }},
-	{NatsURL, func() (string, error) { return NatsURLDefault, nil }},
 	{NatsDurable, func() (string, error) { return NatsDurableDefault, nil }},
 	{NatsDeliveryPolicy, func() (string, error) { return NatsDeliveryPolicyDefault, nil }},
-	{MinioURL, func() (string, error) { return MinioURLDefault, nil }},
-	{MinioAccessKey, func() (string, error) { return MinioAccessKeyDefault, nil }},
-	{MinioSecretKey, func() (string, error) { return MinioSecretKeyDefault, nil }},
+	{MinioSecure, func() (string, error) { return MinioSecureDefault, nil }},
 	{TradingEnabled, func() (string, error) { return TradingEnabledDefault, nil }},
 	{TradingProfilesFile, func() (string, error) { return "", nil }},
 	{TradingListingsFile, func() (string, error) { return "", nil }},
@@ -148,61 +164,243 @@ var envVars = []envVar{ //nolint: gochecknoglobals
 	{AuthGitHubRedirectURL, func() (string, error) { return "", nil }},
 }
 
+// testEnvVars are filled only by SetupForTest.
+var testEnvVars = []envVar{ //nolint: gochecknoglobals
+	{PostgresURL, func() (string, error) { return PostgresURLTestDefault, nil }},
+	{NatsURL, func() (string, error) { return NatsURLTestDefault, nil }},
+	{MinioURL, func() (string, error) { return MinioURLTestDefault, nil }},
+	{MinioAccessKey, func() (string, error) { return MinioAccessKeyTestDefault, nil }},
+	{MinioSecretKey, func() (string, error) { return MinioSecretKeyTestDefault, nil }},
+}
+
+// requiredVars have no default in Setup. Their values are never printed.
+var requiredVars = []string{PostgresURL, NatsURL, MinioURL, MinioAccessKey, MinioSecretKey} //nolint: gochecknoglobals
+
+// boolVars accept true, false, 1, or 0, in any case, around which spaces are
+// ignored. Anything else stops startup.
+var boolVars = []string{TradingEnabled, AuthEnabled, AuthCookieSecure, AuthTrustProxy, MinioSecure} //nolint: gochecknoglobals
+
 type envSetter interface {
 	Helper()
 	Setenv(key, value string)
 	Fatalf(format string, args ...any)
 }
 
-func applyEnvDefaults(setenv func(name, value string) error) error {
-	for _, envVar := range envVars {
-		if os.Getenv(envVar.name) == "" {
-			defaultEnv, err := envVar.getDefault()
-			if err != nil {
-				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
-			}
+func fillDefaults(vars []envVar, setenv func(name, value string) error) error {
+	for _, envVar := range vars {
+		if os.Getenv(envVar.name) != "" {
+			continue
+		}
+		defaultEnv, err := envVar.getDefault()
+		if err != nil {
+			return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
+		}
+		if err := setenv(envVar.name, defaultEnv); err != nil {
+			return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
+		}
+	}
+	return nil
+}
 
-			if err := setenv(envVar.name, defaultEnv); err != nil {
-				return fmt.Errorf("failed to set default value for %s: %w", envVar.name, err)
-			}
+func applyEnvDefaults(setenv func(name, value string) error, testConnections bool, required []string) error {
+	if err := fillDefaults(envVars, setenv); err != nil {
+		return err
+	}
+	if testConnections {
+		if err := fillDefaults(testEnvVars, setenv); err != nil {
+			return err
 		}
 	}
 
-	configureLogging()
-
-	if _, err := GetBacktestPortRange(); err != nil {
+	if err := validate(required); err != nil {
 		return err
 	}
+
+	level, err := parseLogLevel(os.Getenv(LogLevel))
+	if err != nil {
+		return err
+	}
+	configureLogging(level)
 
 	return nil
 }
 
-func configureLogging() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+// Validate checks every setting the broker reads at startup and returns one
+// error per bad variable, joined. A missing required variable is named
+// without a value. A malformed non-secret value is quoted so the operator
+// can see what was read.
+func Validate() error {
+	return validate(requiredVars)
+}
 
-	switch os.Getenv(LogLevel) {
+func validate(required []string) error {
+	var errs []error
+
+	for _, name := range required {
+		if strings.TrimSpace(os.Getenv(name)) == "" {
+			errs = append(errs, fmt.Errorf("%s is not set; it is required and has no default", name))
+		}
+	}
+
+	for _, name := range boolVars {
+		if _, err := parseBool(name); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if _, err := parseLogLevel(os.Getenv(LogLevel)); err != nil {
+		errs = append(errs, err)
+	}
+
+	if _, err := ParseGrafanaURL(os.Getenv(GrafanaURL)); err != nil {
+		errs = append(errs, err)
+	}
+
+	if _, err := ParseTrustedProxies(os.Getenv(AuthTrustedProxies)); err != nil {
+		errs = append(errs, err)
+	}
+
+	if _, err := GetBacktestPortRange(); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func parseLogLevel(value string) (zerolog.Level, error) {
+	switch value {
 	case "debug":
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		return zerolog.DebugLevel, nil
 	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		return zerolog.InfoLevel, nil
 	case "warning":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		return zerolog.WarnLevel, nil
 	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		return zerolog.ErrorLevel, nil
 	default:
-		log.Warn().Msgf("unknown log level: %s", os.Getenv(LogLevel))
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		return zerolog.NoLevel, fmt.Errorf("%s=%q is not a log level; set it to debug, info, warning, or error", LogLevel, value)
 	}
 }
 
-// Setup fills empty process env vars with package defaults and configures logging.
-// It does not start Docker or any other infrastructure.
-func Setup() error {
-	return applyEnvDefaults(os.Setenv)
+func configureLogging(level zerolog.Level) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+	zerolog.SetGlobalLevel(level)
 }
 
-// SetupForTest applies the same empty-var defaults as Setup, using t.Setenv so
-// values are restored when the test ends. It does not start Docker or other
+// parseBool reads a boolean variable. Empty is false, which is the default of
+// every boolean variable here. The value is not a secret, so it is quoted in
+// the error.
+func parseBool(name string) (bool, error) {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return false, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1":
+		return true, nil
+	case "false", "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s=%q is not a boolean; set it to true or false", name, raw)
+	}
+}
+
+// mustBool is for getters called after Setup, which already refused a bad
+// value. A bad value here means Setup was skipped or the variable changed
+// after startup, so the process stops instead of guessing.
+func mustBool(name string) bool {
+	verdict, err := parseBool(name)
+	if err != nil {
+		panic(err)
+	}
+	return verdict
+}
+
+// ParseGrafanaURL accepts an http or https origin with a host, optionally
+// with a path for a subpath install. The value is not quoted in the error
+// because a URL may carry user info.
+func ParseGrafanaURL(value string) (*url.URL, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, fmt.Errorf("%s is empty; set it to the Grafana origin, such as %s", GrafanaURL, GrafanaURLDefault)
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a URL; set it to the Grafana origin, such as %s", GrafanaURL, GrafanaURLDefault)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("%s must start with http:// or https://; set it to the Grafana origin, such as %s", GrafanaURL, GrafanaURLDefault)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("%s has no host; set it to the Grafana origin, such as %s", GrafanaURL, GrafanaURLDefault)
+	}
+	return u, nil
+}
+
+// ParseTrustedProxies parses a comma-separated list of IP addresses and CIDRs.
+// A bare address is one host. Every entry that is neither is named in one
+// error; none is skipped.
+func ParseTrustedProxies(raw string) ([]*net.IPNet, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	fields := strings.Split(raw, ",")
+	nets := make([]*net.IPNet, 0, len(fields))
+	var bad []string
+	for _, field := range fields {
+		entry := strings.TrimSpace(field)
+		if entry == "" {
+			continue
+		}
+		cidr := entry
+		if !strings.Contains(cidr, "/") {
+			if strings.Contains(cidr, ":") {
+				cidr += "/128"
+			} else {
+				cidr += "/32"
+			}
+		}
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			bad = append(bad, "'"+entry+"'")
+			continue
+		}
+		nets = append(nets, network)
+	}
+	if len(bad) > 0 {
+		return nil, trustedProxiesError(bad)
+	}
+	return nets, nil
+}
+
+// trustedProxiesError names every quoted bad entry: 'x' isn't one, 'x' and
+// 'y' aren't, 'x', 'y' and 'z' aren't.
+func trustedProxiesError(quoted []string) error {
+	const prefix = " must be a comma-separated list of IP addresses or CIDR ranges, but "
+	if len(quoted) == 1 {
+		return fmt.Errorf("%s%s%s isn't one.", AuthTrustedProxies, prefix, quoted[0]) //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+	}
+	names := strings.Join(quoted[:len(quoted)-1], ", ") + " and " + quoted[len(quoted)-1]
+	return fmt.Errorf("%s%s%s aren't.", AuthTrustedProxies, prefix, names) //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+}
+
+// Setup fills empty optional variables with package defaults, validates every
+// setting, and configures logging. Postgres, NATS, and MinIO settings have no
+// default here. It does not start Docker or any other infrastructure.
+func Setup() error {
+	return applyEnvDefaults(os.Setenv, false, requiredVars)
+}
+
+// SetupForAccounts is Setup for the account subcommand, which opens only
+// Postgres. POSTGRES_URL is required; NATS and MinIO are not read. Every
+// other check is the same as Setup.
+func SetupForAccounts() error {
+	return applyEnvDefaults(os.Setenv, false, []string{PostgresURL})
+}
+
+// SetupForTest applies the Setup defaults plus the local test connection
+// values, using t.Setenv so values are restored when the test ends. It
+// validates the same way Setup does. It does not start Docker or other
 // infrastructure. t is typically *testing.T.
 func SetupForTest(t envSetter) {
 	t.Helper()
@@ -210,7 +408,7 @@ func SetupForTest(t envSetter) {
 	if err := applyEnvDefaults(func(name, value string) error {
 		t.Setenv(name, value)
 		return nil
-	}); err != nil {
+	}, true, requiredVars); err != nil {
 		t.Fatalf("environment.SetupForTest: %v", err)
 	}
 }
@@ -348,12 +546,13 @@ func GetMinioSecretKey() string {
 	return os.Getenv(MinioSecretKey)
 }
 
+// GetMinioSecure reports whether the broker dials MinIO over TLS.
+func GetMinioSecure() bool {
+	return mustBool(MinioSecure)
+}
+
 func GetTradingEnabled() bool {
-	verdict, err := strconv.ParseBool(os.Getenv(TradingEnabled))
-	if err != nil {
-		return false
-	}
-	return verdict
+	return mustBool(TradingEnabled)
 }
 
 func GetTradingProfilesFile() string {
@@ -365,13 +564,9 @@ func GetTradingListingsFile() string {
 }
 
 // GetAuthEnabled reports whether authentication and authorization are on.
-// An empty value and a value ParseBool rejects are both false.
+// An empty value is false. Setup refuses any value that is not a boolean.
 func GetAuthEnabled() bool {
-	verdict, err := strconv.ParseBool(os.Getenv(AuthEnabled))
-	if err != nil {
-		return false
-	}
-	return verdict
+	return mustBool(AuthEnabled)
 }
 
 func GetAuthAdminUsername() string {
@@ -383,23 +578,26 @@ func GetAuthAdminPasswordFile() string {
 }
 
 func GetAuthCookieSecure() bool {
-	verdict, err := strconv.ParseBool(os.Getenv(AuthCookieSecure))
-	if err != nil {
-		return false
-	}
-	return verdict
+	return mustBool(AuthCookieSecure)
 }
 
 func GetAuthTrustProxy() bool {
-	verdict, err := strconv.ParseBool(os.Getenv(AuthTrustProxy))
-	if err != nil {
-		return false
-	}
-	return verdict
+	return mustBool(AuthTrustProxy)
 }
 
 func GetAuthTrustedProxies() string {
 	return os.Getenv(AuthTrustedProxies)
+}
+
+// GetAuthTrustedProxyNets parses AUTH_TRUSTED_PROXIES. Setup already refused
+// a bad entry, so a bad list here means Setup was skipped or the variable
+// changed after startup, and the process stops like mustBool.
+func GetAuthTrustedProxyNets() []*net.IPNet {
+	nets, err := ParseTrustedProxies(os.Getenv(AuthTrustedProxies))
+	if err != nil {
+		panic(err)
+	}
+	return nets
 }
 
 func GetAuthPublicURL() string {

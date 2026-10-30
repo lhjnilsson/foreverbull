@@ -102,7 +102,7 @@ func runAccount(c *cli.Context, op func(context.Context, auth.DB, string, string
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := environment.Setup(); err != nil {
+	if err := environment.SetupForAccounts(); err != nil {
 		return fmt.Errorf("setup environment: %w", err)
 	}
 
