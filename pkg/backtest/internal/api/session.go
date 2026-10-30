@@ -181,6 +181,12 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 	periods, err := s.backtestSession.RunBacktest(ctx, execution, s.wp)
 	if err != nil {
 		log.Error().Err(err).Msg("error running backtest")
+		if refused, ok := err.(interface{ GRPCStatus() *status.Status }); ok &&
+			refused.GRPCStatus().Code() == codes.FailedPrecondition {
+			// Zipline's own sentence for a refused run, unwrapped; fbull
+			// prints it as is.
+			return err
+		}
 		return fmt.Errorf("error running backtest: %w", err)
 	}
 

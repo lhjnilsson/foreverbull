@@ -11,6 +11,7 @@ from foreverbull_zipline.data_bundles.bundle_alignment import SESSION_ALIGNED_BU
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_dates_misaligned
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_version
 from foreverbull_zipline.data_bundles.bundle_alignment import ensure_session_aligned_bundle
+from foreverbull_zipline.errors import PlainSentence
 from zipline.data import bundles
 from zipline.data.bundles.core import to_bundle_ingest_dirname
 from zipline.utils.calendar_utils import get_calendar
@@ -89,7 +90,7 @@ def test_unreadable_version_marker_fails_instead_of_counting_as_unstamped(tmp_pa
     marker.write_text("one\n", encoding="utf-8")
     rebuilds: list[str] = []
 
-    with pytest.raises(RuntimeError) as error:
+    with pytest.raises(PlainSentence) as error:
         ensure_session_aligned_bundle("garbled_bundle", environ, rebuild=lambda name, env: rebuilds.append(name))
 
     assert str(error.value) == (
@@ -106,7 +107,7 @@ def test_version_marker_that_cant_be_read_fails(tmp_path, caplog):
     marker = _marker_path(tmp_path, "dir_marker_bundle")
     marker.mkdir()
 
-    with pytest.raises(RuntimeError) as error:
+    with pytest.raises(PlainSentence) as error:
         bundle_version("dir_marker_bundle", environ)
 
     assert str(error.value) == (

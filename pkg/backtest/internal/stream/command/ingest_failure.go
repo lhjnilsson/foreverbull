@@ -57,6 +57,10 @@ type ingestFailure struct {
 	driver string
 	// details is the redacted underlying error, shown only with --verbose.
 	details string
+	// sentence is the data service's own message for a refused ingest
+	// (Aborted, no details marker). It is the user's whole message when it
+	// names this backtest; see refusedSentence.
+	sentence string
 }
 
 // readIngestFailure classifies the data service's error by its gRPC code.
@@ -88,7 +92,57 @@ func readIngestFailure(cause error) ingestFailure {
 		failure.kind = ingestUnreachable
 		failure.details = unreachableHop(hasDetails, reason, failure.details)
 	}
+	if code == codes.Aborted && !hasDetails {
+		// The data service refused the ingest with the user's sentence; its
+		// cause, if any, stayed in the data service's log.
+		failure.sentence = reason
+	}
 	return failure
+}
+
+// refusedSentence is the data service's sentence as the step's whole message,
+// and false when there is none or it doesn't name this backtest (then the
+// fixed lead is used, with the sentence behind --verbose). When the backtest
+// couldn't be removed, "wasn't saved" would be wrong, so that sentence says it
+// was partly saved, and a sentence to delete it first comes before the step.
+func refusedSentence(name string, failure ingestFailure, removed bool) (string, bool) {
+	if failure.sentence == "" || !strings.HasPrefix(failure.sentence, fmt.Sprintf("Couldn't load data for backtest '%s': ", name)) {
+		return "", false
+	}
+	if removed {
+		return failure.sentence, true
+	}
+	return deleteFirstSentence(name, failure.sentence)
+}
+
+// deleteFirstSentence rewrites a refusal for a backtest that couldn't be
+// removed. notSavedSentence becomes notRemovedSentence, and "Run `fbull
+// backtest delete <name>` first." goes as its own sentence before the
+// refusal's own next step, which follows it on the same line or is the last
+// line and stays exactly as written. It returns false when the sentence
+// doesn't have that shape.
+func deleteFirstSentence(name, sentence string) (string, bool) {
+	saved := strings.Index(sentence, notSavedSentence)
+	if saved < 0 {
+		return "", false
+	}
+	head := sentence[:saved] + notRemovedSentence
+	rest := sentence[saved+len(notSavedSentence):]
+	var middle, next string
+	switch {
+	case strings.HasPrefix(rest, " ") && !strings.Contains(rest, "\n"):
+		next = strings.TrimPrefix(rest, " ")
+	case strings.HasPrefix(rest, "\n"):
+		cut := strings.LastIndex(rest, "\n")
+		middle, next = rest[:cut+1], rest[cut+1:]
+	}
+	if next == "" {
+		return "", false
+	}
+	if middle == "" {
+		middle = " "
+	}
+	return head + middle + deleteFirst(name, next), true
 }
 
 // unreachableHop names the hop that failed for the --verbose details. Only
@@ -161,10 +215,14 @@ func savedAndNext(name, next string, removed bool) (string, string) {
 	return notRemovedSentence, deleteFirst(name, next)
 }
 
-// ingestFailureMessage is the step's whole message. "Nothing was saved" is
-// only true when the backtest was removed; otherwise it was partly saved,
+// ingestFailureMessage is the step's whole message: the data service's own
+// sentence for a refused ingest, otherwise a fixed lead. "Nothing was saved"
+// is only true when the backtest was removed; otherwise it was partly saved,
 // and the user deletes it first.
 func ingestFailureMessage(name string, failure ingestFailure, removed bool) string {
+	if sentence, ok := refusedSentence(name, failure, removed); ok {
+		return redactURLPasswords(sentence)
+	}
 	lead, saved, next := ingestFailureLead(failure)
 	var text strings.Builder
 	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': %s ", name, lead)

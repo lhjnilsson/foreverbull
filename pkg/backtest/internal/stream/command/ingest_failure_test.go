@@ -237,3 +237,110 @@ func TestSymbolDownloadMessage(t *testing.T) {
 		"delete oef-2024q1` first. Fix that symbol and run `fbull backtest create` again.",
 		invalidTickerMessage("oef-2024q1", 2, 3, false))
 }
+
+const (
+	noPricesCopy = "Couldn't load data for backtest 'oef-2024q1': there are no stored prices for META (earlier FB) " +
+		"between 2024-01-02 and 2024-03-28. The backtest wasn't saved. " +
+		"Try another provider with --provider, then run `fbull backtest create` again."
+	noPricesBlockCopy = "Couldn't load data for backtest 'oef-2024q1': 2 symbols have no stored prices. " +
+		"The backtest wasn't saved.\n" +
+		"  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n" +
+		"  OEF: no prices between 2024-01-02 and 2024-03-28.\n" +
+		"Try another provider with --provider, then run `fbull backtest create` again."
+	noPricesAndGapsCopy = "Couldn't load data for backtest 'oef-2024q1': 2 symbols are missing prices. " +
+		"The backtest wasn't saved.\n" +
+		"  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n" +
+		"  OEF: no prices on 2024-02-14, 2024-02-20.\n" +
+		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again."
+	tickerHistoryCopy = "Couldn't load data for backtest 'oef-2024q1': foreverbull couldn't read its record of " +
+		"ticker changes, so renamed symbols can't be followed. The backtest wasn't saved. " +
+		"Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+)
+
+// The data service refuses an ingest with ABORTED and the user's sentence,
+// with no details marker. That sentence is the step's whole message.
+func TestIngestFailureMessageShowsARefusalAsWritten(t *testing.T) {
+	tests := []struct {
+		name     string
+		sentence string
+		removed  bool
+		expected string
+	}{
+		{name: "no prices for one symbol", sentence: noPricesCopy, removed: true, expected: noPricesCopy},
+		{name: "no prices for several symbols", sentence: noPricesBlockCopy, removed: true, expected: noPricesBlockCopy},
+		{name: "ticker history unreadable", sentence: tickerHistoryCopy, removed: true, expected: tickerHistoryCopy},
+		{name: "no prices and missing sessions", sentence: noPricesAndGapsCopy, removed: true, expected: noPricesAndGapsCopy},
+		{
+			name:     "no prices for one symbol, delete failed: partly saved, delete first",
+			sentence: noPricesCopy,
+			removed:  false,
+			expected: "Couldn't load data for backtest 'oef-2024q1': there are no stored prices for META (earlier FB) " +
+				"between 2024-01-02 and 2024-03-28. The backtest was partly saved and couldn't be removed. " +
+				"Run `fbull backtest delete oef-2024q1` first. Try another provider with --provider, " +
+				"then run `fbull backtest create` again.",
+		},
+		{
+			name:     "no prices for several symbols, delete failed: partly saved, delete first",
+			sentence: noPricesBlockCopy,
+			removed:  false,
+			expected: "Couldn't load data for backtest 'oef-2024q1': 2 symbols have no stored prices. " +
+				"The backtest was partly saved and couldn't be removed.\n" +
+				"  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n" +
+				"  OEF: no prices between 2024-01-02 and 2024-03-28.\n" +
+				"Run `fbull backtest delete oef-2024q1` first. Try another provider with --provider, " +
+				"then run `fbull backtest create` again.",
+		},
+		{
+			name:     "no prices and missing sessions, delete failed: partly saved, delete first",
+			sentence: noPricesAndGapsCopy,
+			removed:  false,
+			expected: "Couldn't load data for backtest 'oef-2024q1': 2 symbols are missing prices. " +
+				"The backtest was partly saved and couldn't be removed.\n" +
+				"  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n" +
+				"  OEF: no prices on 2024-02-14, 2024-02-20.\n" +
+				"Run `fbull backtest delete oef-2024q1` first. Try another provider with --provider, " +
+				"or change the backtest dates, then run `fbull backtest create` again.",
+		},
+		{
+			name:     "ticker history unreadable, delete failed: partly saved, delete first",
+			sentence: tickerHistoryCopy,
+			removed:  false,
+			expected: "Couldn't load data for backtest 'oef-2024q1': foreverbull couldn't read its record of " +
+				"ticker changes, so renamed symbols can't be followed. " +
+				"The backtest was partly saved and couldn't be removed. " +
+				"Run `fbull backtest delete oef-2024q1` first. Run `fbenv status` to check that the " +
+				"environment is running, then run `fbull backtest create` again.",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cause := fmt.Errorf("error ingesting: %w", status.Error(codes.Aborted, tc.sentence))
+			message := ingestFailureMessage("oef-2024q1", readIngestFailure(cause), tc.removed)
+			require.Equal(t, tc.expected, message)
+			require.NotContains(t, message, ingestDetailsMarker)
+		})
+	}
+}
+
+// A refusal that names another backtest, or one that carries details, is not
+// shown as the reason: the fixed lead is, with the text behind --verbose.
+func TestIngestFailureMessageKeepsTheLeadForAnUnexpectedRefusal(t *testing.T) {
+	other := status.Error(codes.Aborted, "Couldn't load data for backtest 'other': boom")
+	require.Equal(t, otherFailureCopy+"\nDetails: Couldn't load data for backtest 'other': boom",
+		ingestFailureMessage("demo", readIngestFailure(other), true))
+
+	detailed := status.Error(codes.Aborted, "Couldn't load data for backtest 'demo': boom\nDetails: KeyError: 'AAPL'")
+	require.Equal(t, otherFailureCopy+"\nDetails: KeyError: 'AAPL'",
+		ingestFailureMessage("demo", readIngestFailure(detailed), true))
+}
+
+// A refusal for this backtest without "The backtest wasn't saved." can't be
+// rewritten for a backtest that wasn't removed, so the fixed lead is used.
+func TestIngestFailureMessageKeepsTheLeadWhenARefusalCantSayDeleteFirst(t *testing.T) {
+	refusal := status.Error(codes.Aborted, "Couldn't load data for backtest 'demo': boom.")
+	require.Equal(t, "Couldn't load data for backtest 'demo': the data service failed while ingesting prices. "+
+		"The backtest was partly saved and couldn't be removed. Run `fbull backtest delete demo` first. "+
+		"Run `fbull backtest create` again once it's fixed."+
+		"\nDetails: Couldn't load data for backtest 'demo': boom.",
+		ingestFailureMessage("demo", readIngestFailure(refusal), false))
+}

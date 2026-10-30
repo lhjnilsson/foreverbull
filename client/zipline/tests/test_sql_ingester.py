@@ -11,6 +11,7 @@ from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 from foreverbull_zipline.data_bundles.foreverbull import session_labels
+from foreverbull_zipline.errors import PlainSentence
 from sqlalchemy import create_engine
 from zipline.utils.calendar_utils import get_calendar
 
@@ -267,7 +268,7 @@ def test_sql_ingester_names_every_symbol_without_bars_and_writes_nothing():
     ingester._df_metadata = ingester.create_metadata()
     written = []
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         written.extend(ingester.writer(False))
 
     assert str(error.value) == (
@@ -322,7 +323,7 @@ def test_sql_ingester_names_a_renamed_symbol_without_bars_by_its_latest_ticker()
     ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
     ingester._df_metadata = ingester.create_metadata()
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         list(ingester.writer(False))
 
     assert str(error.value) == (
@@ -343,7 +344,7 @@ def test_sql_ingester_names_a_symbol_without_an_earlier_ticker_alone():
     ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=pd.DataFrame())
     ingester._df_metadata = ingester.create_metadata()
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         list(ingester.writer(False))
 
     assert str(error.value) == (
@@ -364,7 +365,7 @@ def test_sql_ingester_lists_a_renamed_symbol_in_the_block():
     ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
     ingester._df_metadata = ingester.create_metadata()
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         list(ingester.writer(False))
 
     assert str(error.value) == (
@@ -391,7 +392,7 @@ def test_sql_ingester_names_symbols_without_bars_and_gaps_in_one_error():
     ingester._df_metadata = ingester.create_metadata()
     written = []
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         written.extend(ingester.writer(False))
 
     assert str(error.value) == (
@@ -434,7 +435,7 @@ class _BrokenDatabase:
 def test_sql_ingester_fails_when_the_ticker_history_cant_be_read(caplog):
     ingester = SQLIngester(_quarter_backtest(), engine=_BrokenDatabase())
 
-    with pytest.raises(RuntimeError) as error:
+    with pytest.raises(PlainSentence) as error:
         ingester.load_aliases()
 
     assert str(error.value) == (
@@ -457,7 +458,7 @@ def test_sql_ingester_logs_the_ticker_history_cause_redacted(caplog, monkeypatch
     monkeypatch.setattr("foreverbull_zipline.data_bundles.foreverbull.read_sql_query", broken_query)
     ingester = SQLIngester(_quarter_backtest(), engine=_BrokenDatabase())
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(PlainSentence):
         ingester.load_aliases()
 
     assert "postgresql://fb:***@db.invalid:5432" in caplog.text
