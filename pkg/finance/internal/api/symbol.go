@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 )
@@ -16,10 +17,13 @@ func validSymbol(symbol string) bool {
 	return symbolPattern.MatchString(symbol)
 }
 
-// invalidSymbolMessage refuses a download request with a symbol outside
-// symbolPattern. It does not repeat the symbol, because that is the text
-// that failed the check.
-const invalidSymbolMessage = "a symbol isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)"
+// invalidSymbolMessage refuses a download request whose symbol at the 1-based
+// position is outside symbolPattern. It names the position and the request's
+// symbol count, never the symbol, because that is the text that failed the
+// check. The backtest service matches this exact shape to build its sentence.
+func invalidSymbolMessage(position, total int) string {
+	return fmt.Sprintf("symbol %d of %d isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", position, total)
+}
 
 // maxLoggedSymbol caps how much of a refused symbol goes into a log line.
 const maxLoggedSymbol = 64
