@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -15,7 +16,12 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb"
+	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // symbolGaps is one request symbol's missing sessions, as indexes into the
@@ -167,4 +173,137 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after missing sessions")
 	}
 	return plainSentence(missingSessionsMessage(name, provider, sessions, gaps, removed))
+}
+
+// ziplineMissingSessions matches the reason of Zipline's MissingSessionsError,
+// sent with DATA_LOSS: "missing prices on trading days: AAA 2024-02-14;
+// BBB 2024-02-20,2024-03-05".
+var ziplineMissingSessions = regexp.MustCompile(
+	`^missing prices on trading days: ([A-Za-z0-9.^=_-]{1,32} \d{4}-\d{2}-\d{2}(?:,\d{4}-\d{2}-\d{2})*` +
+		`(?:; [A-Za-z0-9.^=_-]{1,32} \d{4}-\d{2}-\d{2}(?:,\d{4}-\d{2}-\d{2})*)*)$`)
+
+// dataLossReason is the reason of a DATA_LOSS ingest error, cut before its
+// details. It is false for any other error.
+func dataLossReason(cause error) (string, bool) {
+	// errors.As, not status.FromError, which puts the wrapping text in the
+	// message (readIngestFailure does the same).
+	var grpcErr interface{ GRPCStatus() *status.Status }
+	if !errors.As(cause, &grpcErr) {
+		return "", false
+	}
+	st := grpcErr.GRPCStatus()
+	if st.Code() != codes.DataLoss {
+		return "", false
+	}
+	reason, _, _ := strings.Cut(st.Message(), ingestDetailsMarker)
+	return strings.TrimSpace(reason), true
+}
+
+// ingestMissingDays reads the gaps from the reason of Zipline's
+// MissingSessionsError, keyed by the ticker Zipline names.
+func ingestMissingDays(reason string) (map[string][]time.Time, bool) {
+	match := ziplineMissingSessions.FindStringSubmatch(reason)
+	if match == nil {
+		return nil, false
+	}
+	gaps := make(map[string][]time.Time)
+	for _, entry := range strings.Split(match[1], "; ") {
+		symbol, list, _ := strings.Cut(entry, " ")
+		for _, field := range strings.Split(list, ",") {
+			day, err := time.Parse(time.DateOnly, field)
+			if err != nil {
+				return nil, false
+			}
+			gaps[symbol] = append(gaps[symbol], day)
+		}
+	}
+	return gaps, true
+}
+
+// ingestMissingSessions turns Zipline's refusal of a sid with missing
+// sessions into the create's missing-session sentence, so a gap that
+// appeared after the download check reads the same as one it caught. It is
+// nil when err is another failure, or when the sentence would not be the
+// whole list: Zipline named a ticker that isn't in this backtest, or a day
+// that isn't a session. The caller then uses the ingest failure copy. Every
+// DATA_LOSS outcome is logged with Zipline's cause, redacted.
+func ingestMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, backtests repository.Backtest,
+	b *backtest.Backtest, id string, cause error,
+) error {
+	reason, isDataLoss := dataLossReason(cause)
+	if !isDataLoss {
+		return nil
+	}
+	outcome, refused := refuseMissingSessions(ctx, eng, db, backtests, b, id, reason)
+	log.Warn().Str("backtest", b.Name).Str("outcome", outcome).Str("cause", redactURLPasswords(cause.Error())).
+		Msg("zipline refused the ingest with data loss")
+	return refused
+}
+
+// refuseMissingSessions builds the sentence for ingestMissingSessions, and
+// says why it didn't when it is nil.
+func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, backtests repository.Backtest,
+	b *backtest.Backtest, id, reason string,
+) (string, error) {
+	reported, ok := ingestMissingDays(reason)
+	if !ok {
+		return "not a missing-session refusal", nil
+	}
+	symbols, err := ingestSymbols(ctx, db, b, id)
+	if err != nil {
+		return "could not read the backtest's symbols", nil
+	}
+	start := pb.DateToTime(b.Periods[0].StartDate)
+	end := pb.DateToTime(b.Periods[len(b.Periods)-1].EndDate)
+	sessions, err := eng.Sessions(ctx, start, end)
+	if err != nil {
+		return "could not read the calendar", nil
+	}
+	known := make(map[string]bool, len(symbols))
+	for _, symbol := range symbols {
+		known[symbol] = true
+	}
+	isSession := make(map[time.Time]bool, len(sessions))
+	for _, session := range sessions {
+		isSession[session] = true
+	}
+	for symbol, days := range reported {
+		if !known[symbol] {
+			return "named a ticker that isn't in the backtest", nil
+		}
+		for _, day := range days {
+			if !isSession[day] {
+				return "named a day that isn't a session", nil
+			}
+		}
+	}
+	gaps := make([]symbolGaps, 0)
+	for _, symbol := range listedOrder(symbols) {
+		named := make(map[time.Time]bool)
+		for _, day := range reported[symbol] {
+			named[day] = true
+		}
+		var missing []int
+		for i, session := range sessions {
+			if named[session] {
+				missing = append(missing, i)
+			}
+		}
+		if len(missing) > 0 {
+			gaps = append(gaps, symbolGaps{symbol: symbol, sessions: missing})
+		}
+	}
+	if len(gaps) == 0 {
+		return "named no days", nil
+	}
+	err = deleteAfterFailure(ctx, backtests, b.Name, id)
+	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+	if !removed {
+		log.Warn().Err(err).Str("backtest", b.Name).Msg("error deleting backtest after missing sessions")
+	}
+	provider := strings.ToLower(strings.TrimSpace(b.GetProvider()))
+	if provider == "" {
+		provider = supplier.DefaultProvider
+	}
+	return "missing sessions", plainSentence(missingSessionsMessage(b.Name, provider, sessions, gaps, removed))
 }

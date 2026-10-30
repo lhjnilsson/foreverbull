@@ -26,39 +26,6 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_se
 # pkg/finance/supplier/marketdata.go, and both must name the same provider.
 DEFAULT_PROVIDER = "yahoo"
 
-# Missing-price notices. The Zipline ingest fills a session a symbol has no
-# bar for with the previous close and writes one line per symbol; the CLI
-# shows up to MISSING_PRICES_LINES_SHOWN of them and folds more into one line.
-MISSING_PRICES_LINES_SHOWN = 2
-_FILLED_WITH_PREVIOUS_CLOSE = "filled with the previous close. No trades on those days."
-
-
-def missing_prices_line(symbol: str, days: list[date]) -> str:
-    """One symbol's notice, e.g. 4 days (2026-05-02 to 2026-05-07)."""
-    if not days:
-        raise ValueError(f"missing_prices_line needs at least one day for {symbol}")
-    ordered = sorted(days)
-    if len(ordered) == 1:
-        return f"Missing prices for {symbol} on {ordered[0].isoformat()}, {_FILLED_WITH_PREVIOUS_CLOSE}"
-    return (
-        f"Missing prices for {symbol} on {len(ordered)} days "
-        f"({ordered[0].isoformat()} to {ordered[-1].isoformat()}), {_FILLED_WITH_PREVIOUS_CLOSE}"
-    )
-
-
-def missing_prices_summary(lines: list[str], *, verbose: bool) -> list[str]:
-    """The lines to print: each symbol's line, or one line for 3+ symbols.
-
-    --verbose prints every symbol's line under the summary.
-    """
-    if len(lines) <= MISSING_PRICES_LINES_SHOWN:
-        return list(lines)
-    summary = f"Missing prices for {len(lines)} symbols, {_FILLED_WITH_PREVIOUS_CLOSE}"
-    if verbose:
-        return [summary, *lines]
-    return [f"{summary} Run with --verbose for the list."]
-
-
 # The clause after the colon. The SQL stays in the worker log.
 _MARKET_DATA_DENIED_DETAIL = (
     "the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."

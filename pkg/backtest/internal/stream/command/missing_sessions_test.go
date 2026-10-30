@@ -360,3 +360,59 @@ func (test *BacktestCommandTest) TestCanceledIngestReturnsTheContextError() {
 	test.NotContains(err.Error(), "data service")
 	test.requireNothingSaved()
 }
+
+// Zipline's MissingSessionsError reaches the broker as DATA_LOSS. It reads
+// the same as the download check's sentence, and the backtest is removed.
+func (test *BacktestCommandTest) TestIngestMissingSessionsUseTheCreateSentence() {
+	test.createQuarter("AAA", "BBB")
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error ingesting: %w",
+		status.Error(codes.DataLoss, "missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05"+
+			"\nDetails: MissingSessionsError: missing prices on trading days: …")))
+	ziplineEngine.On("Sessions", mock.Anything, quarterStart, quarterEnd).Return(xnysSessions(quarterEnd), nil)
+
+	err := command.Ingest(context.TODO(), test.ingestMessage(quarterBacktest, ziplineEngine))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 2 symbols. The backtest wasn't saved.\n"+
+		"  AAA: 2024-02-14\n"+
+		"  BBB: 2024-02-20 to 2024-02-21, 2024-03-05\n"+
+		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// Another DATA_LOSS text keeps the ingest failure copy.
+func (test *BacktestCommandTest) TestIngestOtherDataLossKeepsTheIngestCopy() {
+	test.createQuarter("AAA")
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, status.Error(codes.DataLoss, "something else"))
+
+	err := command.Ingest(context.TODO(), test.ingestMessage(quarterBacktest, ziplineEngine))
+	test.Require().ErrorContains(err, "the data service failed while ingesting prices.")
+	ziplineEngine.AssertNotCalled(test.T(), "Sessions", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A DATA_LOSS list the sentence can't name in full falls back to the ingest
+// copy, so the list and its symbol count are never short.
+func (test *BacktestCommandTest) requireIngestCopyFor(reason string) {
+	test.createQuarter("AAA")
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, status.Error(codes.DataLoss, reason))
+	ziplineEngine.On("Sessions", mock.Anything, quarterStart, quarterEnd).Return(xnysSessions(quarterEnd), nil)
+
+	err := command.Ingest(context.TODO(), test.ingestMessage(quarterBacktest, ziplineEngine))
+	test.Require().ErrorContains(err, "the data service failed while ingesting prices.")
+	test.NotContains(err.Error(), "is missing prices")
+	test.requireNothingSaved()
+}
+
+// Zipline named a ticker that isn't in the backtest.
+func (test *BacktestCommandTest) TestIngestMissingSessionsOfAnotherTickerKeepTheIngestCopy() {
+	test.requireIngestCopyFor("missing prices on trading days: AAA 2024-02-14; ZZZ 2024-02-01")
+}
+
+// Zipline named a day that isn't a session (Good Friday).
+func (test *BacktestCommandTest) TestIngestMissingSessionsOnAHolidayKeepTheIngestCopy() {
+	test.requireIngestCopyFor("missing prices on trading days: AAA 2024-02-14,2024-03-29")
+}
