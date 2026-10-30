@@ -14,6 +14,8 @@ from zipline.data.bundles.core import from_bundle_ingest_dirname
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.paths import data_path
 
+from foreverbull_zipline.errors import PlainSentence
+
 
 # Bundles ingested before the session-alignment fix carry provider stamps
 # (Yahoo's 14:30 UTC session open) as asset start/end dates and bar days.
@@ -65,12 +67,12 @@ def bundle_version(bundle_name: str, environ: Mapping[str, Any] | None = None) -
         return 0
     except OSError as exc:
         _logger.error("Couldn't read the version marker of bundle %r at %s: %s", bundle_name, marker, exc)
-        raise RuntimeError(damaged_marker_line(bundle_name)) from exc
+        raise PlainSentence(damaged_marker_line(bundle_name)) from exc
     try:
         return int(text)
     except ValueError as exc:
         _logger.error("The version marker of bundle %r at %s isn't a number: %r", bundle_name, marker, text)
-        raise RuntimeError(damaged_marker_line(bundle_name)) from exc
+        raise PlainSentence(damaged_marker_line(bundle_name)) from exc
 
 
 def damaged_marker_line(backtest: str) -> str:

@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -266,6 +267,46 @@ func (s *SessionTest) TestRunExecution() {
 	}
 
 	s.Require().Equal(5, entries)
+}
+
+// Zipline's sentence for a refused run reaches the client unchanged, through
+// the server's client-facing interceptor, so fbull prints it as written.
+func (s *SessionTest) TestRunExecutionShowsZiplinesRefusalAsWritten() {
+	sentences := []string{
+		"Couldn't run backtest 'backtest': the benchmark SPY has no prices on 3 trading days: " +
+			"2024-02-14, 2024-02-20 to 2024-02-21. Nothing was run. " +
+			"Run `fbull backtest create` again to reload its prices, or choose another benchmark.",
+		"The price data for backtest 'backtest' can't be read: its version marker is damaged. " +
+			"Run `fbull backtest create` again to rebuild it.",
+	}
+	for index, sentence := range sentences {
+		executionID := fmt.Sprintf("refused_%d", index)
+		_, err := s.client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+			Id:        executionID,
+			Session:   s.session.Id,
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
+			Algorithm: &service_pb.Algorithm{},
+		})
+		s.Require().NoError(err)
+		executions := repository.Execution{Conn: s.conn}
+		execution, err := executions.Create(context.Background(), &backtest.Execution{
+			Session:   s.session.Id,
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 1, Day: 1},
+		}, nil)
+		s.Require().NoError(err)
+		s.mockEngineSession.On("RunBacktest", mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, status.Error(codes.FailedPrecondition, sentence)).Once()
+
+		stream, err := s.client.RunExecution(context.Background(), &servicePb.RunExecutionRequest{ExecutionId: execution.Id})
+		s.Require().NoError(err)
+		_, err = stream.Recv()
+		refused, ok := status.FromError(err)
+		s.Require().True(ok)
+		s.Equal(codes.FailedPrecondition, refused.Code())
+		s.Equal(sentence, refused.Message())
+	}
 }
 
 // noticingSession is an engine session that reports run notices, as

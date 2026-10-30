@@ -30,6 +30,7 @@ from foreverbull_zipline.data_bundles.bundle_alignment import stamp_bundle_versi
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
+from foreverbull_zipline.errors import PlainSentence
 from foreverbull_zipline.session_service import SessionServiceServicer
 
 
@@ -42,10 +43,15 @@ def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
     """Status code and details for a failed ingest, with every password redacted.
 
     FAILED_PRECONDITION means the data service itself is broken (a missing
-    driver), UNAVAILABLE that the database could not be reached. Anything else
-    is INTERNAL. The text is redacted again here because a bundle writer or
+    driver), UNAVAILABLE that the database could not be reached, and ABORTED
+    that the ingest was refused with a PlainSentence for the user. Anything
+    else is INTERNAL. The text is redacted again here because a bundle writer or
     driver can quote a URL that did not pass through get_engine.
     """
+    if isinstance(exc, PlainSentence):
+        # The user's whole sentence, sent without details; the broker shows
+        # it unchanged. Its cause, if any, was logged where it was raised.
+        return grpc.StatusCode.ABORTED, redact_text(str(exc))
     cause = getattr(exc, "cause", None) or describe_exception(exc)
     match exc:
         case exceptions.DatabaseDriverError():
