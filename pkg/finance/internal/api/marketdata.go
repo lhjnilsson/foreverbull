@@ -165,6 +165,14 @@ func (fs *MarketdataServer) downloadSymbol(
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
 	}
+	// The provider's ticker becomes the stored asset, the bars' key, and the
+	// symbol in a refused-bar sentence, so it is checked like a request one.
+	if !validSymbol(asset.GetSymbol()) {
+		log.Warn().Str("symbol", symbol).Str("provider_symbol", loggedSymbol(asset.GetSymbol())).
+			Msg("provider returned a ticker outside the symbol pattern")
+		failSymbol(ctx, sender, rsp, downloadFailedError(symbol))
+		return nil
+	}
 
 	if err := assetRepo.Store(ctx, asset.Symbol, asset.Name); err != nil {
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "store asset", err))
@@ -381,7 +389,7 @@ func laterTickerCandidates(
 	}
 	for _, alias := range aliases {
 		symbol := strings.TrimSpace(alias.Symbol)
-		if symbol == "" {
+		if !candidateSymbol(isin, symbol) {
 			continue
 		}
 		if _, ok := seen[symbol]; ok {
@@ -397,7 +405,7 @@ func laterTickerCandidates(
 	} else {
 		for _, a := range found {
 			symbol := strings.TrimSpace(a.Symbol)
-			if symbol == "" {
+			if !candidateSymbol(isin, symbol) {
 				continue
 			}
 			if a.ISIN != "" && a.ISIN != isin {
@@ -413,10 +421,31 @@ func laterTickerCandidates(
 	return candidates, nil
 }
 
+// candidateSymbol reports whether a later-ticker candidate may be fetched.
+// Bars and the alias are stored under it and a refused bar names it, so a
+// stored alias or a search result outside symbolPattern is skipped.
+func candidateSymbol(isin, symbol string) bool {
+	if symbol == "" {
+		return false
+	}
+	if validSymbol(symbol) {
+		return true
+	}
+	log.Warn().Str("isin", isin).Str("candidate", loggedSymbol(symbol)).Msg("skipping a later ticker outside the symbol pattern")
+	return false
+}
+
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
 	ctx := serverStream.Context()
 	if err := requireTradingEditor(ctx); err != nil {
 		return err
+	}
+	// Every symbol is echoed in a response, so all are checked before any
+	// download starts.
+	for _, symbol := range req.GetSymbols() {
+		if !validSymbol(symbol) {
+			return status.Error(codes.InvalidArgument, invalidSymbolMessage)
+		}
 	}
 
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
