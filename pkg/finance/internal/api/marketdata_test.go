@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -187,6 +188,97 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresNothingWhenABarIsRe
 	suite.Require().NoError(suite.pgx.QueryRow(context.Background(),
 		`SELECT count(*) FROM ohlc WHERE symbol = 'XYZ'`).Scan(&rows))
 	suite.Zero(rows, "no bar of a refused batch may be stored")
+}
+
+func (suite *MarketdataTest) recvAll(stream servicePb.Marketdata_DownloadHistoricalDataClient) []*servicePb.DownloadHistoricalDataResponse {
+	var msgs []*servicePb.DownloadHistoricalDataResponse
+	for {
+		msg, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return msgs
+		}
+		suite.Require().NoError(err)
+		msgs = append(msgs, msg)
+	}
+}
+
+// A DB error on one row rolls the whole symbol back, and its text (which may
+// carry a DSN or SQL) stays in the log, never in the response.
+func (suite *MarketdataTest) TestDownloadHistoricalDataScrubsStoreErrorAndRollsBack() {
+	const leak = "dial postgres://admin:hunter2@10.0.0.5:5432/prod: INSERT INTO ohlc"
+	_, err := suite.pgx.Exec(context.Background(), `
+CREATE OR REPLACE FUNCTION fail_on_bad_row() RETURNS trigger AS $$
+BEGIN
+	IF NEW.close = 13.37 THEN
+		RAISE EXCEPTION '`+leak+`';
+	END IF;
+	RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_on_bad_row();`)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetAsset", "LEAK").Return(nil, errors.New(leak))
+	suite.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
+		{Timestamp: timestamppb.New(mustTime("2026-05-02")), Open: 10, High: 14, Low: 9, Close: 13.37, Volume: 100},
+		{Timestamp: timestamppb.New(mustTime("2026-05-03")), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
+	}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"XYZ", "LEAK"},
+		StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 3},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	errs := make(map[string]string)
+	for _, msg := range suite.recvAll(rsp) {
+		suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus(), msg.GetSymbol())
+		errs[msg.GetSymbol()] = msg.GetError()
+	}
+	suite.Equal("couldn't download prices for XYZ. Try again in a few minutes, or use another provider with --provider.", errs["XYZ"])
+	suite.Equal("couldn't download prices for LEAK. Try again in a few minutes, or use another provider with --provider.", errs["LEAK"])
+	for symbol, text := range errs {
+		suite.NotContains(text, "hunter2", symbol)
+		suite.NotContains(text, "INSERT", symbol)
+	}
+
+	var rows int
+	suite.Require().NoError(suite.pgx.QueryRow(context.Background(),
+		`SELECT count(*) FROM ohlc WHERE symbol = 'XYZ'`).Scan(&rows))
+	suite.Zero(rows, "a DB error on one row must leave none of the symbol's bars")
+}
+
+// Many workers report on one stream; run with -race to catch concurrent Send.
+func (suite *MarketdataTest) TestDownloadHistoricalDataManySymbols() {
+	const n = 60
+	symbols := make([]string, 0, n)
+	for i := range n {
+		symbols = append(symbols, fmt.Sprintf("SYM%02d", i))
+	}
+	suite.marketdata.On("GetAsset", mock.Anything).Return(func(symbol string) (*pb.Asset, error) {
+		return &pb.Asset{Symbol: symbol, Name: symbol}, nil
+	})
+	suite.marketdata.On("GetOHLC", mock.Anything, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
+	}, nil)
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   symbols,
+		StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	seen := make(map[string]bool)
+	for _, msg := range suite.recvAll(rsp) {
+		suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetSymbol())
+		seen[msg.GetSymbol()] = true
+	}
+	suite.Len(seen, n)
 }
 
 func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {

@@ -630,9 +630,18 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
-// refusedPriceError matches the finance service's sentence for a bar its
-// storage refused. Only this exact shape is shown; other raw text is not.
-var refusedPriceError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid price for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+// refusedPriceError and refusedVolumeError match the finance service's
+// sentences for a bar its storage refused. Only these exact shapes are shown;
+// other raw text is not.
+var (
+	refusedPriceError  = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid price for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+	refusedVolumeError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid volume for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(out of range\)$`)
+)
+
+// isRefusedBarError reports the finance service's refused-bar sentence.
+func isRefusedBarError(text string) bool {
+	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
+}
 
 // providerFaultNextStep ends a sentence about bad provider data. Since #209 a
 // bad bar is normally dropped and filled, so reaching this means an adapter
@@ -643,7 +652,8 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
-// of the user sentence. "Nothing was saved" only when the delete worked.
+// of the user sentence. "Nothing was saved" or "wasn't saved" only when the
+// delete worked.
 func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
@@ -652,15 +662,22 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	}
 	var lead string
 	nextStep := "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	generic := false
 	if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
-	} else if refusedPriceError.MatchString(errText) {
+	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
 	} else {
+		generic = true
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
+	}
+	if removed && generic {
+		return plainSentence(fmt.Sprintf(
+			"Couldn't load data for backtest '%s': the price download failed for %s. The backtest wasn't saved. "+
+				"Try again in a few minutes, or use another provider with --provider.", name, symbol))
 	}
 	if removed {
 		return plainSentence(fmt.Sprintf(

@@ -856,6 +856,37 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNamesStorageRefusal() 
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// A refused out-of-range volume gets its own sentence and the same
+// provider-fault next step as a refused price.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNamesVolumeRefusal() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent an invalid volume for XYZ on 2026-05-02 (out of range)",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': yahoo sent an invalid volume for XYZ on 2026-05-02 "+
+			"(out of range). The backtest wasn't saved. Try another provider with --provider, "+
+			"or report it at https://github.com/lhjnilsson/foreverbull/issues.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A GetAsset / store style STATUS_ERROR must fail create like the no-bars
 // case: remove the backtest and return the user-facing sentence. Raw error
 // text (gRPC, stack traces) must not appear in that sentence.
@@ -884,8 +915,8 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOth
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'test-backtest': couldn't download prices for AAPL. "+
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+		"Couldn't load data for backtest 'test-backtest': the price download failed for AAPL. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
 	test.Require().NotContains(err.Error(), "rpc error")
 	test.Require().NotContains(err.Error(), "Internal")
 	test.Require().NotContains(err.Error(), "asset lookup")
