@@ -62,7 +62,9 @@ Write the emoji character, not the `:shortcode:`. One emoji, the one whose gitmo
 
 **Body.** A blank line after the subject, wrapped at 72 characters. Say the constraint that forced the change: which input failed, which number must stay the same, which default is now explicit. A `perf` body names the result that did not move. A `docs` body names what is now locked. Skip the body when the subject already contains that reason and fits on one line. The pull-request text is not in `git blame`.
 
-**One change.** A behavior change and the contract that freezes it are neighbors, not the same commit. Leave generated cookiecutter project trees out. Regenerated protobuf belongs in the commit that changed the `.proto`. A merge commit created by GitHub stays as GitHub wrote it.
+**One change.** A behavior change and the contract that freezes it are neighbors, not the same commit. Leave generated cookiecutter project trees out. Regenerated protobuf belongs in the commit that changed the `.proto`.
+
+**Tidy history.** Pull requests merge with Rebase and merge only, so every commit of a PR lands on `main` as written. By the time a PR leaves draft, each commit is one intentional change with a gitmoji subject. No `fixup!`, `squash!`, or "address review" commits. While the PR is in draft and under review, `git commit --fixup <sha>` is fine. Before you say the PR is ready, fold them in with `git rebase -i --autosquash <base>` and `git push --force-with-lease`. A PR doesn't leave draft until then.
 
 ### 📝 In documentation
 
