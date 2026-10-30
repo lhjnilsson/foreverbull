@@ -862,6 +862,38 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenOth
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// A provider refusal (Stooq has no code for the .TO exchange) fails create
+// with the refusal itself as the lead, so the user sees which suffix is
+// unsupported and to try --provider, not a generic download failure.
+func (test *BacktestCommandTest) TestDownloadFinancialDataShowsProviderRefusal() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "SHOP.TO", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "SHOP.TO",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': stooq doesn't support the .TO exchange (SHOP.TO). "+
+			"Supported suffixes: .DE, .L, .US. Try another provider with --provider. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).

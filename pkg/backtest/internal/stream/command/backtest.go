@@ -630,6 +630,25 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
+// providerRefusalPrefixes start the finance service's STATUS_ERROR text when
+// the provider refused the symbol itself (Stooq has no code for its exchange
+// suffix, or the ticker isn't valid). That text already names the symbol,
+// the provider and what to do, so create shows it as the lead.
+var providerRefusalPrefixes = []string{
+	"stooq doesn't support the .",
+	"stooq can't use this symbol ",
+}
+
+// isProviderRefusal reports the finance service's refusal STATUS_ERROR.
+func isProviderRefusal(text string) bool {
+	for _, prefix := range providerRefusalPrefixes {
+		if strings.HasPrefix(text, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
@@ -641,7 +660,9 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after download error")
 	}
 	var lead string
-	if isNoPriceDataError(errText) {
+	if isProviderRefusal(errText) {
+		lead = errText
+	} else if isNoPriceDataError(errText) {
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)

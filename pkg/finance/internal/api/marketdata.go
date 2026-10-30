@@ -153,6 +153,13 @@ func (fs *MarketdataServer) downloadSymbol(
 		if errors.As(err, &blocked) {
 			return blocked
 		}
+		// The provider refused the symbol itself (Stooq has no code for its
+		// exchange suffix). Asking again or under a later ticker can't help,
+		// and the refusal names the symbol, provider and supported suffixes.
+		if errors.Is(err, marketdata.ErrStooqExchange) {
+			failSymbol(ctx, serverStream, rsp, err)
+			return nil
+		}
 	}
 	if err != nil || len(ohlcs) == 0 {
 		// Yahoo sometimes answers a listed symbol (BK) with no data. Ask once

@@ -408,6 +408,41 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProvi
 	suite.Equal([]string{"VOD.L"}, symbols)
 }
 
+// A symbol whose exchange suffix Stooq has no code for is refused once, by
+// name. Download must not retry it or look for a later ticker, because the
+// "no price data" sentence would hide the refusal.
+func (suite *MarketdataTest) TestDownloadHistoricalDataSendsProviderRefusalWithoutRetry() {
+	ctx := context.Background()
+	refusal := &refusalErr{
+		msg: "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.",
+	}
+	suite.marketdata.On("GetAsset", "SHOP.TO").Return(&pb.Asset{Symbol: "SHOP.TO", Name: "Shopify Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "SHOP.TO", mock.Anything, mock.Anything).Return(nil, refusal).Once()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"SHOP.TO"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 28},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("SHOP.TO", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.Equal("stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US. Try another provider with --provider.", msg.GetError())
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
+}
+
+// refusalErr stands in for the Stooq client's refusal: it matches
+// marketdata.ErrStooqExchange with errors.Is.
+type refusalErr struct{ msg string }
+
+func (e *refusalErr) Error() string { return e.msg }
+func (e *refusalErr) Unwrap() error { return marketdata.ErrStooqExchange }
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
