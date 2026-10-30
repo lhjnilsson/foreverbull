@@ -20,7 +20,9 @@ var shareClassTickers = map[string]shareClass{
 }
 
 // separatedShareClass matches BRK.B, BRK-B, BRK/B and BRK B: a company code
-// and a one-letter class. A two-letter suffix (aapl.us) is an exchange, not a class.
+// and a one-letter class. The match only counts when the joined ticker is in
+// shareClassTickers, because a one-letter suffix can also be an exchange
+// (VOD.L is London, not class L).
 var separatedShareClass = regexp.MustCompile(`^([A-Z]{1,5})[.\-/ ]([A-Z])$`)
 
 type shareClass struct {
@@ -35,7 +37,9 @@ func parseShareClass(symbol string) (shareClass, bool) {
 		return sc, true
 	}
 	if m := separatedShareClass.FindStringSubmatch(upper); m != nil {
-		return shareClass{company: m[1], class: m[2]}, true
+		if sc, ok := shareClassTickers[m[1]+m[2]]; ok {
+			return sc, true
+		}
 	}
 	return shareClass{}, false
 }

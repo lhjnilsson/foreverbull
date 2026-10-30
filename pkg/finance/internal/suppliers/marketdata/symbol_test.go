@@ -31,6 +31,11 @@ func TestProviderSymbolMapsShareClasses(t *testing.T) {
 		{"BKNG", "BKNG", "BKNG"},
 		{"aapl", "AAPL", "AAPL"},
 		{"GOOG", "GOOG", "GOOG"},
+		// A one-letter suffix that is not a listed share class is an exchange
+		// or another code and is sent as written.
+		{"VOD.L", "VOD.L", "VOD.L"},
+		{"BT.A", "BT.A", "BT.A"},
+		{"XYZ-B", "XYZ-B", "XYZ-B"},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.yahoo, yahooSymbol(tc.asked), "yahoo %s", tc.asked)
@@ -129,4 +134,35 @@ func TestAlpacaGetOHLCRequestsShareClassWithDot(t *testing.T) {
 	require.Len(t, paths(), 1)
 	require.Contains(t, paths()[0], "BRK.B")
 	require.NotContains(t, paths()[0], "BRKB")
+}
+
+// VOD.L is Vodafone on London, not class L: every provider is asked for it as written.
+func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
+	t.Parallel()
+	_, ok := parseShareClass("VOD.L")
+	require.False(t, ok)
+	_, ok = stooqShareClassCode("VOD.L")
+	require.False(t, ok)
+
+	srv, paths := recordingServer(t, `{"chart":{"result":[],"error":null}}`)
+	client := &YahooClient{crumb: "test", chartURL: srv.URL + "/"}
+	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
+	_, _ = client.GetOHLC("VOD.L", start, &end)
+	require.NotEmpty(t, paths())
+	require.True(t, strings.HasPrefix(paths()[0], "/VOD.L?"), paths()[0])
+
+	response, err := json.Marshal(map[string]any{"bars": map[string]any{"VOD.L": []map[string]any{
+		{"t": "2024-01-02T05:00:00Z", "o": 70.0, "h": 71.0, "l": 69.5, "c": 70.4, "v": 1000, "n": 1, "vw": 70.2},
+	}}})
+	require.NoError(t, err)
+	alpacaSrv, alpacaPaths := recordingServer(t, string(response))
+	bars := &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+		APIKey: "key", APISecret: "secret", BaseURL: alpacaSrv.URL, RetryLimit: 1,
+	})}
+	_, err = bars.GetOHLC("VOD.L", start, &end)
+	require.NoError(t, err)
+	require.Len(t, alpacaPaths(), 1)
+	require.Contains(t, alpacaPaths()[0], "VOD.L")
+	require.NotContains(t, alpacaPaths()[0], "VOD-L")
 }
