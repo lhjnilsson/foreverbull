@@ -1076,6 +1076,11 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
 		{listed: 2, unpriced: 1},
 		{listed: 5, unpriced: 1},
 		{listed: 10, unpriced: 2},
+		// floor(20% of 6) = 1, so 2 of 6 is past the cap (ceil would allow 2).
+		{listed: 6, unpriced: 2, wantErr: "Couldn't load data for backtest 'test-backtest': 2 of 6 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01), and at most 1 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
 		{listed: 10, unpriced: 3, wantErr: "Couldn't load data for backtest 'test-backtest': 3 of 10 symbols have no " +
 			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02), and at most 2 can be left out. " +
 			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
