@@ -624,9 +624,18 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
-// refusedPriceError matches the finance service's sentence for a bar its
-// storage refused. Only this exact shape is shown; other raw text is not.
-var refusedPriceError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid price for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+// refusedPriceError and refusedVolumeError match the finance service's
+// sentences for a bar its storage refused. Only these exact shapes are shown;
+// other raw text is not.
+var (
+	refusedPriceError  = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid price for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(0, negative or not a number\)$`)
+	refusedVolumeError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid volume for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(out of range\)$`)
+)
+
+// isRefusedBarError reports the finance service's refused-bar sentence.
+func isRefusedBarError(text string) bool {
+	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
+}
 
 // providerFaultNextStep ends a sentence about bad provider data. Since #209 a
 // bad bar is normally dropped and filled, so reaching this means an adapter
@@ -650,7 +659,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
-	} else if refusedPriceError.MatchString(errText) {
+	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
 	} else {
