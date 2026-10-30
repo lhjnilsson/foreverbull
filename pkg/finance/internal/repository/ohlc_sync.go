@@ -101,6 +101,10 @@ const rescaleTolerance = 0.005
 // fetch errors come back unchanged. A refused bar is an InvalidPriceError and
 // a refetch with no bars is a NoBarsError; in both cases the stored rows stay
 // as they were. Any database error is a StoreError.
+//
+// The transaction covers ohlc rows only. Callers write the asset row, and
+// for a later ticker the asset_symbol alias, before Sync; those stay when
+// the bars roll back.
 func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
 	fetch FetchBars,
 ) error {
