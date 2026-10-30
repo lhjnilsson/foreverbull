@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -601,6 +602,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		Profile:   b.GetProfile(),
 	})
 	if err != nil {
+		if position, ok := invalidTickerPosition(err, len(symbols)); ok {
+			return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
+		}
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
 	for {
@@ -612,6 +616,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			if blocked := blockedDownload(err); blocked != nil {
 				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
 				return blocked
+			}
+			if position, ok := invalidTickerPosition(err, len(symbols)); ok {
+				return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
 			}
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
@@ -691,6 +698,59 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 			"Couldn't load data for backtest '%s': %s %s",
 			name, lead, nextStep))
 	}
+	return plainSentence(fmt.Sprintf(
+		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
+		name, lead, name))
+}
+
+// invalidTickerError matches the finance service's InvalidArgument refusal
+// of a request symbol outside the ticker pattern. Only the position and the
+// count are taken from it; the symbol is never in it.
+var invalidTickerError = regexp.MustCompile(`^symbol ([1-9][0-9]{0,5}) of ([1-9][0-9]{0,5}) isn't a valid ticker \(use 1 to 32 letters, digits, or \. \^ = _ -\)$`)
+
+// invalidTickerPosition returns the 1-based position of the first invalid
+// symbol when err is that refusal for this request: InvalidArgument, the
+// exact sentence, a position within the count, and the count this create
+// sent. Anything else is not shown this way.
+func invalidTickerPosition(err error, sent int) (int, bool) {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		return 0, false
+	}
+	match := invalidTickerError.FindStringSubmatch(st.Message())
+	if match == nil {
+		return 0, false
+	}
+	position, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false
+	}
+	total, err := strconv.Atoi(match[2])
+	if err != nil {
+		return 0, false
+	}
+	if total != sent {
+		return 0, false
+	}
+	if position <= total {
+		return position, true
+	}
+	return 0, false
+}
+
+// discardInvalidTickerBacktest deletes the backtest after the finance service
+// refused a request symbol. The sentence names the symbol's position and the
+// count, not the symbol, which failed the ticker check.
+func discardInvalidTickerBacktest(ctx context.Context, backtests repository.Backtest, name, id string, position, total int) error {
+	err := deleteStoredBacktest(ctx, backtests, name, id)
+	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+	lead := fmt.Sprintf("symbol %d of %d isn't a valid ticker. Use 1 to 32 letters, digits, or . ^ = _ -.", position, total)
+	if removed {
+		return plainSentence(fmt.Sprintf(
+			"Couldn't load data for backtest '%s': %s The backtest wasn't saved. "+
+				"Fix that symbol and run `fbull backtest create` again.", name, lead))
+	}
+	log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after an invalid ticker")
 	return plainSentence(fmt.Sprintf(
 		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
 		name, lead, name))
