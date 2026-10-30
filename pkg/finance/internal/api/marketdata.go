@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -122,23 +122,7 @@ func downloadSymbols(symbols []string) ([]string, error) {
 // sentence with the count; this one is for other callers of the RPC.
 var tooManySymbolsMessage = fmt.Sprintf(
 	"one download can carry at most %s distinct symbols, and this one has more. Split it into smaller downloads.",
-	groupThousands(marketdata.MaxDownloadSymbols))
-
-// groupThousands writes n with a comma between each group of three digits.
-func groupThousands(n int) string {
-	if n < 0 {
-		return "-" + groupThousands(-n)
-	}
-	digits := strconv.Itoa(n)
-	var b strings.Builder
-	for i, d := range digits {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(d)
-	}
-	return b.String()
-}
+	numfmt.Thousands(marketdata.MaxDownloadSymbols))
 
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.

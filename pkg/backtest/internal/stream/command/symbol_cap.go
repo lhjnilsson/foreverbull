@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strconv"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -81,21 +80,5 @@ func discardOversizedBacktest(ctx context.Context, backtests repository.Backtest
 
 func tooManySymbolsLead(count int) string {
 	return fmt.Sprintf("it has %s symbols, and the limit is %s.",
-		groupThousands(count), groupThousands(finance.MaxDownloadSymbols))
-}
-
-// groupThousands writes n with a comma between each group of three digits.
-func groupThousands(n int) string {
-	if n < 0 {
-		return "-" + groupThousands(-n)
-	}
-	digits := strconv.Itoa(n)
-	var b strings.Builder
-	for i, d := range digits {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(d)
-	}
-	return b.String()
+		numfmt.Thousands(count), numfmt.Thousands(finance.MaxDownloadSymbols))
 }
