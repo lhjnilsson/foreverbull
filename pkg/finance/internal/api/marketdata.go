@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
@@ -47,12 +48,12 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	case *servicePb.GetAssetRequest_Symbol:
 		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
 		if err != nil {
-			return nil, fmt.Errorf("error getting asset: %w", redactURLError(err))
+			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
 		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
 		if err != nil {
-			return nil, fmt.Errorf("error getting asset: %w", redactURLError(err))
+			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 		if len(assets) == 0 {
 			return nil, fmt.Errorf("asset not found by isin: %s", identifier.Isin)
@@ -78,7 +79,7 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
-		return nil, fmt.Errorf("error getting index: %w", redactURLError(err))
+		return nil, fmt.Errorf("error getting index: %w", redact.URLError(err))
 	}
 
 	return &servicePb.GetIndexResponse{
@@ -129,7 +130,7 @@ func downloadFailedError(symbol string) error {
 
 // internalDownloadError logs err with context and returns the generic text.
 func internalDownloadError(symbol, step string, err error) error {
-	log.Error().Err(redactURLError(err)).Str("symbol", symbol).Str("step", step).Msg("historical data download failed")
+	log.Error().Err(redact.URLError(err)).Str("symbol", symbol).Str("step", step).Msg("historical data download failed")
 	return downloadFailedError(symbol)
 }
 
@@ -426,7 +427,7 @@ func laterTickerCandidates(
 
 	found, err := md.SearchAsset(isin)
 	if err != nil {
-		log.Info().Err(redactURLError(err)).Str("isin", isin).Msg("search for current ticker failed")
+		log.Info().Err(redact.URLError(err)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
 		for _, a := range found {
 			symbol := strings.TrimSpace(a.Symbol)
