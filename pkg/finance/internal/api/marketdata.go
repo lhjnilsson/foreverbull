@@ -498,7 +498,10 @@ func laterTickerCandidates(
 			if !candidateSymbol(isin, symbol) {
 				continue
 			}
-			if a.ISIN != "" && a.ISIN != isin {
+			// Only a hit with this exact ISIN is the same instrument. A hit
+			// without an ISIN (an ETF or fund quote) could be another
+			// company, and its prices must not be stored for this one.
+			if a.ISIN != isin {
 				continue
 			}
 			if _, ok := seen[symbol]; ok {

@@ -573,6 +573,36 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerGetOHLC
 	suite.requireNothingStoredForMeta(ctx)
 }
 
+// The search returns only a quote without an ISIN (an ETF or fund) that has
+// bars. It may be another company, so it is not a candidate: FB has no
+// price data and nothing is stored under that ticker.
+func (suite *MarketdataTest) TestDownloadHistoricalDataIgnoresSearchHitWithoutISIN() {
+	ctx := context.Background()
+	suite.fbRenamedToMeta(ctx)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FB"))
+	suite.marketdata.On("GetOHLC", "FBETF", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{Timestamp: timestamppb.New(mustTime("2019-06-03")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 1000},
+	}, nil).Maybe()
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: "FBETF", Name: "Some Facebook ETF", ISIN: ""},
+	}, nil)
+
+	rsp := suite.downloadFB(ctx)
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.requireOnlyText(msg, "FB", "no price data for FB")
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", "FBETF", mock.Anything, mock.Anything)
+
+	var bars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE symbol='FBETF'`).Scan(&bars))
+	suite.Zero(bars, "a search hit without the ISIN must not store bars")
+}
+
 // A provider call that returns context.Canceled while the download itself
 // is still running is a failed request, not "no price data".
 func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerCanceledRequest() {
