@@ -817,11 +817,43 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	// Periods on the fixture span 2022-01-01 .. 2023-12-31.
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
-		"Couldn't load data for backtest 'test-backtest': no price data for FB between 2022-01-01 and 2023-12-31. "+
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+		"Couldn't load data for backtest 'test-backtest': yahoo returned no prices for FB between 2022-01-01 and 2023-12-31. "+
+			"Nothing was saved. Try again in a few minutes, or use another provider with --provider.")
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The no-bars sentence names the backtest's own provider, not the default.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataNamesProvider() {
+	stooq, ok := proto.Clone(test.backtest).(*backtest.Backtest)
+	test.Require().True(ok)
+	stooq.Name = "stooq-backtest"
+	stooq.Provider = "stooq"
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), stooq)
+	test.Require().NoError(err)
+	err = backtests.UpdatePeriod(context.TODO(), "stooq-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "FB", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "FB",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for FB",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("stooq-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'stooq-backtest': stooq returned no prices for FB between 2022-01-01 and 2023-12-31. "+
+			"Nothing was saved. Try again in a few minutes, or use another provider with --provider.")
 }
 
 // A bar the finance storage refused is named as a refusal, not hidden behind
