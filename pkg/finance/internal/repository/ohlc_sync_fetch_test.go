@@ -54,7 +54,10 @@ func (test *OHLCTests) TestSyncFetchesOutsideTheSymbolLock() {
 			test.True(free, "fetch must run without the symbol lock")
 			var open int
 			test.Require().NoError(test.conn.QueryRow(ctx,
-				`SELECT count(*) FROM pg_stat_activity WHERE state LIKE 'idle in transaction%'`).Scan(&open))
+				// Only this test's database: other packages share the server.
+				`SELECT count(*) FROM pg_stat_activity
+				  WHERE datname = current_database() AND pid <> pg_backend_pid()
+				    AND state LIKE 'idle in transaction%'`).Scan(&open))
 			test.Zero(open, "fetch must run outside the sync transaction")
 			return []*pb.OHLC{closeBar(day.AddDate(0, 0, 1), 500), closeBar(day.AddDate(0, 0, 2), 501)}, nil
 		})
