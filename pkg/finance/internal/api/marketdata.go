@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
+	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/ticker"
@@ -49,6 +50,16 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	case *servicePb.GetAssetRequest_Symbol:
 		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
 		if err != nil {
+			if errors.Is(err, marketdata.ErrNoISIN) {
+				// The provider served the lookup and has no ISIN, so the
+				// equity can't be followed across ticker changes. Callers
+				// branch on NotFound plus the shared prefix; the message
+				// names only the requested symbol and the cause stays in the
+				// log.
+				log.Error().Err(redact.URLError(err)).Str("symbol", identifier.Symbol).
+					Msg("getting asset failed: no ISIN")
+				return nil, status.Error(codes.NotFound, financeapi.NoISINMessage(identifier.Symbol))
+			}
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
@@ -174,14 +185,12 @@ func ambiguousSymbolError(provider, symbol string) error {
 
 // noISINError is the STATUS_ERROR text when the provider answered that the
 // asked equity has no ISIN, so it can't be followed across ticker changes.
-// DownloadFinancialData uses the "no ISIN for " prefix for its own
+// DownloadFinancialData matches financeapi.NoISINPrefix for its own
 // sentence; a retry can't fix it. symbol is the requested symbol, never
 // provider text.
 func noISINError(symbol string) error {
-	return fmt.Errorf("%w for %s", errNoISIN, symbol)
+	return errors.New(financeapi.NoISINMessage(symbol))
 }
-
-var errNoISIN = errors.New("no ISIN")
 
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
