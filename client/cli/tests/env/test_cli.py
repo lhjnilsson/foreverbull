@@ -1,4 +1,6 @@
+import logging
 import os
+import subprocess
 
 from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
@@ -14,9 +16,11 @@ from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import ReplicaSetRevisionError
 from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
+from foreverbull_cli.env.environment import WorkloadStatusError
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import HostCheck
 from foreverbull_cli.env.preflight import PreflightError
@@ -108,11 +112,73 @@ def test_status_lists_host_checks_above_workloads(runner, mocked_container_manag
 
 
 def test_status_without_kubectl_still_shows_host_checks(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = True
     mocked_container_manager.status_rows.side_effect = MissingToolError("kubectl")
     result = runner(cli.cli, "status")
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Host checks" in result.stdout
-    assert "Workload status needs kubectl. kubectl is not installed." in result.stdout
+    assert (
+        "Couldn't check foreverbull's local environment: kubectl is not installed. "
+        "Install it from https://kubernetes.io/docs/tasks/tools/, then run `fbenv status` again.\n"
+    ) in result.stdout
+
+
+def test_status_without_kubectl_on_a_remote_cluster(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.status_rows.side_effect = MissingToolError("kubectl")
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 1
+    assert (
+        "Couldn't check foreverbull's remote environment: kubectl is not installed. "
+        "Install it from https://kubernetes.io/docs/tasks/tools/, then run `fbenv status` again.\n"
+    ) in result.stdout
+
+
+KUBECTL_REFUSED = CommandError(
+    ["kubectl", "--context", "kind-foreverbull", "get", "deploy,pods", "-l", "app.kubernetes.io/part-of=foreverbull"],
+    subprocess.CompletedProcess([], 1, "", "The connection to the server was refused.\nerror: second line\n"),
+)
+
+
+def test_status_fails_when_kubectl_cannot_check_a_local_cluster(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = True
+    mocked_container_manager.status_rows.side_effect = WorkloadStatusError.from_command_error(KUBECTL_REFUSED)
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 1
+    assert "Host checks" in result.stdout
+    assert "nothing running" not in result.stdout.lower()
+    assert (
+        "Couldn't check foreverbull's local environment: kubectl failed (exit 1): "
+        "The connection to the server was refused.\n"
+        "Check that Docker is running, then run `fbenv status` again.\n"
+    ) in result.stdout
+    assert "--context" not in result.stdout
+    assert "second line" not in result.stdout
+
+
+def test_status_fails_when_kubectl_cannot_check_a_remote_cluster(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.status_rows.side_effect = WorkloadStatusError.from_command_error(
+        KUBECTL_REFUSED, remote=True
+    )
+    result = runner(cli.cli, "status")
+    assert result.exit_code == 1
+    assert (
+        "Couldn't check foreverbull's remote environment: kubectl failed (exit 1): "
+        "The connection to the server was refused.\n"
+        "Check that the remote cluster is reachable, then run `fbenv status` again.\n"
+    ) in result.stdout
+    assert "--context" not in result.stdout
+
+
+def test_status_logs_the_failed_kubectl_command_at_debug(runner, mocked_container_manager: MagicMock, caplog):
+    mocked_container_manager.status_rows.side_effect = WorkloadStatusError.from_command_error(KUBECTL_REFUSED)
+    with caplog.at_level(logging.DEBUG, logger="foreverbull_cli.env.cli"):
+        runner(cli.cli, "status")
+    assert (
+        "kubectl command that failed: kubectl --context kind-foreverbull get deploy,pods "
+        "-l app.kubernetes.io/part-of=foreverbull"
+    ) in caplog.messages
 
 
 def test_status_leads_broker_error_with_advice(runner, mocked_container_manager: MagicMock):
@@ -168,6 +234,34 @@ def test_create_verbose_shows_docker_error(runner, mocked_container_manager: Mag
     assert "Docker said: Error response from daemon" in result.stdout
     assert "i/o timeout" in result.stdout
     assert "Traceback" not in result.stdout
+
+
+def test_stop_purge_skips_status_after_removing_the_cluster(runner, mocked_container_manager: MagicMock):
+    # After a purge the Kind cluster is gone, so a status query can only fail.
+    mocked_container_manager.config.is_local = True
+    mocked_container_manager.status_rows.side_effect = WorkloadStatusError.from_command_error(KUBECTL_REFUSED)
+    result = runner(cli.cli, ["stop", "--remove", "--purge"])
+    assert result.exit_code == 0
+    mocked_container_manager.remove.assert_called_once_with(True)
+    mocked_container_manager.status_rows.assert_not_called()
+    assert result.stdout.endswith("\nThe local environment and its data were removed.\n")
+    assert "Couldn't check" not in result.stdout
+
+
+def test_stop_purge_on_a_remote_cluster_names_it(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    result = runner(cli.cli, ["stop", "--remove", "--purge"])
+    assert result.exit_code == 0
+    mocked_container_manager.status_rows.assert_not_called()
+    assert result.stdout.endswith("\nThe remote environment and its data were removed.\n")
+
+
+def test_stop_remove_without_purge_still_shows_status(runner, mocked_container_manager: MagicMock):
+    result = runner(cli.cli, ["stop", "--remove"])
+    assert result.exit_code == 0
+    mocked_container_manager.remove.assert_called_once_with(False)
+    mocked_container_manager.status_rows.assert_called()
+    assert "environment and its data were removed." not in result.stdout
 
 
 def test_update_stops_on_failed_image_pull(runner, mocked_container_manager: MagicMock):
@@ -273,6 +367,70 @@ def test_update_on_remote_fails_when_the_cluster_cannot_pull(runner, mocked_cont
     assert "Back-off pulling image" not in result.stdout
     assert "Traceback" not in result.stdout
     mocked_container_manager.status_rows.assert_not_called()
+
+
+REVISION_MISSING = ReplicaSetRevisionError("Grafana", "grafana-newhash", None)
+REVISION_NOT_A_NUMBER = ReplicaSetRevisionError("Grafana", "grafana-newhash", "two")
+LOCAL_REINSTALL = (
+    "To fix it, reinstall the environment. This deletes all of foreverbull's data: "
+    "stored prices, backtest results, accounts and API tokens.\n"
+)
+
+
+def test_update_local_revision_missing_offers_the_reinstall(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = True
+    mocked_container_manager.update.side_effect = REVISION_MISSING
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert result.stdout.endswith(
+        "Updating environment FAILED\n"
+        "fbenv can't tell which version of Grafana is running: its revision number is missing (got None).\n"
+        f"{LOCAL_REINSTALL}"
+        "Run `fbenv stop --remove`, then `fbenv create --start`.\n"
+    )
+    mocked_container_manager.status_rows.assert_not_called()
+
+
+def test_update_local_revision_not_a_number_repeats_the_flags(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = True
+    mocked_container_manager.update.side_effect = REVISION_NOT_A_NUMBER
+    result = runner(cli.cli, ["update", "--cluster", "local", "--namespace", "fb dev"])
+    assert result.exit_code == 1
+    flags = "--cluster local --namespace 'fb dev'"
+    assert result.stdout.endswith(
+        "Updating environment FAILED\n"
+        "fbenv can't tell which version of Grafana is running: its revision number isn't a whole number (got 'two').\n"
+        f"{LOCAL_REINSTALL}"
+        f"Run `fbenv stop --remove {flags}`, then `fbenv create --start {flags}`.\n"
+    )
+
+
+def test_update_remote_revision_missing_names_the_cluster_owner(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = REVISION_MISSING
+    result = runner(cli.cli, ["update", "--cluster", "remote", "--context", "prod"])
+    assert result.exit_code == 1
+    assert result.stdout.endswith(
+        "Updating environment FAILED\n"
+        "fbenv can't tell which version of Grafana is running on the remote cluster: "
+        "its revision number is missing (got None).\n"
+        "Whoever manages that cluster needs to fix it before `fbenv update` can run.\n"
+    )
+    assert "fbenv stop --remove" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
+
+
+def test_update_remote_revision_not_a_number(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.config.is_local = False
+    mocked_container_manager.update.side_effect = REVISION_NOT_A_NUMBER
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert result.stdout.endswith(
+        "fbenv can't tell which version of Grafana is running on the remote cluster: "
+        "its revision number isn't a whole number (got 'two').\n"
+        "Whoever manages that cluster needs to fix it before `fbenv update` can run.\n"
+    )
 
 
 def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager: MagicMock):

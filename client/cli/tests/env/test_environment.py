@@ -24,9 +24,11 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import ReplicaSetRevisionError
 from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadStatus
+from foreverbull_cli.env.environment import WorkloadStatusError
 from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
 from foreverbull_cli.env.environment import match_broker_error
@@ -807,13 +809,49 @@ class TestClusterManager:
             "Grafana",
         ]
 
-    def test_status_cluster_unreachable_is_not_found(self, tmp_path: Path):
+    def test_status_cluster_unreachable_fails_with_the_kubectl_error(self, tmp_path: Path):
         runner = FakeRunner()
         runner.on(["kubectl"], _completed(returncode=1, stderr="The connection to the server was refused"))
         uut = _manager(tmp_path, runner)
-        rows = uut.status_rows()
-        assert all(row.status == WorkloadStatus.NOT_FOUND for row in rows)
-        assert len(rows) == 6
+        with pytest.raises(WorkloadStatusError) as raised:
+            uut.status_rows()
+        assert str(raised.value) == (
+            "Couldn't check foreverbull's local environment: kubectl failed (exit 1): "
+            "The connection to the server was refused."
+        )
+        assert raised.value.command == (
+            "kubectl --context kind-foreverbull --namespace foreverbull "
+            "get deploy,pods -l app.kubernetes.io/part-of=foreverbull --request-timeout=15s -o json"
+        )
+
+    def test_status_on_a_remote_cluster_names_it(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(returncode=1, stderr="error: You must be logged in to the server"))
+        uut = _manager(tmp_path, runner, config=Config(REMOTE, load_files=False, environ={}))
+        with pytest.raises(WorkloadStatusError) as raised:
+            uut.status_rows()
+        assert str(raised.value) == (
+            "Couldn't check foreverbull's remote environment: kubectl failed (exit 1): "
+            "error: You must be logged in to the server."
+        )
+
+    def test_status_kubectl_timeout_fails(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], subprocess.TimeoutExpired(["kubectl", "get", "deploy,pods"], 15))
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(WorkloadStatusError) as raised:
+            uut.status_rows()
+        assert str(raised.value) == "Couldn't check foreverbull's local environment: kubectl didn't answer within 15s."
+        assert "--request-timeout=15s" in runner.calls_starting_with("kubectl")[0]
+
+    @pytest.mark.parametrize("stdout", ["", "not json", '["a list"]'], ids=["empty", "invalid", "not-an-object"])
+    def test_status_unreadable_kubectl_output_fails(self, tmp_path: Path, stdout):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stdout=stdout))
+        uut = _manager(tmp_path, runner)
+        with pytest.raises(WorkloadStatusError) as raised:
+            uut.status_rows()
+        assert str(raised.value) == "Couldn't check foreverbull's local environment: kubectl's answer couldn't be read."
 
     def test_status_right_after_stop_is_never_running(self, tmp_path: Path):
         # Right after `fbenv stop` the Deployments want 0 replicas, but their pods
@@ -1615,6 +1653,32 @@ class TestRemoteUpdatePullFailure:
         with pytest.raises(ClusterImagePullError) as raised:
             uut.update()
         assert raised.value.image == GRAFANA_IMAGE
+
+    @pytest.mark.parametrize(
+        ("revision", "problem"),
+        [
+            ("two", "isn't a whole number (got 'two')"),
+            # str.isdigit() accepts superscripts, which int() rejects.
+            ("²", "isn't a whole number (got '²')"),
+            ("", "is missing (got '')"),
+            (None, "is missing (got None)"),
+        ],
+    )
+    def test_bad_replica_set_revision_fails_the_rollout_watch(self, tmp_path: Path, revision, problem):
+        bad = _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2)
+        if revision is None:
+            del bad["metadata"]["annotations"]["deployment.kubernetes.io/revision"]
+        else:
+            bad["metadata"]["annotations"]["deployment.kubernetes.io/revision"] = revision
+        snapshot = [_rolled_deploy("grafana", GRAFANA_IMAGE), bad]
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(ReplicaSetRevisionError) as raised:
+            uut.update()
+        assert (
+            str(raised.value) == f"fbenv can't tell which version of Grafana is running: its revision number {problem}."
+        )
+        assert raised.value.name == "grafana-newhash"
 
     def test_terminating_pod_in_backoff_is_ignored(self, tmp_path: Path):
         snapshot = [
