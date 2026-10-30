@@ -1,4 +1,4 @@
-package api
+package ticker
 
 import (
 	"strings"
@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// validSymbol accepts the tickers the backtest service's refused-bar pattern
+// Valid accepts the tickers the backtest service's refused-bar pattern
 // accepts, and nothing a user message should not repeat.
-func TestValidSymbol(t *testing.T) {
+func TestValid(t *testing.T) {
 	for _, tc := range []struct {
 		symbol string
 		valid  bool
@@ -34,11 +34,15 @@ func TestValidSymbol(t *testing.T) {
 		{"ÅAPL", false},
 		{"https://x.example/?k=v", false},
 	} {
-		assert.Equal(t, tc.valid, validSymbol(tc.symbol), "%q", tc.symbol)
+		assert.Equal(t, tc.valid, Valid(tc.symbol), "%q", tc.symbol)
 	}
 }
 
-func TestLoggedSymbolQuotesAndCaps(t *testing.T) {
-	assert.Equal(t, `"A\nB"`, loggedSymbol("A\nB"))
-	assert.Equal(t, `"`+strings.Repeat("x", maxLoggedSymbol)+`"`, loggedSymbol(strings.Repeat("x", 500)))
+func TestLoggedQuotesAndCaps(t *testing.T) {
+	assert.Equal(t, `"A\nB"`, Logged("A\nB"))
+	assert.Equal(t, `"`+strings.Repeat("x", maxLogged)+`"`, Logged(strings.Repeat("x", 500)))
+}
+
+func TestInvalidMessage(t *testing.T) {
+	assert.Equal(t, "symbol 7 of 99 isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", InvalidMessage(7, 99))
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/ticker"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	internal_pb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -200,8 +201,8 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 	// The provider's ticker becomes the stored asset, the bars' key, and the
 	// symbol in a refused-bar sentence, so it is checked like a request one.
-	if !validSymbol(asset.GetSymbol()) {
-		log.Warn().Str("symbol", symbol).Str("provider_symbol", loggedSymbol(asset.GetSymbol())).
+	if !ticker.Valid(asset.GetSymbol()) {
+		log.Warn().Str("symbol", symbol).Str("provider_symbol", ticker.Logged(asset.GetSymbol())).
 			Msg("provider returned a ticker outside the symbol pattern")
 		failSymbol(ctx, sender, rsp, downloadFailedError(symbol))
 		return nil
@@ -469,15 +470,15 @@ func laterTickerCandidates(
 
 // candidateSymbol reports whether a later-ticker candidate may be fetched.
 // Bars and the alias are stored under it and a refused bar names it, so a
-// stored alias or a search result outside symbolPattern is skipped.
+// stored alias or a search result outside the ticker pattern is skipped.
 func candidateSymbol(isin, symbol string) bool {
 	if symbol == "" {
 		return false
 	}
-	if validSymbol(symbol) {
+	if ticker.Valid(symbol) {
 		return true
 	}
-	log.Warn().Str("isin", isin).Str("candidate", loggedSymbol(symbol)).Msg("skipping a later ticker outside the symbol pattern")
+	log.Warn().Str("isin", isin).Str("candidate", ticker.Logged(symbol)).Msg("skipping a later ticker outside the symbol pattern")
 	return false
 }
 
@@ -490,8 +491,8 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	// download starts. The first invalid one is named by position only.
 	symbols := req.GetSymbols()
 	for index, symbol := range symbols {
-		if !validSymbol(symbol) {
-			return status.Error(codes.InvalidArgument, invalidSymbolMessage(index+1, len(symbols)))
+		if !ticker.Valid(symbol) {
+			return status.Error(codes.InvalidArgument, ticker.InvalidMessage(index+1, len(symbols)))
 		}
 	}
 
