@@ -1139,6 +1139,106 @@ def test_backtest_get_yaml(runner):
         assert dumped["periods"][0]["assets"][0]["symbol"] == "AAPL"
 
 
+def _oef_backtest(symbols: list[str], *, name: str = "oef-2024q1") -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
+        name=name,
+        benchmark="OEF",
+        provider="yahoo",
+        periods=[
+            backtest_pb.Backtest.Period(
+                start_date=from_pydate_to_proto_date(date(2024, 1, 2)),
+                end_date=from_pydate_to_proto_date(date(2024, 3, 28)),
+                assets=[backtest_pb.Backtest.Period.Asset(symbol=symbol, enabled=True) for symbol in symbols],
+            )
+        ],
+    )
+
+
+def _get_lines(monkeypatch, stored: backtest_pb.Backtest, *, columns: int, verbose: bool = False) -> list[str]:
+    """`fbull backtest get` output at the given terminal width."""
+    monkeypatch.setenv("COLUMNS", str(columns))
+    monkeypatch.setattr(backtest_cli.console, "_width", columns)
+    monkeypatch.setattr(backtest_cli.console, "_height", 25)
+    if verbose:
+        monkeypatch.setenv("LOGGING_LEVEL", "INFO")
+    else:
+        monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    with (
+        patch("foreverbull.broker.backtest.get", return_value=stored),
+        patch("foreverbull.broker.backtest.list_executions", return_value=[]),
+    ):
+        result = CliRunner().invoke(backtest, ["get", stored.name])
+    assert result.exit_code == 0, result.stdout
+    return result.stdout.splitlines()
+
+
+@pytest.mark.parametrize("columns", [80, 120])
+def test_backtest_get_shows_a_large_backtest_like_create(monkeypatch, columns):
+    lines = _get_lines(monkeypatch, _oef_backtest(list(reversed(_OEF_2024Q1))), columns=columns)
+    assert lines[:7] == [
+        "Backtest",
+        "  Name       oef-2024q1",
+        "  Start      2024-01-02",
+        "  End        2024-03-28",
+        "  Symbols    99: AAPL, ABBV, ABT, ACN, ADBE and 94 more",
+        "  Benchmark  OEF",
+        "  Provider   yahoo",
+    ]
+    # One period with every symbol enabled is the record itself, so it isn't repeated.
+    assert not any(line.startswith("Period") for line in lines)
+    assert all(len(line) <= columns for line in lines)
+    assert not any(line.lstrip().startswith(",") for line in lines)
+
+
+@pytest.mark.parametrize("columns", [80, 120])
+def test_backtest_get_prints_a_long_name_in_full(monkeypatch, columns):
+    name = "oef-2024q1-" + "x" * 90
+    lines = _get_lines(monkeypatch, _oef_backtest(_OEF_2024Q1, name=name), columns=columns)
+    assert f"  Name       {name}" in lines
+
+
+@pytest.mark.parametrize("columns", [80, 120])
+def test_backtest_get_verbose_lists_every_symbol_breaking_between_tickers(monkeypatch, columns):
+    lines = _get_lines(monkeypatch, _oef_backtest(list(reversed(_OEF_2024Q1))), columns=columns, verbose=True)
+    start = lines.index(next(line for line in lines if line.startswith("  Symbols    ")))
+    end = lines.index("  Benchmark  OEF")
+    symbol_lines = lines[start:end]
+    assert len(symbol_lines) > 1
+    assert all(len(line) <= columns for line in symbol_lines)
+    assert all(line.endswith(",") for line in symbol_lines[:-1])
+    assert not any(line.lstrip().startswith(",") for line in symbol_lines)
+    shown = " ".join(line.strip() for line in symbol_lines).removeprefix("Symbols").strip()
+    assert shown == "99: " + ", ".join(_OEF_2024Q1)
+
+
+def test_backtest_get_shows_periods_with_disabled_symbols(monkeypatch):
+    lines = _get_lines(monkeypatch, _sample_backtest(), columns=80)
+    assert lines[:7] == [
+        "Backtest",
+        "  Name       test_name",
+        "  Start      2020-01-01",
+        "  End        2020-01-31",
+        "  Symbols    AAPL, MSFT",
+        "  Benchmark  SPY",
+        "  Provider   yahoo",
+    ]
+    assert lines[7:12] == [
+        "Period 1",
+        "  Start     2020-01-01",
+        "  End       2020-01-31",
+        "  Enabled   AAPL, MSFT",
+        "  Disabled  IBM",
+    ]
+
+
+def test_backtest_create_and_get_share_the_symbol_cap():
+    from foreverbull.models.finance import BACKTEST_SYMBOLS_SHOWN
+
+    assert backtest_cli.BACKTEST_SYMBOLS_SHOWN is BACKTEST_SYMBOLS_SHOWN
+    items = backtest_cli._symbol_items(_OEF_2024Q1, verbose=False)
+    assert len(items) == BACKTEST_SYMBOLS_SHOWN
+
+
 @pytest.fixture
 def start_grpc_server():
     grpc_server = grpc.server(thread_pool=futures.ThreadPoolExecutor(max_workers=1))

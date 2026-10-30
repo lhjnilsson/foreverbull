@@ -20,6 +20,7 @@ from foreverbull import broker
 from foreverbull import models
 from foreverbull.broker.utils import redact_text
 from foreverbull.foreverbull import Foreverbull
+from foreverbull.models.finance import BACKTEST_SYMBOLS_SHOWN
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.models.finance import missing_prices_summary
 from foreverbull.models.finance import present_market_data_failure
@@ -50,9 +51,6 @@ _PRICE_PROVIDERS = ("yahoo", "stooq", "alpaca")
 _PRICE_PROVIDER_SET = frozenset(_PRICE_PROVIDERS)
 _FULL_EXECUTION_ID_LENGTH = 36  # a UUID with hyphens
 _AMBIGUOUS_MATCHES_SHOWN = 5
-# The created backtest names at most this many symbols, then "and N more",
-# the same cap as the run's left-out notices. --verbose lists them all.
-_CREATED_SYMBOLS_SHOWN = 5
 # The broker appends the redacted cause of a failed step after this marker.
 _DETAILS_MARKER = "\nDetails: "
 _VERBOSE_LEVELS = frozenset({"WARNING", "INFO", "DEBUG"})
@@ -263,19 +261,15 @@ def _enabled_symbol_list(entity: backtest_pb.Backtest) -> list[str]:
     return symbols
 
 
-def _enabled_symbols(entity: backtest_pb.Backtest) -> str:
-    return ",".join(_enabled_symbol_list(entity))
-
-
-def _created_symbol_items(symbols: list[str], *, verbose: bool) -> list[str]:
+def _symbol_items(symbols: list[str], *, verbose: bool) -> list[str]:
     """A to Z, as the items of one ", " list: the count and first five, or all with --verbose.
 
     Five or fewer symbols are all listed without a count.
     """
     ordered = sorted(symbols)
-    if len(ordered) <= _CREATED_SYMBOLS_SHOWN:
+    if len(ordered) <= BACKTEST_SYMBOLS_SHOWN:
         return ordered
-    items = ordered if verbose else ordered[:_CREATED_SYMBOLS_SHOWN]
+    items = ordered if verbose else ordered[:BACKTEST_SYMBOLS_SHOWN]
     items = [f"{len(ordered)}: {items[0]}", *items[1:]]
     hidden = len(ordered) - len(items)
     if hidden > 0:
@@ -304,24 +298,53 @@ def _wrap_items(items: list[str], first_prefix: str, indent: str, width: int) ->
     return lines
 
 
-def _print_created_backtest(entity: backtest_pb.Backtest) -> None:
-    """One record as label/value rows; only the value column wraps, between symbols."""
-    start, end = _backtest_range(entity)
-    rows: list[tuple[str, list[str]]] = [
-        ("Name", [entity.name]),
-        ("Start", [start]),
-        ("End", [end]),
-        ("Symbols", _created_symbol_items(_enabled_symbol_list(entity), verbose=_verbose())),
-        ("Benchmark", [entity.benchmark]),
-        ("Provider", [_shown_provider(entity)]),
-    ]
+def _print_record(title: str, rows: list[tuple[str, list[str]]]) -> None:
+    """One record as label/value rows; only the value column wraps, between items."""
     label_width = max(len(label) for label, _ in rows)
     indent = " " * (2 + label_width + 2)
-    console.print("Created Backtest", markup=False, highlight=False)
+    console.print(title, markup=False, highlight=False)
     for label, items in rows:
         # soft_wrap keeps Rich from re-wrapping the lines built here.
         for line in _wrap_items(items, f"  {label.ljust(label_width)}  ", indent, console.width):
             console.print(line.rstrip(), markup=False, highlight=False, soft_wrap=True)
+
+
+def _print_backtest(title: str, entity: backtest_pb.Backtest) -> None:
+    """The backtest record `create` ends with and `get` starts with."""
+    start, end = _backtest_range(entity)
+    _print_record(
+        title,
+        [
+            ("Name", [entity.name]),
+            ("Start", [start]),
+            ("End", [end]),
+            ("Symbols", _symbol_items(_enabled_symbol_list(entity), verbose=_verbose())),
+            ("Benchmark", [entity.benchmark]),
+            ("Provider", [_shown_provider(entity)]),
+        ],
+    )
+
+
+def _print_periods(entity: backtest_pb.Backtest) -> None:
+    """Each period's own rows, only when they add something to the backtest record.
+
+    One period with every symbol enabled is the record itself, so it is not repeated.
+    """
+    periods = list(entity.periods)
+    has_disabled = any(not asset.enabled for period in periods for asset in period.assets)
+    if len(periods) <= 1 and not has_disabled:
+        return
+    verbose = _verbose()
+    for number, period in enumerate(periods, start=1):
+        rows: list[tuple[str, list[str]]] = [
+            ("Start", [format_date_field(period, "start_date")]),
+            ("End", [format_date_field(period, "end_date")]),
+            ("Enabled", _symbol_items([a.symbol for a in period.assets if a.enabled], verbose=verbose)),
+        ]
+        disabled = [a.symbol for a in period.assets if not a.enabled]
+        if disabled:
+            rows.append(("Disabled", _symbol_items(disabled, verbose=verbose)))
+        _print_record(f"Period {number}", rows)
 
 
 def _backtest_range(entity: backtest_pb.Backtest) -> tuple[str, str]:
@@ -553,7 +576,7 @@ def create(
     if created is None:
         return
 
-    _print_created_backtest(created)
+    _print_backtest("Created Backtest", created)
 
 
 class OutputFormat(str, Enum):
@@ -594,38 +617,10 @@ def get(
         print(yaml.dump(backtest_dict))
         return
 
-    start, end = _backtest_range(entity)
-    backtest_table = Table(title="Backtest", expand=True)
-    backtest_table.add_column("Name")
-    backtest_table.add_column("Start")
-    backtest_table.add_column("End")
-    backtest_table.add_column("Symbols", overflow="fold")
-    backtest_table.add_column("Benchmark")
-    backtest_table.add_column("Provider")
-    backtest_table.add_row(
-        entity.name,
-        start,
-        end,
-        _enabled_symbols(entity),
-        entity.benchmark,
-        _shown_provider(entity),
-    )
-    periods_table = Table(title="periods", expand=True, show_lines=True)
-    periods_table.add_column("Start")
-    periods_table.add_column("End")
-    periods_table.add_column("Enabled Symbols", overflow="fold")
-    periods_table.add_column("Disabled Symbols", overflow="fold")
-    for period in entity.periods:
-        periods_table.add_row(
-            format_date_field(period, "start_date"),
-            format_date_field(period, "end_date"),
-            ",".join([asset.symbol for asset in period.assets if asset.enabled]),
-            ",".join([asset.symbol for asset in period.assets if not asset.enabled]),
-        )
     executions = broker.backtest.list_executions(name, None)
 
-    console.print(backtest_table)
-    console.print(periods_table)
+    _print_backtest("Backtest", entity)
+    _print_periods(entity)
     _print_executions(executions)
 
 
