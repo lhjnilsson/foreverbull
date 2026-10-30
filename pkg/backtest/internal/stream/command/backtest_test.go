@@ -220,6 +220,20 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 	test.Require().NoError(err)
 	test.Equal("BRKB", stored.GetBenchmark())
 
+	// An exchange suffix is not a share class: VOD.L is stored as typed.
+	test.Require().NoError(create(&backtest.Backtest{
+		Name:      "share-class-exchange",
+		Benchmark: "VOD.L",
+		Periods: period(
+			&backtest.Backtest_Period_Asset{Symbol: "VOD.L", Enabled: true},
+			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
+		),
+	}))
+	test.Equal([]string{"BRKB", "VOD.L"}, storedSymbols("share-class-exchange"))
+	exchange, err := backtests.Get(context.TODO(), "share-class-exchange")
+	test.Require().NoError(err)
+	test.Equal("VOD.L", exchange.GetBenchmark())
+
 	// Two spellings that disagree on enabled are refused, not guessed.
 	err = create(&backtest.Backtest{
 		Name: "share-class-conflict",

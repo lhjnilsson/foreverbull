@@ -7,8 +7,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
-// storeShareClassesOnce renames every share-class spelling in a universe
-// file to its stored name (BRK.B, BRK-B and BRKB are BRKB), for the benchmark
+// storeShareClassesOnce renames every spelling of a listed share class in a
+// universe file to its stored name (BRK.B, BRK-B and BRKB are BRKB; VOD.L
+// stays VOD.L), for the benchmark
 // and each period's assets. Two spellings of one class in the same period
 // are one asset; if they disagree on enabled the file is refused rather
 // than guessed.

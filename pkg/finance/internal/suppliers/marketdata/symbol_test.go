@@ -167,15 +167,21 @@ func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	require.NotContains(t, alpacaPaths()[0], "VOD-L")
 }
 
-// Every spelling of a share class stores under one name.
-func TestStoredSymbolOneNamePerShareClass(t *testing.T) {
+// Every spelling of a listed share class stores under one name. Any other
+// one-letter suffix (an exchange such as VOD.L) is kept as typed.
+func TestStoredSymbol(t *testing.T) {
 	t.Parallel()
-	for asked, want := range map[string]string{
-		"BRK.B": "BRKB", "BRK-B": "BRKB", "BRKB": "BRKB", "BRK/B": "BRKB", "BRK B": "BRKB", "brk.b": "BRKB",
-		"BF.B": "BFB", "BRK.A": "BRKA",
+	for _, tc := range []struct{ asked, want string }{
+		{"BRK.B", "BRKB"}, {"BRK-B", "BRKB"}, {"BRKB", "BRKB"}, {"BRK/B", "BRKB"},
+		{"BRK B", "BRKB"}, {"brk.b", "BRKB"},
+		{"BRK.A", "BRKA"}, {"BRK-A", "BRKA"}, {"BRK/A", "BRKA"}, {"BRKA", "BRKA"},
+		{"BF.B", "BFB"},
+		// Exchange suffixes and unlisted classes: unchanged, as typed.
+		{"VOD.L", "VOD.L"}, {"vod.l", "vod.l"}, {"SHOP.V", "SHOP.V"}, {"RDS.A", "RDS.A"}, {"BRK.C", "BRK.C"},
 		// Not share classes: unchanged.
-		"BK": "BK", "BKNG": "BKNG", "AAPL": "AAPL", "aapl.us": "aapl.us", "SPY": "SPY", "": "",
+		{"BK", "BK"}, {"BKNG", "BKNG"}, {"AAPL", "AAPL"}, {"aapl.us", "aapl.us"}, {"SPY", "SPY"}, {"", ""},
 	} {
-		require.Equal(t, want, StoredSymbol(asked), asked)
+		require.Equal(t, tc.want, StoredSymbol(tc.asked), tc.asked)
 	}
 }
+
