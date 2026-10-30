@@ -94,6 +94,10 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			return fmt.Errorf("error getting OHLC: %w", err)
 		}
 
+		// Check the whole batch first, so a refused bar stores none of them.
+		if err := repository.ValidateBars(provider, symbol, ohlcs); err != nil {
+			return err
+		}
 		for _, o := range ohlcs {
 			err = ohlc.Store(ctx, provider, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 			if err != nil {

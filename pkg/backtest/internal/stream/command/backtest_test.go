@@ -736,6 +736,38 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// A bar the finance storage refused is named as a refusal, not hidden behind
+// the generic download sentence or reported as an order rejection.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNamesStorageRefusal() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo sent an invalid price for XYZ on 2022-05-02 (0, negative or not a number)",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': yahoo sent an invalid price for XYZ on 2022-05-02 "+
+			"(0, negative or not a number). The backtest wasn't saved. Try another provider with --provider, "+
+			"or report it at https://github.com/lhjnilsson/foreverbull/issues.")
+	test.Require().NotContains(err.Error(), "order rejected")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A GetAsset / store style STATUS_ERROR must fail create like the no-bars
 // case: remove the backtest and return the user-facing sentence. Raw error
 // text (gRPC, stack traces) must not appear in that sentence.

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -173,23 +174,35 @@ type OHLC struct {
 	Conn postgres.Query
 }
 
+// ErrInvalidPrice is a bar Store refuses because a price is 0, negative, or
+// not a real number. The error text names the provider, symbol and day.
+var ErrInvalidPrice = errors.New("invalid price")
+
+// InvalidPriceError is the user-facing refusal for one bar. The provider sent
+// it, so the sentence says so rather than blaming the user.
+type InvalidPriceError struct {
+	Provider string
+	Symbol   string
+	Day      time.Time
+	// Field is the first refused column: open, high, low, or close.
+	Field string
+}
+
+func (e *InvalidPriceError) Error() string {
+	return fmt.Sprintf("%s sent an invalid price for %s on %s (0, negative or not a number)",
+		e.Provider, e.Symbol, e.Day.UTC().Format("2006-01-02"))
+}
+
+func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
+
 // Store upserts one bar. Every price must be a real positive number: a 0
 // price is how a missing provider bar used to arrive, and it reads as a
 // -100% day, so it is refused here as well as in the provider adapter. A
 // re-fetched bar replaces the stored one, so prices adjusted after a split
 // never sit next to rows on the old scale.
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
-	if !positivePrice(o) {
-		return fmt.Errorf("open: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(h) {
-		return fmt.Errorf("high: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(l) {
-		return fmt.Errorf("low: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(c) {
-		return fmt.Errorf("close: %w", supplier.ErrRejected)
+	if err := validateBar(provider, symbol, t, o, h, l, c); err != nil {
+		return err
 	}
 
 	_, err := db.Conn.Exec(
@@ -204,6 +217,33 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		return fmt.Errorf("failed to store ohlc: %w", err)
 	}
 
+	return nil
+}
+
+// ValidateBars checks every bar a provider returned before any is stored.
+// Callers run it first so a refused bar leaves no partial history behind:
+// bars are cached per provider and symbol, and a gap there would be served to
+// every later backtest.
+func ValidateBars(provider, symbol string, bars []*financepb.OHLC) error {
+	for _, bar := range bars {
+		err := validateBar(provider, symbol, bar.GetTimestamp().AsTime(),
+			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateBar(provider, symbol string, t time.Time, o, h, l, c float64) error {
+	for _, price := range []struct {
+		field string
+		value float64
+	}{{"open", o}, {"high", h}, {"low", l}, {"close", c}} {
+		if !positivePrice(price.value) {
+			return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: price.field}
+		}
+	}
 	return nil
 }
 

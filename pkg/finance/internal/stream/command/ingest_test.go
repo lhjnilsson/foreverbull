@@ -128,6 +128,40 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 	test.marketdata.AssertExpectations(test.T())
 }
 
+// A refused bar anywhere in the batch stores none of it, so the shared price
+// cache never keeps a gap.
+func (test *IngestCommandTest) TestIngestStoresNothingWhenABarIsRefused() {
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+
+	test.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	test.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return(
+		[]*pb.OHLC{
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)), Open: 10, High: 11, Low: 9, Close: 0, Volume: 100},
+			{Timestamp: timestamppb.New(time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC)), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
+		},
+		nil,
+	)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Provider = "yahoo"
+		command.Symbols = []string{"XYZ"}
+		command.Start = "2026-05-01"
+		end := "2026-05-03"
+		command.End = &end
+	})
+
+	err := command.Ingest(context.Background(), message)
+	test.Require().EqualError(err, "yahoo sent an invalid price for XYZ on 2026-05-02 (0, negative or not a number)")
+
+	var rows int
+	test.Require().NoError(test.db.QueryRow(context.Background(),
+		`SELECT count(*) FROM ohlc WHERE symbol = 'XYZ'`).Scan(&rows))
+	test.Zero(rows, "no bar of a refused batch may be stored")
+}
+
 func (test *IngestCommandTest) TestAlpacaFailsBeforeDownload() {
 	test.T().Setenv(environment.TradingProfilesFile, filepath.Join(test.T().TempDir(), "profiles.yaml"))
 
