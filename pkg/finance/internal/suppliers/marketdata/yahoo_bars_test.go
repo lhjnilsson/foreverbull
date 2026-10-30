@@ -108,6 +108,12 @@ func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoBars)
 	require.EqualError(t, err, "fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")
 
+	// 404 with the Not Found chart error is the same answer.
+	notFound404 := yahooChartServer(t, http.StatusNotFound, "application/json",
+		`{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`)
+	_, err = notFound404.GetOHLC("NON_EXISTING", start, &end)
+	require.ErrorIs(t, err, ErrNoBars)
+
 	cases := []struct {
 		name, contentType, body string
 		status                  int
@@ -115,6 +121,14 @@ func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
 		{name: "chart error", status: http.StatusInternalServerError, contentType: "application/json",
 			body: `{"chart":{"result":null,"error":{"code":"Internal Server Error","description":"try again"}}}`},
 		{name: "plain 503", status: http.StatusServiceUnavailable, contentType: "text/plain", body: "Service Unavailable"},
+		// A 5xx with an empty-looking chart must not read as 0 bars.
+		{name: "503 with empty result", status: http.StatusServiceUnavailable, contentType: "application/json",
+			body: `{"chart":{"result":[{}]}}`},
+		// Not Found counts only on a 200 or 404.
+		{name: "500 with Not Found", status: http.StatusInternalServerError, contentType: "application/json",
+			body: `{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`},
+		{name: "404 without Not Found", status: http.StatusNotFound, contentType: "application/json",
+			body: `{"chart":{"result":[{}]}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
