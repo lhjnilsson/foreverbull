@@ -103,7 +103,7 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
             tar.extractall(data_root())
         return engine_service_pb.DownloadIngestionResponse()
 
-    def ingest(self, request: engine_service_pb.IngestRequest, context):
+    def ingest(self, request: engine_service_pb.IngestRequest, context: grpc.ServicerContext | None):
         backtest = request.backtest
         if backtest is None:
             raise ValueError("ingest request has no backtest")
@@ -111,9 +111,12 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
             ingester = SQLIngester(backtest)
             bundles.register(backtest.name, ingester, calendar_name="XNYS")
             bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
-        except Exception as exc:  # noqa: BLE001 - every failure becomes a redacted gRPC status, never a traceback
+        except Exception as exc:
             code, details = ingest_failure(exc)
             self.logger.error("Ingesting %s failed: %s", backtest.name, details)
+            if context is None:
+                # Called in-process (tests, local tools) with no gRPC context: keep the real error.
+                raise
             context.abort(code, details)
         stamp_bundle_version(backtest.name, os.environ)
         self.bundle = bundles.load(backtest.name, os.environ, None)
