@@ -15,6 +15,7 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type OHLCTests struct {
@@ -444,6 +445,30 @@ func (test *OHLCTests) TestStoreKeepsGoodBarOverBadRefetch() {
 	}
 }
 
+// A volume that does not fit the bigint column is refused with the volume
+// InvalidPriceError, not wrapped and not stored.
+func (test *OHLCTests) TestStoreRejectsVolumeAboveMaxInt64() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	err := test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, 125, 126, 124, 125.5, math.MaxInt64+1)
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	test.Require().NotErrorIs(err, supplier.ErrRejected)
+	var refused *repository.InvalidPriceError
+	test.Require().ErrorAs(err, &refused)
+	test.Equal("volume", refused.Field)
+	test.Require().EqualError(err, "yahoo sent an invalid volume for ABC on 2020-08-27 (out of range)")
+	var rows int
+	test.Require().NoError(test.conn.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC'`).Scan(&rows))
+	test.Zero(rows, "a refused volume stores nothing")
+
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day, 125, 126, 124, 125.5, math.MaxInt64))
+	var v int64
+	test.Require().NoError(test.conn.QueryRow(ctx,
+		`SELECT volume FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC' AND time = $1`, day).Scan(&v))
+	test.Equal(int64(math.MaxInt64), v)
+}
+
 // A bar stored without a provider is written as supplier.DefaultProvider.
 func (test *OHLCTests) TestStoreEmptyProviderWritesDefaultProvider() {
 	ctx := context.Background()
@@ -578,4 +603,124 @@ func (test *OHLCTests) TestListRejectsBadInput() {
 	test.Require().ErrorContains(err, "symbols")
 	_, err = test.ohlcStorage.List(ctx, "yahoo", []string{"ABC"}, asOf, 3000)
 	test.Require().ErrorContains(err, "limit")
+}
+
+// storedCloses is every stored close for yahoo ABC, keyed by day.
+func (test *OHLCTests) storedCloses() map[string]float64 {
+	rows, err := test.conn.Query(context.Background(),
+		`SELECT time, close::float8 FROM ohlc WHERE provider = 'yahoo' AND symbol = 'ABC' ORDER BY time`)
+	test.Require().NoError(err)
+	defer rows.Close()
+	got := map[string]float64{}
+	for rows.Next() {
+		var t time.Time
+		var c float64
+		test.Require().NoError(rows.Scan(&t, &c))
+		got[t.Format("2006-01-02")] = c
+	}
+	test.Require().NoError(rows.Err())
+	return got
+}
+
+// ReplaceRange drops stored days the new bars leave out.
+func (test *OHLCTests) TestReplaceRange() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	// Day 1 is gone from the new history.
+	test.Require().NoError(test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+		[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)}))
+
+	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-28": 125.5, "2020-08-29": 126}, test.storedCloses())
+}
+
+// A database error part way through ReplaceRange rolls the whole replace back,
+// so a failed re-scale never leaves some days on the new scale, some on the
+// old, or a day missing. A test-only trigger raises once earlier statements of
+// the replace have already run: on the upsert of the last day, or on the
+// DELETE of a day the new bars leave out, which runs after every upsert.
+func (test *OHLCTests) TestReplaceRangeRollsBackOnDBFailure() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	oldRows := map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}
+	cases := map[string]string{
+		"upsert of the last day": `CREATE TRIGGER fail_replace BEFORE INSERT OR UPDATE ON ohlc
+			FOR EACH ROW WHEN (NEW.time = '2020-08-29' AND NEW.close < 500)
+			EXECUTE FUNCTION fail_replace()`,
+		"delete after every upsert": `CREATE TRIGGER fail_replace BEFORE DELETE ON ohlc
+			FOR EACH ROW EXECUTE FUNCTION fail_replace()`,
+	}
+	for name, trigger := range cases {
+		_, err := test.conn.Exec(ctx, `DROP TRIGGER IF EXISTS fail_replace ON ohlc; DELETE FROM ohlc`)
+		test.Require().NoError(err, name)
+		for i := 0; i < 4; i++ {
+			test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100), name)
+		}
+		_, err = test.conn.Exec(ctx, `CREATE OR REPLACE FUNCTION fail_replace() RETURNS trigger AS $$
+			BEGIN RAISE EXCEPTION 'forced failure inside ReplaceRange'; END;
+			$$ LANGUAGE plpgsql`)
+		test.Require().NoError(err, name)
+		_, err = test.conn.Exec(ctx, trigger)
+		test.Require().NoError(err, name)
+
+		// Day 1 is left out, so the DELETE has a row to remove.
+		err = test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+			[]*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
+		test.Require().ErrorContains(err, "forced failure inside ReplaceRange", name)
+
+		_, err = test.conn.Exec(ctx, `DROP TRIGGER fail_replace ON ohlc`)
+		test.Require().NoError(err, name)
+		test.Equal(oldRows, test.storedCloses(), name)
+	}
+}
+
+// ReplaceRange never writes outside a transaction: a connection that can't
+// open one returns ErrNoTransaction and leaves every stored row as it was.
+func (test *OHLCTests) TestReplaceRangeErrorsWithoutTransaction() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	db := repository.OHLC{Conn: noBegin{conn: test.conn}}
+	err := db.ReplaceRange(ctx, "yahoo", "ABC", []*pb.OHLC{bar(0, 125), bar(2, 125.5), bar(3, 126)})
+	test.Require().ErrorIs(err, repository.ErrNoTransaction)
+
+	test.Equal(map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}, test.storedCloses())
+}
+
+// A bad bar anywhere in the batch refuses the whole replace: no stored row is
+// changed or removed, and the InvalidPriceError comes back.
+func (test *OHLCTests) TestReplaceRangeRefusesBadBarAndKeepsRows() {
+	ctx := context.Background()
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "ABC", day.AddDate(0, 0, i), 500, 500, 500, 500, 100))
+	}
+	bar := func(i int, c float64) *pb.OHLC {
+		return &pb.OHLC{Timestamp: timestamppb.New(day.AddDate(0, 0, i)), Open: c, High: c, Low: c, Close: c, Volume: 400}
+	}
+	err := test.ohlcStorage.ReplaceRange(ctx, "yahoo", "ABC",
+		[]*pb.OHLC{bar(0, 125), bar(1, 125.2), bar(2, 0), bar(3, 126)})
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	test.Require().EqualError(err, "yahoo sent an invalid price for ABC on 2020-08-28 (0, negative or not a number)")
+
+	test.Equal(map[string]float64{
+		"2020-08-26": 500, "2020-08-27": 500, "2020-08-28": 500, "2020-08-29": 500,
+	}, test.storedCloses())
 }

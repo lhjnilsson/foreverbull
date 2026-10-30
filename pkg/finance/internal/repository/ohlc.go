@@ -240,8 +240,8 @@ type txBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
-// ErrNoTransaction is returned by StoreBars when its connection can't open a
-// transaction. Bars are never stored row by row outside one, because a DB
+// ErrNoTransaction is returned by StoreBars and ReplaceRange when their
+// connection can't open a transaction. Bars are never stored row by row outside one, because a DB
 // error part way through would leave a gap in the cached history.
 var ErrNoTransaction = errors.New("ohlc: connection can't open a transaction")
 
@@ -307,6 +307,78 @@ func validateBar(provider, symbol string, t time.Time, o, h, l, c float64, volum
 
 func positivePrice(price float64) bool {
 	return price > 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
+}
+
+// Range returns the first and last stored bar times for provider and symbol.
+// ok is false when nothing is stored.
+func (db *OHLC) Range(ctx context.Context, provider, symbol string) (first, last time.Time, ok bool, err error) {
+	var minTime, maxTime *time.Time
+	err = db.Conn.QueryRow(
+		ctx,
+		`SELECT MIN(time), MAX(time) FROM ohlc WHERE provider = $1 AND symbol = $2`,
+		priceProvider(provider), symbol,
+	).Scan(&minTime, &maxTime)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("failed to read ohlc range: %w", err)
+	}
+	if minTime == nil || maxTime == nil {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	return *minTime, *maxTime, true, nil
+}
+
+// ReplaceRange makes bars the whole stored history of provider and symbol from
+// the first to the last bar, in one transaction. Stored days inside that span
+// that bars leave out are removed. Every bar must pass ValidateBars; callers
+// validate the batch before calling, and ReplaceRange checks it again before
+// it opens the transaction, so a refused bar leaves every stored row as it was
+// and the InvalidPriceError is returned. A connection that can't open a
+// transaction returns ErrNoTransaction and nothing is written or removed.
+func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, bars []*financepb.OHLC) error {
+	if len(bars) == 0 {
+		return nil
+	}
+	if err := ValidateBars(provider, symbol, bars); err != nil {
+		return err
+	}
+	begin, ok := db.Conn.(txBeginner)
+	if !ok {
+		return ErrNoTransaction
+	}
+	tx, err := begin.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+
+	inTx := &OHLC{Conn: tx}
+	first, last := bars[0].GetTimestamp().AsTime(), bars[0].GetTimestamp().AsTime()
+	times := make([]time.Time, 0, len(bars))
+	for _, b := range bars {
+		t := b.GetTimestamp().AsTime()
+		if t.Before(first) {
+			first = t
+		}
+		if t.After(last) {
+			last = t
+		}
+		times = append(times, t)
+		err := inTx.Store(ctx, provider, symbol, t, b.GetOpen(), b.GetHigh(), b.GetLow(), b.GetClose(), b.GetVolume())
+		if err != nil {
+			return fmt.Errorf("failed to replace ohlc: %w", err)
+		}
+	}
+	_, err = tx.Exec(ctx,
+		`DELETE FROM ohlc WHERE provider = $1 AND symbol = $2
+		 AND time BETWEEN $3 AND $4 AND NOT (time = ANY($5))`,
+		priceProvider(provider), symbol, first, last, times)
+	if err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	return nil
 }
 
 // Close is the close stored for provider, symbol, and calendar day.

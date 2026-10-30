@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -183,4 +185,265 @@ func (test *IngestCommandTest) TestAlpacaFailsBeforeDownload() {
 	test.Require().Error(err)
 	test.marketdata.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
 	test.marketdata.AssertNotCalled(test.T(), "GetAsset", mock.Anything)
+}
+
+// aaplAdjusted is Yahoo's split-adjusted AAPL around the 4:1 split on
+// 2020-08-31 (recorded chart response, as in yahoo_split_test.go).
+func aaplAdjusted() []*pb.OHLC {
+	bar := func(day int, month time.Month, o, h, l, c float64, v uint64) *pb.OHLC {
+		return &pb.OHLC{
+			Timestamp: timestamppb.New(time.Date(2020, month, day, 0, 0, 0, 0, time.UTC)),
+			Open:      o, High: h, Low: l, Close: c, Volume: v,
+		}
+	}
+	return []*pb.OHLC{
+		bar(27, time.August, 127.1425, 127.485, 123.8325, 125.01, 155552400),
+		bar(28, time.August, 126.0125, 126.4425, 124.5775, 124.8075, 187630000),
+		bar(31, time.August, 127.58, 131.0, 126.0, 129.04, 225702700),
+		bar(1, time.September, 132.76, 134.8, 130.53, 134.18, 151948100),
+	}
+}
+
+func sameDay(want time.Time) interface{} {
+	return mock.MatchedBy(func(got time.Time) bool {
+		return got.UTC().Format("2006-01-02") == want.Format("2006-01-02")
+	})
+}
+
+func (test *IngestCommandTest) ingestAAPL(start, end string) error {
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Provider = "yahoo"
+		command.Symbols = []string{"AAPL"}
+		command.Start = start
+		command.End = &end
+	})
+	return command.Ingest(context.Background(), message)
+}
+
+// An incremental fetch after a split sees the overlap day re-scaled and
+// replaces the whole stored range, so no day jumps by the split ratio.
+func (test *IngestCommandTest) TestIncrementalFetchRescalesAfterSplit() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	adjusted := aaplAdjusted()
+	// Stored before the split, on the old scale.
+	for _, b := range adjusted[:2] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open*4, b.High*4, b.Low*4, b.Close*4, b.Volume/4))
+	}
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	// The incremental fetch starts on the last stored day.
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+
+	bars, err := test.ohlc.List(ctx, "yahoo", []string{"AAPL"}, time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC), 0)
+	test.Require().NoError(err)
+	test.Require().Len(bars, len(adjusted))
+	for i := 1; i < len(bars); i++ {
+		move := math.Abs(bars[i].Close/bars[i-1].Close - 1)
+		test.LessOrEqual(move, 0.20, "%s", bars[i].Timestamp.AsTime().Format("2006-01-02"))
+	}
+	closeAug28, err := test.ohlc.Close(ctx, "yahoo", "AAPL", aug28)
+	test.Require().NoError(err)
+	test.InDelta(124.8075, closeAug28, 0.0001)
+}
+
+// When the overlap day matches, only the new days are fetched and stored.
+func (test *IngestCommandTest) TestIncrementalFetchAppendsWhenOverlapMatches() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	adjusted := aaplAdjusted()
+	for _, b := range adjusted[:2] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open, b.High, b.Low, b.Close, b.Volume))
+	}
+
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+	test.marketdata.AssertNumberOfCalls(test.T(), "GetOHLC", 1)
+
+	first, last, ok, err := test.ohlc.Range(ctx, "yahoo", "AAPL")
+	test.Require().NoError(err)
+	test.True(ok)
+	test.Equal("2020-08-27", first.Format("2006-01-02"))
+	test.Equal("2020-09-01", last.Format("2006-01-02"))
+}
+
+// A requested range that is already stored is not fetched again.
+func (test *IngestCommandTest) TestIngestSkipsStoredRange() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	for _, b := range aaplAdjusted() {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open, b.High, b.Low, b.Close, b.Volume))
+	}
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-08-31"))
+	test.marketdata.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// storeAAPLPreSplit stores the first n recorded bars on the pre-split scale.
+func (test *IngestCommandTest) storeAAPLPreSplit(n int) {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	for _, b := range aaplAdjusted()[:n] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open*4, b.High*4, b.Low*4, b.Close*4, b.Volume/4))
+	}
+}
+
+// requireNoSplitSeam checks that no stored day moves more than 20% and that
+// 2020-08-28 is on the split-adjusted scale.
+func (test *IngestCommandTest) requireNoSplitSeam() {
+	ctx := context.Background()
+	bars, err := test.ohlc.List(ctx, "yahoo", []string{"AAPL"}, time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC), 0)
+	test.Require().NoError(err)
+	test.Require().Len(bars, len(aaplAdjusted()))
+	for i := 1; i < len(bars); i++ {
+		move := math.Abs(bars[i].Close/bars[i-1].Close - 1)
+		test.LessOrEqual(move, 0.20, "%s", bars[i].Timestamp.AsTime().Format("2006-01-02"))
+	}
+	closeAug28, err := test.ohlc.Close(ctx, "yahoo", "AAPL", time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC))
+	test.Require().NoError(err)
+	test.InDelta(124.8075, closeAug28, 0.0001)
+}
+
+// When the incremental fetch leaves out the overlap day, the scale of the
+// stored history can not be checked, so the whole range is fetched again and
+// replaced instead of appended next to old-scale rows.
+func (test *IngestCommandTest) TestIncrementalFetchWithoutOverlapReplaces() {
+	test.storeAAPLPreSplit(2)
+	adjusted := aaplAdjusted()
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	// The provider returns only 08-31 and 09-01 for the incremental fetch.
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[2:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+	test.requireNoSplitSeam()
+}
+
+// A bad fetched close on the overlap day is not a match either.
+func (test *IngestCommandTest) TestIncrementalFetchWithBadOverlapCloseReplaces() {
+	test.storeAAPLPreSplit(2)
+	adjusted := aaplAdjusted()
+	badOverlap := proto.Clone(adjusted[1]).(*pb.OHLC)
+	badOverlap.Close = 0
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).
+		Return([]*pb.OHLC{badOverlap, adjusted[2], adjusted[3]}, nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+	test.requireNoSplitSeam()
+}
+
+// A split refetch with one bad bar is refused before ReplaceRange runs: the
+// stored old-scale rows stay exactly as they were, no day goes missing, and
+// the InvalidPriceError names the provider, symbol and day.
+func (test *IngestCommandTest) TestRescaleWithBadRefetchedBarKeepsStoredRows() {
+	ctx := context.Background()
+	test.storeAAPLPreSplit(2)
+	adjusted := aaplAdjusted()
+
+	type row struct{ o, h, l, c float64 }
+	readRows := func() map[string]row {
+		rows, err := test.db.Query(ctx,
+			`SELECT time, open::float8, high::float8, low::float8, close::float8 FROM ohlc
+			 WHERE provider = 'yahoo' AND symbol = 'AAPL' ORDER BY time`)
+		test.Require().NoError(err)
+		defer rows.Close()
+		got := map[string]row{}
+		for rows.Next() {
+			var t time.Time
+			var r row
+			test.Require().NoError(rows.Scan(&t, &r.o, &r.h, &r.l, &r.c))
+			got[t.UTC().Format("2006-01-02")] = r
+		}
+		test.Require().NoError(rows.Err())
+		return got
+	}
+	before := readRows()
+	test.Require().Len(before, 2)
+
+	// The full refetch is split-adjusted but 2020-08-28 comes back with close 0.
+	refetch := make([]*pb.OHLC, len(adjusted))
+	for i, b := range adjusted {
+		refetch[i] = proto.Clone(b).(*pb.OHLC)
+	}
+	refetch[1].Close = 0
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
+	// The overlap close moved by the split ratio, so ingest refetches the range.
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(refetch, nil).Once()
+
+	err := test.ingestAAPL("2020-08-27", "2020-09-01")
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	var refused *repository.InvalidPriceError
+	test.Require().ErrorAs(err, &refused)
+	test.Equal("close", refused.Field)
+	test.Require().EqualError(err, "yahoo sent an invalid price for AAPL on 2020-08-28 (0, negative or not a number)")
+	test.marketdata.AssertExpectations(test.T())
+
+	after := readRows()
+	test.Equal(before, after, "stored rows must keep their old values")
+	for _, day := range []string{"2020-08-27", "2020-08-28"} {
+		test.Contains(after, day, "no stored day may go missing")
+	}
+	test.InDelta(adjusted[1].Close*4, after["2020-08-28"].c, 0.0001)
+}
+
+// A first ingest has nothing to re-scale: one fetch from start, inserted.
+func (test *IngestCommandTest) TestFirstIngestInserts() {
+	test.Require().NoError(test.assets.Store(context.Background(), "AAPL", "Apple Inc."))
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(aaplAdjusted(), nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
+	test.marketdata.AssertExpectations(test.T())
+	test.marketdata.AssertNumberOfCalls(test.T(), "GetOHLC", 1)
+	test.requireNoSplitSeam()
+}
+
+// A requested start before the stored history fetches through the last stored
+// day and replaces it, so stored days are not left on the old scale.
+func (test *IngestCommandTest) TestIngestBeforeStoredHistoryReplaces() {
+	ctx := context.Background()
+	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
+	adjusted := aaplAdjusted()
+	for _, b := range adjusted[1:] {
+		test.Require().NoError(test.ohlc.Store(ctx, "yahoo", "AAPL", b.Timestamp.AsTime(),
+			b.Open*4, b.High*4, b.Low*4, b.Close*4, b.Volume/4))
+	}
+
+	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
+	sep1 := time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC)
+	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.MatchedBy(func(end *time.Time) bool {
+		return end != nil && end.Format("2006-01-02") == sep1.Format("2006-01-02")
+	})).Return(adjusted, nil).Once()
+
+	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-08-28"))
+	test.marketdata.AssertExpectations(test.T())
+	test.marketdata.AssertNumberOfCalls(test.T(), "GetOHLC", 1)
+	test.requireNoSplitSeam()
 }
