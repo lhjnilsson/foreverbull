@@ -909,6 +909,45 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenPriceRequestF
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// The finance service could not search for a renamed symbol's current
+// ticker, so it doesn't know whether the symbol has prices. That status is
+// a download failure: create fails and the symbol is not left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenTickerSearchFails() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "FB", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "FB",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "search for the current ticker of FB (US30303M1027) failed: fail to search asset: 503 Service Unavailable",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().False(errors.As(err, &notice), "a failed ticker search must not leave the symbol out: %v", err)
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': couldn't download prices for FB. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A symbol delisted partway through has prices for part of the period, so
 // its download is STATUS_OK. It stays in the backtest, no notice names it,
 // and Zipline auto-closes a held position after its last bar (universe.md §8).

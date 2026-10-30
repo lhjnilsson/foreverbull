@@ -612,6 +612,86 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProvi
 	suite.Equal([]string{"VOD.L"}, symbols)
 }
 
+// FB gets Yahoo's Not Found and the search for the instrument's current
+// ticker fails. The search may have missed a ticker with bars, so the
+// download reports that failure, not "no price data".
+func (suite *MarketdataTest) TestDownloadHistoricalDataReportsSearchFailureWhenNoTickerHasBars() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FB"))
+	suite.marketdata.On("SearchAsset", metaISIN).Return(nil, errors.New("fail to search asset: 503 Service Unavailable"))
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
+	suite.Contains(msg.GetError(), "503 Service Unavailable")
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+}
+
+// The search fails, but META is already an asset_symbol alias of the
+// instrument and has bars, so they are used and FB downloads OK.
+func (suite *MarketdataTest) TestDownloadHistoricalDataUsesAliasWithBarsWhenSearchFails() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, '2022-06-08'::date),
+		       ($1, 'META', '2022-06-09'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetAsset", "META").Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FB"))
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2019-06-03")),
+			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
+		},
+	}, nil)
+	suite.marketdata.On("SearchAsset", metaISIN).Return(nil, errors.New("fail to search asset: 503 Service Unavailable"))
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus(), msg.GetError())
+
+	var metaBars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='META'`).Scan(&metaBars))
+	suite.Equal(1, metaBars, "bars must be stored under META")
+}
+
 func mustTime(day string) time.Time {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {

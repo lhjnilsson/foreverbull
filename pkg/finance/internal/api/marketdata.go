@@ -281,12 +281,19 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		return nil, err
 	}
 
-	candidates, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
+	candidates, searchErr, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
 	if err != nil {
 		return nil, err
 	}
+	// noBars is the outcome when no candidate has bars. A failed search may
+	// have missed the current ticker, so then we don't know the instrument
+	// has no prices and report the failure instead.
+	noBars := noPriceDataError(symbol)
+	if searchErr != nil {
+		noBars = fmt.Errorf("search for the current ticker of %s (%s) failed: %w", symbol, inst.ISIN, searchErr)
+	}
 	if len(candidates) == 0 {
-		return nil, noPriceDataError(symbol)
+		return nil, noBars
 	}
 
 	for _, candidate := range candidates {
@@ -326,22 +333,26 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		}
 		return &fetchedBars{symbol: candidate, bars: ohlcs}, nil
 	}
-	return nil, noPriceDataError(symbol)
+	return nil, noBars
 }
 
+// laterTickerCandidates lists the instrument's other tickers: asset_symbol
+// aliases, then the provider's search by ISIN. searchErr is the search
+// failure; the aliases are still returned so one with bars can be used.
+// err is a failed alias read.
 func laterTickerCandidates(
 	ctx context.Context,
 	instruments repository.Instruments,
 	md supplier.Marketdata,
 	isin, asked string,
-) ([]string, error) {
+) (candidates []string, searchErr, err error) {
 	asked = strings.TrimSpace(asked)
 	seen := map[string]struct{}{asked: {}}
-	candidates := make([]string, 0)
+	candidates = make([]string, 0)
 
 	aliases, err := instruments.ListAliases(ctx, isin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, alias := range aliases {
 		symbol := strings.TrimSpace(alias.Symbol)
@@ -355,9 +366,9 @@ func laterTickerCandidates(
 		candidates = append(candidates, symbol)
 	}
 
-	found, err := md.SearchAsset(isin)
-	if err != nil {
-		log.Info().Err(redactURLError(err)).Str("isin", isin).Msg("search for current ticker failed")
+	found, searchErr := md.SearchAsset(isin)
+	if searchErr != nil {
+		log.Info().Err(redactURLError(searchErr)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
 		for _, a := range found {
 			symbol := strings.TrimSpace(a.Symbol)
@@ -374,7 +385,7 @@ func laterTickerCandidates(
 			candidates = append(candidates, symbol)
 		}
 	}
-	return candidates, nil
+	return candidates, searchErr, nil
 }
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
