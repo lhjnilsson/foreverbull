@@ -744,7 +744,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
-	return nil
+
+	return checkMissingSessions(ctx, msg, db, backtests, command.BacktestName, backtestID,
+		strings.ToLower(provider), symbols, pb.DateToTime(startDate), pb.DateToTime(endDate))
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
@@ -782,9 +784,9 @@ func isRefusedBarError(text string) bool {
 	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
 }
 
-// providerFaultNextStep ends a sentence about bad provider data. Since #209 a
-// bad bar is normally dropped and filled, so reaching this means an adapter
-// missed one; a plain retry won't help.
+// providerFaultNextStep ends a sentence about bad provider data. A bad bar is
+// normally dropped, and the day then fails create as a missing session, so
+// reaching this means an adapter missed one; a plain retry won't help.
 const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
@@ -1000,7 +1002,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	}
 	if len(notices) > 0 {
 		// The backtest is kept. The notice rides on the completed INGESTING
-		// step, so the CLI prints which prices were filled.
+		// step, so the CLI prints it.
 		return &stream.Notice{Lines: notices}
 	}
 	return nil

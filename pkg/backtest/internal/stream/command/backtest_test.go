@@ -95,6 +95,7 @@ func (test *BacktestCommandTest) SetupTest() {
 
 	test.etfscraper = new(dependency.MockETFScraper)
 	test.mdclient = new(financeServicePB.MockMarketdataClient)
+	test.resetBars()
 }
 
 func (test *BacktestCommandTest) date(s string) time.Time {
@@ -1172,11 +1173,11 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 // An ingest error reported by the data service removes the backtest, its
 // periods and its assets, so the same create works again without a delete.
 // The step message is the user-facing copy and carries no password.
-// Filled sessions do not fail the ingest. The handler completes with a
-// notice so the CLI shows which prices were filled, and the backtest stays.
+// A notice does not fail the ingest. The handler completes with it so the
+// CLI shows it, and the backtest stays.
 func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
 	backtests := repository.Backtest{Conn: test.db}
-	line := "Missing prices for AAPL on 2022-03-02, filled with the previous close. No trades on those days."
+	line := "Example notice for AAPL on 2022-03-02."
 	ziplineEngine := new(engine.MockEngine)
 	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return([]string{line}, nil)
 
