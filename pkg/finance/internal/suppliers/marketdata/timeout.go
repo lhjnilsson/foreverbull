@@ -8,9 +8,9 @@ import (
 )
 
 // TimeoutError is a provider that didn't answer for a symbol in time: its
-// request timed out, its fetch budget ran out, or the download's time limit
-// ended while the symbol wasn't stored yet. Error is the STATUS_ERROR text
-// the backtest service matches, so its shape is fixed.
+// request timed out or its fetch budget ran out. Error is the STATUS_ERROR
+// text the backtest service matches, so its shape is fixed. The download's
+// own time limit is a TimeLimitError instead.
 type TimeoutError struct {
 	Provider string
 	Symbol   string
@@ -18,6 +18,18 @@ type TimeoutError struct {
 
 func (e *TimeoutError) Error() string {
 	return fmt.Sprintf("%s took too long to respond for %s", ShownProvider(e.Provider), e.Symbol)
+}
+
+// TimeLimitError is a download stopped by its overall time limit, not by a
+// slow provider. Symbol is the first symbol it hadn't answered for. Error is
+// the DeadlineExceeded text the backtest service matches, so its shape is
+// fixed.
+type TimeLimitError struct {
+	Symbol string
+}
+
+func (e *TimeLimitError) Error() string {
+	return "the download hit its time limit at " + e.Symbol
 }
 
 // IsProviderTimeout reports an error from a provider call that ran out of

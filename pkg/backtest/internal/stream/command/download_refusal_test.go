@@ -102,18 +102,28 @@ func TestProviderTimeoutProviderOnlyMatchesTheSentence(t *testing.T) {
 		require.False(t, ok, name)
 	}
 
-	symbol, text, ok := timedOutDownload(status.Error(codes.DeadlineExceeded, "stooq took too long to respond for VOD.L"))
-	require.True(t, ok)
-	require.Equal(t, "VOD.L", symbol)
-	require.Equal(t, "stooq took too long to respond for VOD.L", text)
+}
+
+// Only the finance service's DeadlineExceeded time-limit text counts as the
+// 2-hour limit. A provider timeout or the client's own deadline doesn't.
+func TestTimeLimitReachedOnlyMatchesTheLimit(t *testing.T) {
+	require.True(t, timeLimitReached(status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L")))
 	for name, err := range map[string]error{
-		"other code":      status.Error(codes.Internal, "stooq took too long to respond for VOD.L"),
-		"client deadline": status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
-		"not a status":    errors.New("stooq took too long to respond for VOD.L"),
-		"symbol too long": status.Error(codes.DeadlineExceeded, "stooq took too long to respond for "+strings.Repeat("A", 33)),
-		"nil":             nil,
+		"provider timeout": status.Error(codes.DeadlineExceeded, "stooq took too long to respond for VOD.L"),
+		"other code":       status.Error(codes.Internal, "the download hit its time limit at VOD.L"),
+		"client deadline":  status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+		"not a status":     errors.New("the download hit its time limit at VOD.L"),
+		"symbol too long":  status.Error(codes.DeadlineExceeded, "the download hit its time limit at "+strings.Repeat("A", 33)),
+		"trailing text":    status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L: boom"),
+		"nil":              nil,
 	} {
-		_, _, ok := timedOutDownload(err)
-		require.False(t, ok, name)
+		require.False(t, timeLimitReached(err), name)
 	}
+}
+
+// The 2-hour limit sentence counts symbols like the progress line, word for word.
+func TestTimeLimitCopy(t *testing.T) {
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitCopy("oef-2024q1", 6212, 10000))
 }

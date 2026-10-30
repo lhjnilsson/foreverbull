@@ -36,7 +36,8 @@ func june2024Request(symbols ...string) *servicePb.DownloadHistoricalDataRequest
 }
 
 // The download's time limit stops the work: the symbol whose provider never
-// answers is cut off and named in a DeadlineExceeded status, and the symbol
+// answers is cut off and named in a DeadlineExceeded status with the
+// time-limit text, and the symbol
 // that finished before the limit is reported and stays stored.
 func (suite *MarketdataTest) TestDownloadHistoricalDataStopsAtItsTimeLimit() {
 	defer api.SetDownloadTimeLimit(2 * time.Second)()
@@ -74,7 +75,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStopsAtItsTimeLimit() {
 	st, ok := status.FromError(streamErr)
 	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
 	suite.Equal(codes.DeadlineExceeded, st.Code())
-	suite.Equal("yahoo took too long to respond for SLOW", st.Message())
+	// The limit has its own text, not the provider-timeout sentence.
+	suite.Equal("the download hit its time limit at SLOW", st.Message())
 
 	ohlc := repository.OHLC{Conn: suite.pgx}
 	kept, err := ohlc.List(ctx, "yahoo", []string{"AAPL"}, mustTime("2024-06-07"), 0)

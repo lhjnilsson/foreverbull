@@ -19,6 +19,13 @@ func TestTimeoutErrorSentence(t *testing.T) {
 	require.Equal(t, "alpaca took too long to respond for AAPL", err.Error())
 }
 
+// The time-limit text is matched word for word by the backtest service and
+// differs from the provider-timeout sentence.
+func TestTimeLimitErrorText(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "the download hit its time limit at AAPL", (&TimeLimitError{Symbol: "AAPL"}).Error())
+}
+
 func TestIsProviderTimeout(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {

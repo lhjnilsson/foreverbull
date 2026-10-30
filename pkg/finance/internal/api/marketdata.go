@@ -95,7 +95,8 @@ const downloadWorkers = 10
 // rates a 10,000-symbol download takes about an hour on Yahoo or Alpaca and
 // about 85 minutes on Stooq, so this leaves room for 429 backoffs while a
 // hung provider still can't hold the request and its workers forever.
-// Symbols stored before the limit stay stored. Tests shorten it.
+// Symbols stored before the limit stay stored. Backtest create names it as
+// the 2-hour limit, so change that copy with it. Tests shorten it.
 var downloadTimeLimit = 2 * time.Hour
 
 // errDownloadTimeLimit is the ctx cause when downloadTimeLimit ends a
@@ -677,7 +678,7 @@ feed:
 		if symbol := sender.firstUnreported(symbols); symbol != "" {
 			log.Warn().Str("provider", provider).Str("symbol", symbol).Dur("limit", downloadTimeLimit).
 				Msg("download stopped at its time limit")
-			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeoutError{Provider: provider, Symbol: symbol}).Error())
+			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeLimitError{Symbol: symbol}).Error())
 		}
 		return nil
 	}

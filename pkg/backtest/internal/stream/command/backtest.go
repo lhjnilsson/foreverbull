@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -751,9 +752,8 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
 				return blocked
 			}
-			if symbol, text, ok := timedOutDownload(err); ok {
-				return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
-					provider, symbol, startDate, endDate, text)
+			if timeLimitReached(err) {
+				return discardTimeLimitBacktest(ctx, backtests, command.BacktestName, backtestID, progress.done, progress.total)
 			}
 			if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 				return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
@@ -804,9 +804,9 @@ func ambiguousSymbolProvider(text, symbol string) (string, bool) {
 	return "", false
 }
 
-// providerTimeoutError matches the finance service's sentence for a provider
-// that didn't answer for a symbol in time, per symbol as STATUS_ERROR or for
-// the whole download at its time limit. Only this exact shape is shown.
+// providerTimeoutError matches the finance service's STATUS_ERROR for a
+// provider that didn't answer for a symbol in time. Only this exact shape is
+// shown.
 var providerTimeoutError = regexp.MustCompile(`^(yahoo|stooq|alpaca) took too long to respond for ([A-Za-z0-9.^=_-]{1,32})$`)
 
 // providerTimeoutProvider returns the provider named in text when it is the
@@ -822,20 +822,48 @@ func providerTimeoutProvider(text, symbol string) (string, bool) {
 	return "", false
 }
 
-// timedOutDownload returns the symbol and the sentence when err is the
-// finance service stopping the download at its time limit: DeadlineExceeded
-// with the timeout sentence. The client's own deadline carries other text
-// and is not shown this way.
-func timedOutDownload(err error) (string, string, bool) {
+// timeLimitError matches the finance service's DeadlineExceeded text when the
+// download stopped at its own 2-hour time limit, not at a slow provider.
+var timeLimitError = regexp.MustCompile(`^the download hit its time limit at [A-Za-z0-9.^=_-]{1,32}$`)
+
+// timeLimitReached reports the finance service stopping the download at its
+// time limit: DeadlineExceeded with that exact text. The client's own
+// deadline carries other text and keeps the generic sentence.
+func timeLimitReached(err error) bool {
 	st, ok := status.FromError(err)
 	if !ok || st.Code() != codes.DeadlineExceeded {
-		return "", "", false
+		return false
 	}
-	match := providerTimeoutError.FindStringSubmatch(st.Message())
-	if match == nil {
-		return "", "", false
+	return timeLimitError.MatchString(st.Message())
+}
+
+// discardTimeLimitBacktest deletes the backtest after the download hit the
+// finance service's 2-hour limit. done and total are the counts the progress
+// line shows.
+func discardTimeLimitBacktest(ctx context.Context, backtests repository.Backtest, name, id string, done, total int) error {
+	err := deleteStoredBacktest(ctx, backtests, name, id)
+	if err == nil || errors.Is(err, pgx.ErrNoRows) {
+		return plainSentence(timeLimitCopy(name, done, total))
 	}
-	return match[2], st.Message(), true
+	log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after the download time limit")
+	return plainSentence(fmt.Sprintf(
+		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
+		name, timeLimitLead(done, total), name))
+}
+
+// timeLimitLead names the 2-hour limit and how far the download got, with
+// the progress line's count and thousands formatting.
+func timeLimitLead(done, total int) string {
+	return fmt.Sprintf("the download hit the 2-hour limit after %s of %s symbols.",
+		numfmt.Thousands(done), numfmt.Thousands(total))
+}
+
+// timeLimitCopy is the agreed create sentence for the 2-hour limit once the
+// backtest is removed, word for word.
+func timeLimitCopy(name string, done, total int) string {
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s The backtest wasn't saved. "+
+		"Split the symbols across several backtests, then run `fbull backtest create` again.",
+		name, timeLimitLead(done, total))
 }
 
 // isRefusedBarError reports the finance service's refused-bar sentence.

@@ -19,40 +19,51 @@ import (
 const providerTimeoutCopy = "Couldn't load data for backtest 'oef-2024q1': alpaca took too long to respond for AAPL. " +
 	"The backtest wasn't saved. Try again later, or use another provider with --provider."
 
-// A provider timeout fails create with its own sentence, whether it comes
-// per symbol or as the download's time limit, and the backtest is removed.
+// A per-symbol provider timeout fails create with its own sentence, and the
+// backtest is removed.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNamesProviderTimeout() {
-	for name, timedOut := range map[string]func(*financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}]){
-		"per symbol": func(clientStream *financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}]) {
-			clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
-				Symbol: "AAPL",
-				Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
-				Error:  "alpaca took too long to respond for AAPL",
-			}, nil).Once()
-		},
-		"time limit": func(clientStream *financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}]) {
-			clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
-				Symbol: "S01",
-				Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
-			}, nil).Once()
-			clientStream.On("Recv", mock.Anything).
-				Return(nil, status.Error(codes.DeadlineExceeded, "alpaca took too long to respond for AAPL")).Once()
-		},
-	} {
-		test.Run(name, func() {
-			test.createOEF(98)
-			clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
-			timedOut(clientStream)
-			test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
+	test.createOEF(98)
+	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "alpaca took too long to respond for AAPL",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
 
-			err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
 
-			test.Require().EqualError(err, providerTimeoutCopy)
-			backtests := repository.Backtest{Conn: test.db}
-			_, err = backtests.Get(context.TODO(), "oef-2024q1")
-			test.Require().ErrorIs(err, pgx.ErrNoRows)
-		})
+	test.Require().EqualError(err, providerTimeoutCopy)
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The finance service's 2-hour limit gets its own sentence, not the provider
+// timeout one. It counts the symbols answered so far out of the distinct
+// total, and the backtest is removed.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNamesTheTimeLimit() {
+	test.createOEF(98)
+	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range []string{"S01", "S02"} {
+		clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}, nil).Once()
 	}
+	clientStream.On("Recv", mock.Anything).
+		Return(nil, status.Error(codes.DeadlineExceeded, "the download hit its time limit at S03")).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil).Once()
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+	// 98 members and the benchmark.
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit "+
+		"after 2 of 99 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.")
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
 // The client's own deadline is not the provider's fault: it carries other
