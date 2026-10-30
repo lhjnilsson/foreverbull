@@ -119,6 +119,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "foreverbull.credentialsSecretName" . }}
                   key: minio-secretKey
+            {{- /* The in-cluster MinIO serves plain HTTP. */}}
+            - name: MINIO_SECURE
+              value: "false"
             - name: ZIPLINE_CONTAINER_NAME
               value: {{ .Values.broker.ziplineServiceName | quote }}
             - name: LOG_LEVEL
