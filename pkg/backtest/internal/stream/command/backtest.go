@@ -753,6 +753,12 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
+// isNoISINError reports the finance service's STATUS_ERROR for an asked
+// equity the provider has no ISIN for.
+func isNoISINError(text string) bool {
+	return strings.HasPrefix(text, "no ISIN for ")
+}
+
 // refusedPriceError and refusedVolumeError match the finance service's
 // sentences for a bar its storage refused. Only these exact shapes are shown;
 // other raw text is not.
@@ -795,6 +801,11 @@ const providerFaultNextStep = "The backtest wasn't saved. Try another provider w
 const noPriceDataNextStep = "The backtest wasn't saved. Check the symbol and dates, or try another provider " +
 	"with --provider, then run `fbull backtest create` again."
 
+// noISINNextStep ends the sentence when the provider can't identify an asked
+// equity. A retry can't help; only another provider or leaving it out can.
+const noISINNextStep = "The backtest wasn't saved. Use another provider with --provider, or remove %s, " +
+	"then run `fbull backtest create` again."
+
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
@@ -814,6 +825,10 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
 		nextStep = noPriceDataNextStep
+	} else if isNoISINError(errText) {
+		lead = fmt.Sprintf("%s doesn't identify %s well enough to follow ticker changes, so it can't be used.",
+			strings.ToLower(provider), symbol)
+		nextStep = fmt.Sprintf(noISINNextStep, symbol)
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep

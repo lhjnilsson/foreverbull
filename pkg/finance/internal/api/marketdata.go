@@ -172,6 +172,17 @@ func ambiguousSymbolError(provider, symbol string) error {
 	return fmt.Errorf("%s has more than one instrument for %s", provider, symbol)
 }
 
+// noISINError is the STATUS_ERROR text when the provider answered that the
+// asked equity has no ISIN, so it can't be followed across ticker changes.
+// DownloadFinancialData uses the "no ISIN for " prefix for its own
+// sentence; a retry can't fix it. symbol is the requested symbol, never
+// provider text.
+func noISINError(symbol string) error {
+	return fmt.Errorf("%w for %s", errNoISIN, symbol)
+}
+
+var errNoISIN = errors.New("no ISIN")
+
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
 	rsp.Error = err.Error()
@@ -208,6 +219,14 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	asset, err := fs.marketdata.GetAsset(symbol)
 	if err != nil {
+		if errors.Is(err, marketdata.ErrNoISIN) {
+			// A retry can't help: the provider can't identify the
+			// symbol. The cause stays in the log.
+			log.Error().Err(redact.URLError(err)).Str("symbol", symbol).Str("step", "get asset").
+				Msg("historical data download failed: no ISIN")
+			failSymbol(ctx, sender, rsp, noISINError(symbol))
+			return nil
+		}
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
 	}

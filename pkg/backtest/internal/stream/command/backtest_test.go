@@ -901,6 +901,42 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataExactSenten
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// An asked equity the provider has no ISIN for gets its own sentence: a
+// retry can't help, so it doesn't say "try again". The finance text is not
+// shown.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNoISINExactSentence() {
+	oef, ok := proto.Clone(test.backtest).(*backtest.Backtest)
+	test.Require().True(ok)
+	oef.Name = "oef-2024q1"
+	oef.Periods = []*backtest.Backtest_Period{{
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 3, Day: 28},
+		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "XYZ", Enabled: true}},
+	}}
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), oef)
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no ISIN for XYZ",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'oef-2024q1': yahoo doesn't identify XYZ well enough to follow ticker changes, "+
+			"so it can't be used. The backtest wasn't saved. Use another provider with --provider, or remove XYZ, "+
+			"then run `fbull backtest create` again.")
+	test.NotContains(err.Error(), "no ISIN")
+	test.NotContains(err.Error(), "Try again")
+
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A bar the finance storage refused is named as a refusal, not hidden behind
 // the generic download sentence or reported as an order rejection.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNamesStorageRefusal() {
