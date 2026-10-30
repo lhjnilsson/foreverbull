@@ -35,6 +35,10 @@ func NewAlpacaBars(apiKey, apiSecret string) (*AlpacaBars, error) {
 // per-call client below.
 const alpacaTimeout = 10 * time.Second
 
+// alpacaFetchBudget bounds one GetOHLC, retries and pages included. It stays
+// below Sync's 90s idle-in-transaction timeout. Tests shorten it.
+var alpacaFetchBudget = 60 * time.Second
+
 // client returns an SDK client whose requests carry ctx. The SDK takes no
 // context, so each call gets its own client with a transport that attaches
 // ctx to every request: a cancelled download stops the Alpaca fetch.
@@ -99,6 +103,12 @@ func (a *AlpacaBars) GetOHLC(ctx context.Context, symbol string, start time.Time
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
 	symbol = alpacaSymbol(symbol)
+	// The SDK retries 429 and 500 up to ten times, a second apart, each try
+	// with its own timeout, so one fetch could outlast Sync's idle timeout
+	// when it runs under the symbol lock. A failed request isn't retried, so
+	// ending ctx bounds the whole fetch.
+	ctx, cancel := context.WithTimeout(ctx, alpacaFetchBudget)
+	defer cancel()
 	md := a.client(ctx)
 	bars, err := md.GetBars(symbol, alpacaDailyBars(start, endAt))
 	if err != nil {
