@@ -80,7 +80,11 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
 	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
 	if err != nil {
-		return nil, fmt.Errorf("error getting index: %w", redact.URLError(err))
+		// The cause, which names each member that failed, is logged
+		// redacted; the client-facing interceptor keeps it off the status.
+		redacted := redact.URLError(err)
+		log.Error().Err(redacted).Str("symbol", req.GetSymbol()).Msg("getting index failed")
+		return nil, fmt.Errorf("error getting index: %w", redacted)
 	}
 
 	return &servicePb.GetIndexResponse{

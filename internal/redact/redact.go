@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// URLError strips the query and fragment from a *url.Error's URL in err's
-// text. Yahoo requests carry the session crumb as ?crumb=, and the HTTP
+// URLError strips the query and fragment from every *url.Error's URL in
+// err's text, including each error joined with errors.Join. Yahoo requests carry the session crumb as ?crumb=, and the HTTP
 // client puts the full URL in its error, so without this the crumb reaches
 // logs, RPC errors, and task states. An error with no *url.Error in its
 // chain, and nil, are returned unchanged.
@@ -22,18 +22,40 @@ func URLError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var urlErr *url.Error
-	if !errors.As(err, &urlErr) {
+	urlErrs := urlErrors(err, nil)
+	if len(urlErrs) == 0 {
 		return err
 	}
-	redacted := *urlErr
-	redacted.URL = URL(urlErr.URL)
-	msg := strings.ReplaceAll(err.Error(), urlErr.Error(), redacted.Error())
-	// Some wrappers format the URL on their own; drop any raw copy too.
-	if urlErr.URL != redacted.URL {
-		msg = strings.ReplaceAll(msg, urlErr.URL, redacted.URL)
+	msg := err.Error()
+	for _, urlErr := range urlErrs {
+		redacted := *urlErr
+		redacted.URL = URL(urlErr.URL)
+		msg = strings.ReplaceAll(msg, urlErr.Error(), redacted.Error())
+		// Some wrappers format the URL on their own; drop any raw copy too.
+		if urlErr.URL != redacted.URL {
+			msg = strings.ReplaceAll(msg, urlErr.URL, redacted.URL)
+		}
 	}
 	return errors.New(msg)
+}
+
+// urlErrors appends every *url.Error in err's tree to found.
+func urlErrors(err error, found []*url.Error) []*url.Error {
+	if err == nil {
+		return found
+	}
+	if urlErr, ok := err.(*url.Error); ok { //nolint:errorlint // walking the tree by hand
+		found = append(found, urlErr)
+	}
+	switch wrapped := err.(type) { //nolint:errorlint // walking the tree by hand
+	case interface{ Unwrap() []error }:
+		for _, e := range wrapped.Unwrap() {
+			found = urlErrors(e, found)
+		}
+	case interface{ Unwrap() error }:
+		found = urlErrors(wrapped.Unwrap(), found)
+	}
+	return found
 }
 
 // URL keeps scheme, host and path. An unparsable URL is cut at the first

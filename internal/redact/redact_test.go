@@ -32,6 +32,24 @@ func TestURLErrorStripsQueryAndFragment(t *testing.T) {
 		got.Error())
 }
 
+// GetIndex joins one error per failed member; every crumb is redacted,
+// not only the first.
+func TestURLErrorRedactsEveryJoinedURLError(t *testing.T) {
+	joined := fmt.Errorf("error getting assets: %w", errors.Join(
+		fmt.Errorf("component AAPL: %w", yahooURLError()),
+		fmt.Errorf("component MSFT: %w", &url.Error{
+			Op: "Get", URL: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/MSFT?crumb=0therCrumb",
+			Err: errors.New("EOF"),
+		}),
+	))
+	got := redact.URLError(joined).Error()
+	for _, raw := range []string{"crumb", "s3cr3tCrumb", "0therCrumb", "frag"} {
+		assert.NotContains(t, got, raw)
+	}
+	assert.Contains(t, got, "component AAPL: ")
+	assert.Contains(t, got, `component MSFT: Get "https://query2.finance.yahoo.com/v10/finance/quoteSummary/MSFT": EOF`)
+}
+
 func TestURLErrorLeavesOtherErrors(t *testing.T) {
 	plain := errors.New("boom")
 	assert.Same(t, plain, redact.URLError(plain))
