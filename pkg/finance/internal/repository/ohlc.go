@@ -218,6 +218,7 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		return &InvalidPriceError{Provider: priceProvider(provider), Symbol: symbol, Day: t, Field: "volume"}
 	}
 	volume := int64(v)
+	dayStart, dayEnd := dayBounds(t)
 
 	// One row per trading day: a bar for a day already stored at another time
 	// of day (00:00Z before, 05:00Z now) replaces that row instead of sitting
@@ -227,14 +228,14 @@ func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time,
 		`WITH same_day AS (
 			DELETE FROM ohlc
 			WHERE provider = $1 AND symbol = $2
-			  AND time::date = $3::timestamp::date AND time <> $3::timestamp
+			  AND time >= $9 AND time < $10 AND time <> $3::timestamp
 		)
 		INSERT into ohlc(provider, symbol, time, open, high, low, close, volume)
 		values ($1, $2, $3::timestamp, $4, $5, $6, $7, $8)
 		ON CONFLICT (provider, symbol, time) DO UPDATE SET
 			open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
 			close = EXCLUDED.close, volume = EXCLUDED.volume`,
-		priceProvider(provider), symbol, t, o, h, l, c, volume)
+		priceProvider(provider), symbol, t, o, h, l, c, volume, dayStart, dayEnd)
 	if err != nil {
 		return fmt.Errorf("failed to store ohlc: %w", err)
 	}
@@ -366,15 +367,16 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, start
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
-	var endDay *string
+	spanStart, _ := dayBounds(start)
+	var spanEnd *time.Time
 	if end != nil {
-		d := tradingDay(*end)
-		endDay = &d
+		_, next := dayBounds(*end)
+		spanEnd = &next
 	}
 	_, err = tx.Exec(ctx,
 		`DELETE FROM ohlc WHERE provider = $1 AND symbol = $2
-		 AND time::date >= $3::date AND ($4::date IS NULL OR time::date <= $4::date)`,
-		priceProvider(provider), symbol, tradingDay(start), endDay)
+		 AND time >= $3 AND ($4::timestamp IS NULL OR time < $4::timestamp)`,
+		priceProvider(provider), symbol, spanStart, spanEnd)
 	if err != nil {
 		return fmt.Errorf("failed to replace ohlc: %w", err)
 	}
@@ -397,14 +399,31 @@ func tradingDay(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
+// dayBounds is the trading day of t as [start, next): 00:00 UTC of t's UTC
+// day and 00:00 UTC of the day after. SQL compares time >= start AND
+// time < next instead of time::date, so the comparison doesn't depend on the
+// session TimeZone (should ohlc.time ever be timestamptz) and can use the
+// (provider, symbol, time) index.
+func dayBounds(t time.Time) (time.Time, time.Time) {
+	u := t.UTC()
+	start := time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 0, 1)
+}
+
+// dateBounds is dayBounds for a calendar date.
+func dateBounds(d *pb.Date) (time.Time, time.Time) {
+	return dayBounds(time.Date(int(d.GetYear()), time.Month(d.GetMonth()), int(d.GetDay()), 0, 0, 0, 0, time.UTC))
+}
+
 // Close is the close stored for provider, symbol, and calendar day.
 func (db *OHLC) Close(ctx context.Context, provider, symbol string, day time.Time) (float64, error) {
 	var closePx float64
+	dayStart, dayEnd := dayBounds(day)
 	err := db.Conn.QueryRow(
 		ctx,
 		`SELECT close::float8 FROM ohlc
-		 WHERE provider = $1 AND symbol = $2 AND time::date = $3::date`,
-		priceProvider(provider), symbol, tradingDay(day),
+		 WHERE provider = $1 AND symbol = $2 AND time >= $3 AND time < $4`,
+		priceProvider(provider), symbol, dayStart, dayEnd,
 	).Scan(&closePx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read ohlc close: %w", err)
@@ -418,19 +437,21 @@ func (db *OHLC) Exists(ctx context.Context, provider string, symbols []string, s
 	var endExists bool
 
 	provider = priceProvider(provider)
+	startFrom, startTo := dateBounds(start)
+	endFrom, endTo := dateBounds(end)
 	for _, symbol := range symbols {
 		err := db.Conn.QueryRow(
 			ctx,
-			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE provider = $1 AND symbol = $2 AND time::date = $3)",
-			provider, symbol, pb.DateToDateString(start)).Scan(&startExists)
+			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE provider = $1 AND symbol = $2 AND time >= $3 AND time < $4)",
+			provider, symbol, startFrom, startTo).Scan(&startExists)
 		if err != nil {
 			return false, fmt.Errorf("failed to check if ohlc exists: %w", err)
 		}
 
 		err = db.Conn.QueryRow(
 			ctx,
-			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE provider = $1 AND symbol = $2 AND time::date = $3)",
-			provider, symbol, pb.DateToDateString(end)).Scan(&endExists)
+			"SELECT EXISTS(SELECT 1 FROM ohlc WHERE provider = $1 AND symbol = $2 AND time >= $3 AND time < $4)",
+			provider, symbol, endFrom, endTo).Scan(&endExists)
 		if err != nil {
 			return false, fmt.Errorf("failed to check if ohlc exists: %w", err)
 		}

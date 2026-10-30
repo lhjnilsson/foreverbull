@@ -130,6 +130,11 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 		syncLockTimeout, syncIdleTimeout); err != nil {
 		return &StoreError{Symbol: symbol, Err: err}
 	}
+	// The lock key is the symbol only, not provider and symbol: syncs of one
+	// symbol from two providers wait for each other too. That is more
+	// serialisation than the per-provider rows need, but never less, and it
+	// keeps one key per instrument. hashtext can collide, which only makes
+	// two unrelated symbols wait for each other.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ohlc:' || $1))`, symbol); err != nil {
 		return &StoreError{Symbol: symbol, Err: err}
 	}
