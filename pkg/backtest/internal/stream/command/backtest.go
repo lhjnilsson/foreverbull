@@ -998,6 +998,9 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	notices, err := engine.Ingest(ctx, b, object)
 	if err != nil {
+		if refused := ingestMissingSessions(ctx, engine, db, backtests, b, backtestID, err); refused != nil {
+			return refused
+		}
 		return discardFailedIngest(ctx, backtests, b.Name, backtestID, err)
 	}
 	if len(notices) > 0 {

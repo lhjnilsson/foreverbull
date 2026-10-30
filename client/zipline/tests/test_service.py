@@ -164,6 +164,25 @@ class TestIngestFailure:
             "\nDetails: OperationalError: connection refused"
         )
 
+    def test_missing_sessions_are_data_loss_with_every_gap(self):
+        # The broker reads this reason and names the gaps in the create's
+        # missing-session sentence, so its shape is fixed.
+        import pandas as pd
+
+        from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
+
+        exc = MissingSessionsError(
+            {
+                "AAA": list(pd.DatetimeIndex(["2024-02-14"])),
+                "BBB": list(pd.DatetimeIndex(["2024-02-20", "2024-02-21", "2024-03-05"])),
+            }
+        )
+        code, details = service.ingest_failure(exc)
+        assert code == grpc.StatusCode.DATA_LOSS
+        assert details.split("\nDetails: ")[0] == (
+            "missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05"
+        )
+
     def test_other_error_is_redacted(self):
         code, details = service.ingest_failure(ValueError("bad bundle at postgresql://u:hunter22@h/db"))
         assert code == grpc.StatusCode.INTERNAL

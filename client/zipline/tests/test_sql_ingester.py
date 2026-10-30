@@ -9,6 +9,7 @@ from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 from foreverbull_zipline.data_bundles.foreverbull import session_labels
+from zipline.utils.calendar_utils import get_calendar
 
 from foreverbull.models.finance import DEFAULT_PROVIDER
 from foreverbull.models.finance import ohlc_provider
@@ -31,6 +32,13 @@ def _bars(symbol: str, days: list[date], price: float) -> pd.DataFrame:
             "time": [datetime(d.year, d.month, d.day) for d in days],
         }
     )
+
+
+def _session_bars(symbol: str, first: date, last: date, price: float) -> pd.DataFrame:
+    # A bar on every XNYS session from first to last: the ingester refuses a
+    # sid that skips one.
+    sessions = get_calendar("XNYS").sessions_in_range(pd.Timestamp(first), pd.Timestamp(last))  # type: ignore[arg-type]
+    return _bars(symbol, [day.date() for day in sessions], price)
 
 
 def _bars_at_open(days: list[date], price: float) -> pd.DataFrame:
@@ -147,10 +155,10 @@ def test_group_symbols_by_instrument_keeps_rename_on_one_sid():
 def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
     engine = FakeEngine(
         {
-            "FB": _bars("FB", [date(2022, 12, 30), date(2023, 1, 30)], 10.0),
-            "META": _bars("META", [date(2023, 1, 31), date(2023, 2, 27)], 11.0),
-            "AAPL": _bars("AAPL", [date(2022, 12, 30), date(2023, 2, 27)], 12.0),
-            "OEF": _bars("OEF", [date(2022, 12, 30), date(2023, 2, 27)], 13.0),
+            "FB": _session_bars("FB", date(2022, 12, 30), date(2023, 1, 30), 10.0),
+            "META": _session_bars("META", date(2023, 1, 31), date(2023, 2, 27), 11.0),
+            "AAPL": _session_bars("AAPL", date(2022, 12, 30), date(2023, 2, 27), 12.0),
+            "OEF": _session_bars("OEF", date(2022, 12, 30), date(2023, 2, 27), 13.0),
         }
     )
     aliases = pd.DataFrame(
@@ -191,10 +199,10 @@ def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
 def test_sql_ingester_sets_auto_close_when_no_membership_table():
     engine = FakeEngine(
         {
-            "AAPL": _bars("AAPL", [date(2022, 12, 1), date(2023, 2, 28)], 12.0),
-            "FB": _bars("FB", [date(2022, 12, 1), date(2023, 2, 28)], 10.0),
-            "META": _bars("META", [date(2022, 12, 1), date(2023, 2, 28)], 11.0),
-            "OEF": _bars("OEF", [date(2022, 12, 1), date(2023, 2, 28)], 13.0),
+            "AAPL": _session_bars("AAPL", date(2022, 12, 1), date(2023, 2, 28), 12.0),
+            "FB": _session_bars("FB", date(2022, 12, 1), date(2023, 2, 28), 10.0),
+            "META": _session_bars("META", date(2022, 12, 1), date(2023, 2, 28), 11.0),
+            "OEF": _session_bars("OEF", date(2022, 12, 1), date(2023, 2, 28), 13.0),
         }
     )
     ingester = SQLIngester(_backtest(), engine=engine, aliases=pd.DataFrame())

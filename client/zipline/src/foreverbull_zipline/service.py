@@ -27,6 +27,7 @@ from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb as calenda
 from foreverbull.pb.foreverbull.finance.service.v1 import calendar_pb_grpc as calendar_service_pb_grpc
 from foreverbull.pb.foreverbull.finance.v1 import calendar_pb
 from foreverbull_zipline.data_bundles.bundle_alignment import stamp_bundle_version
+from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
@@ -42,8 +43,9 @@ def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
     """Status code and details for a failed ingest, with every password redacted.
 
     FAILED_PRECONDITION means the data service itself is broken (a missing
-    driver), UNAVAILABLE that the database could not be reached. Anything else
-    is INTERNAL. The text is redacted again here because a bundle writer or
+    driver), UNAVAILABLE that the database could not be reached, and
+    DATA_LOSS that a sid has sessions with no bar (MissingSessionsError).
+    Anything else is INTERNAL. The text is redacted again here because a bundle writer or
     driver can quote a URL that did not pass through get_engine.
     """
     cause = getattr(exc, "cause", None) or describe_exception(exc)
@@ -54,6 +56,11 @@ def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
         case exceptions.ConnectionError():
             reason = f"the data service {_lower_first(str(exc))}"
             code = grpc.StatusCode.UNAVAILABLE
+        case MissingSessionsError():
+            # DATA_LOSS only for this: the broker reads the reason and names
+            # the gaps in the create's missing-session sentence.
+            reason = str(exc)
+            code = grpc.StatusCode.DATA_LOSS
         case _:
             reason = "the data service failed while ingesting prices"
             code = grpc.StatusCode.INTERNAL
@@ -131,10 +138,7 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
             storage = Storage.from_environment()
             storage.upload_object(request.bucket, request.object, f"/tmp/{backtest.name}.tar.gz")
             self.logger.debug("Ingestion uploaded")
-        notices = ingester.missing_price_notices()
-        for notice in notices:
-            self.logger.warning("%s: %s", backtest.name, notice)
-        return engine_service_pb.IngestResponse(notices=notices)
+        return engine_service_pb.IngestResponse()
 
     def new_session(self, request: engine_service_pb.NewSessionRequest, context):
         engine = Engine(
