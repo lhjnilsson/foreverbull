@@ -123,3 +123,18 @@ func TestClientFacingAfterPgx(t *testing.T) {
 	require.Equal(t, codes.Internal, st.Code())
 	require.NotContains(t, err.Error(), "s3cret")
 }
+
+// The finance GetAsset no-ISIN status crosses service-to-service calls
+// through this interceptor; its code and message must reach the caller.
+func TestClientFacingKeepsNoISINNotFound(t *testing.T) {
+	t.Parallel()
+
+	handler := func(context.Context, interface{}) (interface{}, error) {
+		return nil, status.Error(codes.NotFound, "no ISIN for XYZ")
+	}
+	_, err := clientFacingUnary(context.Background(), nil, &grpc.UnaryServerInfo{}, handler)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.NotFound, st.Code())
+	require.Equal(t, "no ISIN for XYZ", st.Message())
+}

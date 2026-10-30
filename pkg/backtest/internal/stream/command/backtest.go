@@ -24,6 +24,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	ss "github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -398,11 +399,6 @@ func uniqueAliasSymbols(aliases []universe.Alias) []string {
 	return symbols
 }
 
-// noISINLookupPrefix starts the message of the NotFound GetAsset status for
-// an equity the provider has no ISIN for (lhjnilsson/foreverbull#240).
-// Without an ISIN the member can't be followed across ticker changes.
-const noISINLookupPrefix = "no ISIN for "
-
 // memberLookupProvider is the provider every member lookup goes through.
 // GetAsset is Yahoo for every backtest provider, so the copy names it.
 const memberLookupProvider = "yahoo"
@@ -442,14 +438,16 @@ func lookupMemberAssets(ctx context.Context, client financeServicePB.MarketdataC
 }
 
 // isNoISINLookupError reports whether a GetAsset error is the provider's
-// answer that the equity has no ISIN: a NotFound status whose message
-// starts with "no ISIN for ". Anything else is a failed lookup.
+// answer that the equity has no ISIN: a NotFound status whose message is
+// the finance service's no-ISIN text (financeapi.IsNoISIN). Without an ISIN
+// the member can't be followed across ticker changes. Anything else is a
+// failed lookup.
 func isNoISINLookupError(err error) bool {
 	st, ok := status.FromError(err)
 	if !ok {
 		return false
 	}
-	return st.Code() == codes.NotFound && strings.HasPrefix(st.Message(), noISINLookupPrefix)
+	return st.Code() == codes.NotFound && financeapi.IsNoISIN(st.Message())
 }
 
 // rpcErrorText is the gRPC status message, or the error text when err
@@ -753,12 +751,6 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
-// isNoISINError reports the finance service's STATUS_ERROR for an asked
-// equity the provider has no ISIN for.
-func isNoISINError(text string) bool {
-	return strings.HasPrefix(text, "no ISIN for ")
-}
-
 // refusedPriceError and refusedVolumeError match the finance service's
 // sentences for a bar its storage refused. Only these exact shapes are shown;
 // other raw text is not.
@@ -825,7 +817,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
 		nextStep = noPriceDataNextStep
-	} else if isNoISINError(errText) {
+	} else if financeapi.IsNoISIN(errText) {
 		lead = fmt.Sprintf("%s doesn't identify %s well enough to follow ticker changes, so it can't be used.",
 			strings.ToLower(provider), symbol)
 		nextStep = fmt.Sprintf(noISINNextStep, symbol)

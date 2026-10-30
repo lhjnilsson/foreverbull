@@ -16,6 +16,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -99,6 +100,47 @@ func (suite *MarketdataTest) TestGetAsset() {
 	suite.Require().NotNil(rsp)
 	suite.Equal("AAPL", rsp.Asset.Symbol)
 	suite.Equal("Apple Inc.", rsp.Asset.Name)
+}
+
+// The provider served the ISIN lookup and has no ISIN for the equity. The
+// call goes through the server's interceptors, and the caller gets NotFound
+// with the shared no-ISIN text naming only the requested symbol.
+func (suite *MarketdataTest) TestGetAssetNoISINIsNotFound() {
+	suite.marketdata.On("GetAsset", "XYZ").Return(nil, fmt.Errorf("error getting isin for symbol XYZ: %w",
+		fmt.Errorf("ISIN not found for symbol XYZ: %w", marketdata.ErrNoISIN)))
+
+	req := &servicePb.GetAssetRequest{Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "XYZ"}}
+	rsp, err := suite.client.GetAsset(context.Background(), req)
+	suite.Require().Error(err)
+	suite.Nil(rsp)
+	st, ok := status.FromError(err)
+	suite.Require().True(ok)
+	suite.Equal(codes.NotFound, st.Code())
+	suite.Equal("no ISIN for XYZ", st.Message())
+	suite.True(financeapi.IsNoISIN(st.Message()))
+}
+
+// A failed ISIN request is not a no-ISIN answer: it keeps the generic
+// failure code, and neither the URL nor its crumb reaches the caller.
+func (suite *MarketdataTest) TestGetAssetFailedISINRequestIsNotNotFound() {
+	suite.marketdata.On("GetAsset", "XYZ").Return(nil, fmt.Errorf("error getting isin for symbol XYZ: %w",
+		&url.Error{
+			Op:  "Get",
+			URL: "https://query2.finance.yahoo.com/v1/finance/search?q=XYZ&crumb=s3cr3tcrumb",
+			Err: errors.New("503 Service Unavailable"),
+		}))
+
+	req := &servicePb.GetAssetRequest{Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "XYZ"}}
+	_, err := suite.client.GetAsset(context.Background(), req)
+	suite.Require().Error(err)
+	st, ok := status.FromError(err)
+	suite.Require().True(ok)
+	suite.NotEqual(codes.NotFound, st.Code())
+	suite.Equal(codes.Internal, st.Code())
+	suite.False(financeapi.IsNoISIN(st.Message()))
+	for _, raw := range []string{"crumb", "s3cr3tcrumb", "http", "yahoo.com", "search?q"} {
+		suite.NotContains(st.Message(), raw)
+	}
 }
 
 func (suite *MarketdataTest) TestGetIndex() {
