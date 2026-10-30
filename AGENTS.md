@@ -272,7 +272,7 @@ Manual Kind/Helm: `task kind:create`, `task kind:load`, `task helm:install` (cha
 
 ### Environment variables
 
-Go server defaults are in `internal/environment/env.go`. Empty vars are filled at process start.
+Go server defaults are in `internal/environment/env.go`. Empty optional vars are filled at process start. A required var has no default: when it is empty, the broker names it and stops at startup.
 
 | Variable | Default / notes |
 | --- | --- |
@@ -281,12 +281,12 @@ Go server defaults are in `internal/environment/env.go`. Empty vars are filled a
 | `ZIPLINE_CONTAINER_NAME` | Go default `foreverbull_zipline`. **Helm** sets `zipline` (Service DNS). `internal/container` looks up that name as a Pod or `app.kubernetes.io/name`, skipping Terminating pods. The broker dials `<name>:50055` for ingest, so the name must also resolve as the Service. Each session looks the pod up again and uses its IP, because session ports are per pod. An `Unavailable` error makes the next call resolve Zipline again |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015`, both inclusive. Session, trading, and socket listeners all scan this range. A value that is not a port, or a start above the end, stops the broker at startup |
 | `LOG_LEVEL` | `warning` (`debug`/`info`/`warning`/`error`); local `fbenv` sets `debug` on the broker (`--set broker.logLevel=debug`) |
-| `POSTGRES_URL` | Go default: `postgres://postgres:foreverbull@localhost:5432/postgres?sslmode=disable`. **Helm** Postgres is user/db `foreverbull`; the password comes from Secret `foreverbull-credentials` (`foreverbull` on local Kind, generated on clusters without `expose.hostPort`), and the broker pod gets `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull`. Host-side against local Kind: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable`. The broker pings about a minute (20 tries, 3 s apart), then exits non-zero with an error naming the host and port |
-| `NATS_URL` | `nats://localhost:4222` (in-cluster: `nats://nats:4222`) |
+| `POSTGRES_URL` | Required, no default. **Helm** Postgres is user/db `foreverbull`; the password comes from Secret `foreverbull-credentials` (`foreverbull` on local Kind, generated on clusters without `expose.hostPort`), and the broker pod gets `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull`. Host-side against local Kind: `postgres://foreverbull:foreverbull@localhost:5432/foreverbull?sslmode=disable`. The broker pings about a minute (20 tries, 3 s apart), then exits non-zero with an error naming the host and port |
+| `NATS_URL` | Required, no default (in-cluster: `nats://nats:4222`) |
 | `NATS_DURABLE` | `foreverbull` |
 | `NATS_DELIVERY_POLICY` | `all` |
-| `MINIO_URL` | `localhost:9000` (in-cluster: `minio:9000`) |
-| `MINIO_ACCESS_KEY` / `MINIO_SECRET` | Go default `minioadmin` / `minioadmin`. **Helm** reads them from Secret `foreverbull-credentials` (same values on local Kind, generated secret key elsewhere). See [deploy/README.md](deploy/README.md#credentials) |
+| `MINIO_URL` | Required, no default (in-cluster: `minio:9000`) |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET` | Required, no default. **Helm** reads them from Secret `foreverbull-credentials` (same values on local Kind, generated secret key elsewhere). See [deploy/README.md](deploy/README.md#credentials) |
 | `POD_NAMESPACE` / `KUBERNETES_NAMESPACE` | Broker chart sets `POD_NAMESPACE` from the pod namespace; `internal/container` uses it for the in-cluster client |
 | `TRADING_ENABLED` | `false`. Kill switch for paper `PlaceOrder` (`deploy --no-dry-run`). Not a provider. Deploy mode LIVE is refused. Never put API keys, tokens, or passwords in the chart, Postgres, or `.foreverbull/config.yaml`. |
 | `TRADING_PROFILES_FILE` | Profiles YAML. In-cluster path `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading` key `profiles.yaml`. The Secret is optional. Absent file plus `TRADING_ENABLED=false` starts with an empty registry; `TRADING_ENABLED=true` and a missing or invalid file is a startup error. Local Kind: if `.foreverbull/trading-profiles.yaml` exists, `fbenv` applies it as that Secret and does not print the file. Example: `deploy/trading-profiles.example.yaml` (empty credentials, no `baseUrl`). A profile names an adapter (`alpaca`, `saxo`, `ibkr`, or `ig`), currency (default `USD`), and credentials. Two deployments on one profile share that account. `GetPortfolio` still returns `ErrCurrency` when the account currency differs. |

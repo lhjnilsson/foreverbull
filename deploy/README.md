@@ -64,7 +64,11 @@ backtest does not close them. See [Authentication](#authentication).
 
 ### In-cluster env (broker)
 
-Matches `internal/environment/env.go` plus chart overrides:
+Matches `internal/environment/env.go` plus chart overrides. The broker
+checks every setting at startup and exits with one line per bad variable.
+`POSTGRES_URL`, `NATS_URL`, `MINIO_URL`, `MINIO_ACCESS_KEY`, and
+`MINIO_SECRET` have no default and must be set. A boolean is `true`,
+`false`, `1`, or `0` in any case; `yes`, `on`, and the like stop startup.
 
 | Variable | Value |
 | --- | --- |
@@ -75,20 +79,21 @@ Matches `internal/environment/env.go` plus chart overrides:
 | `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. Still set on the broker pod. The broker does not copy it into `ExecutionConfiguration` |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
+| `MINIO_SECURE` | `false`. The in-cluster MinIO serves plain HTTP. Set `true` for a MinIO behind TLS |
 | `SERVER_ADDRESS` | `foreverbull` |
 | `ZIPLINE_CONTAINER_NAME` | `zipline` |
 | `POD_NAMESPACE` | pod namespace (fieldRef) |
 | `GRPC_PORT` | `50055` |
 | `HTTP_PORT` | `8080` |
 | `BACKTEST_PORT_RANGE_START` / `END` | `27000` / `27015` |
-| `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning` |
+| `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning`. Only `debug`, `info`, `warning`, and `error` start |
 | `TRADING_ENABLED` | `false` |
 | `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
 | `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
 | `AUTH_COOKIE_SECURE` | unset on local Kind (`false`). The chart sets `true` when `ingress.tls` is true, or when `broker.auth.cookieSecure` is true. The session cookie is then `__Host-fb_session` |
 | `AUTH_TRUST_PROXY` | unset (`false`). When `true`, the client address is the rightmost `X-Forwarded-For` hop that is not in `AUTH_TRUSTED_PROXIES` |
-| `AUTH_TRUSTED_PROXIES` | empty. Comma-separated CIDRs of proxies whose hops are skipped |
+| `AUTH_TRUSTED_PROXIES` | empty. Comma-separated IP addresses or CIDRs of proxies whose hops are skipped. An entry that is neither stops startup |
 | `AUTH_PUBLIC_URL` | empty. Browser origin of the broker, such as `https://fb.example.com`. A cookie write without `Sec-Fetch-Site: same-origin` or `none` must send this `Origin` |
 | `AUTH_GITHUB_ALLOWED_ORGS` | empty. When set, GitHub login asks for `read:org` and rejects an account that is not an active member of one of the comma-separated orgs |
 | `TRADING_PROVIDER` | `alpaca` (`alpaca`, `saxo`, `ibkr`, or `ig`) |
