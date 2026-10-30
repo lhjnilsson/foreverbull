@@ -631,7 +631,7 @@ var refusedPriceError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invali
 // providerFaultNextStep ends a sentence about bad provider data. Since #209 a
 // bad bar is normally dropped and filled, so reaching this means an adapter
 // missed one; a plain retry won't help.
-const providerFaultNextStep = "Nothing was saved. Try another provider with --provider, " +
+const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download

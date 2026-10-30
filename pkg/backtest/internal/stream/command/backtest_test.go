@@ -760,7 +760,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNamesStorageRefusal() 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'test-backtest': yahoo sent an invalid price for XYZ on 2022-05-02 "+
-			"(0, negative or not a number). Nothing was saved. Try another provider with --provider, "+
+			"(0, negative or not a number). The backtest wasn't saved. Try another provider with --provider, "+
 			"or report it at https://github.com/lhjnilsson/foreverbull/issues.")
 	test.Require().NotContains(err.Error(), "order rejected")
 
