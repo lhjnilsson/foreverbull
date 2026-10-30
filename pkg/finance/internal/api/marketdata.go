@@ -91,6 +91,21 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 
 const downloadWorkers = 10
 
+// downloadTimeLimit bounds one DownloadHistoricalData. At the shared provider
+// rates a 10,000-symbol download takes about an hour on Yahoo or Alpaca and
+// about 85 minutes on Stooq, so this leaves room for 429 backoffs while a
+// hung provider still can't hold the request and its workers forever.
+// Symbols stored before the limit stay stored. Tests shorten it.
+var downloadTimeLimit = 2 * time.Hour
+
+// errDownloadTimeLimit is the ctx cause when downloadTimeLimit ends a
+// download, so it is told apart from the client's own deadline or cancel.
+var errDownloadTimeLimit = errors.New("download time limit reached")
+
+// metadataProvider is the provider GetAsset asks, whatever the request's
+// price provider: asset metadata stays on Yahoo.
+const metadataProvider = "yahoo"
+
 // downloadSymbols returns the request's symbols under their stored names
 // (marketdata.StoredSymbol: BRK.B, BRK-B and BRKB are BRKB) with repeats left
 // out, in request order, so each symbol is fetched, stored and reported once.
@@ -134,6 +149,9 @@ type downloadSender struct {
 	stream servicePb.Marketdata_DownloadHistoricalDataServer
 	stop   context.CancelFunc
 	err    error
+	// reported holds every symbol sent, at most MaxDownloadSymbols, so a
+	// download stopped by its time limit can name one that didn't finish.
+	reported map[string]struct{}
 }
 
 // newDownloadSender wires stop, which cancels the download's workers.
@@ -147,7 +165,12 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 	if s.err != nil {
 		return
 	}
-	if err := s.stream.Send(rsp); err != nil {
+	if err := s.stream.Send(rsp); err == nil {
+		if s.reported == nil {
+			s.reported = make(map[string]struct{})
+		}
+		s.reported[rsp.GetSymbol()] = struct{}{}
+	} else {
 		log.Err(err).Msg("error sending response, stopping the download")
 		s.err = err
 		// A sender built without newDownloadSender has no stop; it still
@@ -156,6 +179,19 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 			s.stop()
 		}
 	}
+}
+
+// firstUnreported is the first of symbols, in request order, that no
+// response was sent for, or "" when every one was.
+func (s *downloadSender) firstUnreported(symbols []string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, symbol := range symbols {
+		if _, ok := s.reported[symbol]; !ok {
+			return symbol
+		}
+	}
+	return ""
 }
 
 // sendErr is the first failed Send, or nil.
@@ -195,6 +231,20 @@ func ambiguousSymbolError(provider, symbol string) error {
 	return fmt.Errorf("%s has more than one instrument for %s", provider, symbol)
 }
 
+// providerTimedOut reports a provider call that ran out of time while the
+// download itself still had time. A database error is never one, even when
+// its driver says timeout: that stays the store failure it is.
+func providerTimedOut(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var stored *repository.StoreError
+	if errors.As(err, &stored) {
+		return false
+	}
+	return marketdata.IsProviderTimeout(err)
+}
+
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
 	rsp.Error = err.Error()
@@ -231,6 +281,10 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	asset, err := fs.marketdata.GetAsset(ctx, symbol)
 	if err != nil {
+		if providerTimedOut(ctx, err) {
+			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: metadataProvider, Symbol: symbol})
+			return nil
+		}
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
 	}
@@ -254,6 +308,12 @@ func (fs *MarketdataServer) downloadSymbol(
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
 			return blocked
+		}
+		// A provider that didn't answer in time would likely not answer for
+		// a later ticker either, so the symbol fails with the timeout.
+		if providerTimedOut(ctx, err) {
+			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: provider, Symbol: symbol})
+			return nil
 		}
 	}
 	if err != nil || len(ohlcs) == 0 {
@@ -312,6 +372,11 @@ func (fs *MarketdataServer) downloadSymbol(
 		var invalid *repository.InvalidPriceError
 		var stored *repository.StoreError
 		switch {
+		case providerTimedOut(ctx, err):
+			// A refetch under the symbol lock ran out of time. It ends before
+			// the transaction's idle timeout, so it is told as the provider's
+			// delay, not as a failure to store.
+			err = &marketdata.TimeoutError{Provider: provider, Symbol: symbol}
 		case errors.As(err, &invalid):
 		case errors.Is(err, repository.ErrNoBars):
 			err = noPriceDataError(symbol)
@@ -559,6 +624,10 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	assetRepo := repository.Asset{Conn: fs.pgx}
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
+	// The time limit ends the whole download. A symbol stored before it stays
+	// stored; one still in flight rolls back and is named in the timeout.
+	ctx, stopAtLimit := context.WithTimeoutCause(ctx, downloadTimeLimit, errDownloadTimeLimit)
+	defer stopAtLimit()
 	// The first blocked symbol or failed Send cancels the rest. Workers that
 	// already started finish their symbol, so the error is still returned once.
 	ctx, cancel := context.WithCancel(ctx)
@@ -603,6 +672,14 @@ feed:
 	}
 	if err := sender.sendErr(); err != nil {
 		return err
+	}
+	if errors.Is(context.Cause(ctx), errDownloadTimeLimit) {
+		if symbol := sender.firstUnreported(symbols); symbol != "" {
+			log.Warn().Str("provider", provider).Str("symbol", symbol).Dur("limit", downloadTimeLimit).
+				Msg("download stopped at its time limit")
+			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeoutError{Provider: provider, Symbol: symbol}).Error())
+		}
+		return nil
 	}
 	return ctx.Err()
 }
