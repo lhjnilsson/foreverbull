@@ -185,3 +185,12 @@ func TestStoredSymbol(t *testing.T) {
 	}
 }
 
+// StoredSymbol returns company+class of the parsed share class, so every
+// listed ticker must be spelled exactly that way, or a class would be stored
+// under a name that is not in the list.
+func TestShareClassTickersAreCompanyPlusClass(t *testing.T) {
+	t.Parallel()
+	for ticker, sc := range shareClassTickers {
+		require.Equal(t, ticker, sc.company+sc.class, ticker)
+	}
+}
