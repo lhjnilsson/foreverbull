@@ -1,3 +1,6 @@
+import logging
+import shlex
+
 from typing import Annotated
 from typing import Self
 
@@ -8,6 +11,7 @@ from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.table import Table
 
+from foreverbull_cli.env.environment import TOOL_HINTS
 from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
 from foreverbull_cli.env.environment import CommandError
@@ -15,13 +19,18 @@ from foreverbull_cli.env.environment import Config
 from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
+from foreverbull_cli.env.environment import ReplicaSetRevisionError
 from foreverbull_cli.env.environment import RolloutNotice
 from foreverbull_cli.env.environment import VersionError
+from foreverbull_cli.env.environment import WorkloadStatusError
 from foreverbull_cli.env.environment import ready_timeout_seconds
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 from foreverbull_cli.output import FBSpinnerColumn
 from foreverbull_cli.output import console
+
+
+log = logging.getLogger(__name__)
 
 
 class FBProgress(Progress):
@@ -42,8 +51,8 @@ class FBProgress(Progress):
 
         for task in self.tasks:
             if task.total == 2 and task.completed == 1:
-                if isinstance(exc_val, (ImagePullError, ClusterImagePullError)):
-                    # The ✖ line printed after the progress says what failed.
+                if isinstance(exc_val, (ImagePullError, ClusterImagePullError, ReplicaSetRevisionError)):
+                    # The line printed after the progress says what failed.
                     self.update(task.id, description=f"{task.description} FAILED")
                 else:
                     self.update(task.id, description=f"{task.description} FAILED: {details}")
@@ -65,6 +74,25 @@ VerboseFlag = Annotated[
         "--verbose", "-v", help="Show Docker's, the cluster's or kubectl's own error behind a failure or warning"
     ),
 ]
+
+
+def cluster_flags(
+    *,
+    cluster: str | None = None,
+    kubeconfig: str | None = None,
+    context: str | None = None,
+    namespace: str | None = None,
+    broker_address: str | None = None,
+) -> str:
+    """The cluster-selection flags given on this command line, as a suffix to repeat on a suggested command."""
+    given = (
+        ("--cluster", cluster),
+        ("--kubeconfig", kubeconfig),
+        ("--context", context),
+        ("--namespace", namespace),
+        ("--broker-address", broker_address),
+    )
+    return "".join(f" {flag} {shlex.quote(value)}" for flag, value in given if value is not None)
 
 
 def _manager(
@@ -103,8 +131,22 @@ def print_status(cm: ClusterManager):
     try:
         rows = cm.status_rows()
     except MissingToolError as exc:
-        console.print(f"Workload status needs kubectl. {exc}")
-        return
+        message = (
+            f"Couldn't check foreverbull's {'local' if cfg.is_local else 'remote'} environment: "
+            "kubectl is not installed. "
+            f"Install it from {TOOL_HINTS['kubectl']}, then run `fbenv status` again."
+        )
+        console.print(message, markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(code=1) from exc
+    except WorkloadStatusError as exc:
+        # The full kubectl command line (context, namespace, label) is for debugging, not the message.
+        log.debug("kubectl command that failed: %s", exc.command)
+        if cfg.is_local:
+            hint = "Check that Docker is running, then run `fbenv status` again."
+        else:
+            hint = "Check that the remote cluster is reachable, then run `fbenv status` again."
+        console.print(f"{exc}\n{hint}", markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(code=1) from exc
     for row in rows:
         table.add_row(row.service, row.name, row.status, row.image, row.container_id)
     console.print(table)
@@ -361,6 +403,11 @@ def stop(
             progress.update(remove_task, completed=1)
             cm.remove(purge)
             progress.update(remove_task, completed=2)
+    if remove and purge:
+        # The purge deleted what status would query (the Kind cluster, locally), so there is nothing to show.
+        where = "local" if cm.config.is_local else "remote"
+        console.print(f"The {where} environment and its data were removed.", markup=False, highlight=False)
+        return
     print_status(cm)
 
 
@@ -399,6 +446,32 @@ def update(
         fail_image_pull(exc, "fbenv update", verbose=verbose, nothing_changed=cm.config.is_local)
     except ClusterImagePullError as exc:
         fail_cluster_pull(exc, "fbenv update", verbose=verbose)
+    except ReplicaSetRevisionError as exc:
+        if cm.config.is_local:
+            # Flags on `fbenv update` apply to that run only, so repeat them for the reinstall commands.
+            flags = cluster_flags(
+                cluster=cluster,
+                kubeconfig=kubeconfig,
+                context=context,
+                namespace=namespace,
+                broker_address=broker_address,
+            )
+            lines = [
+                exc.describe(remote=False),
+                (
+                    "To fix it, reinstall the environment. This deletes all of foreverbull's data: "
+                    "stored prices, backtest results, accounts and API tokens."
+                ),
+                f"Run `fbenv stop --remove{flags}`, then `fbenv create --start{flags}`.",
+            ]
+        else:
+            # fbenv doesn't own a remote cluster, so it doesn't offer a reinstall that deletes its data.
+            lines = [
+                exc.describe(remote=True),
+                "Whoever manages that cluster needs to fix it before `fbenv update` can run.",
+            ]
+        console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(1) from exc
 
     if rollout_notice:
         warn_rollout(rollout_notice, "fbenv update", verbose=verbose)

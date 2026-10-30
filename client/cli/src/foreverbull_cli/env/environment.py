@@ -89,6 +89,8 @@ CLUSTER_PULL_FAILURE_REASONS = frozenset({"ErrImagePull", "ImagePullBackOff", "I
 # A remote `fbenv update` polls its rollout this often, for at most
 # ready_timeout_seconds, so the watch has a fixed number of kubectl calls.
 ROLLOUT_POLL_SECONDS = 2
+# `fbenv status` gives its one kubectl call this long, so an unreachable cluster can't hang it.
+STATUS_TIMEOUT_SECONDS = 15
 
 ROLLOUT_UNVERIFIED_LINE = (
     "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
@@ -179,6 +181,76 @@ class CommandError(RuntimeError):
         super().__init__(message)
         self.cmd = list(args)
         self.completed = completed
+
+
+class KubectlOutputError(RuntimeError):
+    """kubectl exited 0 but its -o json output was empty, not JSON, or not a JSON object."""
+
+    def __init__(self, args: Sequence[str], reason: str):
+        super().__init__(f"{' '.join(str(a) for a in args)} returned {reason}")
+        self.cmd = [str(a) for a in args]
+        self.reason = reason
+
+
+class WorkloadStatusError(RuntimeError):
+    """kubectl could not list the workloads, so their status is unknown.
+
+    The message names only what went wrong; the full kubectl command line is in `command`, for debug output.
+    """
+
+    def __init__(self, detail: str, args: Sequence[str], cause: Exception, *, remote: bool = False):
+        where = "remote" if remote else "local"
+        super().__init__(f"Couldn't check foreverbull's {where} environment: {detail.rstrip('.')}.")
+        self.cmd = [str(a) for a in args]
+        self.cause = cause
+
+    @classmethod
+    def from_command_error(cls, exc: CommandError, *, remote: bool = False) -> "WorkloadStatusError":
+        completed = exc.completed
+        output = (completed.stderr or completed.stdout or "").strip()
+        first_line = output.splitlines()[0].strip() if output else ""
+        detail = f"kubectl failed (exit {completed.returncode})"
+        if first_line:
+            detail = f"{detail}: {first_line}"
+        return cls(detail, exc.cmd, exc, remote=remote)
+
+    @classmethod
+    def from_timeout(
+        cls, exc: subprocess.TimeoutExpired, seconds: float, *, remote: bool = False
+    ) -> "WorkloadStatusError":
+        cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else [str(exc.cmd)]
+        return cls(f"kubectl didn't answer within {seconds:g}s", cmd, exc, remote=remote)
+
+    @classmethod
+    def from_output_error(cls, exc: KubectlOutputError, *, remote: bool = False) -> "WorkloadStatusError":
+        return cls("kubectl's answer couldn't be read", exc.cmd, exc, remote=remote)
+
+    @property
+    def command(self) -> str:
+        """The full kubectl command line that failed, for debug output only."""
+        return " ".join(self.cmd)
+
+
+class ReplicaSetRevisionError(RuntimeError):
+    """A ReplicaSet's deployment.kubernetes.io/revision annotation is missing or not a whole number.
+
+    service is the workload's name as the status table shows it (e.g. Grafana); name is the ReplicaSet's.
+    """
+
+    def __init__(self, service: str, name: str, value: Any):
+        self.service = service
+        self.name = name
+        self.value = value
+        super().__init__(self.describe(remote=False))
+
+    def describe(self, *, remote: bool) -> str:
+        """The user-facing line. A remote cluster is named, since its owner, not fbenv, has to fix it."""
+        problem = "is missing" if self.value is None or self.value == "" else "isn't a whole number"
+        where = " on the remote cluster" if remote else ""
+        return (
+            f"fbenv can't tell which version of {self.service} is running{where}: "
+            f"its revision number {problem} (got {self.value!r})."
+        )
 
 
 # Docker's pull errors, matched in order. The first match names the likely cause.
@@ -977,7 +1049,7 @@ class ClusterManager:
                     ["get", "deploy,rs,pods", "-l", PART_OF_LABEL],
                     timeout_seconds=remaining,
                 )
-            except (CommandError, subprocess.TimeoutExpired) as exc:
+            except (CommandError, subprocess.TimeoutExpired, KubectlOutputError) as exc:
                 return RolloutNotice(ROLLOUT_UNVERIFIED_LINE, detail=str(exc))
             items = data.get("items") or []
             failure = cluster_pull_failure(items)
@@ -1207,7 +1279,11 @@ class ClusterManager:
             detail = (exc.completed.stderr or exc.completed.stdout or "").strip()
             status = self._deployment_status()
             self._status_cache = None
-            diagnosis = self.broker_diagnosis()
+            try:
+                diagnosis = self.broker_diagnosis()
+            except WorkloadStatusError:
+                # The timeout is the error; a status check that fails too only means no broker advice.
+                diagnosis = None
             message = f"Timed out waiting for healthy: {', '.join(DEPLOYMENTS)}"
             if diagnosis is not None:
                 message = f"{diagnosis.advice}\n{diagnosis.detail}\n{message}"
@@ -1228,15 +1304,22 @@ class ClusterManager:
         return (result.stdout or result.stderr or "").strip()
 
     def _query_status(self) -> dict[str, WorkloadRow]:
-        not_found = {
-            name: WorkloadRow(service, name, WorkloadStatus.NOT_FOUND, "not found", "not found")
-            for service, name in WORKLOADS
-        }
+        """Return one row per workload. Raise WorkloadStatusError when kubectl fails.
+
+        A failed kubectl call says nothing about what is running, so it is never shown as "not found".
+        """
         self.require_tools("kubectl")
+        remote = not self.config.is_local
         try:
-            data = self._kubectl_json(["get", "deploy,pods", "-l", PART_OF_LABEL])
-        except CommandError:
-            return not_found
+            data = self._kubectl_json(
+                ["get", "deploy,pods", "-l", PART_OF_LABEL], timeout_seconds=STATUS_TIMEOUT_SECONDS
+            )
+        except CommandError as exc:
+            raise WorkloadStatusError.from_command_error(exc, remote=remote) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise WorkloadStatusError.from_timeout(exc, STATUS_TIMEOUT_SECONDS, remote=remote) from exc
+        except KubectlOutputError as exc:
+            raise WorkloadStatusError.from_output_error(exc, remote=remote) from exc
 
         items = data.get("items") or []
         deploys = [item for item in items if item.get("kind") == "Deployment"]
@@ -1308,11 +1391,14 @@ class ClusterManager:
         result = self.runner.run(args, timeout=timeout)
         stdout = (result.stdout or "").strip()
         if not stdout:
-            return {"items": []}
-        loaded = json.loads(stdout)
-        if isinstance(loaded, dict):
-            return loaded
-        return {"items": []}
+            raise KubectlOutputError(args, "no output")
+        try:
+            loaded = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            raise KubectlOutputError(args, f"invalid JSON ({exc.msg})") from exc
+        if not isinstance(loaded, dict):
+            raise KubectlOutputError(args, f"a JSON {type(loaded).__name__}, not an object")
+        return loaded
 
 
 def _desired_replicas(deploy: dict[str, Any]) -> int:
@@ -1388,10 +1474,13 @@ def _current_replica_sets(items: Sequence[dict[str, Any]]) -> dict[str, tuple[se
         rs_template = (item.get("spec") or {}).get("template") or {}
         if deploy_template and rs_template and not _template_matches(deploy_template, rs_template):
             continue
-        try:
-            revision = int((metadata.get("annotations") or {}).get("deployment.kubernetes.io/revision") or 0)
-        except (TypeError, ValueError):
-            revision = 0
+        raw_revision = (metadata.get("annotations") or {}).get("deployment.kubernetes.io/revision")
+        if not isinstance(raw_revision, str) or re.fullmatch(r"[0-9]+", raw_revision) is None:
+            services = {name: service for service, name in WORKLOADS}
+            raise ReplicaSetRevisionError(
+                services.get(deploy_name, deploy_name), str(metadata.get("name") or ""), raw_revision
+            )
+        revision = int(raw_revision)
         if deploy_name not in best or revision > best[deploy_name][0]:
             best[deploy_name] = (revision, item)
     current: dict[str, tuple[set[str], set[str]]] = {}
