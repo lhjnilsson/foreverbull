@@ -18,6 +18,7 @@ type NatsSubscriber struct {
 	module string
 
 	jt   nats.JetStreamContext
+	nc   *nats.Conn
 	subs []*nats.Subscription
 
 	deps *dependencyContainer
@@ -89,10 +90,14 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 				}
 			}
 		}()
-		// Progress rides on a RECEIVED state with text, so a waiter that
-		// doesn't read it still sees the task as received and running.
+		// Progress goes over core NATS, not as a task state: it isn't kept
+		// on the JetStream stream and gets no message_states row.
+		progressTopic := fmt.Sprintf(TOPIC_TASK_PROGRESS, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
 		ctx = WithProgress(ctx, func(text string) {
-			if err := publishState(msg, pb.State_STATE_RECEIVED, &Notice{Lines: []string{text}}); err != nil {
+			if ns.nc == nil {
+				return
+			}
+			if err := ns.nc.Publish(progressTopic, []byte(text)); err != nil {
 				log.Err(err).Msg("error publishing progress")
 			}
 		})

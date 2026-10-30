@@ -3,6 +3,7 @@ package stream_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -258,6 +259,23 @@ func (test *StreamTest) TestRunOrchestration() {
 		}
 		test.Equal(common.State_STATE_COMPLETED, steps[3].State)
 		test.Nil(steps[3].Error, "progress is not a notice")
+
+		// Progress is core NATS only: no task state carries it, so it is
+		// neither kept on the foreverbull stream nor written to
+		// message_states.
+		for _, state := range test.parseStates(test.T(), progressMsg) {
+			test.Empty(state.GetError(), "progress must not ride on a task state (%s)", state.State)
+		}
+		natsConnect, err := nats.Connect(environment.GetNATSURL())
+		test.Require().NoError(err)
+		defer natsConnect.Close()
+		jetstream, err := natsConnect.JetStream()
+		test.Require().NoError(err)
+		info, err := jetstream.StreamInfo("foreverbull")
+		test.Require().NoError(err)
+		test.Equal([]string{"foreverbull.>"}, info.Config.Subjects)
+		test.Equal(int64(-1), info.Config.MaxMsgsPerSubject, "the shared stream keeps no per-subject limit")
+		test.NotRegexp(`^foreverbull\.`, fmt.Sprintf(stream.TOPIC_TASK_PROGRESS, "test", "return", "progress", "id"))
 	})
 	test.Run("Error", func() {
 		o := pb.Orchestration{

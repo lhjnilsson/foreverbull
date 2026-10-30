@@ -10,9 +10,9 @@ import (
 )
 
 // downloadProgressInterval is the shortest gap between two progress
-// reports. Each report is a state kept on the JetStream stream, so an
-// hour-long download adds at most 1,800 of them, and the CLI line still
-// moves often enough not to look stuck.
+// reports. Reports go over core NATS and aren't stored, but a waiter still
+// handles each one, so an hour-long download sends at most 1,800, and the
+// CLI line still moves often enough not to look stuck.
 const downloadProgressInterval = 2 * time.Second
 
 // downloadProgress reports "Downloading prices: N of TOTAL symbols" while
