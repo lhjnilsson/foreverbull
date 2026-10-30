@@ -3,6 +3,7 @@ package marketdata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -400,6 +401,10 @@ type OHLCResponse struct {
 	}
 }
 
+// yahooChartNotFound is the chart error code for a ticker Yahoo has no
+// bars for ("No data found, symbol may be delisted").
+const yahooChartNotFound = "Not Found"
+
 func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	chartURL := y.chartURL
 	if chartURL == "" {
@@ -431,6 +436,11 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	if err := blockedError("yahoo", strings.ToUpper(symbol), resp.Header.Get("Content-Type"), body); err != nil {
 		return nil, err
 	}
+	// Yahoo answers an unknown ticker with 404 and a "Not Found" chart error.
+	// Any other non-200 is a failed request, whatever the body says.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: HTTP %s", symbol, resp.Status)
+	}
 
 	data := OHLCResponse{}
 	err = json.Unmarshal(body, &data)
@@ -439,7 +449,15 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	}
 
 	if data.Chart.Error.Code != "" {
-		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %v", symbol, data.Chart.Error.Description)
+		description := errors.New(data.Chart.Error.Description)
+		if data.Chart.Error.Code == yahooChartNotFound {
+			// Yahoo answered: it has no chart for this ticker.
+			description = noBars(data.Chart.Error.Description)
+		}
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, description)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: HTTP %s", symbol, resp.Status)
 	}
 
 	if len(data.Chart.Result) == 0 {

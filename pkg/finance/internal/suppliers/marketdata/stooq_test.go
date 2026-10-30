@@ -141,11 +141,17 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 		fixture    string
 		body       string
 		wantSubstr string
+		// noBars is true when Stooq answered with no bars for the symbol,
+		// which a download may read as "no prices". Every other error is a
+		// failed request and must not be.
+		noBars bool
 	}{
 		{name: "empty body", status: http.StatusOK, fixture: "empty.csv", wantSubstr: "empty response"},
-		{name: "header only", status: http.StatusOK, fixture: "header_only.csv", wantSubstr: "empty response"},
-		{name: "no data", status: http.StatusOK, fixture: "no_data.txt", wantSubstr: "missing file"},
+		{name: "header only", status: http.StatusOK, fixture: "header_only.csv", wantSubstr: "empty response", noBars: true},
+		{name: "no data", status: http.StatusOK, fixture: "no_data.txt", wantSubstr: "missing file", noBars: true},
 		{name: "malformed", status: http.StatusOK, fixture: "malformed.csv", wantSubstr: "unparsable CSV"},
+		{name: "daily limit", status: http.StatusOK, body: "Exceeded the daily hits limit", wantSubstr: "daily hits limit"},
+		{name: "no data and daily limit", status: http.StatusOK, body: "No data\nExceeded the daily hits limit", wantSubstr: "daily hits limit"},
 		{name: "http 404", status: http.StatusNotFound, body: "not found", wantSubstr: "missing file"},
 		{name: "http 500", status: http.StatusInternalServerError, body: "oops", wantSubstr: "missing file"},
 	}
@@ -165,6 +171,11 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 			bars, err := client.GetOHLC("AAPL", start, &end)
 			require.Error(t, err)
 			require.ErrorContains(t, err, tc.wantSubstr)
+			if tc.noBars {
+				require.ErrorIs(t, err, marketdata.ErrNoBars)
+			} else {
+				require.NotErrorIs(t, err, marketdata.ErrNoBars)
+			}
 			require.Nil(t, bars)
 		})
 	}
