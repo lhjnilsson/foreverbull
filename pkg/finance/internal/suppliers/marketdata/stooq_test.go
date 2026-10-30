@@ -1,7 +1,6 @@
 package marketdata_test
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -172,7 +171,11 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 			bars, err := client.GetOHLC("AAPL", start, &end)
 			require.Error(t, err)
 			require.ErrorContains(t, err, tc.wantSubstr)
-			require.Equal(t, tc.noBars, errors.Is(err, marketdata.ErrNoBars), err.Error())
+			if tc.noBars {
+				require.ErrorIs(t, err, marketdata.ErrNoBars)
+			} else {
+				require.NotErrorIs(t, err, marketdata.ErrNoBars)
+			}
 			require.Nil(t, bars)
 		})
 	}

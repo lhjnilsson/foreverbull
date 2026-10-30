@@ -900,7 +900,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenPriceRequestF
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	var notice *stream.Notice
-	test.Require().False(errors.As(err, &notice), "a failed price request must not leave the symbol out: %v", err)
+	test.Require().NotErrorAs(err, &notice, "a failed price request must not leave the symbol out: %v", err)
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'test-backtest': the price download failed for XYZ. The backtest wasn't saved. "+
 			"Try again in a few minutes, or use another provider with --provider.")
@@ -940,7 +940,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenTickerSearchF
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	var notice *stream.Notice
-	test.Require().False(errors.As(err, &notice), "a failed ticker search must not leave the symbol out: %v", err)
+	test.Require().NotErrorAs(err, &notice, "a failed ticker search must not leave the symbol out: %v", err)
 	test.Require().EqualError(err,
 		"Couldn't load data for backtest 'test-backtest': the price download failed for FB. The backtest wasn't saved. "+
 			"Try again in a few minutes, or use another provider with --provider.")
@@ -985,7 +985,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenLeftOutRowsDo
 
 	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
 	var notice *stream.Notice
-	test.Require().False(errors.As(err, &notice), "no notice when the left-out rows don't match: %v", err)
+	test.Require().NotErrorAs(err, &notice, "no notice when the left-out rows don't match: %v", err)
 	test.Require().EqualError(err, "Downloading prices failed: disabling the symbols left out changed 0 period assets, want 1. "+
 		"Nothing was changed. Run the same create again.")
 
@@ -1012,7 +1012,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataETFMemberWithNoPricesF
 
 	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("etf-unpriced"))
 	var notice *stream.Notice
-	test.Require().False(errors.As(err, &notice), "an ETF member must not be left out: %v", err)
+	test.Require().NotErrorAs(err, &notice, "an ETF member must not be left out: %v", err)
 	test.Require().EqualError(err, "Couldn't load data for backtest 'etf-unpriced': no price data for FB "+
 		"between 2021-01-01 and 2021-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
 
@@ -1088,7 +1088,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
 			backtests := repository.Backtest{Conn: test.db}
 			if tc.wantErr != "" {
 				var notice *stream.Notice
-				test.Require().False(errors.As(err, &notice), "nothing may be left out: %v", err)
+				test.Require().NotErrorAs(err, &notice, "nothing may be left out: %v", err)
 				test.Require().EqualError(err, tc.wantErr)
 				_, err = backtests.Get(context.TODO(), "test-backtest")
 				test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -1118,7 +1118,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenOnlyListedBen
 	test.Require().Equal("SPY", test.backtest.GetBenchmark())
 	err := test.downloadWithUnpriced([]string{"SPY", "XYZ"}, []string{"XYZ"})
 	var notice *stream.Notice
-	test.Require().False(errors.As(err, &notice), "XYZ must not be left out: %v", err)
+	test.Require().NotErrorAs(err, &notice, "XYZ must not be left out: %v", err)
 	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': no price data for XYZ "+
 		"between 2022-01-01 and 2023-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
 
