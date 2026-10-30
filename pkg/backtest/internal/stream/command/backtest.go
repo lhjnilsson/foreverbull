@@ -749,6 +749,10 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
 				return blocked
 			}
+			if symbol, text, ok := timedOutDownload(err); ok {
+				return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
+					provider, symbol, startDate, endDate, text)
+			}
 			if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 				return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
 			}
@@ -797,6 +801,40 @@ func ambiguousSymbolProvider(text, symbol string) (string, bool) {
 	return "", false
 }
 
+// providerTimeoutError matches the finance service's sentence for a provider
+// that didn't answer for a symbol in time, per symbol as STATUS_ERROR or for
+// the whole download at its time limit. Only this exact shape is shown.
+var providerTimeoutError = regexp.MustCompile(`^(yahoo|stooq|alpaca) took too long to respond for ([A-Za-z0-9.^=_-]{1,32})$`)
+
+// providerTimeoutProvider returns the provider named in text when it is the
+// timeout sentence for symbol, the ticker this response is about.
+func providerTimeoutProvider(text, symbol string) (string, bool) {
+	match := providerTimeoutError.FindStringSubmatch(text)
+	if match == nil {
+		return "", false
+	}
+	if match[2] == symbol {
+		return match[1], true
+	}
+	return "", false
+}
+
+// timedOutDownload returns the symbol and the sentence when err is the
+// finance service stopping the download at its time limit: DeadlineExceeded
+// with the timeout sentence. The client's own deadline carries other text
+// and is not shown this way.
+func timedOutDownload(err error) (string, string, bool) {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.DeadlineExceeded {
+		return "", "", false
+	}
+	match := providerTimeoutError.FindStringSubmatch(st.Message())
+	if match == nil {
+		return "", "", false
+	}
+	return match[2], st.Message(), true
+}
+
 // isRefusedBarError reports the finance service's refused-bar sentence.
 func isRefusedBarError(text string) bool {
 	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
@@ -836,6 +874,9 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
+	} else if provider, ok := providerTimeoutProvider(errText, symbol); ok {
+		lead = fmt.Sprintf("%s took too long to respond for %s.", provider, symbol)
+		nextStep = "The backtest wasn't saved. Try again later, or use another provider with --provider."
 	} else if provider, ok := ambiguousSymbolProvider(errText, symbol); ok {
 		lead = fmt.Sprintf("%s has more than one instrument for %s.", provider, symbol)
 		nextStep = "The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), " +

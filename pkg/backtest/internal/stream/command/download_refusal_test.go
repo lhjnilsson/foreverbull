@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -78,6 +79,41 @@ func TestAmbiguousSymbolProviderOnlyMatchesTheRefusal(t *testing.T) {
 		"empty":               {"", ""},
 	} {
 		_, ok := ambiguousSymbolProvider(tc.text, tc.symbol)
+		require.False(t, ok, name)
+	}
+}
+
+// Only the finance service's exact timeout sentence, for the symbol the
+// response is about, names the provider and the ticker.
+func TestProviderTimeoutProviderOnlyMatchesTheSentence(t *testing.T) {
+	for _, provider := range []string{"yahoo", "stooq", "alpaca"} {
+		got, ok := providerTimeoutProvider(provider+" took too long to respond for AAPL", "AAPL")
+		require.True(t, ok, provider)
+		require.Equal(t, provider, got)
+	}
+	for name, text := range map[string]string{
+		"other symbol":      "alpaca took too long to respond for MSFT",
+		"unknown provider":  "The price provider took too long to respond for AAPL",
+		"trailing raw text": "alpaca took too long to respond for AAPL: dial tcp",
+		"leading raw text":  "error: alpaca took too long to respond for AAPL",
+		"empty":             "",
+	} {
+		_, ok := providerTimeoutProvider(text, "AAPL")
+		require.False(t, ok, name)
+	}
+
+	symbol, text, ok := timedOutDownload(status.Error(codes.DeadlineExceeded, "stooq took too long to respond for VOD.L"))
+	require.True(t, ok)
+	require.Equal(t, "VOD.L", symbol)
+	require.Equal(t, "stooq took too long to respond for VOD.L", text)
+	for name, err := range map[string]error{
+		"other code":      status.Error(codes.Internal, "stooq took too long to respond for VOD.L"),
+		"client deadline": status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+		"not a status":    errors.New("stooq took too long to respond for VOD.L"),
+		"symbol too long": status.Error(codes.DeadlineExceeded, "stooq took too long to respond for "+strings.Repeat("A", 33)),
+		"nil":             nil,
+	} {
+		_, _, ok := timedOutDownload(err)
 		require.False(t, ok, name)
 	}
 }
