@@ -50,7 +50,7 @@ func TestSetupEnvironmentEnvOnlyDoesNotTouchDocker(t *testing.T) {
 			portRange, err := environment.GetBacktestPortRange()
 			require.NoError(t, err)
 			require.Equal(t, environment.PortRange{Start: 37000, End: 37100}, portRange)
-			require.Equal(t, environment.PostgresURLDefault, environment.GetPostgresURL())
+			require.Equal(t, environment.PostgresURLTestDefault, environment.GetPostgresURL())
 		})
 	}
 }
@@ -72,7 +72,7 @@ func TestSetupEnvironmentPostgresUniqueDatabasesAndReuse(t *testing.T) {
 	SetupEnvironment(t, &Containers{Postgres: true})
 
 	url1 := environment.GetPostgresURL()
-	require.NotEqual(t, environment.PostgresURLDefault, url1)
+	require.NotEqual(t, environment.PostgresURLTestDefault, url1)
 	require.Equal(t, "true", os.Getenv("TESTCONTAINERS_RYUK_DISABLED"))
 	require.Equal(t, "host.docker.internal", environment.GetServerAddress())
 	require.Equal(t, 1, namedContainerCount(t, "foreverbull-testing-postgres"))
