@@ -351,7 +351,7 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, start
 	bars []*financepb.OHLC,
 ) error {
 	if len(bars) == 0 {
-		return &NoBarsError{Symbol: symbol, Start: start, End: end}
+		return &NoBarsError{Provider: provider, Symbol: symbol, Start: start, End: end}
 	}
 	if err := ValidateBars(provider, symbol, bars); err != nil {
 		return err

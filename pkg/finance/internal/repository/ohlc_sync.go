@@ -14,12 +14,16 @@ import (
 var ErrNoBars = errors.New("no price data")
 
 // NoBarsError is a fetch that had to return bars and returned none. It is an
-// error so no caller reports success after storing nothing. The text starts
-// with "no price data for SYM", the prefix backtest create already explains.
+// error so no caller reports success after storing nothing. Its text is the
+// same sentence backtest create shows when a provider returns no prices: it
+// names the provider and the dates and suggests what to try next. The
+// DownloadHistoricalData RPC still reports it to backtest create with its own
+// "no price data for SYM" status text.
 type NoBarsError struct {
-	Symbol string
-	Start  time.Time
-	End    *time.Time
+	Provider string
+	Symbol   string
+	Start    time.Time
+	End      *time.Time
 }
 
 func (e *NoBarsError) Error() string {
@@ -27,7 +31,9 @@ func (e *NoBarsError) Error() string {
 	if e.End != nil {
 		end = tradingDay(*e.End)
 	}
-	return fmt.Sprintf("no price data for %s between %s and %s", e.Symbol, tradingDay(e.Start), end)
+	return fmt.Sprintf("%s returned no prices for %s between %s and %s. "+
+		"Check that %s traded between those dates, try again later, or use another provider with --provider.",
+		priceProvider(e.Provider), e.Symbol, tradingDay(e.Start), end, e.Symbol)
 }
 
 func (e *NoBarsError) Unwrap() error { return ErrNoBars }
@@ -41,7 +47,8 @@ type StoreError struct {
 }
 
 func (e *StoreError) Error() string {
-	return fmt.Sprintf("couldn't store prices for %s", e.Symbol)
+	return fmt.Sprintf("Couldn't store prices for %s. Try again in a few minutes. "+
+		"If it keeps failing, report it at https://github.com/lhjnilsson/foreverbull/issues.", e.Symbol)
 }
 
 func (e *StoreError) Unwrap() error { return e.Err }

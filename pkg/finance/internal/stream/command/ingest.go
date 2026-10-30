@@ -97,8 +97,9 @@ func Ingest(ctx context.Context, message stream.Message) error {
 
 // ingestSymbol stores bars for one symbol through OHLC.Sync, the overlap and
 // re-scale rule the DownloadHistoricalData RPC uses too. A database error
-// becomes "couldn't store prices for SYM" and its cause goes to the server
-// log, so no SQL or driver text reaches the task state.
+// becomes the fixed "Couldn't store prices for SYM. Try again …" sentence and
+// its cause goes to the server log, so no SQL or driver text reaches the task
+// state.
 func ingestSymbol(ctx context.Context, ohlc *repository.OHLC, bars supplier.Marketdata,
 	provider, symbol string, start time.Time, end *time.Time,
 ) error {

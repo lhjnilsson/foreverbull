@@ -51,8 +51,19 @@ func (test *OHLCTests) TestReplaceRangeWithNoBarsFails() {
 
 	err := test.ohlcStorage.ReplaceRange(context.Background(), "yahoo", "ABC", day, endDay(day, 3), nil)
 	test.Require().ErrorIs(err, repository.ErrNoBars)
-	test.Require().EqualError(err, "no price data for ABC between 2020-08-26 and 2020-08-29")
+	test.Require().EqualError(err, "yahoo returned no prices for ABC between 2020-08-26 and 2020-08-29. "+
+		"Check that ABC traded between those dates, try again later, or use another provider with --provider.")
 	test.Equal(map[string]float64{"2020-08-26": 500, "2020-08-27": 500}, test.storedCloses())
+}
+
+// The no-prices sentence names the provider the bars were asked from, in the
+// lower-case form backtest create shows.
+func (test *OHLCTests) TestReplaceRangeWithNoBarsNamesProvider() {
+	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	err := test.ohlcStorage.ReplaceRange(context.Background(), "Stooq", "ABC", day, nil, nil)
+	test.Require().ErrorIs(err, repository.ErrNoBars)
+	test.Require().EqualError(err, "stooq returned no prices for ABC between 2020-08-26 and today. "+
+		"Check that ABC traded between those dates, try again later, or use another provider with --provider.")
 }
 
 func (test *OHLCTests) countRows() int {

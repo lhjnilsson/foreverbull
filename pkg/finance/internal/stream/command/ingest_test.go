@@ -461,7 +461,8 @@ func (test *IngestCommandTest) TestRescaleRefetchWithNoBarsFails() {
 
 	err := test.ingestAAPL("2020-08-27", "2020-09-01")
 	test.Require().ErrorIs(err, repository.ErrNoBars)
-	test.Require().EqualError(err, "no price data for AAPL between 2020-08-27 and 2020-09-01")
+	test.Require().EqualError(err, "yahoo returned no prices for AAPL between 2020-08-27 and 2020-09-01. "+
+		"Check that AAPL traded between those dates, try again later, or use another provider with --provider.")
 	test.marketdata.AssertExpectations(test.T())
 
 	closeAug28, err := test.ohlc.Close(context.Background(), "yahoo", "AAPL", aug28)
@@ -483,7 +484,8 @@ CREATE TRIGGER fail_ingest BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION f
 	test.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return(aaplAdjusted(), nil).Once()
 
 	err = test.ingestAAPL("2020-08-27", "2020-09-01")
-	test.Require().EqualError(err, "couldn't store prices for AAPL")
+	test.Require().EqualError(err, "Couldn't store prices for AAPL. Try again in a few minutes. "+
+		"If it keeps failing, report it at https://github.com/lhjnilsson/foreverbull/issues.")
 	var stored *repository.StoreError
 	test.Require().ErrorAs(err, &stored)
 	test.Contains(stored.Err.Error(), "hunter2", "the cause is kept for the log")
