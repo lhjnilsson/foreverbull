@@ -568,6 +568,27 @@ def test_backtest_create_invalid_ticker_prints_exact_copy_and_exits_1(monkeypatc
     assert "Downloading prices failed" not in result.output
 
 
+_AMBIGUOUS_SYMBOL_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': yahoo has more than one instrument for SYM. "
+    "The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), "
+    "or use another provider with --provider."
+)
+
+
+def test_backtest_create_ambiguous_symbol_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_AMBIGUOUS_SYMBOL_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_AMBIGUOUS_SYMBOL_COPY}\n"
+
+
 _INGEST_DRIVER_COPY = (
     "Couldn't load data for backtest 'from_file': the data service is missing its database driver (psycopg). "
     "This is a bug in the Foreverbull install, not in your strategy or settings. Nothing was saved, so run "

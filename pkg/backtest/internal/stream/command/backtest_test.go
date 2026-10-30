@@ -1028,6 +1028,48 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresInvalidTickerFo
 	test.NotContains(err.Error(), "symbol 7 of 99")
 }
 
+// A ticker with more than one instrument names the provider and the ticker,
+// and points at the exchange suffix instead of a retry.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNamesAmbiguousSymbol() {
+	test.createOEF(98)
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "SYM",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo has more than one instrument for SYM",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'oef-2024q1': yahoo has more than one instrument for SYM. "+
+			"The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), "+
+			"or use another provider with --provider.")
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The ambiguous sentence about another ticker than the response's symbol is
+// not shown; create falls back to the generic download sentence.
+func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresAmbiguousSentenceForAnotherSymbol() {
+	test.createOEF(98)
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "SYM",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "yahoo has more than one instrument for OTHER",
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'oef-2024q1': the price download failed for SYM. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
+}
+
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).

@@ -645,6 +645,23 @@ var (
 	refusedVolumeError = regexp.MustCompile(`^(yahoo|stooq|alpaca) sent an invalid volume for [A-Za-z0-9.^=_-]{1,32} on \d{4}-\d{2}-\d{2} \(out of range\)$`)
 )
 
+// ambiguousSymbolError matches the finance service's STATUS_ERROR for a ticker
+// that maps to more than one instrument. Only this exact shape is shown.
+var ambiguousSymbolError = regexp.MustCompile(`^(yahoo|stooq|alpaca) has more than one instrument for ([A-Za-z0-9.^=_-]{1,32})$`)
+
+// ambiguousSymbolProvider returns the provider named in text when it is the
+// ambiguous-ticker sentence for symbol, the ticker this response is about.
+func ambiguousSymbolProvider(text, symbol string) (string, bool) {
+	match := ambiguousSymbolError.FindStringSubmatch(text)
+	if match == nil {
+		return "", false
+	}
+	if match[2] == symbol {
+		return match[1], true
+	}
+	return "", false
+}
+
 // isRefusedBarError reports the finance service's refused-bar sentence.
 func isRefusedBarError(text string) bool {
 	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
@@ -684,6 +701,10 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
+	} else if provider, ok := ambiguousSymbolProvider(errText, symbol); ok {
+		lead = fmt.Sprintf("%s has more than one instrument for %s.", provider, symbol)
+		nextStep = "The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), " +
+			"or use another provider with --provider."
 	} else {
 		generic = true
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
