@@ -103,7 +103,7 @@ func TestYahooGetAssetKeepsTheAskedShareClassTicker(t *testing.T) {
 	quote := `{"quoteSummary":{"result":[{"quoteType":{"exchange":"NYQ","symbol":"BRK-B",
 "quoteType":"EQUITY","shortName":"Berkshire Hathaway Inc. New","longName":"Berkshire Hathaway Inc."}}]}}`
 	srv, paths := recordingServer(t, quote)
-	isin, _ := recordingServer(t, `{"stocks":[]}`)
+	isin, _ := recordingServer(t, `{"stocks":[{"keywords":"BRK-B|US0846707026"}]}`)
 	client := &YahooClient{crumb: "test", quoteURL: srv.URL + "/", isinURL: isin.URL + "/"}
 
 	asset, err := client.GetAsset("BRKB")

@@ -224,10 +224,16 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 		ISIN:   "",
 	}
 
+	// An equity is matched across renames by its ISIN, so an equity without
+	// one fails the lookup instead of being stored without it. Other quote
+	// types (ETF, index, fund) have no ISIN lookup.
 	if data.QuoteSummary.Result[0].QuoteType.QuoteType == "EQUITY" {
 		asset.ISIN, err = y.getISIN(asset.Symbol)
 		if err != nil {
-			log.Info().Msgf("error getting isin for symbol %s: %v", asset.Symbol, err)
+			return nil, fmt.Errorf("error getting isin for symbol %s: %w", asset.Symbol, err)
+		}
+		if strings.TrimSpace(asset.ISIN) == "" {
+			return nil, fmt.Errorf("error getting isin for symbol %s: empty ISIN", asset.Symbol)
 		}
 	}
 	if _, ok := parseShareClass(symbol); ok {
