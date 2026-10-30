@@ -81,6 +81,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
 
+			// Outside the bars transaction: the asset row stays if the bars roll back.
 			err = assets.Store(ctx, a.Symbol, a.Name)
 			if err != nil {
 				return logStoreError(&repository.StoreError{Symbol: symbol, Err: err}, "store asset")

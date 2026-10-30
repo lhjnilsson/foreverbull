@@ -242,7 +242,10 @@ func (fs *MarketdataServer) downloadSymbol(
 	// The same overlap and re-scale rule as ingest, in one locked transaction
 	// per symbol: a refused bar or a DB error stores none of them, and stored
 	// days after a split are re-scaled instead of left next to new ones. Only
-	// the refused-bar sentence goes to the client as is.
+	// the refused-bar sentence goes to the client as is. The asset row above
+	// and a later ticker's asset and asset_symbol rows are written outside
+	// this transaction and stay when the bars roll back; a retry finds them
+	// and stores the bars again.
 	fetch := prefetchedBars(bars, storeSymbol, start, end, ohlcs)
 	if err := ohlcRepo.Sync(ctx, provider, storeSymbol, start, end, fetch); err != nil {
 		var blocked *marketdata.BlockedError
