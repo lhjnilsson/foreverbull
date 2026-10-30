@@ -205,12 +205,18 @@ func (fs *MarketdataServer) downloadSymbol(
 			if errors.As(fetchErr, &blocked) {
 				return blocked
 			}
-			// no-bars sentinel; create fails on any STATUS_ERROR, and this
-			// prefix selects the "no price data for … between …" sentence.
-			if ctx.Err() == nil && !errors.Is(fetchErr, errNoPriceData) {
-				log.Error().Err(redactURLError(fetchErr)).Str("symbol", symbol).Msg("looking up a later ticker failed")
+			// Only the no-bars sentinel selects the "no price data for …
+			// between …" sentence. A DB error in Resolve or ListAliases says
+			// nothing about the prices, so it is logged and the user gets
+			// the generic download failure.
+			if errors.Is(fetchErr, errNoPriceData) {
+				failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
+				return nil
 			}
-			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
+			if ctx.Err() != nil {
+				return nil
+			}
+			failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "find later ticker", fetchErr))
 			return nil
 		}
 		storeSymbol = fetched.symbol
