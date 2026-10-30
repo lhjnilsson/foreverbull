@@ -48,10 +48,11 @@ func distinctSymbols(n int) []string {
 	return symbols
 }
 
-// download starts a download that fails within a minute instead of at the
-// test binary's timeout when the server never ends the stream.
+// download starts a download that fails within a few seconds instead of at
+// the test binary's timeout when the server never ends the stream (10,000
+// symbols take under a second here, with -race).
 func (suite *MarketdataTest) download(symbols []string) servicePb.Marketdata_DownloadHistoricalDataClient {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	suite.T().Cleanup(cancel)
 	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   symbols,

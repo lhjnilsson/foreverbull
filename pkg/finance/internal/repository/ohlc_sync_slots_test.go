@@ -81,13 +81,16 @@ func (test *OHLCTests) TestSyncLeavesAConnectionFree() {
 // lock is free, so it waits on the semaphore: without the cap it would get the
 // pool's second connection and store its bars.
 func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
-	ctx := context.Background()
+	// Every wait is bounded, so a regression (the slot taken after Begin)
+	// fails in seconds instead of hanging until the test binary times out.
+	ctx, cancelAll := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelAll()
 	cfg, err := pgxpool.ParseConfig(environment.GetPostgresURL())
 	test.Require().NoError(err)
 	cfg.MaxConns = 2
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	test.Require().NoError(err)
-	defer pool.Close()
+	defer test.closeWithin(pool, 10*time.Second)
 	test.Require().NoError((&repository.Asset{Conn: pool}).Store(ctx, "XYZ", "Company XYZ"))
 	db := repository.OHLC{Conn: pool}
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
@@ -122,5 +125,21 @@ func (test *OHLCTests) TestSyncSlotWaitHonoursContext() {
 		test.Require().NoError(err)
 	case <-time.After(10 * time.Second):
 		test.FailNow("the sync holding the slot did not finish")
+	}
+}
+
+// closeWithin closes pool and fails the test if Close is still waiting for a
+// connection after d. Runs after the test's other deferred cleanups (which
+// release locks and end contexts), so a sync stuck on the pool can't hang it.
+func (test *OHLCTests) closeWithin(pool *pgxpool.Pool, d time.Duration) {
+	closed := make(chan struct{})
+	go func() {
+		pool.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(d):
+		test.Fail("pool.Close still waits for a connection")
 	}
 }
