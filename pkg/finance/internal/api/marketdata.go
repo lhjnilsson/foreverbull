@@ -467,10 +467,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		return err
 	}
 	// Every symbol is echoed in a response, so all are checked before any
-	// download starts.
-	for _, symbol := range req.GetSymbols() {
+	// download starts. The first invalid one is named by position only.
+	symbols := req.GetSymbols()
+	for index, symbol := range symbols {
 		if !validSymbol(symbol) {
-			return status.Error(codes.InvalidArgument, invalidSymbolMessage)
+			return status.Error(codes.InvalidArgument, invalidSymbolMessage(index+1, len(symbols)))
 		}
 	}
 

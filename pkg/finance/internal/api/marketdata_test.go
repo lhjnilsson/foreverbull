@@ -538,11 +538,12 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProvi
 }
 
 // A request symbol outside the ticker pattern refuses the whole download
-// before any provider call, and the refusal does not repeat the symbol.
+// before any provider call. The refusal names the first invalid symbol's
+// 1-based position and the symbol count, and does not repeat the symbol.
 func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidRequestSymbol() {
 	for _, bad := range []string{"", "AA PL", "AAPL\n", "<b>x</b>", strings.Repeat("A", 33)} {
 		rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
-			Symbols:   []string{"AAPL", bad},
+			Symbols:   []string{"AAPL", bad, "MSFT", "also bad"},
 			StartDate: &internal_pb.Date{Year: 2026, Month: 5, Day: 1},
 			EndDate:   &internal_pb.Date{Year: 2026, Month: 5, Day: 3},
 			Provider:  "yahoo",
@@ -552,7 +553,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidRequestSymb
 		st, ok := status.FromError(err)
 		suite.Require().True(ok, "%q: %v", bad, err)
 		suite.Equal(codes.InvalidArgument, st.Code(), "%q", bad)
-		suite.Equal("a symbol isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", st.Message(), "%q", bad)
+		suite.Equal("symbol 2 of 4 isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", st.Message(), "%q", bad)
 	}
 	// The strict mock fails the test on any GetAsset or GetOHLC call.
 	suite.marketdata.AssertNotCalled(suite.T(), "GetAsset", mock.Anything)
