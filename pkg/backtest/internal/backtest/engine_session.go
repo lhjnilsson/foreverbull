@@ -18,7 +18,9 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // MemberSymbols maps a backtest's universe_member rows through asset_symbol at t.
@@ -102,6 +104,13 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	rsp, err := z.client.RunBacktest(ctx, &req)
 	if err != nil {
 		closePool()
+		if refused, ok := err.(interface{ GRPCStatus() *status.Status }); ok &&
+			refused.GRPCStatus().Code() == codes.FailedPrecondition {
+			// Zipline refused the run with the user's whole sentence (a
+			// benchmark gap, a damaged bundle). It is returned unwrapped so
+			// fbull shows it as written.
+			return nil, err
+		}
 		return nil, fmt.Errorf("error running: %w", err)
 	}
 	totalPeriods := rsp.NumPeriods

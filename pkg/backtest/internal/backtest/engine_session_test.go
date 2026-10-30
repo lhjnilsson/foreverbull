@@ -14,6 +14,8 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -341,4 +343,40 @@ func TestPeriodSymbolsAt(t *testing.T) {
 			require.Equal(t, tc.want, periodSymbolsAt(tc.periods, tc.at))
 		})
 	}
+}
+
+// Zipline refuses a run with FAILED_PRECONDITION and the user's sentence. It
+// comes back unwrapped, so the session server can pass it to fbull as is.
+func TestRunBacktestReturnsZiplinesRefusalAsWritten(t *testing.T) {
+	t.Parallel()
+
+	const sentence = "Couldn't run backtest 'demo': the benchmark SPY has no prices on 1 trading day: 2024-02-14. " +
+		"Nothing was run. Run `fbull backtest create` again to reload its prices, or choose another benchmark."
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(nil, status.Error(codes.FailedPrecondition, sentence)).Once()
+	session := &ZipelineSession{client: client, symbolsAt: fakeMemberSymbols{}, backtests: fakeBacktests{backtest: demoBacktest()}}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "demo"}, pool)
+	require.Nil(t, ch)
+	require.EqualError(t, err, status.Error(codes.FailedPrecondition, sentence).Error())
+	refused, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, refused.Code())
+	require.Equal(t, sentence, refused.Message())
+}
+
+// Any other Zipline failure keeps its wrapping.
+func TestRunBacktestWrapsOtherZiplineFailures(t *testing.T) {
+	t.Parallel()
+
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(nil, status.Error(codes.Unknown, "Exception calling application: boom")).Once()
+	session := &ZipelineSession{client: client, symbolsAt: fakeMemberSymbols{}, backtests: fakeBacktests{backtest: demoBacktest()}}
+
+	_, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "demo"}, pool)
+	require.ErrorContains(t, err, "error running: ")
 }

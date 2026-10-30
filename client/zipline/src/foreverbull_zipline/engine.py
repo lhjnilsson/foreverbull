@@ -30,6 +30,7 @@ from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_s
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull_zipline.data_bundles.bundle_alignment import ensure_session_aligned_bundle
+from foreverbull_zipline.errors import PlainSentence
 from zipline import TradingAlgorithm
 
 
@@ -39,6 +40,22 @@ class ConfigError(Exception):
 
 class StopExcecution(Exception):
     pass
+
+
+# The engine process puts this before a PlainSentence's message in
+# Response.error, so the parent raises it as a PlainSentence again and not
+# as an internal failure.
+PLAIN_SENTENCE_TAG = "plain-sentence: "
+
+
+def raise_response_error(response: common_pb.Response) -> None:
+    """Raise the engine process's error, a PlainSentence when it sent one."""
+    if not response.has_field("error"):
+        return
+    error = response.error or ""
+    if error.startswith(PLAIN_SENTENCE_TAG):
+        raise PlainSentence(error.removeprefix(PLAIN_SENTENCE_TAG))
+    raise SystemError(error)
 
 
 def zero_benchmark_returns(sessions: pd.DatetimeIndex) -> pd.Series:
@@ -114,7 +131,7 @@ def load_benchmark_returns(backtest: str, bundle, benchmark_asset, trading_calen
     usable &= window_sessions.isin(bundle_sessions)
     if not usable.all():
         missing = pd.DatetimeIndex(window_sessions[~usable])
-        raise ValueError(benchmark_missing_line(backtest, str(benchmark_asset.symbol), missing, window_sessions))
+        raise PlainSentence(benchmark_missing_line(backtest, str(benchmark_asset.symbol), missing, window_sessions))
     return benchmark_returns(window_sessions, sessions, opens, closes)
 
 
@@ -212,8 +229,7 @@ class Engine(multiprocessing.Process):
             socket.send(request.to_binary())
             response = common_pb.Response()
             merge_from_binary(response, socket.recv())
-            if response.has_field("error"):
-                raise SystemError(response.error)
+            raise_response_error(response)
             b = engine_service_pb.RunBacktestResponse()
             merge_from_binary(b, response.data)
             return b
@@ -232,8 +248,7 @@ class Engine(multiprocessing.Process):
             socket.send(request.to_binary())
             response = common_pb.Response()
             merge_from_binary(response, socket.recv())
-            if response.has_field("error"):
-                raise SystemError(response.error)
+            raise_response_error(response)
             p = engine_service_pb.GetCurrentPeriodResponse()
             merge_from_binary(p, response.data)
             return p
@@ -252,8 +267,7 @@ class Engine(multiprocessing.Process):
             socket.send(request.to_binary())
             response = common_pb.Response()
             merge_from_binary(response, socket.recv())
-            if response.has_field("error"):
-                raise SystemError(response.error)
+            raise_response_error(response)
             p = engine_service_pb.PlaceOrdersAndContinueResponse()
             merge_from_binary(p, response.data)
             return p
@@ -269,8 +283,7 @@ class Engine(multiprocessing.Process):
             socket.send(request.to_binary())
             response = common_pb.Response()
             merge_from_binary(response, socket.recv())
-            if response.has_field("error"):
-                raise SystemError(response.error)
+            raise_response_error(response)
             result = engine_service_pb.GetResultResponse()
             merge_from_binary(result, response.data)
             return result
@@ -564,6 +577,10 @@ class Engine(multiprocessing.Process):
                             context_socket.send(rsp.to_binary())
                 except StopExcecution:
                     raise
+                except PlainSentence as e:
+                    self.log.warning("Refused request %s: %s", req.task, e)
+                    rsp.error = PLAIN_SENTENCE_TAG + str(e)
+                    context_socket.send(rsp.to_binary())
                 except Exception as e:
                     self.log.exception("Error processing request %s", req.task)
                     rsp.error = str(e)

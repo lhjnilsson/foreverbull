@@ -2,23 +2,30 @@ import logging
 import multiprocessing
 import os
 
+from concurrent import futures
+from datetime import date
 from multiprocessing.queues import Queue
 from threading import Thread
 from typing import Any
 from typing import cast
 
+import grpc
 import numpy as np
 import pandas as pd
 import pytest
 
+from foreverbull_zipline.data_bundles.bundle_alignment import BUNDLE_VERSION_MARKER
 from foreverbull_zipline.data_bundles.bundle_alignment import ensure_session_aligned_bundle
+from foreverbull_zipline.data_bundles.bundle_alignment import latest_ingest_dir
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.engine import benchmark_missing_line
 from foreverbull_zipline.engine import benchmark_returns
 from foreverbull_zipline.engine import load_benchmark_returns
 from foreverbull_zipline.engine import zero_benchmark_returns
+from foreverbull_zipline.errors import PlainSentence
 from foreverbull_zipline.service import BacktestService
+from foreverbull_zipline.session_service import SessionServiceServicer
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -27,7 +34,9 @@ from zipline.finance.blotter import Blotter
 from zipline.finance.trading import SimulationParameters
 from zipline.utils.calendar_utils import get_calendar
 
+from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
+from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
@@ -300,7 +309,7 @@ def test_load_benchmark_returns_fails_on_sessions_the_bundle_lacks():
     sessions = _sessions("2023-01-03", "2023-01-10")
     closes = {session: 100.0 for session in _sessions("2022-12-30", "2023-01-05")}
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         load_benchmark_returns("oef-2024q1", _fake_bundle(calendar, closes), _Benchmark(), calendar, sessions)
     assert str(error.value) == _gap_line("3 trading days", "2023-01-06 to 2023-01-10")
 
@@ -311,7 +320,7 @@ def test_load_benchmark_returns_fails_on_a_nan_close_mid_run():
     closes = {session: 100.0 for session in _sessions("2022-12-30", "2023-01-10")}
     closes[pd.Timestamp("2023-01-05")] = np.nan
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         load_benchmark_returns("oef-2024q1", _fake_bundle(calendar, closes), _Benchmark(), calendar, sessions)
     assert str(error.value) == _gap_line("1 trading day", "2023-01-05")
 
@@ -324,7 +333,7 @@ def test_load_benchmark_returns_fails_on_a_zero_close():
     closes = {session: 100.0 for session in _sessions("2022-12-30", "2023-01-10")}
     closes[pd.Timestamp("2023-01-04")] = 0.0
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         load_benchmark_returns("oef-2024q1", _fake_bundle(calendar, closes), _Benchmark(), calendar, sessions)
     assert str(error.value) == _gap_line("1 trading day", "2023-01-04")
 
@@ -337,7 +346,7 @@ def test_load_benchmark_returns_fails_on_a_nan_close_the_day_before_the_start():
     closes = {session: 100.0 for session in _sessions("2022-12-30", "2023-01-10")}
     closes[pd.Timestamp("2022-12-30")] = np.nan
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         load_benchmark_returns("oef-2024q1", _fake_bundle(calendar, closes), _Benchmark(), calendar, sessions)
     assert str(error.value) == _gap_line("1 trading day", "2022-12-30")
 
@@ -352,7 +361,7 @@ def test_load_benchmark_returns_names_every_bad_day_in_ranges():
         closes[pd.Timestamp(day)] = np.nan
     closes[pd.Timestamp("2023-01-12")] = 0.0
 
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(PlainSentence) as error:
         load_benchmark_returns("oef-2024q1", _fake_bundle(calendar, closes), _Benchmark(), calendar, sessions)
     assert str(error.value) == _gap_line(
         "7 trading days", "2022-12-30, 2023-01-06 to 2023-01-10, 2023-01-12, 2023-01-19 to 2023-01-20"
@@ -529,7 +538,7 @@ def test_load_benchmark_returns_fails_on_a_stored_zero_close_in_a_real_bundle(tm
         benchmark_asset = bundle.asset_finder.lookup_symbol("SPY", as_of_date=None)
         calendar = get_calendar("XNYS")
 
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(PlainSentence) as error:
             load_benchmark_returns("oef-2024q1", bundle, benchmark_asset, calendar, sessions[2:])
         assert str(error.value) == _gap_line("1 trading day", f"{sessions[5]:%Y-%m-%d}")
 
@@ -538,3 +547,73 @@ def test_load_benchmark_returns_fails_on_a_stored_zero_close_in_a_real_bundle(tm
         assert returns.iloc[0] == pytest.approx(101.0 / 100.0 - 1.0)
     finally:
         bundles.unregister("e2e_zero_close_bundle")
+
+
+def _marker(bundle_name: str):
+    ingest_dir = latest_ingest_dir(bundle_name, os.environ)
+    assert ingest_dir is not None
+    return ingest_dir / BUNDLE_VERSION_MARKER
+
+
+@pytest.fixture
+def run_stub(tmp_path, monkeypatch, spawn_process):
+    """A real engine process behind the session service, over gRPC."""
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    engine = Engine(socket_file_path=str(tmp_path / "engine.sock"))
+    engine.start()
+    assert engine.is_ready.wait(10.0)
+    server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
+    engine_service_pb_grpc.EngineSessionServiceSync.add_to_server(SessionServiceServicer(engine), server)
+    port = server.add_insecure_port("localhost:0")
+    server.start()
+    try:
+        yield engine_service_pb_grpc.EngineSessionClientSync(grpc.insecure_channel(f"localhost:{port}"))
+    finally:
+        server.stop(None)
+        engine.stop()
+        engine.join(5.0)
+        if "oef-2024q1" in bundles.bundles:
+            bundles.unregister("oef-2024q1")
+
+
+def _run_request(bundle_name: str, start: str, end: str) -> engine_service_pb.RunBacktestRequest:
+    first, last = date.fromisoformat(start), date.fromisoformat(end)
+    return engine_service_pb.RunBacktestRequest(
+        execution=execution_pb.Execution(
+            id="plain-sentence",
+            backtest=bundle_name,
+            start_date=common_pb.Date(year=first.year, month=first.month, day=first.day),
+            end_date=common_pb.Date(year=last.year, month=last.month, day=last.day),
+        ),
+        benchmark="SPY",
+    )
+
+
+def test_a_benchmark_gap_reaches_the_session_client_as_written(run_stub):
+    # The engine process refuses the run; the session service sends the
+    # sentence with FAILED_PRECONDITION, which the broker passes to fbull.
+    sessions = _sessions("2023-01-03", "2023-01-31")
+    spy_closes = [100.0 + index for index in range(len(sessions))]
+    spy_closes[5] = 0.0
+    _write_e2e_bundle("oef-2024q1", sessions, stale=False, spy_closes=spy_closes)
+
+    with pytest.raises(grpc.RpcError) as error:
+        run_stub.run_backtest(_run_request("oef-2024q1", "2023-01-04", "2023-01-20"))
+
+    assert error.value.code() == grpc.StatusCode.FAILED_PRECONDITION
+    assert error.value.details() == _gap_line("1 trading day", f"{sessions[5]:%Y-%m-%d}")
+
+
+def test_a_damaged_version_marker_reaches_the_session_client_as_written(run_stub):
+    sessions = _sessions("2023-01-03", "2023-01-31")
+    _write_e2e_bundle("oef-2024q1", sessions, stale=False)
+    _marker("oef-2024q1").write_text("one\n", encoding="utf-8")
+
+    with pytest.raises(grpc.RpcError) as error:
+        run_stub.run_backtest(_run_request("oef-2024q1", "2023-01-04", "2023-01-20"))
+
+    assert error.value.code() == grpc.StatusCode.FAILED_PRECONDITION
+    assert error.value.details() == (
+        "The price data for backtest 'oef-2024q1' can't be read: its version marker is damaged. "
+        "Run `fbull backtest create` again to rebuild it."
+    )

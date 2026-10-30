@@ -5,12 +5,17 @@ from concurrent import futures
 from datetime import date
 
 import grpc
+import pandas as pd
 import pytest
 
 from foreverbull_zipline import service
+from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
+from sqlalchemy import create_engine
+from zipline.data import bundles
 
 from foreverbull import exceptions
 from foreverbull.pb import pb_utils
+from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb_grpc as engine_service_pb_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -203,3 +208,88 @@ class TestIngestWithoutContext:
 
         with pytest.raises(RuntimeError, match="no bars for BRKB"):
             service.BacktestService().ingest(engine_service_pb.IngestRequest(backtest=backtest), None)
+
+
+class _NoBars:
+    def __init__(self, provider: str = ""):
+        self.provider = provider
+
+    def get_data(self, symbol, from_date, to_date):
+        return pd.DataFrame({column: [] for column in ("open", "high", "low", "close", "volume", "time")})
+
+
+class _NoTickerHistory:
+    def __init__(self):
+        self.provider = ""
+        self._engine = create_engine("sqlite://")
+
+
+def _quarter_backtest() -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
+        name="oef-2024q1",
+        benchmark="OEF",
+        periods=[
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2024, month=1, day=1),
+                end_date=common_pb.Date(year=2024, month=3, day=31),
+                assets=[backtest_pb.Backtest.Period.Asset(symbol="META", enabled=True)],
+            )
+        ],
+    )
+
+
+class TestIngestRefusalReachesTheBrokerAsWritten:
+    """A refused ingest's sentence crosses gRPC unchanged, with ABORTED and no details."""
+
+    @pytest.fixture
+    def ingest_stub(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+        server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
+        engine_service_pb_grpc.EngineServiceSync.add_to_server(service.BacktestService(), server)
+        port = server.add_insecure_port("localhost:0")
+        server.start()
+        try:
+            yield engine_service_pb_grpc.EngineClientSync(grpc.insecure_channel(f"localhost:{port}"))
+        finally:
+            server.stop(None)
+            if "oef-2024q1" in bundles.bundles:
+                bundles.unregister("oef-2024q1")
+
+    def test_symbols_without_bars(self, ingest_stub, monkeypatch):
+        rename = pd.DataFrame(
+            {
+                "isin": ["US30303M1027", "US30303M1027"],
+                "symbol": ["FB", "META"],
+                "from_date": [date(2012, 5, 18), date(2022, 6, 9)],
+                "to_date": [date(2022, 6, 9), None],
+                "member_to": [None, None],
+            }
+        )
+        monkeypatch.setattr(
+            service, "SQLIngester", lambda backtest: SQLIngester(backtest, engine=_NoBars(), aliases=rename)
+        )
+
+        with pytest.raises(grpc.RpcError) as error:
+            ingest_stub.ingest(engine_service_pb.IngestRequest(backtest=_quarter_backtest()))
+
+        assert error.value.code() == grpc.StatusCode.ABORTED
+        assert error.value.details() == (
+            "Couldn't load data for backtest 'oef-2024q1': 2 symbols have no stored prices. The backtest wasn't saved.\n"
+            "  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n"
+            "  OEF: no prices between 2024-01-02 and 2024-03-28.\n"
+            "Try another provider with --provider, then run `fbull backtest create` again."
+        )
+
+    def test_ticker_history_cant_be_read(self, ingest_stub, monkeypatch):
+        monkeypatch.setattr(service, "SQLIngester", lambda backtest: SQLIngester(backtest, engine=_NoTickerHistory()))
+
+        with pytest.raises(grpc.RpcError) as error:
+            ingest_stub.ingest(engine_service_pb.IngestRequest(backtest=_quarter_backtest()))
+
+        assert error.value.code() == grpc.StatusCode.ABORTED
+        assert error.value.details() == (
+            "Couldn't load data for backtest 'oef-2024q1': foreverbull couldn't read its record of ticker changes, "
+            "so renamed symbols can't be followed. The backtest wasn't saved. "
+            "Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+        )
+        assert "Details:" not in (error.value.details() or "")

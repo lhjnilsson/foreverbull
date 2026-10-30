@@ -25,6 +25,7 @@ from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull_zipline.database import get_engine
+from foreverbull_zipline.errors import PlainSentence
 
 
 warnings.filterwarnings("ignore")
@@ -428,7 +429,7 @@ class SQLIngester:
                 self.backtest.name,
                 describe_exception(exc),
             )
-            raise RuntimeError(ticker_history_line(self.backtest.name)) from None
+            raise PlainSentence(ticker_history_line(self.backtest.name)) from None
 
     def ingest_groups(self) -> list[InstrumentGroup]:
         return group_symbols_by_instrument(ingest_symbols(self.backtest), self.load_aliases())
@@ -469,7 +470,7 @@ class SQLIngester:
                 resolved.append((group, combined, mapping_rows))
         if empty:
             first, last = (sessions[0], sessions[-1]) if len(sessions) else (from_date, to_date)
-            raise ValueError(no_stored_prices_line(self.backtest.name, empty, first, last, gaps))
+            raise PlainSentence(no_stored_prices_line(self.backtest.name, empty, first, last, gaps))
         if gaps:
             raise MissingSessionsError(gaps)
         for index, (group, combined, mapping_rows) in enumerate(resolved):
