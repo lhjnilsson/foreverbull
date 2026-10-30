@@ -44,8 +44,8 @@ const (
 	// PostgresURL is required. Setup refuses to start without it.
 	PostgresURL = "POSTGRES_URL"
 
-	// WorkerDatabaseURL is the reader role the broker hands to a service pod.
-	// Empty means the pod is not given a database URL while authentication is on.
+	// WorkerDatabaseURL is the reader role URL for a service pod. Empty is an
+	// error from GetWorkerDatabaseURL; the owner URL is never used in its place.
 	WorkerDatabaseURL = "WORKER_DATABASE_URL"
 	// WorkerDBPassword is the password for role foreverbull_worker. It is not
 	// the database owner password.
@@ -500,18 +500,14 @@ func GetPostgresURL() string {
 	return os.Getenv(PostgresURL)
 }
 
-// GetWorkerDatabaseURL is the URL a service pod may use. A configured reader
-// URL wins. With authentication on and no reader URL, the owner URL is not
-// returned. With authentication off and no reader URL, the owner URL is used
-// so local runs and tests keep a database that has no reader role.
-func GetWorkerDatabaseURL() string {
+// GetWorkerDatabaseURL is the reader role URL a service pod may use. An empty
+// value is an error that names WORKER_DATABASE_URL, whether or not
+// authentication is on. The owner URL is never returned in its place.
+func GetWorkerDatabaseURL() (string, error) {
 	if url := strings.TrimSpace(os.Getenv(WorkerDatabaseURL)); url != "" {
-		return url
+		return url, nil
 	}
-	if GetAuthEnabled() {
-		return ""
-	}
-	return GetPostgresURL()
+	return "", fmt.Errorf("%s is not set; the owner %s is not handed to a service pod", WorkerDatabaseURL, PostgresURL)
 }
 
 func GetNATSURL() string {
