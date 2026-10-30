@@ -26,6 +26,10 @@ from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_se
 # pkg/finance/supplier/marketdata.go, and both must name the same provider.
 DEFAULT_PROVIDER = "yahoo"
 
+# A backtest record (`fbull backtest create` and `get`) names at most this
+# many symbols, then "and N more". --verbose lists them all.
+BACKTEST_SYMBOLS_SHOWN = 5
+
 # The clause after the colon. The SQL stays in the worker log.
 _MARKET_DATA_DENIED_DETAIL = (
     "the data service can't read market data. This is a bug in the Foreverbull install, not in your strategy."
