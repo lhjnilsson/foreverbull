@@ -7,9 +7,11 @@ import (
 	"math"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -597,4 +599,50 @@ func (test *IngestCommandTest) TestIngestKeepsCrumbOutOfTaskState() {
 			test.NotContains(err.Error(), "s3cr3tCrumb")
 		})
 	}
+}
+
+// ingestSymbols runs Ingest for symbols with the mock supplier.
+func (test *IngestCommandTest) ingestSymbols(md *supplier.MockMarketdata, symbols ...string) error {
+	message := new(stream.MockMessage)
+	message.On("MustGet", stream.DBDep).Return(test.db)
+	message.On("MustGet", dependency.MarketDataDep).Return(md)
+	message.On("ParsePayload", &fs.IngestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		command := args.Get(0).(*fs.IngestCommand)
+		command.Provider = "yahoo"
+		command.Symbols = symbols
+		command.Start = "2026-05-01"
+	})
+	return command.Ingest(context.Background(), message)
+}
+
+// A requested symbol outside the ticker pattern refuses the whole ingest
+// before any provider call or write; the refusal names its position only.
+func (test *IngestCommandTest) TestIngestRefusesInvalidRequestSymbol() {
+	for _, bad := range []string{"", "AA PL", "XYZ\n", "<b>x</b>", strings.Repeat("A", 33)} {
+		md := supplier.NewMockMarketdata(test.T())
+
+		err := test.ingestSymbols(md, "XYZ", bad, "ABC")
+
+		test.Require().EqualError(err, "symbol 2 of 3 isn't a valid ticker (use 1 to 32 letters, digits, or . ^ = _ -)", "%q", bad)
+		md.AssertNotCalled(test.T(), "GetAsset", mock.Anything)
+		_, err = test.assets.Get(context.Background(), "XYZ")
+		test.Require().ErrorIs(err, pgx.ErrNoRows, "nothing is stored before the check")
+	}
+}
+
+// A provider ticker outside the pattern is refused before the asset row or
+// any bar is stored, with a sentence that names only the requested symbol.
+func (test *IngestCommandTest) TestIngestRefusesInvalidProviderSymbol() {
+	const providerSymbol = "XYZ\x1b[31m <b>"
+	md := supplier.NewMockMarketdata(test.T())
+	md.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
+
+	err := test.ingestSymbols(md, "XYZ")
+
+	test.Require().EqualError(err, "error getting asset: the price provider returned an invalid ticker for XYZ")
+	md.AssertNotCalled(test.T(), "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+	var assets int
+	test.Require().NoError(test.db.QueryRow(context.Background(),
+		`SELECT count(*) FROM asset WHERE symbol = $1`, providerSymbol).Scan(&assets))
+	test.Zero(assets, "a refused provider ticker must not be stored")
 }

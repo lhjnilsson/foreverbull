@@ -14,6 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/stream/dependency"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/ticker"
 	fs "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -70,6 +71,15 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		return err
 	}
 
+	// Every symbol becomes an asset row, a bars key, and task-state text, so
+	// all are checked before anything is fetched or stored. The refusal names
+	// the position, not the symbol that failed the check.
+	for index, symbol := range command.Symbols {
+		if !ticker.Valid(symbol) {
+			return errors.New(ticker.InvalidMessage(index+1, len(command.Symbols)))
+		}
+	}
+
 	for _, symbol := range command.Symbols {
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
@@ -80,6 +90,11 @@ func Ingest(ctx context.Context, message stream.Message) error {
 			a, err := yahoo.GetAsset(symbol)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", redact.URLError(err))
+			}
+			if !ticker.Valid(a.GetSymbol()) {
+				log.Warn().Str("symbol", symbol).Str("provider_symbol", ticker.Logged(a.GetSymbol())).
+					Msg("provider returned a ticker outside the symbol pattern")
+				return fmt.Errorf("error getting asset: the price provider returned an invalid ticker for %s", symbol)
 			}
 
 			// Outside the bars transaction: the asset row stays if the bars roll back.
