@@ -624,6 +624,10 @@ func isNoPriceDataError(text string) bool {
 	return strings.HasPrefix(text, "no price data for ")
 }
 
+// refusedPriceError matches the finance service's sentence for a bar its
+// storage refused. Only this exact shape is shown; other raw text is not.
+var refusedPriceError = regexp.MustCompile(`^couldn't save prices for \S+ on \d{4}-\d{2}-\d{2}: prices must be above 0$`)
+
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member. The lead names the symbol; raw finance/gRPC text stays out
@@ -639,6 +643,8 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("no price data for %s between %s and %s.", symbol, startText, endText)
+	} else if refusedPriceError.MatchString(errText) {
+		lead = errText + "."
 	} else {
 		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
 	}

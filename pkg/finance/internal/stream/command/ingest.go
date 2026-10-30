@@ -97,6 +97,10 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		for _, o := range ohlcs {
 			err = ohlc.Store(ctx, provider, symbol, o.Timestamp.AsTime(), o.Open, o.High, o.Low, o.Close, int(o.Volume))
 			if err != nil {
+				// A refused bar's sentence already names the symbol and day.
+				if errors.Is(err, repository.ErrInvalidPrice) {
+					return err
+				}
 				return fmt.Errorf("error creating OHLC: %w", err)
 			}
 		}

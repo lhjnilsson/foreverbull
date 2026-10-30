@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -173,23 +174,38 @@ type OHLC struct {
 	Conn postgres.Query
 }
 
+// ErrInvalidPrice is a bar Store refuses because a price is 0, negative, or
+// not a real number. The error text names the symbol and day.
+var ErrInvalidPrice = errors.New("prices must be above 0")
+
+// InvalidPriceError is the user-facing refusal for one bar.
+type InvalidPriceError struct {
+	Symbol string
+	Day    time.Time
+	// Field is the first refused column: open, high, low, or close.
+	Field string
+}
+
+func (e *InvalidPriceError) Error() string {
+	return fmt.Sprintf("couldn't save prices for %s on %s: %s",
+		e.Symbol, e.Day.UTC().Format("2006-01-02"), ErrInvalidPrice)
+}
+
+func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
+
 // Store upserts one bar. Every price must be a real positive number: a 0
 // price is how a missing provider bar used to arrive, and it reads as a
 // -100% day, so it is refused here as well as in the provider adapter. A
 // re-fetched bar replaces the stored one, so prices adjusted after a split
 // never sit next to rows on the old scale.
 func (db *OHLC) Store(ctx context.Context, provider, symbol string, t time.Time, o, h, l, c float64, v int) error {
-	if !positivePrice(o) {
-		return fmt.Errorf("open: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(h) {
-		return fmt.Errorf("high: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(l) {
-		return fmt.Errorf("low: %w", supplier.ErrRejected)
-	}
-	if !positivePrice(c) {
-		return fmt.Errorf("close: %w", supplier.ErrRejected)
+	for _, price := range []struct {
+		field string
+		value float64
+	}{{"open", o}, {"high", h}, {"low", l}, {"close", c}} {
+		if !positivePrice(price.value) {
+			return &InvalidPriceError{Symbol: symbol, Day: t, Field: price.field}
+		}
 	}
 
 	_, err := db.Conn.Exec(
