@@ -20,13 +20,18 @@ func symbolLockFree(ctx context.Context, conn *pgxpool.Pool, symbol string) (boo
 	return free, err //nolint:wrapcheck // test helper
 }
 
-// waitForLockWaiters waits until n sessions are waiting for an advisory lock.
+// waitForLockWaiters waits until n sessions are waiting for an advisory lock
+// in this test's database. pg_locks is cluster-wide and the test Postgres
+// container is shared by every package's tests, each in its own database, so
+// a waiter from another package must not count.
 func (test *OHLCTests) waitForLockWaiters(n int) {
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var waiting int
 		test.Require().NoError(test.conn.QueryRow(context.Background(),
-			`SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`).Scan(&waiting))
+			`SELECT count(*) FROM pg_locks
+			 WHERE locktype = 'advisory' AND NOT granted
+			   AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`).Scan(&waiting))
 		if waiting == n {
 			return
 		}
