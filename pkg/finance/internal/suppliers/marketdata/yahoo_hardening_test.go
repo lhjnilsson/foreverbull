@@ -46,7 +46,7 @@ func TestYahooEscapesSymbolInEveryURL(t *testing.T) {
 		quote := `{"quoteSummary":{"result":[{"quoteType":{"exchange":"NYQ","symbol":"` + symbol +
 			`","quoteType":"EQUITY","shortName":"Test","longName":"Test Inc."}}]}}`
 		quoteSrv, quoteURIs := uriServer(t, quote)
-		isinSrv, isinURIs := uriServer(t, `{"stocks":[]}`)
+		isinSrv, isinURIs := uriServer(t, `{"stocks":[{"keywords":"`+symbol+`|US0000000001"}]}`)
 		chartSrv, chartURIs := uriServer(t, `{"chart":{"result":[{"meta":{"currency":"USD","symbol":"X"},
 "timestamp":[1704205800],"indicators":{"quote":[{"open":[1.0],"high":[1.0],"low":[1.0],"close":[1.0],"volume":[1]}]}}]}}`)
 		client := &YahooClient{
@@ -106,6 +106,57 @@ func TestGetISINTimesOutOnSlowServer(t *testing.T) {
 	var netErr net.Error
 	require.True(t, errors.As(err, &netErr) && netErr.Timeout(), "want a timeout, got %v", err)
 	require.Less(t, time.Since(began), 5*time.Second)
+}
+
+// An equity is matched across renames by its ISIN. A failed or empty ISIN
+// lookup fails GetAsset instead of returning the equity without an ISIN.
+// Other quote types have no ISIN lookup and still succeed.
+func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
+	t.Parallel()
+	equity := `{"quoteSummary":{"result":[{"quoteType":{"exchange":"NMS","symbol":"META",
+"quoteType":"EQUITY","shortName":"Meta","longName":"Meta Platforms, Inc."}}]}}`
+	cases := []struct {
+		name, isinBody string
+		isinStatus     int
+		wantErr        string
+	}{
+		{name: "isin service 503", isinStatus: http.StatusServiceUnavailable, isinBody: "Service Unavailable",
+			wantErr: "error getting isin for symbol META: failed to get index data for symbol META: status 503 Service Unavailable"},
+		{name: "isin not listed", isinStatus: http.StatusOK, isinBody: `{"stocks":[]}`,
+			wantErr: "error getting isin for symbol META: ISIN not found for symbol META"},
+		{name: "empty isin", isinStatus: http.StatusOK, isinBody: `{"stocks":[{"keywords":"META|"}]}`,
+			wantErr: "error getting isin for symbol META: empty ISIN"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			quoteSrv, _ := uriServer(t, equity)
+			isinSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.isinStatus)
+				_, _ = w.Write([]byte(tc.isinBody))
+			}))
+			t.Cleanup(isinSrv.Close)
+			client := &YahooClient{crumb: "test", quoteURL: quoteSrv.URL + "/", isinURL: isinSrv.URL + "/"}
+
+			asset, err := client.GetAsset("META")
+			require.Nil(t, asset)
+			require.EqualError(t, err, tc.wantErr)
+		})
+	}
+
+	t.Run("etf has no isin lookup", func(t *testing.T) {
+		t.Parallel()
+		quoteSrv, _ := uriServer(t, `{"quoteSummary":{"result":[{"quoteType":{"exchange":"PCX","symbol":"SPY",
+"quoteType":"ETF","shortName":"SPDR","longName":"SPDR S&P 500 ETF Trust"}}]}}`)
+		isinSrv, isinURIs := uriServer(t, `{"stocks":[]}`)
+		client := &YahooClient{crumb: "test", quoteURL: quoteSrv.URL + "/", isinURL: isinSrv.URL + "/"}
+
+		asset, err := client.GetAsset("SPY")
+		require.NoError(t, err)
+		require.Equal(t, "SPY", asset.Symbol)
+		require.Empty(t, asset.ISIN)
+		require.Empty(t, isinURIs())
+	})
 }
 
 func TestYahooClientDefaultsToSharedClientWithTimeout(t *testing.T) {
