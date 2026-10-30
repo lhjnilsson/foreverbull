@@ -2139,3 +2139,37 @@ def test_rpc_details_redacts_url_password():
     text = backtest_cli._rpc_details(_FakeRpc())
     assert "s3cret" not in text
     assert "***@" in text
+
+
+_PROVIDER_TIMEOUT_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': alpaca took too long to respond for AAPL. "
+    "The backtest wasn't saved. Try again later, or use another provider with --provider."
+)
+
+
+def test_backtest_create_provider_timeout_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(
+                state=common_pb.State.RUNNING, message="Downloading prices: 1,240 of 10,000 symbols"
+            ),
+        )
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=_PROVIDER_TIMEOUT_COPY),
+        )
+
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=stream),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file(provider="alpaca")
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    # The progress row is cleared with the others; only the sentence stays.
+    assert result.output == f"Using provider: alpaca (from --provider)\n✖ {_PROVIDER_TIMEOUT_COPY}\n"
