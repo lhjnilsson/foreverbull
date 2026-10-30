@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +43,7 @@ func TestInternalDownloadErrorDoesNotLogCrumb(t *testing.T) {
 
 func TestGetAssetErrorDoesNotReturnCrumb(t *testing.T) {
 	md := supplier.NewMockMarketdata(t)
-	md.On("GetAsset", "AAPL").Return(nil, yahooURLError())
+	md.On("GetAsset", mock.Anything, "AAPL").Return(nil, yahooURLError())
 	server := NewMarketdataServer(nil, md)
 
 	_, err := server.GetAsset(context.Background(), &servicePb.GetAssetRequest{
