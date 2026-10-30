@@ -157,6 +157,80 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 	test.Require().NotNil(backtest)
 }
 
+// Two universe files that spell Berkshire class B differently are the same
+// universe: BRK.B, BRK-B and BRKB all store as BRKB.
+func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerShareClass() {
+	period := func(assets ...*backtest.Backtest_Period_Asset) []*backtest.Backtest_Period {
+		return []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2023, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
+			Assets:    assets,
+		}}
+	}
+	create := func(b *backtest.Backtest) error {
+		message := new(stream.MockMessage)
+		message.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+			bytes, err := proto.Marshal(b)
+			test.Require().NoError(err)
+			payload.Backtest = bytes
+		})
+		message.On("MustGet", stream.DBDep).Return(test.db)
+		return command.CreateBacktestFromBacktest(context.TODO(), message)
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	storedSymbols := func(name string) []string {
+		stored, err := backtests.Get(context.TODO(), name)
+		test.Require().NoError(err)
+		symbols := make([]string, 0)
+		for _, p := range stored.GetPeriods() {
+			for _, a := range p.GetAssets() {
+				symbols = append(symbols, a.GetSymbol())
+			}
+		}
+		slices.Sort(symbols)
+		return symbols
+	}
+
+	for i, spelling := range []string{"BRK.B", "BRK-B", "BRKB"} {
+		name := fmt.Sprintf("share-class-%d", i)
+		test.Require().NoError(create(&backtest.Backtest{
+			Name:      name,
+			Benchmark: "SPY",
+			Periods: period(
+				&backtest.Backtest_Period_Asset{Symbol: spelling, Enabled: true},
+				&backtest.Backtest_Period_Asset{Symbol: "AAPL", Enabled: true},
+			),
+		}), spelling)
+		test.Equal([]string{"AAPL", "BRKB"}, storedSymbols(name), spelling)
+	}
+
+	// All three spellings in one file are one asset.
+	test.Require().NoError(create(&backtest.Backtest{
+		Name:      "share-class-all",
+		Benchmark: "BRK.B",
+		Periods: period(
+			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
+			&backtest.Backtest_Period_Asset{Symbol: "BRK-B", Enabled: true},
+			&backtest.Backtest_Period_Asset{Symbol: "BRKB", Enabled: true},
+		),
+	}))
+	test.Equal([]string{"BRKB"}, storedSymbols("share-class-all"))
+	stored, err := backtests.Get(context.TODO(), "share-class-all")
+	test.Require().NoError(err)
+	test.Equal("BRKB", stored.GetBenchmark())
+
+	// Two spellings that disagree on enabled are refused, not guessed.
+	err = create(&backtest.Backtest{
+		Name: "share-class-conflict",
+		Periods: period(
+			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
+			&backtest.Backtest_Period_Asset{Symbol: "BRKB", Enabled: false},
+		),
+	})
+	test.Require().ErrorContains(err, "BRKB is listed twice")
+}
+
 func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	ctx := context.TODO()
 	message := new(stream.MockMessage)

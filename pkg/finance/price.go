@@ -12,3 +12,10 @@ import (
 func ValidatePriceSource(provider, profile string) error {
 	return marketdata.ValidatePriceSource(provider, profile, environment.GetTradingProfilesFile())
 }
+
+// StoredSymbol is the one name a share class is stored under, however a
+// universe file spells it: BRK.B, BRK-B, BRK/B and BRKB all store as BRKB.
+// Every other symbol is returned unchanged.
+func StoredSymbol(symbol string) string {
+	return marketdata.StoredSymbol(symbol)
+}

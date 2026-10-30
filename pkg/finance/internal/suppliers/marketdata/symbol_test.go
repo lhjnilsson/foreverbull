@@ -166,3 +166,16 @@ func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	require.Contains(t, alpacaPaths()[0], "VOD.L")
 	require.NotContains(t, alpacaPaths()[0], "VOD-L")
 }
+
+// Every spelling of a share class stores under one name.
+func TestStoredSymbolOneNamePerShareClass(t *testing.T) {
+	t.Parallel()
+	for asked, want := range map[string]string{
+		"BRK.B": "BRKB", "BRK-B": "BRKB", "BRKB": "BRKB", "BRK/B": "BRKB", "BRK B": "BRKB", "brk.b": "BRKB",
+		"BF.B": "BFB", "BRK.A": "BRKA",
+		// Not share classes: unchanged.
+		"BK": "BK", "BKNG": "BKNG", "AAPL": "AAPL", "aapl.us": "aapl.us", "SPY": "SPY", "": "",
+	} {
+		require.Equal(t, want, StoredSymbol(asked), asked)
+	}
+}
