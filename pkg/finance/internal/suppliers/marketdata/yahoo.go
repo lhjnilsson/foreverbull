@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -334,6 +335,9 @@ type IndexResponse struct {
 	} `json:"quoteSummary"`
 }
 
+// indexLookupWorkers caps the concurrent asset lookups of one GetIndex.
+const indexLookupWorkers = 4
+
 func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset, error) {
 	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
 
@@ -354,38 +358,26 @@ func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset,
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
-	assets := make([]*pb.Asset, 0)
-	assetChan := make(chan *pb.Asset)
-
+	// One lookup per component and one for the index itself, at most
+	// indexLookupWorkers at a time: they share the Yahoo limiter with every
+	// download, and a large index must not start hundreds of goroutines.
+	if len(result.Summary.Result) == 0 {
+		return nil, fmt.Errorf("no index data for symbol %s", symbol)
+	}
+	symbols := append(slices.Clone(result.Summary.Result[0].Components.Components), symbol)
+	assets := make([]*pb.Asset, len(symbols))
 	group, gctx := errgroup.WithContext(ctx)
-	for _, component := range result.Summary.Result[0].Components.Components {
+	group.SetLimit(indexLookupWorkers)
+	for index, component := range symbols {
 		group.Go(func() error {
 			a, err := y.GetAsset(gctx, component)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
-			assetChan <- a
-
+			assets[index] = a
 			return nil
 		})
 	}
-
-	group.Go(func() error {
-		a, err := y.GetAsset(gctx, symbol)
-		if err != nil {
-			return fmt.Errorf("error getting asset: %w", err)
-		}
-		assetChan <- a
-
-		return nil
-	})
-
-	go func() {
-		for a := range assetChan {
-			assets = append(assets, a)
-		}
-	}()
-
 	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("error getting assets: %w", err)
 	}
