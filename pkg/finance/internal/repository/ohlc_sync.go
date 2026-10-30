@@ -41,6 +41,10 @@ func (e *NoBarsError) Error() string {
 
 func (e *NoBarsError) Unwrap() error { return ErrNoBars }
 
+// IssuesURL is where the finance service's user-facing errors ask for a
+// report.
+const IssuesURL = "https://github.com/lhjnilsson/foreverbull/issues"
+
 // StoreError is a database failure while storing one symbol's prices. Its
 // text is a fixed sentence, so no SQL or driver detail reaches a task state
 // or a client. Err keeps the cause for the server log.
@@ -51,7 +55,7 @@ type StoreError struct {
 
 func (e *StoreError) Error() string {
 	return fmt.Sprintf("Couldn't store prices for %s. Try again in a few minutes. "+
-		"If it keeps failing, report it at https://github.com/lhjnilsson/foreverbull/issues.", e.Symbol)
+		"If it keeps failing, report it at %s.", e.Symbol, IssuesURL)
 }
 
 func (e *StoreError) Unwrap() error { return e.Err }
