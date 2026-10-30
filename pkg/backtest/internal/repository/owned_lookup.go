@@ -34,6 +34,22 @@ func (db *Backtest) UpdatePeriodAssetByID(ctx context.Context, backtestID, symbo
 	return nil
 }
 
+// DisablePeriodAssetsByID disables every period asset of one backtest id
+// whose symbol is in symbols, in one statement, and returns the rows it
+// changed.
+func (db *Backtest) DisablePeriodAssetsByID(ctx context.Context, backtestID string, symbols []string) (int64, error) {
+	if backtestID == "" {
+		return 0, fmt.Errorf("backtest id is empty")
+	}
+	tag, err := db.Conn.Exec(ctx,
+		`UPDATE backtest_period_asset SET enabled = false WHERE backtest_id = $1 AND symbol = ANY($2)`,
+		backtestID, symbols)
+	if err != nil {
+		return 0, fmt.Errorf("failed to disable backtest period assets: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ReplaceByID overwrites membership intervals for one backtest id.
 func (db *UniverseMember) ReplaceByID(ctx context.Context, backtestID string, members []MemberInterval) error {
 	if backtestID == "" {

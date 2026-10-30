@@ -117,11 +117,20 @@ func internalDownloadError(symbol, step string, err error) error {
 	return downloadFailedError(symbol)
 }
 
-// noPriceDataError is the STATUS_ERROR text when no ticker of the instrument
-// has bars. DownloadFinancialData uses this prefix for the no-bars sentence;
-// any STATUS_ERROR fails create.
+// noPriceDataError is the STATUS_ERROR when the provider answered for every
+// ticker of the instrument and none has bars. DownloadFinancialData reads the
+// "no price data for " prefix as that outcome: a symbol-list backtest leaves
+// the symbol out, anything else fails create. Only a successful empty answer
+// may produce it. A GetOHLC failure (HTTP 5xx, network, timeout) is reported
+// with its own text, so create fails instead of leaving the symbol out.
 func noPriceDataError(symbol string) error {
 	return fmt.Errorf("%w for %s", errNoPriceData, symbol)
+}
+
+// noBarsAnswer reports whether a GetOHLC error is the provider saying it has
+// no bars for the ticker, as opposed to a failed request.
+func noBarsAnswer(err error) bool {
+	return errors.Is(err, marketdata.ErrNoBars)
 }
 
 var errNoPriceData = errors.New("no price data")
@@ -160,6 +169,8 @@ func (fs *MarketdataServer) downloadSymbol(
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
 
+	// Raw errors stay in the log: a GetAsset error can quote Yahoo's URL
+	// with its crumb, and a store error can quote the database.
 	asset, err := fs.marketdata.GetAsset(symbol)
 	if err != nil {
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
@@ -188,21 +199,30 @@ func (fs *MarketdataServer) downloadSymbol(
 			if errors.As(err, &blocked) {
 				return blocked
 			}
+			if !noBarsAnswer(err) {
+				// The request failed; we don't know whether the symbol has
+				// prices, so report the failure, not "no price data".
+				failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get ohlc", err))
+				return nil
+			}
+			ohlcs = nil
 		}
 	}
-	if err != nil || len(ohlcs) == 0 {
+	if len(ohlcs) == 0 {
 		fetched, fetchErr := fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
 		if fetchErr != nil {
 			var blocked *marketdata.BlockedError
 			if errors.As(fetchErr, &blocked) {
 				return blocked
 			}
-			// no-bars sentinel; create fails on any STATUS_ERROR, and this
-			// prefix selects the "no price data for … between …" sentence.
-			if ctx.Err() == nil && !errors.Is(fetchErr, errNoPriceData) {
-				log.Error().Err(redactURLError(fetchErr)).Str("symbol", symbol).Msg("looking up a later ticker failed")
+			// Only noPriceDataError selects the "no price data for … between …"
+			// sentence (and leave-out in a symbol-list backtest). A failed
+			// lookup, search or GetOHLC under another ticker is a failed
+			// download.
+			if !errors.Is(fetchErr, errNoPriceData) {
+				fetchErr = internalDownloadError(symbol, "later ticker", fetchErr)
 			}
-			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
+			failSymbol(ctx, sender, rsp, fetchErr)
 			return nil
 		}
 		storeSymbol = fetched.symbol
@@ -267,12 +287,19 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		return nil, err
 	}
 
-	candidates, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
+	candidates, searchErr, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
 	if err != nil {
 		return nil, err
 	}
+	// noBars is the outcome when no candidate has bars. A failed search may
+	// have missed the current ticker, so then we don't know the instrument
+	// has no prices and report the failure instead.
+	noBars := noPriceDataError(symbol)
+	if searchErr != nil {
+		noBars = fmt.Errorf("search for the current ticker of %s (%s) failed: %w", symbol, inst.ISIN, searchErr)
+	}
 	if len(candidates) == 0 {
-		return nil, noPriceDataError(symbol)
+		return nil, noBars
 	}
 
 	for _, candidate := range candidates {
@@ -284,6 +311,9 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 			var blocked *marketdata.BlockedError
 			if errors.As(err, &blocked) {
 				return nil, blocked
+			}
+			if !noBarsAnswer(err) {
+				return nil, err
 			}
 			continue
 		}
@@ -309,22 +339,26 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		}
 		return &fetchedBars{symbol: candidate, bars: ohlcs}, nil
 	}
-	return nil, noPriceDataError(symbol)
+	return nil, noBars
 }
 
+// laterTickerCandidates lists the instrument's other tickers: asset_symbol
+// aliases, then the provider's search by ISIN. searchErr is the search
+// failure; the aliases are still returned so one with bars can be used.
+// err is a failed alias read.
 func laterTickerCandidates(
 	ctx context.Context,
 	instruments repository.Instruments,
 	md supplier.Marketdata,
 	isin, asked string,
-) ([]string, error) {
+) (candidates []string, searchErr, err error) {
 	asked = strings.TrimSpace(asked)
 	seen := map[string]struct{}{asked: {}}
-	candidates := make([]string, 0)
+	candidates = make([]string, 0)
 
 	aliases, err := instruments.ListAliases(ctx, isin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, alias := range aliases {
 		symbol := strings.TrimSpace(alias.Symbol)
@@ -338,9 +372,9 @@ func laterTickerCandidates(
 		candidates = append(candidates, symbol)
 	}
 
-	found, err := md.SearchAsset(isin)
-	if err != nil {
-		log.Info().Err(redactURLError(err)).Str("isin", isin).Msg("search for current ticker failed")
+	found, searchErr := md.SearchAsset(isin)
+	if searchErr != nil {
+		log.Info().Err(redactURLError(searchErr)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
 		for _, a := range found {
 			symbol := strings.TrimSpace(a.Symbol)
@@ -357,7 +391,7 @@ func laterTickerCandidates(
 			candidates = append(candidates, symbol)
 		}
 	}
-	return candidates, nil
+	return candidates, searchErr, nil
 }
 
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {

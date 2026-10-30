@@ -366,11 +366,13 @@ func parseStooqCSV(canonical string, body []byte, start, end time.Time) ([]*pb.O
 		return nil, errors.New("empty response")
 	}
 	lower := bytes.ToLower(trimmed)
-	if bytes.HasPrefix(lower, []byte("no data")) {
-		return nil, errors.New("missing file: no data")
-	}
+	// The daily limit is checked first: a refusal that also says "No data"
+	// is a failed request, not Stooq's answer that the symbol has no bars.
 	if bytes.Contains(lower, []byte("exceeded the daily hits limit")) {
 		return nil, errors.New("daily hits limit exceeded")
+	}
+	if bytes.HasPrefix(lower, []byte("no data")) {
+		return nil, noBars("missing file: no data")
 	}
 	reader := csv.NewReader(bytes.NewReader(trimmed))
 	reader.FieldsPerRecord = -1
@@ -389,7 +391,7 @@ func parseStooqCSV(canonical string, body []byte, start, end time.Time) ([]*pb.O
 		return nil, fmt.Errorf("unparsable CSV: unexpected header %q", strings.Join(header, ","))
 	}
 	if len(records) == 1 {
-		return nil, errors.New("empty response: header only")
+		return nil, noBars("empty response: header only")
 	}
 
 	bars := make([]*pb.OHLC, 0, len(records)-1)
@@ -404,7 +406,7 @@ func parseStooqCSV(canonical string, body []byte, start, end time.Time) ([]*pb.O
 		bars = append(bars, bar)
 	}
 	if len(bars) == 0 {
-		return nil, errors.New("empty response: no rows in range")
+		return nil, noBars("empty response: no rows in range")
 	}
 	return bars, nil
 }

@@ -251,6 +251,22 @@ func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, asset_sy
 	return nil
 }
 
+// DisablePeriodAssets disables every period asset of the named backtest
+// whose symbol is in symbols, in one statement, and returns the rows it
+// changed.
+func (db *Backtest) DisablePeriodAssets(ctx context.Context, name string, symbols []string) (int64, error) {
+	if authOn() {
+		return 0, fmt.Errorf("disable period assets by name is refused while AUTH_ENABLED=true")
+	}
+	tag, err := db.Conn.Exec(ctx,
+		`UPDATE backtest_period_asset SET enabled = false WHERE backtest_name = $1 AND symbol = ANY($2)`,
+		name, symbols)
+	if err != nil {
+		return 0, fmt.Errorf("failed to disable backtest period assets: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	type rowData struct {
 		Name      string

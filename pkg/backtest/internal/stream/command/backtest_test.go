@@ -812,6 +812,8 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
 		Error:  "no price data for FB",
 	}, nil).Once()
+	// FB is the only listed symbol, so the stream ends with nothing to trade.
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
 
 	// Periods on the fixture span 2022-01-01 .. 2023-12-31.
@@ -822,6 +824,493 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 
 	_, err = backtests.Get(context.TODO(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// A symbol-list backtest leaves out a symbol with no prices anywhere in the
+// period, keeps the backtest, and names the symbol in the step's notice.
+func (test *BacktestCommandTest) TestDownloadFinancialDataLeavesOutSymbolWithNoPrices() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for XYZ",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().ErrorAs(err, &notice)
+	test.Equal([]string{"Left out XYZ: yahoo has no prices for it between 2022-01-01 and 2023-12-31."}, notice.Lines)
+
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	enabled := map[string]bool{}
+	for _, period := range b.GetPeriods() {
+		for _, asset := range period.GetAssets() {
+			enabled[asset.GetSymbol()] = asset.GetEnabled()
+		}
+	}
+	test.Equal(map[string]bool{"AAPL": true, "XYZ": false}, enabled)
+}
+
+// A GetOHLC failure (timeout, 5xx) is not "no prices": the finance service
+// sends its own text. A symbol-list create fails with the download sentence
+// and removes the backtest; the symbol is not left out and no notice is
+// returned.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenPriceRequestFails() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "fail to get OHLC data for symbol XYZ: error making request: context deadline exceeded",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "a failed price request must not leave the symbol out: %v", err)
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': the price download failed for XYZ. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
+	test.NotContains(err.Error(), "deadline")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The finance service could not search for a renamed symbol's current
+// ticker, so it doesn't know whether the symbol has prices. That status is
+// a download failure: create fails and the symbol is not left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenTickerSearchFails() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "FB", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "FB",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "search for the current ticker of FB (US30303M1027) failed: fail to search asset: 503 Service Unavailable",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "a failed ticker search must not leave the symbol out: %v", err)
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': the price download failed for FB. The backtest wasn't saved. "+
+			"Try again in a few minutes, or use another provider with --provider.")
+	// The raw cause stays in the finance log, never in the step message.
+	test.NotContains(err.Error(), "search for the current ticker")
+	test.NotContains(err.Error(), "503")
+	test.NotContains(err.Error(), "US30303M1027")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The left-out symbols are disabled in one statement. If it doesn't change
+// exactly the backtest's rows for them, create fails rather than name a
+// symbol as left out that may still be enabled.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenLeftOutRowsDoNotMatch() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for XYZ",
+	}, nil).Once()
+	// XYZ's row goes away after the backtest was read, so the update
+	// changes 0 rows where 1 is expected.
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Run(func(mock.Arguments) {
+		_, err := test.db.Exec(context.TODO(),
+			`DELETE FROM backtest_period_asset WHERE backtest_name = 'test-backtest' AND symbol = 'XYZ'`)
+		test.Require().NoError(err)
+	}).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "no notice when the left-out rows don't match: %v", err)
+	test.Require().EqualError(err, "Downloading prices failed: disabling the symbols left out changed 0 period assets, want 1. "+
+		"Nothing was changed. Run the same create again.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// An ETF backtest has universe members, so a member with no prices still
+// fails create: leaving members out is only for symbol-list backtests.
+// AAPL has prices, so a symbol-list rule would have left FB out (1 of 2).
+func (test *BacktestCommandTest) TestDownloadFinancialDataETFMemberWithNoPricesFails() {
+	test.Require().NoError(test.createETFBacktest("etf-unpriced", "2021-07-01", "2021-09-30", test.renameListings()))
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, rsp := range []*financeServicePB.DownloadHistoricalDataResponse{
+		{Symbol: "OEF", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK},
+		{Symbol: "AAPL", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK},
+		{Symbol: "FB", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR, Error: "no price data for FB"},
+	} {
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("etf-unpriced"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "an ETF member must not be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'etf-unpriced': no price data for FB "+
+		"between 2021-01-01 and 2021-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "etf-unpriced")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// downloadWithUnpriced lists symbols on the fixture backtest and streams
+// STATUS_OK for each one except those in unpriced, which get no price data.
+func (test *BacktestCommandTest) downloadWithUnpriced(symbols, unpriced []string) error {
+	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	test.Require().NoError(backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	}))
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range symbols {
+		rsp := &financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}
+		if slices.Contains(unpriced, symbol) {
+			rsp.Status = financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR
+			rsp.Error = "no price data for " + symbol
+		}
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient = new(financeServicePB.MockMarketdataClient)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+	return command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+}
+
+func symbolRange(prefix string, n int) []string {
+	symbols := make([]string, 0, n)
+	for i := range n {
+		symbols = append(symbols, fmt.Sprintf("%s%02d", prefix, i))
+	}
+	return symbols
+}
+
+// A symbol-list create leaves out at most max(1, floor(20% of listed))
+// symbols with no prices (MaxLeftOutPercent). Past that it fails, and
+// nothing is left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataCapsLeftOutSymbols() {
+	const noneSaved = "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	for _, tc := range []struct {
+		listed, unpriced int
+		wantErr          string // "" keeps the backtest with a left-out notice
+	}{
+		// 1/1: the cap alone allows 1, but no listed symbol has prices.
+		{listed: 1, unpriced: 1, wantErr: "Couldn't load data for backtest 'test-backtest': no price data for S00 " +
+			"between 2022-01-01 and 2023-12-31. " + noneSaved},
+		{listed: 2, unpriced: 1},
+		{listed: 5, unpriced: 1},
+		{listed: 10, unpriced: 2},
+		// floor(20% of 6) = 1, so 2 of 6 is past the cap (ceil would allow 2).
+		{listed: 6, unpriced: 2, wantErr: "Couldn't load data for backtest 'test-backtest': 2 of 6 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01), and at most 1 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
+		{listed: 10, unpriced: 3, wantErr: "Couldn't load data for backtest 'test-backtest': 3 of 10 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02), and at most 2 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
+		// 9 of 40 is past the cap of 8; the brackets name five and count the rest.
+		{listed: 40, unpriced: 9, wantErr: "Couldn't load data for backtest 'test-backtest': 9 of 40 symbols have no " +
+			"prices between 2022-01-01 and 2023-12-31 (S00, S01, S02, S03, S04 and 4 more), and at most 8 can be left out. " +
+			"The backtest wasn't saved. Check the symbols and dates, or use another provider with --provider, " +
+			"then run `fbull backtest create` again."},
+	} {
+		test.Run(fmt.Sprintf("%d of %d", tc.unpriced, tc.listed), func() {
+			test.SetupTest()
+			symbols := symbolRange("S", tc.listed)
+			err := test.downloadWithUnpriced(symbols, symbols[:tc.unpriced])
+
+			backtests := repository.Backtest{Conn: test.db}
+			if tc.wantErr != "" {
+				var notice *stream.Notice
+				test.Require().NotErrorAs(err, &notice, "nothing may be left out: %v", err)
+				test.Require().EqualError(err, tc.wantErr)
+				_, err = backtests.Get(context.TODO(), "test-backtest")
+				test.Require().ErrorIs(err, pgx.ErrNoRows)
+				return
+			}
+			var notice *stream.Notice
+			test.Require().ErrorAs(err, &notice)
+			test.Len(notice.Lines, tc.unpriced)
+			b, err := backtests.Get(context.TODO(), "test-backtest")
+			test.Require().NoError(err)
+			disabled := 0
+			for _, period := range b.GetPeriods() {
+				for _, asset := range period.GetAssets() {
+					if !asset.GetEnabled() {
+						disabled++
+					}
+				}
+			}
+			test.Equal(tc.unpriced, disabled)
+		})
+	}
+}
+
+// UX's exact cap copy, on a backtest named and dated as in the agreed
+// example: 3 of 10 symbols have no prices and at most 2 can be left out.
+func (test *BacktestCommandTest) TestDownloadFinancialDataCapFailureMatchesUXCopy() {
+	symbols := []string{"AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH", "III", "JJJ"}
+	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	_, err := backtests.Create(context.TODO(), &backtest.Backtest{
+		Name:      "oef-2024q1",
+		Benchmark: "OEF",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+			EndDate:   &pb.Date{Year: 2024, Month: 3, Day: 28},
+			Assets:    assets,
+		}},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range append([]string{"OEF"}, symbols...) {
+		rsp := &financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}
+		if symbol == "AAA" || symbol == "BBB" || symbol == "CCC" {
+			rsp.Status = financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR
+			rsp.Error = "no price data for " + symbol
+		}
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("oef-2024q1"))
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "nothing may be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': 3 of 10 symbols have no prices "+
+		"between 2024-01-02 and 2024-03-28 (AAA, BBB, CCC), and at most 2 can be left out. The backtest wasn't saved. "+
+		"Check the symbols and dates, or use another provider with --provider, then run `fbull backtest create` again.")
+
+	_, err = backtests.Get(context.TODO(), "oef-2024q1")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// The benchmark SPY is also listed and is the only symbol with prices. It
+// isn't traded, so there is nothing to trade and create fails.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenOnlyListedBenchmarkHasPrices() {
+	test.Require().Equal("SPY", test.backtest.GetBenchmark())
+	err := test.downloadWithUnpriced([]string{"SPY", "XYZ"}, []string{"XYZ"})
+	var notice *stream.Notice
+	test.Require().NotErrorAs(err, &notice, "XYZ must not be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': no price data for XYZ "+
+		"between 2022-01-01 and 2023-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// A symbol delisted partway through has prices for part of the period, so
+// its download is STATUS_OK. It stays in the backtest, no notice names it,
+// and Zipline auto-closes a held position after its last bar (universe.md §8).
+func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsSymbolDelistedPartway() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "TWTR", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range []string{"AAPL", "TWTR"} {
+		clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+		}, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	test.Require().NoError(command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest")))
+
+	b, err := backtests.Get(context.TODO(), "test-backtest")
+	test.Require().NoError(err)
+	for _, period := range b.GetPeriods() {
+		for _, asset := range period.GetAssets() {
+			test.True(asset.GetEnabled(), asset.GetSymbol())
+		}
+	}
+}
+
+// When no listed symbol has prices there is nothing to trade, so create
+// fails and names every symbol.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenNoSymbolHasPrices() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "ABC", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range []string{"XYZ", "ABC"} {
+		clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+			Error:  "no price data for " + symbol,
+		}, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': no price data for ABC, XYZ between 2022-01-01 and 2023-12-31. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// With more than five symbols and none priced, the failure names five and
+// counts the rest.
+func (test *BacktestCommandTest) TestDownloadFinancialDataNoSymbolHasPricesNamesFive() {
+	symbols := []string{"AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG"}
+	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, symbol := range symbols {
+		clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+			Symbol: symbol,
+			Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+			Error:  "no price data for " + symbol,
+		}, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': no price data for AAA, BBB, CCC, DDD, EEE and 2 more "+
+			"between 2022-01-01 and 2023-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+}
+
+// The benchmark has no period asset to disable, so no prices for it still
+// fails create.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenBenchmarkHasNoPrices() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "SPY",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "no price data for SPY",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': no price data for SPY between 2022-01-01 and 2023-12-31. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
 }
 
 // A bar the finance storage refused is named as a refusal, not hidden behind

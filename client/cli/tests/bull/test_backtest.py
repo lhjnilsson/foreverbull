@@ -430,6 +430,56 @@ def test_step_notices_round_trip_and_leave_message_empty():
     assert list(legacy.notices) == []
 
 
+def _left_out_stream(lines: list[str]):
+    def stream(**_kwargs):
+        # The download step completes with the left-out lines as its notices.
+        completed = backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED, notices=lines),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+        )
+        yield completed
+        yield completed
+
+    return stream
+
+
+def _create_with_left_out(monkeypatch, lines: list[str]):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_left_out_stream(lines)),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--provider", "yahoo"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    return result
+
+
+def _left_out_line(symbol: str) -> str:
+    return f"Left out {symbol}: yahoo has no prices for it between 2024-01-02 and 2024-03-28."
+
+
+def test_backtest_create_prints_left_out_symbol(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    result = _create_with_left_out(monkeypatch, [_left_out_line("XYZ")])
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == ["⚠ Left out XYZ: yahoo has no prices for it between 2024-01-02 and 2024-03-28."]
+
+
+def test_backtest_create_folds_left_out_symbols_into_one_line(monkeypatch):
+    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG"]
+    result = _create_with_left_out(monkeypatch, [_left_out_line(symbol) for symbol in symbols])
+    assert result.exit_code == 0
+    shown = [line for line in result.output.splitlines() if "⚠" in line]
+    assert shown == [
+        "⚠ Left out 7 symbols with no prices between 2024-01-02 and 2024-03-28: AAA, BBB, CCC, DDD, EEE and 2 more."
+    ]
+
+
 def test_backtest_create_grpc_error_prints_one_error_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
 
@@ -544,6 +594,69 @@ def test_backtest_create_other_download_error_prints_exact_copy_and_exits_1(monk
     assert "rpc error" not in result.output.lower()
     assert "traceback" not in result.output.lower()
     assert "grpc" not in result.output.lower()
+
+
+_LEFT_OUT_CAP_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': 3 of 10 symbols have no prices between 2024-01-02 and 2024-03-28 "
+    "(AAA, BBB, CCC), and at most 2 can be left out. The backtest wasn't saved. Check the symbols and dates, or use "
+    "another provider with --provider, then run `fbull backtest create` again."
+)
+
+_LEFT_OUT_CAP_FOLDED_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': 9 of 40 symbols have no prices between 2024-01-02 and 2024-03-28 "
+    "(AAA, BBB, CCC, DDD, EEE and 4 more), and at most 8 can be left out. The backtest wasn't saved. Check the "
+    "symbols and dates, or use another provider with --provider, then run `fbull backtest create` again."
+)
+
+
+def _assert_create_prints_exactly(monkeypatch, message: str):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(message)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {message}\n"
+    assert "⚠" not in result.output
+
+
+def test_backtest_create_left_out_cap_prints_exact_copy_and_exits_1(monkeypatch):
+    """3 of 10 symbols have no prices, past the cap of 2: create fails and nothing is left out."""
+    _assert_create_prints_exactly(monkeypatch, _LEFT_OUT_CAP_COPY)
+
+
+def test_backtest_create_left_out_cap_folded_prints_exact_copy_and_exits_1(monkeypatch):
+    """9 of 40 past the cap of 8: the brackets name five symbols, then "and 4 more"."""
+    _assert_create_prints_exactly(monkeypatch, _LEFT_OUT_CAP_FOLDED_COPY)
+
+
+_SEARCH_FAILED_COPY = (
+    "Couldn't load data for backtest 'from_file': the price download failed for FB. The backtest wasn't saved. "
+    "Try again in a few minutes, or use another provider with --provider."
+)
+
+
+def test_backtest_create_ticker_search_failure_prints_exact_copy_and_exits_1(monkeypatch):
+    """FB had no bars and the search for its current ticker failed: create fails, nothing is left out."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_SEARCH_FAILED_COPY)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_SEARCH_FAILED_COPY}\n"
+    assert "couldn't download prices" not in result.output.lower()
+    assert "search for the current ticker" not in result.output.lower()
+    assert "503" not in result.output
+    assert "left out" not in result.output.lower()
 
 
 _INGEST_DRIVER_COPY = (

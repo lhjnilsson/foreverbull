@@ -685,3 +685,22 @@ def test_missing_prices_summary_folds_three_or_more_symbols():
         "Missing prices for 12 symbols, filled with the previous close. No trades on those days.",
         *many,
     ]
+
+
+def test_create_notice_lines_folds_left_out_and_missing_prices_apart():
+    from foreverbull.models.finance import create_notice_lines
+
+    def left(symbol):
+        return f"Left out {symbol}: yahoo has no prices for it between 2024-01-02 and 2024-03-28."
+
+    filled = "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."
+    assert create_notice_lines([filled, left("ABC")], verbose=False) == [left("ABC"), filled]
+    many = [left(symbol) for symbol in ["GGG", "AAA", "BBB", "CCC"]]
+    assert create_notice_lines([*many, filled], verbose=False) == [
+        "Left out 4 symbols with no prices between 2024-01-02 and 2024-03-28: AAA, BBB, CCC, GGG.",
+        filled,
+    ]
+    assert create_notice_lines(many, verbose=True) == [
+        "Left out 4 symbols with no prices between 2024-01-02 and 2024-03-28: AAA, BBB, CCC, GGG.",
+        *many,
+    ]
