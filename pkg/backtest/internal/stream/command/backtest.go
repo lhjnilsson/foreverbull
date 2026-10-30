@@ -649,9 +649,11 @@ func isRefusedBarError(text string) bool {
 const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
-// noPriceDataNextStep ends the sentence when a provider returned no bars. An
-// empty answer can be a passing outage, so a retry comes first.
-const noPriceDataNextStep = "Nothing was saved. Try again in a few minutes, or use another provider with --provider."
+// noPriceDataNextStep ends the sentence when a provider returned no bars. The
+// finance service already retried an empty download once, so a result that is
+// still empty is most often a wrong or delisted symbol; checking it comes first.
+const noPriceDataNextStep = "Nothing was saved. Check that %s traded between those dates, try again later, " +
+	"or use another provider with --provider."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
@@ -671,7 +673,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 		startText := pb.DateToDateString(start)
 		endText := pb.DateToDateString(end)
 		lead = fmt.Sprintf("%s returned no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
-		nextStep = noPriceDataNextStep
+		nextStep = fmt.Sprintf(noPriceDataNextStep, symbol)
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
