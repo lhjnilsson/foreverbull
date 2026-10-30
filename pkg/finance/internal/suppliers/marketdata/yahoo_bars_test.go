@@ -81,3 +81,63 @@ func TestYahooBarsRefusesColumnsOfDifferentLength(t *testing.T) {
 	_, _, err := yahooBars([]int64{1777901400, 1777987800}, []yahooQuote{quote})
 	require.EqualError(t, err, "close has 1 values for 2 timestamps")
 }
+
+func yahooChartServer(t *testing.T, status int, contentType, body string) *YahooClient {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return &YahooClient{chartURL: srv.URL + "/"}
+}
+
+// Yahoo's "Not Found" chart error is its answer that a ticker has no bars,
+// so a download may try another ticker or report no prices. A server error
+// is a failed request and must not read as no bars.
+func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2021, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	notFound := yahooChartServer(t, http.StatusNotFound, "application/json",
+		`{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`)
+	bars, err := notFound.GetOHLC("NON_EXISTING", start, &end)
+	require.Nil(t, bars)
+	require.ErrorIs(t, err, ErrNoBars)
+	require.EqualError(t, err, "fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")
+
+	// 404 with the Not Found chart error is the same answer.
+	notFound404 := yahooChartServer(t, http.StatusNotFound, "application/json",
+		`{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`)
+	_, err = notFound404.GetOHLC("NON_EXISTING", start, &end)
+	require.ErrorIs(t, err, ErrNoBars)
+
+	cases := []struct {
+		name, contentType, body string
+		status                  int
+	}{
+		{name: "chart error", status: http.StatusInternalServerError, contentType: "application/json",
+			body: `{"chart":{"result":null,"error":{"code":"Internal Server Error","description":"try again"}}}`},
+		{name: "plain 503", status: http.StatusServiceUnavailable, contentType: "text/plain", body: "Service Unavailable"},
+		// A 5xx with an empty-looking chart must not read as 0 bars.
+		{name: "503 with empty result", status: http.StatusServiceUnavailable, contentType: "application/json",
+			body: `{"chart":{"result":[{}]}}`},
+		// Not Found counts only on a 200 or 404.
+		{name: "500 with Not Found", status: http.StatusInternalServerError, contentType: "application/json",
+			body: `{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`},
+		{name: "404 without Not Found", status: http.StatusNotFound, contentType: "application/json",
+			body: `{"chart":{"result":[{}]}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := yahooChartServer(t, tc.status, tc.contentType, tc.body)
+			bars, err := client.GetOHLC("AAPL", start, &end)
+			require.Nil(t, bars)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, ErrNoBars)
+		})
+	}
+}
