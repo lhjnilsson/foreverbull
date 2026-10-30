@@ -51,3 +51,33 @@ func TestInvalidTickerPositionOnlyMatchesTheRefusal(t *testing.T) {
 		require.False(t, ok, name)
 	}
 }
+
+// Only the finance service's exact ambiguous-ticker sentence, for the symbol
+// the response is about, names the provider and the ticker.
+func TestAmbiguousSymbolProviderOnlyMatchesTheRefusal(t *testing.T) {
+	for _, provider := range []string{"yahoo", "stooq", "alpaca"} {
+		got, ok := ambiguousSymbolProvider(provider+" has more than one instrument for SYM", "SYM")
+		require.True(t, ok, provider)
+		require.Equal(t, provider, got)
+	}
+	got, ok := ambiguousSymbolProvider("yahoo has more than one instrument for BRK.B", "BRK.B")
+	require.True(t, ok)
+	require.Equal(t, "yahoo", got)
+
+	for name, tc := range map[string]struct{ text, symbol string }{
+		"unknown provider":    {"postgres has more than one instrument for SYM", "SYM"},
+		"upper-case provider": {"YAHOO has more than one instrument for SYM", "SYM"},
+		"other symbol":        {"yahoo has more than one instrument for OTHER", "SYM"},
+		"escape in symbol":    {"yahoo has more than one instrument for S\x1b[2JM", "S\x1b[2JM"},
+		"space in symbol":     {"yahoo has more than one instrument for S M", "S M"},
+		"symbol too long":     {"yahoo has more than one instrument for ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG", "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG"},
+		"trailing raw text":   {"yahoo has more than one instrument for SYM: 2 rows", "SYM"},
+		"trailing period":     {"yahoo has more than one instrument for SYM.", "SYM"},
+		"leading raw text":    {"error: yahoo has more than one instrument for SYM", "SYM"},
+		"repository text":     {"symbol SYM maps to 2 instruments at 2024-01-01", "SYM"},
+		"empty":               {"", ""},
+	} {
+		_, ok := ambiguousSymbolProvider(tc.text, tc.symbol)
+		require.False(t, ok, name)
+	}
+}
