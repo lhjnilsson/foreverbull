@@ -993,6 +993,34 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenLeftOutRowsDo
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+// An ETF backtest has universe members, so a member with no prices still
+// fails create: leaving members out is only for symbol-list backtests.
+// AAPL has prices, so a symbol-list rule would have left FB out (1 of 2).
+func (test *BacktestCommandTest) TestDownloadFinancialDataETFMemberWithNoPricesFails() {
+	test.Require().NoError(test.createETFBacktest("etf-unpriced", "2021-07-01", "2021-09-30", test.renameListings()))
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	for _, rsp := range []*financeServicePB.DownloadHistoricalDataResponse{
+		{Symbol: "OEF", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK},
+		{Symbol: "AAPL", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK},
+		{Symbol: "FB", Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR, Error: "no price data for FB"},
+	} {
+		clientStreamMock.On("Recv", mock.Anything).Return(rsp, nil).Once()
+	}
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("etf-unpriced"))
+	var notice *stream.Notice
+	test.Require().False(errors.As(err, &notice), "an ETF member must not be left out: %v", err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'etf-unpriced': no price data for FB "+
+		"between 2021-01-01 and 2021-12-31. Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(context.TODO(), "etf-unpriced")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // downloadWithUnpriced lists symbols on the fixture backtest and streams
 // STATUS_OK for each one except those in unpriced, which get no price data.
 func (test *BacktestCommandTest) downloadWithUnpriced(symbols, unpriced []string) error {
