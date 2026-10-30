@@ -2173,3 +2173,37 @@ def test_backtest_create_provider_timeout_prints_exact_copy_and_exits_1(monkeypa
     assert result.exit_code == 1
     # The progress row is cleared with the others; only the sentence stays.
     assert result.output == f"Using provider: alpaca (from --provider)\n✖ {_PROVIDER_TIMEOUT_COPY}\n"
+
+
+_TIME_LIMIT_COPY = (
+    "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "
+    "6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "
+    "then run `fbull backtest create` again."
+)
+
+
+def test_backtest_create_time_limit_prints_exact_copy_and_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+
+    def stream(**_kwargs):
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(
+                state=common_pb.State.RUNNING, message="Downloading prices: 6,212 of 10,000 symbols"
+            ),
+        )
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.FAILED, message=_TIME_LIMIT_COPY),
+        )
+
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=stream),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file(provider="alpaca")
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: alpaca (from --provider)\n✖ {_TIME_LIMIT_COPY}\n"
