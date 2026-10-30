@@ -174,7 +174,10 @@ func clientAddr(r *http.Request) string {
 	if r == nil || !environment.GetAuthTrustProxy() {
 		return remote
 	}
-	if host := rightmostUntrusted(r.Header.Get("X-Forwarded-For"), trustedNets(environment.GetAuthTrustedProxies())); host != "" {
+	// Setup refuses a bad list, so GetAuthTrustedProxyNets panics rather than
+	// trusting a partial list or quietly falling back to the remote address.
+	trusted := environment.GetAuthTrustedProxyNets()
+	if host := rightmostUntrusted(r.Header.Get("X-Forwarded-For"), trusted); host != "" {
 		return host
 	}
 	return remote
@@ -204,32 +207,6 @@ func rightmostUntrusted(forwarded string, trusted []*net.IPNet) string {
 		return host
 	}
 	return ""
-}
-
-func trustedNets(raw string) []*net.IPNet {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var nets []*net.IPNet
-	for _, field := range strings.Split(raw, ",") {
-		field = trim(field)
-		if field == "" {
-			continue
-		}
-		if !strings.Contains(field, "/") {
-			if strings.Contains(field, ":") {
-				field += "/128"
-			} else {
-				field += "/32"
-			}
-		}
-		_, network, err := net.ParseCIDR(field)
-		if err != nil {
-			continue
-		}
-		nets = append(nets, network)
-	}
-	return nets
 }
 
 func ipInNets(ip net.IP, nets []*net.IPNet) bool {
