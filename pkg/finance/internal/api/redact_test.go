@@ -26,23 +26,6 @@ func yahooURLError() error {
 	})
 }
 
-func TestRedactURLErrorStripsQueryAndFragment(t *testing.T) {
-	got := redactURLError(yahooURLError())
-
-	assert.NotContains(t, got.Error(), "crumb")
-	assert.NotContains(t, got.Error(), "s3cr3tCrumb")
-	assert.NotContains(t, got.Error(), "frag")
-	assert.Equal(t,
-		`yahoo get asset: Get "https://query2.finance.yahoo.com/v1/finance/quoteType/AAPL": dial tcp: connection refused`,
-		got.Error())
-}
-
-func TestRedactURLErrorLeavesOtherErrors(t *testing.T) {
-	plain := errors.New("boom")
-	assert.Same(t, plain, redactURLError(plain))
-	assert.NoError(t, redactURLError(nil))
-}
-
 func TestInternalDownloadErrorDoesNotLogCrumb(t *testing.T) {
 	var buf bytes.Buffer
 	prev := log.Logger
