@@ -1,20 +1,19 @@
 import functools
 import logging
 import logging.handlers
-import math
 import multiprocessing
 import multiprocessing.queues
 import os
 
 from typing import cast
 
+import numpy as np
 import pandas as pd
 import pynng
 import six
 
 from protobuf import merge_from_binary
 from zipline.data import bundles
-from zipline.data.bar_reader import NoDataOnDate
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
 from zipline.finance import metrics
@@ -50,13 +49,18 @@ def zero_benchmark_returns(sessions: pd.DatetimeIndex) -> pd.Series:
 def benchmark_returns(window_sessions, sessions, opens, closes) -> pd.Series:
     """Benchmark daily returns on Zipline session labels.
 
-    ``window_sessions`` may hold the session before ``sessions`` so the
-    first return is that close against the previous close. Without a
-    usable previous close the first return is the first session's open
-    to close, as Zipline does for an asset that starts on that session.
-    Passing the benchmark as a sid instead lets Zipline compare the
-    asset start (the first bar, stamped at the session open) against
-    the session label and refuse the run, so the series is built here.
+    ``window_sessions`` is ``sessions``, or ``sessions`` with the session
+    before it, and every open and close in it is a stored price above 0
+    (``load_benchmark_returns`` fails the run otherwise), so no return is
+    filled. With the session before, the first return is the first close
+    against that close and the window day itself is not returned: Zipline
+    only reads the run sessions. Without it, the run starts on the
+    benchmark's first bundle session, where no previous close exists, and
+    the first return is that session's open to close, as Zipline does for
+    an asset that starts on that session. Passing the benchmark as a sid
+    instead lets Zipline compare the asset start (the first bar, stamped at
+    the session open) against the session label and refuse the run, so the
+    series is built here.
     """
     session_index = pd.DatetimeIndex(sessions)
     if len(session_index) == 0:
@@ -64,35 +68,91 @@ def benchmark_returns(window_sessions, sessions, opens, closes) -> pd.Series:
     window_index = pd.DatetimeIndex(window_sessions)
     close_series = pd.Series(data=[float(value) for value in closes], index=window_index, dtype=float)
     open_series = pd.Series(data=[float(value) for value in opens], index=window_index, dtype=float)
-    returns = close_series.pct_change().reindex(session_index)
-    first_return = float(returns.iloc[0])
-    if not math.isfinite(first_return):
-        first_open = float(open_series[session_index[0]])
-        first_close = float(close_series[session_index[0]])
-        returns.iloc[0] = (first_close - first_open) / first_open if first_open > 0 else 0.0
-    returns = returns.fillna(0.0)
-    return returns.replace([float("inf"), float("-inf")], 0.0)
+    returns = close_series / close_series.shift(1) - 1.0
+    if window_index[0] < session_index[0]:
+        # The window day only lends its close; its own return has no
+        # previous close and Zipline doesn't read it.
+        returns = returns.iloc[1:]
+    else:
+        first = session_index[0]
+        returns.iloc[0] = (close_series[first] - open_series[first]) / open_series[first]
+    return returns.loc[session_index]
 
 
-def load_benchmark_returns(bundle, benchmark_asset, trading_calendar, sessions) -> pd.Series:
-    """Read the benchmark's daily bars from the bundle on session labels."""
+def load_benchmark_returns(backtest: str, bundle, benchmark_asset, trading_calendar, sessions) -> pd.Series:
+    """Read the benchmark's daily bars from the bundle on session labels.
+
+    The window starts one session early so the first return is measured
+    from the previous close. When the run starts on the benchmark's first
+    session (its asset start date) there is no previous close, and the
+    first return is that session's open to close. A window day the bundle has no bar for, or
+    whose open or close is missing or not above 0, fails the run and every
+    such day is named. ``reader.sessions`` is the bundle calendar, not the
+    days the benchmark has bars, and bcolz reads a stored 0 as NaN, so the
+    prices themselves are checked.
+    """
     if len(sessions) == 0:
         return zero_benchmark_returns(sessions)
     reader = bundle.equity_daily_bar_reader
+    bundle_sessions = pd.DatetimeIndex(reader.sessions)
+    first_session = benchmark_first_session(benchmark_asset)
     window_start = sessions[0]
-    if sessions[0] > trading_calendar.first_session:
+    if sessions[0] > first_session:
         window_start = trading_calendar.previous_session(sessions[0])
-    window_sessions = trading_calendar.sessions_in_range(window_start, sessions[-1])
-    if len(window_sessions) == 0 or window_sessions[0] > sessions[0]:
-        window_sessions = sessions
-    try:
-        opens, closes = reader.load_raw_arrays(
-            ["open", "close"], window_sessions[0], window_sessions[-1], [benchmark_asset]
+    window_sessions = pd.DatetimeIndex(trading_calendar.sessions_in_range(window_start, sessions[-1]))
+    opens = np.full(len(window_sessions), np.nan)
+    closes = np.full(len(window_sessions), np.nan)
+    readable = (window_sessions >= bundle_sessions[0]) & (window_sessions <= bundle_sessions[-1])
+    if readable.any():
+        stored = window_sessions[readable]
+        stored_opens, stored_closes = reader.load_raw_arrays(
+            ["open", "close"], stored[0], stored[-1], [benchmark_asset]
         )
-    except NoDataOnDate:
-        opens, closes = reader.load_raw_arrays(["open", "close"], sessions[0], sessions[-1], [benchmark_asset])
-        window_sessions = sessions
-    return benchmark_returns(window_sessions, sessions, opens[:, 0], closes[:, 0])
+        opens[readable] = stored_opens[:, 0]
+        closes[readable] = stored_closes[:, 0]
+    usable = np.isfinite(opens) & np.isfinite(closes) & (opens > 0) & (closes > 0)
+    usable &= window_sessions.isin(bundle_sessions)
+    if not usable.all():
+        missing = pd.DatetimeIndex(window_sessions[~usable])
+        raise ValueError(benchmark_missing_line(backtest, str(benchmark_asset.symbol), missing, window_sessions))
+    return benchmark_returns(window_sessions, sessions, opens, closes)
+
+
+def benchmark_first_session(benchmark_asset) -> pd.Timestamp:
+    """The session label of the benchmark's first stored bar."""
+    first = cast(pd.Timestamp, pd.Timestamp(benchmark_asset.start_date))
+    if first.tzinfo is not None:
+        first = first.tz_convert(None)
+    return first.normalize()
+
+
+def session_ranges(days: pd.DatetimeIndex, sessions: pd.DatetimeIndex) -> str:
+    """Days as dates, and a run of sessions in a row as "A to B".
+
+    A weekend or holiday inside a run doesn't break it, as in the Go
+    side's missing-session list.
+    """
+    positions = [int(position) for position in sessions.get_indexer(days)]
+    parts: list[str] = []
+    i = 0
+    while i < len(positions):
+        j = i
+        while j + 1 < len(positions) and positions[j + 1] == positions[j] + 1:
+            j += 1
+        first = f"{days[i]:%Y-%m-%d}"
+        parts.append(first if j == i else f"{first} to {days[j]:%Y-%m-%d}")
+        i = j + 1
+    return ", ".join(parts)
+
+
+def benchmark_missing_line(backtest: str, benchmark: str, missing: pd.DatetimeIndex, sessions: pd.DatetimeIndex) -> str:
+    """Name the backtest, the benchmark and every session it has no price on."""
+    count = "1 trading day" if len(missing) == 1 else f"{len(missing)} trading days"
+    return (
+        f"Couldn't run backtest '{backtest}': the benchmark {benchmark} has no prices on {count}: "
+        f"{session_ranges(missing, sessions)}. Nothing was run. "
+        "Run `fbull backtest create` again to reload its prices, or choose another benchmark."
+    )
 
 
 def ticker_history(asset_finder) -> dict[int, list[tuple[pd.Timestamp, str]]]:
@@ -287,7 +347,9 @@ class Engine(multiprocessing.Process):
         benchmark_sid = None
         if req.benchmark:
             benchmark_asset = bundle.asset_finder.lookup_symbol(req.benchmark, as_of_date=None)
-            stored_benchmark_returns = load_benchmark_returns(bundle, benchmark_asset, trading_calendar, sessions)
+            stored_benchmark_returns = load_benchmark_returns(
+                execution.backtest, bundle, benchmark_asset, trading_calendar, sessions
+            )
         else:
             stored_benchmark_returns = zero_benchmark_returns(sessions)
 
