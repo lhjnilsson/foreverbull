@@ -145,6 +145,30 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRefusesOverTheSymbolCa
 	test.requireNotStored("test-backtest")
 }
 
+// A stored universe can hold a share class under several spellings (ETF
+// holdings keep their own names). The count in the sentence is the stored
+// one: the benchmark, 10,000 assets and BRK.B, BRK-B and BRKB are 10,002
+// symbols, not 10,004.
+func (test *BacktestCommandTest) TestDownloadFinancialDataOverCapCountsShareClassSpellingsOnce() {
+	assets := capAssets(finance.MaxDownloadSymbols)
+	for _, spelling := range []string{"BRK.B", "BRK-B", "BRKB"} {
+		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: spelling, Enabled: true})
+	}
+	backtests := repository.Backtest{Conn: test.db}
+	test.Require().NoError(backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    assets,
+	}))
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': it has 10,002 symbols, "+
+		"and the limit is 10,000. The backtest wasn't saved. Remove symbols or split them across several "+
+		"backtests, then run `fbull backtest create` again.")
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
+	test.requireNotStored("test-backtest")
+}
+
 // If the finance service refuses a create's download over the cap anyway, the
 // create shows its own sentence with the broker's count, not the raw text.
 func (test *BacktestCommandTest) TestDownloadFinancialDataShowsFinanceCapRefusalWithBrokerCount() {
