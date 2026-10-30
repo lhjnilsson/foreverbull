@@ -81,6 +81,10 @@ class FBSpinnerColumn(SpinnerColumn):
 class LiveProgress(Live):
     def __init__(self):
         self._orchestration_tasks = {}
+        # labels are the step rows' own names ("Downloading"). A running step's
+        # progress text replaces its row in place and the label comes back
+        # when the step ends.
+        self._labels: dict[str, str] = {}
         # failure is the first failed step's message, so a caller can show it
         # as the one error line instead of the progress rows.
         self.failure: str | None = None
@@ -114,21 +118,24 @@ class LiveProgress(Live):
             for field in msg.desc().fields:
                 if not is_step(field):
                     continue
-                task_id = self.progress.add_task(
-                    " ".join([part.capitalize() for part in field.name.split("_")]),
-                    start=False,
-                    total=1,
-                )
+                label = " ".join([part.capitalize() for part in field.name.split("_")])
+                task_id = self.progress.add_task(label, start=False, total=1)
                 self._orchestration_tasks[field.name] = task_id
+                self._labels[field.name] = label
         else:
             for field in msg:
                 if not is_step(field):
                     continue
                 step = msg[field]
                 task_id = self._orchestration_tasks[field.name]
+                label = self._labels[field.name]
                 match step.state:
                     case common_pb.State.RUNNING:
-                        self.progress.start_task(task_id)
+                        if not self.progress.tasks[task_id].started:
+                            self.progress.start_task(task_id)
+                        # The broker sends progress such as "Downloading prices:
+                        # 1,240 of 10,000 symbols" as the running step's message.
+                        self.progress.update(task_id, description=step.message or label)
                     case common_pb.State.COMPLETED:
                         if not self.progress.tasks[task_id].started:
                             self.progress.start_task(task_id)
@@ -136,11 +143,11 @@ class LiveProgress(Live):
                             self.notices.extend(
                                 line for notice in step.notices for line in notice.splitlines() if line.strip()
                             )
-                        self.progress.update(task_id, completed=1)
+                        self.progress.update(task_id, completed=1, description=label)
                     case common_pb.State.FAILED:
                         if self.failure is None:
                             self.failure = step.message
-                        description = f"{self.progress.tasks[task_id].description}: {step.message}"
+                        description = f"{label}: {step.message}"
                         self.progress.update(task_id, completed=-1, description=description)
 
     @contextmanager
