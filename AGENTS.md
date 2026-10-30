@@ -310,7 +310,7 @@ Go server defaults are in `internal/environment/env.go`. Empty optional vars are
 
 `MARKET_DATA_PROVIDER`, `TRADING_PROVIDER`, `TRADING_ALLOW_LIVE_URL`, `TRADING_CURRENCY`, and broker base-URL or credential variables are not read. Paper and demo URLs are constants in the adapters. There is no live URL switch.
 
-Python Minio client (`Storage.from_environment`) also reads `STORAGE_ENDPOINT` (default `localhost:9000`), `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_SECURE`.
+Python Minio client (`Storage.from_environment`) also reads `STORAGE_ENDPOINT` (required, no default), `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` (required, no default), and `STORAGE_SECURE` (`false` when unset; `true`, `false`, `1` or `0`).
 
 Package docs: [client/README.md](client/README.md), [client/cli/README.md](client/cli/README.md), [client/zipline/README.md](client/zipline/README.md), [client/testing/README.md](client/testing/README.md), [deploy/README.md](deploy/README.md). Strategy → backtest → results walkthrough: [docs/strategy-run-results.md](docs/strategy-run-results.md). Cookiecutter templates: `client/templates/simple` and `client/templates/advanced` (root `cookiecutter.json`).
 

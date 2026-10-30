@@ -106,6 +106,9 @@ checks every setting at startup and exits with one line per bad variable.
 | `IBKR_ACCOUNT_MODE` | `paper` |
 | Grafana `BROKER_URL` | `foreverbull:50055` |
 | Zipline `DATABASE_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
+| Zipline `STORAGE_ENDPOINT` | `minio:9000` |
+| Zipline `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | From Secret `foreverbull-credentials`, the same keys as the broker's MinIO keys |
+| Zipline `STORAGE_SECURE` | `false` |
 
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 
@@ -113,6 +116,12 @@ Zipline is reached by in-cluster Service `zipline:50055`. Service pods get
 `BROKER_HOSTNAME`, `BROKER_PORT` (gRPC `50055`), `STORAGE_ENDPOINT`, and
 `LOGLEVEL` (`internal/container` `Start`). They do not get `DATABASE_URL` or
 the MinIO keys. The broker has no HTTP listener.
+
+The Python storage client (`foreverbull.broker.storage`) has no default
+endpoint or keys and does not switch to another endpoint when the one it
+is given does not answer. Outside the cluster, set `STORAGE_ENDPOINT`
+(`localhost:9000` on local Kind), `STORAGE_ACCESS_KEY`, and
+`STORAGE_SECRET_KEY` before reading results from storage.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.
