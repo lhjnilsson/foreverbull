@@ -378,7 +378,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataUsesLaterTickerWhenAskedH
 	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "ProShares Buffer ETF"}, nil)
 	suite.marketdata.On("GetAsset", "META").Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil)
 	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
-		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
+		Return(nil, yahooNotFound("FB"))
 	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Timestamp: timestamppb.New(mustTime("2019-06-03")),
@@ -442,9 +442,9 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 
 	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
 	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
-		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
+		Return(nil, yahooNotFound("FB"))
 	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).
-		Return(nil, errors.New("fail to get OHLC data for symbol META: Data doesn't exist")).Maybe()
+		Return(nil, yahooNotFound("META")).Maybe()
 	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
 		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
 	}, nil)
@@ -463,6 +463,81 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 	suite.Equal("FB", msg.GetSymbol())
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
 	suite.True(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
+}
+
+// yahooNotFound is Yahoo's answer for a ticker it has no chart for. It is
+// an answer, not a failure, so the download may try another ticker or
+// report no price data.
+func yahooNotFound(symbol string) error {
+	return fmt.Errorf("fail to get OHLC data for symbol %s: No data found, symbol may be delisted: %w",
+		symbol, marketdata.ErrNoBars)
+}
+
+// A GetOHLC failure (5xx, network, timeout) says nothing about whether the
+// symbol has prices. It must be reported with its own text, not as "no
+// price data", so a symbol-list create fails instead of leaving it out. No
+// other ticker is tried.
+func (suite *MarketdataTest) TestDownloadHistoricalDataReportsGetOHLCFailure() {
+	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol AAPL: error making request: context deadline exceeded"))
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"AAPL"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("AAPL", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
+	suite.Contains(msg.GetError(), "context deadline exceeded")
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+	suite.marketdata.AssertNotCalled(suite.T(), "SearchAsset", mock.Anything)
+}
+
+// FB has no bars, and fetching under its later ticker META fails. We don't
+// know whether META has prices, so the failure is reported, not "no price
+// data".
+func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerGetOHLCFailure() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FB"))
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol META: error decoding response: 503 Service Unavailable"))
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.False(strings.HasPrefix(msg.GetError(), "no price data for "), msg.GetError())
+	suite.Contains(msg.GetError(), "503 Service Unavailable")
 }
 
 // Yahoo sometimes answers a listed symbol (BK) with no data. Download must

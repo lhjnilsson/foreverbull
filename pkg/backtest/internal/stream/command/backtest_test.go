@@ -869,6 +869,46 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataLeavesOutSymbolWithNoP
 	test.Equal(map[string]bool{"AAPL": true, "XYZ": false}, enabled)
 }
 
+// A GetOHLC failure (timeout, 5xx) is not "no prices": the finance service
+// sends its own text. A symbol-list create fails with the download sentence
+// and removes the backtest; the symbol is not left out and no notice is
+// returned.
+func (test *BacktestCommandTest) TestDownloadFinancialDataFailsWhenPriceRequestFails() {
+	backtests := repository.Backtest{Conn: test.db}
+	err := backtests.UpdatePeriod(context.TODO(), "test-backtest", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "AAPL", Enabled: true},
+			{Symbol: "XYZ", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "XYZ",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  "fail to get OHLC data for symbol XYZ: error making request: context deadline exceeded",
+	}, nil).Once()
+	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF).Maybe()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+
+	err = command.DownloadFinancialData(context.TODO(), test.downloadMessage("test-backtest"))
+	var notice *stream.Notice
+	test.Require().False(errors.As(err, &notice), "a failed price request must not leave the symbol out: %v", err)
+	test.Require().EqualError(err,
+		"Couldn't load data for backtest 'test-backtest': couldn't download prices for XYZ. "+
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.")
+
+	_, err = backtests.Get(context.TODO(), "test-backtest")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
 // A symbol delisted partway through has prices for part of the period, so
 // its download is STATUS_OK. It stays in the backtest, no notice names it,
 // and Zipline auto-closes a held position after its last bar (universe.md §8).
