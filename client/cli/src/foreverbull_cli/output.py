@@ -84,8 +84,9 @@ class LiveProgress(Live):
         # failure is the first failed step's message, so a caller can show it
         # as the one error line instead of the progress rows.
         self.failure: str | None = None
-        # notices are lines from steps that completed with a message, such as
+        # notices are lines from the notices field of completed steps, such as
         # prices the ingest filled; the caller prints them after the rows.
+        # A step's message is failure text only, so it is never read here.
         self.notices: list[str] = []
         spinner = FBSpinnerColumn()
         text = TextColumn("[progress.description]{task.description}")
@@ -132,7 +133,9 @@ class LiveProgress(Live):
                         if not self.progress.tasks[task_id].started:
                             self.progress.start_task(task_id)
                         if self.progress.tasks[task_id].completed < 1:
-                            self.notices.extend(line for line in step.message.splitlines() if line.strip())
+                            self.notices.extend(
+                                line for notice in step.notices for line in notice.splitlines() if line.strip()
+                            )
                         self.progress.update(task_id, completed=1)
                     case common_pb.State.FAILED:
                         if self.failure is None:

@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
@@ -26,7 +25,7 @@ func (s *NATSStream) runOrchestrationStep(ctx context.Context, step *pb.Orchestr
 			var notice *Notice
 			if errors.As(err, &notice) {
 				mu.Lock()
-				notices = append(notices, notice.Text)
+				notices = append(notices, notice.Lines...)
 				mu.Unlock()
 				return nil
 			}
@@ -53,12 +52,9 @@ func (s *NATSStream) RunOrchestration(ctx context.Context, o *pb.Orchestration) 
 				out <- &failedStep
 				return
 			}
-			completedStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_COMPLETED}
-			if len(notices) > 0 {
-				// UpdateOrchestration copies Error into the step's message.
-				text := strings.Join(notices, "\n")
-				completedStep.Error = &text
-			}
+			// Error stays nil: a completed step never carries one.
+			// UpdateOrchestration copies Notices into the step's notices.
+			completedStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_COMPLETED, Notices: notices}
 			out <- &completedStep
 		}
 	}()

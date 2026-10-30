@@ -26,7 +26,7 @@ func ReturnErr(ctx context.Context, message stream.Message) error {
 }
 
 func ReturnNotice(ctx context.Context, message stream.Message) error {
-	return &stream.Notice{Text: "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}
+	return &stream.Notice{Lines: []string{"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}}
 }
 
 func Timeout(ctx context.Context, message stream.Message) error {
@@ -126,7 +126,16 @@ func (test *StreamTest) TestPublish() {
 		err = test.uut.Publish(context.Background(), msg, stream.WaitForCompletion())
 		var notice *stream.Notice
 		test.Require().ErrorAs(err, &notice)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", notice.Text)
+		test.Equal([]string{"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}, notice.Lines)
+
+		// The completed state carries the notice in notices, never in
+		// error, so a reader that treats any error as a failure sees success.
+		time.Sleep(time.Second)
+		states := test.parseStates(test.T(), msg)
+		test.Require().Len(states, 3)
+		test.Require().Equal(pb.State_STATE_COMPLETED, states[2].State)
+		test.Nil(states[2].Error)
+		test.Equal([]string{"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}, states[2].Notices)
 	})
 	test.Run("WaitForCompletion", func() {
 		msg, err := stream.NewMessage("test", "return", "nil", struct{}{})
@@ -194,7 +203,7 @@ func (test *StreamTest) TestRunOrchestration() {
 		test.Require().Equal(common.State_STATE_RUNNING, steps[0].State)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
 	})
-	test.Run("Notice completes the step and carries the text", func() {
+	test.Run("Notice completes the step and carries it in Notices", func() {
 		noticeMsg, err := stream.NewMessage("test", "return", "notice", struct{}{})
 		test.Require().NoError(err)
 		o := pb.Orchestration{
@@ -210,10 +219,13 @@ func (test *StreamTest) TestRunOrchestration() {
 		}
 		test.Require().Len(steps, 4)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[1].State)
-		test.Require().NotNil(steps[1].Error)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", *steps[1].Error)
+		// The notice has its own field; Error stays nil on a completed step,
+		// so a reader that treats any Error as a failure still sees success.
+		test.Nil(steps[1].Error)
+		test.Equal([]string{"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."}, steps[1].Notices)
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[3].State)
 		test.Nil(steps[3].Error)
+		test.Empty(steps[3].Notices)
 	})
 	test.Run("Error", func() {
 		o := pb.Orchestration{

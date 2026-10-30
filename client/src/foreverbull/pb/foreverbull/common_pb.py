@@ -129,7 +129,7 @@ class Date(Message[_DateFields]):
         month: int
         day: int
 
-_StepFields: TypeAlias = Literal["state", "message"]
+_StepFields: TypeAlias = Literal["state", "message", "notices"]
 
 class Step(Message[_StepFields]):
     """
@@ -143,12 +143,21 @@ class Step(Message[_StepFields]):
             foreverbull.common.State state = 1;
             ```
         message:
+            Why the step failed. Empty unless state is STATE_FAILED.
+
             ```proto
             string message = 2;
             ```
+        notices:
+            Lines the user must read although the step completed, such as prices
+            the ingest filled. A client that does not know this field ignores it.
+
+            ```proto
+            repeated string notices = 3;
+            ```
     """
 
-    __slots__ = ("state", "message")
+    __slots__ = ("state", "message", "notices")
 
     if TYPE_CHECKING:
 
@@ -157,11 +166,13 @@ class Step(Message[_StepFields]):
             *,
             state: State | None = None,
             message: str = "",
+            notices: list[str] | None = None,
         ) -> None:
             pass
 
         state: State
         message: str
+        notices: list[str]
 
 class State(Enum):
     """
@@ -195,7 +206,7 @@ class State(Enum):
 
 
 _DESC = file_desc(
-    b'\n\x18foreverbull/common.proto\x12\x12foreverbull.common"?\n\x07Request\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01B\x07\n\x05_data"e\n\x08Response\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01\x12\x19\n\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x07\n\x05_dataB\x08\n\x06_error"B\n\x04Date\x12\x12\n\x04year\x18\x01 \x01(\x05R\x04year\x12\x14\n\x05month\x18\x02 \x01(\x05R\x05month\x12\x10\n\x03day\x18\x03 \x01(\x05R\x03day"Q\n\x04Step\x12/\n\x05state\x18\x01 \x01(\x0e2\x19.foreverbull.common.StateR\x05state\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message*X\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n\rSTATE_RUNNING\x10\x01\x12\x13\n\x0fSTATE_COMPLETED\x10\x02\x12\x10\n\x0cSTATE_FAILED\x10\x03B*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3',
+    b'\n\x18foreverbull/common.proto\x12\x12foreverbull.common"?\n\x07Request\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01B\x07\n\x05_data"e\n\x08Response\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01\x12\x19\n\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x07\n\x05_dataB\x08\n\x06_error"B\n\x04Date\x12\x12\n\x04year\x18\x01 \x01(\x05R\x04year\x12\x14\n\x05month\x18\x02 \x01(\x05R\x05month\x12\x10\n\x03day\x18\x03 \x01(\x05R\x03day"k\n\x04Step\x12/\n\x05state\x18\x01 \x01(\x0e2\x19.foreverbull.common.StateR\x05state\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message\x12\x18\n\x07notices\x18\x03 \x03(\tR\x07notices*X\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n\rSTATE_RUNNING\x10\x01\x12\x13\n\x0fSTATE_COMPLETED\x10\x02\x12\x10\n\x0cSTATE_FAILED\x10\x03B*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3',
     [],
     {
         "Request": Request,

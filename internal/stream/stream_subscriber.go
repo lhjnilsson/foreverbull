@@ -24,13 +24,13 @@ type NatsSubscriber struct {
 }
 
 func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Context, Message) error) error {
-	publishState := func(msg *message, state pb.State_State, err error) error {
-		var s pb.State
-		if err == nil {
-			s = pb.State{State: state, OccurredAt: timestamppb.Now()}
-		} else {
+	// publishState sets Error only for err; notices ride in their own field
+	// so a completed state never carries an error.
+	publishState := func(msg *message, state pb.State_State, err error, notices ...string) error {
+		s := pb.State{State: state, OccurredAt: timestamppb.Now(), Notices: notices}
+		if err != nil {
 			errStr := err.Error()
-			s = pb.State{State: state, Error: &errStr, OccurredAt: timestamppb.Now()}
+			s.Error = &errStr
 		}
 		payload, err := proto.Marshal(&s)
 		if err != nil {
@@ -92,8 +92,8 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 		err = cb(ctx, msg)
 		var notice *Notice
 		if errors.As(err, &notice) {
-			// A notice is a completed command; its text rides on the state.
-			if err := publishState(msg, pb.State_STATE_COMPLETED, notice); err != nil {
+			// A notice is a completed command; its lines ride on the state.
+			if err := publishState(msg, pb.State_STATE_COMPLETED, nil, notice.Lines...); err != nil {
 				log.Err(err).Msg("error publishing state")
 			}
 			err = nil

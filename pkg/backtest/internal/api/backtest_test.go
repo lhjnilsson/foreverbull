@@ -224,6 +224,27 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		}
 		test.Require().Len(responses, 3)
 	})
+	test.Run("Ingest notices reach the client in INGESTING.notices", func() {
+		// The ingest stores the backtest before INGESTING completes, and the
+		// server then loads it and sends it, so the test stores it first.
+		test.createBacktest("noticed")
+		lines := []string{"Missing prices for XYZ on 2022-03-02, filled with the previous close. No trades on those days."}
+		responses := test.createStream("noticed", []*streamPb.Orchestration_Step{
+			{Num: 3, State: pb.State_STATE_RUNNING},
+			{Num: 3, State: pb.State_STATE_COMPLETED, Notices: lines},
+		})
+		test.Require().NotEmpty(responses)
+		last := responses[len(responses)-1]
+		test.Equal(pb.State_STATE_COMPLETED, last.GetINGESTING().GetState())
+		test.Equal(lines, last.GetINGESTING().GetNotices())
+		// message is the failure text; an older client that reads it sees
+		// a completed step with no message.
+		test.Empty(last.GetINGESTING().GetMessage())
+		// The notices stay on the response that carries the stored backtest.
+		test.Equal(pb.State_STATE_COMPLETED, last.GetSTORING().GetState())
+		test.Require().NotNil(last.GetBacktest())
+		test.Equal("noticed", last.GetBacktest().GetName())
+	})
 }
 
 func (test *BacktestServerTest) createStream(name string, statuses []*streamPb.Orchestration_Step) []*servicePb.CreateBacktestResponse {

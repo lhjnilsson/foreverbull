@@ -760,7 +760,7 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	if len(notices) > 0 {
 		// The backtest is kept. The notice rides on the completed INGESTING
 		// step, so the CLI prints which prices were filled.
-		return &stream.Notice{Text: strings.Join(notices, "\n")}
+		return &stream.Notice{Lines: notices}
 	}
 	return nil
 }

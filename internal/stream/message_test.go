@@ -167,19 +167,22 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 		test.Require().NoError(err)
 		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.CREATING.State)
 	})
-	test.Run("mark as completed with a notice", func() {
+	test.Run("mark as completed with notices", func() {
+		lines := []string{
+			"Missing prices for ABC on 2026-05-05, filled with the previous close. No trades on those days.",
+			"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.",
+		}
 		step := &pb.Orchestration_Step{
-			Num:   3,
-			State: commonPb.State_STATE_COMPLETED,
-			Error: func() *string {
-				s := "Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days."
-				return &s
-			}(),
+			Num:     3,
+			State:   commonPb.State_STATE_COMPLETED,
+			Notices: lines,
 		}
 		err := UpdateOrchestration(test.msg, step)
 		test.Require().NoError(err)
 		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.INGESTING.State)
-		test.Equal("Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.", test.msg.INGESTING.Message)
+		test.Equal(lines, test.msg.INGESTING.Notices)
+		// Message is the failure text; a completed step leaves it empty.
+		test.Empty(test.msg.INGESTING.Message)
 	})
 	test.Run("mark as failed", func() {
 		step := &pb.Orchestration_Step{

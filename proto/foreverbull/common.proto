@@ -30,5 +30,9 @@ enum State {
 
 message Step {
   State state = 1;
+  // Why the step failed. Empty unless state is STATE_FAILED.
   string message = 2;
+  // Lines the user must read although the step completed, such as prices
+  // the ingest filled. A client that does not know this field ignores it.
+  repeated string notices = 3;
 }
