@@ -6,13 +6,13 @@ from concurrent import futures
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-import exchange_calendars
 import grpc
 import pandas as pd
 
 from grpc_health.v1 import health_pb2
 from grpc_health.v1 import health_pb2_grpc
 from zipline.data import bundles
+from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.paths import data_path
 from zipline.utils.paths import data_root
 
@@ -77,7 +77,10 @@ class CalendarService(calendar_service_pb_grpc.CalendarServiceSync):
         self.logger = logging.getLogger(__name__)
 
     def list_calendar_dates(self, request: calendar_service_pb.ListCalendarDatesRequest, context):
-        calendar = exchange_calendars.get_calendar(request.code)
+        # Zipline's get_calendar, as the ingester uses: XNYS from 1990, not
+        # the last 20 years only. The broker checks a create's bars against
+        # these sessions, so both must agree on every day.
+        calendar = get_calendar(request.code)
         start = pb_utils.from_proto_date_to_pydate(request.start)
         end = pb_utils.from_proto_date_to_pydate(request.end)
         dates = calendar.sessions_in_range(start, end)
