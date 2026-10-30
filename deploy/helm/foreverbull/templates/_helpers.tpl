@@ -2,6 +2,14 @@
 {{- if and .Values.expose.hostPort (gt (int .Values.replicaCount) 1) }}
 {{- fail "replicaCount must be 1 when expose.hostPort is true" }}
 {{- end }}
+{{- /* The broker refuses a TRADING_ENABLED or LOG_LEVEL it cannot read, so
+the chart refuses it first with the value name. */}}
+{{- if not (kindIs "bool" .Values.broker.trading.enabled) }}
+{{- fail (printf "broker.trading.enabled must be true or false, got %q" (toString .Values.broker.trading.enabled)) }}
+{{- end }}
+{{- if not (has (toString .Values.broker.logLevel) (list "debug" "info" "warning" "error")) }}
+{{- fail (printf "broker.logLevel must be debug, info, warning, or error, got %q" (toString .Values.broker.logLevel)) }}
+{{- end }}
 {{- /* The password is expanded raw into POSTGRES_URL/DATABASE_URL
 ($(POSTGRES_PASSWORD) in foreverbull.postgresURL); Kubernetes does not
 URL-encode it, so a set value with reserved characters breaks the DSN.

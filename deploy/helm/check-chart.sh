@@ -150,6 +150,36 @@ do
   fi
 done
 
+# The broker has no default for these and stops at startup without them.
+for env_name in POSTGRES_URL NATS_URL MINIO_URL MINIO_ACCESS_KEY MINIO_SECRET MINIO_SECURE; do
+  if ! grep -qE "^ +- name: ${env_name}$" "${broker_manifest}"; then
+    echo "broker must set ${env_name}" >&2
+    exit 1
+  fi
+done
+
+# Boolean settings accept only true/false/1/0; anything else stops the pod.
+for env_name in TRADING_ENABLED AUTH_ENABLED AUTH_COOKIE_SECURE AUTH_TRUST_PROXY MINIO_SECURE; do
+  if grep -A1 -E "^ +- name: ${env_name}$" "${rendered}" | grep -E '^ +value:' | grep -vqE '^ +value: "(true|false)"$'; then
+    echo "${env_name} must render as \"true\" or \"false\"" >&2
+    exit 1
+  fi
+done
+
+for case in 'broker.trading.enabled=yes|broker.trading.enabled must be true or false, got "yes"' \
+  'broker.logLevel=verbose|broker.logLevel must be debug, info, warning, or error, got "verbose"'; do
+  setting="${case%%|*}"
+  message="${case#*|}"
+  if output="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set-string "${setting}" 2>&1)"; then
+    echo "chart must refuse ${setting}" >&2
+    exit 1
+  fi
+  if ! grep -Fq "${message}" <<< "${output}"; then
+    echo "refusal of ${setting} must say: ${message}" >&2
+    exit 1
+  fi
+done
+
 # Credentials come from Secret foreverbull-credentials, never a plain env value.
 for env_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
   if grep -A1 -E "^ +- name: ${env_name}$" "${rendered}" | grep -qE '^ +value:'; then
