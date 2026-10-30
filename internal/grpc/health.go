@@ -89,7 +89,11 @@ func pingNATS(ctx context.Context) error {
 }
 
 func pingMinio(ctx context.Context) error {
-	url := "http://" + environment.GetMinioURL() + "/minio/health/live"
+	scheme := "http://"
+	if environment.GetMinioSecure() {
+		scheme = "https://"
+	}
+	url := scheme + environment.GetMinioURL() + "/minio/health/live"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

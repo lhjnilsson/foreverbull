@@ -100,3 +100,22 @@ func TestPingNATSStaysAnonymousWithoutAUser(t *testing.T) {
 	require.Empty(t, applied.User)
 	require.Empty(t, applied.Password)
 }
+
+func TestPingMinioUsesHTTPSWhenMinioSecureIsTrue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/minio/health/live" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(environment.MinioURL, strings.TrimPrefix(srv.URL, "http://"))
+
+	t.Setenv(environment.MinioSecure, "false")
+	require.NoError(t, pingMinio(context.Background()))
+
+	t.Setenv(environment.MinioSecure, "true")
+	err := pingMinio(context.Background())
+	require.ErrorContains(t, err, "server gave HTTP response to HTTPS client")
+}
