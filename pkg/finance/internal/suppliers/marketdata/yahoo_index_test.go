@@ -17,6 +17,9 @@ import (
 // asset lookups were in flight at once.
 type indexTransport struct {
 	components int
+	// failOn makes the lookup of this symbol answer with a body that
+	// doesn't decode.
+	failOn string
 
 	mu          sync.Mutex
 	inFlight    int
@@ -44,6 +47,10 @@ func (tr *indexTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		tr.inFlight--
 		tr.mu.Unlock()
 		symbol := req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:]
+		if symbol == tr.failOn {
+			body = "not json"
+			break
+		}
 		// Not EQUITY, so no ISIN lookup on another site.
 		body = `{"quoteSummary":{"result":[{"quoteType":{"symbol":"` + symbol + `","quoteType":"INDEX","longName":"` + symbol + `"}}]}}`
 	}
@@ -74,4 +81,24 @@ func TestGetIndexCapsConcurrentLookups(t *testing.T) {
 	require.Equal(t, 61, tr.lookups)
 	require.LessOrEqual(t, tr.maxInFlight, indexLookupWorkers)
 	require.Greater(t, tr.maxInFlight, 1, "lookups still run in parallel")
+}
+
+// The first failed lookup ends GetIndex with its error and no assets, and
+// the lookups not yet sent are never sent.
+func TestGetIndexStopsAtTheFirstError(t *testing.T) {
+	t.Parallel()
+	tr := &indexTransport{components: 60, failOn: "C002"}
+	client := &YahooClient{
+		crumb:      "test",
+		httpClient: &http.Client{Transport: tr, Timeout: time.Minute},
+		limiter:    newRequestLimiterEvery(time.Microsecond),
+	}
+
+	assets, err := client.GetIndex(context.Background(), "^OEX")
+	require.ErrorContains(t, err, "error getting assets: error getting asset: error decoding response")
+	require.Nil(t, assets)
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	require.Less(t, tr.lookups, 61, "the lookups after the error are not sent")
+	require.LessOrEqual(t, tr.lookups, 3+indexLookupWorkers, "at most the workers in flight finish after C002")
 }
