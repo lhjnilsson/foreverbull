@@ -43,6 +43,54 @@ class InstrumentGroup:
     member_to: date | None = None
 
 
+def group_label(group: InstrumentGroup) -> str:
+    """The group's latest ticker, with its earlier ones: "META (earlier FB)"."""
+    ordered = sorted(group.aliases, key=lambda alias: alias.from_date or date.min)
+    latest = ordered[-1].symbol
+    earlier = [symbol for symbol in dict.fromkeys(alias.symbol for alias in reversed(ordered)) if symbol != latest]
+    return f"{latest} (earlier {', '.join(earlier)})" if earlier else latest
+
+
+def no_stored_prices_line(
+    backtest: str,
+    groups: list[InstrumentGroup],
+    first,
+    last,
+    gaps: dict[str, list[pd.Timestamp]] | None = None,
+) -> str:
+    """Ingest's failure when one or more sids have no stored bars at all.
+
+    One group fits one sentence; two or more get a line each under the
+    lead, in ingest order. Tickers with missing sessions found in the same
+    read get a line each after them, so one error names every cause.
+    """
+    gaps = gaps or {}
+    span = f"between {first:%Y-%m-%d} and {last:%Y-%m-%d}"
+    saved = "The backtest wasn't saved."
+    if gaps:
+        lines = [
+            f"Couldn't load data for backtest '{backtest}': {len(groups) + len(gaps)} symbols are missing prices. {saved}"
+        ]
+        lines.extend(f"  {group_label(group)}: no prices {span}." for group in groups)
+        lines.extend(
+            f"  {symbol}: no prices on {', '.join(f'{day:%Y-%m-%d}' for day in days)}." for symbol, days in gaps.items()
+        )
+        lines.append(
+            "Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again."
+        )
+        return "\n".join(lines)
+    next_step = "Try another provider with --provider, then run `fbull backtest create` again."
+    if len(groups) == 1:
+        return (
+            f"Couldn't load data for backtest '{backtest}': there are no stored prices for "
+            f"{group_label(groups[0])} {span}. {saved} {next_step}"
+        )
+    lines = [f"Couldn't load data for backtest '{backtest}': {len(groups)} symbols have no stored prices. {saved}"]
+    lines.extend(f"  {group_label(group)}: no prices {span}." for group in groups)
+    lines.append(next_step)
+    return "\n".join(lines)
+
+
 def membership_auto_close_date(
     end_date,
     membership_to: date | None,
@@ -376,30 +424,38 @@ class SQLIngester:
         # so the rows are written once every sid's bars are read.
         ends: list[tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
         gaps: dict[str, list[pd.Timestamp]] = {}
+        # Every group is read before any is written, so one error names every
+        # group without bars and every gap, and nothing is ingested.
+        resolved: list[tuple[InstrumentGroup, pd.DataFrame, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
+        empty: list[InstrumentGroup] = []
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
-            for index, group in enumerate(groups):
+            for group in groups:
                 frames = {
                     symbol: self._bars(symbol, from_date, to_date)
                     for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
                 }
                 combined, mapping_rows = resolve_group_bars(group, frames, from_date, to_date)
                 if combined is None:
-                    symbols = ", ".join(alias.symbol for alias in group.aliases)
-                    raise ValueError(f"No data found for {symbols} on {from_date} to {to_date}")
+                    empty.append(group)
+                    continue
                 missing = missing_sessions(combined, sessions)
                 if missing:
                     # The broker checks this before the ingest. If a bar went
                     # missing in between, fail rather than write a bundle
-                    # Zipline would refuse or a price nobody sent. Every sid
-                    # is read first, so one error names every gap.
+                    # Zipline would refuse or a price nobody sent.
                     for day in missing:
                         gaps.setdefault(ticker_on_day(group, from_date, to_date, day), []).append(day)
                     continue
-                is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
-                ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
-                yield index, combined
+                resolved.append((group, combined, mapping_rows))
+        if empty:
+            first, last = (sessions[0], sessions[-1]) if len(sessions) else (from_date, to_date)
+            raise ValueError(no_stored_prices_line(self.backtest.name, empty, first, last, gaps))
         if gaps:
             raise MissingSessionsError(gaps)
+        for index, (group, combined, mapping_rows) in enumerate(resolved):
+            is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
+            ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
+            yield index, combined
         member_ends = [last for _, last, _, is_benchmark, _ in ends if not is_benchmark] or [
             last for _, last, *_ in ends
         ]
