@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -30,7 +31,7 @@ func TestYahooRequestTimesOut(t *testing.T) {
 
 	y := &YahooClient{chartURL: srv.URL + "/", httpClient: &http.Client{Timeout: 50 * time.Millisecond}}
 	started := time.Now()
-	_, err := y.doRequest(srv.URL)
+	_, err := y.doRequest(context.Background(), srv.URL)
 	require.Error(t, err)
 	require.Less(t, time.Since(started), 5*time.Second)
 }

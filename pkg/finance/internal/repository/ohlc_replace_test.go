@@ -99,8 +99,8 @@ func (test *OHLCTests) TestStoreKeysOnTradingDate() {
 	test.Equal(map[string]float64{"2020-08-26": 125}, test.storedCloses())
 }
 
-// Sync takes the per-symbol advisory lock before it reads anything: while
-// another transaction holds it, fetch is not called.
+// Sync stores under the per-symbol advisory lock: while another transaction
+// holds it, fetch still runs (it needs no lock) but nothing is stored.
 func (test *OHLCTests) TestSyncWaitsForTheSymbolLock() {
 	ctx := context.Background()
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
@@ -121,12 +121,14 @@ func (test *OHLCTests) TestSyncWaitsForTheSymbolLock() {
 			})
 	}()
 
+	test.waitForLockWaiters(1)
 	select {
 	case err := <-done:
 		test.FailNow("Sync finished while the lock was held", "%v", err)
-	case <-time.After(300 * time.Millisecond):
+	default:
 	}
-	test.False(fetched.Load(), "fetch must wait for the lock")
+	test.True(fetched.Load(), "fetch runs before the lock")
+	test.Zero(test.countRows(), "nothing is stored without the lock")
 
 	test.Require().NoError(holder.Rollback(ctx))
 	select {
@@ -135,17 +137,16 @@ func (test *OHLCTests) TestSyncWaitsForTheSymbolLock() {
 	case <-time.After(10 * time.Second):
 		test.FailNow("Sync did not finish after the lock was released")
 	}
-	test.True(fetched.Load())
 	test.Equal(map[string]float64{"2020-08-26": 125}, test.storedCloses())
 }
 
 // An append on the old scale racing a post-split replace of the same symbol
 // ends with every stored day on one scale. The interleave is forced: the
-// replace has decided to replace and is inside its refetch when the append
-// starts. Without the symbol lock the append reads the old-scale overlap,
-// appends 08-27..08-29 at 500 and commits, and the replace then rewrites only
-// 08-26..08-28 at 125, leaving 08-29 at 500. With the lock the append waits,
-// sees the replaced overlap, and replaces the whole range itself.
+// replace has seen the moved overlap and is inside its refetch (before the
+// lock) when the append starts. The append stores 08-27..08-29 at 500 and
+// commits. The replace then takes the lock and decides again on what is
+// stored now, instead of rewriting only 08-26..08-28 at 125 and leaving 08-29
+// at 500.
 func (test *OHLCTests) TestConcurrentSyncsLeaveOneScale() {
 	ctx := context.Background()
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
