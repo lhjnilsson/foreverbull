@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,7 +52,8 @@ func TestIngestFailureMessage(t *testing.T) {
 			removed: false,
 			expected: "Couldn't load data for backtest 'demo': the data service is missing its database driver " +
 				"(psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. The backtest " +
-				"couldn't be removed, so run `fbull backtest delete demo` before you run `fbull backtest create` again." +
+				"was partly saved and couldn't be removed. Run `fbull backtest delete demo` first. Run " +
+				"`fbull backtest create` again once it's fixed." +
 				"\nDetails: ModuleNotFoundError: No module named 'psycopg'",
 		},
 		{
@@ -71,8 +74,8 @@ func TestIngestFailureMessage(t *testing.T) {
 			cause:   fmt.Errorf("error ingesting: %w", connection),
 			removed: false,
 			expected: "Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. Run " +
-				"`fbenv status` to check it's running. The backtest couldn't be removed, so run " +
-				"`fbull backtest delete demo` before you run `fbull backtest create` again." +
+				"`fbenv status` to check it's running. The backtest was partly saved and couldn't be " +
+				"removed. Run `fbull backtest delete demo` first. Run `fbull backtest create` again after that." +
 				"\nDetails: the Zipline pod couldn't reach Postgres: the data service could not connect to database at " +
 				"postgresql://foreverbull:***@db.internal:5432/foreverbull: OperationalError: connection refused",
 		},
@@ -148,4 +151,89 @@ func TestRedactURLPasswords(t *testing.T) {
 	for _, tc := range tests {
 		require.Equal(t, tc.expected, redactURLPasswords(tc.text))
 	}
+}
+
+// missingSessionsMessage with every day inside the spans, removed and not.
+func TestMissingSessionsMessageRemovedOrNot(t *testing.T) {
+	t.Parallel()
+	days := []time.Time{time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC)}
+	gaps := []symbolGaps{{symbol: "XYZ", sessions: []int{0}}}
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on 2024-02-14, "+
+		"a trading day. The backtest wasn't saved. Try another provider with --provider, or change the backtest "+
+		"dates, then run `fbull backtest create` again.",
+		missingSessionsMessage("oef-2024q1", "yahoo", days, gaps, true))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on 2024-02-14, "+
+		"a trading day. The backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` "+
+		"first. Try another provider with --provider, or change the backtest dates, then run "+
+		"`fbull backtest create` again.",
+		missingSessionsMessage("oef-2024q1", "yahoo", days, gaps, false))
+}
+
+// Both download-step messages in backtest.go, removed and not.
+func TestSymbolDownloadMessage(t *testing.T) {
+	t.Parallel()
+	start := &pb.Date{Year: 2024, Month: 1, Day: 1}
+	end := &pb.Date{Year: 2024, Month: 3, Day: 31}
+	for _, tc := range []struct {
+		errText, removed, kept string
+	}{
+		{
+			errText: "no price data for XYZ",
+			removed: "Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for XYZ between 2024-01-01 and " +
+				"2024-03-31. The backtest wasn't saved. Check the symbol and dates, or try another provider with " +
+				"--provider, then run `fbull backtest create` again.",
+			kept: "Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for XYZ between 2024-01-01 and " +
+				"2024-03-31. The backtest was partly saved and couldn't be removed. Run `fbull backtest delete " +
+				"oef-2024q1` first. Check the symbol and dates, or try another provider with --provider, then " +
+				"run `fbull backtest create` again.",
+		},
+		{
+			errText: "no ISIN for XYZ",
+			removed: "Couldn't load data for backtest 'oef-2024q1': yahoo doesn't identify XYZ well enough to follow " +
+				"ticker changes, so it can't be used. The backtest wasn't saved. Remove XYZ, then run " +
+				"`fbull backtest create` again.",
+			kept: "Couldn't load data for backtest 'oef-2024q1': yahoo doesn't identify XYZ well enough to follow " +
+				"ticker changes, so it can't be used. The backtest was partly saved and couldn't be removed. Run " +
+				"`fbull backtest delete oef-2024q1` first. Remove XYZ, then run `fbull backtest create` again.",
+		},
+		{
+			errText: "yahoo sent an invalid price for XYZ on 2024-02-14 (0, negative or not a number)",
+			removed: "Couldn't load data for backtest 'oef-2024q1': yahoo sent an invalid price for XYZ on 2024-02-14 " +
+				"(0, negative or not a number). The backtest wasn't saved. Try another provider with --provider, " +
+				"or report it at https://github.com/lhjnilsson/foreverbull/issues.",
+			kept: "Couldn't load data for backtest 'oef-2024q1': yahoo sent an invalid price for XYZ on 2024-02-14 " +
+				"(0, negative or not a number). The backtest was partly saved and couldn't be removed. Run " +
+				"`fbull backtest delete oef-2024q1` first. Try another provider with --provider, or report it " +
+				"at https://github.com/lhjnilsson/foreverbull/issues.",
+		},
+		{
+			errText: "yahoo has more than one instrument for XYZ",
+			removed: "Couldn't load data for backtest 'oef-2024q1': yahoo has more than one instrument for XYZ. The " +
+				"backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), or use " +
+				"another provider with --provider.",
+			kept: "Couldn't load data for backtest 'oef-2024q1': yahoo has more than one instrument for XYZ. The " +
+				"backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. " +
+				"Use the exact ticker with its exchange suffix (for example VOD.L), or use another provider " +
+				"with --provider.",
+		},
+		{
+			errText: "connection reset by peer",
+			removed: "Couldn't load data for backtest 'oef-2024q1': the price download failed for XYZ. The backtest " +
+				"wasn't saved. Try again in a few minutes, or use another provider with --provider.",
+			kept: "Couldn't load data for backtest 'oef-2024q1': the price download failed for XYZ. The backtest was " +
+				"partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. Try again " +
+				"in a few minutes, or use another provider with --provider.",
+		},
+	} {
+		require.Equal(t, tc.removed, symbolDownloadMessage("oef-2024q1", "yahoo", "XYZ", start, end, tc.errText, true))
+		require.Equal(t, tc.kept, symbolDownloadMessage("oef-2024q1", "yahoo", "XYZ", start, end, tc.errText, false))
+	}
+
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': symbol 2 of 3 isn't a valid ticker. Use 1 to 32 "+
+		"letters, digits, or . ^ = _ -. The backtest wasn't saved. Fix that symbol and run `fbull backtest create` again.",
+		invalidTickerMessage("oef-2024q1", 2, 3, true))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': symbol 2 of 3 isn't a valid ticker. Use 1 to 32 "+
+		"letters, digits, or . ^ = _ -. The backtest was partly saved and couldn't be removed. Run `fbull backtest "+
+		"delete oef-2024q1` first. Fix that symbol and run `fbull backtest create` again.",
+		invalidTickerMessage("oef-2024q1", 2, 3, false))
 }
