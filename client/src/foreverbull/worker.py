@@ -3,11 +3,15 @@ import logging.handlers
 import multiprocessing
 import multiprocessing.synchronize
 import os
+import queue
+import shutil
+import tempfile
 import threading
 import time
 
 from abc import ABC
 from abc import abstractmethod
+from collections.abc import Sequence
 from functools import wraps
 from multiprocessing import Process
 from multiprocessing import Queue
@@ -19,12 +23,28 @@ from protobuf import merge_from_binary
 
 from foreverbull import exceptions
 from foreverbull import models
+from foreverbull.broker.utils import describe_exception
 from foreverbull.broker.utils import nng_hostname
 from foreverbull.models.finance import worker_request_error
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
 from foreverbull.pb.foreverbull.service.service.v1 import worker_pb as worker_service_pb
 from foreverbull.pb.foreverbull.service.v1 import worker_pb
+
+
+# How long the pool waits for every worker to answer a configure or run request.
+SURVEY_TIMEOUT_MS = 30000
+# How long the pool waits for each worker to connect before giving up on it.
+WORKER_START_TIMEOUT_SECONDS = 5.0
+# The surveyor's socket file inside the pool's private directory. The directory prefix and this name are short
+# because a unix socket path is capped at 104 bytes on macOS, where $TMPDIR alone is about 49 characters.
+SOCKET_DIR_PREFIX = "fbull-"
+SOCKET_NAME = "s.ipc"
+# What each request asks the workers to do, as the pool's errors name it.
+REQUEST_ACTIONS = {"configure": "finish setting up", "run": "start the backtest"}
+# A startup error a worker reports to the pool: (kind, text). For "connection" the text is the message to raise;
+# for "other" it is the cause as "Type: message".
+StartupError = tuple[str, str]
 
 
 class Worker(ABC):
@@ -145,12 +165,19 @@ class WorkerDaemon(WorkerInstance):
         running_event: Event | threading.Event,
         stop_event: Event | threading.Event,
         file_path: str,
+        startup_errors: "Queue | queue.Queue[StartupError] | None" = None,
     ):
         self._survey_address = survey_address
         self._logging_queue = logging_queue
         self._running_event = running_event
         self._stop_event = stop_event
+        # The pool reads why a worker couldn't start from here; a raise in a child process never reaches it.
+        self._startup_errors = startup_errors
         super().__init__(file_path)
+
+    def _report_startup_error(self, kind: str, exc: BaseException) -> None:
+        if self._startup_errors is not None:
+            self._startup_errors.put((kind, describe_exception(exc)))
 
     def run(self):
         self.logger = logging.getLogger().getChild(__name__)
@@ -169,8 +196,14 @@ class WorkerDaemon(WorkerInstance):
                 recv_timeout=500,
             )
         except pynng.exceptions.NNGException as e:
-            self.logger.error("Unable to connect to surveyor: %s", e)
-            return
+            message = connect_failure(self._survey_address, e)
+            self.logger.error(message)
+            if self._startup_errors is not None:
+                self._startup_errors.put(("connection", message))
+            raise exceptions.ConnectionError(message, cause=describe_exception(e)) from e
+        except Exception as e:
+            self._report_startup_error("other", e)
+            raise
 
         self._running_event.set()
         self.logger.info("starting worker")
@@ -195,11 +228,10 @@ class WorkerDaemon(WorkerInstance):
                 continue
             except Exception as e:
                 self.logger.exception("Error processing request")
-                response = common_pb.Response(task=request.task, error=repr(e))
+                response = common_pb.Response(task=request.task, error=describe_exception(e))
                 responder.send(response.to_binary())
             self.logger.debug(f"Request processed: {request.task}")
         responder.close()
-        return
 
 
 def _run_worker_process(daemon: WorkerDaemon) -> None:
@@ -214,7 +246,10 @@ class WorkerPool(Worker):
         self._file_path = file_path
         self._executors = executors
 
-        self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
+        # Set by __enter__: a private directory per pool holds the surveyor's socket, so two pools on one
+        # machine don't collide and no other local user can take over or connect to the socket.
+        self._socket_dir: str | None = None
+        self._worker_surveyor_address = ""
         self._worker_surveyor_socket: pynng.Surveyor0
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger().getChild(__name__)
@@ -223,13 +258,21 @@ class WorkerPool(Worker):
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
 
     def _start_daemons(self) -> None:
+        """Start the workers one by one. Raise ConfigurationError naming why a worker couldn't start.
+
+        The caller stops the workers already started when this raises.
+        """
         threaded = bool(os.getenv("THREADED_EXECUTION"))
+        startup_errors: Queue | queue.Queue[StartupError]
         if threaded:
             stop_event: threading.Event | multiprocessing.synchronize.Event = threading.Event()
             ready_event = threading.Event
+            startup_errors = queue.Queue()
         else:
             stop_event = multiprocessing.Event()
             ready_event = multiprocessing.Event
+            startup_errors = Queue()
+        self._stop_event = stop_event
 
         for _ in range(self._executors):
             is_ready = ready_event()
@@ -239,15 +282,40 @@ class WorkerPool(Worker):
                 is_ready,
                 stop_event,
                 self._file_path,
+                startup_errors,
             )
             worker = (
                 threading.Thread(target=daemon.run) if threaded else Process(target=_run_worker_process, args=(daemon,))
             )
             worker.start()
-            if not is_ready.wait(5.0):
-                raise exceptions.ConfigurationError("Worker failed to start")
             self._workers.append(worker)
-        self._stop_event = stop_event
+            self._wait_until_started(worker, is_ready, startup_errors)
+
+    @staticmethod
+    def _wait_until_started(
+        worker: threading.Thread | Process,
+        is_ready: threading.Event | multiprocessing.synchronize.Event,
+        startup_errors: "Queue | queue.Queue[StartupError]",
+    ) -> None:
+        deadline = time.monotonic() + WORKER_START_TIMEOUT_SECONDS
+        while not is_ready.wait(0.05):
+            if not worker.is_alive() or time.monotonic() >= deadline:
+                break
+        if is_ready.is_set():
+            return
+        try:
+            # A process that just exited may still be flushing its report into the queue.
+            kind, cause = startup_errors.get(timeout=1.0)
+        except queue.Empty:
+            if worker.is_alive():
+                kind, cause = "other", f"it didn't connect within {WORKER_START_TIMEOUT_SECONDS:g}s"
+            else:
+                exitcode = getattr(worker, "exitcode", None)
+                kind, cause = "other", "it exited" if exitcode is None else f"it exited with code {exitcode}"
+        if kind == "connection":
+            raise exceptions.ConfigurationError(cause)
+        hint = "Check the worker output above for an error in your algo."
+        raise exceptions.ConfigurationError(f"A worker couldn't start: {cause.rstrip('.')}. {hint}")
 
     def __enter__(
         self,
@@ -256,29 +324,70 @@ class WorkerPool(Worker):
             models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}") from e
-        self._worker_surveyor_socket = pynng.Surveyor0(
-            listen=self._worker_surveyor_address, send_timeout=30000, recv_timeout=30000
-        )
-        self._start_daemons()
+        # mkdtemp creates the directory with mode 0700, readable and writable only by this user.
+        self._socket_dir = tempfile.mkdtemp(prefix=SOCKET_DIR_PREFIX)
+        self._worker_surveyor_address = f"ipc://{os.path.join(self._socket_dir, SOCKET_NAME)}"
+        try:
+            self._worker_surveyor_socket = pynng.Surveyor0(
+                listen=self._worker_surveyor_address, send_timeout=SURVEY_TIMEOUT_MS, recv_timeout=SURVEY_TIMEOUT_MS
+            )
+        except BaseException as e:
+            try:
+                self._remove_socket_dir()
+            except OSError as cleanup_error:
+                # Keep the listen error; a failed cleanup is only extra context.
+                e.add_note(f"Also couldn't remove the worker pool's socket directory: {cleanup_error}")
+            raise
+        # A survey closes after survey_time (nng's default is 1s), and any later recv raises BadState.
+        # Keep the survey open as long as recv waits, so _broadcast's bound is this one timeout.
+        self._worker_surveyor_socket.survey_time = SURVEY_TIMEOUT_MS
+        # Listen before any worker starts, so a worker's startup log reaches the pool's handlers.
         self._log_listener.start()
+        try:
+            self._start_daemons()
+        except BaseException:
+            # __exit__ doesn't run when __enter__ raises, so stop what already started here.
+            self._shutdown(strict=False)
+            raise
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self._stop_event is None:
             return
-        self._stop_event.set()
-        while not self._log_queue.empty():
+        self._shutdown(strict=True)
+
+    def _shutdown(self, *, strict: bool) -> None:
+        """Stop the workers, the log listener and the surveyor socket.
+
+        strict raises RuntimeError when a worker doesn't exit; otherwise a stuck process is terminated.
+        """
+        if self._stop_event is not None:
+            self._stop_event.set()
+        deadline = time.monotonic() + 5
+        while not self._log_queue.empty() and time.monotonic() < deadline:
             time.sleep(0.1)
 
         self._log_queue.put_nowait(None)
         self._log_listener.stop()
         self._log_queue.close()
         self._log_queue.join_thread()
+        stuck = False
         for w in self._workers:
             w.join(timeout=5)
             if w.is_alive():
-                raise RuntimeError("Worker did not exit")
+                stuck = True
+                if isinstance(w, Process):
+                    w.terminate()
+                    w.join(timeout=5)
         self._worker_surveyor_socket.close()
+        self._remove_socket_dir()
+        if stuck and strict:
+            raise RuntimeError("Worker did not exit")
+
+    def _remove_socket_dir(self) -> None:
+        if self._socket_dir is not None:
+            shutil.rmtree(self._socket_dir)
+            self._socket_dir = None
 
     @staticmethod
     def _is_running(func):
@@ -290,34 +399,70 @@ class WorkerPool(Worker):
 
         return wrapper
 
-    def _broadcast(self, request: common_pb.Request, incomplete: Exception) -> None:
+    def _broadcast(self, request: common_pb.Request) -> None:
+        """Send request to every worker and wait until all of them answered or the survey timed out.
+
+        Every answer is collected before anything is raised, so one message names every worker that failed.
+        Raise ConfigurationError when a worker reported an error, and RuntimeError when workers only timed out.
+        """
         self._worker_surveyor_socket.send(request.to_binary())
-        responders = 0
-        while True:
+        total = len(self._workers)
+        answered = 0
+        errors: list[str] = []
+        while answered < total:
             try:
                 msg = self._worker_surveyor_socket.recv()
-                response = common_pb.Response()
-                merge_from_binary(response, msg)
-                if response.has_field("error"):
-                    raise exceptions.ConfigurationError(f"Worker error: {response.error}")
-                responders += 1
-                if responders == len(self._workers):
-                    break
-            except pynng.exceptions.Timeout:
-                pass
-        if responders != len(self._workers):
-            raise incomplete
+            except (pynng.exceptions.Timeout, pynng.exceptions.BadState):
+                break
+            response = common_pb.Response()
+            merge_from_binary(response, msg)
+            answered += 1
+            if response.has_field("error"):
+                errors.append(str(response.error))
+        missing = total - answered
+        if not errors and not missing:
+            return
+        message = _broadcast_failure(request.task, total, errors, missing)
+        if errors:
+            raise exceptions.ConfigurationError(message)
+        raise RuntimeError(message)
 
     @_is_running
     def configure_execution(self, req: worker_pb.ExecutionConfiguration):
-        self._broadcast(
-            common_pb.Request(task="configure", data=req.to_binary()),
-            RuntimeError("Not all workers responded to configure request"),
-        )
+        self._broadcast(common_pb.Request(task="configure", data=req.to_binary()))
 
     @_is_running
     def run_execution(self, stop_event: Event | threading.Event):
-        self._broadcast(
-            common_pb.Request(task="run"),
-            Exception("Not all workers responded to run request"),
-        )
+        self._broadcast(common_pb.Request(task="run"))
+
+
+def connect_failure(survey_address: str, exc: BaseException) -> str:
+    """The user-facing message for a worker that couldn't connect to its pool's socket."""
+    path = survey_address.removeprefix("ipc://")
+    return (
+        f"A worker couldn't connect to its worker pool at {path}: {str(exc).rstrip('.')}. "
+        "This is a problem in fbull, not in your algo. "
+        "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+    )
+
+
+def _plural_workers(count: int) -> str:
+    return "worker" if count == 1 else "workers"
+
+
+def _broadcast_failure(task: str, total: int, errors: Sequence[str], missing: int) -> str:
+    """The user-facing message for workers that reported an error or didn't answer a request."""
+    action = REQUEST_ACTIONS.get(task, f"answer the {task} request")
+    timeout = f"{SURVEY_TIMEOUT_MS / 1000:g}s"
+    hint = "Check the worker output above for an error in your algo."
+    of_total = f"of {total} {_plural_workers(total)}"
+    if not errors:
+        return f"{missing} {of_total} didn't {action} within {timeout}. {hint}"
+    if len(errors) == 1 and not missing:
+        return f"1 {of_total} couldn't {action}: {errors[0].rstrip('.')}. {hint}"
+    lines = [f"{len(errors) + missing} {of_total} couldn't {action}:"]
+    lines.extend(f"  A worker reported: {error.rstrip('.')}." for error in errors)
+    if missing:
+        lines.append(f"  {missing} {_plural_workers(missing)} didn't answer within {timeout}.")
+    lines.append(hint)
+    return "\n".join(lines)
