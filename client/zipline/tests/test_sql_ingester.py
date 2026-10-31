@@ -3,7 +3,9 @@ from datetime import date
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
+from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
@@ -249,3 +251,175 @@ def test_sql_ingester_aligns_bars_to_the_first_session():
     assert set(metadata["end_date"].tolist()) == {pd.Timestamp("2023-01-04")}
     benchmark_rows = metadata.loc[metadata["symbol"] == "OEF"]
     assert pd.Timestamp(benchmark_rows["start_date"].iloc[0]) == first_session
+
+
+def test_sql_ingester_names_every_symbol_without_bars_and_writes_nothing():
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "AAPL": _session_bars("AAPL", date(2022, 12, 1), date(2023, 2, 28), 12.0),
+            "META": _bars("META", [], 11.0),
+            "OEF": _session_bars("OEF", date(2022, 12, 1), date(2023, 2, 28), 13.0),
+        }
+    )
+    ingester = SQLIngester(_backtest(), engine=engine, aliases=pd.DataFrame())
+    ingester._df_metadata = ingester.create_metadata()
+    written = []
+
+    with pytest.raises(ValueError) as error:
+        written.extend(ingester.writer(False))
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'sp100': 2 symbols have no stored prices. The backtest wasn't saved.\n"
+        "  FB: no prices between 2022-12-01 and 2023-02-28.\n"
+        "  META: no prices between 2022-12-01 and 2023-02-28.\n"
+        "Try another provider with --provider, then run `fbull backtest create` again."
+    )
+    assert written == []
+    assert ingester._df_metadata.empty
+
+
+def _quarter_backtest() -> backtest_pb.Backtest:
+    return backtest_pb.Backtest(
+        name="oef-2024q1",
+        benchmark="OEF",
+        periods=[
+            backtest_pb.Backtest.Period(
+                start_date=common_pb.Date(year=2024, month=1, day=1),
+                end_date=common_pb.Date(year=2024, month=3, day=31),
+                assets=[
+                    backtest_pb.Backtest.Period.Asset(symbol="FB", enabled=True),
+                    backtest_pb.Backtest.Period.Asset(symbol="META", enabled=True),
+                ],
+            )
+        ],
+    )
+
+
+def _meta_rename() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "isin": [META_ISIN, META_ISIN],
+            "symbol": ["FB", "META"],
+            "from_date": [date(2012, 5, 18), date(2022, 6, 9)],
+            "to_date": [date(2022, 6, 9), None],
+            "member_to": [None, None],
+        }
+    )
+
+
+def test_sql_ingester_names_a_renamed_symbol_without_bars_by_its_latest_ticker():
+    # The run spans the first and last 2024 Q1 sessions: 2024-01-01 is New
+    # Year's Day and 2024-03-29 Good Friday.
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "META": _bars("META", [], 11.0),
+            "OEF": _session_bars("OEF", date(2024, 1, 2), date(2024, 3, 28), 13.0),
+        }
+    )
+    ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
+    ingester._df_metadata = ingester.create_metadata()
+
+    with pytest.raises(ValueError) as error:
+        list(ingester.writer(False))
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'oef-2024q1': there are no stored prices for META (earlier FB) "
+        "between 2024-01-02 and 2024-03-28. The backtest wasn't saved. "
+        "Try another provider with --provider, then run `fbull backtest create` again."
+    )
+
+
+def test_sql_ingester_names_a_symbol_without_an_earlier_ticker_alone():
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "META": _session_bars("META", date(2024, 1, 2), date(2024, 3, 28), 11.0),
+            "OEF": _session_bars("OEF", date(2024, 1, 2), date(2024, 3, 28), 13.0),
+        }
+    )
+    ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=pd.DataFrame())
+    ingester._df_metadata = ingester.create_metadata()
+
+    with pytest.raises(ValueError) as error:
+        list(ingester.writer(False))
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'oef-2024q1': there are no stored prices for FB "
+        "between 2024-01-02 and 2024-03-28. The backtest wasn't saved. "
+        "Try another provider with --provider, then run `fbull backtest create` again."
+    )
+
+
+def test_sql_ingester_lists_a_renamed_symbol_in_the_block():
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "META": _bars("META", [], 11.0),
+            "OEF": _bars("OEF", [], 13.0),
+        }
+    )
+    ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
+    ingester._df_metadata = ingester.create_metadata()
+
+    with pytest.raises(ValueError) as error:
+        list(ingester.writer(False))
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'oef-2024q1': 2 symbols have no stored prices. The backtest wasn't saved.\n"
+        "  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n"
+        "  OEF: no prices between 2024-01-02 and 2024-03-28.\n"
+        "Try another provider with --provider, then run `fbull backtest create` again."
+    )
+
+
+def test_sql_ingester_names_symbols_without_bars_and_gaps_in_one_error():
+    # A symbol with no bars and another with a missing session are both
+    # named, and nothing is written.
+    sessions = get_calendar("XNYS").sessions_in_range(pd.Timestamp("2024-01-02"), pd.Timestamp("2024-03-28"))  # type: ignore[arg-type]
+    gapped = [day.date() for day in sessions if day not in (pd.Timestamp("2024-02-14"), pd.Timestamp("2024-02-20"))]
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "META": _bars("META", [], 11.0),
+            "OEF": _bars("OEF", gapped, 13.0),
+        }
+    )
+    ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
+    ingester._df_metadata = ingester.create_metadata()
+    written = []
+
+    with pytest.raises(ValueError) as error:
+        written.extend(ingester.writer(False))
+
+    assert str(error.value) == (
+        "Couldn't load data for backtest 'oef-2024q1': 2 symbols are missing prices. The backtest wasn't saved.\n"
+        "  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n"
+        "  OEF: no prices on 2024-02-14, 2024-02-20.\n"
+        "Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again."
+    )
+    assert written == []
+    assert ingester._df_metadata.empty
+
+
+def test_sql_ingester_writes_nothing_when_a_later_sid_has_a_gap():
+    sessions = get_calendar("XNYS").sessions_in_range(pd.Timestamp("2024-01-02"), pd.Timestamp("2024-03-28"))  # type: ignore[arg-type]
+    gapped = [day.date() for day in sessions if day != pd.Timestamp("2024-02-14")]
+    engine = FakeEngine(
+        {
+            "FB": _bars("FB", [], 10.0),
+            "META": _session_bars("META", date(2024, 1, 2), date(2024, 3, 28), 11.0),
+            "OEF": _bars("OEF", gapped, 13.0),
+        }
+    )
+    ingester = SQLIngester(_quarter_backtest(), engine=engine, aliases=_meta_rename())
+    ingester._df_metadata = ingester.create_metadata()
+    written = []
+
+    with pytest.raises(MissingSessionsError) as error:
+        written.extend(ingester.writer(False))
+
+    assert list(error.value.gaps) == ["OEF"]
+    assert written == []
+    assert ingester._df_metadata.empty
