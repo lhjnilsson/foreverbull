@@ -117,3 +117,23 @@ func rewriteTo(target string) http.RoundTripper {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// Alpaca retries a 429 many times; the fetch budget ends all of them, so a
+// fetch can't outlast Sync's idle timeout under the symbol lock.
+// Not parallel: it changes alpacaFetchBudget.
+func TestAlpacaGetOHLCStopsRetryingAtTheBudget(t *testing.T) {
+	old := alpacaFetchBudget
+	alpacaFetchBudget = 300 * time.Millisecond
+	t.Cleanup(func() { alpacaFetchBudget = old })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+	bars := &AlpacaBars{opts: marketdata.ClientOpts{
+		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1000, RetryDelay: 50 * time.Millisecond,
+	}}
+	began := time.Now()
+	_, err := bars.GetOHLC(context.Background(), "AAPL", time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC), nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(began), 5*time.Second)
+}
