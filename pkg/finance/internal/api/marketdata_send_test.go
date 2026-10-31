@@ -81,7 +81,7 @@ func TestDownloadHistoricalDataStopsAfterSendFails(t *testing.T) {
 	const symbolCount = 200
 	md := supplier.NewMockMarketdata(t)
 	var lookups atomic.Int32
-	md.On("GetAsset", mock.Anything).Run(func(mock.Arguments) { lookups.Add(1) }).
+	md.On("GetAsset", mock.Anything, mock.Anything).Run(func(mock.Arguments) { lookups.Add(1) }).
 		Return(nil, errors.New("not found"))
 
 	symbols := make([]string, 0, symbolCount)

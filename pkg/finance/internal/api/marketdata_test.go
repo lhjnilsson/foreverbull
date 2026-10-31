@@ -70,8 +70,11 @@ func (suite *MarketdataTest) SetupTest() {
 	server := api.NewMarketdataServer(suite.pgx, suite.marketdata)
 	servicePb.RegisterMarketdataServer(suite.server, server)
 
+	// Serve gets this test's server and listener, not the suite fields the
+	// next SetupTest overwrites while this goroutine may still be starting.
+	grpcServer, listener := suite.server, suite.listener
 	go func() {
-		suite.NoError(suite.server.Serve(suite.listener))
+		_ = grpcServer.Serve(listener)
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
@@ -90,7 +93,7 @@ func (suite *MarketdataTest) SetupTest() {
 }
 
 func (suite *MarketdataTest) TestGetAsset() {
-	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
 
 	req := &servicePb.GetAssetRequest{Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "AAPL"}}
 	rsp, err := suite.client.GetAsset(context.Background(), req)
@@ -101,7 +104,7 @@ func (suite *MarketdataTest) TestGetAsset() {
 }
 
 func (suite *MarketdataTest) TestGetIndex() {
-	suite.marketdata.On("GetIndex", "^GDAXI").Return([]*pb.Asset{
+	suite.marketdata.On("GetIndex", mock.Anything, "^GDAXI").Return([]*pb.Asset{
 		{Symbol: "ADS.DE", Name: "Adidas AG"},
 	}, nil)
 
@@ -113,9 +116,9 @@ func (suite *MarketdataTest) TestGetIndex() {
 }
 
 func (suite *MarketdataTest) TestDownloadHistoricalData() {
-	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
-	suite.marketdata.On("GetAsset", "NOCORP").Return(nil, errors.New("not found"))
-	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "NOCORP").Return(nil, errors.New("not found"))
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Timestamp: timestamppb.Now(),
 			Open:      1,
@@ -156,8 +159,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalData() {
 // A refused bar fails the symbol once and stores none of its bars, so the
 // shared price cache never keeps a gap.
 func (suite *MarketdataTest) TestDownloadHistoricalDataStoresNothingWhenABarIsRefused() {
-	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
-	suite.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
 		{Timestamp: timestamppb.New(mustTime("2026-05-02")), Open: 0, High: 11, Low: 9, Close: 10.5, Volume: 100},
 		{Timestamp: timestamppb.New(mustTime("2026-05-03")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
@@ -217,9 +220,9 @@ END $$ LANGUAGE plpgsql;
 CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_on_bad_row();`)
 	suite.Require().NoError(err)
 
-	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
-	suite.marketdata.On("GetAsset", "LEAK").Return(nil, errors.New(leak))
-	suite.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "LEAK").Return(nil, errors.New(leak))
+	suite.marketdata.On("GetOHLC", mock.Anything, "XYZ", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
 		{Timestamp: timestamppb.New(mustTime("2026-05-02")), Open: 10, High: 14, Low: 9, Close: 13.37, Volume: 100},
 		{Timestamp: timestamppb.New(mustTime("2026-05-03")), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
@@ -258,10 +261,10 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataManySymbols() {
 	for i := range n {
 		symbols = append(symbols, fmt.Sprintf("SYM%02d", i))
 	}
-	suite.marketdata.On("GetAsset", mock.Anything).Return(func(symbol string) (*pb.Asset, error) {
+	suite.marketdata.On("GetAsset", mock.Anything, mock.Anything).Return(func(_ context.Context, symbol string) (*pb.Asset, error) {
 		return &pb.Asset{Symbol: symbol, Name: symbol}, nil
 	})
-	suite.marketdata.On("GetOHLC", mock.Anything, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetOHLC", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
 	}, nil)
 
@@ -282,9 +285,9 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataManySymbols() {
 }
 
 func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
-	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
-	suite.marketdata.On("GetAsset", "NOCORP").Return(nil, errors.New("not found"))
-	suite.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "NOCORP").Return(nil, errors.New("not found"))
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Timestamp: timestamppb.Now(),
 			Open:      1,
@@ -324,8 +327,8 @@ func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 func (suite *MarketdataTest) TestDownloadHistoricalDataStopsOnBlockedProvider() {
 	symbols := []string{"AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA", "AVGO", "COST", "NFLX", "AMD", "PEP"}
 	for _, symbol := range symbols {
-		suite.marketdata.On("GetAsset", symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil).Maybe()
-		suite.marketdata.On("GetOHLC", symbol, mock.Anything, mock.Anything).
+		suite.marketdata.On("GetAsset", mock.Anything, symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil).Maybe()
+		suite.marketdata.On("GetOHLC", mock.Anything, symbol, mock.Anything, mock.Anything).
 			Return(nil, &marketdata.BlockedError{Provider: "yahoo", Symbol: symbol}).Maybe()
 	}
 
@@ -375,17 +378,17 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataUsesLaterTickerWhenAskedH
 		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
 	suite.Require().NoError(err)
 
-	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "ProShares Buffer ETF"}, nil)
-	suite.marketdata.On("GetAsset", "META").Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil)
-	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(&pb.Asset{Symbol: "FB", Name: "ProShares Buffer ETF"}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "META").Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "FB", mock.Anything, mock.Anything).
 		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
-	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetOHLC", mock.Anything, "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Timestamp: timestamppb.New(mustTime("2019-06-03")),
 			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
 		},
 	}, nil)
-	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+	suite.marketdata.On("SearchAsset", mock.Anything, metaISIN).Return([]*pb.Asset{
 		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
 	}, nil)
 
@@ -440,12 +443,12 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
 	suite.Require().NoError(err)
 
-	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
-	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "FB", mock.Anything, mock.Anything).
 		Return(nil, errors.New("fail to get OHLC data for symbol FB: Data doesn't exist"))
-	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).
+	suite.marketdata.On("GetOHLC", mock.Anything, "META", mock.Anything, mock.Anything).
 		Return(nil, errors.New("fail to get OHLC data for symbol META: Data doesn't exist")).Maybe()
-	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+	suite.marketdata.On("SearchAsset", mock.Anything, metaISIN).Return([]*pb.Asset{
 		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
 	}, nil)
 
@@ -469,9 +472,9 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenNoTickerHasBars(
 // ask once more and store the bars from the second answer.
 func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce() {
 	ctx := context.Background()
-	suite.marketdata.On("GetAsset", "BK").Return(&pb.Asset{Symbol: "BK", Name: "The Bank of New York Mellon Corporation"}, nil)
-	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil).Once()
-	suite.marketdata.On("GetOHLC", "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "BK").Return(&pb.Asset{Symbol: "BK", Name: "The Bank of New York Mellon Corporation"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil).Once()
+	suite.marketdata.On("GetOHLC", mock.Anything, "BK", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Timestamp: timestamppb.New(mustTime("2024-01-02")),
 			Open:      51.5, High: 52.4, Low: 51.2, Close: 52.1, Volume: 4200000,
@@ -504,8 +507,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce(
 // not end up stored under that ticker.
 func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProviderTicker() {
 	ctx := context.Background()
-	suite.marketdata.On("GetAsset", "VOD.L").Return(&pb.Asset{Symbol: "VOD.L", Name: "Vodafone Group Plc"}, nil)
-	suite.marketdata.On("GetOHLC", "VOD.L", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "VOD.L").Return(&pb.Asset{Symbol: "VOD.L", Name: "Vodafone Group Plc"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "VOD.L", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
 			Symbol:    "vod.uk",
 			Timestamp: timestamppb.New(mustTime("2024-01-02")),
@@ -564,8 +567,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidRequestSymb
 // asset, and fetches no bars.
 func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesInvalidProviderSymbol() {
 	const providerSymbol = "XYZ\x1b[31m <b>"
-	suite.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
-	suite.marketdata.On("GetOHLC", providerSymbol, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, providerSymbol, mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{Timestamp: timestamppb.New(mustTime("2026-05-01")), Open: 0, High: 11, Low: 9, Close: 10.5, Volume: 100},
 	}, nil).Maybe()
 
@@ -603,13 +606,13 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSkipsInvalidLaterTicker()
 		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
 	suite.Require().NoError(err)
 
-	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
-	suite.marketdata.On("GetAsset", badTicker).Return(&pb.Asset{Symbol: badTicker, Name: "Meta"}, nil).Maybe()
-	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
-	suite.marketdata.On("GetOHLC", badTicker, mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, badTicker).Return(&pb.Asset{Symbol: badTicker, Name: "Meta"}, nil).Maybe()
+	suite.marketdata.On("GetOHLC", mock.Anything, "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, badTicker, mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{Timestamp: timestamppb.New(mustTime("2019-06-03")), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 1000},
 	}, nil).Maybe()
-	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+	suite.marketdata.On("SearchAsset", mock.Anything, metaISIN).Return([]*pb.Asset{
 		{Symbol: badTicker, Name: "Meta Platforms, Inc.", ISIN: metaISIN},
 	}, nil)
 
@@ -642,8 +645,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterTickerDBError
 	_, err := suite.pgx.Exec(ctx, `DROP TABLE asset_symbol`)
 	suite.Require().NoError(err)
 
-	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
-	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "FB", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
 
 	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"FB"},
@@ -673,8 +676,8 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRefusesAmbiguousSymbol() 
 			VALUES ($1, 'VOD', '2019-01-01'::date, NULL)`, isin)
 		suite.Require().NoError(err)
 	}
-	suite.marketdata.On("GetAsset", "VOD").Return(&pb.Asset{Symbol: "VOD", Name: "Vodafone"}, nil)
-	suite.marketdata.On("GetOHLC", "VOD", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
+	suite.marketdata.On("GetAsset", mock.Anything, "VOD").Return(&pb.Asset{Symbol: "VOD", Name: "Vodafone"}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "VOD", mock.Anything, mock.Anything).Return([]*pb.OHLC{}, nil)
 
 	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"VOD"},
@@ -781,9 +784,9 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRescalesAfterSplit() {
 	onDay := func(day string) interface{} {
 		return mock.MatchedBy(func(t time.Time) bool { return t.UTC().Format(time.DateOnly) == day })
 	}
-	suite.marketdata.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
-	suite.marketdata.On("GetOHLC", "AAPL", onDay("2020-08-28"), mock.Anything).Return(adjusted[1:], nil).Once()
-	suite.marketdata.On("GetOHLC", "AAPL", onDay("2020-08-27"), mock.Anything).Return(adjusted, nil).Once()
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", onDay("2020-08-28"), mock.Anything).Return(adjusted[1:], nil).Once()
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", onDay("2020-08-27"), mock.Anything).Return(adjusted, nil).Once()
 
 	rsp, err := suite.client.DownloadHistoricalData(ctx, &servicePb.DownloadHistoricalDataRequest{
 		Symbols:   []string{"AAPL"},

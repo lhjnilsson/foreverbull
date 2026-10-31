@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,7 +17,10 @@ import (
 
 // AlpacaBars downloads daily bars with a profile's key. Asset metadata stays on Yahoo.
 type AlpacaBars struct {
-	md *marketdata.Client
+	opts marketdata.ClientOpts
+	// limiter spaces the Alpaca requests. NewAlpacaBars sets the
+	// process-wide Alpaca limiter, so every download shares one rate.
+	limiter *requestLimiter
 }
 
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
@@ -24,21 +28,64 @@ func NewAlpacaBars(apiKey, apiSecret string) (*AlpacaBars, error) {
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" {
 		return nil, errors.New("alpaca price source requires an api key and secret")
 	}
-	return &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+	return &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey:    apiKey,
 		APISecret: apiSecret,
-	})}, nil
+	}, limiter: limiterFor("alpaca")}, nil
 }
 
-func (a *AlpacaBars) GetAsset(string) (*pb.Asset, error) {
+// alpacaTimeout is the SDK's own default request timeout, kept for the
+// per-call client below.
+const alpacaTimeout = 10 * time.Second
+
+// alpacaFetchBudget bounds one GetOHLC, retries and pages included. It stays
+// below Sync's 90s idle-in-transaction timeout. Tests shorten it.
+var alpacaFetchBudget = 60 * time.Second
+
+// client returns an SDK client whose requests carry ctx. The SDK takes no
+// context, so each call gets its own client with a transport that attaches
+// ctx to every request: a cancelled download stops the Alpaca fetch. Each
+// request, the SDK's retries included, waits for a slot of the shared
+// Alpaca limiter under that ctx, so the wait counts against the fetch budget.
+func (a *AlpacaBars) client(ctx context.Context) *marketdata.Client {
+	opts := a.opts
+	base := http.DefaultTransport
+	timeout := alpacaTimeout
+	if opts.HTTPClient != nil {
+		if opts.HTTPClient.Transport != nil {
+			base = opts.HTTPClient.Transport
+		}
+		timeout = opts.HTTPClient.Timeout
+	}
+	limiter := a.limiter
+	if limiter == nil {
+		limiter = limiterFor("alpaca")
+	}
+	// The SDK retries a 429 itself, so this transport doesn't (0 retries).
+	limited := newLimitedTransport("alpaca", limiter, base, 0)
+	opts.HTTPClient = &http.Client{Timeout: timeout, Transport: &ctxTransport{ctx: ctx, base: limited}}
+	return marketdata.NewClient(opts)
+}
+
+// ctxTransport sends each request with ctx, so cancelling ctx aborts it.
+type ctxTransport struct {
+	ctx  context.Context //nolint:containedctx // the SDK has no per-request ctx
+	base http.RoundTripper
+}
+
+func (t *ctxTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.base.RoundTrip(req.WithContext(t.ctx)) //nolint:wrapcheck // passed through as is
+}
+
+func (a *AlpacaBars) GetAsset(context.Context, string) (*pb.Asset, error) {
 	return nil, errors.New("alpaca price source does not serve asset metadata")
 }
 
-func (a *AlpacaBars) SearchAsset(string) ([]*pb.Asset, error) {
+func (a *AlpacaBars) SearchAsset(context.Context, string) ([]*pb.Asset, error) {
 	return nil, errors.New("alpaca price source does not serve asset search")
 }
 
-func (a *AlpacaBars) GetIndex(string) ([]*pb.Asset, error) {
+func (a *AlpacaBars) GetIndex(context.Context, string) ([]*pb.Asset, error) {
 	return nil, errors.New("alpaca price source does not serve index membership")
 }
 
@@ -60,18 +107,25 @@ func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
 	}
 }
 
-func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+func (a *AlpacaBars) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	endAt := time.Now().UTC()
 	if end != nil {
 		endAt = *end
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
 	symbol = alpacaSymbol(symbol)
-	bars, err := a.md.GetBars(symbol, alpacaDailyBars(start, endAt))
+	// The SDK retries 429 and 500 up to ten times, a second apart, each try
+	// with its own timeout, so one fetch could outlast Sync's idle timeout
+	// when it runs under the symbol lock. A failed request isn't retried, so
+	// ending ctx bounds the whole fetch.
+	ctx, cancel := context.WithTimeout(ctx, alpacaFetchBudget)
+	defer cancel()
+	md := a.client(ctx)
+	bars, err := md.GetBars(symbol, alpacaDailyBars(start, endAt))
 	if err != nil {
 		var apiErr *alpaca.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnprocessableEntity {
-			bars, err = a.md.GetBars(symbol, alpacaDailyBars(start, endAt.Add(-15*time.Minute)))
+			bars, err = md.GetBars(symbol, alpacaDailyBars(start, endAt.Add(-15*time.Minute)))
 			if err != nil {
 				return nil, fmt.Errorf("error getting bars: %w", err)
 			}

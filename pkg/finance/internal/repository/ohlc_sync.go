@@ -82,11 +82,18 @@ const rescaleTolerance = 0.005
 // end. Ingest and the DownloadHistoricalData RPC both store bars through it,
 // so both re-scale after a split the same way.
 //
-// Everything runs in one transaction whose first statement takes
-// pg_advisory_xact_lock(hashtext('ohlc:' || symbol)). The stored range and the
-// overlap close are read, and the append-or-replace decision is made, under
-// that lock, so two syncs of one symbol run one after the other and can't
-// leave days on two scales. fetch is called while the lock is held.
+// The provider is asked first, outside any transaction: the stored range and
+// overlap close are read without the lock, and fetch is called for every span
+// that plan needs. Only then does Sync open one transaction whose first
+// statement takes pg_advisory_xact_lock(hashtext('ohlc:' || symbol)), re-read
+// the stored range and overlap close, and make the append-or-replace decision
+// again under that lock, so two syncs of one symbol still store one after the
+// other and can't leave days on two scales. When the locked decision asks for
+// the spans already fetched, their bars are stored and no provider call runs
+// under the lock. Only when another sync changed the stored history in
+// between, so the decision now needs a different span, is fetch called again,
+// while the lock is held. A slow provider therefore holds neither the lock
+// nor a pooled connection in the normal case.
 //
 // Nothing stored yet: start through end is fetched and inserted.
 //
@@ -116,6 +123,10 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	if !ok {
 		return &StoreError{Symbol: symbol, Err: ErrNoTransaction}
 	}
+	fetched := &fetchCache{fetch: fetch}
+	if err := db.classify(symbol, db.decide(ctx, provider, symbol, start, end, fetched.get, false)); err != nil {
+		return err
+	}
 	if pool, ok := db.Conn.(*pgxpool.Pool); ok {
 		release, err := acquireSyncSlot(ctx, pool)
 		if err != nil {
@@ -130,8 +141,8 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
 	// Bound how long this transaction waits for the symbol lock, and how long
-	// it may sit idle (fetch runs while it is open), so a stuck sync gives the
-	// lock and its connection back. set_config(..., true) is SET LOCAL: both
+	// it may sit idle (a fetch runs while it is open when the locked decision
+	// changed), so a stuck sync gives the lock and its connection back. set_config(..., true) is SET LOCAL: both
 	// reset when the transaction ends.
 	if _, err := tx.Exec(ctx,
 		`SELECT set_config('lock_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $2, true)`,
@@ -147,7 +158,7 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 		return &StoreError{Symbol: symbol, Err: err}
 	}
 	inTx := &OHLC{Conn: tx}
-	if err := inTx.syncLocked(ctx, provider, symbol, start, end, fetch); err != nil {
+	if err := inTx.classify(symbol, inTx.decide(ctx, provider, symbol, start, end, fetched.get, true)); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -197,10 +208,45 @@ type fetchError struct{ err error }
 func (e *fetchError) Error() string { return e.err.Error() }
 func (e *fetchError) Unwrap() error { return e.err }
 
-func (db *OHLC) syncLocked(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
-) error {
-	err := db.decide(ctx, provider, symbol, start, end, fetch)
+// fetchCache serves each span Sync fetched before taking the lock. A span is
+// the trading day of from and of to (nil: through today). Any other span goes
+// to fetch and is kept too.
+type fetchCache struct {
+	fetch   FetchBars
+	entries []fetchedSpan
+}
+
+type fetchedSpan struct {
+	from, to string
+	bars     []*financepb.OHLC
+}
+
+func spanKey(from time.Time, to *time.Time) (string, string) {
+	if to == nil {
+		return tradingDay(from), ""
+	}
+	return tradingDay(from), tradingDay(*to)
+}
+
+func (c *fetchCache) get(from time.Time, to *time.Time) ([]*financepb.OHLC, error) {
+	f, t := spanKey(from, to)
+	for _, e := range c.entries {
+		if e.from == f && e.to == t {
+			return e.bars, nil
+		}
+	}
+	bars, err := c.fetch(from, to)
+	if err != nil {
+		return nil, err
+	}
+	c.entries = append(c.entries, fetchedSpan{from: f, to: t, bars: bars})
+	return bars, nil
+}
+
+// classify returns fetch errors unchanged, keeps a refused bar, a missing
+// refetch and a StoreError as they are, and turns anything else into a
+// StoreError.
+func (db *OHLC) classify(symbol string, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -217,9 +263,31 @@ func (db *OHLC) syncLocked(ctx context.Context, provider, symbol string,
 	return &StoreError{Symbol: symbol, Err: err}
 }
 
+// decide makes the append-or-replace decision for start through end and
+// fetches what it needs. With apply false it only fetches, so the bars are
+// ready before the lock is taken; with apply true it stores them too.
 func (db *OHLC) decide(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
+	start time.Time, end *time.Time, fetch FetchBars, apply bool,
 ) error {
+	storeBars := func(bars []*financepb.OHLC) error {
+		if !apply {
+			return nil
+		}
+		return db.StoreBars(ctx, provider, symbol, bars)
+	}
+	refetchAndReplace := func(from time.Time, to *time.Time) error {
+		bars, err := fetch(from, to)
+		if err != nil {
+			return &fetchError{err: err}
+		}
+		if !apply {
+			return nil
+		}
+		// The batch is validated first, so a bad bar never turns into a
+		// missing day.
+		return db.ReplaceRange(ctx, provider, symbol, from, to, bars)
+	}
+
 	first, last, stored, err := db.Range(ctx, provider, symbol)
 	if err != nil {
 		return err
@@ -230,7 +298,7 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		if err != nil {
 			return &fetchError{err: err}
 		}
-		return db.StoreBars(ctx, provider, symbol, bars)
+		return storeBars(bars)
 	}
 
 	if start.Before(first) {
@@ -238,7 +306,7 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		if end != nil && end.Before(last) {
 			spanEnd = &last
 		}
-		return db.refetchAndReplace(ctx, provider, symbol, start, spanEnd, fetch)
+		return refetchAndReplace(start, spanEnd)
 	}
 
 	if end != nil && !end.After(last) {
@@ -255,22 +323,9 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		return err
 	}
 	if !matches {
-		return db.refetchAndReplace(ctx, provider, symbol, first, end, fetch)
+		return refetchAndReplace(first, end)
 	}
-	return db.StoreBars(ctx, provider, symbol, bars)
-}
-
-// refetchAndReplace fetches start through end and makes it the stored history
-// for that span. The batch is validated first, so a bad bar never turns into a
-// missing day.
-func (db *OHLC) refetchAndReplace(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
-) error {
-	bars, err := fetch(start, end)
-	if err != nil {
-		return &fetchError{err: err}
-	}
-	return db.ReplaceRange(ctx, provider, symbol, start, end, bars)
+	return storeBars(bars)
 }
 
 // overlapMatches reports whether the fetched close for the overlap day is a

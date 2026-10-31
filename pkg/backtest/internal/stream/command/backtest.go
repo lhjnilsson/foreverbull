@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
@@ -51,6 +52,11 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	// stored as BRKB. ETF holdings keep their own names (aliases).
 	if err = storeShareClassesOnce(&b); err != nil {
 		return fmt.Errorf("error creating backtest: %w", err)
+	}
+
+	// Over the download cap: refuse before anything is stored.
+	if err := tooManySymbols(b.GetName(), fileBacktestSymbols(&b)); err != nil {
+		return err
 	}
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
@@ -100,9 +106,14 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting marketdata client")
 	}
 
+	symbols := uniqueAliasSymbols(result.Aliases)
+	// Over the download cap: refuse before any provider call or store.
+	if err := tooManySymbols(command.BacktestName, append([]string{benchmark}, symbols...)); err != nil {
+		return err
+	}
 	// Every member must resolve before anything is stored. A member that
 	// is left out instead changes the universe without a word.
-	failures, err := lookupMemberAssets(ctx, marketdataClient, uniqueAliasSymbols(result.Aliases))
+	failures, err := lookupMemberAssets(ctx, marketdataClient, symbols)
 	if err != nil {
 		return err
 	}
@@ -699,6 +710,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
+	if count := finance.DownloadSymbolCount(symbols); count > finance.MaxDownloadSymbols {
+		return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, count)
+	}
 
 	provider := strings.TrimSpace(b.GetProvider())
 	if provider == "" {
@@ -710,6 +724,8 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 
 	startDate := b.Periods[0].StartDate
 	endDate := b.Periods[len(b.Periods)-1].EndDate
+	progress := newDownloadProgress(ctx, finance.DownloadSymbolCount(symbols))
+	progress.start()
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: startDate,
@@ -720,6 +736,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 			return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
+		}
+		if overCapRefusal(err) {
+			return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, finance.DownloadSymbolCount(symbols))
 		}
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
@@ -733,8 +752,15 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
 				return blocked
 			}
+			if limit, ok := downloadTimeLimit(err); ok {
+				return discardTimeLimitBacktest(ctx, backtests, command.BacktestName, backtestID,
+					limit, progress.done, progress.total)
+			}
 			if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 				return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
+			}
+			if overCapRefusal(err) {
+				return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, finance.DownloadSymbolCount(symbols))
 			}
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
@@ -744,6 +770,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
+		progress.symbolDone()
 	}
 	return nil
 }
@@ -776,6 +803,80 @@ func ambiguousSymbolProvider(text, symbol string) (string, bool) {
 		return match[1], true
 	}
 	return "", false
+}
+
+// providerTimeoutError matches the finance service's STATUS_ERROR for a
+// provider that didn't answer for a symbol in time. Only this exact shape is
+// shown.
+var providerTimeoutError = regexp.MustCompile(`^(yahoo|stooq|alpaca) took too long to respond for ([A-Za-z0-9.^=_-]{1,32})$`)
+
+// providerTimeoutProvider returns the provider named in text when it is the
+// timeout sentence for symbol, the ticker this response is about.
+func providerTimeoutProvider(text, symbol string) (string, bool) {
+	match := providerTimeoutError.FindStringSubmatch(text)
+	if match == nil {
+		return "", false
+	}
+	if match[2] == symbol {
+		return match[1], true
+	}
+	return "", false
+}
+
+// timeLimitError matches the finance service's DeadlineExceeded text when the
+// download stopped at its own time limit (FINANCE_TASK_TIME_LIMIT), not at a
+// slow provider. The limit is in Go's duration form.
+var timeLimitError = regexp.MustCompile(`^the download hit its time limit of ([0-9][0-9hms.]{0,24}) at [A-Za-z0-9.^=_-]{1,32}$`)
+
+// downloadTimeLimit returns the limit when err is the finance service stopping
+// the download at its time limit: DeadlineExceeded with that exact text and a
+// positive limit. The client's own deadline carries other text and keeps the
+// generic sentence.
+func downloadTimeLimit(err error) (time.Duration, bool) {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.DeadlineExceeded {
+		return 0, false
+	}
+	match := timeLimitError.FindStringSubmatch(st.Message())
+	if match == nil {
+		return 0, false
+	}
+	limit, err := time.ParseDuration(match[1])
+	if err != nil || limit <= 0 {
+		return 0, false
+	}
+	return limit, true
+}
+
+// discardTimeLimitBacktest deletes the backtest after the download hit the
+// finance service's time limit. done and total are the counts the progress
+// line shows.
+func discardTimeLimitBacktest(ctx context.Context, backtests repository.Backtest, name, id string,
+	limit time.Duration, done, total int,
+) error {
+	err := deleteStoredBacktest(ctx, backtests, name, id)
+	if err == nil || errors.Is(err, pgx.ErrNoRows) {
+		return plainSentence(timeLimitCopy(name, limit, done, total))
+	}
+	log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after the download time limit")
+	return plainSentence(fmt.Sprintf(
+		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
+		name, timeLimitLead(limit, done, total), name))
+}
+
+// timeLimitLead names the limit, such as "the 2-hour limit", and how far
+// the download got, with the progress line's count and thousands formatting.
+func timeLimitLead(limit time.Duration, done, total int) string {
+	return fmt.Sprintf("the download hit the %s limit after %s of %s symbols.",
+		numfmt.LimitSpan(limit), numfmt.Thousands(done), numfmt.Thousands(total))
+}
+
+// timeLimitCopy is the agreed create sentence for the time limit once the
+// backtest is removed, word for word.
+func timeLimitCopy(name string, limit time.Duration, done, total int) string {
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s The backtest wasn't saved. "+
+		"Split the symbols across several backtests, then run `fbull backtest create` again.",
+		name, timeLimitLead(limit, done, total))
 }
 
 // isRefusedBarError reports the finance service's refused-bar sentence.
@@ -817,6 +918,9 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 	} else if isRefusedBarError(errText) {
 		lead = errText + "."
 		nextStep = providerFaultNextStep
+	} else if provider, ok := providerTimeoutProvider(errText, symbol); ok {
+		lead = fmt.Sprintf("%s took too long to respond for %s.", provider, symbol)
+		nextStep = "The backtest wasn't saved. Try again later, or use another provider with --provider."
 	} else if provider, ok := ambiguousSymbolProvider(errText, symbol); ok {
 		lead = fmt.Sprintf("%s has more than one instrument for %s.", provider, symbol)
 		nextStep = "The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), " +

@@ -94,6 +94,10 @@ func (m *message) TaskStateTopic() string {
 	return fmt.Sprintf(TOPIC_TASK_STATE, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod(), m.msg.GetId())
 }
 
+func (m *message) taskProgressTopic() string {
+	return fmt.Sprintf(TOPIC_TASK_PROGRESS, m.msg.GetModule(), m.msg.GetComponent(), m.msg.GetMethod(), m.msg.GetId())
+}
+
 func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 	reflectMsg := msg.ProtoReflect()
 	msgDesc := reflectMsg.Descriptor()
@@ -114,9 +118,13 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 			return fmt.Errorf("state field not found in message")
 		}
 		stepMsg.Set(stateField, protoreflect.ValueOfEnum(step.State.Enum().Number()))
+		// The message is replaced on every update, so a progress text on a
+		// RUNNING step doesn't stay on the step once it completes.
+		message := ""
 		if step.Error != nil {
-			stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(*step.Error))
+			message = *step.Error
 		}
+		stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(message))
 		if len(step.Notices) > 0 {
 			noticesField := stepMsg.Descriptor().Fields().ByName("notices")
 			if noticesField == nil || !noticesField.IsList() || noticesField.Kind() != protoreflect.StringKind {

@@ -3,6 +3,7 @@ package environment
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -133,4 +134,30 @@ func TestGetTradingEnabledAndServerGRPCURL(t *testing.T) {
 
 	t.Setenv(TradingEnabled, "not-a-bool")
 	require.False(t, GetTradingEnabled())
+}
+
+func TestFinanceTaskTimeLimitDefaultsToTwoHours(t *testing.T) {
+	t.Setenv(FinanceTaskTimeLimit, "")
+	require.NoError(t, Setup())
+	require.Equal(t, "2h", os.Getenv(FinanceTaskTimeLimit))
+	limit, err := GetFinanceTaskTimeLimit()
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Hour, limit)
+
+	t.Setenv(FinanceTaskTimeLimit, "90m")
+	limit, err = GetFinanceTaskTimeLimit()
+	require.NoError(t, err)
+	require.Equal(t, 90*time.Minute, limit)
+}
+
+// A bad limit fails at startup and names the variable.
+func TestSetupRejectsAnInvalidFinanceTaskTimeLimit(t *testing.T) {
+	for value, want := range map[string]string{
+		"two hours": `FINANCE_TASK_TIME_LIMIT="two hours" is not a duration; set it to a Go duration such as 2h or 90m`,
+		"0s":        `FINANCE_TASK_TIME_LIMIT="0s" must be above zero; set it to a Go duration such as 2h or 90m`,
+		"-1h":       `FINANCE_TASK_TIME_LIMIT="-1h" must be above zero; set it to a Go duration such as 2h or 90m`,
+	} {
+		t.Setenv(FinanceTaskTimeLimit, value)
+		require.EqualError(t, Setup(), want, value)
+	}
 }

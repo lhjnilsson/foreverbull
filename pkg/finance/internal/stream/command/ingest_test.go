@@ -91,8 +91,8 @@ func (test *IngestCommandTest) TestIngestCommandIngest() {
 		Symbol: "NEW123",
 		Name:   "New Asset",
 	}
-	test.marketdata.On("GetAsset", newAsset.Symbol).Return(&newAsset, nil)
-	test.marketdata.On("GetOHLC", "NEW123", internal_pb.DateToTime(test.storedOHLCStart),
+	test.marketdata.On("GetAsset", mock.Anything, newAsset.Symbol).Return(&newAsset, nil)
+	test.marketdata.On("GetOHLC", mock.Anything, "NEW123", internal_pb.DateToTime(test.storedOHLCStart),
 		mock.Anything).Return(
 		[]*pb.OHLC{
 			{
@@ -142,8 +142,8 @@ func (test *IngestCommandTest) TestIngestStoresNothingWhenABarIsRefused() {
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
 
-	test.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
-	test.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return(
+	test.marketdata.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	test.marketdata.On("GetOHLC", mock.Anything, "XYZ", mock.Anything, mock.Anything).Return(
 		[]*pb.OHLC{
 			{Timestamp: timestamppb.New(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)), Open: 10, High: 11, Low: 9, Close: 10.5, Volume: 100},
 			{Timestamp: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)), Open: 10, High: 11, Low: 9, Close: 0, Volume: 100},
@@ -244,8 +244,8 @@ func (test *IngestCommandTest) TestIncrementalFetchRescalesAfterSplit() {
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
 	// The incremental fetch starts on the last stored day.
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
 
 	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
 	test.marketdata.AssertExpectations(test.T())
@@ -273,7 +273,7 @@ func (test *IngestCommandTest) TestIncrementalFetchAppendsWhenOverlapMatches() {
 	}
 
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
 
 	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
 	test.marketdata.AssertExpectations(test.T())
@@ -335,8 +335,8 @@ func (test *IngestCommandTest) TestIncrementalFetchWithoutOverlapReplaces() {
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
 	// The provider returns only 08-31 and 09-01 for the incremental fetch.
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[2:], nil).Once()
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[2:], nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
 
 	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
 	test.marketdata.AssertExpectations(test.T())
@@ -352,9 +352,9 @@ func (test *IngestCommandTest) TestIncrementalFetchWithBadOverlapCloseReplaces()
 
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).
 		Return([]*pb.OHLC{badOverlap, adjusted[2], adjusted[3]}, nil).Once()
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return(adjusted, nil).Once()
 
 	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
 	test.marketdata.AssertExpectations(test.T())
@@ -399,8 +399,8 @@ func (test *IngestCommandTest) TestRescaleWithBadRefetchedBarKeepsStoredRows() {
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
 	// The overlap close moved by the split ratio, so ingest refetches the range.
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(refetch, nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return(refetch, nil).Once()
 
 	err := test.ingestAAPL("2020-08-27", "2020-09-01")
 	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
@@ -422,7 +422,7 @@ func (test *IngestCommandTest) TestRescaleWithBadRefetchedBarKeepsStoredRows() {
 func (test *IngestCommandTest) TestFirstIngestInserts() {
 	test.Require().NoError(test.assets.Store(context.Background(), "AAPL", "Apple Inc."))
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return(aaplAdjusted(), nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return(aaplAdjusted(), nil).Once()
 
 	test.Require().NoError(test.ingestAAPL("2020-08-27", "2020-09-01"))
 	test.marketdata.AssertExpectations(test.T())
@@ -443,7 +443,7 @@ func (test *IngestCommandTest) TestIngestBeforeStoredHistoryReplaces() {
 
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	sep1 := time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC)
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.MatchedBy(func(end *time.Time) bool {
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.MatchedBy(func(end *time.Time) bool {
 		return end != nil && end.Format("2006-01-02") == sep1.Format("2006-01-02")
 	})).Return(adjusted, nil).Once()
 
@@ -461,8 +461,8 @@ func (test *IngestCommandTest) TestRescaleRefetchWithNoBarsFails() {
 
 	aug27 := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	aug28 := time.Date(2020, 8, 28, 0, 0, 0, 0, time.UTC)
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
-	test.marketdata.On("GetOHLC", "AAPL", sameDay(aug27), mock.Anything).Return([]*pb.OHLC{}, nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug28), mock.Anything).Return(adjusted[1:], nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", sameDay(aug27), mock.Anything).Return([]*pb.OHLC{}, nil).Once()
 
 	err := test.ingestAAPL("2020-08-27", "2020-09-01")
 	test.Require().ErrorIs(err, repository.ErrNoBars)
@@ -486,7 +486,7 @@ BEGIN RAISE EXCEPTION '`+leak+`'; END $$ LANGUAGE plpgsql;
 CREATE TRIGGER fail_ingest BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTION fail_ingest();`)
 	test.Require().NoError(err)
 	test.Require().NoError(test.assets.Store(ctx, "AAPL", "Apple Inc."))
-	test.marketdata.On("GetOHLC", "AAPL", mock.Anything, mock.Anything).Return(aaplAdjusted(), nil).Once()
+	test.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(aaplAdjusted(), nil).Once()
 
 	err = test.ingestAAPL("2020-08-27", "2020-09-01")
 	test.Require().EqualError(err, "Couldn't store prices for AAPL. Try again in a few minutes. "+
@@ -515,8 +515,8 @@ CREATE TRIGGER fail_on_bad_row BEFORE INSERT ON ohlc FOR EACH ROW EXECUTE FUNCTI
 	message := new(stream.MockMessage)
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.MarketDataDep).Return(test.marketdata)
-	test.marketdata.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
-	test.marketdata.On("GetOHLC", "XYZ", mock.Anything, mock.Anything).Return(
+	test.marketdata.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: "XYZ", Name: "XYZ Corp"}, nil)
+	test.marketdata.On("GetOHLC", mock.Anything, "XYZ", mock.Anything, mock.Anything).Return(
 		[]*pb.OHLC{
 			{Timestamp: timestamppb.New(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)), Open: 10, High: 14, Low: 9, Close: 10.5, Volume: 100},
 			{Timestamp: timestamppb.New(time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)), Open: 10, High: 14, Low: 9, Close: 13.37, Volume: 100},
@@ -566,7 +566,7 @@ func (test *IngestCommandTest) TestIngestKeepsCrumbOutOfTaskState() {
 			name:   "get asset",
 			symbol: "XYZ",
 			setup: func(md *supplier.MockMarketdata) {
-				md.On("GetAsset", "XYZ").Return(nil, yahooURLError())
+				md.On("GetAsset", mock.Anything, "XYZ").Return(nil, yahooURLError())
 			},
 			prefix: "error getting asset: ",
 		},
@@ -574,7 +574,7 @@ func (test *IngestCommandTest) TestIngestKeepsCrumbOutOfTaskState() {
 			name:   "get ohlc",
 			symbol: test.storedAsset.Symbol,
 			setup: func(md *supplier.MockMarketdata) {
-				md.On("GetOHLC", test.storedAsset.Symbol, mock.Anything, mock.Anything).Return(nil, yahooURLError())
+				md.On("GetOHLC", mock.Anything, test.storedAsset.Symbol, mock.Anything, mock.Anything).Return(nil, yahooURLError())
 			},
 			prefix: "error getting OHLC: ",
 		},
@@ -643,7 +643,7 @@ func (test *IngestCommandTest) TestIngestRefusesInvalidProviderSymbol() {
 	const providerSymbol = "XYZ\x1b[31m <b>"
 	for _, provider := range []string{"yahoo", "stooq"} {
 		md := supplier.NewMockMarketdata(test.T())
-		md.On("GetAsset", "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
+		md.On("GetAsset", mock.Anything, "XYZ").Return(&pb.Asset{Symbol: providerSymbol, Name: "XYZ Corp"}, nil)
 
 		err := test.ingestSymbolsVia(provider, md, "XYZ")
 

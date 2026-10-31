@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -38,7 +39,7 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 	}
 }
 
-func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
 	identifier := req.GetIdentifier()
 	if identifier == nil {
 		return nil, fmt.Errorf("identifier is nil")
@@ -47,12 +48,12 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	var err error
 	switch identifier := identifier.(type) {
 	case *servicePb.GetAssetRequest_Symbol:
-		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
+		asset, err = fs.marketdata.GetAsset(ctx, identifier.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
-		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
+		assets, err := fs.marketdata.SearchAsset(ctx, identifier.Isin)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
@@ -77,8 +78,8 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	}, nil
 }
 
-func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
-	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
+func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
+	assets, err := fs.marketdata.GetIndex(ctx, req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", redact.URLError(err))
 	}
@@ -90,6 +91,55 @@ func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexR
 
 const downloadWorkers = 10
 
+// One DownloadHistoricalData stops after FINANCE_TASK_TIME_LIMIT (2h by
+// default). At the shared provider rates a 10,000-symbol download takes
+// about an hour on Yahoo or Alpaca and about 85 minutes on Stooq, so 2h
+// leaves room for 429 backoffs while a hung provider still can't hold the
+// request and its workers forever. Symbols stored before the limit stay
+// stored.
+
+// errDownloadTimeLimit is the ctx cause when downloadTimeLimit ends a
+// download, so it is told apart from the client's own deadline or cancel.
+var errDownloadTimeLimit = errors.New("download time limit reached")
+
+// metadataProvider is the provider GetAsset asks, whatever the request's
+// price provider: asset metadata stays on Yahoo.
+const metadataProvider = "yahoo"
+
+// downloadSymbols returns the request's symbols under their stored names
+// (marketdata.StoredSymbol: BRK.B, BRK-B and BRKB are BRKB) with repeats left
+// out, in request order, so each symbol is fetched, stored and reported once.
+//
+// More than marketdata.MaxDownloadSymbols distinct symbols is
+// InvalidArgument; counting stops at the first symbol over the cap. Nothing
+// is fetched or stored then. The caller has already refused a symbol outside
+// the ticker pattern (blank included) by its position.
+func downloadSymbols(symbols []string) ([]string, error) {
+	// Distinct stored names, the count marketdata.DownloadSymbolCount gives
+	// backtest create.
+	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
+	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
+	for _, symbol := range symbols {
+		name := marketdata.StoredSymbol(symbol)
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if len(out) == marketdata.MaxDownloadSymbols {
+			return nil, status.Error(codes.InvalidArgument, tooManySymbolsMessage)
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// tooManySymbolsMessage refuses a request over the per-request cap. Backtest
+// create counts the same way before it stores a backtest and shows its own
+// sentence with the count; this one is for other callers of the RPC.
+var tooManySymbolsMessage = fmt.Sprintf(
+	"one download can carry at most %s distinct symbols, and this one has more. Split it into smaller downloads.",
+	numfmt.Thousands(marketdata.MaxDownloadSymbols))
+
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.
 // The first failed Send calls stop: the client can't get any later result,
@@ -99,6 +149,9 @@ type downloadSender struct {
 	stream servicePb.Marketdata_DownloadHistoricalDataServer
 	stop   context.CancelFunc
 	err    error
+	// reported holds every symbol sent, at most MaxDownloadSymbols, so a
+	// download stopped by its time limit can name one that didn't finish.
+	reported map[string]struct{}
 }
 
 // newDownloadSender wires stop, which cancels the download's workers.
@@ -112,7 +165,12 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 	if s.err != nil {
 		return
 	}
-	if err := s.stream.Send(rsp); err != nil {
+	if err := s.stream.Send(rsp); err == nil {
+		if s.reported == nil {
+			s.reported = make(map[string]struct{})
+		}
+		s.reported[rsp.GetSymbol()] = struct{}{}
+	} else {
 		log.Err(err).Msg("error sending response, stopping the download")
 		s.err = err
 		// A sender built without newDownloadSender has no stop; it still
@@ -121,6 +179,19 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 			s.stop()
 		}
 	}
+}
+
+// firstUnreported is the first of symbols, in request order, that no
+// response was sent for, or "" when every one was.
+func (s *downloadSender) firstUnreported(symbols []string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, symbol := range symbols {
+		if _, ok := s.reported[symbol]; !ok {
+			return symbol
+		}
+	}
+	return ""
 }
 
 // sendErr is the first failed Send, or nil.
@@ -160,6 +231,28 @@ func ambiguousSymbolError(provider, symbol string) error {
 	return fmt.Errorf("%s has more than one instrument for %s", provider, symbol)
 }
 
+// providerTimedOut reports a provider call that ran out of time while the
+// download itself still had time. A database error is never one, even when
+// its driver says timeout: that stays the store failure it is.
+//
+// A provider wait refused because its slot comes after the download's own
+// time limit is the limit, not the provider: this waits for the limit to
+// end ctx and reports false, so the symbol isn't failed and the download
+// ends with the time-limit text naming it.
+func providerTimedOut(ctx context.Context, err error) bool {
+	if ctx.Err() == nil && marketdata.AtTaskLimit(ctx, err, errDownloadTimeLimit) {
+		<-ctx.Done()
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	var stored *repository.StoreError
+	if errors.As(err, &stored) {
+		return false
+	}
+	return marketdata.IsProviderTimeout(err)
+}
+
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
 	rsp.Error = err.Error()
@@ -194,8 +287,12 @@ func (fs *MarketdataServer) downloadSymbol(
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
 
-	asset, err := fs.marketdata.GetAsset(symbol)
+	asset, err := fs.marketdata.GetAsset(ctx, symbol)
 	if err != nil {
+		if providerTimedOut(ctx, err) {
+			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: metadataProvider, Symbol: symbol})
+			return nil
+		}
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
 	}
@@ -214,11 +311,17 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	storeSymbol := asset.Symbol
-	ohlcs, err := bars.GetOHLC(storeSymbol, start, end)
+	ohlcs, err := bars.GetOHLC(ctx, storeSymbol, start, end)
 	if err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
 			return blocked
+		}
+		// A provider that didn't answer in time would likely not answer for
+		// a later ticker either, so the symbol fails with the timeout.
+		if providerTimedOut(ctx, err) {
+			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: provider, Symbol: symbol})
+			return nil
 		}
 	}
 	if err != nil || len(ohlcs) == 0 {
@@ -268,7 +371,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	// and a later ticker's asset and asset_symbol rows are written outside
 	// this transaction and stay when the bars roll back; a retry finds them
 	// and stores the bars again.
-	fetch := prefetchedBars(bars, storeSymbol, start, end, ohlcs)
+	fetch := prefetchedBars(ctx, bars, storeSymbol, start, end, ohlcs)
 	if err := ohlcRepo.Sync(ctx, provider, storeSymbol, start, end, fetch); err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
@@ -277,6 +380,11 @@ func (fs *MarketdataServer) downloadSymbol(
 		var invalid *repository.InvalidPriceError
 		var stored *repository.StoreError
 		switch {
+		case providerTimedOut(ctx, err):
+			// A refetch under the symbol lock ran out of time. It ends before
+			// the transaction's idle timeout, so it is told as the provider's
+			// delay, not as a failure to store.
+			err = &marketdata.TimeoutError{Provider: provider, Symbol: symbol}
 		case errors.As(err, &invalid):
 		case errors.Is(err, repository.ErrNoBars):
 			err = noPriceDataError(symbol)
@@ -306,19 +414,19 @@ func retryOHLC(ctx context.Context, bars supplier.Marketdata, symbol string,
 		return nil, ctx.Err()
 	case <-time.After(ohlcRetryDelay):
 	}
-	return bars.GetOHLC(symbol, start, end)
+	return bars.GetOHLC(ctx, symbol, start, end)
 }
 
 // prefetchedBars is the fetch Sync uses for one download. The bars already
 // fetched for start through end serve any request inside that span (Sync
 // asks from the last stored day for an incremental fetch); anything else,
 // such as a refetch from an earlier stored day, goes to the provider.
-func prefetchedBars(bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
+func prefetchedBars(ctx context.Context, bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
 	fetched []*pb.OHLC,
 ) repository.FetchBars {
 	return func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
 		if !withinSpan(start, end, from, to) {
-			return bars.GetOHLC(symbol, from, to)
+			return bars.GetOHLC(ctx, symbol, from, to)
 		}
 		out := make([]*pb.OHLC, 0, len(fetched))
 		for _, b := range fetched {
@@ -387,7 +495,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		ohlcs, err := bars.GetOHLC(candidate, start, end)
+		ohlcs, err := bars.GetOHLC(ctx, candidate, start, end)
 		if err != nil {
 			var blocked *marketdata.BlockedError
 			if errors.As(err, &blocked) {
@@ -399,7 +507,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 			continue
 		}
 
-		if a, err := fs.marketdata.GetAsset(candidate); err == nil {
+		if a, err := fs.marketdata.GetAsset(ctx, candidate); err == nil {
 			_ = assetRepo.Store(ctx, a.Symbol, a.Name)
 		} else {
 			_ = assetRepo.Store(ctx, candidate, candidate)
@@ -446,7 +554,7 @@ func laterTickerCandidates(
 		candidates = append(candidates, symbol)
 	}
 
-	found, err := md.SearchAsset(isin)
+	found, err := md.SearchAsset(ctx, isin)
 	if err != nil {
 		log.Info().Err(redact.URLError(err)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
@@ -496,6 +604,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		}
 	}
 
+	symbols, err := downloadSymbols(symbols)
+	if err != nil {
+		return err
+	}
+
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
 	if err != nil {
 		return err
@@ -519,6 +632,14 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	assetRepo := repository.Asset{Conn: fs.pgx}
 	ohlcRepo := repository.OHLC{Conn: fs.pgx}
 
+	// The time limit ends the whole download. A symbol stored before it stays
+	// stored; one still in flight rolls back and is named in the timeout.
+	limit, err := environment.GetFinanceTaskTimeLimit()
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	ctx, stopAtLimit := marketdata.WithTaskLimit(ctx, limit, errDownloadTimeLimit)
+	defer stopAtLimit()
 	// The first blocked symbol or failed Send cancels the rest. Workers that
 	// already started finish their symbol, so the error is still returned once.
 	ctx, cancel := context.WithCancel(ctx)
@@ -548,7 +669,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	}
 
 feed:
-	for _, symbol := range req.GetSymbols() {
+	for _, symbol := range symbols {
 		select {
 		case assetCh <- symbol:
 		case <-ctx.Done():
@@ -563,6 +684,14 @@ feed:
 	}
 	if err := sender.sendErr(); err != nil {
 		return err
+	}
+	if errors.Is(context.Cause(ctx), errDownloadTimeLimit) {
+		if symbol := sender.firstUnreported(symbols); symbol != "" {
+			log.Warn().Str("provider", provider).Str("symbol", symbol).Dur("limit", limit).
+				Msg("download stopped at its time limit")
+			return status.Error(codes.DeadlineExceeded, (&marketdata.TimeLimitError{Symbol: symbol, Limit: limit}).Error())
+		}
+		return nil
 	}
 	return ctx.Err()
 }

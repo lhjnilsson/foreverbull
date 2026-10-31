@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -45,10 +46,9 @@ func fakeAlpacaBars(t *testing.T) (*AlpacaBars, *[]url.Values) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := marketdata.NewClient(marketdata.ClientOpts{
+	return &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1,
-	})
-	return &AlpacaBars{md: client}, &queries
+	}}, &queries
 }
 
 // maxDailyCloseMove is the largest one-day close-to-close move, as a fraction.
@@ -67,7 +67,7 @@ func TestAlpacaGetOHLCRequestsSplitAdjustedDailyBars(t *testing.T) {
 	start := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2020, 9, 1, 0, 0, 0, 0, time.UTC)
 
-	ohlcs, err := bars.GetOHLC("AAPL", start, &end)
+	ohlcs, err := bars.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 
 	require.Len(t, *queries, 1)
@@ -87,7 +87,7 @@ func TestAlpacaGetOHLCRequestsSplitAdjustedDailyBars(t *testing.T) {
 func TestAlpacaRawBarsShowTheSplitAsAFakeDrop(t *testing.T) {
 	t.Parallel()
 	bars, _ := fakeAlpacaBars(t)
-	raw, err := bars.md.GetBars("AAPL", marketdata.GetBarsRequest{
+	raw, err := bars.client(context.Background()).GetBars("AAPL", marketdata.GetBarsRequest{
 		TimeFrame:  marketdata.OneDay,
 		Adjustment: marketdata.AdjustmentRaw,
 		Start:      time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC),

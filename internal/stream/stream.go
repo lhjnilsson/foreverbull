@@ -13,6 +13,10 @@ const (
 	TOPIC_TASK       = "foreverbull.%s.%s.%s"
 	TOPIC_TASK_ABORT = "foreverbull.%s.%s.%s.%s.abort"
 	TOPIC_TASK_STATE = "foreverbull.%s.%s.%s.%s.state"
+	// TOPIC_TASK_PROGRESS is core NATS, outside the foreverbull stream's
+	// foreverbull.> subjects: progress is not stored on JetStream and gets
+	// no message_states row. A waiter that isn't listening misses it.
+	TOPIC_TASK_PROGRESS = "foreverbull-progress.%s.%s.%s.%s"
 )
 
 type Stream interface {
@@ -28,6 +32,8 @@ type Subscriber interface {
 
 type NATSStream struct {
 	jt nats.JetStreamContext
+	// nc carries progress over core NATS.
+	nc *nats.Conn
 }
 
 // NATSConnOptions sends the broker user when NATS_USER is set.
@@ -61,6 +67,7 @@ func NewNATSStream() (Stream, error) {
 
 	return &NATSStream{
 		jt: jetstream,
+		nc: natsConnect,
 	}, nil
 }
 
@@ -68,6 +75,7 @@ func (nn *NATSStream) NewSubscriber(module string, dc DependencyContainer) (Subs
 	return &NatsSubscriber{
 		module: module,
 		jt:     nn.jt,
+		nc:     nn.nc,
 		deps:   dc.(*dependencyContainer),
 	}, nil
 }

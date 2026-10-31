@@ -101,8 +101,11 @@ var _ supplier.Marketdata = (*StooqClient)(nil)
 
 // StooqClient fetches daily OHLC from Stooq CSV. Metadata methods do not scrape Stooq.
 type StooqClient struct {
-	baseURL     string
-	httpClient  *http.Client
+	baseURL    string
+	httpClient *http.Client
+	// limiter spaces the Stooq requests. NewStooqClient sets the
+	// process-wide Stooq limiter, so every client shares one rate.
+	limiter     *requestLimiter
 	toStooq     map[string]string // canonical upper → stooq code
 	toCanonical map[string]string // stooq code lower → canonical upper
 }
@@ -160,6 +163,7 @@ func NewStooqClient(opts ...StooqOption) (*StooqClient, error) {
 	c := &StooqClient{
 		baseURL:     defaultStooqBaseURL,
 		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		limiter:     limiterFor("stooq"),
 		toStooq:     make(map[string]string, len(defaultStooqUS)),
 		toCanonical: make(map[string]string, len(defaultStooqUS)),
 	}
@@ -280,19 +284,19 @@ func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	return code, upper, nil
 }
 
-func (c *StooqClient) GetAsset(string) (*pb.Asset, error) {
+func (c *StooqClient) GetAsset(context.Context, string) (*pb.Asset, error) {
 	return nil, fmt.Errorf("GetAsset: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) SearchAsset(string) ([]*pb.Asset, error) {
+func (c *StooqClient) SearchAsset(context.Context, string) ([]*pb.Asset, error) {
 	return nil, fmt.Errorf("SearchAsset: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) GetIndex(string) ([]*pb.Asset, error) {
+func (c *StooqClient) GetIndex(context.Context, string) ([]*pb.Asset, error) {
 	return nil, fmt.Errorf("GetIndex: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+func (c *StooqClient) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	code, canonical, err := c.resolveSymbol(symbol)
 	if err != nil {
 		return nil, err
@@ -313,13 +317,13 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}
 
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}
 	req.Header.Set("User-Agent", stooqUserAgent)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.limitedClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}
@@ -343,6 +347,15 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}
 	return bars, nil
+}
+
+// limitedClient sends through the shared Stooq limiter with the configured
+// client's timeout and transport.
+func (c *StooqClient) limitedClient() *http.Client {
+	return &http.Client{
+		Timeout:   c.httpClient.Timeout,
+		Transport: newLimitedTransport("stooq", c.limiter, c.httpClient.Transport, rateLimitRetries),
+	}
 }
 
 func (c *StooqClient) ohlcURL(code string, start, end time.Time) (string, error) {
