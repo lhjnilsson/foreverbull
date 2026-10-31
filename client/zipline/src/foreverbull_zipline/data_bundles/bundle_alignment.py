@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 
 from collections.abc import Callable
@@ -13,6 +14,8 @@ from zipline.data.bundles.core import from_bundle_ingest_dirname
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.paths import data_path
 
+from foreverbull_zipline.errors import PlainSentence
+
 
 # Bundles ingested before the session-alignment fix carry provider stamps
 # (Yahoo's 14:30 UTC session open) as asset start/end dates and bar days.
@@ -24,6 +27,8 @@ SESSION_ALIGNED_BUNDLE_VERSION = 1
 BUNDLE_VERSION_MARKER = ".foreverbull-bundle-version"
 
 _DATE_COLUMNS = ("start_date", "end_date", "auto_close_date")
+
+_logger = logging.getLogger(__name__)
 
 
 def latest_ingest_dir(bundle_name: str, environ: Mapping[str, Any] | None = None) -> Path | None:
@@ -46,14 +51,39 @@ def latest_ingest_dir(bundle_name: str, environ: Mapping[str, Any] | None = None
 
 
 def bundle_version(bundle_name: str, environ: Mapping[str, Any] | None = None) -> int:
-    """Alignment version stamped on the newest ingest; 0 when unstamped."""
+    """Alignment version stamped on the newest ingest; 0 when unstamped.
+
+    A missing marker is unstamped. A marker that is there but can't be
+    read or isn't a number fails, instead of being taken as unstamped; the
+    path and what was wrong go to the log.
+    """
     ingest_dir = latest_ingest_dir(bundle_name, environ=environ)
     if ingest_dir is None:
         return 0
+    marker = ingest_dir / BUNDLE_VERSION_MARKER
     try:
-        return int((ingest_dir / BUNDLE_VERSION_MARKER).read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+        text = marker.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
         return 0
+    except OSError as exc:
+        _logger.error("Couldn't read the version marker of bundle %r at %s: %s", bundle_name, marker, exc)
+        raise PlainSentence(damaged_marker_line(bundle_name)) from exc
+    try:
+        return int(text)
+    except ValueError as exc:
+        _logger.error("The version marker of bundle %r at %s isn't a number: %r", bundle_name, marker, text)
+        raise PlainSentence(damaged_marker_line(bundle_name)) from exc
+
+
+def damaged_marker_line(backtest: str) -> str:
+    """The run's failure when the bundle's version marker can't be used.
+
+    A bundle is named after its backtest.
+    """
+    return (
+        f"The price data for backtest '{backtest}' can't be read: its version marker is damaged. "
+        "Run `fbull backtest create` again to rebuild it."
+    )
 
 
 def stamp_bundle_version(

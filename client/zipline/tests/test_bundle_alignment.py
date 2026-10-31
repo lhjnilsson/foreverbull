@@ -11,6 +11,7 @@ from foreverbull_zipline.data_bundles.bundle_alignment import SESSION_ALIGNED_BU
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_dates_misaligned
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_version
 from foreverbull_zipline.data_bundles.bundle_alignment import ensure_session_aligned_bundle
+from foreverbull_zipline.errors import PlainSentence
 from zipline.data import bundles
 from zipline.data.bundles.core import to_bundle_ingest_dirname
 from zipline.utils.calendar_utils import get_calendar
@@ -81,6 +82,47 @@ def test_aligned_bundle_without_marker_is_only_stamped(tmp_path):
     assert rebuilt is False
     assert rebuilds == []
     assert bundle_version("aligned_bundle", environ) == SESSION_ALIGNED_BUNDLE_VERSION
+
+
+def test_unreadable_version_marker_fails_instead_of_counting_as_unstamped(tmp_path, caplog):
+    environ = _bundle_environ(tmp_path, "garbled_bundle", "2023-01-03")
+    marker = _marker_path(tmp_path, "garbled_bundle")
+    marker.write_text("one\n", encoding="utf-8")
+    rebuilds: list[str] = []
+
+    with pytest.raises(PlainSentence) as error:
+        ensure_session_aligned_bundle("garbled_bundle", environ, rebuild=lambda name, env: rebuilds.append(name))
+
+    assert str(error.value) == (
+        "The price data for backtest 'garbled_bundle' can't be read: its version marker is damaged. "
+        "Run `fbull backtest create` again to rebuild it."
+    )
+    assert f"The version marker of bundle 'garbled_bundle' at {marker} isn't a number: 'one'" in caplog.text
+    assert rebuilds == []
+    assert marker.read_text(encoding="utf-8") == "one\n"
+
+
+def test_version_marker_that_cant_be_read_fails(tmp_path, caplog):
+    environ = _bundle_environ(tmp_path, "dir_marker_bundle", "2023-01-03")
+    marker = _marker_path(tmp_path, "dir_marker_bundle")
+    marker.mkdir()
+
+    with pytest.raises(PlainSentence) as error:
+        bundle_version("dir_marker_bundle", environ)
+
+    assert str(error.value) == (
+        "The price data for backtest 'dir_marker_bundle' can't be read: its version marker is damaged. "
+        "Run `fbull backtest create` again to rebuild it."
+    )
+    assert f"Couldn't read the version marker of bundle 'dir_marker_bundle' at {marker}: [Errno 21] Is a directory" in (
+        caplog.text
+    )
+
+
+def test_missing_version_marker_is_version_0(tmp_path):
+    environ = _bundle_environ(tmp_path, "unstamped_bundle", "2023-01-03")
+    assert not _marker_path(tmp_path, "unstamped_bundle").exists()
+    assert bundle_version("unstamped_bundle", environ) == 0
 
 
 def test_misaligned_bundle_triggers_rebuild_even_with_a_marker(tmp_path):

@@ -1,3 +1,4 @@
+import logging
 import os
 import warnings
 
@@ -19,14 +20,18 @@ from sqlalchemy.exc import SQLAlchemyError
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.cli import maybe_show_progress
 
+from foreverbull.broker.utils import describe_exception
 from foreverbull.models.finance import missing_prices_line
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull_zipline.database import get_engine
+from foreverbull_zipline.errors import PlainSentence
 
 
 warnings.filterwarnings("ignore")
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,43 @@ class InstrumentGroup:
 
     aliases: tuple[AliasSpec, ...]
     member_to: date | None = None
+
+
+def group_label(group: InstrumentGroup) -> str:
+    """The group's latest ticker, with its earlier ones: "META (earlier FB)"."""
+    ordered = sorted(group.aliases, key=lambda alias: alias.from_date or date.min)
+    latest = ordered[-1].symbol
+    earlier = [symbol for symbol in dict.fromkeys(alias.symbol for alias in reversed(ordered)) if symbol != latest]
+    return f"{latest} (earlier {', '.join(earlier)})" if earlier else latest
+
+
+def no_stored_prices_line(backtest: str, groups: list[InstrumentGroup], first, last) -> str:
+    """Ingest's failure when one or more sids have no stored bars at all.
+
+    One group fits one sentence; two or more get a line each under the
+    lead, in ingest order.
+    """
+    span = f"between {first:%Y-%m-%d} and {last:%Y-%m-%d}"
+    saved = "The backtest wasn't saved."
+    next_step = "Try another provider with --provider, then run `fbull backtest create` again."
+    if len(groups) == 1:
+        return (
+            f"Couldn't load data for backtest '{backtest}': there are no stored prices for "
+            f"{group_label(groups[0])} {span}. {saved} {next_step}"
+        )
+    lines = [f"Couldn't load data for backtest '{backtest}': {len(groups)} symbols have no stored prices. {saved}"]
+    lines.extend(f"  {group_label(group)}: no prices {span}." for group in groups)
+    lines.append(next_step)
+    return "\n".join(lines)
+
+
+def ticker_history_line(backtest: str) -> str:
+    """Ingest's failure when the record of ticker changes can't be read."""
+    return (
+        f"Couldn't load data for backtest '{backtest}': foreverbull couldn't read its record of ticker changes, "
+        "so renamed symbols can't be followed. The backtest wasn't saved. "
+        "Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+    )
 
 
 def membership_auto_close_date(
@@ -351,8 +393,15 @@ class SQLIngester:
             WHERE m.backtest_name = '{self.backtest.name}'
             ORDER BY s.isin, s.from_date"""
             return read_sql_query(query, self.engine._engine)
-        except SQLAlchemyError:
-            return None
+        except SQLAlchemyError as exc:
+            # The cause can quote the database URL, so it is logged redacted
+            # and kept out of the message and the exception chain.
+            _logger.error(
+                "Couldn't read the ticker history of backtest %r from the database: %s",
+                self.backtest.name,
+                describe_exception(exc),
+            )
+            raise PlainSentence(ticker_history_line(self.backtest.name)) from None
 
     def ingest_groups(self) -> list[InstrumentGroup]:
         return group_symbols_by_instrument(ingest_symbols(self.backtest), self.load_aliases())
@@ -371,23 +420,32 @@ class SQLIngester:
         # The auto-close of a sid depends on the newest bar of every member,
         # so the rows are written once every sid's bars are read.
         ends: list[tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
+        # Every group is read before any is written, so all the groups
+        # without bars are named in one error and nothing is ingested.
+        resolved: list[tuple[InstrumentGroup, pd.DataFrame, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
+        empty: list[InstrumentGroup] = []
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
-            for index, group in enumerate(groups):
+            for group in groups:
                 frames = {
                     symbol: self._bars(symbol, from_date, to_date)
                     for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
                 }
                 combined, mapping_rows = resolve_group_bars(group, frames, from_date, to_date)
                 if combined is None:
-                    symbols = ", ".join(alias.symbol for alias in group.aliases)
-                    raise ValueError(f"No data found for {symbols} on {from_date} to {to_date}")
-                combined, filled_sessions = fill_missing_sessions(combined, sessions)
-                for day in filled_sessions:
-                    symbol = symbol_on_day(mapping_rows, day)
-                    self.missing_prices.setdefault(symbol, []).append(day.date())
-                is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
-                ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
-                yield index, combined
+                    empty.append(group)
+                    continue
+                resolved.append((group, combined, mapping_rows))
+        if empty:
+            first, last = (sessions[0], sessions[-1]) if len(sessions) else (from_date, to_date)
+            raise PlainSentence(no_stored_prices_line(self.backtest.name, empty, first, last))
+        for index, (group, combined, mapping_rows) in enumerate(resolved):
+            combined, filled_sessions = fill_missing_sessions(combined, sessions)
+            for day in filled_sessions:
+                symbol = symbol_on_day(mapping_rows, day)
+                self.missing_prices.setdefault(symbol, []).append(day.date())
+            is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
+            ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
+            yield index, combined
         member_ends = [last for _, last, _, is_benchmark, _ in ends if not is_benchmark] or [
             last for _, last, *_ in ends
         ]

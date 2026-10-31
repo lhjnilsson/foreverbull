@@ -632,6 +632,43 @@ def test_backtest_create_ingest_missing_driver_prints_the_copy(monkeypatch):
     assert "Could not connect to database" not in result.output
 
 
+@pytest.mark.parametrize(
+    "copy",
+    [
+        (
+            "Couldn't load data for backtest 'from_file': there are no stored prices for META (earlier FB) "
+            "between 2024-01-02 and 2024-03-28. The backtest wasn't saved. "
+            "Try another provider with --provider, then run `fbull backtest create` again."
+        ),
+        (
+            "Couldn't load data for backtest 'from_file': 2 symbols have no stored prices. The backtest wasn't saved.\n"
+            "  META (earlier FB): no prices between 2024-01-02 and 2024-03-28.\n"
+            "  OEF: no prices between 2024-01-02 and 2024-03-28.\n"
+            "Try another provider with --provider, then run `fbull backtest create` again."
+        ),
+        (
+            "Couldn't load data for backtest 'from_file': foreverbull couldn't read its record of ticker changes, "
+            "so renamed symbols can't be followed. The backtest wasn't saved. "
+            "Run `fbenv status` to check that the environment is running, then run `fbull backtest create` again."
+        ),
+    ],
+    ids=["no-prices", "no-prices-block", "ticker-history"],
+)
+def test_backtest_create_ingest_refusal_prints_zipline_sentence_as_written(copy, monkeypatch):
+    # The broker makes a refused ingest's sentence the whole step message.
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_ingest_failed_stream(copy)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {copy}\n"
+
+
 _INGEST_UNREACHABLE_COPY = (
     "Couldn't load data for backtest 'from_file': Foreverbull's data service isn't reachable. "
     "Run `fbenv status` to check it's running. Nothing was saved, so run `fbull backtest create` again after that."
@@ -1941,8 +1978,23 @@ class _BrokerRejection(grpc.RpcError):
             ),
             grpc.StatusCode.FAILED_PRECONDITION,
         ),
+        (
+            (
+                "Couldn't run backtest 'test_name': the benchmark SPY has no prices on 3 trading days: "
+                "2024-02-14, 2024-02-20 to 2024-02-21. Nothing was run. "
+                "Run `fbull backtest create` again to reload its prices, or choose another benchmark."
+            ),
+            grpc.StatusCode.FAILED_PRECONDITION,
+        ),
+        (
+            (
+                "The price data for backtest 'test_name' can't be read: its version marker is damaged. "
+                "Run `fbull backtest create` again to rebuild it."
+            ),
+            grpc.StatusCode.FAILED_PRECONDITION,
+        ),
     ],
-    ids=["before-start", "start-after-end", "no-periods"],
+    ids=["before-start", "start-after-end", "no-periods", "benchmark-gap", "damaged-marker"],
 )
 def test_backtest_run_shows_broker_rejection_as_one_line(fb_env, message, code):
     mock_backtest_session = _run_session_mocks()
