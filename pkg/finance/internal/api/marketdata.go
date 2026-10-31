@@ -280,6 +280,12 @@ func (fs *MarketdataServer) downloadSymbol(
 		}
 	}
 	if len(ohlcs) == 0 {
+		// A download that already ended looks up no later ticker. Like the
+		// lookup's own ctx check below, the symbol is not reported; the
+		// download returns ctx.Err().
+		if ctx.Err() != nil {
+			return nil
+		}
 		fetched, fetchErr := fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
 		if fetchErr != nil {
 			var blocked *marketdata.BlockedError
