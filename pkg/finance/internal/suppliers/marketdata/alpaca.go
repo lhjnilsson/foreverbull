@@ -64,19 +64,23 @@ func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
 
 func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	now := clockNow(a.now)
-	endAt := now.UTC()
+	until := now.UTC()
 	if end != nil {
-		endAt = *end
+		// A daily bar is stamped at midnight New York, after an end at
+		// 00:00 UTC on the same date, so the end date needs the next
+		// midnight New York.
+		until = inclusiveFetchEnd(*end)
 	}
 	// Today's unfinished session is never asked for: while the market is
 	// open, Alpaca's bar for today has prices and would be stored as final.
 	// Alpaca's end is inclusive and a daily bar is stamped at midnight New
-	// York, so a clamped fetch stops just before the limit.
-	limit, ok := completedFetchEnd(start, endAt, now)
+	// York, so a fetch that ends at a midnight New York stops just before it.
+	limit, ok := completedFetchEnd(start, until, now)
 	if !ok {
 		return []*pb.OHLC{}, nil
 	}
-	if limit.Before(endAt) {
+	endAt := until
+	if end != nil || limit.Before(until) {
 		endAt = limit.Add(-time.Nanosecond)
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
@@ -94,10 +98,10 @@ func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]
 		}
 	}
 
-	last := lastCompletedSession(now)
+	last := lastFetchedSession(end, now)
 	ohlcs := make([]*pb.OHLC, 0, len(bars))
 	for _, bar := range bars {
-		// Alpaca could send today's live bar even past the clamped end.
+		// Alpaca could send today's live bar, or a later day's, past the end.
 		if afterLastSession("alpaca", symbol, bar.Timestamp.In(xnysZone), last) {
 			continue
 		}

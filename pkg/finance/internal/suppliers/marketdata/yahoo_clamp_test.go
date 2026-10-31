@@ -72,7 +72,8 @@ func TestYahooGetOHLCIncludesTodaysSessionAfterTheClose(t *testing.T) {
 	require.Equal(t, now.Unix(), period2)
 }
 
-// A fetch that ends before today is not touched.
+// A fetch that ends before today asks for its whole end date: period2 is
+// exclusive, so it is the midnight New York after it.
 func TestYahooGetOHLCKeepsAPastEnd(t *testing.T) {
 	t.Parallel()
 	var period2 int64
@@ -83,7 +84,7 @@ func TestYahooGetOHLCKeepsAPastEnd(t *testing.T) {
 
 	_, err := client.GetOHLC("xyz", start, &end)
 	require.NoError(t, err)
-	require.Equal(t, end.Unix(), period2)
+	require.Equal(t, newYork(t, "2026-10-21 00:00").Unix(), period2)
 }
 
 // The clamp itself, on a fixed clock, as the null-bar test sees it: a

@@ -72,6 +72,36 @@ func completedFetchEnd(start, end, now time.Time) (time.Time, bool) {
 	return until, until.After(start)
 }
 
+// inclusiveFetchEnd is the exclusive end of a fetch through end's date:
+// midnight New York after that date. The end date is inclusive for every
+// provider. Yahoo's period2 is exclusive and stamps a daily bar at the
+// 09:30 open, and Alpaca stamps a daily bar at midnight New York (04:00 or
+// 05:00 UTC), so an end at 00:00 UTC on the date left that day's bar out of
+// both. Stooq's d2 is an inclusive date and does not need it. The date is
+// end's UTC date, as Stooq reads it, since a backtest's end is a date at
+// midnight UTC. lastCompletedSessionEnd clamps the result afterwards.
+func inclusiveFetchEnd(end time.Time) time.Time {
+	year, month, day := end.UTC().Date()
+	return time.Date(year, month, day+1, 0, 0, 0, 0, xnysZone)
+}
+
+// lastFetchedSession is a time on the New York date of the last session a
+// fetch through end may return: end's date, or the last completed session
+// when that is earlier. A nil end is open, through the last completed
+// session. A bar after it is dropped with afterLastSession.
+func lastFetchedSession(end *time.Time, now time.Time) time.Time {
+	last := lastCompletedSession(now)
+	if end == nil {
+		return last
+	}
+	year, month, day := end.UTC().Date()
+	endDay := time.Date(year, month, day, 0, 0, 0, 0, xnysZone)
+	if endDay.Before(last) {
+		return endDay
+	}
+	return last
+}
+
 // lastCompletedSession is a time on the New York date of the last
 // completed XNYS session as of now: today from 16:30 New York
 // (sessionFinalAt), yesterday before. A weekend or holiday date has no
@@ -87,7 +117,9 @@ func lastCompletedSession(now time.Time) time.Time {
 // Asking a provider for completed sessions only is not enough: Stooq can
 // send rows past d2, Yahoo's chart API sometimes sends today's live bar
 // when period2 is earlier, and Alpaca could too. Every provider drops such
-// a bar with it rather than store an unfinished session as final.
+// a bar with it rather than store an unfinished session as final. last is
+// also never after the fetch's end date (lastFetchedSession), so a bar past
+// the end asked for is not stored either.
 func afterLastSession(provider, symbol string, session, last time.Time) bool {
 	sessionYear, sessionMonth, sessionDay := session.Date()
 	lastYear, lastMonth, lastDay := last.Date()
@@ -101,6 +133,6 @@ func afterLastSession(provider, symbol string, session, last time.Time) bool {
 		Str("symbol", symbol).
 		Str("session", sessionDate.Format(time.DateOnly)).
 		Str("last_session", lastDate.Format(time.DateOnly)).
-		Msg("dropped a bar after the last completed session")
+		Msg("dropped a bar after the last session of the fetch")
 	return true
 }

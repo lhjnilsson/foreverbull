@@ -440,7 +440,9 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 	now := clockNow(y.now)
 	until := now
 	if end != nil {
-		until = *end
+		// period2 is exclusive, so the end date's bar needs the next
+		// midnight New York.
+		until = inclusiveFetchEnd(*end)
 	}
 	// Today's unfinished session is the only one left out, by not asking
 	// for it. Every bar in the answer must then have a price.
@@ -494,7 +496,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: no result", symbol)
 	}
 	timestamps, quotes := yahooThrough(strings.ToUpper(symbol),
-		data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote, lastCompletedSession(now))
+		data.Chart.Result[0].Timestamp, data.Chart.Result[0].Indicators.Quote, lastFetchedSession(end, now))
 	ohlcs, err := yahooBars(timestamps, quotes)
 	if err != nil {
 		var missing *MissingPriceError
@@ -566,8 +568,9 @@ func yahooBars(timestamps []int64, quotes []yahooQuote) ([]*pb.OHLC, error) {
 	return ohlcs, nil
 }
 
-// yahooThrough drops every session Yahoo sent after last, the last
-// completed session, before any price is checked. Yahoo's chart API
+// yahooThrough drops every session Yahoo sent after last, the end date or
+// the last completed session when that is earlier (lastFetchedSession),
+// before any price is checked. Yahoo's chart API
 // sometimes sends today's live bar even when period2 is earlier; it is
 // unfinished, so it is neither stored nor, with its null close, a missing
 // price. Columns of a length other than the timestamps' are left to
