@@ -80,6 +80,115 @@ jobs:
           uv run pytest cli/
           uv run pytest testing/
 
+  # Renders both cookiecutter templates and runs each generated project's pytest
+  # against the workspace foreverbull and foreverbull_testing packages. The
+  # backtest fixture skips unless --backtest is passed, so this does not dial a
+  # broker. Kept off python-lint-unit-tests and off product-e2e's needs: simple
+  # capital_test is red until crossover sizing lands, and this check is not required.
+  template-tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ./client
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same versions as python-lint-unit-tests.
+        python-version: ["3.12", "3.13", "3.14"]
+    env:
+      # ta-lib's setup.py reads these when the 0.6.4 sdist links libta-lib.
+      TA_INCLUDE_PATH: /usr/local/include
+      TA_LIBRARY_PATH: /usr/local/lib
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install TA-Lib C library (advanced template)
+        # The advanced template's macd.py and rsi.py import talib. The workspace
+        # packages do not need this library.
+        working-directory: .
+        run: |
+          curl -L -o ta-lib-0.6.4-src.tar.gz https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+          tar -xzf ta-lib-0.6.4-src.tar.gz
+          cd ta-lib-0.6.4/
+          ./configure
+          sudo make &&
+          sudo make install &&
+          sudo ldconfig
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Sync dependencies
+        run: uv sync --all-packages --all-extras
+      - name: Require workspace foreverbull packages
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          import foreverbull
+          import foreverbull_testing
+
+          root = Path.cwd().resolve()
+          fb = Path(foreverbull.__file__).resolve()
+          testing = Path(foreverbull_testing.__file__).resolve()
+          print(fb)
+          print(testing)
+          if not fb.is_relative_to(root / "src" / "foreverbull"):
+              raise SystemExit(f"foreverbull resolved outside the workspace: {fb}")
+          if not testing.is_relative_to(root / "testing" / "src" / "foreverbull_testing"):
+              raise SystemExit(f"foreverbull_testing resolved outside the workspace: {testing}")
+          PY
+      - name: Render cookiecutter templates
+        id: render
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          uv run cookiecutter --output-dir "${work}/simple" templates/simple/ --replay-file templates/simple.json -f
+          uv run cookiecutter --output-dir "${work}/advanced" templates/advanced/ --replay-file templates/advanced.json -f
+          test -f "${work}/simple/simple/crossover.py"
+          test -f "${work}/advanced/advanced/macd.py"
+          echo "simple=${work}/simple/simple" >> "${GITHUB_OUTPUT}"
+          echo "advanced=${work}/advanced/advanced" >> "${GITHUB_OUTPUT}"
+      - name: Test simple template
+        if: ${{ !cancelled() && steps.render.outcome == 'success' }}
+        env:
+          TEMPLATE_DIR: ${{ steps.render.outputs.simple }}
+        run: |
+          set -euo pipefail
+          test -f "${TEMPLATE_DIR}/crossover.py"
+          # Replay leaves install_dependencies false, so pytest must import the
+          # workspace packages from this uv env, not the git URLs in the generated file.
+          PYTHONPATH="${TEMPLATE_DIR}" uv run pytest "${TEMPLATE_DIR}" \
+            -c "${TEMPLATE_DIR}/pyproject.toml" \
+            --rootdir="${TEMPLATE_DIR}" --confcutdir="${TEMPLATE_DIR}" -rs
+      - name: Install TA-Lib Python bindings
+        id: talib
+        if: ${{ !cancelled() && steps.render.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          # 0.6.4 matches the C library above and publishes an sdist only.
+          # It is not a workspace dependency. --no-build-isolation links the
+          # venv's numpy instead of replacing it. A later uv run --with keeps
+          # the package after sync, which would otherwise drop it.
+          uv run --with 'ta-lib==0.6.4' --no-build-isolation-package ta-lib python -c 'import talib'
+      - name: Test advanced template
+        if: ${{ !cancelled() && steps.talib.outcome == 'success' }}
+        env:
+          TEMPLATE_DIR: ${{ steps.render.outputs.advanced }}
+        run: |
+          set -euo pipefail
+          test -f "${TEMPLATE_DIR}/macd.py"
+          PYTHONPATH="${TEMPLATE_DIR}" uv run --with 'ta-lib==0.6.4' --no-build-isolation-package ta-lib \
+            pytest "${TEMPLATE_DIR}" \
+            -c "${TEMPLATE_DIR}/pyproject.toml" \
+            --rootdir="${TEMPLATE_DIR}" --confcutdir="${TEMPLATE_DIR}" -rs
+
   helm-lint:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
