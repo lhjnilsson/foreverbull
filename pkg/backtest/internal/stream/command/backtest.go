@@ -54,6 +54,11 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 
+	// Over the download cap: refuse before anything is stored.
+	if err := tooManySymbols(b.GetName(), fileBacktestSymbols(&b)); err != nil {
+		return err
+	}
+
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
@@ -101,9 +106,14 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting marketdata client")
 	}
 
+	symbols := uniqueAliasSymbols(result.Aliases)
+	// Over the download cap: refuse before any provider call or store.
+	if err := tooManySymbols(command.BacktestName, append([]string{benchmark}, symbols...)); err != nil {
+		return err
+	}
 	// Every member must resolve before anything is stored. A member that
 	// is left out instead changes the universe without a word.
-	failures, err := lookupMemberAssets(ctx, marketdataClient, uniqueAliasSymbols(result.Aliases))
+	failures, err := lookupMemberAssets(ctx, marketdataClient, symbols)
 	if err != nil {
 		return err
 	}
@@ -698,6 +708,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
 	}
+	if count := finance.DownloadSymbolCount(symbols); count > finance.MaxDownloadSymbols {
+		return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, count)
+	}
 
 	provider := strings.TrimSpace(b.GetProvider())
 	if provider == "" {
@@ -725,6 +738,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 			return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
 		}
+		if overCapRefusal(err) {
+			return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, finance.DownloadSymbolCount(symbols))
+		}
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
 	// Days the provider sent no price for, anywhere in the range, per
@@ -742,6 +758,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			}
 			if position, ok := invalidTickerPosition(err, len(symbols)); ok {
 				return discardInvalidTickerBacktest(ctx, backtests, command.BacktestName, backtestID, position, len(symbols))
+			}
+			if overCapRefusal(err) {
+				return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, finance.DownloadSymbolCount(symbols))
 			}
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
