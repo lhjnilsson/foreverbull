@@ -42,6 +42,12 @@ def _broadcast(tmp_path, workers: int, answers: list[str | None], timeout_ms: in
             responder.start()
             assert ready.wait(2)
             responders.append(responder)
+        # A dialled responder can still be attaching on the surveyor's side, and a
+        # survey sent before then never reaches it. Wait until every pipe is in.
+        deadline = time.monotonic() + 2
+        while len(surveyor.pipes) < len(answers):
+            assert time.monotonic() < deadline, "responders didn't connect"
+            time.sleep(0.005)
         try:
             _pool_with(surveyor, workers=workers)._broadcast(common_pb.Request(task="configure"))
         finally:
