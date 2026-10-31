@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -31,7 +32,7 @@ func stooqSessionServer(t *testing.T, now time.Time) (*StooqClient, *[]string) {
 
 func stooqDays(t *testing.T, client *StooqClient, start time.Time, end *time.Time) []string {
 	t.Helper()
-	bars, err := client.GetOHLC("AAPL", start, end)
+	bars, err := client.GetOHLC(context.Background(), "AAPL", start, end)
 	require.NoError(t, err)
 	days := make([]string, 0, len(bars))
 	for _, bar := range bars {
@@ -111,7 +112,7 @@ func TestStooqGetOHLCNilEndUsesTodayAfterTheClose(t *testing.T) {
 	now := newYork(t, "2026-10-30 16:35")
 	client.now = func() time.Time { return now }
 
-	_, err = client.GetOHLC("AAPL", time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC), nil)
+	_, err = client.GetOHLC(context.Background(), "AAPL", time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC), nil)
 	require.NoError(t, err)
 	require.Equal(t, "20261030", d2)
 }

@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -53,7 +54,7 @@ func TestYahooEscapesSymbolInEveryURL(t *testing.T) {
 			crumb: "test", quoteURL: quoteSrv.URL + "/", isinURL: isinSrv.URL + "/", chartURL: chartSrv.URL + "/",
 		}
 
-		_, err := client.GetAsset(symbol)
+		_, err := client.GetAsset(context.Background(), symbol)
 		require.NoError(t, err, symbol)
 		require.Len(t, quoteURIs(), 1, symbol)
 		require.True(t, strings.HasPrefix(quoteURIs()[0], "/"+escaped+"?crumb=test&modules=quoteType"), quoteURIs()[0])
@@ -61,7 +62,7 @@ func TestYahooEscapesSymbolInEveryURL(t *testing.T) {
 
 		start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 		end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
-		_, err = client.GetOHLC(symbol, start, &end)
+		_, err = client.GetOHLC(context.Background(), symbol, start, &end)
 		require.NoError(t, err, symbol)
 		require.Len(t, chartURIs(), 1, symbol)
 		require.True(t, strings.HasPrefix(chartURIs()[0], "/"+escaped+"?crumb=test&period1="), chartURIs()[0])
@@ -77,7 +78,7 @@ func TestYahooChartEscapesIndexCaret(t *testing.T) {
 
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
-	_, err := client.GetOHLC("^DJI", start, &end)
+	_, err := client.GetOHLC(context.Background(), "^DJI", start, &end)
 	require.NoError(t, err)
 	require.Len(t, chartURIs(), 1)
 	require.True(t, strings.HasPrefix(chartURIs()[0], "/%5EDJI?crumb=test&period1="), chartURIs()[0])
@@ -101,7 +102,7 @@ func TestGetISINTimesOutOnSlowServer(t *testing.T) {
 	client := &YahooClient{isinURL: srv.URL + "/", httpClient: &http.Client{Timeout: 50 * time.Millisecond}}
 
 	began := time.Now()
-	_, err := client.getISIN("AAPL")
+	_, err := client.getISIN(context.Background(), "AAPL")
 	require.Error(t, err)
 	var netErr net.Error
 	require.True(t, errors.As(err, &netErr) && netErr.Timeout(), "want a timeout, got %v", err)
@@ -141,7 +142,7 @@ func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
 			t.Cleanup(isinSrv.Close)
 			client := &YahooClient{crumb: "test", quoteURL: quoteSrv.URL + "/", isinURL: isinSrv.URL + "/"}
 
-			asset, err := client.GetAsset("META")
+			asset, err := client.GetAsset(context.Background(), "META")
 			require.Nil(t, asset)
 			require.EqualError(t, err, tc.wantErr)
 			if tc.noISIN {
@@ -159,7 +160,7 @@ func TestYahooGetAssetFailsWhenEquityISINLookupFails(t *testing.T) {
 		isinSrv, isinURIs := uriServer(t, `{"stocks":[]}`)
 		client := &YahooClient{crumb: "test", quoteURL: quoteSrv.URL + "/", isinURL: isinSrv.URL + "/"}
 
-		asset, err := client.GetAsset("SPY")
+		asset, err := client.GetAsset(context.Background(), "SPY")
 		require.NoError(t, err)
 		require.Equal(t, "SPY", asset.Symbol)
 		require.Empty(t, asset.ISIN)
@@ -207,7 +208,7 @@ func TestYahooSearchAssetSkipsQuoteWithNoISIN(t *testing.T) {
 		"META.DE": `{"stocks":[]}`,
 	})
 
-	assets, err := client.SearchAsset("US30303M1027")
+	assets, err := client.SearchAsset(context.Background(), "US30303M1027")
 	require.NoError(t, err)
 	require.Len(t, assets, 1)
 	require.Equal(t, "META", assets[0].Symbol)
@@ -222,7 +223,7 @@ func TestYahooSearchAssetFailsWhenAQuoteLookupFails(t *testing.T) {
 		"META": `{"stocks":[{"keywords":"META|US30303M1027"}]}`,
 	})
 
-	assets, err := client.SearchAsset("US30303M1027")
+	assets, err := client.SearchAsset(context.Background(), "US30303M1027")
 	require.Nil(t, assets)
 	require.EqualError(t, err, "error getting asset: error getting isin for symbol META.DE: "+
 		"failed to get index data for symbol META.DE: status 503 Service Unavailable")
@@ -254,7 +255,7 @@ func TestYahooSearchEscapesQuery(t *testing.T) {
 	client := &YahooClient{searchURL: srv.URL + "/v1/finance/search", crumb: "ab/c="}
 
 	q := "A&B=1?C#D E"
-	assets, err := client.SearchAsset(q)
+	assets, err := client.SearchAsset(context.Background(), q)
 	require.NoError(t, err)
 	require.Empty(t, assets)
 	mu.Lock()
@@ -292,7 +293,7 @@ func TestYahooRequestURLRefusesAnUnparsableURL(t *testing.T) {
 	require.EqualError(t, err, "invalid request URL: net/url: invalid control character in URL")
 
 	client := &YahooClient{crumb: "s3cr3tcrumb", quoteURL: "https://y.example/q/\x7f?crumb=s3cr3tcrumb&"}
-	asset, err := client.GetAsset("AAPL")
+	asset, err := client.GetAsset(context.Background(), "AAPL")
 	require.Nil(t, asset)
 	require.EqualError(t, err, "error: invalid request URL: net/url: invalid control character in URL")
 	for _, leak := range []string{"s3cr3tcrumb", "y.example", "crumb"} {

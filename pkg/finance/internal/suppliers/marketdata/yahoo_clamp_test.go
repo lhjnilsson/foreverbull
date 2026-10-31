@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -49,11 +50,11 @@ func TestYahooGetOHLCLeavesTodaysUnfinishedSessionOut(t *testing.T) {
 		start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
 		tomorrow := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
-		_, err := client.GetOHLC("xyz", start, &tomorrow)
+		_, err := client.GetOHLC(context.Background(), "xyz", start, &tomorrow)
 		require.NoError(t, err)
 		require.Equal(t, newYork(t, "2026-10-30 00:00").Unix(), period2, at)
 
-		_, err = client.GetOHLC("xyz", start, nil)
+		_, err = client.GetOHLC(context.Background(), "xyz", start, nil)
 		require.NoError(t, err)
 		require.Equal(t, newYork(t, "2026-10-30 00:00").Unix(), period2, at)
 	}
@@ -67,7 +68,7 @@ func TestYahooGetOHLCIncludesTodaysSessionAfterTheClose(t *testing.T) {
 	client := &YahooClient{chartURL: period2Server(t, &period2), now: func() time.Time { return now }}
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.GetOHLC("xyz", start, nil)
+	_, err := client.GetOHLC(context.Background(), "xyz", start, nil)
 	require.NoError(t, err)
 	require.Equal(t, now.Unix(), period2)
 }
@@ -82,7 +83,7 @@ func TestYahooGetOHLCKeepsAPastEnd(t *testing.T) {
 	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.GetOHLC("xyz", start, &end)
+	_, err := client.GetOHLC(context.Background(), "xyz", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, newYork(t, "2026-10-21 00:00").Unix(), period2)
 }
@@ -137,7 +138,7 @@ func TestYahooGetOHLCEndingTodayBeforeTheCloseDoesNotFail(t *testing.T) {
 	client := &YahooClient{chartURL: todayServer(t, yesterday, today), now: func() time.Time { return now }}
 	end := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
 
-	bars, err := client.GetOHLC("xyz", time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), &end)
+	bars, err := client.GetOHLC(context.Background(), "xyz", time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), &end)
 	require.NoError(t, err)
 	require.Len(t, bars, 1)
 	require.Equal(t, "2026-10-29", bars[0].GetTimestamp().AsTime().UTC().Format(time.DateOnly))
@@ -157,7 +158,7 @@ func TestYahooGetOHLCForTodayOnlyBeforeTheCloseIsEmpty(t *testing.T) {
 	now := newYork(t, "2026-10-30 11:00")
 	client := &YahooClient{chartURL: period2Server(t, &period2), now: func() time.Time { return now }}
 
-	bars, err := client.GetOHLC("xyz", newYork(t, "2026-10-30 00:00"), nil)
+	bars, err := client.GetOHLC(context.Background(), "xyz", newYork(t, "2026-10-30 00:00"), nil)
 	require.NoError(t, err)
 	require.Empty(t, bars)
 	require.Zero(t, period2)
@@ -210,7 +211,7 @@ func TestYahooGetOHLCDropsABarAfterTheLastCompletedSession(t *testing.T) {
 			now:      func() time.Time { return now },
 		}
 		for _, end := range []*time.Time{&tomorrow, nil} {
-			bars, err := client.GetOHLC("xyz", start, end)
+			bars, err := client.GetOHLC(context.Background(), "xyz", start, end)
 			require.NoError(t, err, todayClose)
 			require.Len(t, bars, 1, todayClose)
 			require.Equal(t, yesterday.Unix(), bars[0].GetTimestamp().AsTime().Unix(), todayClose)

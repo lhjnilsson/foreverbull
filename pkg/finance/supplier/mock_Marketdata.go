@@ -3,6 +3,8 @@
 package supplier
 
 import (
+	context "context"
+
 	finance "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	mock "github.com/stretchr/testify/mock"
 
@@ -14,9 +16,9 @@ type MockMarketdata struct {
 	mock.Mock
 }
 
-// GetAsset provides a mock function with given fields: symbol
-func (_m *MockMarketdata) GetAsset(symbol string) (*finance.Asset, error) {
-	ret := _m.Called(symbol)
+// GetAsset provides a mock function with given fields: ctx, symbol
+func (_m *MockMarketdata) GetAsset(ctx context.Context, symbol string) (*finance.Asset, error) {
+	ret := _m.Called(ctx, symbol)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAsset")
@@ -24,19 +26,19 @@ func (_m *MockMarketdata) GetAsset(symbol string) (*finance.Asset, error) {
 
 	var r0 *finance.Asset
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (*finance.Asset, error)); ok {
-		return rf(symbol)
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*finance.Asset, error)); ok {
+		return rf(ctx, symbol)
 	}
-	if rf, ok := ret.Get(0).(func(string) *finance.Asset); ok {
-		r0 = rf(symbol)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *finance.Asset); ok {
+		r0 = rf(ctx, symbol)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*finance.Asset)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(symbol)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, symbol)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -44,9 +46,9 @@ func (_m *MockMarketdata) GetAsset(symbol string) (*finance.Asset, error) {
 	return r0, r1
 }
 
-// GetIndex provides a mock function with given fields: symbol
-func (_m *MockMarketdata) GetIndex(symbol string) ([]*finance.Asset, error) {
-	ret := _m.Called(symbol)
+// GetIndex provides a mock function with given fields: ctx, symbol
+func (_m *MockMarketdata) GetIndex(ctx context.Context, symbol string) ([]*finance.Asset, error) {
+	ret := _m.Called(ctx, symbol)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetIndex")
@@ -54,19 +56,19 @@ func (_m *MockMarketdata) GetIndex(symbol string) ([]*finance.Asset, error) {
 
 	var r0 []*finance.Asset
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) ([]*finance.Asset, error)); ok {
-		return rf(symbol)
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]*finance.Asset, error)); ok {
+		return rf(ctx, symbol)
 	}
-	if rf, ok := ret.Get(0).(func(string) []*finance.Asset); ok {
-		r0 = rf(symbol)
+	if rf, ok := ret.Get(0).(func(context.Context, string) []*finance.Asset); ok {
+		r0 = rf(ctx, symbol)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*finance.Asset)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(symbol)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, symbol)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -74,9 +76,9 @@ func (_m *MockMarketdata) GetIndex(symbol string) ([]*finance.Asset, error) {
 	return r0, r1
 }
 
-// GetOHLC provides a mock function with given fields: symbol, start, end
-func (_m *MockMarketdata) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*finance.OHLC, error) {
-	ret := _m.Called(symbol, start, end)
+// GetOHLC provides a mock function with given fields: ctx, symbol, start, end
+func (_m *MockMarketdata) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*finance.OHLC, error) {
+	ret := _m.Called(ctx, symbol, start, end)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOHLC")
@@ -84,19 +86,19 @@ func (_m *MockMarketdata) GetOHLC(symbol string, start time.Time, end *time.Time
 
 	var r0 []*finance.OHLC
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, time.Time, *time.Time) ([]*finance.OHLC, error)); ok {
-		return rf(symbol, start, end)
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time, *time.Time) ([]*finance.OHLC, error)); ok {
+		return rf(ctx, symbol, start, end)
 	}
-	if rf, ok := ret.Get(0).(func(string, time.Time, *time.Time) []*finance.OHLC); ok {
-		r0 = rf(symbol, start, end)
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time, *time.Time) []*finance.OHLC); ok {
+		r0 = rf(ctx, symbol, start, end)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*finance.OHLC)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, time.Time, *time.Time) error); ok {
-		r1 = rf(symbol, start, end)
+	if rf, ok := ret.Get(1).(func(context.Context, string, time.Time, *time.Time) error); ok {
+		r1 = rf(ctx, symbol, start, end)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -104,9 +106,9 @@ func (_m *MockMarketdata) GetOHLC(symbol string, start time.Time, end *time.Time
 	return r0, r1
 }
 
-// SearchAsset provides a mock function with given fields: q
-func (_m *MockMarketdata) SearchAsset(q string) ([]*finance.Asset, error) {
-	ret := _m.Called(q)
+// SearchAsset provides a mock function with given fields: ctx, q
+func (_m *MockMarketdata) SearchAsset(ctx context.Context, q string) ([]*finance.Asset, error) {
+	ret := _m.Called(ctx, q)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SearchAsset")
@@ -114,19 +116,19 @@ func (_m *MockMarketdata) SearchAsset(q string) ([]*finance.Asset, error) {
 
 	var r0 []*finance.Asset
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string) ([]*finance.Asset, error)); ok {
-		return rf(q)
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]*finance.Asset, error)); ok {
+		return rf(ctx, q)
 	}
-	if rf, ok := ret.Get(0).(func(string) []*finance.Asset); ok {
-		r0 = rf(q)
+	if rf, ok := ret.Get(0).(func(context.Context, string) []*finance.Asset); ok {
+		r0 = rf(ctx, q)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*finance.Asset)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(q)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, q)
 	} else {
 		r1 = ret.Error(1)
 	}

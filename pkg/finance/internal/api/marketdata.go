@@ -39,7 +39,7 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 	}
 }
 
-func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
 	identifier := req.GetIdentifier()
 	if identifier == nil {
 		return nil, fmt.Errorf("identifier is nil")
@@ -48,7 +48,7 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	var err error
 	switch identifier := identifier.(type) {
 	case *servicePb.GetAssetRequest_Symbol:
-		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
+		asset, err = fs.marketdata.GetAsset(ctx, identifier.Symbol)
 		if err != nil {
 			if errors.Is(err, marketdata.ErrNoISIN) {
 				// The provider served the lookup and has no ISIN, so the
@@ -63,7 +63,7 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
-		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
+		assets, err := fs.marketdata.SearchAsset(ctx, identifier.Isin)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
@@ -88,8 +88,8 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	}, nil
 }
 
-func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
-	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
+func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
+	assets, err := fs.marketdata.GetIndex(ctx, req.GetSymbol())
 	if err != nil {
 		// The cause, which names each member that failed, is logged
 		// redacted; the client-facing interceptor keeps it off the status.
@@ -226,7 +226,7 @@ func (fs *MarketdataServer) downloadSymbol(
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
 
-	asset, err := fs.marketdata.GetAsset(symbol)
+	asset, err := fs.marketdata.GetAsset(ctx, symbol)
 	if err != nil {
 		if errors.Is(err, marketdata.ErrNoISIN) {
 			// A retry can't help: the provider can't identify the
@@ -254,7 +254,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	storeSymbol := asset.Symbol
-	ohlcs, err := bars.GetOHLC(storeSymbol, start, end)
+	ohlcs, err := bars.GetOHLC(ctx, storeSymbol, start, end)
 	if err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
@@ -328,7 +328,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	// and a later ticker's asset and asset_symbol rows are written outside
 	// this transaction and stay when the bars roll back; a retry finds them
 	// and stores the bars again.
-	fetch := prefetchedBars(bars, storeSymbol, start, end, ohlcs)
+	fetch := prefetchedBars(ctx, bars, storeSymbol, start, end, ohlcs)
 	if err := ohlcRepo.Sync(ctx, provider, storeSymbol, start, end, fetch); err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
@@ -380,19 +380,19 @@ func retryOHLC(ctx context.Context, bars supplier.Marketdata, symbol string,
 		return nil, ctx.Err()
 	case <-time.After(ohlcRetryDelay):
 	}
-	return bars.GetOHLC(symbol, start, end)
+	return bars.GetOHLC(ctx, symbol, start, end)
 }
 
 // prefetchedBars is the fetch Sync uses for one download. The bars already
 // fetched for start through end serve any request inside that span (Sync
 // asks from the last stored day for an incremental fetch); anything else,
 // such as a refetch from an earlier stored day, goes to the provider.
-func prefetchedBars(bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
+func prefetchedBars(ctx context.Context, bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
 	fetched []*pb.OHLC,
 ) repository.FetchBars {
 	return func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
 		if !withinSpan(start, end, from, to) {
-			return bars.GetOHLC(symbol, from, to)
+			return bars.GetOHLC(ctx, symbol, from, to)
 		}
 		out := make([]*pb.OHLC, 0, len(fetched))
 		for _, b := range fetched {
@@ -471,7 +471,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		ohlcs, err := bars.GetOHLC(candidate, start, end)
+		ohlcs, err := bars.GetOHLC(ctx, candidate, start, end)
 		// A cancelled download is not "no price data", whatever GetOHLC said.
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -492,7 +492,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 
 		// GetAsset has no typed "no such asset" error, so any error fails
 		// the symbol, as it does for the asked ticker in downloadSymbol.
-		a, err := fs.marketdata.GetAsset(candidate)
+		a, err := fs.marketdata.GetAsset(ctx, candidate)
 		if err != nil {
 			return nil, fmt.Errorf("get asset for later ticker %s: %w", candidate, err)
 		}
@@ -543,7 +543,7 @@ func laterTickerCandidates(
 		candidates = append(candidates, symbol)
 	}
 
-	found, searchErr := md.SearchAsset(isin)
+	found, searchErr := md.SearchAsset(ctx, isin)
 	if searchErr != nil {
 		log.Info().Err(redact.URLError(searchErr)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {

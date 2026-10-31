@@ -1,6 +1,7 @@
 package marketdata_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,11 +30,11 @@ func TestStooqMetadataUnimplemented(t *testing.T) {
 
 	client := newStooqClient(t, srv.URL)
 
-	_, err := client.GetAsset("AAPL")
+	_, err := client.GetAsset(context.Background(), "AAPL")
 	require.ErrorIs(t, err, marketdata.ErrStooqMetadata)
-	_, err = client.SearchAsset("AAPL")
+	_, err = client.SearchAsset(context.Background(), "AAPL")
 	require.ErrorIs(t, err, marketdata.ErrStooqMetadata)
-	_, err = client.GetIndex("^DJI")
+	_, err = client.GetIndex(context.Background(), "^DJI")
 	require.ErrorIs(t, err, marketdata.ErrStooqMetadata)
 	require.False(t, called)
 }
@@ -46,7 +47,7 @@ func TestGetOHLCAAPLMapsToStooqUS(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	bars, err := client.GetOHLC("AAPL", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "/q/d/l/", got.path)
 	require.Equal(t, "aapl.us", got.s)
@@ -73,7 +74,7 @@ func TestGetOHLCAcceptsStooqCodeAsCanonicalAAPL(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	bars, err := client.GetOHLC("aapl.us", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "aapl.us", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "aapl.us", got.s)
 	require.NotEmpty(t, bars)
@@ -90,7 +91,7 @@ func TestGetOHLCSPYMapsToStooqUS(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-05")
-	bars, err := client.GetOHLC("spy", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "spy", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "spy.us", got.s)
 	require.Len(t, bars, 2)
@@ -107,7 +108,7 @@ func TestGetOHLCUnknownSymbolFallsBackToUS(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2023-08-01")
 	end := date(t, "2023-10-01")
-	bars, err := client.GetOHLC("XYZ", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "XYZ", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "xyz.us", got.s)
 	require.NotEmpty(t, bars)
@@ -121,7 +122,7 @@ func TestGetOHLCDelistedSeriesParses(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2023-01-01")
 	end := date(t, "2024-01-01")
-	bars, err := client.GetOHLC("BBBY", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "BBBY", start, &end)
 	require.NoError(t, err)
 	require.Len(t, bars, 4)
 	require.Equal(t, "BBBY", bars[0].Symbol)
@@ -168,7 +169,7 @@ func TestGetOHLCEmptyAndMissingAreErrors(t *testing.T) {
 			client := newStooqClient(t, srv.URL)
 			start := date(t, "2021-01-04")
 			end := date(t, "2021-01-06")
-			bars, err := client.GetOHLC("AAPL", start, &end)
+			bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 			require.Error(t, err)
 			require.ErrorContains(t, err, tc.wantSubstr)
 			if tc.noBars {
@@ -208,7 +209,7 @@ func TestGetOHLCBotCheckIsBlockedError(t *testing.T) {
 			client := newStooqClient(t, srv.URL)
 			start := date(t, "2021-01-04")
 			end := date(t, "2021-01-06")
-			bars, err := client.GetOHLC("AAPL", start, &end)
+			bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 			require.ErrorIs(t, err, marketdata.ErrProviderBlocked)
 			var blocked *marketdata.BlockedError
 			require.ErrorAs(t, err, &blocked)
@@ -227,7 +228,7 @@ func TestGetOHLCMissingFileIsNotBlocked(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	_, err := client.GetOHLC("AAPL", start, &end)
+	_, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, marketdata.ErrProviderBlocked)
 }
@@ -241,7 +242,7 @@ func TestGetOHLCEmptySymbol(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := newStooqClient(t, srv.URL)
-	_, err := client.GetOHLC("  ", date(t, "2021-01-04"), nil)
+	_, err := client.GetOHLC(context.Background(), "  ", date(t, "2021-01-04"), nil)
 	require.ErrorContains(t, err, "empty symbol")
 	require.False(t, called)
 }
@@ -259,7 +260,7 @@ func TestWithStooqSymbolMapFile(t *testing.T) {
 
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	bars, err := client.GetOHLC("FOO", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "FOO", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "foo.us", got.s)
 	require.Equal(t, "FOO", bars[0].Symbol)
@@ -278,7 +279,7 @@ func TestWithStooqSymbolMapOverridesBuiltin(t *testing.T) {
 
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	bars, err := client.GetOHLC("AAPL", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, "aapl.ny", got.s)
 	require.Equal(t, "AAPL", bars[0].Symbol)
@@ -300,7 +301,7 @@ func TestGetOHLCDoesNotHitLiveHost(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	_, err := client.GetOHLC("AAPL", start, &end)
+	_, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 	require.NotContains(t, got.host, "stooq.com")
 }
@@ -372,7 +373,7 @@ func TestGetOHLCExchangeSuffixMapsToStooqCode(t *testing.T) {
 		client := newStooqClient(t, srv.URL)
 		start := date(t, "2021-01-04")
 		end := date(t, "2021-01-06")
-		bars, err := client.GetOHLC(asked, start, &end)
+		bars, err := client.GetOHLC(context.Background(), asked, start, &end)
 		require.NoError(t, err, asked)
 		require.Equal(t, want.code, got.s, asked)
 		require.NotEmpty(t, bars, asked)
@@ -394,7 +395,7 @@ func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
 	client := newStooqClient(t, srv.URL)
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	_, err := client.GetOHLC("SHOP.TO", start, &end)
+	_, err := client.GetOHLC(context.Background(), "SHOP.TO", start, &end)
 	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
 	require.EqualError(t, err, "stooq doesn't support the .TO exchange (SHOP.TO). "+
 		"Supported suffixes: .DE, .L, .US. Try another provider with --provider.")
@@ -418,7 +419,7 @@ func TestGetOHLCRefusesUnboundedSuffixedSymbolWithoutEchoingIt(t *testing.T) {
 		"newline": "VOD\nINJECTED.L",
 		"escape":  "VOD\x1b[2J.L",
 	} {
-		_, err := client.GetOHLC(symbol, start, &end)
+		_, err := client.GetOHLC(context.Background(), symbol, start, &end)
 		require.ErrorIs(t, err, marketdata.ErrStooqExchange, name)
 		require.EqualError(t, err,
 			"stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.", name)
