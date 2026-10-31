@@ -2,7 +2,9 @@ package command
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -80,4 +82,68 @@ func TestAmbiguousSymbolProviderOnlyMatchesTheRefusal(t *testing.T) {
 		_, ok := ambiguousSymbolProvider(tc.text, tc.symbol)
 		require.False(t, ok, name)
 	}
+}
+
+// Only the finance service's exact timeout sentence, for the symbol the
+// response is about, names the provider and the ticker.
+func TestProviderTimeoutProviderOnlyMatchesTheSentence(t *testing.T) {
+	for _, provider := range []string{"yahoo", "stooq", "alpaca"} {
+		got, ok := providerTimeoutProvider(provider+" took too long to respond for AAPL", "AAPL")
+		require.True(t, ok, provider)
+		require.Equal(t, provider, got)
+	}
+	for name, text := range map[string]string{
+		"other symbol":      "alpaca took too long to respond for MSFT",
+		"unknown provider":  "The price provider took too long to respond for AAPL",
+		"trailing raw text": "alpaca took too long to respond for AAPL: dial tcp",
+		"leading raw text":  "error: alpaca took too long to respond for AAPL",
+		"empty":             "",
+	} {
+		_, ok := providerTimeoutProvider(text, "AAPL")
+		require.False(t, ok, name)
+	}
+
+}
+
+// Only the finance service's DeadlineExceeded time-limit text counts as the
+// limit, and its limit is read back. A provider timeout or the client's own
+// deadline doesn't count.
+func TestDownloadTimeLimitOnlyMatchesTheLimit(t *testing.T) {
+	limit, ok := downloadTimeLimit(status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at VOD.L"))
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, limit)
+	for name, err := range map[string]error{
+		"provider timeout": status.Error(codes.DeadlineExceeded, "stooq took too long to respond for VOD.L"),
+		"other code":       status.Error(codes.Internal, "the download hit its time limit of 2h0m0s at VOD.L"),
+		"client deadline":  status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+		"rate limiter":     status.Error(codes.DeadlineExceeded, "rate: Wait(n=1) would exceed context deadline"),
+		"not a status":     errors.New("the download hit its time limit of 2h0m0s at VOD.L"),
+		"no limit":         status.Error(codes.DeadlineExceeded, "the download hit its time limit at VOD.L"),
+		"zero limit":       status.Error(codes.DeadlineExceeded, "the download hit its time limit of 0s at VOD.L"),
+		"symbol too long":  status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at "+strings.Repeat("A", 33)),
+		"trailing text":    status.Error(codes.DeadlineExceeded, "the download hit its time limit of 2h0m0s at VOD.L: boom"),
+		"nil":              nil,
+	} {
+		_, ok := downloadTimeLimit(err)
+		require.False(t, ok, name)
+	}
+}
+
+// The time-limit sentence counts symbols like the progress line and names
+// whole hours in hours and anything else in minutes, word for word. A
+// backtest that couldn't be removed says so and says to delete it first.
+func TestTimeLimitMessage(t *testing.T) {
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitMessage("oef-2024q1", 2*time.Hour, 6212, 10000, true))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 1-hour limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitMessage("oef-2024q1", time.Hour, 6212, 10000, true))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 90-minute limit after "+
+		"6,212 of 10,000 symbols. The backtest wasn't saved. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitMessage("oef-2024q1", 90*time.Minute, 6212, 10000, true))
+	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': the download hit the 2-hour limit after "+
+		"6,212 of 10,000 symbols. The backtest was partly saved and couldn't be removed. Run "+
+		"`fbull backtest delete oef-2024q1` first. Split the symbols across several backtests, "+
+		"then run `fbull backtest create` again.", timeLimitMessage("oef-2024q1", 2*time.Hour, 6212, 10000, false))
 }
