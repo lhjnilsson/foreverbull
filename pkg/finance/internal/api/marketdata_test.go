@@ -1256,3 +1256,170 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRescalesAfterSplit() {
 	suite.Require().NoError(err)
 	suite.InDelta(124.8075, closeAug28, 0.0001)
 }
+
+// The first ask fails with an error that isn't a timeout, and the retry runs
+// out of time. A timeout says nothing about whether the provider has bars for
+// the symbol, so the symbol fails with the download error and no later
+// ticker is looked up for it.
+func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenTheRetryTimesOut() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Meta Platforms, Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+		Return(nil, errors.New("fail to get OHLC data for symbol FB: 500 Internal Server Error")).Once()
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+		Return(nil, fmt.Errorf("fail to get OHLC data for symbol FB: %w", context.DeadlineExceeded)).Once()
+	// The later-ticker lookup would ask for these; it must not run.
+	suite.marketdata.On("SearchAsset", metaISIN).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil).Maybe()
+	suite.marketdata.On("GetAsset", "META").
+		Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil).Maybe()
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2019-06-03")),
+			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
+		},
+	}, nil).Maybe()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(ctx, req)
+	suite.Require().NoError(err)
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal("FB", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("couldn't download prices for FB. Try again in a few minutes, "+
+		"or use another provider with --provider.", msgs[0].GetError())
+
+	suite.marketdata.AssertNotCalled(suite.T(), "SearchAsset", mock.Anything)
+	suite.marketdata.AssertNotCalled(suite.T(), "GetAsset", "META")
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", "META", mock.Anything, mock.Anything)
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 2)
+	aliases, err := instruments.ListAliases(ctx, metaISIN)
+	suite.Require().NoError(err)
+	for _, alias := range aliases {
+		suite.NotEqual("META", alias.Symbol, "no later ticker is recorded")
+	}
+}
+
+// The first ask fails with an error that isn't a timeout, and the client
+// cancels the download before the retry. The download stops with the
+// cancelled status: no later ticker is looked up for the symbol, and no
+// alias, asset or bars are recorded for one.
+func (suite *MarketdataTest) TestDownloadHistoricalDataStopsWhenCancelledBeforeTheRetry() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	suite.downloadEndsBeforeTheRetry(ctx, cancel, codes.Canceled, "context canceled")
+}
+
+// As above, with the client's deadline passing instead of a cancel.
+func (suite *MarketdataTest) TestDownloadHistoricalDataStopsWhenTheDeadlinePassesBeforeTheRetry() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	// Only the code: the stream can end on the deadline or on the RST_STREAM
+	// that follows it, so the message isn't stable.
+	suite.downloadEndsBeforeTheRetry(ctx, func() {}, codes.DeadlineExceeded, "")
+}
+
+// ohlcRetryWait is longer than the download's pause before its retry, so a
+// retry or later-ticker lookup that wrongly went on has run by the time the
+// test checks.
+const ohlcRetryWait = 400 * time.Millisecond
+
+// downloadEndsBeforeTheRetry downloads FB under downloadCtx. The first ask
+// fails with a 500 and ends downloadCtx (end cancels it; a deadline ends it
+// by itself), then checks the stream ends with code (and text, unless it is
+// empty) and that nothing of the later ticker META was asked for or stored.
+func (suite *MarketdataTest) downloadEndsBeforeTheRetry(downloadCtx context.Context, end func(),
+	code codes.Code, text string,
+) {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date)
+		VALUES ($1, 'FB', '2019-01-01'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", "FB").Return(&pb.Asset{Symbol: "FB", Name: "Meta Platforms, Inc."}, nil)
+	suite.marketdata.On("GetOHLC", "FB", mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) {
+			end()
+			<-downloadCtx.Done()
+			// Let the end reach the server's stream ctx before the retry.
+			time.Sleep(50 * time.Millisecond)
+		}).
+		Return(nil, errors.New("fail to get OHLC data for symbol FB: 500 Internal Server Error")).Once()
+	// The later-ticker lookup would ask for these; it must not run.
+	suite.marketdata.On("SearchAsset", mock.Anything).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil).Maybe()
+	suite.marketdata.On("GetAsset", "META").
+		Return(&pb.Asset{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN}, nil).Maybe()
+	suite.marketdata.On("GetOHLC", "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2019-06-03")),
+			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
+		},
+	}, nil).Maybe()
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(downloadCtx, req)
+	suite.Require().NoError(err)
+	var streamErr error
+	for {
+		msg, err := rsp.Recv()
+		if err != nil {
+			streamErr = err
+			break
+		}
+		suite.Failf("no symbol is reported once the download ended", "%s: %s %s",
+			msg.GetSymbol(), msg.GetStatus(), msg.GetError())
+	}
+	st, ok := status.FromError(streamErr)
+	suite.Require().True(ok, "want a gRPC status, got %v", streamErr)
+	suite.Equal(code, st.Code())
+	if text != "" {
+		suite.Equal(text, st.Message())
+	}
+
+	// The client sees the status as soon as its ctx ends; the server's
+	// worker may still be on the symbol. Give it past the retry pause.
+	time.Sleep(ohlcRetryWait)
+
+	suite.marketdata.AssertNotCalled(suite.T(), "SearchAsset", mock.Anything)
+	suite.marketdata.AssertNotCalled(suite.T(), "GetAsset", "META")
+	suite.marketdata.AssertNotCalled(suite.T(), "GetOHLC", "META", mock.Anything, mock.Anything)
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
+
+	aliases, err := instruments.ListAliases(ctx, metaISIN)
+	suite.Require().NoError(err)
+	suite.Require().Len(aliases, 1, "no alias is stored")
+	suite.Equal("FB", aliases[0].Symbol)
+	var metaAssets, bars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM asset WHERE symbol='META'`).Scan(&metaAssets))
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE symbol IN ('FB', 'META')`).Scan(&bars))
+	suite.Zero(metaAssets, "no later-ticker asset is recorded")
+	suite.Zero(bars, "no later-ticker bars are recorded")
+}
