@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -73,7 +74,7 @@ func stooqRangeServer(t *testing.T, now time.Time, days ...string) *StooqClient 
 
 func yahooDays(t *testing.T, client *YahooClient, start time.Time, end *time.Time) []string {
 	t.Helper()
-	bars, err := client.GetOHLC("xyz", start, end)
+	bars, err := client.GetOHLC(context.Background(), "xyz", start, end)
 	require.NoError(t, err)
 	days := make([]string, 0, len(bars))
 	for _, bar := range bars {

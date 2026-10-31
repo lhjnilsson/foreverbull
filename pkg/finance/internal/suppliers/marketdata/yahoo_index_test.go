@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
@@ -75,7 +76,7 @@ func TestYahooGetIndexReturnsEveryMember(t *testing.T) {
 	members := indexMembers(120)
 	client, _ := indexServer(t, indexBody(t, members), nil)
 
-	assets, err := client.GetIndex("^OEF")
+	assets, err := client.GetIndex(context.Background(), "^OEF")
 	require.NoError(t, err)
 	require.Len(t, assets, len(members)+1, "every member plus the index asset")
 	for i, member := range members {
@@ -90,7 +91,7 @@ func TestYahooGetIndexFailsAndNamesTheFailingMember(t *testing.T) {
 	members := indexMembers(30)
 	client, _ := indexServer(t, indexBody(t, members), map[string]bool{"M007": true})
 
-	assets, err := client.GetIndex("^OEF")
+	assets, err := client.GetIndex(context.Background(), "^OEF")
 	require.Nil(t, assets)
 	require.EqualError(t, err, "error getting assets: component M007: lookup of M007 broke")
 }
@@ -101,7 +102,7 @@ func TestYahooGetIndexNamesEveryFailingMember(t *testing.T) {
 	members := indexMembers(30)
 	client, _ := indexServer(t, indexBody(t, members), map[string]bool{"M003": true, "M021": true})
 
-	assets, err := client.GetIndex("^OEF")
+	assets, err := client.GetIndex(context.Background(), "^OEF")
 	require.Nil(t, assets)
 	require.EqualError(t, err,
 		"error getting assets: component M003: lookup of M003 broke\ncomponent M021: lookup of M021 broke")
@@ -113,7 +114,7 @@ func TestYahooGetIndexEmptyResultIsAnError(t *testing.T) {
 	client, paths := indexServer(t, `{"quoteSummary":{"result":[]}}`, nil)
 
 	require.NotPanics(t, func() {
-		got, err := client.GetIndex("^OEF")
+		got, err := client.GetIndex(context.Background(), "^OEF")
 		require.Nil(t, got)
 		require.EqualError(t, err, "fail to get index data for symbol ^OEF: no result")
 	})
@@ -130,7 +131,7 @@ func TestYahooGetIndexEscapesSymbolInPath(t *testing.T) {
 		"A/B/C":      "/A%2FB%2FC",
 	} {
 		client, paths := indexServer(t, indexBody(t, nil), nil)
-		_, err := client.GetIndex(symbol)
+		_, err := client.GetIndex(context.Background(), symbol)
 		require.NoError(t, err, symbol)
 		require.NotEmpty(t, paths(), symbol)
 		require.Equal(t, escaped, paths()[0], symbol)

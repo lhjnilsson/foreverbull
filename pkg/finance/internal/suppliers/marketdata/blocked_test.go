@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -57,7 +58,7 @@ func TestYahooGetOHLCBotCheckIsBlockedError(t *testing.T) {
 	client := &YahooClient{chartURL: srv.URL + "/"}
 	start := time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2021, 1, 6, 0, 0, 0, 0, time.UTC)
-	bars, err := client.GetOHLC("aapl", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "aapl", start, &end)
 	require.ErrorIs(t, err, ErrProviderBlocked)
 	require.EqualError(t, err,
 		"Yahoo blocked the download for AAPL (it returned a bot-check page instead of data). Retry with --provider stooq.")

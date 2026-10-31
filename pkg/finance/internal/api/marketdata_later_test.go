@@ -36,7 +36,7 @@ func TestFetchBarsViaLaterTickerReturnsContextErrorWhenCancelled(t *testing.T) {
 	require.NoError(t, err)
 
 	md := supplier.NewMockMarketdata(t)
-	md.On("SearchAsset", isin).Return([]*pb.Asset{{Symbol: "META", ISIN: isin}}, nil)
+	md.On("SearchAsset", mock.Anything, isin).Return([]*pb.Asset{{Symbol: "META", ISIN: isin}}, nil)
 	fs := NewMarketdataServer(pool, md)
 
 	start := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -44,12 +44,12 @@ func TestFetchBarsViaLaterTickerReturnsContextErrorWhenCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	md.On("GetOHLC", "META", mock.Anything, mock.Anything).Run(func(mock.Arguments) { cancel() }).
+	md.On("GetOHLC", mock.Anything, "META", mock.Anything, mock.Anything).Run(func(mock.Arguments) { cancel() }).
 		Return(nil, fmt.Errorf("fail to get OHLC data for symbol META: %w", marketdata.ErrNoBars)).Once()
 
 	fetched, err := fs.fetchBarsViaLaterTicker(ctx, "FB", start, &end, md, repository.Asset{Conn: pool})
 	require.Nil(t, fetched)
 	require.ErrorIs(t, err, context.Canceled)
 	require.NotErrorIs(t, err, errNoPriceData)
-	md.AssertNotCalled(t, "GetAsset", "META")
+	md.AssertNotCalled(t, "GetAsset", mock.Anything, "META")
 }

@@ -1,6 +1,7 @@
 package marketdata_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
@@ -24,34 +25,34 @@ func TestCompositeRoutesOHLCToStooqAndMetadataToYahoo(t *testing.T) {
 	asset := &pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}
 	assets := []*pb.Asset{asset}
 
-	ohlc.On("GetOHLC", "AAPL", start, mock.Anything).Return(bars, nil).Once()
-	meta.On("GetAsset", "AAPL").Return(asset, nil).Once()
-	meta.On("SearchAsset", "apple").Return(assets, nil).Once()
-	meta.On("GetIndex", "^DJI").Return(assets, nil).Once()
+	ohlc.On("GetOHLC", mock.Anything, "AAPL", start, mock.Anything).Return(bars, nil).Once()
+	meta.On("GetAsset", mock.Anything, "AAPL").Return(asset, nil).Once()
+	meta.On("SearchAsset", mock.Anything, "apple").Return(assets, nil).Once()
+	meta.On("GetIndex", mock.Anything, "^DJI").Return(assets, nil).Once()
 
 	client, err := marketdata.NewComposite(ohlc, meta)
 	require.NoError(t, err)
 
-	gotBars, err := client.GetOHLC("AAPL", start, &end)
+	gotBars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 	require.Equal(t, bars, gotBars)
 
-	gotAsset, err := client.GetAsset("AAPL")
+	gotAsset, err := client.GetAsset(context.Background(), "AAPL")
 	require.NoError(t, err)
 	require.Equal(t, asset, gotAsset)
 
-	gotSearch, err := client.SearchAsset("apple")
+	gotSearch, err := client.SearchAsset(context.Background(), "apple")
 	require.NoError(t, err)
 	require.Equal(t, assets, gotSearch)
 
-	gotIndex, err := client.GetIndex("^DJI")
+	gotIndex, err := client.GetIndex(context.Background(), "^DJI")
 	require.NoError(t, err)
 	require.Equal(t, assets, gotIndex)
 
-	ohlc.AssertNotCalled(t, "GetAsset", mock.Anything)
-	ohlc.AssertNotCalled(t, "SearchAsset", mock.Anything)
-	ohlc.AssertNotCalled(t, "GetIndex", mock.Anything)
-	meta.AssertNotCalled(t, "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+	ohlc.AssertNotCalled(t, "GetAsset", mock.Anything, mock.Anything)
+	ohlc.AssertNotCalled(t, "SearchAsset", mock.Anything, mock.Anything)
+	ohlc.AssertNotCalled(t, "GetIndex", mock.Anything, mock.Anything)
+	meta.AssertNotCalled(t, "GetOHLC", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestNewCompositeRequiresBothClients(t *testing.T) {
@@ -100,7 +101,7 @@ func TestNewStooqYahooGetOHLCUsesStooqNotYahoo(t *testing.T) {
 	var got stooqReq
 	srv := serveStooq(t, readFixture(t, "aapl.us.csv"), http.StatusOK, &got)
 	yahoo := supplier.NewMockMarketdata(t)
-	yahoo.On("GetAsset", "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil).Once()
+	yahoo.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil).Once()
 
 	client, err := marketdata.NewStooqYahoo(
 		func() (supplier.Marketdata, error) { return yahoo, nil },
@@ -110,18 +111,18 @@ func TestNewStooqYahooGetOHLCUsesStooqNotYahoo(t *testing.T) {
 
 	start := date(t, "2021-01-04")
 	end := date(t, "2021-01-06")
-	bars, err := client.GetOHLC("AAPL", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 	require.NoError(t, err)
 	require.NotEmpty(t, bars)
 	require.Equal(t, "AAPL", bars[0].Symbol)
 	require.Equal(t, "aapl.us", got.s)
 	require.NotContains(t, got.host, "stooq.com")
 
-	asset, err := client.GetAsset("AAPL")
+	asset, err := client.GetAsset(context.Background(), "AAPL")
 	require.NoError(t, err)
 	require.Equal(t, "AAPL", asset.Symbol)
 
-	yahoo.AssertNotCalled(t, "GetOHLC", mock.Anything, mock.Anything, mock.Anything)
+	yahoo.AssertNotCalled(t, "GetOHLC", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestNewStooqYahooDoesNotCallLiveYahooConstructor(t *testing.T) {

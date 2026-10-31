@@ -35,7 +35,7 @@ func TestYahooDownloadStoresTheEndDatesBar(t *testing.T) {
 
 	ohlc := repository.OHLC{Conn: conn}
 	require.NoError(t, ohlc.Sync(ctx, "yahoo", "SPY", start, &end, func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
-		return yahoo.GetOHLC("SPY", from, to)
+		return yahoo.GetOHLC(context.Background(), "SPY", from, to)
 	}))
 
 	first, last, stored, err := ohlc.Range(ctx, "yahoo", "SPY")

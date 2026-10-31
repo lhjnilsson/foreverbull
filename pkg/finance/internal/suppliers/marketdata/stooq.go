@@ -282,19 +282,19 @@ func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	return code, upper, nil
 }
 
-func (c *StooqClient) GetAsset(string) (*pb.Asset, error) {
+func (c *StooqClient) GetAsset(context.Context, string) (*pb.Asset, error) {
 	return nil, fmt.Errorf("GetAsset: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) SearchAsset(string) ([]*pb.Asset, error) {
+func (c *StooqClient) SearchAsset(context.Context, string) ([]*pb.Asset, error) {
 	return nil, fmt.Errorf("SearchAsset: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) GetIndex(string) ([]*pb.Asset, error) {
+func (c *StooqClient) GetIndex(context.Context, string) ([]*pb.Asset, error) {
 	return nil, fmt.Errorf("GetIndex: %w", ErrStooqMetadata)
 }
 
-func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+func (c *StooqClient) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	code, canonical, err := c.resolveSymbol(symbol)
 	if err != nil {
 		return nil, err
@@ -321,7 +321,7 @@ func (c *StooqClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}
 
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("stooq GetOHLC %s: %w", canonical, err)
 	}

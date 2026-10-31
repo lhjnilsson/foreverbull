@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -50,18 +51,18 @@ func NewStooqYahoo(newYahoo func() (supplier.Marketdata, error), opts ...StooqOp
 	return NewComposite(stooq, yahoo)
 }
 
-func (c *Composite) GetAsset(symbol string) (*pb.Asset, error) {
-	return c.metadata.GetAsset(symbol)
+func (c *Composite) GetAsset(ctx context.Context, symbol string) (*pb.Asset, error) {
+	return c.metadata.GetAsset(ctx, symbol)
 }
 
-func (c *Composite) SearchAsset(q string) ([]*pb.Asset, error) {
-	return c.metadata.SearchAsset(q)
+func (c *Composite) SearchAsset(ctx context.Context, q string) ([]*pb.Asset, error) {
+	return c.metadata.SearchAsset(ctx, q)
 }
 
-func (c *Composite) GetIndex(symbol string) ([]*pb.Asset, error) {
-	return c.metadata.GetIndex(symbol)
+func (c *Composite) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset, error) {
+	return c.metadata.GetIndex(ctx, symbol)
 }
 
-func (c *Composite) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	return c.ohlc.GetOHLC(symbol, start, end)
+func (c *Composite) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+	return c.ohlc.GetOHLC(ctx, symbol, start, end)
 }

@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,15 +58,14 @@ func alpacaRangeServer(t *testing.T, stamps ...time.Time) (*AlpacaBars, *[]time.
 		_, _ = w.Write([]byte(`{"bars":{"XYZ":[` + strings.Join(bars, ",") + `]},"next_page_token":null}`))
 	}))
 	t.Cleanup(srv.Close)
-	client := marketdata.NewClient(marketdata.ClientOpts{
+	return &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1,
-	})
-	return &AlpacaBars{md: client}, &ends
+	}}, &ends
 }
 
 func alpacaDays(t *testing.T, bars *AlpacaBars, start time.Time, end *time.Time) []string {
 	t.Helper()
-	ohlcs, err := bars.GetOHLC("XYZ", start, end)
+	ohlcs, err := bars.GetOHLC(context.Background(), "XYZ", start, end)
 	require.NoError(t, err)
 	days := make([]string, 0, len(ohlcs))
 	for _, ohlc := range ohlcs {
@@ -155,9 +155,9 @@ func TestAlpacaGetOHLCDropsABarAfterTheLastCompletedSession(t *testing.T) {
 			`","o":10.3,"h":10.6,"l":10.1,"c":10.4,"v":50,"n":1,"vw":10.3}]},"next_page_token":null}`))
 	}))
 	t.Cleanup(srv.Close)
-	bars := &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+	bars := &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1,
-	})}
+	}}
 	start := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
 	tomorrow := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
 

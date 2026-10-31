@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,7 +32,7 @@ func TestYahooGetOHLCFailsOnANullBarInsideTheRange(t *testing.T) {
 	start := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
 
-	bars, err := client.GetOHLC("xyz", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "xyz", start, &end)
 	require.Nil(t, bars)
 	// 2026-05-05 is all null; 2026-05-07 has a null open only.
 	require.EqualError(t, err, "yahoo sent no price for XYZ on 2026-05-05, 2026-05-07")
@@ -49,7 +50,7 @@ func TestYahooGetOHLCFailsOnANullBarAtEitherEdge(t *testing.T) {
 	start := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
 
-	bars, err := client.GetOHLC("xyz", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "xyz", start, &end)
 	require.Nil(t, bars)
 	// 2026-05-04 is the leading null and 2026-05-08 the trailing one.
 	require.EqualError(t, err, "yahoo sent no price for XYZ on 2026-05-04, 2026-05-08")
@@ -151,7 +152,7 @@ func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
 
 	notFound := yahooChartServer(t, http.StatusNotFound, "application/json",
 		`{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`)
-	bars, err := notFound.GetOHLC("NON_EXISTING", start, &end)
+	bars, err := notFound.GetOHLC(context.Background(), "NON_EXISTING", start, &end)
 	require.Nil(t, bars)
 	require.ErrorIs(t, err, ErrNoBars)
 	require.EqualError(t, err, "fail to get OHLC data for symbol NON_EXISTING: No data found, symbol may be delisted")
@@ -159,7 +160,7 @@ func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
 	// 404 with the Not Found chart error is the same answer.
 	notFound404 := yahooChartServer(t, http.StatusNotFound, "application/json",
 		`{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found, symbol may be delisted"}}}`)
-	_, err = notFound404.GetOHLC("NON_EXISTING", start, &end)
+	_, err = notFound404.GetOHLC(context.Background(), "NON_EXISTING", start, &end)
 	require.ErrorIs(t, err, ErrNoBars)
 
 	cases := []struct {
@@ -182,7 +183,7 @@ func TestYahooGetOHLCNotFoundIsNoBars(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			client := yahooChartServer(t, tc.status, tc.contentType, tc.body)
-			bars, err := client.GetOHLC("AAPL", start, &end)
+			bars, err := client.GetOHLC(context.Background(), "AAPL", start, &end)
 			require.Nil(t, bars)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, ErrNoBars)
