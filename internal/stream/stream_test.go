@@ -3,6 +3,7 @@ package stream_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,6 +28,12 @@ func ReturnErr(ctx context.Context, message stream.Message) error {
 
 func ReturnNotice(ctx context.Context, message stream.Message) error {
 	return &stream.Notice{Lines: []string{"Example notice for XYZ on 2026-05-05."}}
+}
+
+func ReturnProgress(ctx context.Context, message stream.Message) error {
+	stream.ReportProgress(ctx, "Downloading prices: 0 of 2 symbols")
+	stream.ReportProgress(ctx, "Downloading prices: 1 of 2 symbols")
+	return nil
 }
 
 func Timeout(ctx context.Context, message stream.Message) error {
@@ -77,6 +84,7 @@ func (test *StreamTest) SetupTest() {
 	test.Require().NoError(test.subscriber.Subscribe("return", "err", ReturnErr))
 	test.Require().NoError(test.subscriber.Subscribe("return", "timeout", Timeout))
 	test.Require().NoError(test.subscriber.Subscribe("return", "notice", ReturnNotice))
+	test.Require().NoError(test.subscriber.Subscribe("return", "progress", ReturnProgress))
 }
 
 func (test *StreamTest) TearDownTest() {
@@ -226,6 +234,48 @@ func (test *StreamTest) TestRunOrchestration() {
 		test.Require().Equal(common.State_STATE_COMPLETED, steps[3].State)
 		test.Nil(steps[3].Error)
 		test.Empty(steps[3].Notices)
+	})
+	test.Run("Progress is a running step with the text, in order", func() {
+		progressMsg, err := stream.NewMessage("test", "return", "progress", struct{}{})
+		test.Require().NoError(err)
+		o := pb.Orchestration{
+			Steps: []*pb.Orchestration_Step{
+				{Num: int32(2), Messages: []*pb.Message{progressMsg.GetMsg()}},
+			},
+		}
+
+		steps := []*pb.Orchestration_Step{}
+		for st := range test.uut.RunOrchestration(context.Background(), &o) {
+			steps = append(steps, st)
+		}
+		test.Require().Len(steps, 4)
+		test.Equal(common.State_STATE_RUNNING, steps[0].State)
+		test.Nil(steps[0].Error)
+		for index, want := range []string{"Downloading prices: 0 of 2 symbols", "Downloading prices: 1 of 2 symbols"} {
+			test.Equal(int32(2), steps[index+1].Num)
+			test.Equal(common.State_STATE_RUNNING, steps[index+1].State)
+			test.Require().NotNil(steps[index+1].Error)
+			test.Equal(want, *steps[index+1].Error)
+		}
+		test.Equal(common.State_STATE_COMPLETED, steps[3].State)
+		test.Nil(steps[3].Error, "progress is not a notice")
+
+		// Progress is core NATS only: no task state carries it, so it is
+		// neither kept on the foreverbull stream nor written to
+		// message_states.
+		for _, state := range test.parseStates(test.T(), progressMsg) {
+			test.Empty(state.GetError(), "progress must not ride on a task state (%s)", state.State)
+		}
+		natsConnect, err := nats.Connect(environment.GetNATSURL())
+		test.Require().NoError(err)
+		defer natsConnect.Close()
+		jetstream, err := natsConnect.JetStream()
+		test.Require().NoError(err)
+		info, err := jetstream.StreamInfo("foreverbull")
+		test.Require().NoError(err)
+		test.Equal([]string{"foreverbull.>"}, info.Config.Subjects)
+		test.Equal(int64(-1), info.Config.MaxMsgsPerSubject, "the shared stream keeps no per-subject limit")
+		test.NotRegexp(`^foreverbull\.`, fmt.Sprintf(stream.TOPIC_TASK_PROGRESS, "test", "return", "progress", "id"))
 	})
 	test.Run("Error", func() {
 		o := pb.Orchestration{

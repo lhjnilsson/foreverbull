@@ -18,6 +18,7 @@ type NatsSubscriber struct {
 	module string
 
 	jt   nats.JetStreamContext
+	nc   *nats.Conn
 	subs []*nats.Subscription
 
 	deps *dependencyContainer
@@ -89,6 +90,17 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 				}
 			}
 		}()
+		// Progress goes over core NATS, not as a task state: it isn't kept
+		// on the JetStream stream and gets no message_states row.
+		progressTopic := fmt.Sprintf(TOPIC_TASK_PROGRESS, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
+		ctx = WithProgress(ctx, func(text string) {
+			if ns.nc == nil {
+				return
+			}
+			if err := ns.nc.Publish(progressTopic, []byte(text)); err != nil {
+				log.Err(err).Msg("error publishing progress")
+			}
+		})
 		err = cb(ctx, msg)
 		var notice *Notice
 		if errors.As(err, &notice) {
