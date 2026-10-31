@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,7 +13,8 @@ import (
 )
 
 // Sync gives up on a symbol lock it can't get within lock_timeout, with a
-// StoreError, and never calls fetch.
+// StoreError, and stores nothing. fetch has already run by then: it runs
+// before the lock.
 func (test *OHLCTests) TestSyncLockTimeout() {
 	defer repository.SetSyncTimeouts("200ms", "90s")()
 	ctx := context.Background()
@@ -24,11 +26,9 @@ func (test *OHLCTests) TestSyncLockTimeout() {
 	_, err = holder.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ohlc:' || 'ABC'))`)
 	test.Require().NoError(err)
 
-	fetched := false
 	started := time.Now()
 	err = test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, endDay(day, 0),
 		func(time.Time, *time.Time) ([]*pb.OHLC, error) {
-			fetched = true
 			return []*pb.OHLC{closeBar(day, 125)}, nil
 		})
 	var stored *repository.StoreError
@@ -37,26 +37,36 @@ func (test *OHLCTests) TestSyncLockTimeout() {
 	test.Require().ErrorAs(err, &pgErr)
 	test.Equal("55P03", pgErr.Code, "lock_not_available")
 	test.Less(time.Since(started), 5*time.Second)
-	test.False(fetched)
 	test.Zero(test.countRows())
 }
 
 // A sync whose transaction sits idle past idle_in_transaction_session_timeout
-// (here while fetch is slow) is ended by Postgres: nothing is stored and the
-// lock is released.
+// is ended by Postgres: nothing is stored and the lock is released. The only
+// fetch under the lock is a refetch after the stored history changed between
+// the first fetch and the lock, so that refetch is the slow one here.
 func (test *OHLCTests) TestSyncIdleInTransactionTimeout() {
 	defer repository.SetSyncTimeouts("60s", "200ms")()
 	ctx := context.Background()
 	day := time.Date(2020, 8, 26, 0, 0, 0, 0, time.UTC)
+	test.storeDays(day, 2, 500)
 
-	err := test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, endDay(day, 0),
-		func(time.Time, *time.Time) ([]*pb.OHLC, error) {
-			time.Sleep(time.Second)
-			return []*pb.OHLC{closeBar(day, 125)}, nil
-		})
+	var calls atomic.Int32
+	err := test.rescaleBeforeTheLock(func() error {
+		return test.ohlcStorage.Sync(ctx, "yahoo", "ABC", day, endDay(day, 2),
+			func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
+				if calls.Add(1) == 1 {
+					return []*pb.OHLC{closeBar(day.AddDate(0, 0, 1), 500), closeBar(day.AddDate(0, 0, 2), 500)}, nil
+				}
+				time.Sleep(time.Second)
+				return []*pb.OHLC{closeBar(day, 125)}, nil
+			})
+	})
 	var stored *repository.StoreError
 	test.Require().ErrorAs(err, &stored)
-	test.Zero(test.countRows())
+	test.Equal(int32(2), calls.Load())
+	test.Equal(map[string]float64{"2020-08-26": 125, "2020-08-27": 125}, test.storedCloses())
+	_, err = test.conn.Exec(ctx, `DELETE FROM ohlc`)
+	test.Require().NoError(err)
 
 	// The lock is free again: a normal sync goes through.
 	restore := repository.SetSyncTimeouts("60s", "90s")
