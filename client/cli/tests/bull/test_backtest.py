@@ -329,7 +329,7 @@ def test_backtest_create_blocked_provider_prints_one_error_line(provider, messag
     assert result.output == f"Using provider: {provider} (from --provider)\n✖ {message}\n"
 
 
-def _filled_prices_stream(lines: list[str]):
+def _notices_stream(lines: list[str]):
     def stream(**_kwargs):
         yield backtest_service_pb.CreateBacktestResponse(
             CREATING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
@@ -337,8 +337,8 @@ def _filled_prices_stream(lines: list[str]):
             INGESTING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
             STORING=common_pb.Step(state=common_pb.State.UNSPECIFIED),
         )
-        # The orchestrator copies the ingest's notices into the completed
-        # step's notices field; message stays empty on success.
+        # The orchestrator copies a step's notices into the completed step's
+        # notices field; message stays empty on success.
         completed = backtest_service_pb.CreateBacktestResponse(
             CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
             DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
@@ -350,10 +350,10 @@ def _filled_prices_stream(lines: list[str]):
     return stream
 
 
-def _create_with_filled_prices(monkeypatch, lines: list[str]):
+def _create_with_notices(monkeypatch, lines: list[str]):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with (
-        patch("foreverbull.broker.backtest.create", side_effect=_filled_prices_stream(lines)),
+        patch("foreverbull.broker.backtest.create", side_effect=_notices_stream(lines)),
         tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
     ):
         yaml.safe_dump(_file_payload(), cfg_file)
@@ -363,56 +363,78 @@ def _create_with_filled_prices(monkeypatch, lines: list[str]):
     return result
 
 
-_FILLED_XYZ = "Missing prices for XYZ on 4 days (2026-05-04 to 2026-05-07), filled with the previous close. No trades on those days."
-_FILLED_ABC = "Missing prices for ABC on 2026-05-05, filled with the previous close. No trades on those days."
-
-
-def test_backtest_create_prints_each_filled_symbol(monkeypatch):
+def test_backtest_create_prints_each_step_notice_once(monkeypatch):
     monkeypatch.delenv("LOGGING_LEVEL", raising=False)
-    result = _create_with_filled_prices(monkeypatch, [_FILLED_ABC, _FILLED_XYZ])
+    lines = ["First notice.", "Second notice.", "Third notice."]
+    result = _create_with_notices(monkeypatch, lines)
     assert result.exit_code == 0
-    # Printed once although the completed step arrives twice, each on its own line.
+    # Printed once although the completed step arrives twice, each on its
+    # own line, with nothing folded.
     shown = [line for line in result.output.splitlines() if "⚠" in line]
-    assert shown == [f"⚠ {_FILLED_ABC}", f"⚠ {_FILLED_XYZ}"]
-    assert "skipped" not in result.output
+    assert shown == [f"⚠ {line}" for line in lines]
 
 
-def test_backtest_create_folds_three_filled_symbols_into_one_line(monkeypatch):
-    monkeypatch.delenv("LOGGING_LEVEL", raising=False)
-    lines = [
-        _FILLED_ABC,
-        _FILLED_XYZ,
-        "Missing prices for DEF on 2026-05-06, filled with the previous close. No trades on those days.",
-    ]
-    result = _create_with_filled_prices(monkeypatch, lines)
-    assert result.exit_code == 0
-    shown = [line for line in result.output.splitlines() if "⚠" in line]
-    assert shown == [
-        "⚠ Missing prices for 3 symbols, filled with the previous close. No trades on those days. Run with --verbose for the list."
-    ]
+_MISSING_ONE_DAY = (
+    "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on 2024-02-14, a trading day. "
+    "The backtest wasn't saved. Try another provider with --provider, or change the backtest dates, then run "
+    "`fbull backtest create` again."
+)
+_MISSING_SEVERAL_DAYS = (
+    "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on 3 trading days: "
+    "2024-02-14, 2024-02-20 to 2024-02-21. The backtest wasn't saved. Try another provider with --provider, "
+    "or change the backtest dates, then run `fbull backtest create` again."
+)
+_MISSING_TWO_SYMBOLS = (
+    "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading days for 2 symbols. "
+    "The backtest wasn't saved.\n"
+    "  AAA: 2024-02-14\n"
+    "  BBB: 2024-02-20 to 2024-02-21, 2024-03-05\n"
+    "Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again."
+)
 
 
-def test_backtest_create_verbose_lists_every_filled_symbol(monkeypatch):
-    monkeypatch.setenv("LOGGING_LEVEL", "INFO")
-    lines = [
-        _FILLED_ABC,
-        _FILLED_XYZ,
-        "Missing prices for DEF on 2026-05-06, filled with the previous close. No trades on those days.",
-    ]
-    result = _create_with_filled_prices(monkeypatch, lines)
-    assert result.exit_code == 0
-    shown = [line for line in result.output.splitlines() if line.startswith("⚠")]
-    assert shown == [
-        "⚠ Missing prices for 3 symbols, filled with the previous close. No trades on those days.",
-        *[f"⚠ {line}" for line in lines],
+@pytest.mark.parametrize("message", [_MISSING_ONE_DAY, _MISSING_SEVERAL_DAYS, _MISSING_TWO_SYMBOLS])
+def test_backtest_create_missing_sessions_prints_the_message_as_sent(message, monkeypatch):
+    """The broker's missing-session failure is the step message, printed under one ✖."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(message)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    # The broker already removed the backtest.
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {message}\n"
+    assert "⚠" not in result.output
+    assert "previous close" not in result.output
+
+
+def test_backtest_create_missing_sessions_lists_symbols_on_their_own_lines(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_MISSING_TWO_SYMBOLS)):
+        result = _create_from_file()
+
+    assert result.output.splitlines() == [
+        "Using provider: yahoo (from --provider)",
+        (
+            "✖ Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading days for 2 symbols. "
+            "The backtest wasn't saved."
+        ),
+        "  AAA: 2024-02-14",
+        "  BBB: 2024-02-20 to 2024-02-21, 2024-03-05",
+        "Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.",
     ]
 
 
 def test_backtest_create_without_notices_prints_no_warning(monkeypatch):
-    # A broker without the notices field, or an ingest with nothing filled,
+    # A broker without the notices field, or a step with nothing to say,
     # sends a completed step with empty notices and an empty message.
     monkeypatch.delenv("LOGGING_LEVEL", raising=False)
-    result = _create_with_filled_prices(monkeypatch, [])
+    result = _create_with_notices(monkeypatch, [])
     assert result.exit_code == 0
     assert "⚠" not in result.output
     assert "✖" not in result.output
@@ -421,9 +443,9 @@ def test_backtest_create_without_notices_prints_no_warning(monkeypatch):
 def test_step_notices_round_trip_and_leave_message_empty():
     # notices is its own field, so the failure text in message stays empty
     # and a client built before notices existed skips the field.
-    step = common_pb.Step(state=common_pb.State.COMPLETED, notices=[_FILLED_ABC, _FILLED_XYZ])
+    step = common_pb.Step(state=common_pb.State.COMPLETED, notices=["First notice.", "Second notice."])
     decoded = common_pb.Step.from_binary(step.to_binary())
-    assert list(decoded.notices) == [_FILLED_ABC, _FILLED_XYZ]
+    assert list(decoded.notices) == ["First notice.", "Second notice."]
     assert decoded.message == ""
     # A step from a broker without notices decodes to an empty list.
     legacy = common_pb.Step.from_binary(common_pb.Step(state=common_pb.State.COMPLETED).to_binary())
@@ -643,8 +665,8 @@ _INGEST_OTHER_COPY = (
 )
 _INGEST_NOT_REMOVED_COPY = (
     "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
-    "The backtest couldn't be removed, so run `fbull backtest delete from_file` before you run "
-    "`fbull backtest create` again."
+    "The backtest was partly saved and couldn't be removed. Run `fbull backtest delete from_file` first. "
+    "Run `fbull backtest create` again once it's fixed."
 )
 
 

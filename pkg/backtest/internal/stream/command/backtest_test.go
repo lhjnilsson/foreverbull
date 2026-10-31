@@ -47,6 +47,8 @@ type BacktestCommandTest struct {
 	mdclient   *financeServicePB.MockMarketdataClient
 
 	backtest *backtest.Backtest
+	// restore puts back the session clock fixClock replaced.
+	restore func()
 }
 
 func TestBacktest(t *testing.T) {
@@ -95,6 +97,8 @@ func (test *BacktestCommandTest) SetupTest() {
 
 	test.etfscraper = new(dependency.MockETFScraper)
 	test.mdclient = new(financeServicePB.MockMarketdataClient)
+	test.resetBars()
+	test.fixClock(testClock)
 }
 
 func (test *BacktestCommandTest) date(s string) time.Time {
@@ -122,6 +126,7 @@ func (test *BacktestCommandTest) mockGetAsset(symbol string, err error) {
 }
 
 func (test *BacktestCommandTest) TearDownTest() {
+	test.restoreClock()
 }
 
 func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
@@ -402,6 +407,11 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 		Provider:  supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
+	// Yahoo keeps FB's whole history under META, so FB has no bars of its
+	// own. FB and META are one instrument in asset_symbol, so the check
+	// reads them together and the create passes.
+	test.coverDays(download, []string{"2022-01-03", "2022-01-04"}, "OEF", "AAPL", "META", "MSFT")
+
 	err = command.DownloadFinancialData(ctx, download)
 	test.Require().NoError(err)
 	test.mdclient.AssertExpectations(test.T())
@@ -667,6 +677,8 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 		Provider:  supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
+	test.coverDays(msg, []string{"2022-01-03", "2022-01-04"}, "SPY", "AAPL")
+
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().NoError(err)
 	test.mdclient.AssertExpectations(test.T())
@@ -697,6 +709,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStopsOnBlockedProvider
 	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
 	clientStreamMock.On("Recv", mock.Anything).Return(nil, status.Error(codes.FailedPrecondition, blocked))
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+	useEngine(msg, weekdayEngine())
 
 	err = command.DownloadFinancialData(context.TODO(), msg)
 	test.Require().EqualError(err, blocked)
@@ -729,6 +742,7 @@ func (test *BacktestCommandTest) downloadMessage(name string) *stream.MockMessag
 		payload := args.Get(0).(*bs.DownloadFinancialDataCommand)
 		payload.BacktestName = name
 	})
+	useEngine(msg, weekdayEngine())
 	return msg
 }
 
@@ -1172,11 +1186,11 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 // An ingest error reported by the data service removes the backtest, its
 // periods and its assets, so the same create works again without a delete.
 // The step message is the user-facing copy and carries no password.
-// Filled sessions do not fail the ingest. The handler completes with a
-// notice so the CLI shows which prices were filled, and the backtest stays.
+// A notice does not fail the ingest. The handler completes with it so the
+// CLI shows it, and the backtest stays.
 func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
 	backtests := repository.Backtest{Conn: test.db}
-	line := "Missing prices for AAPL on 2022-03-02, filled with the previous close. No trades on those days."
+	line := "Example notice for AAPL on 2022-03-02."
 	ziplineEngine := new(engine.MockEngine)
 	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return([]string{line}, nil)
 

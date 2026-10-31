@@ -17,6 +17,8 @@ import (
 // AlpacaBars downloads daily bars with a profile's key. Asset metadata stays on Yahoo.
 type AlpacaBars struct {
 	md *marketdata.Client
+	// now replaces the clock, so tests can fix today's session.
+	now func() time.Time
 }
 
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
@@ -61,9 +63,25 @@ func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
 }
 
 func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	endAt := time.Now().UTC()
+	now := clockNow(a.now)
+	until := now.UTC()
 	if end != nil {
-		endAt = *end
+		// A daily bar is stamped at midnight New York, after an end at
+		// 00:00 UTC on the same date, so the end date needs the next
+		// midnight New York.
+		until = inclusiveFetchEnd(*end)
+	}
+	// Today's unfinished session is never asked for: while the market is
+	// open, Alpaca's bar for today has prices and would be stored as final.
+	// Alpaca's end is inclusive and a daily bar is stamped at midnight New
+	// York, so a fetch that ends at a midnight New York stops just before it.
+	limit, ok := completedFetchEnd(start, until, now)
+	if !ok {
+		return []*pb.OHLC{}, nil
+	}
+	endAt := until
+	if end != nil || limit.Before(until) {
+		endAt = limit.Add(-time.Nanosecond)
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
 	symbol = alpacaSymbol(symbol)
@@ -80,8 +98,13 @@ func (a *AlpacaBars) GetOHLC(symbol string, start time.Time, end *time.Time) ([]
 		}
 	}
 
+	last := lastFetchedSession(end, now)
 	ohlcs := make([]*pb.OHLC, 0, len(bars))
 	for _, bar := range bars {
+		// Alpaca could send today's live bar, or a later day's, past the end.
+		if afterLastSession("alpaca", symbol, bar.Timestamp.In(xnysZone), last) {
+			continue
+		}
 		ohlcs = append(ohlcs, &pb.OHLC{
 			Open:      bar.Open,
 			High:      bar.High,

@@ -480,8 +480,8 @@ func memberLookupError(name string, failures []memberLookupFailure) error {
 	if len(failures) == 1 {
 		symbol := failures[0].symbol
 		if failures[0].noISIN {
-			return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s",
-				name, noISINLead(symbol), fmt.Sprintf(noISINNextStep, symbol)))
+			return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s",
+				name, noISINLead(symbol), notSavedSentence, fmt.Sprintf(noISINNextStep, symbol)))
 		}
 		return plainSentence(fmt.Sprintf(
 			"Couldn't load data for backtest '%s': %s didn't respond when looking up %s. The backtest wasn't saved. "+
@@ -709,6 +709,11 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 
 	startDate := b.Periods[0].StartDate
 	endDate := b.Periods[len(b.Periods)-1].EndDate
+	period, err := readClosedPeriod(ctx, msg, backtests, command.BacktestName, backtestID,
+		pb.DateToTime(startDate), pb.DateToTime(endDate))
+	if err != nil {
+		return err
+	}
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: startDate,
@@ -722,6 +727,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		}
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
+	// Days the provider sent no price for, anywhere in the range, per
+	// request symbol. They join the stored-bar check, so create fails once.
+	reported := make(map[string][]time.Time)
 	for {
 		msg, err := rsp.Recv()
 		if err != nil {
@@ -738,13 +746,19 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
+			if days, ok := providerMissingDays(msg.GetError()); ok {
+				reported[msg.Symbol] = append(reported[msg.Symbol], days...)
+				continue
+			}
 			// Any per-symbol download failure must fail create. Disabling the
 			// member and exiting 0 left an incomplete universe with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
-	return nil
+
+	return checkMissingSessions(ctx, db, backtests, command.BacktestName, backtestID,
+		strings.ToLower(provider), symbols, reported, period)
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
@@ -782,16 +796,16 @@ func isRefusedBarError(text string) bool {
 	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
 }
 
-// providerFaultNextStep ends a sentence about bad provider data. Since #209 a
-// bad bar is normally dropped and filled, so reaching this means an adapter
-// missed one; a plain retry won't help.
-const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
+// providerFaultNextStep ends a sentence about bad provider data. A bad bar
+// normally fails create as a missing session (universe.md §7.5), so reaching
+// this means an adapter missed one; a plain retry won't help.
+const providerFaultNextStep = "Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
 // noPriceDataNextStep ends the sentence when a provider returned no bars. The
-// finance service already retried an empty download once, so a result that is
-// still empty is most often a wrong or delisted symbol; checking it comes first.
-const noPriceDataNextStep = "The backtest wasn't saved. Check the symbol and dates, or try another provider " +
+// finance service already retried an empty download once, so a wrong symbol
+// or wrong dates come first, then another provider.
+const noPriceDataNextStep = "Check the symbol and dates, or try another provider " +
 	"with --provider, then run `fbull backtest create` again."
 
 // noISINLead says that the asset lookup can't identify symbol, an asked
@@ -804,54 +818,49 @@ func noISINLead(symbol string) string {
 // noISINNextStep ends the sentence when the asset lookup can't identify an
 // asked equity. A retry or another price provider can't help; only leaving
 // it out can.
-const noISINNextStep = "The backtest wasn't saved. Remove %s, then run `fbull backtest create` again."
+const noISINNextStep = "Remove %s, then run `fbull backtest create` again."
 
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
-// omits a member. The lead names the symbol; raw finance/gRPC text stays out
-// of the user sentence. "Nothing was saved" or "wasn't saved" only when the
-// delete worked.
+// omits a member.
 func discardSymbolDownloadError(ctx context.Context, backtests repository.Backtest, name, id, provider, symbol string, start, end *pb.Date, errText string) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after download error")
 	}
-	var lead string
-	nextStep := "Nothing was saved, so run `fbull backtest create` again once it's fixed."
-	generic := false
-	if isNoPriceDataError(errText) {
-		startText := pb.DateToDateString(start)
-		endText := pb.DateToDateString(end)
-		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol, startText, endText)
-		nextStep = noPriceDataNextStep
-	} else if financeapi.IsNoISIN(errText) {
+	return plainSentence(symbolDownloadMessage(name, provider, symbol, start, end, errText, removed))
+}
+
+// symbolDownloadMessage is the message for a symbol's STATUS_ERROR. The lead
+// names the symbol; raw finance/gRPC text stays out of the user sentence.
+// "wasn't saved" only when the delete worked; otherwise it was partly saved
+// and the step says to delete it first.
+func symbolDownloadMessage(name, provider, symbol string, start, end *pb.Date, errText string, removed bool) string {
+	var lead, next string
+	switch {
+	case isNoPriceDataError(errText):
+		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol,
+			pb.DateToDateString(start), pb.DateToDateString(end))
+		next = noPriceDataNextStep
+	case financeapi.IsNoISIN(errText):
 		lead = noISINLead(symbol)
-		nextStep = fmt.Sprintf(noISINNextStep, symbol)
-	} else if isRefusedBarError(errText) {
+		next = fmt.Sprintf(noISINNextStep, symbol)
+	case isRefusedBarError(errText):
 		lead = errText + "."
-		nextStep = providerFaultNextStep
-	} else if provider, ok := ambiguousSymbolProvider(errText, symbol); ok {
-		lead = fmt.Sprintf("%s has more than one instrument for %s.", provider, symbol)
-		nextStep = "The backtest wasn't saved. Use the exact ticker with its exchange suffix (for example VOD.L), " +
-			"or use another provider with --provider."
-	} else {
-		generic = true
-		lead = fmt.Sprintf("couldn't download prices for %s.", symbol)
+		next = providerFaultNextStep
+	default:
+		if ambiguous, ok := ambiguousSymbolProvider(errText, symbol); ok {
+			lead = fmt.Sprintf("%s has more than one instrument for %s.", ambiguous, symbol)
+			next = "Use the exact ticker with its exchange suffix (for example VOD.L), " +
+				"or use another provider with --provider."
+		} else {
+			lead = fmt.Sprintf("the price download failed for %s.", symbol)
+			next = "Try again in a few minutes, or use another provider with --provider."
+		}
 	}
-	if removed && generic {
-		return plainSentence(fmt.Sprintf(
-			"Couldn't load data for backtest '%s': the price download failed for %s. The backtest wasn't saved. "+
-				"Try again in a few minutes, or use another provider with --provider.", name, symbol))
-	}
-	if removed {
-		return plainSentence(fmt.Sprintf(
-			"Couldn't load data for backtest '%s': %s %s",
-			name, lead, nextStep))
-	}
-	return plainSentence(fmt.Sprintf(
-		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
-		name, lead, name))
+	saved, next := savedAndNext(name, next, removed)
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s", name, lead, saved, next)
 }
 
 // invalidTickerError matches the finance service's InvalidArgument refusal
@@ -895,16 +904,17 @@ func invalidTickerPosition(err error, sent int) (int, bool) {
 func discardInvalidTickerBacktest(ctx context.Context, backtests repository.Backtest, name, id string, position, total int) error {
 	err := deleteStoredBacktest(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
-	lead := fmt.Sprintf("symbol %d of %d isn't a valid ticker. Use 1 to 32 letters, digits, or . ^ = _ -.", position, total)
-	if removed {
-		return plainSentence(fmt.Sprintf(
-			"Couldn't load data for backtest '%s': %s The backtest wasn't saved. "+
-				"Fix that symbol and run `fbull backtest create` again.", name, lead))
+	if !removed {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after an invalid ticker")
 	}
-	log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after an invalid ticker")
-	return plainSentence(fmt.Sprintf(
-		"Couldn't load data for backtest '%s': %s The backtest couldn't be removed, so run `fbull backtest delete %s` before you run `fbull backtest create` again.",
-		name, lead, name))
+	return plainSentence(invalidTickerMessage(name, position, total, removed))
+}
+
+// invalidTickerMessage is the message for a refused request symbol.
+func invalidTickerMessage(name string, position, total int, removed bool) string {
+	lead := fmt.Sprintf("symbol %d of %d isn't a valid ticker. Use 1 to 32 letters, digits, or . ^ = _ -.", position, total)
+	saved, next := savedAndNext(name, "Fix that symbol and run `fbull backtest create` again.", removed)
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s", name, lead, saved, next)
 }
 
 // blockedDownload returns the finance service's sentence when the price
@@ -996,11 +1006,14 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	notices, err := engine.Ingest(ctx, b, object)
 	if err != nil {
+		if refused := ingestMissingSessions(ctx, engine, db, backtests, b, backtestID, err); refused != nil {
+			return refused
+		}
 		return discardFailedIngest(ctx, backtests, b.Name, backtestID, err)
 	}
 	if len(notices) > 0 {
 		// The backtest is kept. The notice rides on the completed INGESTING
-		// step, so the CLI prints which prices were filled.
+		// step, so the CLI prints it.
 		return &stream.Notice{Lines: notices}
 	}
 	return nil

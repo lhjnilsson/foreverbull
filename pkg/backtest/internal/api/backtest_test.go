@@ -228,7 +228,7 @@ func (test *BacktestServerTest) TestCreateBacktest() {
 		// The ingest stores the backtest before INGESTING completes, and the
 		// server then loads it and sends it, so the test stores it first.
 		test.createBacktest("noticed")
-		lines := []string{"Missing prices for XYZ on 2022-03-02, filled with the previous close. No trades on those days."}
+		lines := []string{"Example notice for XYZ on 2022-03-02."}
 		responses := test.createStream("noticed", []*streamPb.Orchestration_Step{
 			{Num: 3, State: pb.State_STATE_RUNNING},
 			{Num: 3, State: pb.State_STATE_COMPLETED, Notices: lines},

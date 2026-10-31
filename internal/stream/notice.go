@@ -3,7 +3,7 @@ package stream
 import "strings"
 
 // Notice is returned by a command that completed but has lines the user
-// must read, such as prices the ingest filled. It is not a failure: the
+// must read. It is not a failure: the
 // subscriber publishes STATE_COMPLETED with Lines in the state's notices
 // field and leaves its error empty, WaitForCompletion returns the Notice,
 // and RunOrchestration emits a completed step that carries Lines in its

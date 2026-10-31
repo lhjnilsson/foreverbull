@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -108,9 +109,11 @@ func joinDetail(lead, detail string) string {
 	return lead + ": " + detail
 }
 
-// ingestFailureLead is the fixed plain sentence for the failure, then the
-// sentence that ends the message when the backtest was removed.
-func ingestFailureLead(failure ingestFailure) (string, string) {
+// ingestFailureLead is the fixed plain sentence for the failure, the
+// sentence that ends the message when the backtest was removed, and the next
+// step that follows the delete step when it couldn't be removed. Each is
+// written out as it reads.
+func ingestFailureLead(failure ingestFailure) (string, string, string) {
 	switch failure.kind {
 	case ingestMissingDriver:
 		reason := "the data service is missing its database driver"
@@ -118,30 +121,57 @@ func ingestFailureLead(failure ingestFailure) (string, string) {
 			reason += " (" + failure.driver + ")"
 		}
 		return reason + ". This is a bug in the Foreverbull install, not in your strategy or settings.",
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed."
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.",
+			"Run `fbull backtest create` again once it's fixed."
 	case ingestUnreachable:
 		return "Foreverbull's data service isn't reachable. Run `fbenv status` to check it's running.",
-			"Nothing was saved, so run `fbull backtest create` again after that."
+			"Nothing was saved, so run `fbull backtest create` again after that.",
+			"Run `fbull backtest create` again after that."
 	case ingestFailed:
 		return ingestFallbackReason + ".",
-			"Nothing was saved, so run `fbull backtest create` again once it's fixed."
+			"Nothing was saved, so run `fbull backtest create` again once it's fixed.",
+			"Run `fbull backtest create` again once it's fixed."
 	default:
 		panic(fmt.Sprintf("unknown ingest failure kind %d", failure.kind))
 	}
 }
 
+// notSavedSentence says a failed create kept nothing. It is only true when
+// the backtest was removed.
+const notSavedSentence = "The backtest wasn't saved."
+
+// notRemovedSentence replaces notSavedSentence when the backtest couldn't be
+// removed after a failed create.
+const notRemovedSentence = "The backtest was partly saved and couldn't be removed."
+
+// deleteFirst is the next step when the backtest couldn't be removed: its
+// own sentence to delete it first, then the step the failure gives when it
+// was removed, exactly as that step reads.
+func deleteFirst(name, next string) string {
+	return fmt.Sprintf("Run `fbull backtest delete %s` first. %s", name, next)
+}
+
+// savedAndNext is the saved sentence and the next step of a failed create:
+// notSavedSentence and next when the backtest was removed, otherwise
+// notRemovedSentence and next behind the delete-first step.
+func savedAndNext(name, next string, removed bool) (string, string) {
+	if removed {
+		return notSavedSentence, next
+	}
+	return notRemovedSentence, deleteFirst(name, next)
+}
+
 // ingestFailureMessage is the step's whole message. "Nothing was saved" is
-// only true when the backtest was removed; otherwise the user has to delete
-// it before the same create can run again.
+// only true when the backtest was removed; otherwise it was partly saved,
+// and the user deletes it first.
 func ingestFailureMessage(name string, failure ingestFailure, removed bool) string {
-	lead, saved := ingestFailureLead(failure)
+	lead, saved, next := ingestFailureLead(failure)
 	var text strings.Builder
 	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': %s ", name, lead)
 	if removed {
 		text.WriteString(saved)
 	} else {
-		fmt.Fprintf(&text, "The backtest couldn't be removed, so run `fbull backtest delete %s` "+
-			"before you run `fbull backtest create` again.", name)
+		text.WriteString(notRemovedSentence + " " + deleteFirst(name, next))
 	}
 	if failure.details != "" {
 		text.WriteString(ingestDetailsMarker)
@@ -156,12 +186,31 @@ func ingestFailureMessage(name string, failure ingestFailure, removed bool) stri
 // periods and its assets are removed so a retry under the same name works.
 // Bars are stored per provider and symbol, not per backtest, so they are
 // kept. The returned error is the step's whole message.
+//
+// A canceled create returns ctx.Err() itself, unwrapped, so it reads as
+// every other canceled create and never as a data service failure. The
+// backtest is still removed, on a context that outlives the cancel.
 func discardFailedIngest(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
-	failure := readIngestFailure(cause)
-	err := deleteStoredBacktest(ctx, backtests, name, id)
+	err := deleteAfterFailure(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed ingest")
 	}
-	return plainSentence(ingestFailureMessage(name, failure, removed))
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
+}
+
+// cleanupTimeout bounds the delete that runs after a failed or canceled
+// create.
+const cleanupTimeout = 10 * time.Second
+
+// deleteAfterFailure deletes this create's backtest on ctx without its
+// cancel, so a canceled create still leaves nothing behind, within
+// cleanupTimeout.
+func deleteAfterFailure(ctx context.Context, backtests repository.Backtest, name, id string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	return deleteStoredBacktest(cleanupCtx, backtests, name, id)
 }

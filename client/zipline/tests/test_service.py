@@ -45,6 +45,31 @@ class TestCalendarService:
         response = stub.list_calendar_dates(req)
         assert response
 
+    def test_list_calendar_dates_leaves_out_good_friday(self, stub: calendar_service_pb_grpc.CalendarClientSync):
+        # The broker reads these sessions to find missing prices, so a
+        # holiday must not be a session.
+        req = calendar_service_pb.ListCalendarDatesRequest(
+            code="XNYS",
+            start=pb_utils.from_pydate_to_proto_date(date(2024, 3, 27)),
+            end=pb_utils.from_pydate_to_proto_date(date(2024, 4, 2)),
+        )
+        response = stub.list_calendar_dates(req)
+        days = [pb_utils.from_proto_date_to_pydate(day.date) for day in response.dates]
+        assert days == [date(2024, 3, 27), date(2024, 3, 28), date(2024, 4, 1), date(2024, 4, 2)]
+
+    def test_list_calendar_dates_reaches_back_like_the_ingester(
+        self, stub: calendar_service_pb_grpc.CalendarClientSync
+    ):
+        # exchange_calendars alone starts 20 years ago; the ingester's
+        # calendar starts in 1990, and a create must not fail before that.
+        req = calendar_service_pb.ListCalendarDatesRequest(
+            code="XNYS",
+            start=pb_utils.from_pydate_to_proto_date(date(1995, 1, 3)),
+            end=pb_utils.from_pydate_to_proto_date(date(1995, 1, 6)),
+        )
+        response = stub.list_calendar_dates(req)
+        assert len(response.dates) == 4
+
 
 class TestBacktestService:
     @pytest.fixture
@@ -137,6 +162,25 @@ class TestIngestFailure:
             "the data service could not connect to database at "
             "postgresql://foreverbull:***@db.internal:5432/foreverbull"
             "\nDetails: OperationalError: connection refused"
+        )
+
+    def test_missing_sessions_are_data_loss_with_every_gap(self):
+        # The broker reads this reason and names the gaps in the create's
+        # missing-session sentence, so its shape is fixed.
+        import pandas as pd
+
+        from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
+
+        exc = MissingSessionsError(
+            {
+                "AAA": list(pd.DatetimeIndex(["2024-02-14"])),
+                "BBB": list(pd.DatetimeIndex(["2024-02-20", "2024-02-21", "2024-03-05"])),
+            }
+        )
+        code, details = service.ingest_failure(exc)
+        assert code == grpc.StatusCode.DATA_LOSS
+        assert details.split("\nDetails: ")[0] == (
+            "missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05"
         )
 
     def test_other_error_is_redacted(self):

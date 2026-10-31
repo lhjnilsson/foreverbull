@@ -19,7 +19,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from zipline.utils.calendar_utils import get_calendar
 from zipline.utils.cli import maybe_show_progress
 
-from foreverbull.models.finance import missing_prices_line
 from foreverbull.models.finance import ohlc_provider
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -207,46 +206,51 @@ def drop_unpriced_bars(bars: pd.DataFrame) -> pd.DataFrame:
 
     Such a row is a missing bar, not a price: the broker stored Yahoo's
     null as 0 before it refused non-positive prices, and Zipline would
-    read a 0 close as a -100% day. Dropped rows are filled like any other
-    missing session and reported.
+    read a 0 close as a -100% day. A dropped row is a missing session, which
+    fails the create.
     """
     priced = bars[_PRICE_COLUMNS].gt(0).all(axis=1)
     return cast(pd.DataFrame, bars[priced])
 
 
-def fill_missing_sessions(bars: pd.DataFrame, sessions: pd.DatetimeIndex) -> tuple[pd.DataFrame, list[pd.Timestamp]]:
-    """Fill sessions between a sid's first and last bar that have no bar.
+def missing_sessions(bars: pd.DataFrame, sessions: pd.DatetimeIndex) -> list[pd.Timestamp]:
+    """Sessions between a sid's first and last bar that have no bar.
 
-    Zipline's daily bar writer refuses a sid whose rows skip a session, so
-    one missing bar would fail the whole ingest. A filled session takes the
-    previous close as open, high, low, and close, and volume 0, so a held
-    position keeps its value instead of dropping to 0, and an order on that
-    day does not fill under volume slippage. Returns the filled sessions so
-    the caller can tell the user; nothing before the first bar is filled.
+    The broker fails ``fbull backtest create`` on these before the ingest
+    (universe.md section 7.5), so a backtest never runs on a price nobody
+    sent. Days before the first bar or after the last are not missing.
     """
     if bars.empty:
-        return bars, []
+        return []
     first, last = bars.index[0], bars.index[-1]
     in_range = sessions[(sessions >= first) & (sessions <= last)]
-    missing = in_range.difference(bars.index)
-    if missing.empty:
-        return bars, []
-    filled = bars.reindex(bars.index.union(missing))
-    previous_close = filled["close"].ffill()
-    gap = filled.index.isin(missing)
-    for column in _PRICE_COLUMNS:
-        filled.loc[gap, column] = previous_close[gap]
-    filled.loc[gap, "volume"] = 0
-    filled["volume"] = filled["volume"].astype(bars["volume"].dtype)
-    return cast(pd.DataFrame, filled), list(missing)
+    return list(in_range.difference(bars.index))
 
 
-def symbol_on_day(mapping_rows: list[tuple[str, pd.Timestamp, pd.Timestamp]], day: pd.Timestamp) -> str:
-    """The ticker a sid is listed under on day, for the missing-price line."""
-    for symbol, start, end in mapping_rows:
-        if start <= day <= end:
-            return symbol
-    return mapping_rows[-1][0]
+class MissingSessionsError(ValueError):
+    """Sids with no bar on sessions inside their span; nothing is filled.
+
+    gaps maps each ticker to its missing sessions, oldest first. The text is
+    the reason the broker reads to name them in the create's missing-session
+    sentence (pkg/backtest/universe.md section 7.5), so keep its shape:
+    ``missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-03-05``.
+    """
+
+    def __init__(self, gaps: dict[str, list[pd.Timestamp]]):
+        self.gaps = gaps
+        listed = "; ".join(
+            f"{symbol} {','.join(day.date().isoformat() for day in days)}" for symbol, days in gaps.items()
+        )
+        super().__init__(f"missing prices on trading days: {listed}")
+
+
+def ticker_on_day(group: InstrumentGroup, from_date: date, to_date: date, day: pd.Timestamp) -> str:
+    """The ticker of the group whose dates hold day, else the last one."""
+    windows = alias_windows(group.aliases, from_date, to_date)
+    for alias, start, end in windows:
+        if pd.Timestamp(start) <= day <= pd.Timestamp(end):
+            return alias.symbol
+    return group.aliases[-1].symbol
 
 
 def session_labels(times) -> pd.DatetimeIndex:
@@ -313,8 +317,6 @@ class SQLIngester:
     ):
         self.backtest = backtest
         self.engine = engine or DatabaseEngine()
-        # Sessions filled with the previous close, per ticker, for the notice.
-        self.missing_prices: dict[str, list[date]] = {}
         if hasattr(self.engine, "provider"):
             self.engine.provider = bundle_provider(backtest)
         self._aliases = aliases
@@ -357,10 +359,6 @@ class SQLIngester:
     def ingest_groups(self) -> list[InstrumentGroup]:
         return group_symbols_by_instrument(ingest_symbols(self.backtest), self.load_aliases())
 
-    def missing_price_notices(self) -> list[str]:
-        """One line per ticker that had sessions filled, sorted by ticker."""
-        return [missing_prices_line(symbol, days) for symbol, days in sorted(self.missing_prices.items())]
-
     def writer(self, show_progress: bool, calendar=None) -> Iterator[tuple[int, pd.DataFrame]]:
         from_date = pb_utils.from_proto_date_to_pydate(self.backtest.periods[0].start_date)
         to_date = pb_utils.from_proto_date_to_pydate(self.backtest.periods[-1].end_date)
@@ -371,6 +369,7 @@ class SQLIngester:
         # The auto-close of a sid depends on the newest bar of every member,
         # so the rows are written once every sid's bars are read.
         ends: list[tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
+        gaps: dict[str, list[pd.Timestamp]] = {}
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
             for index, group in enumerate(groups):
                 frames = {
@@ -381,13 +380,20 @@ class SQLIngester:
                 if combined is None:
                     symbols = ", ".join(alias.symbol for alias in group.aliases)
                     raise ValueError(f"No data found for {symbols} on {from_date} to {to_date}")
-                combined, filled_sessions = fill_missing_sessions(combined, sessions)
-                for day in filled_sessions:
-                    symbol = symbol_on_day(mapping_rows, day)
-                    self.missing_prices.setdefault(symbol, []).append(day.date())
+                missing = missing_sessions(combined, sessions)
+                if missing:
+                    # The broker checks this before the ingest. If a bar went
+                    # missing in between, fail rather than write a bundle
+                    # Zipline would refuse or a price nobody sent. Every sid
+                    # is read first, so one error names every gap.
+                    for day in missing:
+                        gaps.setdefault(ticker_on_day(group, from_date, to_date, day), []).append(day)
+                    continue
                 is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
                 ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
                 yield index, combined
+        if gaps:
+            raise MissingSessionsError(gaps)
         member_ends = [last for _, last, _, is_benchmark, _ in ends if not is_benchmark] or [
             last for _, last, *_ in ends
         ]
@@ -429,7 +435,6 @@ class SQLIngester:
         output_dir,
     ):
         self._df_metadata = self.create_metadata()
-        self.missing_prices = {}
         daily_bar_writer.write(self.writer(show_progress, calendar), show_progress=show_progress)
         asset_db_writer.write(equities=self._df_metadata)
         adjustment_writer.write()
