@@ -14,14 +14,26 @@ import (
 // runOrchestrationStep returns the notices of commands that completed with
 // one. A notice is not an error, so it must not cancel the step's other
 // commands through the errgroup context.
-func (s *NATSStream) runOrchestrationStep(ctx context.Context, step *pb.Orchestration_Step) ([]string, error) {
+//
+// A command's progress goes to out as a RUNNING step whose Error is the
+// text; UpdateOrchestration copies it into the step's message.
+func (s *NATSStream) runOrchestrationStep(ctx context.Context, step *pb.Orchestration_Step,
+	out chan<- *pb.Orchestration_Step,
+) ([]string, error) {
 	g, ctx := errgroup.WithContext(ctx)
+	progress := func(text string) {
+		running := &pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_RUNNING, Error: &text}
+		select {
+		case out <- running:
+		case <-ctx.Done():
+		}
+	}
 	var mu sync.Mutex
 	notices := make([]string, 0)
 	for _, command := range step.Messages {
 		g.Go(func() error {
 			msg := &message{msg: command}
-			err := s.Publish(ctx, msg, WaitForCompletion())
+			err := s.Publish(ctx, msg, WaitForCompletion(progress))
 			var notice *Notice
 			if errors.As(err, &notice) {
 				mu.Lock()
@@ -44,7 +56,7 @@ func (s *NATSStream) RunOrchestration(ctx context.Context, o *pb.Orchestration) 
 			runningStep := pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_RUNNING}
 
 			out <- &runningStep
-			notices, err := s.runOrchestrationStep(ctx, step)
+			notices, err := s.runOrchestrationStep(ctx, step, out)
 			if err != nil {
 				log.Warn().Err(err).Msg("error running orchestration step")
 				errStr := err.Error()
