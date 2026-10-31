@@ -727,6 +727,8 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return err
 	}
+	progress := newDownloadProgress(ctx, finance.DownloadSymbolCount(symbols))
+	progress.start()
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: startDate,
@@ -767,6 +769,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
 			if days, ok := providerMissingDays(msg.GetError()); ok {
 				reported[msg.Symbol] = append(reported[msg.Symbol], days...)
+				progress.symbolDone()
 				continue
 			}
 			// Any per-symbol download failure must fail create. Disabling the
@@ -774,6 +777,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
+		progress.symbolDone()
 	}
 
 	return checkMissingSessions(ctx, db, backtests, command.BacktestName, backtestID,
