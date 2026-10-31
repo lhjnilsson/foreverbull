@@ -106,28 +106,29 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 
 const downloadWorkers = 10
 
-// downloadSymbols returns the request's symbols with repeats left out, in
-// request order, so each symbol is fetched, stored and reported once.
+// downloadSymbols returns the request's symbols under their stored names
+// (marketdata.StoredSymbol: BRK.B, BRK-B and BRKB are BRKB) with repeats left
+// out, in request order, so each symbol is fetched, stored and reported once.
 //
 // More than marketdata.MaxDownloadSymbols distinct symbols is
 // InvalidArgument; counting stops at the first symbol over the cap. Nothing
 // is fetched or stored then. The caller has already refused a symbol outside
 // the ticker pattern (blank included) by its position.
 func downloadSymbols(symbols []string) ([]string, error) {
-	// Distinct strings as typed, the count marketdata.DownloadSymbolCount
-	// gives backtest create. Switches to StoredSymbol when
-	// lhjnilsson/foreverbull#223 lands.
+	// Distinct stored names, the count marketdata.DownloadSymbolCount gives
+	// backtest create.
 	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
 	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
 	for _, symbol := range symbols {
-		if _, ok := seen[symbol]; ok {
+		name := marketdata.StoredSymbol(symbol)
+		if _, ok := seen[name]; ok {
 			continue
 		}
 		if len(out) == marketdata.MaxDownloadSymbols {
 			return nil, status.Error(codes.InvalidArgument, tooManySymbolsMessage)
 		}
-		seen[symbol] = struct{}{}
-		out = append(out, symbol)
+		seen[name] = struct{}{}
+		out = append(out, name)
 	}
 	return out, nil
 }

@@ -8,7 +8,8 @@ import "github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketd
 const MaxDownloadSymbols = marketdata.MaxDownloadSymbols
 
 // DownloadSymbolCount counts symbols the way the finance service counts them
-// against MaxDownloadSymbols: distinct strings as typed, so a repeat counts
+// against MaxDownloadSymbols: distinct StoredSymbol names, so a repeat and
+// every spelling of one listed share class (BRK.B, BRK-B and BRKB) count
 // once.
 func DownloadSymbolCount(symbols []string) int {
 	return marketdata.DownloadSymbolCount(symbols)

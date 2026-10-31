@@ -18,8 +18,9 @@ import (
 
 // The price download for a create is one request, and the finance service
 // refuses one with more than finance.MaxDownloadSymbols distinct symbols. The
-// broker counts the same way (finance.DownloadSymbolCount: distinct strings
-// as typed) before it stores the backtest, so an oversized create stores
+// broker counts the same way (finance.DownloadSymbolCount: distinct
+// finance.StoredSymbol names, so BRK.B, BRK-B and BRKB are one) before it
+// stores the backtest, so an oversized create stores
 // nothing and never reaches a provider. The count it shows is that count, and
 // the limit is the finance constant. The finance service's own refusal is
 // only a backstop for other callers; if a create ever gets it, the create
