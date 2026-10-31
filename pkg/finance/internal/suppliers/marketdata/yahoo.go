@@ -357,6 +357,9 @@ type IndexResponse struct {
 	} `json:"quoteSummary"`
 }
 
+// indexLookupWorkers caps the concurrent asset lookups of one GetIndex.
+const indexLookupWorkers = 4
+
 // GetIndex returns the index's member assets followed by the index asset.
 // Every member is looked up; if any lookup fails the index fails, and the
 // error names each member that failed.
@@ -387,12 +390,17 @@ func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset,
 
 	components := result.Summary.Result[0].Components.Components
 	// Each lookup writes only its own slot, so all results are in once
-	// Wait returns and no slot is shared between goroutines.
+	// Wait returns and no slot is shared between goroutines. At most
+	// indexLookupWorkers lookups run at once: they share the Yahoo limiter
+	// with every download, and a large index must not start hundreds of
+	// goroutines.
 	assets := make([]*pb.Asset, len(components)+1)
 	errs := make([]error, len(components)+1)
+	slots := make(chan struct{}, indexLookupWorkers)
 	var wg sync.WaitGroup
 	lookup := func(i int, name, kind string) {
 		defer wg.Done()
+		defer func() { <-slots }()
 		a, err := y.GetAsset(ctx, name)
 		if err == nil && a == nil {
 			err = errors.New("no asset returned")
@@ -404,9 +412,11 @@ func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset,
 		assets[i] = a
 	}
 	for i, component := range components {
+		slots <- struct{}{}
 		wg.Add(1)
 		go lookup(i, component, "component")
 	}
+	slots <- struct{}{}
 	wg.Add(1)
 	go lookup(len(components), symbol, "index")
 	wg.Wait()
