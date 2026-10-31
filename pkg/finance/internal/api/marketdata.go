@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
@@ -104,6 +105,39 @@ func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetInde
 }
 
 const downloadWorkers = 10
+
+// downloadSymbols returns the request's symbols with repeats left out, in
+// request order, so each symbol is fetched, stored and reported once.
+//
+// More than marketdata.MaxDownloadSymbols distinct symbols is
+// InvalidArgument; counting stops at the first symbol over the cap. Nothing
+// is fetched or stored then. The caller has already refused a symbol outside
+// the ticker pattern (blank included) by its position.
+func downloadSymbols(symbols []string) ([]string, error) {
+	// Distinct strings as typed, the count marketdata.DownloadSymbolCount
+	// gives backtest create. Switches to StoredSymbol when
+	// lhjnilsson/foreverbull#223 lands.
+	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
+	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
+	for _, symbol := range symbols {
+		if _, ok := seen[symbol]; ok {
+			continue
+		}
+		if len(out) == marketdata.MaxDownloadSymbols {
+			return nil, status.Error(codes.InvalidArgument, tooManySymbolsMessage)
+		}
+		seen[symbol] = struct{}{}
+		out = append(out, symbol)
+	}
+	return out, nil
+}
+
+// tooManySymbolsMessage refuses a request over the per-request cap. Backtest
+// create counts the same way before it stores a backtest and shows its own
+// sentence with the count; this one is for other callers of the RPC.
+var tooManySymbolsMessage = fmt.Sprintf(
+	"one download can carry at most %s distinct symbols, and this one has more. Split it into smaller downloads.",
+	numfmt.Thousands(marketdata.MaxDownloadSymbols))
 
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.
@@ -596,6 +630,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		}
 	}
 
+	symbols, err := downloadSymbols(symbols)
+	if err != nil {
+		return err
+	}
+
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
 	if err != nil {
 		return err
@@ -648,7 +687,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	}
 
 feed:
-	for _, symbol := range req.GetSymbols() {
+	for _, symbol := range symbols {
 		select {
 		case assetCh <- symbol:
 		case <-ctx.Done():
