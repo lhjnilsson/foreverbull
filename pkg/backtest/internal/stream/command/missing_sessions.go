@@ -162,15 +162,10 @@ const missingSessionsNextStep = "Try another provider with --provider, or change
 // fits one sentence. Two or more get one line each under the lead, in the
 // order given, with every day shown. The CLI prints the message as is. When
 // a named day is not a session (a provider reported a holiday), the days
-// aren't called trading days.
+// aren't called trading days. When the backtest couldn't be removed, it was
+// partly saved, and the step says to delete it first.
 func missingSessionsMessage(name, provider string, days []time.Time, gaps []symbolGaps, removed bool) string {
-	saved := "The backtest wasn't saved."
-	next := missingSessionsNextStep
-	if !removed {
-		saved = fmt.Sprintf("The backtest couldn't be removed, so run `fbull backtest delete %s` "+
-			"before you run `fbull backtest create` again.", name)
-		next = ""
-	}
+	saved, next := savedAndNext(name, missingSessionsNextStep, removed)
 	trading := true
 	for _, gap := range gaps {
 		trading = trading && !gap.closed
