@@ -20,6 +20,9 @@ type AlpacaBars struct {
 	opts marketdata.ClientOpts
 	// now replaces the clock, so tests can fix today's session.
 	now func() time.Time
+	// limiter spaces the Alpaca requests. NewAlpacaBars sets the
+	// process-wide Alpaca limiter, so every download shares one rate.
+	limiter *requestLimiter
 }
 
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
@@ -30,7 +33,7 @@ func NewAlpacaBars(apiKey, apiSecret string) (*AlpacaBars, error) {
 	return &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey:    apiKey,
 		APISecret: apiSecret,
-	}}, nil
+	}, limiter: limiterFor("alpaca")}, nil
 }
 
 // alpacaTimeout is the SDK's own default request timeout, kept for the
@@ -43,7 +46,9 @@ var alpacaFetchBudget = 60 * time.Second
 
 // client returns an SDK client whose requests carry ctx. The SDK takes no
 // context, so each call gets its own client with a transport that attaches
-// ctx to every request: a cancelled download stops the Alpaca fetch.
+// ctx to every request: a cancelled download stops the Alpaca fetch. Each
+// request, the SDK's retries included, waits for a slot of the shared
+// Alpaca limiter under that ctx, so the wait counts against the fetch budget.
 func (a *AlpacaBars) client(ctx context.Context) *marketdata.Client {
 	opts := a.opts
 	base := http.DefaultTransport
@@ -54,7 +59,13 @@ func (a *AlpacaBars) client(ctx context.Context) *marketdata.Client {
 		}
 		timeout = opts.HTTPClient.Timeout
 	}
-	opts.HTTPClient = &http.Client{Timeout: timeout, Transport: &ctxTransport{ctx: ctx, base: base}}
+	limiter := a.limiter
+	if limiter == nil {
+		limiter = limiterFor("alpaca")
+	}
+	// The SDK retries a 429 itself, so this transport doesn't (0 retries).
+	limited := newLimitedTransport("alpaca", limiter, base, 0)
+	opts.HTTPClient = &http.Client{Timeout: timeout, Transport: &ctxTransport{ctx: ctx, base: limited}}
 	return marketdata.NewClient(opts)
 }
 
