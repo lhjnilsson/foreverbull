@@ -90,7 +90,8 @@ class LiveProgress(Live):
         self.failure: str | None = None
         # notices are lines from the notices field of completed steps, such as
         # prices the ingest filled; the caller prints them after the rows.
-        # A step's message is failure text only, so it is never read here.
+        # A step's message is never a notice: on a running step it is progress
+        # text shown in place of the row, on a failed step the failure text.
         self.notices: list[str] = []
         spinner = FBSpinnerColumn()
         text = TextColumn("[progress.description]{task.description}")
