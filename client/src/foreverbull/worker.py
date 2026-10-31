@@ -4,6 +4,8 @@ import multiprocessing
 import multiprocessing.synchronize
 import os
 import queue
+import shutil
+import tempfile
 import threading
 import time
 
@@ -34,9 +36,14 @@ from foreverbull.pb.foreverbull.service.v1 import worker_pb
 SURVEY_TIMEOUT_MS = 30000
 # How long the pool waits for each worker to connect before giving up on it.
 WORKER_START_TIMEOUT_SECONDS = 5.0
+# The surveyor's socket file inside the pool's private directory. The directory prefix and this name are short
+# because a unix socket path is capped at 104 bytes on macOS, where $TMPDIR alone is about 49 characters.
+SOCKET_DIR_PREFIX = "fbull-"
+SOCKET_NAME = "s.ipc"
 # What each request asks the workers to do, as the pool's errors name it.
 REQUEST_ACTIONS = {"configure": "finish setting up", "run": "start the backtest"}
-# A startup error a worker reports to the pool: (kind, "Type: message"). kind is "connection" or "other".
+# A startup error a worker reports to the pool: (kind, text). For "connection" the text is the message to raise;
+# for "other" it is the cause as "Type: message".
 StartupError = tuple[str, str]
 
 
@@ -189,12 +196,10 @@ class WorkerDaemon(WorkerInstance):
                 recv_timeout=500,
             )
         except pynng.exceptions.NNGException as e:
-            message = (
-                f"A worker couldn't connect to foreverbull at {self._survey_address}: {e}. "
-                "Run `fbenv status` to check that it's running."
-            )
+            message = connect_failure(self._survey_address, e)
             self.logger.error(message)
-            self._report_startup_error("connection", e)
+            if self._startup_errors is not None:
+                self._startup_errors.put(("connection", message))
             raise exceptions.ConnectionError(message, cause=describe_exception(e)) from e
         except Exception as e:
             self._report_startup_error("other", e)
@@ -241,7 +246,10 @@ class WorkerPool(Worker):
         self._file_path = file_path
         self._executors = executors
 
-        self._worker_surveyor_address = "ipc:///tmp/worker_pool.ipc"
+        # Set by __enter__: a private directory per pool holds the surveyor's socket, so two pools on one
+        # machine don't collide and no other local user can take over or connect to the socket.
+        self._socket_dir: str | None = None
+        self._worker_surveyor_address = ""
         self._worker_surveyor_socket: pynng.Surveyor0
         self._workers: list[threading.Thread | Process] = []
         self.logger = logging.getLogger().getChild(__name__)
@@ -305,9 +313,8 @@ class WorkerPool(Worker):
                 exitcode = getattr(worker, "exitcode", None)
                 kind, cause = "other", "it exited" if exitcode is None else f"it exited with code {exitcode}"
         if kind == "connection":
-            hint = "Run `fbenv status` to check that foreverbull is running."
-        else:
-            hint = "Check the worker output above for an error in your algo."
+            raise exceptions.ConfigurationError(cause)
+        hint = "Check the worker output above for an error in your algo."
         raise exceptions.ConfigurationError(f"A worker couldn't start: {cause.rstrip('.')}. {hint}")
 
     def __enter__(
@@ -317,9 +324,20 @@ class WorkerPool(Worker):
             models.Algorithm.from_file_path(self._file_path)
         except Exception as e:
             raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}") from e
-        self._worker_surveyor_socket = pynng.Surveyor0(
-            listen=self._worker_surveyor_address, send_timeout=SURVEY_TIMEOUT_MS, recv_timeout=SURVEY_TIMEOUT_MS
-        )
+        # mkdtemp creates the directory with mode 0700, readable and writable only by this user.
+        self._socket_dir = tempfile.mkdtemp(prefix=SOCKET_DIR_PREFIX)
+        self._worker_surveyor_address = f"ipc://{os.path.join(self._socket_dir, SOCKET_NAME)}"
+        try:
+            self._worker_surveyor_socket = pynng.Surveyor0(
+                listen=self._worker_surveyor_address, send_timeout=SURVEY_TIMEOUT_MS, recv_timeout=SURVEY_TIMEOUT_MS
+            )
+        except BaseException as e:
+            try:
+                self._remove_socket_dir()
+            except OSError as cleanup_error:
+                # Keep the listen error; a failed cleanup is only extra context.
+                e.add_note(f"Also couldn't remove the worker pool's socket directory: {cleanup_error}")
+            raise
         # A survey closes after survey_time (nng's default is 1s), and any later recv raises BadState.
         # Keep the survey open as long as recv waits, so _broadcast's bound is this one timeout.
         self._worker_surveyor_socket.survey_time = SURVEY_TIMEOUT_MS
@@ -362,8 +380,14 @@ class WorkerPool(Worker):
                     w.terminate()
                     w.join(timeout=5)
         self._worker_surveyor_socket.close()
+        self._remove_socket_dir()
         if stuck and strict:
             raise RuntimeError("Worker did not exit")
+
+    def _remove_socket_dir(self) -> None:
+        if self._socket_dir is not None:
+            shutil.rmtree(self._socket_dir)
+            self._socket_dir = None
 
     @staticmethod
     def _is_running(func):
@@ -410,6 +434,16 @@ class WorkerPool(Worker):
     @_is_running
     def run_execution(self, stop_event: Event | threading.Event):
         self._broadcast(common_pb.Request(task="run"))
+
+
+def connect_failure(survey_address: str, exc: BaseException) -> str:
+    """The user-facing message for a worker that couldn't connect to its pool's socket."""
+    path = survey_address.removeprefix("ipc://")
+    return (
+        f"A worker couldn't connect to its worker pool at {path}: {str(exc).rstrip('.')}. "
+        "This is a problem in fbull, not in your algo. "
+        "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+    )
 
 
 def _plural_workers(count: int) -> str:
