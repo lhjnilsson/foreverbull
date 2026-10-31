@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
@@ -43,6 +44,55 @@ func xnysSessions(end time.Time) []time.Time {
 		sessions = append(sessions, day)
 	}
 	return sessions
+}
+
+// testClock is the suite's fixed clock: 01:00 New York on Saturday
+// 2026-10-31, before that day's 16:30, so the last completed session date
+// is 2026-10-30. Every 2022 and 2024 period is wholly before it.
+var testClock = time.Date(2026, 10, 31, 5, 0, 0, 0, time.UTC)
+
+// fixClock fixes the clock the session check caps the period with.
+func (test *BacktestCommandTest) fixClock(now time.Time) {
+	test.restoreClock()
+	test.restore = command.SetSessionClock(func() time.Time { return now })
+}
+
+func (test *BacktestCommandTest) restoreClock() {
+	if test.restore != nil {
+		test.restore()
+		test.restore = nil
+	}
+}
+
+// weekdayEngine is an engine whose calendar has every weekday as a
+// session, for a test that only needs the period read before the download.
+func weekdayEngine() *engine.MockEngine {
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Sessions", mock.Anything, mock.Anything, mock.Anything).Return(
+		func(_ context.Context, start, end time.Time) ([]time.Time, error) {
+			var sessions []time.Time
+			for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+				if day.Weekday() != time.Saturday && day.Weekday() != time.Sunday {
+					sessions = append(sessions, day)
+				}
+			}
+			return sessions, nil
+		})
+	return ziplineEngine
+}
+
+// useEngine makes msg return ziplineEngine, in place of any engine set
+// before.
+func useEngine(msg *stream.MockMessage, ziplineEngine engine.Engine) {
+	calls := msg.ExpectedCalls[:0]
+	for _, call := range msg.ExpectedCalls {
+		if call.Method == "Call" && len(call.Arguments) == 2 && call.Arguments[1] == dependency.GetEngineKey {
+			continue
+		}
+		calls = append(calls, call)
+	}
+	msg.ExpectedCalls = calls
+	msg.On("Call", mock.Anything, dependency.GetEngineKey).Return(ziplineEngine, nil)
 }
 
 // resetBars gives the suite an empty finance ohlc table. Recreate only
@@ -91,6 +141,13 @@ func (test *BacktestCommandTest) createQuarter(symbols ...string) {
 }
 
 func (test *BacktestCommandTest) createBacktest(end time.Time, symbols ...string) {
+	test.createPeriod(quarterStart, end, symbols...)
+	test.storeBars("OEF", "2024-01-01", end.Format(time.DateOnly))
+}
+
+// createPeriod stores the backtest that CREATING would have stored, from
+// start to end, with no bars.
+func (test *BacktestCommandTest) createPeriod(start, end time.Time, symbols ...string) {
 	assets := make([]*backtest.Backtest_Period_Asset, 0, len(symbols))
 	for _, symbol := range symbols {
 		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
@@ -100,18 +157,17 @@ func (test *BacktestCommandTest) createBacktest(end time.Time, symbols ...string
 		Name:      quarterBacktest,
 		Benchmark: "OEF",
 		Periods: []*backtest.Backtest_Period{{
-			StartDate: pb.GoTimeToDate(quarterStart),
+			StartDate: pb.GoTimeToDate(start),
 			EndDate:   pb.GoTimeToDate(end),
 		}},
 	})
 	test.Require().NoError(err)
 	err = backtests.UpdatePeriod(context.TODO(), quarterBacktest, &backtest.Backtest_Period{
-		StartDate: pb.GoTimeToDate(quarterStart),
+		StartDate: pb.GoTimeToDate(start),
 		EndDate:   pb.GoTimeToDate(end),
 		Assets:    assets,
 	})
 	test.Require().NoError(err)
-	test.storeBars("OEF", "2024-01-01", end.Format(time.DateOnly))
 }
 
 // downloadQuarter runs DOWNLOADING for 2024 Q1 with a finance stream that
@@ -131,7 +187,7 @@ func (test *BacktestCommandTest) download(end time.Time, answers ...*financeServ
 	ziplineEngine := new(engine.MockEngine)
 	ziplineEngine.On("Sessions", mock.Anything, quarterStart, end).Return(xnysSessions(end), nil)
 	msg := test.downloadMessage(quarterBacktest)
-	msg.On("Call", mock.Anything, dependency.GetEngineKey).Return(ziplineEngine, nil)
+	useEngine(msg, ziplineEngine)
 	return ziplineEngine, command.DownloadFinancialData(context.TODO(), msg)
 }
 
@@ -220,30 +276,108 @@ func (test *BacktestCommandTest) TestMissingSessionCountsAZeroPricedRow() {
 	test.requireNothingSaved()
 }
 
-// Quant check 3: a symbol that lists after the period starts is not missing
-// the sessions before its first bar.
-func (test *BacktestCommandTest) TestMissingSessionsIgnoreDaysBeforeTheFirstBar() {
-	test.createQuarter("XYZ")
-	test.storeBars("XYZ", "2024-02-01", "2024-03-31")
+// noListingDates is the reason a gap at the start or end of the period
+// fails: foreverbull stores no listing or delisting dates yet.
+const (
+	noListingDatesBefore = "foreverbull doesn't store listing or delisting dates yet, so it can't tell a late " +
+		"listing from missing data."
+	noListingDatesAfter = "foreverbull doesn't store listing or delisting dates yet, so it can't tell a " +
+		"delisting from missing data."
+)
+
+// A symbol whose first bar is after the period start fails create, with
+// the start-gap copy. No listing date is stored, and the first bar is
+// not evidence of one.
+func (test *BacktestCommandTest) TestMissingSessionsBeforeTheFirstBarFail() {
+	test.createQuarter("NEWCO")
+	test.storeBars("NEWCO", "2024-02-15", "2024-03-31")
 
 	ziplineEngine, err := test.downloadQuarter()
-	test.Require().NoError(err)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': NEWCO has no prices before "+
+		"2024-02-15. "+noListingDatesBefore+" The backtest wasn't saved. Choose a start on or after 2024-02-15, "+
+		"or remove NEWCO, then run `fbull backtest create` again.")
 	ziplineEngine.AssertExpectations(test.T())
-	test.requireKept()
+	test.requireNothingSaved()
 }
 
-// Quant check 4: a symbol whose last bar is before the period end (a
-// delisting) is not missing the sessions after it. universe.md §8 still
-// closes the position at that last price: the golden runs in
-// client/zipline/tests/test_delisted_position.py ingest through the same
-// refusal and check it.
-func (test *BacktestCommandTest) TestMissingSessionsIgnoreDaysAfterTheLastBar() {
+// A symbol whose last bar is before the period end fails create, with the
+// end-gap copy. No delisting is confirmed, and the last bar is not
+// evidence of one.
+func (test *BacktestCommandTest) TestMissingSessionsAfterTheLastBarFail() {
 	test.createQuarter("XYZ")
 	test.storeBars("XYZ", "2024-01-01", "2024-03-01")
 
 	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': XYZ has no prices after "+
+		"2024-03-01. "+noListingDatesAfter+" The backtest wasn't saved. Choose an end on or before 2024-03-01, "+
+		"or remove XYZ, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// A provider that drops the period's last session, as Yahoo's exclusive
+// period2 did to 2024-03-28 (Good Friday follows), fails create and names
+// the last day it has.
+func (test *BacktestCommandTest) TestMissingLastSessionFails() {
+	test.createQuarter("XYZ")
+	test.storeBars("XYZ", "2024-01-01", "2024-03-27")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': XYZ has no prices after "+
+		"2024-03-27. "+noListingDatesAfter+" The backtest wasn't saved. Choose an end on or before 2024-03-27, "+
+		"or remove XYZ, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// The benchmark is checked like every symbol: OEF without its last session
+// fails create too.
+func (test *BacktestCommandTest) TestMissingLastSessionOfTheBenchmarkFails() {
+	test.createQuarter("XYZ")
+	test.storeBars("XYZ", "2024-01-01", "2024-03-31")
+	_, err := test.db.Exec(context.TODO(), `DELETE FROM ohlc WHERE symbol = 'OEF' AND time::date = '2024-03-28'`)
 	test.Require().NoError(err)
-	test.requireKept()
+
+	_, err = test.downloadQuarter()
+	test.Require().ErrorContains(err, "OEF has no prices after 2024-03-27. ")
+	test.requireNothingSaved()
+}
+
+// Every cause of every symbol is collected before create fails once: a
+// late first bar, an early last bar, and a missing day inside a span, with
+// the edge reason and the provider or dates step.
+func (test *BacktestCommandTest) TestMissingSessionsCollectEveryCause() {
+	test.createQuarter("AAA", "NEWCO", "OLDCO")
+	test.storeBars("AAA", "2024-01-01", "2024-03-31", "2024-02-14")
+	test.storeBars("NEWCO", "2024-02-15", "2024-03-31")
+	test.storeBars("OLDCO", "2024-01-01", "2024-03-01")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 3 symbols. The backtest wasn't saved.\n"+
+		"  AAA: 2024-02-14\n"+
+		"  NEWCO: no prices before 2024-02-15.\n"+
+		"  OLDCO: no prices after 2024-03-01.\n"+
+		"foreverbull doesn't store listing or delisting dates yet, so it can't tell a late listing or a delisting "+
+		"from missing data. Try another provider with --provider, or change the backtest dates, then run "+
+		"`fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// Gaps at the edges only: the step names the start and end that every
+// symbol has prices for.
+func (test *BacktestCommandTest) TestMissingSessionsAtBothEdgesNameTheDates() {
+	test.createQuarter("NEWCO", "OLDCO")
+	test.storeBars("NEWCO", "2024-02-15", "2024-03-20")
+	test.storeBars("OLDCO", "2024-01-01", "2024-03-01")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 2 symbols. The backtest wasn't saved.\n"+
+		"  NEWCO: no prices before 2024-02-15 or after 2024-03-20.\n"+
+		"  OLDCO: no prices after 2024-03-01.\n"+
+		"foreverbull doesn't store listing or delisting dates yet, so it can't tell a late listing or a delisting "+
+		"from missing data. Choose a start on or after 2024-02-15 and an end on or before 2024-03-01, or remove "+
+		"NEWCO and OLDCO, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
 }
 
 // Quant check 5: Good Friday 2024-03-29 is not an XNYS session, so having
@@ -270,15 +404,18 @@ func (test *BacktestCommandTest) TestMissingSessionNamesTheRequestSymbol() {
 	test.Require().ErrorContains(err, "yahoo is missing prices for BRK.B on 2024-03-05, a trading day.")
 }
 
-// With no stored bars there is nothing to check, and Zipline is not asked.
-func (test *BacktestCommandTest) TestMissingSessionsNoBarsSkipsTheCalendar() {
+// A symbol with no stored bar at all fails create at DOWNLOADING, before
+// INGESTING runs, even when the finance stream said its download was OK:
+// the whole period is uncovered, and the ingest is never asked to notice.
+func (test *BacktestCommandTest) TestMissingSessionsNoBarsFail() {
 	test.createQuarter("XYZ")
-	_, err := test.db.Exec(context.TODO(), `DELETE FROM ohlc`)
-	test.Require().NoError(err)
 
 	ziplineEngine, err := test.downloadQuarter()
-	test.Require().NoError(err)
-	ziplineEngine.AssertNotCalled(test.T(), "Sessions", mock.Anything, mock.Anything, mock.Anything)
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for XYZ "+
+		"between 2024-01-02 and 2024-03-28. The backtest wasn't saved. Check the symbol and dates, or try another "+
+		"provider with --provider, then run `fbull backtest create` again.")
+	ziplineEngine.AssertExpectations(test.T())
+	test.requireNothingSaved()
 }
 
 // A provider that sent a bar with no price fails that
@@ -356,6 +493,24 @@ func (test *BacktestCommandTest) TestMissingSessionsReportedAroundAHoliday() {
 	test.requireNothingSaved()
 }
 
+// coverDays stores a yahoo bar on each day for every symbol, and makes the
+// download's engine answer those days as the period's sessions, so a test
+// about something else has full coverage.
+func (test *BacktestCommandTest) coverDays(msg *stream.MockMessage, days []string, symbols ...string) {
+	sessions := make([]time.Time, 0, len(days))
+	for _, day := range days {
+		at, err := time.Parse(time.DateOnly, day)
+		test.Require().NoError(err)
+		sessions = append(sessions, at)
+	}
+	for _, symbol := range symbols {
+		test.storeBarsOn(symbol, days...)
+	}
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Sessions", mock.Anything, mock.Anything, mock.Anything).Return(sessions, nil)
+	useEngine(msg, ziplineEngine)
+}
+
 // storeBarsOn stores a yahoo bar for symbol on each day, at 14:30 UTC.
 func (test *BacktestCommandTest) storeBarsOn(symbol string, days ...string) {
 	ctx := context.Background()
@@ -384,16 +539,83 @@ func (test *BacktestCommandTest) TestMissingSessionsAtThePeriodStartWithBarsBefo
 	test.requireNothingSaved()
 }
 
-// Bars after the end mean the last period session is missing, not a
-// delisting.
+// Bars after the end, from an earlier, wider fetch, put stored.Last past
+// the period end: the missing last period session is a missing day inside
+// the span, not a delisting, and it fails create.
 func (test *BacktestCommandTest) TestMissingSessionAtThePeriodEndWithBarsAfter() {
 	test.createQuarter("XYZ")
 	test.storeBars("XYZ", "2024-01-01", "2024-03-27")
 	test.storeBarsOn("XYZ", "2024-04-01")
 
 	_, err := test.downloadQuarter()
-	test.Require().ErrorContains(err, "yahoo is missing prices for XYZ on 2024-03-28, a trading day. ")
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on "+
+		"2024-03-28, a trading day. The backtest wasn't saved. Try another provider with --provider, or change the "+
+		"backtest dates, then run `fbull backtest create` again.")
 	test.requireNothingSaved()
+}
+
+// One symbol with no prices at either end is one cause, in one sentence.
+func (test *BacktestCommandTest) TestMissingSessionsAtBothEndsOfOneSymbol() {
+	test.createQuarter("NEWCO")
+	test.storeBars("NEWCO", "2024-02-15", "2024-03-20")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': NEWCO has no prices before "+
+		"2024-02-15 or after 2024-03-20. foreverbull doesn't store listing or delisting dates yet, so it can't tell "+
+		"a late listing or a delisting from missing data. The backtest wasn't saved. Choose a start on or after "+
+		"2024-02-15 and an end on or before 2024-03-20, or remove NEWCO, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// When no start and end leave a period every symbol has prices for (A's
+// first day is after B's last), only removing them is offered.
+func (test *BacktestCommandTest) TestMissingSessionsWithNoCommonPeriodOfferRemovingOnly() {
+	test.createQuarter("AAA", "BBB")
+	test.storeBars("AAA", "2024-03-01", "2024-03-31")
+	test.storeBars("BBB", "2024-01-01", "2024-02-01")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 2 symbols. The backtest wasn't saved.\n"+
+		"  AAA: no prices before 2024-03-01.\n"+
+		"  BBB: no prices after 2024-02-01.\n"+
+		"foreverbull doesn't store listing or delisting dates yet, so it can't tell a late listing or a delisting "+
+		"from missing data. Remove AAA and BBB, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// fbIsMeta records FB and META as one instrument's tickers.
+func (test *BacktestCommandTest) fbIsMeta() {
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO instrument (id, isin, name) VALUES ('meta', 'US30303M1027', 'Meta Platforms Inc.');
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+			('US30303M1027', 'FB', '2012-05-18', '2022-06-09'),
+			('US30303M1027', 'META', '2022-06-09', NULL);`)
+	test.Require().NoError(err)
+}
+
+// With no bar under any ticker of an instrument, it fails create, named once
+// by its latest ticker.
+func (test *BacktestCommandTest) TestMissingSessionsNameAnInstrumentWithNoBarsOnce() {
+	test.createQuarter("FB")
+	test.fbIsMeta()
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for "+
+		"META (earlier FB) between 2024-01-02 and 2024-03-28. The backtest wasn't saved. Check the symbol and "+
+		"dates, or try another provider with --provider, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// The tickers of one instrument are read together: Yahoo keeps FB's history
+// under META, and those bars cover FB.
+func (test *BacktestCommandTest) TestMissingSessionsReadEveryTickerOfAnInstrument() {
+	test.createQuarter("FB")
+	test.fbIsMeta()
+	test.storeBars("META", "2024-01-01", "2024-03-31")
+	_, err := test.downloadQuarter()
+	test.Require().NoError(err)
+	test.requireKept()
 }
 
 // A create canceled during the check returns context.Canceled itself,
@@ -413,7 +635,7 @@ func (test *BacktestCommandTest) TestCanceledMissingSessionCheckReturnsTheContex
 		Run(func(mock.Arguments) { cancel() }).
 		Return(nil, status.Error(codes.Canceled, "context canceled"))
 	msg := test.downloadMessage(quarterBacktest)
-	msg.On("Call", mock.Anything, dependency.GetEngineKey).Return(ziplineEngine, nil)
+	useEngine(msg, ziplineEngine)
 
 	err := command.DownloadFinancialData(ctx, msg)
 	test.Require().ErrorIs(err, context.Canceled)
@@ -493,4 +715,145 @@ func (test *BacktestCommandTest) TestIngestMissingSessionsOfAnotherTickerKeepThe
 // Zipline named a day that isn't a session (Good Friday).
 func (test *BacktestCommandTest) TestIngestMissingSessionsOnAHolidayKeepTheIngestCopy() {
 	test.requireIngestCopyFor("missing prices on trading days: AAA 2024-02-14,2024-03-29")
+}
+
+// reusedTicker records instrument X, OLDX until 2020 and NEWX since. With
+// reused set, OLDX is also instrument Y's ticker from 2021: another company.
+func (test *BacktestCommandTest) reusedTicker(reused bool) {
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO instrument (id, isin, name) VALUES ('x', 'XX0000000001', 'X Corp'), ('y', 'YY0000000001', 'Y Corp');
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+			('XX0000000001', 'OLDX', '2010-01-04', '2020-01-02'),
+			('XX0000000001', 'NEWX', '2020-01-02', NULL);`)
+	test.Require().NoError(err)
+	if reused {
+		_, err = test.db.Exec(context.TODO(), `
+			INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES ('YY0000000001', 'OLDX', '2021-01-04', NULL);`)
+		test.Require().NoError(err)
+	}
+}
+
+// A ticker's bars count for its instrument only inside
+// that ticker's own dates. OLDX's 2024 bars are outside X's OLDX dates, so
+// they don't fill NEWX's quarter, whether or not the reuse is recorded.
+func (test *BacktestCommandTest) TestMissingSessionsCountATickersBarsOnlyInsideItsDates() {
+	for _, reused := range []bool{false, true} {
+		test.resetBars()
+		test.Require().NoError(repository.Recreate(context.Background(), test.db))
+		test.createQuarter("NEWX")
+		test.reusedTicker(reused)
+		test.storeBars("OLDX", "2024-01-01", "2024-03-31")
+
+		_, err := test.downloadQuarter()
+		test.Require().Error(err, "reused %v", reused)
+		test.Require().Contains(err.Error(), "has no prices for NEWX", "reused %v", reused)
+		test.requireNothingSaved()
+	}
+}
+
+// A symbol held by more than one instrument is never
+// grouped. Asked for on its own, OLDX is read alone, and X's bars under
+// NEWX don't make it pass.
+func (test *BacktestCommandTest) TestMissingSessionsNeverGroupASymbolOfTwoInstruments() {
+	test.createQuarter("OLDX")
+	test.reusedTicker(true)
+	test.storeBars("NEWX", "2024-01-01", "2024-03-31")
+
+	_, err := test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo has no prices for OLDX "+
+		"between 2024-01-02 and 2024-03-28. The backtest wasn't saved. Check the symbol and dates, or try another "+
+		"provider with --provider, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// A period with a real XNYS session that hasn't closed yet has nothing
+// closed yet. At 08:00 New York on Friday 2026-10-30 that day's session is
+// still open, so create fails once, before any provider is asked, and names
+// the last session that has closed, Thursday 2026-10-29.
+func (test *BacktestCommandTest) TestEmptyPeriodNothingClosedYetFailsBeforeTheDownload() {
+	test.fixClock(time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC))
+	today := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	test.createPeriod(today, today, "AAPL")
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage(quarterBacktest))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': no trading session between "+
+		"2026-10-30 and 2026-10-30 has closed yet (sessions count as closed at 16:30 New York time). The backtest "+
+		"wasn't saved. Choose a start on or before 2026-10-29, then run `fbull backtest create` again.")
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
+	test.requireNothingSaved()
+}
+
+// A future weekday is a real session that hasn't closed: on Saturday
+// 2026-10-31, Monday 2026-11-02 reads as not closed yet, naming Friday
+// 2026-10-30.
+func (test *BacktestCommandTest) TestEmptyPeriodOnAFutureSessionIsNotClosedYet() {
+	monday := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	test.createPeriod(monday, monday, "AAPL")
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage(quarterBacktest))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': no trading session between "+
+		"2026-11-02 and 2026-11-02 has closed yet (sessions count as closed at 16:30 New York time). The backtest "+
+		"wasn't saved. Choose a start on or before 2026-10-30, then run `fbull backtest create` again.")
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
+	test.requireNothingSaved()
+}
+
+// A period after the last completed session with no XNYS session in it,
+// such as Saturday 2026-10-31 asked for on that Saturday, has no trading
+// day: nothing in it can ever close, so it is not "not closed yet".
+func (test *BacktestCommandTest) TestEmptyPeriodOnTodaysWeekendHasNoTradingDay() {
+	saturday := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	test.createPeriod(saturday, saturday, "AAPL")
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage(quarterBacktest))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': there's no trading session "+
+		"between 2026-10-31 and 2026-10-31. The backtest wasn't saved. Choose dates that include a trading day, "+
+		"then run `fbull backtest create` again.")
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
+	test.requireNothingSaved()
+}
+
+// A past period with no trading day fails once, before any provider is
+// asked, so no no-prices sentence follows.
+func (test *BacktestCommandTest) TestEmptyPeriodWithNoTradingDayFailsBeforeTheDownload() {
+	test.createPeriod(time.Date(2024, 3, 30, 0, 0, 0, 0, time.UTC), time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC), "AAPL")
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage(quarterBacktest))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': there's no trading session "+
+		"between 2024-03-30 and 2024-03-31. The backtest wasn't saved. Choose dates that include a trading day, "+
+		"then run `fbull backtest create` again.")
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
+	test.requireNothingSaved()
+}
+
+// The check stops at the last completed session: at 14:00 New York on
+// 2024-03-28, that day's session hasn't closed, so its missing bar is not a
+// gap, and the calendar is read only to 2024-03-27.
+func (test *BacktestCommandTest) TestMissingSessionsStopAtTheLastCompletedSession() {
+	test.fixClock(time.Date(2024, 3, 28, 18, 0, 0, 0, time.UTC))
+	test.createQuarter("AAPL")
+	test.resetBars()
+	test.storeBars("OEF", "2024-01-01", "2024-03-27")
+	test.storeBars("AAPL", "2024-01-01", "2024-03-27")
+
+	ziplineEngine, err := test.download(time.Date(2024, 3, 27, 0, 0, 0, 0, time.UTC))
+	test.Require().NoError(err)
+	ziplineEngine.AssertCalled(test.T(), "Sessions", mock.Anything, quarterStart, time.Date(2024, 3, 27, 0, 0, 0, 0, time.UTC))
+	ziplineEngine.AssertNotCalled(test.T(), "Sessions", mock.Anything, quarterStart, quarterEnd)
+}
+
+// Yahoo keeps a renamed instrument's history under its latest ticker, so
+// META's bars dated before META's own start count for the FB/META group.
+func (test *BacktestCommandTest) TestMissingSessionsCountTheLatestTickersBarsBeforeItsStart() {
+	test.createQuarter("META")
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO instrument (id, isin, name) VALUES ('m', 'US30303M1027', 'Meta Platforms Inc');
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+			('US30303M1027', 'FB', '2012-05-18', '2024-02-01'),
+			('US30303M1027', 'META', '2024-02-01', NULL);`)
+	test.Require().NoError(err)
+	test.storeBars("META", "2024-01-01", "2024-03-31")
+
+	_, err = test.downloadQuarter()
+	test.Require().NoError(err)
 }
