@@ -709,6 +709,11 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 
 	startDate := b.Periods[0].StartDate
 	endDate := b.Periods[len(b.Periods)-1].EndDate
+	period, err := readClosedPeriod(ctx, msg, backtests, command.BacktestName, backtestID,
+		pb.DateToTime(startDate), pb.DateToTime(endDate))
+	if err != nil {
+		return err
+	}
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
 		Symbols:   symbols,
 		StartDate: startDate,
@@ -752,8 +757,8 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		}
 	}
 
-	return checkMissingSessions(ctx, msg, db, backtests, command.BacktestName, backtestID,
-		strings.ToLower(provider), symbols, reported, pb.DateToTime(startDate), pb.DateToTime(endDate))
+	return checkMissingSessions(ctx, db, backtests, command.BacktestName, backtestID,
+		strings.ToLower(provider), symbols, reported, period)
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
