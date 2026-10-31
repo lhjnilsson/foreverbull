@@ -665,8 +665,8 @@ _INGEST_OTHER_COPY = (
 )
 _INGEST_NOT_REMOVED_COPY = (
     "Couldn't load data for backtest 'from_file': the data service failed while ingesting prices. "
-    "The backtest couldn't be removed, so run `fbull backtest delete from_file` before you run "
-    "`fbull backtest create` again."
+    "The backtest was partly saved and couldn't be removed. Run `fbull backtest delete from_file` first. "
+    "Run `fbull backtest create` again once it's fixed."
 )
 
 
