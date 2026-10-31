@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
@@ -80,7 +81,22 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		}
 	}
 
+	// The time limit ends the whole ingest. Each symbol commits on its own,
+	// so the ones before the cut stay stored.
+	limit, err := environment.GetFinanceTaskTimeLimit()
+	if err != nil {
+		return err
+	}
+	ctx, stopAtLimit := marketdata.WithTaskLimit(ctx, limit, errIngestTimeLimit)
+	defer stopAtLimit()
+
 	for _, symbol := range command.Symbols {
+		if err := ctx.Err(); err != nil {
+			if stopped := ingestStopped(ctx, provider, symbol, limit, err); stopped != nil {
+				return stopped
+			}
+			return err
+		}
 		_, err := assets.Get(ctx, symbol)
 		if err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
@@ -89,6 +105,9 @@ func Ingest(ctx context.Context, message stream.Message) error {
 
 			a, err := yahoo.GetAsset(ctx, symbol)
 			if err != nil {
+				if stopped := ingestStopped(ctx, assetProvider, symbol, limit, err); stopped != nil {
+					return stopped
+				}
 				return fmt.Errorf("error getting asset: %w", redact.URLError(err))
 			}
 			if !ticker.Valid(a.GetSymbol()) {
@@ -105,11 +124,52 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		}
 
 		if err := ingestSymbol(ctx, &ohlc, bars, provider, symbol, start, end); err != nil {
+			if stopped := ingestStopped(ctx, provider, symbol, limit, err); stopped != nil {
+				return stopped
+			}
 			return err
 		}
 	}
 
 	return nil
+}
+
+// One ingest command stops after FINANCE_TASK_TIME_LIMIT (2h by default).
+// The ingest fetches one symbol at a time, and at the shared provider rates
+// 10,000 symbols take about an hour and a half; past the limit a hung
+// provider can't hold the task forever.
+
+// errIngestTimeLimit is the ctx cause when the time limit ends an ingest,
+// so an abort (a cancel) is still told apart from the limit.
+var errIngestTimeLimit = errors.New("ingest time limit reached")
+
+// ingestStopped is the task-state text when symbol didn't finish because the
+// ingest's time limit ended or its provider call timed out, or nil for any
+// other failure. The limit and a slow provider have different sentences. A
+// provider wait refused because its slot comes after the limit is the
+// limit. A database error is a timeout only once the limit ended, so a
+// symbol stuck on its lock at the limit gets the limit's sentence.
+func ingestStopped(ctx context.Context, provider, symbol string, limit time.Duration, err error) error {
+	limitReached := marketdata.AtTaskLimit(ctx, err, errIngestTimeLimit)
+	var stored *repository.StoreError
+	providerTimeout := ctx.Err() == nil && !errors.As(err, &stored) && marketdata.IsProviderTimeout(err)
+	if !limitReached && !providerTimeout {
+		return nil
+	}
+	log.Warn().Err(redact.URLError(err)).Str("provider", provider).Str("symbol", symbol).
+		Bool("time_limit", limitReached).Msg("ingest stopped: provider took too long")
+	if limitReached {
+		return ingestTimeLimitError(limit, symbol)
+	}
+	return fmt.Errorf("%w, so the price import stopped. Prices imported before %s were kept. Try again later.", //nolint:staticcheck // ST1005: agreed user-facing copy ends with a period
+		&marketdata.TimeoutError{Provider: provider, Symbol: symbol}, symbol)
+}
+
+// ingestTimeLimitError is the agreed task-state text when the ingest's time
+// limit stopped it at symbol, word for word.
+func ingestTimeLimitError(limit time.Duration, symbol string) error {
+	return fmt.Errorf("The price import hit the %s limit at %s. Prices imported before %s were kept. "+ //nolint:staticcheck // ST1005: agreed user-facing copy
+		"Import fewer symbols at a time, or try again later.", numfmt.LimitSpan(limit), symbol, symbol)
 }
 
 // assetProvider is the provider GetAsset asks. The marketdata dependency is

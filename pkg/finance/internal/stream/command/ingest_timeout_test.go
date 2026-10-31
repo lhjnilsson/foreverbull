@@ -1,0 +1,120 @@
+package command_test
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"time"
+
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
+	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"github.com/stretchr/testify/mock"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+func may2026Bar() []*pb.OHLC {
+	return []*pb.OHLC{{
+		Timestamp: timestamppb.New(time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)),
+		Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 100,
+	}}
+}
+
+// The ingest's time limit stops the work at the symbol whose provider never
+// answers. The task state names it, the symbol before it stays stored, and
+// the symbol after it is never asked for.
+func (test *IngestCommandTest) TestIngestStopsAtItsTimeLimit() {
+	test.T().Setenv(environment.FinanceTaskTimeLimit, "1s")
+	md := supplier.NewMockMarketdata(test.T())
+	for _, symbol := range []string{"AAPL", "SLOW"} {
+		md.On("GetAsset", mock.Anything, symbol).Return(&pb.Asset{Symbol: symbol, Name: symbol}, nil)
+	}
+	md.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(may2026Bar(), nil)
+	md.On("GetOHLC", mock.Anything, "SLOW", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			callCtx, _ := args.Get(0).(context.Context)
+			<-callCtx.Done()
+		}).Return(nil, context.DeadlineExceeded)
+
+	began := time.Now()
+	err := test.ingestSymbols(md, "AAPL", "SLOW", "LATER")
+	test.Less(time.Since(began), 10*time.Second, "the limit must end the ingest")
+	test.Require().EqualError(err, "The price import hit the 1-minute limit at SLOW. Prices imported before SLOW were kept. "+
+		"Import fewer symbols at a time, or try again later.")
+
+	kept, err := test.ohlc.List(context.Background(), "yahoo", []string{"AAPL"}, time.Now(), 0)
+	test.Require().NoError(err)
+	test.Len(kept, 1, "a symbol finished before the limit stays stored")
+	md.AssertNotCalled(test.T(), "GetAsset", mock.Anything, "LATER")
+}
+
+// A provider call that times out while the ingest still has time stops the
+// ingest with the timeout sentence; the asset lookup is always Yahoo.
+func (test *IngestCommandTest) TestIngestReportsAProviderTimeout() {
+	md := supplier.NewMockMarketdata(test.T())
+	md.On("GetAsset", mock.Anything, "AAPL").Return(nil, fmt.Errorf("error: %w", context.DeadlineExceeded))
+
+	err := test.ingestSymbols(md, "AAPL")
+	test.Require().EqualError(err, "yahoo took too long to respond for AAPL, so the price import stopped. "+
+		"Prices imported before AAPL were kept. Try again later.")
+}
+
+// The agreed sentence at the default limit, word for word.
+func (test *IngestCommandTest) TestIngestNamesTheTwoHourLimit() {
+	test.T().Setenv(environment.FinanceTaskTimeLimit, "") // the 2h default
+	md := supplier.NewMockMarketdata(test.T())
+	md.On("GetAsset", mock.Anything, "AAPL").Return(
+		func(ctx context.Context, _ string) (*pb.Asset, error) {
+			deadline, _ := ctx.Deadline()
+			return nil, refusedWait(deadline)
+		})
+
+	err := test.ingestSymbols(md, "AAPL")
+	test.Require().EqualError(err, "The price import hit the 2-hour limit at AAPL. Prices imported before AAPL were kept. "+
+		"Import fewer symbols at a time, or try again later.")
+}
+
+// refusedWait is a provider call whose request slot was refused against
+// deadline, wrapped the way net/http returns a transport error.
+func refusedWait(deadline time.Time) error {
+	return fmt.Errorf("error: %w", &url.Error{
+		Op: "Get", URL: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/AAPL",
+		Err: &marketdata.WaitRefusedError{Deadline: deadline},
+	})
+}
+
+// A provider wait refused against a shorter deadline than the ingest's limit
+// is the provider taking too long. Neither sentence carries limiter or
+// x/time/rate text.
+func (test *IngestCommandTest) TestIngestTellsARefusedProviderWaitAsAProviderTimeout() {
+	md := supplier.NewMockMarketdata(test.T())
+	md.On("GetAsset", mock.Anything, "AAPL").Return(nil, refusedWait(time.Now().Add(30*time.Second)))
+
+	err := test.ingestSymbols(md, "AAPL")
+	test.Require().EqualError(err, "yahoo took too long to respond for AAPL, so the price import stopped. "+
+		"Prices imported before AAPL were kept. Try again later.")
+	for _, raw := range []string{"rate:", "would exceed", "slot", "context deadline exceeded"} {
+		test.NotContains(err.Error(), raw)
+	}
+}
+
+// A symbol stuck on its symbol lock in the database when the limit ends gets
+// the limit's sentence, not the provider's or a store failure.
+func (test *IngestCommandTest) TestIngestTellsALockWaitAtTheLimitAsTheLimit() {
+	test.T().Setenv(environment.FinanceTaskTimeLimit, "1s")
+	ctx := context.Background()
+	holder, err := test.db.Begin(ctx)
+	test.Require().NoError(err)
+	defer holder.Rollback(ctx) //nolint:errcheck
+	_, err = holder.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ohlc:' || 'AAPL'))`)
+	test.Require().NoError(err)
+
+	md := supplier.NewMockMarketdata(test.T())
+	md.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "AAPL"}, nil)
+	md.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return(may2026Bar(), nil)
+
+	err = test.ingestSymbols(md, "AAPL")
+	test.Require().EqualError(err, "The price import hit the 1-minute limit at AAPL. Prices imported before AAPL were kept. "+
+		"Import fewer symbols at a time, or try again later.")
+}
