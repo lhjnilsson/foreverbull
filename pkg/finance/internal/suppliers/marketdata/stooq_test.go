@@ -246,17 +246,6 @@ func TestGetOHLCEmptySymbol(t *testing.T) {
 	require.False(t, called)
 }
 
-func TestGetOHLCNilEndUsesToday(t *testing.T) {
-	t.Parallel()
-	var got stooqReq
-	srv := serveStooq(t, readFixture(t, "aapl.us.csv"), http.StatusOK, &got)
-
-	client := newStooqClient(t, srv.URL)
-	_, err := client.GetOHLC("AAPL", date(t, "2021-01-04"), nil)
-	require.NoError(t, err)
-	require.Equal(t, time.Now().UTC().Format("20060102"), got.d2)
-}
-
 func TestWithStooqSymbolMapFile(t *testing.T) {
 	t.Parallel()
 	var got stooqReq

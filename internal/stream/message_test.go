@@ -169,8 +169,8 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 	})
 	test.Run("mark as completed with notices", func() {
 		lines := []string{
-			"Missing prices for ABC on 2026-05-05, filled with the previous close. No trades on those days.",
-			"Missing prices for XYZ on 2026-05-05, filled with the previous close. No trades on those days.",
+			"Example notice for ABC on 2026-05-05.",
+			"Example notice for XYZ on 2026-05-05.",
 		}
 		step := &pb.Orchestration_Step{
 			Num:     3,

@@ -270,6 +270,12 @@ func (fs *MarketdataServer) downloadSymbol(
 			if errors.As(err, &blocked) {
 				return blocked
 			}
+			// A session with no price fails the symbol after the one retry;
+			// a later ticker can't fill it.
+			if refused := missingPriceDownloadError(symbol, provider, err); refused != nil {
+				failSymbol(ctx, sender, rsp, refused)
+				return nil
+			}
 			if !noBarsAnswer(err) {
 				// The request failed; we don't know whether the symbol has
 				// prices, so report the failure, not "no price data".
@@ -339,6 +345,20 @@ func (fs *MarketdataServer) downloadSymbol(
 
 	sender.send(rsp)
 	return nil
+}
+
+// missingPriceDownloadError is the STATUS_ERROR when the provider sent a
+// bar with no price anywhere in the range, even after the retry. The
+// bars are not stored and no later ticker is tried: the ticker has bars,
+// with a gap. The sentence names the asked symbol, not the provider's, and
+// DownloadFinancialData reads its days for the create's missing-session
+// error (pkg/backtest/universe.md §7.5). Nil when err is something else.
+func missingPriceDownloadError(symbol, provider string, err error) error {
+	var missing *marketdata.MissingPriceError
+	if !errors.As(err, &missing) {
+		return nil
+	}
+	return &marketdata.MissingPriceError{Provider: provider, Symbol: symbol, Days: missing.Days}
 }
 
 // ohlcRetryDelay is the pause before asking a provider again after it

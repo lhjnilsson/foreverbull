@@ -233,6 +233,36 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresNothingWhenABarIsRe
 	suite.Zero(rows, "no bar of a refused batch may be stored")
 }
 
+// A provider bar with no price inside the range fails the
+// symbol with its days, under the asked symbol, after one retry. Nothing is
+// stored and no later ticker is tried: the ticker has bars, with a gap.
+func (suite *MarketdataTest) TestDownloadHistoricalDataFailsOnAMissingPriceInside() {
+	suite.marketdata.On("GetAsset", "BRKB").Return(&pb.Asset{Symbol: "BRK-B", Name: "Berkshire Hathaway"}, nil)
+	suite.marketdata.On("GetOHLC", "BRK-B", mock.Anything, mock.Anything).Return(nil, &marketdata.MissingPriceError{
+		Provider: "yahoo", Symbol: "BRK-B", Days: []time.Time{mustTime("2024-02-14"), mustTime("2024-02-20")},
+	}).Twice()
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"BRKB"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 3, Day: 31},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1, "the symbol fails once")
+	suite.Equal("BRKB", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msgs[0].GetStatus())
+	suite.Equal("yahoo sent no price for BRKB on 2024-02-14, 2024-02-20", msgs[0].GetError())
+	suite.marketdata.AssertNotCalled(suite.T(), "SearchAsset", mock.Anything)
+
+	var rows int
+	suite.Require().NoError(suite.pgx.QueryRow(context.Background(),
+		`SELECT count(*) FROM ohlc WHERE symbol IN ('BRKB', 'BRK-B')`).Scan(&rows))
+	suite.Zero(rows)
+}
+
 func (suite *MarketdataTest) recvAll(stream servicePb.Marketdata_DownloadHistoricalDataClient) []*servicePb.DownloadHistoricalDataResponse {
 	var msgs []*servicePb.DownloadHistoricalDataResponse
 	for {

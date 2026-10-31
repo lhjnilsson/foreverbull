@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -156,12 +157,31 @@ func ingestFailureMessage(name string, failure ingestFailure, removed bool) stri
 // periods and its assets are removed so a retry under the same name works.
 // Bars are stored per provider and symbol, not per backtest, so they are
 // kept. The returned error is the step's whole message.
+//
+// A canceled create returns ctx.Err() itself, unwrapped, so it reads as
+// every other canceled create and never as a data service failure. The
+// backtest is still removed, on a context that outlives the cancel.
 func discardFailedIngest(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
-	failure := readIngestFailure(cause)
-	err := deleteStoredBacktest(ctx, backtests, name, id)
+	err := deleteAfterFailure(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed ingest")
 	}
-	return plainSentence(ingestFailureMessage(name, failure, removed))
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
+}
+
+// cleanupTimeout bounds the delete that runs after a failed or canceled
+// create.
+const cleanupTimeout = 10 * time.Second
+
+// deleteAfterFailure deletes this create's backtest on ctx without its
+// cancel, so a canceled create still leaves nothing behind, within
+// cleanupTimeout.
+func deleteAfterFailure(ctx context.Context, backtests repository.Backtest, name, id string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	return deleteStoredBacktest(cleanupCtx, backtests, name, id)
 }

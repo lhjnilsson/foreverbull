@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -11,8 +12,12 @@ import (
 
 type Engine interface {
 	// Ingest builds the bundle. notices are lines the user must read even
-	// though the ingest worked, such as sessions filled with the previous close.
+	// though the ingest worked. Zipline sends none today.
 	Ingest(ctx context.Context, backtest *backtest.Backtest, object *storage.Object) (notices []string, err error)
+	// Sessions lists the XNYS sessions from start to end, both inclusive, as
+	// UTC midnights. It reads the calendar the bundle is written with, so a
+	// day it leaves out (a holiday) is not a session the bundle needs.
+	Sessions(ctx context.Context, start, end time.Time) ([]time.Time, error)
 	DownloadIngestion(ctx context.Context, object *storage.Object) error
 	NewSession(ctx context.Context, session *backtest.Session) (EngineSession, error)
 }

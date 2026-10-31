@@ -722,6 +722,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		}
 		return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 	}
+	// Days the provider sent no price for, anywhere in the range, per
+	// request symbol. They join the stored-bar check, so create fails once.
+	reported := make(map[string][]time.Time)
 	for {
 		msg, err := rsp.Recv()
 		if err != nil {
@@ -738,13 +741,19 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
+			if days, ok := providerMissingDays(msg.GetError()); ok {
+				reported[msg.Symbol] = append(reported[msg.Symbol], days...)
+				continue
+			}
 			// Any per-symbol download failure must fail create. Disabling the
 			// member and exiting 0 left an incomplete universe with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
 				provider, msg.Symbol, startDate, endDate, msg.GetError())
 		}
 	}
-	return nil
+
+	return checkMissingSessions(ctx, msg, db, backtests, command.BacktestName, backtestID,
+		strings.ToLower(provider), symbols, reported, pb.DateToTime(startDate), pb.DateToTime(endDate))
 }
 
 // isNoPriceDataError reports the finance service's no-bars STATUS_ERROR.
@@ -782,9 +791,9 @@ func isRefusedBarError(text string) bool {
 	return refusedPriceError.MatchString(text) || refusedVolumeError.MatchString(text)
 }
 
-// providerFaultNextStep ends a sentence about bad provider data. Since #209 a
-// bad bar is normally dropped and filled, so reaching this means an adapter
-// missed one; a plain retry won't help.
+// providerFaultNextStep ends a sentence about bad provider data. A bad bar
+// normally fails create as a missing session (universe.md §7.5), so reaching
+// this means an adapter missed one; a plain retry won't help.
 const providerFaultNextStep = "The backtest wasn't saved. Try another provider with --provider, " +
 	"or report it at https://github.com/lhjnilsson/foreverbull/issues."
 
@@ -996,11 +1005,14 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 
 	notices, err := engine.Ingest(ctx, b, object)
 	if err != nil {
+		if refused := ingestMissingSessions(ctx, engine, db, backtests, b, backtestID, err); refused != nil {
+			return refused
+		}
 		return discardFailedIngest(ctx, backtests, b.Name, backtestID, err)
 	}
 	if len(notices) > 0 {
 		// The backtest is kept. The notice rides on the completed INGESTING
-		// step, so the CLI prints which prices were filled.
+		// step, so the CLI prints it.
 		return &stream.Notice{Lines: notices}
 	}
 	return nil
