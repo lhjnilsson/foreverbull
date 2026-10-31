@@ -285,10 +285,16 @@ class DatabaseEngine:
         self.provider = ohlc_provider()
 
     def get_data(self, symbol, from_date, to_date):
+        """Bars stored on any UTC day from from_date to to_date, both included.
+
+        A provider stamps a daily bar inside its session (Yahoo at the
+        14:30 UTC open), so the end is the start of the day after to_date:
+        BETWEEN with a date stops at midnight and drops the last day's bar.
+        """
         query = text(
             """SELECT open, high, low, close, volume, time FROM ohlc
             WHERE symbol = :symbol AND provider = :provider
-              AND time BETWEEN :from_date AND :to_date
+              AND time >= :from_date AND time < :after_to_date
             ORDER BY time asc"""
         )
         return read_sql_query(
@@ -297,8 +303,8 @@ class DatabaseEngine:
             params={
                 "symbol": symbol,
                 "provider": self.provider or ohlc_provider(),
-                "from_date": from_date,
-                "to_date": to_date,
+                "from_date": _as_date(from_date),
+                "after_to_date": cast(date, _as_date(to_date)) + timedelta(days=1),
             },
         )
 
