@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"fmt"
 	"time"
 	// The broker image may have no zoneinfo; embed America/New_York.
 	_ "time/tzdata"
@@ -108,6 +109,28 @@ func lastFetchedSession(end *time.Time, now time.Time) time.Time {
 // session, so no bar is on it.
 func lastCompletedSession(now time.Time) time.Time {
 	return lastCompletedSessionEnd(now, now).Add(-time.Nanosecond).In(xnysZone)
+}
+
+// LastCompletedSessionDate is the New York date of the last completed XNYS
+// session as of now, as midnight UTC on that date, the way a backtest date
+// is read: today from 16:30 New York (sessionFinalAt), yesterday before. It
+// can be a weekend or holiday date, which has no session.
+func LastCompletedSessionDate(now time.Time) time.Time {
+	year, month, day := lastCompletedSession(now).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+// NoClosedSessionReason says that no session from start to end, both
+// dates, has closed yet, and when a session counts as closed, read from
+// sessionFinalAt: "no trading session between 2026-10-31 and 2026-10-31
+// has closed yet (sessions count as closed at 16:30 New York time)". Every
+// message that says nothing has closed yet uses it, so the time it names is
+// the one the fetches stop at.
+func NoClosedSessionReason(start, end time.Time) string {
+	return fmt.Sprintf("no trading session between %s and %s has closed yet "+
+		"(sessions count as closed at %d:%02d New York time)",
+		start.UTC().Format(time.DateOnly), end.UTC().Format(time.DateOnly),
+		int(sessionFinalAt/time.Hour), int(sessionFinalAt%time.Hour/time.Minute))
 }
 
 // afterLastSession is true for a bar whose session date comes after last,
