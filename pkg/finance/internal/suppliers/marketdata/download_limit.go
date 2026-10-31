@@ -8,15 +8,13 @@ package marketdata
 const MaxDownloadSymbols = 10_000
 
 // DownloadSymbolCount is how many distinct symbols a download request
-// carries, the number MaxDownloadSymbols limits. Symbols are compared as
-// typed, so a repeat counts once.
-//
-// Switches to StoredSymbol (BRK.B, BRK-B and BRKB as one) when
-// lhjnilsson/foreverbull#223 lands.
+// carries, the number MaxDownloadSymbols limits. Symbols are compared by
+// StoredSymbol, so a repeat and every spelling of one listed share class
+// (BRK.B, BRK-B and BRKB) count once.
 func DownloadSymbolCount(symbols []string) int {
 	seen := make(map[string]struct{}, len(symbols))
 	for _, symbol := range symbols {
-		seen[symbol] = struct{}{}
+		seen[StoredSymbol(symbol)] = struct{}{}
 	}
 	return len(seen)
 }

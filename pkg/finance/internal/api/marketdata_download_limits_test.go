@@ -39,6 +39,31 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSkipsRepeatedSymbols() {
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msgs[0].GetStatus(), msgs[0].GetError())
 }
 
+// BRK.B, BRK-B and BRKB in one request are one share class: it is fetched,
+// stored and reported once, under its stored name BRKB.
+func (suite *MarketdataTest) TestDownloadHistoricalDataFetchesShareClassSpellingsOnce() {
+	suite.marketdata.On("GetAsset", mock.Anything, "BRKB").
+		Return(&pb.Asset{Symbol: "BRKB", Name: "Berkshire Hathaway Inc."}, nil).Once()
+	suite.marketdata.On("GetOHLC", mock.Anything, "BRKB", mock.Anything, mock.Anything).Return([]*pb.OHLC{{
+		Timestamp: timestamppb.New(time.Date(2024, 6, 3, 0, 0, 0, 0, time.UTC)),
+		Open:      400, High: 405, Low: 398, Close: 402, Volume: 100,
+	}}, nil).Once()
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"BRK.B", "BRK-B", "BRKB"},
+		StartDate: &internal_pb.Date{Year: 2024, Month: 6, Day: 3},
+		EndDate:   &internal_pb.Date{Year: 2024, Month: 6, Day: 3},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+	msgs := suite.recvAll(rsp)
+	suite.Require().Len(msgs, 1)
+	suite.Equal("BRKB", msgs[0].GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msgs[0].GetStatus(), msgs[0].GetError())
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetAsset", 1)
+	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 1)
+}
+
 // distinctSymbols is n distinct symbols.
 func distinctSymbols(n int) []string {
 	symbols := make([]string, 0, n)
@@ -105,6 +130,15 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataAllowsExactlyTheCap() {
 	symbols := distinctSymbols(marketdata.MaxDownloadSymbols)
 	suite.acceptAll()
 	rsp := suite.download(append(symbols, symbols[0], symbols[1]))
+	suite.Len(suite.recvAll(rsp), marketdata.MaxDownloadSymbols)
+}
+
+// The cap counts stored names: 9,999 symbols plus BRK.B, BRK-B and BRKB is
+// exactly the cap (10,002 as typed), so it is allowed and reported once each.
+func (suite *MarketdataTest) TestDownloadHistoricalDataCountsShareClassSpellingsOnceAgainstTheCap() {
+	symbols := append(distinctSymbols(marketdata.MaxDownloadSymbols-1), "BRK.B", "BRK-B", "BRKB")
+	suite.acceptAll()
+	rsp := suite.download(symbols)
 	suite.Len(suite.recvAll(rsp), marketdata.MaxDownloadSymbols)
 }
 
