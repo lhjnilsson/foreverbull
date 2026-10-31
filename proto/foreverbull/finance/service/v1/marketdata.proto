@@ -35,7 +35,11 @@ message GetIndexResponse {
 }
 
 message DownloadHistoricalDataRequest {
-  repeated string symbols = 1;
+  // At most 10,000 distinct symbols per request (MaxDownloadSymbols in
+  // pkg/finance); the service counts them after leaving out repeats. This
+  // raw bound is twice that, so repeats still fit, and stops an oversized
+  // list before the service reads it.
+  repeated string symbols = 1 [(buf.validate.field).repeated.max_items = 20000];
   foreverbull.common.Date start_date = 2 [(buf.validate.field) = {
     required: true
     cel: {

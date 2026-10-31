@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"os"
@@ -37,7 +38,7 @@ func TestYahooGetOHLCKeepsTheAAPLSplitSmooth(t *testing.T) {
 	start := time.Date(2020, 8, 27, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2020, 9, 2, 0, 0, 0, 0, time.UTC)
 
-	ohlcs, err := client.GetOHLC("aapl", start, &end)
+	ohlcs, err := client.GetOHLC(context.Background(), "aapl", start, &end)
 	require.NoError(t, err)
 
 	require.Len(t, ohlcs, 4)

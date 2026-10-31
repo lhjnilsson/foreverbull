@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -38,7 +39,7 @@ func NewMarketdataServer(pgx *pgxpool.Pool, md supplier.Marketdata) *MarketdataS
 	}
 }
 
-func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
+func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAssetRequest) (*servicePb.GetAssetResponse, error) {
 	identifier := req.GetIdentifier()
 	if identifier == nil {
 		return nil, fmt.Errorf("identifier is nil")
@@ -47,12 +48,12 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	var err error
 	switch identifier := identifier.(type) {
 	case *servicePb.GetAssetRequest_Symbol:
-		asset, err = fs.marketdata.GetAsset(identifier.Symbol)
+		asset, err = fs.marketdata.GetAsset(ctx, identifier.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
-		assets, err := fs.marketdata.SearchAsset(identifier.Isin)
+		assets, err := fs.marketdata.SearchAsset(ctx, identifier.Isin)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
@@ -77,8 +78,8 @@ func (fs *MarketdataServer) GetAsset(_ context.Context, req *servicePb.GetAssetR
 	}, nil
 }
 
-func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
-	assets, err := fs.marketdata.GetIndex(req.GetSymbol())
+func (fs *MarketdataServer) GetIndex(ctx context.Context, req *servicePb.GetIndexRequest) (*servicePb.GetIndexResponse, error) {
+	assets, err := fs.marketdata.GetIndex(ctx, req.GetSymbol())
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", redact.URLError(err))
 	}
@@ -89,6 +90,40 @@ func (fs *MarketdataServer) GetIndex(_ context.Context, req *servicePb.GetIndexR
 }
 
 const downloadWorkers = 10
+
+// downloadSymbols returns the request's symbols under their stored names
+// (marketdata.StoredSymbol: BRK.B, BRK-B and BRKB are BRKB) with repeats left
+// out, in request order, so each symbol is fetched, stored and reported once.
+//
+// More than marketdata.MaxDownloadSymbols distinct symbols is
+// InvalidArgument; counting stops at the first symbol over the cap. Nothing
+// is fetched or stored then. The caller has already refused a symbol outside
+// the ticker pattern (blank included) by its position.
+func downloadSymbols(symbols []string) ([]string, error) {
+	// Distinct stored names, the count marketdata.DownloadSymbolCount gives
+	// backtest create.
+	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
+	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
+	for _, symbol := range symbols {
+		name := marketdata.StoredSymbol(symbol)
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if len(out) == marketdata.MaxDownloadSymbols {
+			return nil, status.Error(codes.InvalidArgument, tooManySymbolsMessage)
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// tooManySymbolsMessage refuses a request over the per-request cap. Backtest
+// create counts the same way before it stores a backtest and shows its own
+// sentence with the count; this one is for other callers of the RPC.
+var tooManySymbolsMessage = fmt.Sprintf(
+	"one download can carry at most %s distinct symbols, and this one has more. Split it into smaller downloads.",
+	numfmt.Thousands(marketdata.MaxDownloadSymbols))
 
 // downloadSender serialises Send on the download stream. gRPC doesn't allow
 // concurrent SendMsg on one stream, and every download worker reports here.
@@ -194,7 +229,7 @@ func (fs *MarketdataServer) downloadSymbol(
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
 
-	asset, err := fs.marketdata.GetAsset(symbol)
+	asset, err := fs.marketdata.GetAsset(ctx, symbol)
 	if err != nil {
 		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "get asset", err))
 		return nil
@@ -214,7 +249,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	storeSymbol := asset.Symbol
-	ohlcs, err := bars.GetOHLC(storeSymbol, start, end)
+	ohlcs, err := bars.GetOHLC(ctx, storeSymbol, start, end)
 	if err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
@@ -268,7 +303,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	// and a later ticker's asset and asset_symbol rows are written outside
 	// this transaction and stay when the bars roll back; a retry finds them
 	// and stores the bars again.
-	fetch := prefetchedBars(bars, storeSymbol, start, end, ohlcs)
+	fetch := prefetchedBars(ctx, bars, storeSymbol, start, end, ohlcs)
 	if err := ohlcRepo.Sync(ctx, provider, storeSymbol, start, end, fetch); err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
@@ -306,19 +341,19 @@ func retryOHLC(ctx context.Context, bars supplier.Marketdata, symbol string,
 		return nil, ctx.Err()
 	case <-time.After(ohlcRetryDelay):
 	}
-	return bars.GetOHLC(symbol, start, end)
+	return bars.GetOHLC(ctx, symbol, start, end)
 }
 
 // prefetchedBars is the fetch Sync uses for one download. The bars already
 // fetched for start through end serve any request inside that span (Sync
 // asks from the last stored day for an incremental fetch); anything else,
 // such as a refetch from an earlier stored day, goes to the provider.
-func prefetchedBars(bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
+func prefetchedBars(ctx context.Context, bars supplier.Marketdata, symbol string, start time.Time, end *time.Time,
 	fetched []*pb.OHLC,
 ) repository.FetchBars {
 	return func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
 		if !withinSpan(start, end, from, to) {
-			return bars.GetOHLC(symbol, from, to)
+			return bars.GetOHLC(ctx, symbol, from, to)
 		}
 		out := make([]*pb.OHLC, 0, len(fetched))
 		for _, b := range fetched {
@@ -387,7 +422,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		ohlcs, err := bars.GetOHLC(candidate, start, end)
+		ohlcs, err := bars.GetOHLC(ctx, candidate, start, end)
 		if err != nil {
 			var blocked *marketdata.BlockedError
 			if errors.As(err, &blocked) {
@@ -399,7 +434,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 			continue
 		}
 
-		if a, err := fs.marketdata.GetAsset(candidate); err == nil {
+		if a, err := fs.marketdata.GetAsset(ctx, candidate); err == nil {
 			_ = assetRepo.Store(ctx, a.Symbol, a.Name)
 		} else {
 			_ = assetRepo.Store(ctx, candidate, candidate)
@@ -446,7 +481,7 @@ func laterTickerCandidates(
 		candidates = append(candidates, symbol)
 	}
 
-	found, err := md.SearchAsset(isin)
+	found, err := md.SearchAsset(ctx, isin)
 	if err != nil {
 		log.Info().Err(redact.URLError(err)).Str("isin", isin).Msg("search for current ticker failed")
 	} else {
@@ -494,6 +529,11 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 		if !ticker.Valid(symbol) {
 			return status.Error(codes.InvalidArgument, ticker.InvalidMessage(index+1, len(symbols)))
 		}
+	}
+
+	symbols, err := downloadSymbols(symbols)
+	if err != nil {
+		return err
 	}
 
 	provider, err := marketdata.NormalizeProvider(req.GetProvider())
@@ -548,7 +588,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	}
 
 feed:
-	for _, symbol := range req.GetSymbols() {
+	for _, symbol := range symbols {
 		select {
 		case assetCh <- symbol:
 		case <-ctx.Done():

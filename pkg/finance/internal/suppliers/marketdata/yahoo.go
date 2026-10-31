@@ -67,7 +67,10 @@ func (y *YahooClient) client() *http.Client {
 func NewYahooClient() (supplier.Marketdata, error) {
 	yahoo := &YahooClient{}
 
-	rsp, err := yahoo.doRequest("https://fc.yahoo.com")
+	// The cookie and crumb are fetched once at startup, before any request
+	// ctx exists.
+	ctx := context.Background()
+	rsp, err := yahoo.doRequest(ctx, "https://fc.yahoo.com")
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
@@ -76,7 +79,7 @@ func NewYahooClient() (supplier.Marketdata, error) {
 
 	yahoo.cookie = rsp.Header.Get("Set-Cookie")
 
-	rsp, err = yahoo.doRequest("https://query2.finance.yahoo.com/v1/test/getcrumb")
+	rsp, err = yahoo.doRequest(ctx, "https://query2.finance.yahoo.com/v1/test/getcrumb")
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +97,10 @@ func NewYahooClient() (supplier.Marketdata, error) {
 	return yahoo, nil
 }
 
-func (y *YahooClient) doRequest(rawURL string, params ...string) (*http.Response, error) {
-	// supplier.Marketdata carries no context, so there is no request ctx to
-	// pass here; the client timeout bounds the request instead.
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
+func (y *YahooClient) doRequest(ctx context.Context, rawURL string, params ...string) (*http.Response, error) {
+	// ctx is the caller's request ctx, so a cancelled download stops this
+	// request; the client timeout still bounds it.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL(rawURL, y.crumb, params...), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -134,12 +137,12 @@ type AssetResponse struct {
 	} `json:"quoteSummary"`
 }
 
-func (y *YahooClient) getISIN(symbol string) (string, error) {
+func (y *YahooClient) getISIN(ctx context.Context, symbol string) (string, error) {
 	isinURL := y.isinURL
 	if isinURL == "" {
 		isinURL = defaultISINSearchURL
 	}
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, isinURL+url.PathEscape(symbol), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, isinURL+url.PathEscape(symbol), nil)
 	if err != nil {
 		return "", fmt.Errorf("error creating request: %w", err)
 	}
@@ -191,12 +194,12 @@ func (y *YahooClient) getISIN(symbol string) (string, error) {
 // GetAsset looks the symbol up under Yahoo's ticker (BRK-B for BRKB). A
 // share class is returned under the asked ticker, so it is stored and
 // reported the way the universe names it.
-func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
+func (y *YahooClient) GetAsset(ctx context.Context, symbol string) (*pb.Asset, error) {
 	quoteURL := y.quoteURL
 	if quoteURL == "" {
 		quoteURL = defaultYahooQuoteURL
 	}
-	resp, err := y.doRequest(quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType")
+	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -224,7 +227,7 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	}
 
 	if data.QuoteSummary.Result[0].QuoteType.QuoteType == "EQUITY" {
-		asset.ISIN, err = y.getISIN(asset.Symbol)
+		asset.ISIN, err = y.getISIN(ctx, asset.Symbol)
 		if err != nil {
 			log.Info().Msgf("error getting isin for symbol %s: %v", asset.Symbol, err)
 		}
@@ -236,8 +239,8 @@ func (y *YahooClient) GetAsset(symbol string) (*pb.Asset, error) {
 	return &asset, nil
 }
 
-func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
-	resp, err := m.doRequest(m.searchRequestURL(q))
+func (m *YahooClient) SearchAsset(ctx context.Context, q string) ([]*pb.Asset, error) {
+	resp, err := m.doRequest(ctx, m.searchRequestURL(q))
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -255,7 +258,7 @@ func (m *YahooClient) SearchAsset(q string) ([]*pb.Asset, error) {
 	for _, quote := range data["quotes"].([]interface{}) {
 		quoteMap := quote.(map[string]interface{})
 		symbol := quoteMap["symbol"].(string)
-		a, err := m.GetAsset(symbol)
+		a, err := m.GetAsset(ctx, symbol)
 		if err != nil {
 			return nil, fmt.Errorf("error getting asset: %w", err)
 		}
@@ -312,10 +315,10 @@ type IndexResponse struct {
 	} `json:"quoteSummary"`
 }
 
-func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
+func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset, error) {
 	url := "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + strings.ToUpper(symbol)
 
-	resp, err := y.doRequest(url, "modules=components%2CsummaryDetail")
+	resp, err := y.doRequest(ctx, url, "modules=components%2CsummaryDetail")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -335,10 +338,10 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	assets := make([]*pb.Asset, 0)
 	assetChan := make(chan *pb.Asset)
 
-	group, _ := errgroup.WithContext(context.Background())
+	group, gctx := errgroup.WithContext(ctx)
 	for _, component := range result.Summary.Result[0].Components.Components {
 		group.Go(func() error {
-			a, err := y.GetAsset(component)
+			a, err := y.GetAsset(gctx, component)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", err)
 			}
@@ -349,7 +352,7 @@ func (y *YahooClient) GetIndex(symbol string) ([]*pb.Asset, error) {
 	}
 
 	group.Go(func() error {
-		a, err := y.GetAsset(symbol)
+		a, err := y.GetAsset(gctx, symbol)
 		if err != nil {
 			return fmt.Errorf("error getting asset: %w", err)
 		}
@@ -400,7 +403,7 @@ type OHLCResponse struct {
 	}
 }
 
-func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+func (y *YahooClient) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
 	chartURL := y.chartURL
 	if chartURL == "" {
 		chartURL = defaultYahooChartURL
@@ -417,7 +420,7 @@ func (y *YahooClient) GetOHLC(symbol string, start time.Time, end *time.Time) ([
 
 	params = append(params, "interval=1d")
 
-	resp, err := y.doRequest(chart, params...)
+	resp, err := y.doRequest(ctx, chart, params...)
 	if err != nil {
 		return nil, fmt.Errorf("fail to get OHLC data for symbol %s: %w", symbol, err)
 	}

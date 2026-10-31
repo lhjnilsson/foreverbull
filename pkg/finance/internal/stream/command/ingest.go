@@ -87,7 +87,7 @@ func Ingest(ctx context.Context, message stream.Message) error {
 				return logStoreError(&repository.StoreError{Symbol: symbol, Err: err}, "get asset")
 			}
 
-			a, err := yahoo.GetAsset(symbol)
+			a, err := yahoo.GetAsset(ctx, symbol)
 			if err != nil {
 				return fmt.Errorf("error getting asset: %w", redact.URLError(err))
 			}
@@ -136,7 +136,7 @@ func ingestSymbol(ctx context.Context, ohlc *repository.OHLC, bars supplier.Mark
 	provider, symbol string, start time.Time, end *time.Time,
 ) error {
 	err := ohlc.Sync(ctx, provider, symbol, start, end, func(from time.Time, to *time.Time) ([]*pb.OHLC, error) {
-		return getOHLC(bars, symbol, from, to)
+		return getOHLC(ctx, bars, symbol, from, to)
 	})
 	return logStoreError(err, "store bars")
 }
@@ -151,8 +151,8 @@ func logStoreError(err error, step string) error {
 	return err
 }
 
-func getOHLC(bars supplier.Marketdata, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	ohlcs, err := bars.GetOHLC(symbol, start, end)
+func getOHLC(ctx context.Context, bars supplier.Marketdata, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
+	ohlcs, err := bars.GetOHLC(ctx, symbol, start, end)
 	if err != nil {
 		// The blocked sentence already names the provider, symbol, and retry.
 		// It is checked before redact.URLError, which drops the chain.

@@ -1,6 +1,7 @@
 package marketdata_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"testing"
@@ -47,7 +48,7 @@ func (test *YahooTest) TestGetAsset() {
 	}
 
 	for _, testCase := range testCases {
-		asset, err := test.client.GetAsset(testCase.Symbol)
+		asset, err := test.client.GetAsset(context.Background(), testCase.Symbol)
 		if testCase.expectedError != nil {
 			test.Require().Error(err)
 			test.Equal(testCase.expectedError.Error(), err.Error())
@@ -60,7 +61,7 @@ func (test *YahooTest) TestGetAsset() {
 }
 
 func (test *YahooTest) TestSearchAsset() {
-	asset, err := test.client.SearchAsset("US02079K3059")
+	asset, err := test.client.SearchAsset(context.Background(), "US02079K3059")
 	test.Require().NoError(err)
 	test.NotNil(asset)
 }
@@ -77,7 +78,7 @@ func (test *YahooTest) TestGetIndex() {
 		{"^OMX", nil},
 	}
 	for _, testCase := range testCases {
-		assets, err := test.client.GetIndex(testCase.Symbol)
+		assets, err := test.client.GetIndex(context.Background(), testCase.Symbol)
 		if testCase.ExpectedErr != nil {
 			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
@@ -111,7 +112,7 @@ func (test *YahooTest) TestGetOHLC() {
 		end, err := time.Parse("2006-01-02", testCase.End)
 		test.Require().NoError(err)
 
-		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, &end)
+		ohlc, err := test.client.GetOHLC(context.Background(), testCase.Symbol, start, &end)
 		if testCase.ExpectedErr != nil {
 			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
@@ -139,7 +140,7 @@ func (test *YahooTest) TestGetOHLCNoEnd() {
 		start, err := time.Parse("2006-01-02", testCase.Start)
 		test.Require().NoError(err)
 
-		ohlc, err := test.client.GetOHLC(testCase.Symbol, start, nil)
+		ohlc, err := test.client.GetOHLC(context.Background(), testCase.Symbol, start, nil)
 		if testCase.ExpectedErr != nil {
 			test.Require().Error(err)
 			test.Equal(testCase.ExpectedErr.Error(), err.Error())
@@ -157,10 +158,10 @@ func (test *YahooTest) TestGetOHLCRenamedTickerIsServedUnderTheNewTicker() {
 	start := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2021, 11, 30, 0, 0, 0, 0, time.UTC)
 
-	_, err := test.client.GetOHLC("FB", start, &end)
+	_, err := test.client.GetOHLC(context.Background(), "FB", start, &end)
 	test.Require().Error(err)
 
-	bars, err := test.client.GetOHLC("META", start, &end)
+	bars, err := test.client.GetOHLC(context.Background(), "META", start, &end)
 	test.Require().NoError(err)
 	test.Require().NotEmpty(bars)
 	test.Equal("2021-10-01", bars[0].Timestamp.AsTime().UTC().Format("2006-01-02"))

@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,7 +31,7 @@ func TestYahooGetOHLCLeavesNullBarsOut(t *testing.T) {
 	start := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
 
-	bars, err := client.GetOHLC("xyz", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "xyz", start, &end)
 	require.NoError(t, err)
 
 	days := make([]string, 0, len(bars))

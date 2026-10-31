@@ -82,18 +82,34 @@ const rescaleTolerance = 0.005
 // end. Ingest and the DownloadHistoricalData RPC both store bars through it,
 // so both re-scale after a split the same way.
 //
-// Everything runs in one transaction whose first statement takes
-// pg_advisory_xact_lock(hashtext('ohlc:' || symbol)). The stored range and the
-// overlap close are read, and the append-or-replace decision is made, under
-// that lock, so two syncs of one symbol run one after the other and can't
-// leave days on two scales. fetch is called while the lock is held.
+// The provider is asked first, outside any transaction: the stored range and
+// overlap close are read without the lock, and fetch is called for every span
+// that plan needs. Only then does Sync open one transaction whose first
+// statement takes pg_advisory_xact_lock(hashtext('ohlc:' || symbol)), re-read
+// the stored range and overlap close, and make the append-or-replace decision
+// again under that lock, so two syncs of one symbol still store one after the
+// other and can't leave days on two scales. When the locked decision asks for
+// the spans already fetched, their bars are stored and no provider call runs
+// under the lock. Only when another sync changed the stored history in
+// between, so the decision now needs a different span, is fetch called again,
+// while the lock is held. A slow provider therefore holds neither the lock
+// nor a pooled connection in the normal case.
 //
 // Nothing stored yet: start through end is fetched and inserted.
 //
-// Stored history that starts on or before start: the fetch begins on the last
-// stored day, so it overlaps one stored day. When that day comes back with a
-// close within rescaleTolerance of the stored one, the new days are upserted.
-// Otherwise (the close moved, the day is missing from the fetch, or either
+// Stored history that starts on or before start: one fetch through end. With
+// no weekday missing from start up to the last stored day it begins on the
+// last stored day. With one missing it begins on the closest stored day
+// before the first missing weekday (or on that weekday when no earlier day
+// is stored from the scan start on). Only days from start, and no more than
+// gapScanDays before the last stored day, are looked at, so an older gap
+// stays as it is and backtest create fails on it (the missing-session check
+// from lhjnilsson/foreverbull-internal#123). Every check day, the last stored day and the stored day
+// next to the gap, is inside the fetched span. When each comes back with a
+// close within rescaleTolerance of the stored one, the bars for missing days
+// are inserted, the last stored day is upserted as before, and every other
+// stored row is left as it is.
+// Otherwise (a close moved, a check day is missing from the fetch, or either
 // close is not a positive finite price) the scale of the stored history can't
 // be trusted, so the whole range from the first stored day is fetched again
 // and replaced.
@@ -116,6 +132,10 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	if !ok {
 		return &StoreError{Symbol: symbol, Err: ErrNoTransaction}
 	}
+	fetched := &fetchCache{fetch: fetch}
+	if err := db.classify(symbol, db.decide(ctx, provider, symbol, start, end, fetched.get, false)); err != nil {
+		return err
+	}
 	if pool, ok := db.Conn.(*pgxpool.Pool); ok {
 		release, err := acquireSyncSlot(ctx, pool)
 		if err != nil {
@@ -130,8 +150,8 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
 	// Bound how long this transaction waits for the symbol lock, and how long
-	// it may sit idle (fetch runs while it is open), so a stuck sync gives the
-	// lock and its connection back. set_config(..., true) is SET LOCAL: both
+	// it may sit idle (a fetch runs while it is open when the locked decision
+	// changed), so a stuck sync gives the lock and its connection back. set_config(..., true) is SET LOCAL: both
 	// reset when the transaction ends.
 	if _, err := tx.Exec(ctx,
 		`SELECT set_config('lock_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $2, true)`,
@@ -147,7 +167,7 @@ func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Ti
 		return &StoreError{Symbol: symbol, Err: err}
 	}
 	inTx := &OHLC{Conn: tx}
-	if err := inTx.syncLocked(ctx, provider, symbol, start, end, fetch); err != nil {
+	if err := inTx.classify(symbol, inTx.decide(ctx, provider, symbol, start, end, fetched.get, true)); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -197,10 +217,45 @@ type fetchError struct{ err error }
 func (e *fetchError) Error() string { return e.err.Error() }
 func (e *fetchError) Unwrap() error { return e.err }
 
-func (db *OHLC) syncLocked(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
-) error {
-	err := db.decide(ctx, provider, symbol, start, end, fetch)
+// fetchCache serves each span Sync fetched before taking the lock. A span is
+// the trading day of from and of to (nil: through today). Any other span goes
+// to fetch and is kept too.
+type fetchCache struct {
+	fetch   FetchBars
+	entries []fetchedSpan
+}
+
+type fetchedSpan struct {
+	from, to string
+	bars     []*financepb.OHLC
+}
+
+func spanKey(from time.Time, to *time.Time) (string, string) {
+	if to == nil {
+		return tradingDay(from), ""
+	}
+	return tradingDay(from), tradingDay(*to)
+}
+
+func (c *fetchCache) get(from time.Time, to *time.Time) ([]*financepb.OHLC, error) {
+	f, t := spanKey(from, to)
+	for _, e := range c.entries {
+		if e.from == f && e.to == t {
+			return e.bars, nil
+		}
+	}
+	bars, err := c.fetch(from, to)
+	if err != nil {
+		return nil, err
+	}
+	c.entries = append(c.entries, fetchedSpan{from: f, to: t, bars: bars})
+	return bars, nil
+}
+
+// classify returns fetch errors unchanged, keeps a refused bar, a missing
+// refetch and a StoreError as they are, and turns anything else into a
+// StoreError.
+func (db *OHLC) classify(symbol string, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -217,9 +272,31 @@ func (db *OHLC) syncLocked(ctx context.Context, provider, symbol string,
 	return &StoreError{Symbol: symbol, Err: err}
 }
 
+// decide makes the append-or-replace decision for start through end and
+// fetches what it needs. With apply false it only fetches, so the bars are
+// ready before the lock is taken; with apply true it stores them too.
 func (db *OHLC) decide(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
+	start time.Time, end *time.Time, fetch FetchBars, apply bool,
 ) error {
+	storeBars := func(bars []*financepb.OHLC) error {
+		if !apply {
+			return nil
+		}
+		return db.StoreBars(ctx, provider, symbol, bars)
+	}
+	refetchAndReplace := func(from time.Time, to *time.Time) error {
+		bars, err := fetch(from, to)
+		if err != nil {
+			return &fetchError{err: err}
+		}
+		if !apply {
+			return nil
+		}
+		// The batch is validated first, so a bad bar never turns into a
+		// missing day.
+		return db.ReplaceRange(ctx, provider, symbol, from, to, bars)
+	}
+
 	first, last, stored, err := db.Range(ctx, provider, symbol)
 	if err != nil {
 		return err
@@ -230,7 +307,7 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		if err != nil {
 			return &fetchError{err: err}
 		}
-		return db.StoreBars(ctx, provider, symbol, bars)
+		return storeBars(bars)
 	}
 
 	if start.Before(first) {
@@ -238,7 +315,7 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		if end != nil && end.Before(last) {
 			spanEnd = &last
 		}
-		return db.refetchAndReplace(ctx, provider, symbol, start, spanEnd, fetch)
+		return refetchAndReplace(start, spanEnd)
 	}
 
 	if end != nil && !end.After(last) {
@@ -246,31 +323,183 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		return nil
 	}
 
-	bars, err := fetch(last, end)
-	if err != nil {
-		return &fetchError{err: err}
-	}
-	matches, err := db.overlapMatches(ctx, provider, symbol, last, bars)
+	// A day missing inside the requested range (a provider gap on an earlier
+	// fetch) would never be asked for again if the fetch began on the last
+	// stored day, so it begins next to the first missing weekday instead.
+	// Only the days from gapScanFrom on are looked at. Still one provider
+	// call.
+	scanFrom := gapScanFrom(start, last)
+	storedDays, err := db.storedDays(ctx, provider, symbol, scanFrom, last)
 	if err != nil {
 		return err
 	}
-	if !matches {
-		return db.refetchAndReplace(ctx, provider, symbol, first, end, fetch)
-	}
-	return db.StoreBars(ctx, provider, symbol, bars)
-}
-
-// refetchAndReplace fetches start through end and makes it the stored history
-// for that span. The batch is validated first, so a bad bar never turns into a
-// missing day.
-func (db *OHLC) refetchAndReplace(ctx context.Context, provider, symbol string,
-	start time.Time, end *time.Time, fetch FetchBars,
-) error {
-	bars, err := fetch(start, end)
+	plan := planFetch(scanFrom, last, storedDays)
+	bars, err := fetch(plan.from, end)
 	if err != nil {
 		return &fetchError{err: err}
 	}
-	return db.ReplaceRange(ctx, provider, symbol, start, end, bars)
+	// Every check day is a stored day inside the fetched span. When one of
+	// them came back on another scale nothing from this fetch is stored next
+	// to the old rows: the whole history is fetched again and replaced.
+	for _, day := range plan.checks {
+		matches, err := db.overlapMatches(ctx, provider, symbol, day, bars)
+		if err != nil {
+			return err
+		}
+		if !matches {
+			return refetchAndReplace(first, end)
+		}
+	}
+	return storeBars(newDaysOnly(bars, plan.from, last, storedDays))
+}
+
+// gapScanDays is how many calendar days before the last stored day an
+// incremental Sync looks for missing weekdays. Ingest asks for the whole
+// backtest range on every run, and an exchange holiday or a halted day is
+// never filled by the provider, so scanning the whole stored range would make
+// every daily sync fetch again from the first holiday in it (all of 2020
+// stored: from 2020-01-20, hundreds of bars instead of two). Two weeks covers
+// a provider gap from a recent fetch. Older gaps stay unfilled in storage,
+// and backtest create fails on any of them that falls on a trading day
+// (lhjnilsson/foreverbull-internal#123); nothing fills them on read. Real
+// holiday handling is the trading calendar work in
+// lhjnilsson/foreverbull-internal#109.
+const gapScanDays = 14
+
+// gapScanFrom is the first day an incremental Sync looks at for gaps: start,
+// or gapScanDays before last when that is later. A gap is only filled when it
+// is both inside the requested range and recent.
+func gapScanFrom(start, last time.Time) time.Time {
+	windowStart, _ := dayBounds(last.AddDate(0, 0, -gapScanDays))
+	if start.Before(windowStart) {
+		return windowStart
+	}
+	return start
+}
+
+// fetchPlan is the one span an incremental Sync fetches and the stored days
+// whose fetched close must match before any of its bars is stored.
+type fetchPlan struct {
+	from   time.Time
+	checks []time.Time
+}
+
+// planFetch picks the incremental fetch for a stored history whose last day
+// is last, given the days stored from start (the gap scan start, see
+// gapScanFrom) through last.
+//
+// With no missing weekday from start up to last, the fetch begins on last
+// and last is the check day, as before.
+//
+// With a missing weekday, the fetch begins on the closest stored day before
+// it, so that day and last are both checked. When no day before the gap is
+// stored from start on (the gap is the first day scanned, which is also the
+// case for a gap at the very start of the stored history), the fetch
+// begins on the gap and the first stored day after it is checked instead,
+// together with last. Either way the check days are inside the fetched span.
+func planFetch(start, last time.Time, stored map[string]bool) fetchPlan {
+	lastDay, _ := dayBounds(last)
+	gap, ok := firstMissingWeekday(start, last, stored)
+	if !ok {
+		return fetchPlan{from: lastDay, checks: []time.Time{lastDay}}
+	}
+	if before, ok := storedDayBefore(start, gap, stored); ok {
+		return fetchPlan{from: before, checks: []time.Time{before, lastDay}}
+	}
+	plan := fetchPlan{from: gap}
+	if after, ok := storedDayAfter(gap, last, stored); ok && after.Before(lastDay) {
+		plan.checks = append(plan.checks, after)
+	}
+	plan.checks = append(plan.checks, lastDay)
+	return plan
+}
+
+// storedDays is the set of trading days stored for provider and symbol from
+// the day of from through the day of to.
+func (db *OHLC) storedDays(ctx context.Context, provider, symbol string, from, to time.Time) (map[string]bool, error) {
+	spanStart, _ := dayBounds(from)
+	_, spanEnd := dayBounds(to)
+	rows, err := db.Conn.Query(ctx,
+		`SELECT time FROM ohlc WHERE provider = $1 AND symbol = $2 AND time >= $3 AND time < $4`,
+		priceProvider(provider), symbol, spanStart, spanEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+	}
+	defer rows.Close()
+	days := map[string]bool{}
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+		}
+		days[tradingDay(t)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read stored ohlc days: %w", err)
+	}
+	return days, nil
+}
+
+// firstMissingWeekday is the first Monday-to-Friday day from the day of from
+// up to, but not including, the day of to that has no stored bar. Exchange
+// holidays count as missing too: there is no holiday calendar here, and the
+// provider simply returns no bar for them, so the cost is a longer span in the
+// one fetch Sync makes anyway, never an extra call.
+func firstMissingWeekday(from, to time.Time, stored map[string]bool) (time.Time, bool) {
+	day, _ := dayBounds(from)
+	stop, _ := dayBounds(to)
+	for ; day.Before(stop); day = day.AddDate(0, 0, 1) {
+		if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			continue
+		}
+		if !stored[tradingDay(day)] {
+			return day, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// storedDayBefore is the latest stored day from the day of from up to, but
+// not including, the day of gap.
+func storedDayBefore(from, gap time.Time, stored map[string]bool) (time.Time, bool) {
+	stop, _ := dayBounds(from)
+	day, _ := dayBounds(gap)
+	for day = day.AddDate(0, 0, -1); !day.Before(stop); day = day.AddDate(0, 0, -1) {
+		if stored[tradingDay(day)] {
+			return day, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// storedDayAfter is the first stored day after the day of gap, up to and
+// including the day of to.
+func storedDayAfter(gap, to time.Time, stored map[string]bool) (time.Time, bool) {
+	day, _ := dayBounds(gap)
+	stop, _ := dayBounds(to)
+	for day = day.AddDate(0, 0, 1); !day.After(stop); day = day.AddDate(0, 0, 1) {
+		if stored[tradingDay(day)] {
+			return day, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// newDaysOnly keeps the fetched bars from the day of from on, except for
+// days before last that are already stored, so a gap fill never rewrites a
+// stored row there. The last stored day is kept: it matched within
+// rescaleTolerance and is upserted as an incremental fetch always did.
+func newDaysOnly(bars []*financepb.OHLC, from, last time.Time, stored map[string]bool) []*financepb.OHLC {
+	fromDay, lastDay := tradingDay(from), tradingDay(last)
+	kept := make([]*financepb.OHLC, 0, len(bars))
+	for _, b := range bars {
+		day := tradingDay(b.GetTimestamp().AsTime())
+		if day < fromDay || (day < lastDay && stored[day]) {
+			continue
+		}
+		kept = append(kept, b)
+	}
+	return kept
 }
 
 // overlapMatches reports whether the fetched close for the overlap day is a

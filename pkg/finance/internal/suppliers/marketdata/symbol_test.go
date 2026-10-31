@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -90,7 +91,7 @@ func TestYahooGetOHLCRequestsShareClassWithDash(t *testing.T) {
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	bars, err := client.GetOHLC("BRKB", start, &end)
+	bars, err := client.GetOHLC(context.Background(), "BRKB", start, &end)
 	require.NoError(t, err)
 	require.Len(t, bars, 1)
 	require.InDelta(t, 362.6, bars[0].Close, 1e-9)
@@ -106,7 +107,7 @@ func TestYahooGetAssetKeepsTheAskedShareClassTicker(t *testing.T) {
 	isin, _ := recordingServer(t, `{"stocks":[]}`)
 	client := &YahooClient{crumb: "test", quoteURL: srv.URL + "/", isinURL: isin.URL + "/"}
 
-	asset, err := client.GetAsset("BRKB")
+	asset, err := client.GetAsset(context.Background(), "BRKB")
 	require.NoError(t, err)
 	require.Equal(t, "BRKB", asset.Symbol, "stored and reported as the universe names it")
 	require.Equal(t, "Berkshire Hathaway Inc.", asset.Name)
@@ -120,14 +121,13 @@ func TestAlpacaGetOHLCRequestsShareClassWithDot(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 	srv, paths := recordingServer(t, string(response))
-	client := marketdata.NewClient(marketdata.ClientOpts{
+	bars := &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: srv.URL, RetryLimit: 1,
-	})
-	bars := &AlpacaBars{md: client}
+	}}
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	ohlcs, err := bars.GetOHLC("BRKB", start, &end)
+	ohlcs, err := bars.GetOHLC(context.Background(), "BRKB", start, &end)
 	require.NoError(t, err)
 	require.Len(t, ohlcs, 1)
 	require.InDelta(t, 362.6, ohlcs[0].Close, 1e-9)
@@ -148,7 +148,7 @@ func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	client := &YahooClient{crumb: "test", chartURL: srv.URL + "/"}
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
-	_, _ = client.GetOHLC("VOD.L", start, &end)
+	_, _ = client.GetOHLC(context.Background(), "VOD.L", start, &end)
 	require.NotEmpty(t, paths())
 	require.True(t, strings.HasPrefix(paths()[0], "/VOD.L?"), paths()[0])
 
@@ -157,10 +157,10 @@ func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 	alpacaSrv, alpacaPaths := recordingServer(t, string(response))
-	bars := &AlpacaBars{md: marketdata.NewClient(marketdata.ClientOpts{
+	bars := &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: alpacaSrv.URL, RetryLimit: 1,
-	})}
-	_, err = bars.GetOHLC("VOD.L", start, &end)
+	}}
+	_, err = bars.GetOHLC(context.Background(), "VOD.L", start, &end)
 	require.NoError(t, err)
 	require.Len(t, alpacaPaths(), 1)
 	require.Contains(t, alpacaPaths()[0], "VOD.L")
