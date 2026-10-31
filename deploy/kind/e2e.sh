@@ -12,6 +12,13 @@ RELEASE="${HELM_RELEASE:-foreverbull}"
 NAMESPACE="${HELM_NAMESPACE:-foreverbull}"
 VERSION="${VERSION:-latest}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-15m}"
+# The chart defaults app images to Always (floating latest). Any other tag is
+# a locally built image loaded into Kind and must not be pulled from GHCR.
+if [[ "${VERSION}" == "latest" ]]; then
+  APP_IMAGE_PULL_POLICY="${APP_IMAGE_PULL_POLICY:-Always}"
+else
+  APP_IMAGE_PULL_POLICY="${APP_IMAGE_PULL_POLICY:-IfNotPresent}"
+fi
 
 WORKLOADS=(postgres nats minio zipline foreverbull grafana)
 
@@ -38,13 +45,14 @@ dump_cluster() {
 }
 trap dump_cluster ERR
 
-echo "helm upgrade --install ${RELEASE} (namespace=${NAMESPACE}, imageTag=${VERSION})"
+echo "helm upgrade --install ${RELEASE} (namespace=${NAMESPACE}, imageTag=${VERSION}, appImagePullPolicy=${APP_IMAGE_PULL_POLICY})"
 helm upgrade --install "${RELEASE}" "${CHART}" \
   --namespace "${NAMESPACE}" \
   --create-namespace \
   --wait \
   --timeout "${WAIT_TIMEOUT}" \
   --set "global.imageTag=${VERSION}" \
+  --set "global.appImagePullPolicy=${APP_IMAGE_PULL_POLICY}" \
   --set "expose.hostPort=false" \
   --set "broker.trading.enabled=false"
 
