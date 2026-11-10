@@ -298,7 +298,10 @@ func providerTimedOut(ctx context.Context, err error) bool {
 
 func failDownload(rsp *servicePb.DownloadHistoricalDataResponse, err error) {
 	rsp.Status = servicePb.DownloadHistoricalDataResponse_STATUS_ERROR
-	rsp.Error = err.Error()
+	// Backtest create reads this text. A Yahoo *url.Error carries the
+	// session crumb as ?crumb=, so scrub that before the status leaves.
+	// Typed causes stay on err: the scrub drops the chain.
+	rsp.Error = redact.URLError(err).Error()
 	var barsStatus *financeapi.BarsStatusError
 	if errors.As(err, &barsStatus) {
 		rsp.ProviderStatus = barsStatus.ProviderStatus()

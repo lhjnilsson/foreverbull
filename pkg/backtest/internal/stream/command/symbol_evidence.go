@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
@@ -143,14 +144,15 @@ func confirmListing(ctx context.Context, db *pgxpool.Pool, eng engine.Engine, pr
 }
 
 // failedLookup logs a failed lookup and splits it into the classified miss
-// the user sentence is built from, or an unexpected error. The raw error is
-// the log line. It is not the user sentence.
+// the user sentence is built from, or an unexpected error. The log is
+// scrubbed: a Yahoo chart error is a *url.Error whose URL carries the
+// session crumb as ?crumb=. That text is not the user sentence.
 func failedLookup(provider, symbol string, listing bool, err error) (*lookupMiss, error) {
 	kind := "delisting"
 	if listing {
 		kind = "listing"
 	}
-	log.Warn().Err(err).Str("symbol", symbol).Str("provider", provider).Str("lookup", kind).
+	log.Warn().Err(redact.URLError(err)).Str("symbol", symbol).Str("provider", provider).Str("lookup", kind).
 		Msg("listing or delisting lookup failed")
 	var lookup *finance.LookupError
 	if !errors.As(err, &lookup) {
