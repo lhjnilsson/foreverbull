@@ -256,6 +256,9 @@ class WorkerPool(Worker):
         self._log_queue = Queue()
         self._log_listener = logging.handlers.QueueListener(self._log_queue, *logging.getLogger().handlers)
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
+        # Pipe objects nng has started on the surveyor. A survey sent before that is discarded, not queued.
+        self._connected_pipe_ids: set[int] = set()
+        self._worker_connected = threading.Condition()
 
     def _start_daemons(self) -> None:
         """Start the workers one by one. Raise ConfigurationError naming why a worker couldn't start.
@@ -289,19 +292,47 @@ class WorkerPool(Worker):
             )
             worker.start()
             self._workers.append(worker)
-            self._wait_until_started(worker, is_ready, startup_errors)
+            self._wait_until_started(worker, is_ready, startup_errors, len(self._workers))
 
-    @staticmethod
+    def _note_worker_pipe(self, pipe: object) -> None:
+        """Record a respondent pipe nng has started on the surveyor.
+
+        The callback runs on nng's thread. It only records the pipe; it does not send.
+        """
+        with self._worker_connected:
+            pipe_id = id(pipe)
+            if pipe_id in self._connected_pipe_ids:
+                return
+            self._connected_pipe_ids.add(pipe_id)
+            self._worker_connected.notify_all()
+
+    def _wait_for_started_pipe(self, worker: threading.Thread | Process, expected: int, deadline: float) -> bool:
+        """True when `expected` respondent pipes are started, before `deadline`."""
+        with self._worker_connected:
+            while len(self._connected_pipe_ids) < expected:
+                remaining = deadline - time.monotonic()
+                if not worker.is_alive() or remaining <= 0:
+                    return False
+                self._worker_connected.wait(timeout=min(0.05, remaining))
+            return True
+
     def _wait_until_started(
+        self,
         worker: threading.Thread | Process,
         is_ready: threading.Event | multiprocessing.synchronize.Event,
         startup_errors: "Queue | queue.Queue[StartupError]",
+        expected_pipes: int,
     ) -> None:
+        """Wait until the worker has dialed and nng has started its pipe.
+
+        Dial can return before the surveyor's pipe is started, and a survey sent in that gap is
+        discarded. The same deadline covers both waits. Nothing is sent again when a survey gets no answer.
+        """
         deadline = time.monotonic() + WORKER_START_TIMEOUT_SECONDS
         while not is_ready.wait(0.05):
             if not worker.is_alive() or time.monotonic() >= deadline:
                 break
-        if is_ready.is_set():
+        if is_ready.is_set() and self._wait_for_started_pipe(worker, expected_pipes, deadline):
             return
         try:
             # A process that just exited may still be flushing its report into the queue.
@@ -341,6 +372,8 @@ class WorkerPool(Worker):
         # A survey closes after survey_time (nng's default is 1s), and any later recv raises BadState.
         # Keep the survey open as long as recv waits, so _broadcast's bound is this one timeout.
         self._worker_surveyor_socket.survey_time = SURVEY_TIMEOUT_MS
+        # Fires after nng starts the pipe. _wait_until_started does not send until then.
+        self._worker_surveyor_socket.add_post_pipe_connect_cb(self._note_worker_pipe)
         # Listen before any worker starts, so a worker's startup log reaches the pool's handlers.
         self._log_listener.start()
         try:
