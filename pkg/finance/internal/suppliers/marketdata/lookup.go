@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/rs/zerolog/log"
 )
 
@@ -34,9 +35,10 @@ func (e *StatusError) Error() string {
 
 // lookupTransport is a failed request before a status arrived. The returned
 // error names the lookup and the symbol. A cancelled call uses ctx's error,
-// so the client error's URL stays out of the message. The raw error is logged.
+// so the client error's URL stays out of the message. The log is scrubbed:
+// a Yahoo *url.Error carries the session crumb as ?crumb=.
 func lookupTransport(lookup, symbol string, ctx context.Context, err error) error {
-	log.Warn().Err(err).Str("lookup", lookup).Str("symbol", symbol).Msg("listing lookup request failed")
+	log.Warn().Err(redact.URLError(err)).Str("lookup", lookup).Str("symbol", symbol).Msg("listing lookup request failed")
 	cause := err
 	if ctx.Err() != nil {
 		cause = ctx.Err()
