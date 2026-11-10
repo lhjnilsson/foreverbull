@@ -18,6 +18,31 @@ from foreverbull.pb.foreverbull.service.v1 import worker_pb
 HINT = "Check the worker output above for an error in your algo."
 
 
+class _SurveyPipes:
+    """Wait until the surveyor has started `workers` respondent pipes.
+
+    Register this before any dial. nng drops a survey sent before that pipe is started.
+    """
+
+    def __init__(self, surveyor: pynng.Surveyor0, workers: int) -> None:
+        self._needed = workers
+        self._ids: set[int] = set()
+        self._ready = threading.Event()
+        self._lock = threading.Lock()
+        if workers == 0:
+            self._ready.set()
+        surveyor.add_post_pipe_connect_cb(self._connected)
+
+    def _connected(self, pipe: object) -> None:
+        with self._lock:
+            self._ids.add(id(pipe))
+            if len(self._ids) >= self._needed:
+                self._ready.set()
+
+    def wait(self, timeout: float) -> None:
+        assert self._ready.wait(timeout), "responders didn't connect"
+
+
 def _pool_with(surveyor: pynng.Surveyor0, workers: int) -> worker.WorkerPool:
     pool = worker.WorkerPool("unused", executors=workers)
     pool._worker_surveyor_socket = surveyor
@@ -37,6 +62,7 @@ def _broadcast(tmp_path, workers: int, answers: list[str | None], timeout_ms: in
     address = f"ipc://{tmp_path}/survey.ipc"
     with pynng.Surveyor0(listen=address, send_timeout=timeout_ms, recv_timeout=timeout_ms) as surveyor:
         surveyor.survey_time = timeout_ms
+        pipes = _SurveyPipes(surveyor, len(answers))
         responders = []
         for error in answers:
             ready = threading.Event()
@@ -44,12 +70,7 @@ def _broadcast(tmp_path, workers: int, answers: list[str | None], timeout_ms: in
             responder.start()
             assert ready.wait(2)
             responders.append(responder)
-        # A dialled responder can still be attaching on the surveyor's side, and a
-        # survey sent before then never reaches it. Wait until every pipe is in.
-        deadline = time.monotonic() + 2
-        while len(surveyor.pipes) < len(answers):
-            assert time.monotonic() < deadline, "responders didn't connect"
-            time.sleep(0.005)
+        pipes.wait(2)
         try:
             _pool_with(surveyor, workers=workers)._broadcast(common_pb.Request(task="configure"))
         finally:
@@ -178,6 +199,9 @@ class _UnlistenedSurveyor:
         self.closed = False
         _UnlistenedSurveyor.instances.append(self)
 
+    def add_post_pipe_connect_cb(self, _callback) -> None:
+        return
+
     def close(self) -> None:
         self.closed = True
 
@@ -212,6 +236,27 @@ def test_pool_names_why_a_worker_could_not_start(monkeypatch, tmp_path, threaded
     assert not os.path.exists(os.path.dirname(socket_path))
 
 
+def test_pool_fails_closed_when_the_worker_pipe_never_starts(monkeypatch):
+    # The worker dials, but the pool never sees the pipe start. That must fail startup,
+    # not send a survey and sit out SURVEY_TIMEOUT_MS.
+    monkeypatch.setenv("THREADED_EXECUTION", "1")
+    monkeypatch.setattr(worker, "WORKER_START_TIMEOUT_SECONDS", 0.4)
+    monkeypatch.setattr(worker.models.Algorithm, "from_file_path", lambda _path: None)
+    monkeypatch.setattr(worker.WorkerPool, "_note_worker_pipe", lambda self, _pipe: None)
+    pool = worker.WorkerPool("unused", executors=1)
+    started = time.monotonic()
+    with pytest.raises(exceptions.ConfigurationError) as exc:
+        pool.__enter__()
+    elapsed = time.monotonic() - started
+    assert elapsed >= 0.4
+    # Startup gives up inside the start deadline. It does not sit out the 30s survey.
+    assert elapsed < 10
+    assert str(exc.value) == (
+        "A worker couldn't start: it didn't connect within 0.4s. "
+        "Check the worker output above for an error in your algo."
+    )
+
+
 def test_pool_keeps_a_survey_open_for_the_whole_timeout(monkeypatch, tmp_path):
     # nng closes a survey after 1s by default; a worker that answers later must still count.
     monkeypatch.setenv("THREADED_EXECUTION", "1")
@@ -239,11 +284,13 @@ def test_daemon_reports_an_error_as_type_and_message(monkeypatch, tmp_path):
     monkeypatch.setattr(worker.WorkerDaemon, "configure_execution", boom)
     with pynng.Surveyor0(listen=address, send_timeout=2000, recv_timeout=2000) as surveyor:
         surveyor.survey_time = 2000
+        pipes = _SurveyPipes(surveyor, 1)
         daemon = worker.WorkerDaemon(address, Queue(), running, stop, "unused")
         thread = threading.Thread(target=daemon.run)
         thread.start()
         try:
             assert running.wait(2)
+            pipes.wait(2)
             pool = _pool_with(surveyor, workers=1)
             with pytest.raises(exceptions.ConfigurationError) as exc:
                 pool._broadcast(
