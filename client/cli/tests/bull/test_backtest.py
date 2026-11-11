@@ -1,5 +1,6 @@
 import itertools
 import os
+import re
 import tempfile
 import time
 import traceback
@@ -1337,7 +1338,10 @@ def test_backtest_create_help_states_the_close_on_drop_flags():
     assert option.help == _CLOSE_HELP
     result = CliRunner().invoke(backtest, ["create", "--help"])
     assert result.exit_code == 0
-    shown = " ".join(result.stdout.replace("│", " ").split())
+    # Colored help (forced on GitHub Actions) puts ANSI codes between wrapped
+    # lines, so a join of the raw output never contains the sentence.
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", result.stdout)
+    shown = " ".join(plain.replace("│", " ").split())
     assert _CLOSE_HELP in shown
 
 
