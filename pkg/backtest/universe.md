@@ -61,7 +61,7 @@ workers.Process(ctx, period.Portfolio.Timestamp.AsTime(), []string{}, period.Por
 
 `worker.Pool.Process(ctx, timestamp, symbols, portfolio)` forwards `symbols` to the algorithm. `Process([]string{})` means the worker never receives the members as of `t`. Parallel functions iterate the slice and do no work; sequential functions receive an empty list.
 
-Zipline equity metadata computes `auto_close_date = end_date + 1 day` and then overwrites it with `None` (`TODO: How to autoclose date?`). Dropped names never close.
+Zipline equity metadata computes `auto_close_date = end_date + 1 day` and then overwrites it with `None` (`TODO: How to autoclose date?`). Dropped names never close on their own. foreverbull closes them at that session's close when close on universe drop is on (the default); see §8.
 
 ## 2. Design principles
 
