@@ -39,6 +39,7 @@ type overviewRow struct {
 	startingPortfolioValue *float64
 	portfolioValue         *float64
 	benchmark              string
+	closeOnUniverseDrop    string
 	activeDays             string
 }
 
@@ -72,7 +73,7 @@ func (d *Datasource) handleListExecutionOverview(ctx context.Context, _ grafana.
 	}
 
 	rows := make([]overviewRow, 0)
-	benchmarks := map[string]string{}
+	backtests := map[string]backtestRunInfo{}
 	for _, execution := range rsp.GetExecutions() {
 		if execution == nil || execution.GetId() == "" {
 			continue
@@ -89,8 +90,9 @@ func (d *Datasource) handleListExecutionOverview(ctx context.Context, _ grafana.
 			log.Error("fail to get execution", err)
 			return grafana.ErrDataResponse(grafana.StatusBadRequest, fmt.Sprintf("get execution: %v", err.Error()))
 		}
-		ticker := d.overviewBenchmark(ctx, execution.GetBacktest(), benchmarks)
-		row := overviewRowFrom(execution, got.GetPeriods(), ticker)
+		info := d.overviewBacktest(ctx, execution.GetBacktest(), backtests)
+		row := overviewRowFrom(execution, got.GetPeriods(), info.benchmark)
+		row.closeOnUniverseDrop = info.closeOnDrop
 		withReturnBasis(&row, got.GetExecution().GetReturnBasis(), lastStoredPeriod(got.GetPeriods()))
 		rows = append(rows, row)
 	}
@@ -216,22 +218,31 @@ func activityLabel(periods []*backtestpb.Period) string {
 	return fmt.Sprintf("%d of %d", active, total)
 }
 
-// overviewBenchmark is the backtest's benchmark ticker. A failed lookup is
-// an unset benchmark, so the cell stays "not set" and the board still loads.
-func (d *Datasource) overviewBenchmark(ctx context.Context, name string, cache map[string]string) string {
+type backtestRunInfo struct {
+	benchmark   string
+	closeOnDrop string
+}
+
+// overviewBacktest is the backtest's benchmark ticker and close-on-drop
+// value. A failed lookup leaves the benchmark unset, so the cell stays
+// "not set" and the board still loads. A symbol-list backtest leaves the
+// close cell empty.
+func (d *Datasource) overviewBacktest(ctx context.Context, name string, cache map[string]backtestRunInfo) backtestRunInfo {
 	if name == "" {
-		return ""
+		return backtestRunInfo{}
 	}
-	if ticker, ok := cache[name]; ok {
-		return ticker
+	if info, ok := cache[name]; ok {
+		return info
 	}
-	ticker := ""
+	info := backtestRunInfo{}
 	rsp, err := d.backend.GetBacktest(ctx, &backtestsvc.GetBacktestRequest{Name: name})
 	if err == nil && rsp != nil && rsp.GetBacktest() != nil {
-		ticker = rsp.GetBacktest().GetBenchmark()
+		item := rsp.GetBacktest()
+		info.benchmark = item.GetBenchmark()
+		info.closeOnDrop = closeOnDropValue(item)
 	}
-	cache[name] = ticker
-	return ticker
+	cache[name] = info
+	return info
 }
 
 // benchmarkCell matches the CLI summary. An empty ticker is "not set".
@@ -354,6 +365,7 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 	startingValues := make([]*float64, n)
 	values := make([]*float64, n)
 	benchmarkCells := make([]string, n)
+	closeOnDrop := make([]string, n)
 	activeDays := make([]string, n)
 	for i, row := range rows {
 		backtests[i] = row.backtest
@@ -370,6 +382,7 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		startingValues[i] = row.startingPortfolioValue
 		values[i] = row.portfolioValue
 		benchmarkCells[i] = row.benchmark
+		closeOnDrop[i] = row.closeOnUniverseDrop
 		activeDays[i] = row.activeDays
 	}
 
@@ -386,6 +399,7 @@ func overviewFrame(refID string, rows []overviewRow) *data.Frame {
 		overviewTextField("return_basis", "Return basis", returnBases, false),
 		overviewNumberField("price_return", "Price return", "percentunit", priceReturns),
 		overviewTextField("benchmark", "Benchmark", benchmarkCells, false),
+		overviewTextField("close_on_universe_drop", "Close on universe drop", closeOnDrop, false),
 		overviewNumberField("sharpe", "Sharpe", "none", sharpes),
 		overviewNumberField("sortino", "Sortino", "none", sortinos),
 		overviewNumberField("max_drawdown", "Max drawdown", "percentunit", drawdowns),

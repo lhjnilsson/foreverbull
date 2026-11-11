@@ -132,7 +132,6 @@ def ticker_history_line(backtest: str) -> str:
 
 def membership_auto_close_date(
     end_date,
-    membership_to: date | None,
     *,
     newest_member_end,
     bundle_end,
@@ -140,21 +139,16 @@ def membership_auto_close_date(
 ):
     """When Zipline closes a held position in this sid at its last close.
 
-    A confirmed delisting (create stored the evidence) whose last bar is
-    before the newest bar of any member auto-closes the day after that bar,
-    or on its membership drop when that is earlier. Bars ending is not
-    enough: without ``delisted`` the sid closes on its drop, or the day
-    after the bundle ends, so a provider gap does not sell it. A rename
-    does not auto-close the sid: end_date is the ISIN's last bar under any
-    ticker.
+    A confirmed delisting whose last bar is before the newest bar of any
+    member auto-closes the day after that bar. A membership drop is not an
+    auto_close_date: foreverbull closes those positions itself when
+    auto_close_on_universe_drop is on. Without a delisting the sid closes
+    the day after the bundle ends, so a provider gap does not sell it.
+    A rename does not auto-close the sid.
     """
-    dropped = None if membership_to is None else pd.Timestamp(membership_to)
     last_bar = cast(pd.Timestamp, pd.Timestamp(end_date))
     if delisted and last_bar < cast(pd.Timestamp, pd.Timestamp(newest_member_end)):
-        after_last_bar = last_bar + pd.Timedelta(days=1)
-        return after_last_bar if dropped is None else min(dropped, after_last_bar)
-    if dropped is not None:
-        return dropped
+        return last_bar + pd.Timedelta(days=1)
     return pd.Timestamp(bundle_end) + pd.Timedelta(days=1)
 
 
@@ -217,8 +211,8 @@ def final_drop(drops: list[date | None]) -> date | None:
     """The end of a member's final membership interval, None while still a member.
 
     Intervals of one ISIN do not overlap, so the final one is the open one,
-    else the one that ends last. An earlier drop is not where the member
-    leaves the universe when it is added back later.
+    else the one that ends last. This is not an auto-close date. A drop
+    closes the position only when foreverbull does, on that session.
     """
     if any(dropped is None for dropped in drops):
         return None
@@ -748,11 +742,10 @@ class SQLIngester:
         ]
         newest_member_end = max(member_ends)
         delisted = self._delisted_symbols()
-        for index, last, member_to, _, mapping_rows in ends:
+        for index, last, _member_to, _, mapping_rows in ends:
             confirmed = any(symbol in delisted for symbol, _, _ in mapping_rows)
             auto_close = membership_auto_close_date(
                 last,
-                member_to,
                 newest_member_end=newest_member_end,
                 bundle_end=to_date,
                 delisted=confirmed,

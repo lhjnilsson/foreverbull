@@ -1948,7 +1948,7 @@
       "id": 41,
       "type": "table",
       "title": "Run",
-      "description": "Backtest name, benchmark, session id, start, end, and execution id. No database URL, broker port, or namespace port.",
+      "description": "Backtest name, benchmark, session id, start, end, and execution id. An ETF universe also shows Close on universe drop as on or off. No database URL, broker port, or namespace port.",
       "gridPos": {
         "h": 6,
         "w": 24,

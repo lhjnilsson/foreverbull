@@ -53,11 +53,22 @@ message GetCurrentPeriodResponse {
   optional foreverbull.finance.v1.Portfolio portfolio = 2;
 }
 
-message PlaceOrdersAndContinueRequest {
-  repeated foreverbull.finance.v1.Order orders = 1;
+// UniverseSession is the ETF membership of one session. Absent on a
+// symbol-list backtest, which has no membership drops.
+message UniverseSession {
+  repeated string members = 1;
+  bool auto_close_on_universe_drop = 2;
 }
 
-message PlaceOrdersAndContinueResponse {}
+message PlaceOrdersAndContinueRequest {
+  repeated foreverbull.finance.v1.Order orders = 1;
+  optional UniverseSession universe = 2;
+}
+
+message PlaceOrdersAndContinueResponse {
+  // Symbols foreverbull closed this session because they left the universe.
+  repeated string universe_drop_closes = 1;
+}
 
 message GetResultRequest {
   message Upload {

@@ -333,6 +333,10 @@
             ]
           },
           {
+            "matcher": { "id": "byName", "options": "close_on_universe_drop" },
+            "properties": [{ "id": "displayName", "value": "Close on universe drop" }]
+          },
+          {
             "matcher": { "id": "byName", "options": "active_days" },
             "properties": [{ "id": "displayName", "value": "Active days" }]
           },

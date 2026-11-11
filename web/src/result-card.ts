@@ -27,6 +27,8 @@ export type ResultCardInput = {
   stored: readonly ExecutionResult[];
   benchmark: string;
   provider: string;
+  // Set only for an ETF universe. A symbol-list run leaves it out.
+  closeOnUniverseDrop?: boolean;
   // What the run's return measures. Missing means a legacy run.
   returnBasis?: ReturnBasis;
   foreignDividendsGross?: number;
@@ -184,10 +186,20 @@ function cardNotes(returnBasis: ReturnBasis | undefined, foreignDividendsGross: 
   }
 }
 
+export function closeOnDropValue(on: boolean): "on" | "off" {
+  return on ? "on" : "off";
+}
+
+export const CLOSE_ON_DROP_LABEL = "Close on universe drop";
+
+export const CLOSE_ON_DROP_CREATE_HELP =
+  "Closes held positions at that session's close when a symbol leaves the universe. This is set when you create the backtest and can't be changed later.";
+
 export function resultCard({
   stored,
   benchmark,
   provider,
+  closeOnUniverseDrop,
   returnBasis,
   foreignDividendsGross,
 }: ResultCardInput): ResultCardLoad | undefined {
@@ -208,6 +220,9 @@ export function resultCard({
       ],
       ...returnRows(benchmark, last, returnBasis),
       [{ label: "Data source", value: dataSourceValue(provider) }],
+      ...(closeOnUniverseDrop === undefined
+        ? []
+        : [[{ label: CLOSE_ON_DROP_LABEL, value: closeOnDropValue(closeOnUniverseDrop) }]]),
       [
         { label: "Sharpe", value: formatRatio(last.sharpe) },
         { label: "Sortino", value: formatRatio(last.sortino) },

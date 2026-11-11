@@ -86,7 +86,7 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		fromETF := req.GetEtf()
 		o, err = backtestStream.CreateBacktestFromETF(fromETF.GetName(), fromETF.GetBaseEtf(),
 			pb.DateToDateString(fromETF.GetStartDate()), pb.DateToDateString(fromETF.GetEndDate()),
-			fromETF.GetProvider(), fromETF.GetProfile())
+			fromETF.GetProvider(), fromETF.GetProfile(), fromETF.AutoCloseOnUniverseDrop)
 		if err != nil {
 			return fmt.Errorf("error creating backtest orchestration: %w", err)
 		}

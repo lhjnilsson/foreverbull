@@ -51,6 +51,8 @@ export interface ExecutionArguments {
   start: string;
   end: string;
   functions?: ExecutionFunction[];
+  /** on or off for an ETF universe. Absent for a symbol-list backtest. */
+  close_on_universe_drop?: string;
 }
 
 export interface ResourceDefinition {

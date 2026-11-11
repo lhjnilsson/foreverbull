@@ -122,27 +122,19 @@ def test_sql_ingester_threads_backtest_provider(monkeypatch):
     assert engine.provider == "yahoo"
 
 
-def test_membership_auto_close_date_is_the_drop_or_the_day_after_the_last_bar():
+def test_membership_auto_close_date_is_a_delisting_or_the_day_after_the_bundle():
     newest = pd.Timestamp("2023-12-29")
     bundle_end = date(2023, 12, 31)
 
-    def close(end, dropped, *, delisted=False):
-        return membership_auto_close_date(
-            end, dropped, newest_member_end=newest, bundle_end=bundle_end, delisted=delisted
-        )
+    def close(end, *, delisted=False):
+        return membership_auto_close_date(end, newest_member_end=newest, bundle_end=bundle_end, delisted=delisted)
 
-    # The stored data ends here: no early close, only a drop closes it.
-    assert close(newest, None) == pd.Timestamp("2024-01-01")
-    assert close(newest, date(2023, 2, 28)) == pd.Timestamp("2023-02-28")
-    # Bars that stop early are not a delisting. The position stays until the
-    # drop, or until the day after the bundle ends.
-    assert close(pd.Timestamp("2023-02-10"), None) == pd.Timestamp("2024-01-01")
-    assert close(pd.Timestamp("2023-02-10"), date(2023, 2, 28)) == pd.Timestamp("2023-02-28")
-    # A confirmed delisting closes the day after the last bar, or on the
-    # drop when that is earlier.
-    assert close(pd.Timestamp("2023-02-10"), date(2023, 2, 28), delisted=True) == pd.Timestamp("2023-02-11")
-    assert close(pd.Timestamp("2023-02-10"), None, delisted=True) == pd.Timestamp("2023-02-11")
-    assert close(pd.Timestamp("2023-02-10"), date(2023, 2, 5), delisted=True) == pd.Timestamp("2023-02-05")
+    # A membership drop is not an auto-close. The sid closes the day after
+    # the bundle ends unless create stored a delisting.
+    assert close(newest) == pd.Timestamp("2024-01-01")
+    assert close(pd.Timestamp("2023-02-10")) == pd.Timestamp("2024-01-01")
+    # A confirmed delisting closes the day after the last bar.
+    assert close(pd.Timestamp("2023-02-10"), delisted=True) == pd.Timestamp("2023-02-11")
 
 
 def test_group_symbols_by_instrument_keeps_rename_on_one_sid():
@@ -219,7 +211,7 @@ def test_an_unparseable_member_to_is_not_an_open_membership():
         group_symbols_by_instrument(["AAPL"], aliases)
 
 
-def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
+def test_sql_ingester_one_sid_for_a_ticker_change():
     engine = FakeEngine(
         {
             "FB": _session_bars("FB", date(2022, 12, 30), date(2023, 1, 30), 10.0),
@@ -255,7 +247,8 @@ def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
 
     aapl_rows = metadata.loc[metadata["symbol"] == "AAPL"]
     assert len(aapl_rows) == 1
-    assert pd.Timestamp(aapl_rows["auto_close_date"].iloc[0]) == pd.Timestamp("2023-02-28")
+    # AAPL's membership ends 2023-02-28. That drop is not auto_close_date.
+    assert pd.Timestamp(aapl_rows["auto_close_date"].iloc[0]) == pd.Timestamp("2023-03-01")
 
     meta_sid = int(meta_rows["sid"].iloc[0])
     combined = dict(ingested)[meta_sid]

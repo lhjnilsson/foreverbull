@@ -22,7 +22,7 @@ import {
 } from "../components/fb";
 import { hasStoredDate, lastStoredPeriod, portfolioSeries } from "../equity";
 import { openRunInGrafana, rankRunsInGrafana } from "../grafana";
-import { type ResultCard, resultCard } from "../result-card";
+import { CLOSE_ON_DROP_CREATE_HELP, CLOSE_ON_DROP_LABEL, closeOnDropValue, type ResultCard, resultCard } from "../result-card";
 import type { Backtest, Execution, ExecutionResult, GetExecution } from "../types";
 import { postJson, useJson, type Load } from "../useJson";
 
@@ -199,6 +199,9 @@ export function BacktestDetail() {
         <Field label="End">{fmtDate(p?.endDate)}</Field>
         <Field label="Benchmark">{b.benchmark || "—"}</Field>
         <Field label="Provider">{b.provider || "—"}</Field>
+        {b.hasUniverseMembers ? (
+          <Field label={CLOSE_ON_DROP_LABEL}>{closeOnDropValue(b.autoCloseOnUniverseDrop !== false)}</Field>
+        ) : null}
       </dl>
       <H2>Universe</H2>
       <dl>
@@ -221,6 +224,8 @@ export function BacktestDetail() {
             execution={execution}
             revision={execRevision}
             benchmark={b.benchmark ?? ""}
+            universe={b.hasUniverseMembers === true}
+            closeOnDrop={b.autoCloseOnUniverseDrop !== false}
             grafanaBase={grafanaBase}
           />
         ))}
@@ -246,11 +251,15 @@ function ExecutionRow({
   execution,
   revision,
   benchmark,
+  universe,
+  closeOnDrop,
   grafanaBase,
 }: {
   execution: Execution;
   revision: number;
   benchmark: string;
+  universe: boolean;
+  closeOnDrop: boolean;
   grafanaBase: string | null;
 }) {
   const id = execution.id ?? "";
@@ -297,6 +306,8 @@ function ExecutionRow({
           execution={execution}
           detail={detail}
           benchmark={benchmark}
+          universe={universe}
+          closeOnDrop={closeOnDrop}
           stored={stored}
           status={status}
           runHref={run?.href ?? null}
@@ -311,6 +322,8 @@ function RunReport({
   execution,
   detail,
   benchmark,
+  universe,
+  closeOnDrop,
   stored,
   status,
   runHref,
@@ -319,6 +332,8 @@ function RunReport({
   execution: Execution;
   detail: Load<GetExecution>;
   benchmark: string;
+  universe: boolean;
+  closeOnDrop: boolean;
   stored: boolean;
   status: string;
   runHref: string | null;
@@ -335,6 +350,7 @@ function RunReport({
     stored: periods.filter(hasStoredDate),
     benchmark,
     provider,
+    closeOnUniverseDrop: universe ? closeOnDrop : undefined,
     returnBasis: storedExecution?.returnBasis,
     foreignDividendsGross: storedExecution?.foreignDividendsGross,
   });
@@ -454,11 +470,11 @@ function RunForm({ backtest, onStarted }: { backtest: string; onStarted: () => v
 }
 
 function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: (name: string) => void }) {
-  const [f, setF] = useState({ name: "", start: "", end: "", provider: "" });
+  const [f, setF] = useState({ name: "", start: "", end: "", provider: "", closeOnDrop: true });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const set =
-    (key: keyof typeof f) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    (key: "name" | "start" | "end" | "provider") => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setF({ ...f, [key]: event.target.value });
   const ok = f.name.trim() && f.start && f.end;
 
@@ -467,10 +483,11 @@ function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: 
     if (pending || !ok) return;
     setError("");
     setPending(true);
-    const body: { name: string; start: string; end: string; provider?: string } = {
+    const body: { name: string; start: string; end: string; provider?: string; autoCloseOnUniverseDrop: boolean } = {
       name: f.name.trim(),
       start: f.start,
       end: f.end,
+      autoCloseOnUniverseDrop: f.closeOnDrop,
     };
     // An empty provider is omitted. The server stores yahoo.
     if (f.provider) body.provider = f.provider;
@@ -481,7 +498,7 @@ function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: 
       return;
     }
     const created = f.name.trim();
-    setF({ name: "", start: "", end: "", provider: "" });
+    setF({ name: "", start: "", end: "", provider: "", closeOnDrop: true });
     onCreated(created);
     onDone();
   }
@@ -515,6 +532,17 @@ function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: 
           <option value="stooq">stooq</option>
           <option value="alpaca">alpaca</option>
         </select>
+      </label>
+      <label className="grid gap-1">
+        <span className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={f.closeOnDrop}
+            onChange={(event) => setF({ ...f, closeOnDrop: event.target.checked })}
+          />
+          {CLOSE_ON_DROP_LABEL}
+        </span>
+        <span className="text-muted-foreground">{CLOSE_ON_DROP_CREATE_HELP}</span>
       </label>
       <div>
         <button className={`${buttonClass} mt-1`} disabled={!ok || pending}>

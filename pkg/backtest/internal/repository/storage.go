@@ -68,6 +68,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return err
 	}
 
+	if err := MigrateAutoCloseOnUniverseDrop(ctx, conn); err != nil {
+		return err
+	}
+
 	if err := MigrateTickerResolutions(ctx, conn); err != nil {
 		return err
 	}
@@ -131,6 +135,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	}
 
 	if err := MigrateBacktestProvider(ctx, conn); err != nil {
+		return err
+	}
+
+	if err := MigrateAutoCloseOnUniverseDrop(ctx, conn); err != nil {
 		return err
 	}
 

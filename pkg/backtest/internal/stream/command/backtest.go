@@ -63,6 +63,9 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
+		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
+			return plainSentence(err.Error())
+		}
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 	return nil
@@ -123,11 +126,12 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 
 	b := backtest.Backtest{
-		Name:      command.BacktestName,
-		Benchmark: benchmark,
-		Provider:  command.Provider,
-		Profile:   command.Profile,
-		Periods:   calendarYearPeriods(start, end),
+		Name:                    command.BacktestName,
+		Benchmark:               benchmark,
+		Provider:                command.Provider,
+		Profile:                 command.Profile,
+		AutoCloseOnUniverseDrop: command.AutoCloseOnUniverseDrop,
+		Periods:                 calendarYearPeriods(start, end),
 	}
 	fillPeriodAssets(b.Periods, result.Aliases)
 
@@ -145,6 +149,9 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktestWithMembers(ctx, backtests, command.OwnerID, &b, memberIntervals(result)); err != nil {
+		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
+			return plainSentence(err.Error())
+		}
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
 	return nil

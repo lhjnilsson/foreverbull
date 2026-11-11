@@ -145,6 +145,44 @@ func TestRunBacktestProcessReceivesMembersAtT(t *testing.T) {
 	drain(t, ch)
 }
 
+func TestRunBacktestOffKeepsAHeldNonMemberVisibleAndSendsNoClose(t *testing.T) {
+	t.Parallel()
+
+	day := time.Date(2023, 1, 31, 21, 0, 0, 0, time.UTC)
+	off := false
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 1}, nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(periodHolding(day, "AAPL", "XYZ"), nil).Once()
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(&servicePb.GetCurrentPeriodResponse{IsRunning: false}, nil).Once()
+	client.On("PlaceOrdersAndContinue", mock.Anything, mock.MatchedBy(func(req *servicePb.PlaceOrdersAndContinueRequest) bool {
+		return !req.GetUniverse().GetAutoCloseOnUniverseDrop() &&
+			len(req.GetUniverse().GetMembers()) == 1 && req.GetUniverse().GetMembers()[0] == "AAPL"
+	})).Return(&servicePb.PlaceOrdersAndContinueResponse{}, nil).Once()
+	pool.On("Process", mock.Anything, day, []string{"AAPL", "XYZ"}, mock.Anything).
+		Return(nil, nil).Once()
+
+	session := &ZipelineSession{
+		client: client,
+		symbolsAt: fakeMemberSymbols{byDate: map[string][]string{
+			"2023-01-31": {"AAPL"},
+		}, intervals: etfMembership},
+		backtests: fakeBacktests{backtest: &pb.Backtest{
+			Name:                    "sp100",
+			Benchmark:               "OEF",
+			AutoCloseOnUniverseDrop: &off,
+		}},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "sp100"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.Empty(t, session.RunNotices())
+}
+
 func TestRunBacktestEmptyUniversePassesEmptySymbols(t *testing.T) {
 	t.Parallel()
 

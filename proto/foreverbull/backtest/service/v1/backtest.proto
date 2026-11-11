@@ -26,6 +26,8 @@ message CreateBacktestRequest {
     string provider = 5;
     // Profile name when provider is alpaca. Ignored for yahoo and stooq.
     string profile = 6;
+    // Omitted means on. Stored on the backtest. A later run cannot change it.
+    optional bool auto_close_on_universe_drop = 7;
   }
   message CreateFromBacktest {
     foreverbull.backtest.v1.Backtest backtest = 1;
