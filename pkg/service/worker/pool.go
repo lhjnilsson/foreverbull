@@ -283,7 +283,49 @@ func (p *pool) lookupBars(ctx context.Context, symbols []string, asOf time.Time)
 		}
 		loaded = append(loaded, chunk...)
 	}
+	missing := missingBarSymbols(symbols, loaded)
+	if len(missing) > 0 {
+		return nil, missingBarsError(missing, asOf)
+	}
 	return loaded, nil
+}
+
+// missingBarSymbols are the requested symbols with no loaded bar, in request
+// order, once each. An empty request is not a missing symbol.
+func missingBarSymbols(requested []string, bars []*finance_pb.OHLC) []string {
+	present := make(map[string]struct{}, len(bars))
+	for _, bar := range bars {
+		present[bar.GetSymbol()] = struct{}{}
+	}
+	missing := make([]string, 0)
+	seen := make(map[string]struct{}, len(requested))
+	for _, symbol := range requested {
+		if _, ok := seen[symbol]; ok {
+			continue
+		}
+		seen[symbol] = struct{}{}
+		if _, ok := present[symbol]; ok {
+			continue
+		}
+		missing = append(missing, symbol)
+	}
+	return missing
+}
+
+// missingBarsError names every requested symbol the load did not deliver.
+// An empty bar list is a failed delivery, not a flat day: a strategy that
+// sees no rows can sell a position it still holds. The date is the UTC
+// calendar day, the same day the client names when it builds stock_data.
+func missingBarsError(symbols []string, asOf time.Time) error {
+	return fmt.Errorf("no bars for %s on %s", joinSymbols(symbols), asOf.UTC().Format(time.DateOnly))
+}
+
+// joinSymbols writes A, A and B, or A, B and C.
+func joinSymbols(symbols []string) string {
+	if len(symbols) < 2 {
+		return strings.Join(symbols, "")
+	}
+	return strings.Join(symbols[:len(symbols)-1], ", ") + " and " + symbols[len(symbols)-1]
 }
 
 func barsForSymbol(bars []*finance_pb.OHLC, symbol string) []*finance_pb.OHLC {

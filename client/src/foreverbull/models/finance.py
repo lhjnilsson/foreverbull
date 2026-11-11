@@ -123,15 +123,46 @@ def _empty_stock_frame() -> DataFrame:
     return DataFrame({name: [] for name in _STOCK_DATA_COLUMNS})
 
 
+def _unique_symbols(symbols: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for symbol in symbols:
+        if symbol not in seen:
+            seen.add(symbol)
+            unique.append(symbol)
+    return unique
+
+
+def _join_symbols(symbols: list[str]) -> str:
+    # A, A and B, or A, B and C. The worker pool joins symbols the same way.
+    unique = _unique_symbols(symbols)
+    if len(unique) == 0:
+        return ""
+    if len(unique) == 1:
+        return unique[0]
+    return ", ".join(unique[:-1]) + " and " + unique[-1]
+
+
+def _no_bars_message(symbols: list[str], as_of: datetime) -> str:
+    """Every symbol with no bar, and the UTC calendar day of as_of.
+
+    The worker pool names that same day. A wall clock after midnight in a
+    positive offset is still the previous UTC day.
+    """
+    day = _as_utc(as_of).date().isoformat()
+    return f"no bars for {_join_symbols(symbols)} on {day}"
+
+
 def _bar_time(bar: marketdata_pb.OHLC) -> datetime:
     return _as_utc(pb_utils.from_proto_timestamp(bar.timestamp))
 
 
-def _frame_for_symbol(bars: list[marketdata_pb.OHLC], symbol: str, as_of: datetime) -> DataFrame:
+def _frame_for_symbol(bars: list[marketdata_pb.OHLC], symbol: str, as_of: datetime) -> DataFrame | None:
     """Last lookback bars for symbol with since < time <= as_of, oldest first.
 
     The broker already resolved ticker aliases. The symbol on each bar is the
-    one the algorithm asked for.
+    one the algorithm asked for. None means that window has no bar: the caller
+    fails and names the symbol, rather than handing the strategy an empty frame.
     """
     as_of = _as_utc(as_of)
     since = as_of - _STOCK_DATA_WINDOW
@@ -156,7 +187,7 @@ def _frame_for_symbol(bars: list[marketdata_pb.OHLC], symbol: str, as_of: dateti
     if len(rows) > _STOCK_DATA_LOOKBACK:
         rows = rows[-_STOCK_DATA_LOOKBACK:]
     if not rows:
-        return _empty_stock_frame()
+        return None
     return DataFrame(rows, columns=Index(_STOCK_DATA_COLUMNS))
 
 
@@ -233,7 +264,10 @@ class Asset:
     def stock_data(self) -> DataFrame:
         if self._stock_data_loader is not None:
             return self._stock_data_loader(self._symbol)
-        return _frame_for_symbol(self._bars, self._symbol, self._as_of)
+        frame = _frame_for_symbol(self._bars, self._symbol, self._as_of)
+        if frame is None:
+            raise ConfigurationError(_no_bars_message([self._symbol], self._as_of))
+        return frame
 
 
 class Assets:
@@ -274,28 +308,39 @@ class Assets:
 
     def _load_asset_frames(self) -> dict[str, DataFrame]:
         # One pass over the bars the broker sent. time ASC is a total order.
+        # stock_data already refuses a symbol with no bar. This check is the
+        # same refusal at the split, so a missing name is not an empty frame.
         batched = self.stock_data
-        empty = batched.iloc[0:0].reset_index()
         if batched.empty:
             present: set[str] = set()
         else:
             present = set(batched.index.get_level_values("symbol"))
+        missing = [symbol for symbol in self._symbols if symbol not in present]
+        if missing:
+            raise ConfigurationError(_no_bars_message(missing, self._as_of))
         frames: dict[str, DataFrame] = {}
         for symbol in self._symbols:
-            if symbol in present:
-                frame = batched.loc[[symbol]].reset_index()
-                frames[symbol] = frame.sort_values("time", kind="mergesort").reset_index(drop=True)
-            else:
-                frames[symbol] = empty.copy()
+            frame = batched.loc[[symbol]].reset_index()
+            frames[symbol] = frame.sort_values("time", kind="mergesort").reset_index(drop=True)
         return frames
 
     @property
     def stock_data(self) -> DataFrame:
-        frames = [_frame_for_symbol(self._bars, symbol, self._as_of) for symbol in self._symbols]
-        if not frames:
+        # No symbols were requested. That is not a symbol with no bars.
+        if not self._symbols:
             empty = _empty_stock_frame()
             empty.set_index(["symbol", "time"], inplace=True)
             return empty
+        frames: list[DataFrame] = []
+        missing: list[str] = []
+        for symbol in self._symbols:
+            frame = _frame_for_symbol(self._bars, symbol, self._as_of)
+            if frame is not None:
+                frames.append(frame)
+            else:
+                missing.append(symbol)
+        if missing:
+            raise ConfigurationError(_no_bars_message(missing, self._as_of))
         df = pandas.concat(frames, ignore_index=True)
         df.set_index(["symbol", "time"], inplace=True)
         df.sort_index(inplace=True)
