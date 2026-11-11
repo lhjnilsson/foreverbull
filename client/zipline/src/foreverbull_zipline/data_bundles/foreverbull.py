@@ -343,7 +343,8 @@ def without_unpriced(bars: pd.DataFrame) -> pd.DataFrame:
     bad = unpriced_dates(bars)
     if len(bad) == 0:
         return bars
-    return cast(pd.DataFrame, bars.drop(index=bad))
+    keep = ~bars.index.isin(list(bad))
+    return cast(pd.DataFrame, bars.loc[keep])
 
 
 def sessions_missing_a_price(
@@ -359,7 +360,13 @@ def sessions_missing_a_price(
     not a session is still named.
     """
     have = pd.DatetimeIndex([]) if priced is None or len(priced) == 0 else pd.DatetimeIndex(priced.index)
-    bad = [pd.Timestamp(day) for frame in stored for day in unpriced_dates(frame)]
+    bad: list[pd.Timestamp] = []
+    for frame in stored:
+        for label in unpriced_dates(frame):
+            stamp = pd.Timestamp(label)
+            if stamp is pd.NaT:
+                continue
+            bad.append(cast(pd.Timestamp, stamp))
     bounds: list[pd.DatetimeIndex] = []
     if len(have):
         bounds.append(have)
@@ -367,8 +374,8 @@ def sessions_missing_a_price(
         bounds.append(pd.DatetimeIndex(bad))
     if not bounds:
         return []
-    first = min(bound.min() for bound in bounds)
-    last = max(bound.max() for bound in bounds)
+    first = min(cast(pd.Timestamp, bound.min()) for bound in bounds)
+    last = max(cast(pd.Timestamp, bound.max()) for bound in bounds)
     in_range = sessions[(sessions >= first) & (sessions <= last)]
     missing = list(in_range.difference(have))
     seen = set(missing)
