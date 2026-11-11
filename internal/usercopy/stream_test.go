@@ -10,6 +10,15 @@ func TestTaskStateNotRecorded(t *testing.T) {
 	require.Equal(t, "foreverbull's task queue is full, so it couldn't record the task's progress", TaskStateNotRecorded)
 }
 
+func TestTaskFinishedNotSaved(t *testing.T) {
+	require.Equal(t, "foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.", TaskFinishedNotSaved)
+}
+
+func TestTaskEndNotConfirmed(t *testing.T) {
+	require.Equal(t, "foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.", TaskEndNotConfirmed)
+	require.NotContains(t, TaskEndNotConfirmed, "Run it again")
+}
+
 func TestBacktestCreateQueueFull(t *testing.T) {
 	require.Equal(t, "Couldn't load data for backtest 'spy': foreverbull's task queue is full, so it couldn't record the task's progress. "+
 		"The backtest wasn't saved. Old tasks leave the queue after 24 hours, so run `fbull backtest create` again once they have. "+

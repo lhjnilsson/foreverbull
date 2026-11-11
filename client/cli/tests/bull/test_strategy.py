@@ -327,6 +327,33 @@ def _experiment_stream_failing(message: str):
 
 
 # The launcher's refusal is the whole error: one ✖ line and exit 1, no traceback.
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        (
+            "foreverbull couldn't record the task as finished. Run it again. If it repeats, "
+            "please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        ),
+        (
+            "foreverbull couldn't confirm whether the task finished. Don't assume it completed. "
+            "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        ),
+    ],
+)
+def test_strategy_experiment_prints_the_task_outcome_after_the_mark(monkeypatch, sentence):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.strategy.create_experiment") as mock_create:
+        mock_create.return_value = _experiment_stream_failing(sentence)
+        result = CliRunner().invoke(strategy, ["experiment", "mean-rev", "--backtest", "spy", "--rev", "1"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert result.stdout.endswith(f"✖ {sentence}\n")
+    assert "run experiment:" not in result.stdout
+    assert "ingest it first" not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
 def test_strategy_experiment_backtest_without_data_fails_with_one_line(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.create_experiment") as mock_create:

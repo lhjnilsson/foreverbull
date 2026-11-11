@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"go.uber.org/fx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -190,9 +191,14 @@ func BadRequest(w http.ResponseWriter) {
 }
 
 // WriteError maps a missing row to 404. Permission and auth failures use
-// their status. Other failures stay 500 and do not echo the cause.
+// their status. A task outcome the user must read is that sentence.
+// Other failures stay 500 and do not echo the cause.
 func WriteError(w http.ResponseWriter, err error) {
 	if err == nil {
+		return
+	}
+	if sentence, ok := taskOutcomeSentence(err); ok {
+		writeNamedError(w, sentence)
 		return
 	}
 	if status.Code(err) == codes.NotFound || errors.Is(err, pgx.ErrNoRows) {
@@ -217,6 +223,29 @@ func WriteError(w http.ResponseWriter, err error) {
 		codes.Unimplemented, codes.Internal, codes.Unavailable, codes.DataLoss:
 		writeJSON(w, http.StatusInternalServerError, []byte(`{"error":"internal"}`))
 	}
+}
+
+// taskOutcomeSentence is a final-state cause the page shows as written.
+// Any other text stays off the response.
+func taskOutcomeSentence(err error) (string, bool) {
+	message := status.Convert(err).Message()
+	switch message {
+	case usercopy.TaskFinishedNotSaved, usercopy.TaskEndNotConfirmed:
+		return message, true
+	default:
+		return "", false
+	}
+}
+
+func writeNamedError(w http.ResponseWriter, sentence string) {
+	encoded, err := json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: sentence})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, []byte(`{"error":"internal"}`))
+		return
+	}
+	writeJSON(w, http.StatusInternalServerError, encoded)
 }
 
 func writeJSON(w http.ResponseWriter, code int, body []byte) {

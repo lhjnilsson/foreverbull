@@ -806,6 +806,18 @@ def _check_run_dates_in_range(
 # Codes the broker uses to refuse a run it will not start. Any other code is a fault.
 _BROKER_RUN_REJECTIONS = (grpc.StatusCode.INVALID_ARGUMENT, grpc.StatusCode.FAILED_PRECONDITION)
 
+# These two broker sentences are already the whole error. They are printed
+# after ✖ as written. "Run it again" is only on the known-missing success.
+_TASK_FINISHED_NOT_SAVED = (
+    "foreverbull couldn't record the task as finished. Run it again. "
+    "If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+)
+_TASK_END_NOT_CONFIRMED = (
+    "foreverbull couldn't confirm whether the task finished. Don't assume it completed. "
+    "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+)
+_TASK_OUTCOME_SENTENCES = frozenset({_TASK_FINISHED_NOT_SAVED, _TASK_END_NOT_CONFIRMED})
+
 
 def get_backtest_or_fail(name: str, *, suggest_create: bool = True) -> backtest_pb.Backtest:
     """Look the backtest up, failing with one plain line when the name doesn't exist.
@@ -854,35 +866,47 @@ def run(
 
     execution_id = None
     rejected: str | None = None
+    outcome: str | None = None
     with LiveProgress() as progress:
         has_run = False
-        for msg in broker.backtest.create_session(name):
-            progress.update_from_message(msg)
-            backtest_session = msg.session
-            if backtest_session is not None and backtest_session.port and not has_run:
-                has_run = True
-                try:
-                    with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
-                        entity,
-                        backtest_session,
-                        session_secret=msg.session_secret,
-                    ) as session:
-                        with progress.bar_progress("execution") as bar_progress:
-                            for execution_id, message in session.run_execution(
-                                start_date,
-                                end_date,
-                            ):
-                                bar_progress(message.num_current_period, message.num_total_periods)
-                        log.info(f"Execution completed for {session.backtest.name}")
-                except grpc.RpcError as exc:
-                    # The broker checks the dates and that the backtest has data;
-                    # its message is the whole error.
-                    code = getattr(exc, "code", None)
-                    if not callable(code) or code() not in _BROKER_RUN_REJECTIONS:
-                        raise
-                    rejected = _rpc_details(exc)
-                    progress.transient = True
+        try:
+            for msg in broker.backtest.create_session(name):
+                progress.update_from_message(msg)
+                backtest_session = msg.session
+                if backtest_session is not None and backtest_session.port and not has_run:
+                    has_run = True
+                    try:
+                        with Foreverbull(models.Algorithm.from_file_path(file_path)).backtest_session(
+                            entity,
+                            backtest_session,
+                            session_secret=msg.session_secret,
+                        ) as session:
+                            with progress.bar_progress("execution") as bar_progress:
+                                for execution_id, message in session.run_execution(
+                                    start_date,
+                                    end_date,
+                                ):
+                                    bar_progress(message.num_current_period, message.num_total_periods)
+                            log.info(f"Execution completed for {session.backtest.name}")
+                    except grpc.RpcError as exc:
+                        # The broker checks the dates and that the backtest has data;
+                        # its message is the whole error.
+                        code = getattr(exc, "code", None)
+                        if not callable(code) or code() not in _BROKER_RUN_REJECTIONS:
+                            raise
+                        rejected = _rpc_details(exc)
+                        progress.transient = True
+        except grpc.RpcError as exc:
+            # A task whose finish was not recorded, or could not be confirmed,
+            # is already the whole error. Other session faults stay as they were.
+            details = _rpc_details(exc)
+            if details not in _TASK_OUTCOME_SENTENCES:
+                raise
+            outcome = details
+            progress.transient = True
 
+    if outcome is not None:
+        _fail(outcome)
     if rejected is not None:
         _fail(present_market_data_failure(rejected, name))
     if execution_id is None:

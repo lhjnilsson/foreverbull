@@ -30,6 +30,19 @@ func TestSessionRunError(t *testing.T) {
 		"Old tasks leave the queue after 24 hours, so run `fbull backtest run spy` again once they have. "+
 		"Restarting fbenv won't clear the queue.", st.Message())
 
+	err = sessionRunError("spy", fmt.Errorf("wait: %w", stream.ErrTaskFinishedNotSaved))
+	st, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.", st.Message())
+
+	err = sessionRunError("spy", fmt.Errorf("wait: %w", stream.ErrTaskEndNotConfirmed))
+	st, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.", st.Message())
+	require.NotContains(t, st.Message(), "Run it again")
+
 	err = sessionRunError("spy", errors.New("no ingestions found"))
 	require.EqualError(t, err, "error publishing session run command: no ingestions found")
 }
