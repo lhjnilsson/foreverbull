@@ -3,14 +3,17 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
 )
@@ -369,6 +372,51 @@ func (test *BacktestTest) TestInsertWithoutProviderFails() {
 	test.Equal(0, count)
 }
 
+// A period asset that fails after the backtest row is inserted rolls the
+// create back. The same name can be created again.
+func (test *BacktestTest) TestCreateRollsBackAFailedPeriodAsset() {
+	ctx := context.Background()
+	backtests := &repository.Backtest{Conn: test.conn}
+	partial := &backtest.Backtest{
+		Name:      "partial-asset",
+		Benchmark: "SPY",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets: []*backtest.Backtest_Period_Asset{
+				{Symbol: "AAPL", Enabled: true},
+				{Symbol: "AAPL", Enabled: false},
+			},
+		}},
+	}
+	_, err := backtests.Create(ctx, partial)
+	test.Require().Error(err)
+	test.ErrorContains(err, "period asset")
+
+	_, err = backtests.Get(ctx, partial.Name)
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest WHERE name=$1`, partial.Name))
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest_period WHERE backtest_name=$1`, partial.Name))
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest_period_asset WHERE backtest_name=$1`, partial.Name))
+
+	partial.Periods[0].Assets = []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}}
+	stored, err := backtests.Create(ctx, partial)
+	test.Require().NoError(err)
+	test.Equal(partial.Name, stored.Name)
+	test.Equal("yahoo", stored.Provider)
+	test.Require().Len(stored.Periods, 1)
+	test.Require().Len(stored.Periods[0].Assets, 1)
+	test.Equal("AAPL", stored.Periods[0].Assets[0].Symbol)
+	test.True(stored.Periods[0].Assets[0].Enabled)
+}
+
+func (test *BacktestTest) countRows(query string, args ...any) int {
+	test.T().Helper()
+	var n int
+	test.Require().NoError(test.conn.QueryRow(context.Background(), query, args...).Scan(&n))
+	return n
+}
+
 func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
@@ -382,4 +430,62 @@ func (test *BacktestTest) TestDelete() {
 	storedBacktests, err := backtests.List(ctx)
 	test.Require().NoError(err)
 	test.Empty(storedBacktests)
+}
+
+// Auth-on create uses backtest id. A member write that fails after the row
+// is inserted rolls the backtest back, and the same name can be created again.
+func TestCreateOwnedWithMembersRollsBackAFailedMember(t *testing.T) {
+	t.Setenv(environment.AuthEnabled, "true")
+	pool := newBacktestPool(t)
+	resetBacktests(t, pool)
+	ctx := context.Background()
+	admin := insertBacktestAccount(t, pool, auth.RoleAdmin)
+	require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, admin, &memIngest{keys: map[string]bool{}}))
+	require.NoError(t, repository.CreateTables(ctx, pool))
+
+	instruments := repository.Instrument{Conn: pool}
+	require.NoError(t, instruments.Upsert(ctx, aaplISIN, "Apple"))
+
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	item := &backtest.Backtest{
+		Name:      "partial-owned",
+		Benchmark: "OEF",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}},
+		}},
+	}
+	overlap := []repository.MemberInterval{
+		{ISIN: aaplISIN, FromDate: from},
+		{ISIN: aaplISIN, FromDate: later},
+	}
+	backtests := repository.Backtest{Conn: pool}
+	_, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "universe_member")
+	require.Equal(t, 0, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name=$1`, item.Name))
+	require.Equal(t, 0, countBacktestRows(t, pool, `
+		SELECT COUNT(*) FROM backtest_period AS p
+		JOIN backtest AS b ON b.id = p.backtest_id
+		WHERE b.name=$1`, item.Name))
+	require.Equal(t, 0, countBacktestRows(t, pool, `
+		SELECT COUNT(*) FROM universe_member AS m
+		JOIN backtest AS b ON b.id = m.backtest_id
+		WHERE b.name=$1`, item.Name))
+
+	stored, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap[:1])
+	require.NoError(t, err)
+	require.Equal(t, item.Name, stored.Name)
+	require.Len(t, stored.Periods, 1)
+	require.Len(t, stored.Periods[0].Assets, 1)
+	require.Equal(t, "AAPL", stored.Periods[0].Assets[0].Symbol)
+	require.True(t, stored.Periods[0].Assets[0].Enabled)
+
+	id, err := backtests.IDByOwnerAndName(ctx, admin, item.Name)
+	require.NoError(t, err)
+	listed, err := (&repository.UniverseMember{Conn: pool}).ListByID(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, []repository.MemberInterval{{ISIN: aaplISIN, FromDate: from}}, listed)
 }

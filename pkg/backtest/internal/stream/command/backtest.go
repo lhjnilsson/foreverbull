@@ -135,21 +135,18 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return err
 	}
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
-	backtests := repository.Backtest{Conn: db}
-	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
-		return fmt.Errorf("error creating backtest: %w", err)
-	}
-	backtestID := ""
-	if environment.GetAuthEnabled() {
-		backtestID, err = backtests.IDByOwnerAndName(ctx, command.OwnerID, command.BacktestName)
-		if err != nil {
-			return fmt.Errorf("error getting backtest: %w", err)
-		}
-	}
-	if err := persistUniverse(ctx, db, command.BacktestName, backtestID, snapshots, result); err != nil {
+	// Instrument and alias rows are shared by every ETF backtest. They are
+	// written before the backtest transaction and stay if it rolls back; a
+	// retry finds them. The backtest, its periods, its assets, and its
+	// members commit together, so a failed member write does not leave the
+	// name taken.
+	if err := persistInstruments(ctx, db, snapshots, result); err != nil {
 		return err
 	}
-
+	backtests := repository.Backtest{Conn: db}
+	if err = createStoredBacktestWithMembers(ctx, backtests, command.OwnerID, &b, memberIntervals(result)); err != nil {
+		return fmt.Errorf("error creating backtest: %w", err)
+	}
 	return nil
 }
 
@@ -577,7 +574,7 @@ func intervalOverlapsPeriod(from time.Time, to *time.Time, start, end time.Time)
 	return dateOnly(*to).After(start)
 }
 
-func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName, backtestID string, snaps []universe.Snapshot, result universe.Result) error {
+func persistInstruments(ctx context.Context, db *pgxpool.Pool, snaps []universe.Snapshot, result universe.Result) error {
 	names := instrumentNames(snaps)
 	instruments := repository.Instrument{Conn: db}
 	for _, member := range result.Members {
@@ -595,7 +592,10 @@ func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName, backte
 			return fmt.Errorf("error recording symbol %s for %s: %w", alias.Symbol, alias.ISIN, err)
 		}
 	}
+	return nil
+}
 
+func memberIntervals(result universe.Result) []repository.MemberInterval {
 	intervals := make([]repository.MemberInterval, 0, len(result.Members))
 	for _, member := range result.Members {
 		intervals = append(intervals, repository.MemberInterval{
@@ -604,20 +604,7 @@ func persistUniverse(ctx context.Context, db *pgxpool.Pool, backtestName, backte
 			ToDate:   member.ToDate,
 		})
 	}
-	members := repository.UniverseMember{Conn: db}
-	if environment.GetAuthEnabled() {
-		if backtestID == "" {
-			return errors.New("backtest id is empty")
-		}
-		if err := members.ReplaceByID(ctx, backtestID, intervals); err != nil {
-			return fmt.Errorf("error storing universe members: %w", err)
-		}
-		return nil
-	}
-	if err := members.Replace(ctx, backtestName, intervals); err != nil {
-		return fmt.Errorf("error storing universe members: %w", err)
-	}
-	return nil
+	return intervals
 }
 
 func instrumentNames(snaps []universe.Snapshot) map[string]string {
