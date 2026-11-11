@@ -11,6 +11,7 @@ import time
 
 from abc import ABC
 from abc import abstractmethod
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import wraps
 from multiprocessing import Process
@@ -45,6 +46,29 @@ REQUEST_ACTIONS = {"configure": "finish setting up", "run": "start the backtest"
 # A startup error a worker reports to the pool: (kind, text). For "connection" the text is the message to raise;
 # for "other" it is the cause as "Type: message".
 StartupError = tuple[str, str]
+
+# Workers are processes unless this is set. A non-empty string is truthy, so
+# "0" and "false" must not be read with bool().
+THREADED_EXECUTION = "THREADED_EXECUTION"
+
+
+def parse_threaded_execution(env: Mapping[str, str] | None = None) -> bool:
+    """Read THREADED_EXECUTION. Unset is False: workers run as processes.
+
+    true, false, 1, and 0 are accepted in any case, with surrounding spaces
+    ignored. Anything else is refused rather than read as truthy, which would
+    run threads when the value says not to.
+    """
+    source = os.environ if env is None else env
+    raw = source.get(THREADED_EXECUTION)
+    if raw is None or raw == "":
+        return False
+    value = raw.strip().lower()
+    if value in ("true", "1"):
+        return True
+    if value in ("false", "0"):
+        return False
+    raise exceptions.ConfigurationError(f"{THREADED_EXECUTION} must be true or false, but it's set to '{raw}'.")
 
 
 class Worker(ABC):
@@ -265,7 +289,7 @@ class WorkerPool(Worker):
 
         The caller stops the workers already started when this raises.
         """
-        threaded = bool(os.getenv("THREADED_EXECUTION"))
+        threaded = parse_threaded_execution()
         startup_errors: Queue | queue.Queue[StartupError]
         if threaded:
             stop_event: threading.Event | multiprocessing.synchronize.Event = threading.Event()
