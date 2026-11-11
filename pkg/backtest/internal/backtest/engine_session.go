@@ -126,8 +126,8 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	}
 	z.events = events
 
-	// An empty benchmark makes Zipline use a flat zero series, so the stored
-	// benchmark_period_return would read 0 whatever the benchmark did.
+	// An empty benchmark lets Zipline run on a flat series. The stored
+	// benchmark fields stay unset, so pass the backtest's benchmark when it has one.
 	req := servicePb.RunBacktestRequest{
 		Execution: execution,
 		Benchmark: stored.GetBenchmark(),

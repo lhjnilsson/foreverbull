@@ -26,8 +26,10 @@ from foreverbull_zipline.engine import benchmark_returns
 from foreverbull_zipline.engine import load_benchmark_returns
 from foreverbull_zipline.engine import zero_benchmark_returns
 from foreverbull_zipline.errors import PlainSentence
+from foreverbull_zipline.returns import BenchmarkReturns
 from foreverbull_zipline.service import BacktestService
 from foreverbull_zipline.session_service import SessionServiceServicer
+from protobuf import merge_from_binary
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -460,6 +462,65 @@ def test_zero_benchmark_returns_stay_on_sessions():
     assert list(returns.index) == list(sessions)
     assert pd.Timestamp("2023-01-07") not in returns.index
     assert bool((returns == 0.0).all())
+
+
+def _result_row(session, portfolio_value: float) -> dict[str, Any]:
+    return {
+        "period_close": session,
+        "longs_count": 0,
+        "shorts_count": 0,
+        "long_value": 0.0,
+        "short_value": 0.0,
+        "starting_exposure": 0.0,
+        "ending_exposure": 0.0,
+        "long_exposure": 0.0,
+        "short_exposure": 0.0,
+        "capital_used": 0.0,
+        "gross_leverage": 0.0,
+        "net_leverage": 0.0,
+        "starting_value": 0.0,
+        "ending_value": 0.0,
+        "starting_cash": portfolio_value,
+        "ending_cash": portfolio_value,
+        "max_leverage": 0.0,
+        "excess_return": 0.0,
+        "treasury_period_return": 0.0,
+        "portfolio_value": portfolio_value,
+        "dividends_earned": 0.0,
+    }
+
+
+def _stored_periods(has_benchmark: bool, benchmark: BenchmarkReturns) -> list[execution_pb.Period]:
+    sessions = benchmark.total.index
+    engine = Engine()
+    engine._capital_base = 100_000.0
+    engine._has_benchmark = has_benchmark
+    engine._benchmark = benchmark
+    engine.result = pd.DataFrame([_result_row(session, 100_000.0) for session in sessions], index=sessions)
+    payload = engine._get_execution_result(engine_service_pb.GetResultRequest().to_binary())
+    response = engine_service_pb.GetResultResponse()
+    merge_from_binary(response, payload)
+    return list(response.periods)
+
+
+def test_a_run_without_a_benchmark_leaves_the_benchmark_fields_unset():
+    sessions = pd.to_datetime(["2023-01-03", "2023-01-04"])
+    flat = BenchmarkReturns(total=pd.Series(0.0, index=sessions), price=pd.Series(0.0, index=sessions))
+    for period in _stored_periods(False, flat):
+        assert not period.has_field("benchmark_period_return")
+        assert not period.has_field("benchmark_price_return")
+        assert not period.has_field("benchmark_volatility")
+        assert period.portfolio_value == pytest.approx(100_000.0)
+
+    recorded = BenchmarkReturns(
+        total=pd.Series([0.01, 0.02], index=sessions),
+        price=pd.Series([0.01, 0.02], index=sessions),
+    )
+    last = _stored_periods(True, recorded)[-1]
+    assert last.has_field("benchmark_period_return")
+    assert last.benchmark_period_return == pytest.approx((1.01 * 1.02) - 1.0)
+    assert last.has_field("benchmark_price_return")
+    assert last.has_field("benchmark_volatility")
 
 
 def _write_e2e_bundle(

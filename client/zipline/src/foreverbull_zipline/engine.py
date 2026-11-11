@@ -284,6 +284,9 @@ class Engine(multiprocessing.Process):
         self.is_ready = multiprocessing.Event()
         self._dividend_book = DividendBook(set())
         self._benchmark: BenchmarkReturns | None = None
+        # False when the run has no benchmark: Zipline still gets a flat
+        # series, and the stored benchmark fields stay unset.
+        self._has_benchmark = False
         # Why the last run stopped before its end, told on the next period
         # request. None when the run finished.
         self._run_failure: PlainSentence | None = None
@@ -435,7 +438,8 @@ class Engine(multiprocessing.Process):
             raise PlainSentence(bundle_before_dividends_line(execution.backtest))
 
         benchmark_sid = None
-        if req.benchmark:
+        self._has_benchmark = bool(req.benchmark)
+        if self._has_benchmark:
             benchmark_asset = bundle.asset_finder.lookup_symbol(req.benchmark, as_of_date=None)
             benchmark = load_benchmark_returns(execution.backtest, bundle, benchmark_asset, trading_calendar, sessions)
         else:
@@ -558,6 +562,15 @@ class Engine(multiprocessing.Process):
         for row in self.result.index:
             period = self.result.loc[row]
             total = totals.loc[row]
+            if self._has_benchmark:
+                benchmark_period_return = _optional(total["benchmark_period_return"])
+                benchmark_price_return = _optional(total["benchmark_price_return"])
+                benchmark_volatility = _optional(total["benchmark_volatility"])
+            else:
+                # The flat series let Zipline run. It is not a benchmark return.
+                benchmark_period_return = None
+                benchmark_price_return = None
+                benchmark_volatility = None
             rsp.periods.append(
                 execution_pb.Period(
                     date=pb_utils.from_pydate_to_proto_date(period["period_close"].to_pydatetime().replace()),
@@ -589,9 +602,9 @@ class Engine(multiprocessing.Process):
                     algo_volatility=_optional(total["algo_volatility"]),
                     sharpe=_optional(total["sharpe"]),
                     sortino=_optional(total["sortino"]),
-                    benchmark_period_return=_optional(total["benchmark_period_return"]),
-                    benchmark_price_return=_optional(total["benchmark_price_return"]),
-                    benchmark_volatility=_optional(total["benchmark_volatility"]),
+                    benchmark_period_return=benchmark_period_return,
+                    benchmark_price_return=benchmark_price_return,
+                    benchmark_volatility=benchmark_volatility,
                     alpha=_optional(total["alpha"]),
                     beta=_optional(total["beta"]),
                 )
